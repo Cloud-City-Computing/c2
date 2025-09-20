@@ -4,10 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
+    <title>Cloud Codex</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
+  <script>
+    document.addEventListener( 'DOMContentLoaded', () => {
+      const footer = document.createElement( 'footer' );
+      footer.className = 'page-footer';
+      footer.innerHTML = `
+        <div class="page-footer-content">
+          <p>&copy; ${ new Date().getFullYear() } <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
+        </div>
+      `;
+      document.body.insertAdjacentElement( 'afterend', footer );
+    } );
+  </script>
 </html>
