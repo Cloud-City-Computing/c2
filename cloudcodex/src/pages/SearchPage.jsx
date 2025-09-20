@@ -1,4 +1,3 @@
-import SearchResultContainer from '../components/SearchResultContainer'
 import SearchResultItem from '../components/SearchResultItem'
 import { createRoot } from 'react-dom/client';
 import { clearInner, createAndAppend } from '../util';
