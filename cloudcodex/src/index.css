@@ -1,3 +1,9 @@
+/**
+ * Cloud Codex - Global Styles
+ * 
+ * All Rights Reserved to Cloud City Computing, LLC 2025
+ * https://cloudcitycomputing.com
+ */
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -35,6 +41,12 @@
         &:focus {
           outline: none;
           border-color: #888;
+        }
+        .search-label {
+          display: block;
+          margin-bottom: 8px;
+          font-size: 18px;
+          font-weight: 600;
         }
         .search-input {
           width: 70%;

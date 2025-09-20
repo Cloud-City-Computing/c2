@@ -1,10 +1,12 @@
-import { useState } from 'react'
+/**
+ * Cloud Codex - Main Application Entry
+ * 
+ * All Rights Reserved to Cloud City Computing, LLC 2025
+ * https://cloudcitycomputing.com
+ */
 import SearchPage from './pages/SearchPage'
-import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
     <>
       <SearchPage />

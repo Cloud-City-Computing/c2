@@ -1,7 +1,12 @@
+/**
+ * Cloud Codex - Search Page
+ * 
+ * All Rights Reserved to Cloud City Computing, LLC 2025
+ * https://cloudcitycomputing.com
+ */
 import SearchResultItem from '../components/SearchResultItem'
 import { createRoot } from 'react-dom/client';
 import { clearInner, createAndAppend } from '../util';
-import '../App.css'
 
 /**
  * Function to fetch and display search results
@@ -31,10 +36,11 @@ function getSearchResults( query ) {
 function SearchPage() {
   return (
     <>
-        <h1>Cloud Codex</h1>
         <div className="search-page-container">
             <div className="search-section">
+                <h1>Cloud Codex</h1>
                 <div className="search-box">
+                    <label htmlFor="searchInput" className="search-label">Search for Documents:</label>
                     <input type="text" placeholder="Search..." className="search-input" />
                     <button className="search-button" onClick={ () => getSearchResults( 'example query' ) }>Search</button>
                 </div>
