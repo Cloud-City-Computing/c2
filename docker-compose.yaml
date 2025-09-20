@@ -1,0 +1,18 @@
+services:
+  database:
+    image: 'postgres:17.6'
+    ports:
+      - 15432:5432
+    environment:
+      POSTGRES_PASSWORD: password123
+      POSTGRES_USER: admin
+      POSTGRES_DB: codex_db
+    networks:
+      - postgres-network
+    volumes:
+      - ${PWD}/db-data/:/var/lib/postgresql/data/
+      - ${PWD}/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+networks: 
+  postgres-network:
+    driver: bridge
