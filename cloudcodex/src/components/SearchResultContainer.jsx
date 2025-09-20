@@ -1,15 +1,15 @@
 import '../App.css'
-import SearchResultItem from './SearchResultItem'
 
+/**
+ * Generic container for displaying search results.
+ * @returns { JSX.Element }
+ */
 function SearchResultContainer() {
   return (
     <>
+        <h2>Search Results</h2>
         <div className="search-results-container">
-            <h2>Search Results</h2>
-            <SearchResultItem />
-            <SearchResultItem />
-            <SearchResultItem />
-            {/* More SearchResultItem components can be added here */}
+            {/* Search Results Container */}
         </div>
     </>
   )

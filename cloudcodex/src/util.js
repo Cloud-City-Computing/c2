@@ -1,0 +1,33 @@
+/**
+ * Utility functions for Cloud Codex
+ * 
+ * All Rights Reserved to Cloud City Computing, LLC 2025
+ * https://cloudcitycomputing.com
+ */
+
+/**
+ * Function to clear all child elements of a given HTMLElement
+ * @param { HTMLElement } element - The element to clear
+ * @returns { void }
+ */
+export function clearInner( element ) {
+    while ( element.firstChild ) {
+        element.removeChild( element.firstChild );
+    }
+}
+
+/**
+ * Function to create a new HTMLElement and append it to a parent
+ * @param { HTMLElement } parent - The parent element to append to
+ * @param { String } tag - The tag name of the element to create
+ * @param { String } className - Optional class name to assign
+ * @returns { HTMLElement } - The newly created element
+ */
+export function createAndAppend( parent, tag, className ) {
+    const element = document.createElement( tag );
+    if ( className ) {
+        element.className = className;
+    }
+    parent.appendChild( element );
+    return element;
+}
