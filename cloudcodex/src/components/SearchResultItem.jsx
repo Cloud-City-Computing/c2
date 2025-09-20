@@ -13,8 +13,8 @@ import document from "../assets/document.png";
 function SearchResultItem( { title, description } ) {
   return (
     <>
-        <h3>{ title }</h3>
-        <p>{ description }</p>
+        <h3 className="result-title">{ title }</h3>
+        <p className="result-desc">{ description }</p>
         <img src={ document } alt="Document Icon" className="document-icon" />
     </>
   )
