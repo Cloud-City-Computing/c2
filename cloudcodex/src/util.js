@@ -31,3 +31,39 @@ export function createAndAppend( parent, tag, className ) {
     parent.appendChild( element );
     return element;
 }
+
+/**
+ * Function to hide the modal dimmer
+ * @returns { void }
+ */
+export function hideModalDimmer() {
+  const modalDimmer = window.document.getElementById( 'modal-dimmer' );
+  if ( modalDimmer ) {
+    modalDimmer.style.display = 'none';
+  }
+}
+
+/**
+ * Function to destroy the modal and hide the dimmer
+ * @returns { void }
+ */
+export function destroyModal() {
+  const modalRoot = window.document.getElementById( 'modal-root' );
+  hideModalDimmer();
+  clearInner( modalRoot );
+}
+
+/**
+ * Function to show the modal dimmer and set up click to close
+ * @returns { void }
+ */
+export function showModalDimmer() {
+  const modalDimmer = window.document.getElementById( 'modal-dimmer' );
+  if ( modalDimmer ) {
+    modalDimmer.style.display = 'block';
+    modalDimmer.onclick = () => {
+      destroyModal();
+      modalDimmer.style.display = 'none';
+    };
+  }
+}
