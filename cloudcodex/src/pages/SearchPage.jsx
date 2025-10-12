@@ -48,8 +48,9 @@ function SearchPage() {
                 <div className="search-box">
                     <label htmlFor="searchInput" className="search-label">Search for Documents:</label>
                     <input type="text" placeholder="Search..." className="search-input" />
-                    <button className="search-button" onClick={ () => getSearchResults( 'example query' ) }>Search</button>
+                    <button className="c2-btn search-button" onClick={ () => getSearchResults( 'example query' ) }>Search</button>
                 </div>
+                <div id="resultPreviewContainer"></div>
             </div>
         </div>
     </>
