@@ -7,6 +7,7 @@
 
 import express from 'express';
 import ViteExpress from 'vite-express';
+import { c2_query } from './mysql_connect.js';
 
 const app = express();
 
@@ -14,15 +15,11 @@ const app = express();
 app.use( express.json() );
 
 // Sample route
-app.get( '/api/search', ( req, res ) => {
-  const query = req.query.q || '';
-  // Here you would normally process the query and fetch results from a database
-  const mockResults = [
-    { title: 'Result 1', description: 'Description for result 1' },
-    { title: 'Result 2', description: 'Description for result 2' },
-    { title: 'Result 3', description: 'Description for result 3' },
-  ];
-  res.json( { results: mockResults.filter( r => r.title.includes( query ) || r.description.includes( query ) ) } );
+app.get( '/api/search', async ( req, res ) => {
+  const query = req.query.query ?? '';
+  const results = await c2_query( 'SHOW TABLES', [] );
+  // res.json( { results: [ { title: 'Sample Result', description: 'This is a sample search result.' } ] } );
+  res.json( { results } );
 } );
 
 ViteExpress.listen( app, 3000, () => {

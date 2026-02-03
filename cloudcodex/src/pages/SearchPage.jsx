@@ -28,11 +28,7 @@ function getSearchResults( query ) {
     fetch( `/api/search?query=${ encodeURIComponent( query ) }` )
     .then( response => response.json() )
     .then( data => {
-        const results = data.results; // assuming API returns { results: [...] }
-        for ( const result of results ) {
-            const itemRoot = createRoot( createAndAppend( container, 'div', 'search-result-item' ) );
-            itemRoot.render( <SearchResultItem title={ result.title } description={ result.description } /> );
-        };
+        console.log( 'Search results data:', data );
     } )
     .catch( error => {
         console.error( 'Error fetching search results:', error );
@@ -51,8 +47,8 @@ function SearchPage() {
                 <h1>Cloud Codex</h1>
                 <div className="search-box">
                     <label htmlFor="searchInput" className="search-label">Search for Documents:</label>
-                    <input type="text" placeholder="Search..." className="search-input" />
-                    <button className="c2-btn search-button" onClick={ () => getSearchResults( 'example query' ) }>Search</button>
+                    <input type="text" placeholder="Search..." className="search-input" id="search" />
+                    <button className="c2-btn search-button" onClick={ () => getSearchResults( document.getElementById( "search" ).value ) }>Search</button>
                 </div>
                 <div id="resultPreviewContainer"></div>
             </div>
