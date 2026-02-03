@@ -14,11 +14,6 @@ import { clearInner, createAndAppend } from '../util';
  * @returns { void }
  */
 function getSearchResults( query ) {
-    const mockResults = [
-        { title: 'Result 1', description: 'Description for result 1' },
-        { title: 'Result 2', description: 'Description for result 2' },
-        { title: 'Result 3', description: 'Description for result 3' },
-    ];
     let container = document.getElementById( 'resultContainer' );
     if ( !container ) {
         const searchPageContainer = document.getElementById( 'searchPageContainer' );
@@ -29,10 +24,19 @@ function getSearchResults( query ) {
         container = document.getElementById( 'resultContainer' );
     }
     clearInner( container );
-    for ( const result of mockResults ) {
-        const itemRoot = createRoot( createAndAppend( container, 'div', 'search-result-item' ) );
-        itemRoot.render( <SearchResultItem title={ result.title } description={ result.description } /> );
-    };
+    // send query to backend API and get results at /search?query=
+    fetch( `/api/search?query=${ encodeURIComponent( query ) }` )
+    .then( response => response.json() )
+    .then( data => {
+        const results = data.results; // assuming API returns { results: [...] }
+        for ( const result of results ) {
+            const itemRoot = createRoot( createAndAppend( container, 'div', 'search-result-item' ) );
+            itemRoot.render( <SearchResultItem title={ result.title } description={ result.description } /> );
+        };
+    } )
+    .catch( error => {
+        console.error( 'Error fetching search results:', error );
+    } );
 }
 
 /**
