@@ -22,7 +22,9 @@ app.use( express.json() );
 app.get( '/api/search', async ( req, res ) => {
   const query = req.query.query ?? '';
   const results = await c2_query( 
-    'SELECT * FROM pages WHERE title LIKE ? OR html_content LIKE ? LIMIT 10', 
+    `SELECT p.title, p.html_content, p.created_at, u.name FROM pages p 
+      LEFT JOIN users u ON p.created_by = u.id
+      WHERE p.title LIKE ? OR p.html_content LIKE ? LIMIT 10`, 
     [ `%${ query }%`, `%${ query }%` ]
   );
   res.json( { results } );

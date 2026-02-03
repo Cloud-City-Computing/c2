@@ -28,7 +28,11 @@ function getSearchResults( query ) {
     fetch( `/api/search?query=${ encodeURIComponent( query ) }` )
     .then( response => response.json() )
     .then( data => {
-        console.log( 'Search results data:', data );
+        const results = data.results;
+        for ( const result of results ) {
+            const itemRoot = createRoot( createAndAppend( container, 'div', 'search-result-item' ) );
+            itemRoot.render( <SearchResultItem doc={ result } /> );
+        };
     } )
     .catch( error => {
         console.error( 'Error fetching search results:', error );

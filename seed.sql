@@ -11,7 +11,7 @@ SET @org_id = LAST_INSERT_ID();
 -- =========================
 -- Users
 -- =========================
-DELETE FROM users WHERE email IN ('alice@acme.com','bob@acme.com','carol@acme.com');
+DELETE FROM users;
 INSERT INTO users (name, email, password_hash)
 VALUES
   ('Alice Admin', 'alice@acme.com', 'hash_alice'),
@@ -28,6 +28,7 @@ FROM users;
 -- =========================
 -- Teams
 -- =========================
+DELETE FROM teams;
 INSERT INTO teams (organization_id, name, created_by)
 VALUES (
   @org_id,
@@ -40,6 +41,7 @@ SET @team_id = LAST_INSERT_ID();
 -- =========================
 -- Permissions
 -- =========================
+DELETE FROM permissions;
 INSERT INTO permissions (user_id, create_team, create_project, create_page)
 VALUES
   (@alice_id, TRUE, TRUE, TRUE),
@@ -49,6 +51,7 @@ VALUES
 -- =========================
 -- Projects
 -- =========================
+DELETE FROM projects;
 INSERT INTO projects (
   team_id,
   name,
@@ -68,6 +71,7 @@ SET @project_id = LAST_INSERT_ID();
 -- =========================
 -- Pages (root page)
 -- =========================
+DELETE FROM pages;
 INSERT INTO pages (
   project_id,
   title,
@@ -108,6 +112,7 @@ SET @child_page_id = LAST_INSERT_ID();
 -- =========================
 -- Page Versions
 -- =========================
+DELETE FROM versions;
 INSERT INTO versions (
   page_id,
   version,
