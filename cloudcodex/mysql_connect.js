@@ -8,6 +8,10 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
+/**
+ * Creates and returns a MySQL connection pool.
+ * @returns { mysql.Pool } - MySQL connection pool
+ */
 function createDBConnection() {
   dotenv.config();
   const connection = mysql.createPool( {
@@ -22,9 +26,18 @@ function createDBConnection() {
   return connection;
 }
 
+/**
+ * Executes a SQL query against the MySQL database.
+ * @param { String } sql - SQL query string
+ * @param { Array<any> } params - Query parameters
+ * @returns { Promise<any> } - Query results
+ */
 export async function c2_query( sql, params ) {
   const db = createDBConnection();
-  const [ results, fields ] = await db.execute( sql, params );
+  const results = await db.execute( sql, params );
   db.end();
-  return results;
+  if ( results.length > 0 ) {
+    return results[ 0 ];
+  }
+  return [];
 }
