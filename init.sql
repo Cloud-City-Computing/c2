@@ -4,69 +4,88 @@
     * It defines the necessary tables and their relationships.
 */
 
-CREATE TABLE organization(
-  id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+DROP TABLE IF EXISTS versions;
+DROP TABLE IF EXISTS pages;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS permissions;
+DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS organizations;
+
+CREATE TABLE organizations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
   name TEXT NOT NULL,
   owner TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+) ENGINE=InnoDB;
 
-CREATE TABLE teams(
-  id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  organization_id INT REFERENCES organization(id) ON DELETE CASCADE,
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE teams (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  organization_id INT,
   name TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  created_by INT REFERENCES user(id) ON DELETE SET NULL,
-);
+  created_by INT,
+  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
-CREATE TABLE permissions(
-  id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  user INT REFERENCES user(id) ON DELETE CASCADE,
+CREATE TABLE permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT,
   create_team BOOLEAN DEFAULT FALSE,
   create_project BOOLEAN DEFAULT FALSE,
-  create_page BOOLEAN DEFAULT TRUE
-);
+  create_page BOOLEAN DEFAULT TRUE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
-CREATE TABLE project(
-  id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  team_id INT REFERENCES teams(id) ON DELETE SET NULL,
+CREATE TABLE projects (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  team_id INT,
   name TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  created_by INT REFERENCES user(id) ON DELETE SET NULL,
-  read_access INT[] DEFAULT '[]',
-  write_access INT[] DEFAULT '[]'
-);
+  created_by INT,
+  read_access JSON DEFAULT (JSON_ARRAY()),
+  write_access JSON DEFAULT (JSON_ARRAY()),
+  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
-CREATE TABLE user(
-  id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  team_id INT[] DEFAULT '[]' REFERENCES teams(id) ON DELETE SET NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE page(
-  id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  project_id INT REFERENCES project(id) ON DELETE CASCADE,
+CREATE TABLE pages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  project_id INT,
   title TEXT NOT NULL,
   html_content TEXT,
-  parent_id INT REFERENCES page(id) ON DELETE SET NULL,
+  parent_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  created_by INT REFERENCES user(id) ON DELETE SET NULL,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_by INT REFERENCES user(id) ON DELETE SET NULL
-  read_access INT[] DEFAULT '[]',
-  write_access INT[] DEFAULT '[]'
-  version INT DEFAULT 1
-);
+  created_by INT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by INT,
+  version INT DEFAULT 1,
+  read_access JSON DEFAULT (JSON_ARRAY()),
+  write_access JSON DEFAULT (JSON_ARRAY()),
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES pages(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
-CREATE TABLE version(
-  id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  page_id INT REFERENCES page(id) ON DELETE CASCADE,
+CREATE TABLE versions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  page_id INT,
   version INT NOT NULL,
   html_content TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  created_by INT REFERENCES user(id) ON DELETE SET NULL
-  read_access INT[] DEFAULT '[]'
-);
+  created_by INT,
+  read_access JSON DEFAULT (JSON_ARRAY()),
+  FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
