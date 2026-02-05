@@ -1,7 +1,7 @@
 /**
  * Cloud Codex - Vite Configuration
  * 
- * All Rights Reserved to Cloud City Computing, LLC 2025
+ * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 import { defineConfig } from 'vite'

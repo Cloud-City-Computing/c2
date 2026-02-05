@@ -1,7 +1,7 @@
 /**
  * Utility functions for Cloud Codex
  * 
- * All Rights Reserved to Cloud City Computing, LLC 2025
+ * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 
@@ -13,9 +13,43 @@ import { createRoot } from 'react-dom/client';
  * @returns { void }
  */
 export function clearInner( element ) {
-    while ( element.firstChild ) {
-        element.removeChild( element.firstChild );
-    }
+  while ( element.firstChild ) {
+    element.removeChild( element.firstChild );
+  }
+}
+
+/**
+ * Returns the HTMLElement with the given id
+ * @param { String } id - The id of the element
+ * @returns { HTMLElement | null } - The element with the given id, or null if not found
+ */
+export function GetElById( id ) {
+  return document.getElementById( id );
+}
+
+/**
+ * Gets the value of an input element by id
+ * @param { String } id - The id of the input element
+ * @returns { Any } - The value of the input element, or null if not found
+ */
+export function GetVal( id ) {
+  const el = GetElById( id );
+  if ( el ) {
+    return el.value;
+  }
+  return null;
+}
+
+/**
+ * Sets the value of an input element by id
+ * @param { String } id - The id of the input element
+ * @param { Any } value - The value to set
+ */
+export function SetVal( id, value ) {
+  const el = GetElById( id );
+  if ( el ) {
+    el.value = value;
+  }
 }
 
 /**
@@ -26,12 +60,12 @@ export function clearInner( element ) {
  * @returns { HTMLElement } - The newly created element
  */
 export function createAndAppend( parent, tag, className ) {
-    const element = document.createElement( tag );
-    if ( className ) {
-        element.className = className;
-    }
-    parent.appendChild( element );
-    return element;
+  const element = document.createElement( tag );
+  if ( className ) {
+    element.className = className;
+  }
+  parent.appendChild( element );
+  return element;
 }
 
 /**
@@ -70,6 +104,11 @@ export function showModalDimmer() {
   }
 }
 
+/**
+ * Creates and displays a modal with the given content
+ * @param { JSX.Element } content - The content to display in the modal
+ * @returns { void }
+ */
 export function showModal( content ) {
   const modalRoot = window.document.getElementById( 'modal-root' );
   clearInner( modalRoot );

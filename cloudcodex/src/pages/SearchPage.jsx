@@ -1,11 +1,12 @@
 /**
  * Cloud Codex - Search Page
  * 
- * All Rights Reserved to Cloud City Computing, LLC 2025
+ * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 import SearchResultItem from '../components/SearchResultItem'
 import Login from '../components/Login';
+import SearchBox from '../components/SearchBox';
 import { createRoot } from 'react-dom/client';
 import { clearInner, createAndAppend, showModal } from '../util';
 
@@ -14,7 +15,7 @@ import { clearInner, createAndAppend, showModal } from '../util';
  * @param { String } query - The search query
  * @returns { void }
  */
-function getSearchResults( query ) {
+export function getSearchResults( query ) {
     let container = document.getElementById( 'resultContainer' );
     if ( !container ) {
         const searchPageContainer = document.getElementById( 'searchPageContainer' );
@@ -40,10 +41,6 @@ function getSearchResults( query ) {
     } );
 }
 
-function initializeLoginProcess() {
-  showModal( <Login /> );
-}
-
 /**
  * Facilitates searching and displays results alongside the necessary UI components.
  * @returns { JSX.Element }
@@ -51,19 +48,26 @@ function initializeLoginProcess() {
 function SearchPage() {
   return (
     <>
-        <div className="search-page-container" id="searchPageContainer">
-            <div className="search-section">
-                <h1>Cloud Codex</h1>
-                <div className="search-box">
-                    <label htmlFor="searchInput" className="search-label">Search for Documents:</label>
-                    <input type="text" placeholder="Search..." className="search-input" id="search" />
-                    <button className="c2-btn search-button" onClick={ () => getSearchResults( document.getElementById( "search" ).value ) }>Search</button>
-                </div>
-                <div id="resultPreviewContainer"></div>
-            </div>
-            <div className="login-section">
-                <button className="c2-btn login-button" onClick={ () => initializeLoginProcess() }>Login</button>
-            </div>
+      <div className="app-shell">
+        {/* Top Header */}
+        <header className="app-header">
+          <h1 className="app-title">Cloud Codex</h1>
+          <button
+              className="c2-btn login-button"
+              onClick={() => showModal( <Login /> )}
+          >
+            Login
+          </button>
+        </header>
+        {/* Main Page Content */}
+        <main className="search-page-container" id="searchPageContainer">
+          {/* Search Column */}
+          <SearchBox />
+          {/* Results Column */}
+          <section className="results-section">
+            <div id="resultPreviewContainer"></div>
+          </section>
+        </main>
         </div>
     </>
   )
