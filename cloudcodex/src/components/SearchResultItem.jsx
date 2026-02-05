@@ -6,39 +6,22 @@
  */
 import document from "../assets/document.png";
 import { createRoot } from "react-dom/client";
-import { createAndAppend, clearInner, destroyModal, showModalDimmer } from "../util";
+import { createAndAppend, clearInner, destroyModal, showModal } from "../util";
 
 /**
  * Renders a modal preview for a document.
  * @param { JSON } doc - Document data from search query results
  * @returns { JSX.Element }
  */
-function previewModal( doc ) {
+function previewDocumentModal( doc ) {
     return (
-        <div className="modal">
-            <div className="modal-content">
-                <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
-                <h2>{ doc.title }</h2>
-                <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
-                <div className="modal-body" dangerouslySetInnerHTML={ { __html: doc.html_content } }></div>
-            </div>
-        </div>
+          <div className="document-modal-content">
+              <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
+              <h2>{ doc.title }</h2>
+              <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
+              <div className="modal-body" dangerouslySetInnerHTML={ { __html: doc.html_content } }></div>
+          </div>
     );
-}
-
-/**
- * Launches the document preview modal.
- * @param { JSON } doc - Document data from search query results
- * @returns { void }
- */
-function launchDocumentPreviewModal( doc ) {
-  const modalRoot = window.document.getElementById( 'modal-root' );
-  clearInner( modalRoot );
-  if ( modalRoot ) {
-    const modalPreviewRoot = createRoot( createAndAppend( modalRoot, 'div', 'modal-document-preview' ) );
-    showModalDimmer();
-    modalPreviewRoot.render( previewModal( doc ) );
-  }
 }
 
 /**
@@ -66,7 +49,7 @@ function resultPreview( doc ) {
           <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
           <div className="preview-content" dangerouslySetInnerHTML={ { __html: doc.html_content } }></div>
           <br/>
-          <button className="c2-btn preview-button" onClick={ () => launchDocumentPreviewModal( doc ) }>Open Full Preview</button>
+          <button className="c2-btn preview-button" onClick={ () => showModal( previewDocumentModal( doc ) ) }>Open Full Preview</button>
         </div>
       </>
     );

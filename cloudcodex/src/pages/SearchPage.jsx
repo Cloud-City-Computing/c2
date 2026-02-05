@@ -5,8 +5,9 @@
  * https://cloudcitycomputing.com
  */
 import SearchResultItem from '../components/SearchResultItem'
+import Login from '../components/Login';
 import { createRoot } from 'react-dom/client';
-import { clearInner, createAndAppend } from '../util';
+import { clearInner, createAndAppend, showModal } from '../util';
 
 /**
  * Function to fetch and display search results
@@ -39,6 +40,10 @@ function getSearchResults( query ) {
     } );
 }
 
+function initializeLoginProcess() {
+  showModal( <Login /> );
+}
+
 /**
  * Facilitates searching and displays results alongside the necessary UI components.
  * @returns { JSX.Element }
@@ -55,6 +60,9 @@ function SearchPage() {
                     <button className="c2-btn search-button" onClick={ () => getSearchResults( document.getElementById( "search" ).value ) }>Search</button>
                 </div>
                 <div id="resultPreviewContainer"></div>
+            </div>
+            <div className="login-section">
+                <button className="c2-btn login-button" onClick={ () => initializeLoginProcess() }>Login</button>
             </div>
         </div>
     </>

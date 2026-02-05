@@ -5,6 +5,8 @@
  * https://cloudcitycomputing.com
  */
 
+import { createRoot } from 'react-dom/client';
+
 /**
  * Function to clear all child elements of a given HTMLElement
  * @param { HTMLElement } element - The element to clear
@@ -65,5 +67,22 @@ export function showModalDimmer() {
       destroyModal();
       modalDimmer.style.display = 'none';
     };
+  }
+}
+
+export function showModal( content ) {
+  const modalRoot = window.document.getElementById( 'modal-root' );
+  clearInner( modalRoot );
+  if ( modalRoot ) {
+    const modalContentRoot = createRoot( createAndAppend( modalRoot, 'div', 'modal-content-wrapper' ) );
+    showModalDimmer();
+    modalContentRoot.render( content );
+    const modalDimmer = window.document.getElementById( 'modal-dimmer' );
+    if ( modalDimmer ) {
+      modalDimmer.onclick = () => {
+        destroyModal();
+        modalDimmer.style.display = 'none';
+      };
+    }
   }
 }
