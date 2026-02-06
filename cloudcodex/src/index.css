@@ -336,3 +336,51 @@
   z-index: 1000; /* stays above content */
 }
 
+/* =========================
+   Login Utils
+========================= */
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+  margin-top: 10px;
+}
+
+/* Labels */
+.login-form label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ccc;
+}
+
+/* Input group wrapper */
+.login-form .input-group {
+  width: 100%;
+}
+
+/* Inputs */
+.login-form input {
+  width: 100%;
+  padding: 10px;
+  font-size: 15px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background-color: #1e1e1e;
+  color: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: #888;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+}
+
+/* Login button inside modal */
+.login-form .login-button {
+  margin-top: 10px;
+  width: 100%;
+  font-size: 16px;
+}
