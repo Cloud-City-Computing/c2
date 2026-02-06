@@ -6,6 +6,10 @@
  */
 import { destroyModal } from '../util';
 
+/**
+ * Displays a standard login form with username and password fields.
+ * @returns { JSX.Element } - The login form JSX element
+ */
 function standardLoginForm() {
   return (
     <div className="login-form">
@@ -17,7 +21,7 @@ function standardLoginForm() {
       <div className="input-group">
         <input type="password" id="password" name="password" />
       </div>
-      <button className="c2-btn login-button">Login</button>
+      <button className="c2-btn strechted-button">Login</button>
     </div>
   );
 }

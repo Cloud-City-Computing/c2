@@ -8,6 +8,15 @@ import document from "../assets/document.png";
 import { destroyModal, showModal } from "../util";
 
 /**
+ * Launches the editor for a given document.
+ * @param { JSON } doc - Document data from search query results
+ * @returns { void }
+ */
+function launchEditor( doc ) {
+    console.log( "Launching editor for document:", doc );
+}
+
+/**
  * Renders a modal preview for a document.
  * @param { JSON } doc - Document data from search query results
  * @returns { JSX.Element }
@@ -19,6 +28,7 @@ function previewDocumentModal( doc ) {
               <h2>{ doc.title }</h2>
               <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
               <div className="modal-body" dangerouslySetInnerHTML={ { __html: doc.html_content } }></div>
+              <button className="c2-btn strechted-button" onClick={ () => launchEditor( doc ) }>Launch Editor</button>
           </div>
     );
 }

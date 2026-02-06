@@ -109,6 +109,12 @@
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.7);
 }
 
+.strechted-button {
+  margin-top: 10px;
+  width: 100%;
+  font-size: 16px;
+}
+
 /* =========================
    Search Section
 ========================= */
@@ -376,11 +382,4 @@
   outline: none;
   border-color: #888;
   box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
-}
-
-/* Login button inside modal */
-.login-form .login-button {
-  margin-top: 10px;
-  width: 100%;
-  font-size: 16px;
 }
