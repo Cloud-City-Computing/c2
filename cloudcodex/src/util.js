@@ -105,6 +105,15 @@ export function showModalDimmer() {
 }
 
 /**
+ * Redirects the browser to the specified URL
+ * @param { String } url - The URL to redirect to
+ * @returns { void }
+ */
+export function standardRedirect( url ) {
+  window.location.href = url;
+}
+
+/**
  * Creates and displays a modal with the given content
  * @param { JSX.Element } content - The content to display in the modal
  * @returns { void }

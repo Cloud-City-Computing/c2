@@ -68,7 +68,7 @@ function SearchPage() {
             <div id="resultPreviewContainer"></div>
           </section>
         </main>
-        </div>
+      </div>
     </>
   )
 }

@@ -15,6 +15,7 @@
     "mysql2": "^3.16.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-router-dom": "^7.13.0",
     "vite-express": "^0.21.1"
   },
   "devDependencies": {

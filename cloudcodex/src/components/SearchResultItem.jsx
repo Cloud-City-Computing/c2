@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 import document from "../assets/document.png";
-import { destroyModal, showModal } from "../util";
+import { destroyModal, showModal, standardRedirect } from "../util";
 
 /**
  * Launches the editor for a given document.
@@ -13,7 +13,7 @@ import { destroyModal, showModal } from "../util";
  * @returns { void }
  */
 function launchEditor( doc ) {
-    console.log( "Launching editor for document:", doc );
+    standardRedirect( `/editor?doc_id=${ doc.id }` );
 }
 
 /**
