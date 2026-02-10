@@ -117,7 +117,7 @@ function standardLoginForm() {
  */
 export default function Login() {
   return (
-    <div className="login-modal-content">
+    <div className="modal-content">
       <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
       <h2>Login</h2>
       { standardLoginForm() }
