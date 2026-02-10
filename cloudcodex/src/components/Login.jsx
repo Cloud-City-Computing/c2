@@ -66,7 +66,7 @@ async function createC2Account() {
 function createAccount() {
   destroyModal();
   showModal(
-    <div className="login-modal-content">
+    <div className="modal-content">
       <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
       <h2>Create Account</h2>
       <div className="login-form">

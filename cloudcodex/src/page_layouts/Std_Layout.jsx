@@ -6,6 +6,7 @@
  */
 
 import Login from '../components/Login';
+import AccountPanel from '../components/AccountPanel';
 import { showModal, getSessionTokenFromCookie, attemptAutoLogin } from '../util';
 
 function getHeaderElement( loggedIn ) {
@@ -14,6 +15,9 @@ function getHeaderElement( loggedIn ) {
       <h1 className="app-title">Cloud Codex</h1>
       { !loggedIn && 
         <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>Login</button> 
+      }
+      { loggedIn &&
+        <button className="c2-btn account-button" onClick={() => showModal( <AccountPanel /> )}>Account</button>
       }
     </header>
   );

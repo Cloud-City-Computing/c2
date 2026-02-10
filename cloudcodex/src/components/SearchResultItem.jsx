@@ -13,7 +13,7 @@ import { destroyModal, showModal, standardRedirect } from "../util";
  * @returns { void }
  */
 function launchEditor( doc ) {
-    standardRedirect( `/editor?doc_id=${ doc.id }` );
+  standardRedirect( `/editor?doc_id=${ doc.id }` );
 }
 
 /**
@@ -23,13 +23,13 @@ function launchEditor( doc ) {
  */
 function previewDocumentModal( doc ) {
     return (
-          <div className="document-modal-content">
-              <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
-              <h2>{ doc.title }</h2>
-              <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
-              <div className="modal-body" dangerouslySetInnerHTML={ { __html: doc.html_content } }></div>
-              <button className="c2-btn stretched-button" onClick={ () => launchEditor( doc ) }>Launch Editor</button>
-          </div>
+      <div className="modal-content">
+        <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
+        <h2>{ doc.title }</h2>
+        <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
+        <div className="modal-body" dangerouslySetInnerHTML={ { __html: doc.html_content } }></div>
+        <button className="c2-btn stretched-button" onClick={ () => launchEditor( doc ) }>Launch Editor</button>
+      </div>
     );
 }
 
