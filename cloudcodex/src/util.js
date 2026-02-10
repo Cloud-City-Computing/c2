@@ -238,9 +238,6 @@ export async function attemptAutoLogin( sessionToken ) {
       setSessStorage( 'currentUser', JSON.stringify( response.user ) );
       return response.user;
     }
-    else {
-      console.log( 'Session token invalid or expired.' );
-    }
   }
   return getSessStorage( 'currentUser' );
 }

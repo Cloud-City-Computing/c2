@@ -115,7 +115,6 @@ app.post( '/api/validate-session', async ( req, res ) => {
   const token = req.body.token;
   try {
     const user = await validateAndAutoLogin( token );
-    console.log( 'Auto-login attempt with token:', token, 'Resulting user:', user );
     if ( user ) {
       res.json( { valid: true, user } );
     }

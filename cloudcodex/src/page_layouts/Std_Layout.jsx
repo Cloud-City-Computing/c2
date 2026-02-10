@@ -5,6 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
+import { useEffect, useState } from "react";
 import Login from '../components/Login';
 import AccountPanel from '../components/AccountPanel';
 import { showModal, getSessionTokenFromCookie, attemptAutoLogin, showDropdownMenu } from '../util';
@@ -35,11 +36,17 @@ function getHeaderElement( user ) {
 }
 
 function StdLayout( { children } ) {
-  const sessionToken = getSessionTokenFromCookie();
-  let user;
-  if ( sessionToken && sessionToken !== "" ) {
-    user = attemptAutoLogin( sessionToken );
-  }
+  const [ user, setUser ] = useState( null );
+  useEffect( () => {
+    const loadData = async () => {
+      const sessionToken = getSessionTokenFromCookie();
+      if ( sessionToken && sessionToken !== "" ) {
+        const loggedInUser = await attemptAutoLogin( sessionToken );
+        setUser( loggedInUser );
+      }
+    };
+    loadData();
+  }, [] );
   return (
     <>
       <div className="app-shell">
