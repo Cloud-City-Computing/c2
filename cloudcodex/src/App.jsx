@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 import { Routes, Route, Link } from "react-router-dom";
-import SearchPage from './pages/SearchPage'
+import HomePage from './pages/HomePage'
 import Editor from './pages/Editor'
 
 /**
@@ -21,7 +21,7 @@ function App() {
       </nav>
 
       <Routes>
-        <Route path="/" element={<SearchPage />} />
+        <Route path="/" element={<HomePage />} />
         <Route path="/editor" element={<Editor />} />
       </Routes>
     </div>

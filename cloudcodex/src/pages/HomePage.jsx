@@ -37,7 +37,7 @@ export async function getSearchResults( query ) {
  * Facilitates searching and displays results alongside the necessary UI components.
  * @returns { JSX.Element }
  */
-function SearchPage() {
+function HomePage() {
   return (
     <>
       <StdLayout>
@@ -55,4 +55,4 @@ function SearchPage() {
   )
 }
 
-export default SearchPage
+export default HomePage

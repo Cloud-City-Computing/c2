@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import Login from '../components/Login';
 import AccountPanel from '../components/AccountPanel';
 import { showModal, getSessionTokenFromCookie, attemptAutoLogin, showDropdownMenu } from '../util';
+import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
 /**
  * Generates an account icon SVG element for use in the header when a user is logged in.
@@ -47,6 +48,22 @@ function getHeaderElement( user ) {
 }
 
 /**
+ * Displays a welcome message prompting the user to log in.
+ * @returns { JSX.Element } - The welcome message JSX
+ */
+function noLoginMessage() {
+  return (
+    <main className="search-page-container" id="searchPageContainer">
+      <div className="welcome-message">
+        <div className="logo-container">
+          <img src={ transparent_logo } alt="Cloud City Computing Logo" className="ccc-logo" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/**
  * Defines the standard layout for the application, which includes a header and a main content area.
  * The header displays the application title and user account controls based on the login state.
  * The main content area renders the child components passed to this layout.
@@ -71,9 +88,16 @@ function StdLayout( { children } ) {
         {/* Top Header */}
         { getHeaderElement( user ) }
         {/* Main Page Content */}
-        <main className="main-page-content">
-          { children }
-        </main>
+        { user &&
+          <main className="main-page-content">
+            { children }
+          </main>
+        }
+        {!user &&
+          <main className="main-page-content no-user">
+            { noLoginMessage() }
+          </main>
+        }
       </div>
     </>
   );

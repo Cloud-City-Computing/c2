@@ -4,7 +4,7 @@
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
-import { getSearchResults } from '../pages/SearchPage.jsx';
+import { getSearchResults } from '../pages/HomePage.jsx';
 
 /**
  * Renders the search box component.
@@ -22,7 +22,7 @@ export default function SearchBox() {
             onKeyDown={ 
               ( e ) => {
                 if ( e.key === 'Enter' ) {
-                    getSearchResults( document.getElementById( 'search' ).value );
+                  getSearchResults( document.getElementById( 'search' ).value );
                 }
               }
             }
@@ -31,7 +31,7 @@ export default function SearchBox() {
             onClick={
               () =>
               getSearchResults(
-                  document.getElementById("search").value
+                document.getElementById("search").value
               )
             }
           >Search</button>
