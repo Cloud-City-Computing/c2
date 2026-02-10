@@ -5,10 +5,10 @@
  * https://cloudcitycomputing.com
  */
 import SearchResultItem from '../components/SearchResultItem'
-import Login from '../components/Login';
 import SearchBox from '../components/SearchBox';
 import { createRoot } from 'react-dom/client';
-import { clearInner, createAndAppend, showModal, attemptAutoLogin, getSessionTokenFromCookie, serverReq } from '../util';
+import { clearInner, createAndAppend, serverReq } from '../util';
+import StdLayout from '../page_layouts/Std_Layout';
 
 /**
  * Function to fetch and display search results
@@ -33,41 +33,14 @@ export async function getSearchResults( query ) {
     }
 }
 
-function getHeaderElement( loggedIn ) {
-  if ( !loggedIn ) {
-    return (
-        <header className="app-header">
-          <h1 className="app-title">Cloud Codex</h1>
-          <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>
-            Login
-          </button>
-        </header>
-    );
-  }
-  else {
-    return (
-      <header className="app-header">
-        <h1 className="app-title">Cloud Codex</h1>
-      </header>
-    );
-  }
-}
-
 /**
  * Facilitates searching and displays results alongside the necessary UI components.
  * @returns { JSX.Element }
  */
 function SearchPage() {
-  const sessionToken = getSessionTokenFromCookie();
-  let userLoggedIn = false;
-  if ( sessionToken && sessionToken !== "" ) {
-    userLoggedIn = attemptAutoLogin( sessionToken );
-  }
   return (
     <>
-      <div className="app-shell">
-        {/* Top Header */}
-        { getHeaderElement( userLoggedIn ) }
+      <StdLayout>
         {/* Main Page Content */}
         <main className="search-page-container" id="searchPageContainer">
           {/* Search Column */}
@@ -77,7 +50,7 @@ function SearchPage() {
             <div id="resultPreviewContainer"></div>
           </section>
         </main>
-      </div>
+      </StdLayout>
     </>
   )
 }

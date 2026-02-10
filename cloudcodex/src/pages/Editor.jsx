@@ -6,6 +6,7 @@
  */
 
 import { standardRedirect } from "../util"
+import StdLayout from '../page_layouts/Std_Layout';
 
 /**
  * Generates the editor page.
@@ -14,21 +15,14 @@ import { standardRedirect } from "../util"
 export default function Editor( { doc_id } ) {
     return (
         <>
-          <div className="app-shell">
-            {/* Top Header */}
-            <header className="app-header">
-              <h1 className="app-title">Cloud Codex</h1>
-              <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>
-                Login
-              </button>
-            </header>
+          <StdLayout>
             {/* Main Page Content */}
             <main className="editor-page">
                 <h1>Editor Page</h1>
                 <p>This is where the document editor will be implemented.</p>
                 <button className="c2-btn" onClick={ () => standardRedirect( '/' ) }>Return Home</button>
             </main>
-          </div>
+          </StdLayout>
         </>
     );
 }
