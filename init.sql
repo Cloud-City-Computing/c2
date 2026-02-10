@@ -1,7 +1,7 @@
 /**
-    * SQL script to initialize the database schema.
-    * This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
-    * It defines the necessary tables and their relationships.
+* SQL script to initialize the database schema.
+* This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
+* It defines the necessary tables and their relationships.
 */
 
 DROP TABLE IF EXISTS versions;
@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS permissions;
 DROP TABLE IF EXISTS teams;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS organizations;
 
 CREATE TABLE organizations (
@@ -25,6 +26,19 @@ CREATE TABLE users (
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE sessions (
+  id CHAR(64) PRIMARY KEY,
+  user_id INT NOT NULL,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX (user_id),
+  INDEX (expires_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE teams (
