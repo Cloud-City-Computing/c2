@@ -9,23 +9,14 @@ import Login from '../components/Login';
 import { showModal, getSessionTokenFromCookie, attemptAutoLogin } from '../util';
 
 function getHeaderElement( loggedIn ) {
-  if ( !loggedIn ) {
-    return (
-        <header className="app-header">
-          <h1 className="app-title">Cloud Codex</h1>
-          <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>
-            Login
-          </button>
-        </header>
-    );
-  }
-  else {
-    return (
-      <header className="app-header">
-        <h1 className="app-title">Cloud Codex</h1>
-      </header>
-    );
-  }
+  return (
+    <header className="app-header">
+      <h1 className="app-title">Cloud Codex</h1>
+      { !loggedIn && 
+        <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>Login</button> 
+      }
+    </header>
+  );
 }
 
 function StdLayout( { children } ) {
