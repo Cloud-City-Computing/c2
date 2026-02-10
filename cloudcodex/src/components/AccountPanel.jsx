@@ -5,12 +5,38 @@
  * https://cloudcitycomputing.com
  */
 
+import { removeSessStorage, serverReq, getSessionTokenFromCookie } from "../util";
+
+/**
+ * Performs logout by sending a request to the server and clearing session data on the client.
+ * On successful logout, it reloads the page to update the UI.
+ * @returns { void }
+ */
+async function performLogout() {
+  const response = await serverReq( 'POST', '/api/logout', { token: getSessionTokenFromCookie() } );
+  if ( response.success ) {
+    // Clear session storage and cookies
+    removeSessStorage( 'currentUser' );
+    document.cookie = 'sessionToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    alert( 'Logged out successfully.' );
+    window.location.reload(); // Reload the page to update the UI
+  }
+}
+
+/**
+ * Logout component that displays user information and a logout button in a dropdown menu.
+ * @param { JSON } id - User ID
+ * @param { JSON } name - User name
+ * @param { JSON } email - User email
+ * @returns { JSX.Element } - The AccountPanel component JSX
+ */
 function AccountPanel( { id, name, email } ) {
-  console.log( 'AccountPanel props:', { id, name, email } );
   return (
     <div className="dropdown-menu">
-      <h2>Account Panel</h2>
-      <p>This is where account management features will be implemented.</p>
+      <p><strong>{ name }</strong></p>
+      <p>{ email }</p>
+      <hr />
+      <button className="c2-btn stretched-button" onClick={ () => performLogout() }>Logout</button>
     </div>
   );
 }

@@ -106,6 +106,23 @@ app.post( '/api/login', async ( req, res ) => {
 } );
 
 /**
+ * Logout API Endpoint
+ * POST /api/logout
+ * Body: { token: string }
+ * Invalidates the session token to log the user out.
+ */
+app.post( '/api/logout', async ( req, res ) => {
+  const token = req.body.token;
+  try {
+    await c2_query( `DELETE FROM sessions WHERE id = ?`, [ token ] );
+    res.json( { success: true } );
+  }
+  catch ( error ) {
+    res.status( 500 ).json( { success: false, message: 'Error logging out' } );
+  }
+} );
+
+/**
  * Validate Session API Endpoint
  * POST /api/validate-session
  * Body: { token: string }

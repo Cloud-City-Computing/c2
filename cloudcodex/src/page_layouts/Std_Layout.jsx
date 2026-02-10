@@ -10,6 +10,10 @@ import Login from '../components/Login';
 import AccountPanel from '../components/AccountPanel';
 import { showModal, getSessionTokenFromCookie, attemptAutoLogin, showDropdownMenu } from '../util';
 
+/**
+ * Generates an account icon SVG element for use in the header when a user is logged in.
+ * @returns { JSX.Element } - The SVG element representing the account icon
+ */
 function getAccountIconSVG() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-user">
@@ -19,6 +23,13 @@ function getAccountIconSVG() {
   );
 }
 
+/**
+ * Creates the header element for the application, which includes the title and user account controls.
+ * If a user is logged in, it shows an account icon that opens a dropdown menu with account options.
+ * If no user is logged in, it shows a login button that opens the login modal.
+ * @param { JSON } user - The current logged-in user object, or null if no user is logged in
+ * @returns { JSX.Element } - The header element JSX
+ */
 function getHeaderElement( user ) {
   return (
     <header className="app-header">
@@ -35,6 +46,13 @@ function getHeaderElement( user ) {
   );
 }
 
+/**
+ * Defines the standard layout for the application, which includes a header and a main content area.
+ * The header displays the application title and user account controls based on the login state.
+ * The main content area renders the child components passed to this layout.
+ * @param { JSX.Element } children - The child components to be rendered within the main content area of the layout
+ * @returns { JSX.Element } - The complete layout JSX element
+ */
 function StdLayout( { children } ) {
   const [ user, setUser ] = useState( null );
   useEffect( () => {
