@@ -92,7 +92,7 @@ export function validateAndAutoLogin( sessionToken ) {
         const session = sessions[ 0 ];
         if ( session.expires_at > new Date() ) {
           const users = await c2_query(
-            `SELECT id, name FROM users WHERE id = ? LIMIT 1`,
+            `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
             [ session.user_id ]
           );
           if ( users.length === 1 ) {

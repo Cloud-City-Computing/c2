@@ -150,6 +150,24 @@ export function showModal( content ) {
   }
 }
 
+export function showDropdownMenu( content ) {
+  const dropdownRoot = window.document.getElementById( 'dropdown-root' );
+  clearInner( dropdownRoot );
+  if ( dropdownRoot ) {
+    const dropdownContentRoot = createRoot( createAndAppend( dropdownRoot, 'div', 'dropdown-content-wrapper' ) );
+    dropdownContentRoot.render( content );
+    dropdownRoot.style.display = 'block';
+    const modalDimmer = window.document.getElementById( 'modal-dimmer' );
+    if ( modalDimmer ) {
+      modalDimmer.style.display = 'block';
+      modalDimmer.onclick = () => {
+        dropdownRoot.style.display = 'none';
+        modalDimmer.style.display = 'none';
+      };
+    }
+  }
+}
+
 /**
  * Gets the session token from the browser cookies
  * @returns { String | null } - The session token if found, or null if not found
@@ -211,19 +229,18 @@ export function removeSessStorage( key ) {
  * If the session token is valid, it stores the user details in session storage and returns true.
  * If the session token is invalid or an error occurs, it returns false.
  * @param { String } sessionToken - The session token to validate
- * @returns { Promise<Boolean> } - Resolves to true if auto-login is successful, false otherwise
+ * @returns { Promise<JSON> } - Resolves to the user object if auto-login is successful, or null if unsuccessful
  */
 export async function attemptAutoLogin( sessionToken ) {
-  let loggedIn = false;
   if ( !getSessStorage( 'currentUser' ) && sessionToken ) {
     const response = await serverReq( 'POST', '/api/validate-session', { token: sessionToken } );
     if ( response.valid ) {
-      loggedIn = true;
       setSessStorage( 'currentUser', JSON.stringify( response.user ) );
+      return response.user;
     }
     else {
       console.log( 'Session token invalid or expired.' );
     }
   }
-  return loggedIn;
+  return getSessStorage( 'currentUser' );
 }

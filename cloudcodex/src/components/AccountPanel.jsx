@@ -5,9 +5,10 @@
  * https://cloudcitycomputing.com
  */
 
-function AccountPanel() {
+function AccountPanel( { id, name, email } ) {
+  console.log( 'AccountPanel props:', { id, name, email } );
   return (
-    <div className="modal-content">
+    <div className="dropdown-menu">
       <h2>Account Panel</h2>
       <p>This is where account management features will be implemented.</p>
     </div>

@@ -115,6 +115,14 @@
   font-size: 16px;
 }
 
+.account-button {
+  cursor: pointer;
+  color: #fff;
+  &:hover {
+    color: #aaa;
+  }
+}
+
 /* =========================
    Search Section
 ========================= */
@@ -269,7 +277,7 @@
    Modal System
 ========================= */
 
-#modal-dimmer {
+#modal-dimmer, #dropdown-backshadow {
   position: fixed;
   top: 0;
   left: 0;
@@ -288,6 +296,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.dropdown-content-wrapper {
+  position: fixed;
+  top: 60px; /* adjust based on header height */
+  right: 20px; /* adjust based on header padding */
+  z-index: 9999;
+}
+
+.dropdown-menu {
+  background-color: #2e2e2e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.7);
+  width: 200px;
+  padding: 10px;
 }
 
 .modal-content {
