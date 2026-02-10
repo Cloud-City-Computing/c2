@@ -31,6 +31,46 @@ app.get( '/api/search', async ( req, res ) => {
 } );
 
 /**
+ * Create Account API Endpoint
+ * POST /api/create-account
+ * Body: { username: string, password: string }
+ * Creates a new user account and returns a session token on success.
+ */
+app.post( '/api/create-account', async ( req, res ) => {
+  const { username, password, email } = req.body;
+  if ( !username || !password || !email ) { // Basic validation to ensure required fields are present
+    return res.status( 400 ).json( { 
+      success: false, 
+      message: 'Username and password are required' 
+    } );
+  }
+  try {
+    const result = await c2_query( 
+      `INSERT INTO users ( name, password_hash, created_at, email ) 
+        VALUES ( ?, ?, NOW(), ? )`, 
+      [ username, password, username, email ] 
+    );
+    const userId = result.insertId;
+    const user = { id: userId, name: username };
+    const sessionToken = await generateSessionToken( user ); // Generate a session token for the new user
+    res.json( { 
+      success: true, 
+      token: sessionToken, 
+      user: { 
+        id: userId, 
+        name: username 
+      } 
+    } );
+  }
+  catch ( error ) {
+    res.status( 500 ).json( { 
+      success: false, 
+      message: 'Error creating account. Username may already be taken.' 
+    } );
+  }
+} );
+
+/**
  * Login API Endpoint
  * POST /api/login
  * Body: { username: string, password: string }
@@ -39,7 +79,7 @@ app.get( '/api/search', async ( req, res ) => {
 app.post( '/api/login', async ( req, res ) => {
   const { username, password } = req.body;
   const users = await c2_query( 
-    `SELECT id, name FROM users WHERE username = ? AND password = ? LIMIT 1`, 
+    `SELECT id, name FROM users WHERE name = ? AND password_hash = ? LIMIT 1`, 
     [ username, password ] 
   );
   if ( users.length === 1 ) {

@@ -21,7 +21,8 @@ function standardLoginForm() {
       <div className="input-group">
         <input type="password" id="password" name="password" />
       </div>
-      <button className="c2-btn strechted-button">Login</button>
+      <button className="c2-btn stretched-button">Login</button>
+
     </div>
   );
 }

@@ -42,7 +42,7 @@ function createNewSessionToken( length = 64 ) {
  * @param { JSON } user - User object containing at least an 'id' property
  * @returns { String } - Session token string
  */
-async function generateSessionToken( user ) {
+export async function generateSessionToken( user ) {
   let sessionToken;
   const existingSessions = await c2_query(
     `SELECT id, expires_at, user_id FROM sessions WHERE user_id = ? LIMIT 1`,
