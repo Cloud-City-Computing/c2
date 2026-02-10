@@ -7,7 +7,7 @@
 
 import express from 'express';
 import ViteExpress from 'vite-express';
-import { c2_query } from './mysql_connect.js';
+import { c2_query, generateSessionToken } from './mysql_connect.js';
 
 const app = express();
 
@@ -28,6 +28,38 @@ app.get( '/api/search', async ( req, res ) => {
     [ `%${ query }%`, `%${ query }%` ]
   );
   res.json( { results } );
+} );
+
+/**
+ * Login API Endpoint
+ * POST /api/login
+ * Body: { username: string, password: string }
+ * Returns a session token on successful login.
+ */
+app.post( '/api/login', async ( req, res ) => {
+  const { username, password } = req.body;
+  const users = await c2_query( 
+    `SELECT id, name FROM users WHERE username = ? AND password = ? LIMIT 1`, 
+    [ username, password ] 
+  );
+  if ( users.length === 1 ) {
+    const user = users[ 0 ];
+    const sessionToken = await generateSessionToken( user );
+    res.json( { 
+      success: true, 
+      token: sessionToken, 
+      user: { 
+        id: user.id, 
+        name: user.name 
+      } 
+    } );
+  }
+  else {
+    res.status( 401 ).json( { 
+      success: false, 
+      message: 'Invalid credentials' 
+    } );
+  }
 } );
 
 /**
