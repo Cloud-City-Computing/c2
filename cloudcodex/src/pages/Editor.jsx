@@ -18,10 +18,7 @@ export default function Editor( { doc_id } ) {
             {/* Top Header */}
             <header className="app-header">
               <h1 className="app-title">Cloud Codex</h1>
-              <button
-                  className="c2-btn login-button"
-                  onClick={() => showModal( <Login /> )}
-              >
+              <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>
                 Login
               </button>
             </header>

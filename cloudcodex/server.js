@@ -7,7 +7,7 @@
 
 import express from 'express';
 import ViteExpress from 'vite-express';
-import { c2_query, generateSessionToken } from './mysql_connect.js';
+import { c2_query, generateSessionToken, validateAndAutoLogin } from './mysql_connect.js';
 
 const app = express();
 
@@ -37,7 +37,10 @@ app.get( '/api/search', async ( req, res ) => {
  * Creates a new user account and returns a session token on success.
  */
 app.post( '/api/create-account', async ( req, res ) => {
-  const { username, password, email } = req.body;
+  // const { username, password, email } = req.body;
+  const username = req.body.username;
+  const password = req.body.password;
+  const email = req.body.email;
   if ( !username || !password || !email ) { // Basic validation to ensure required fields are present
     return res.status( 400 ).json( { 
       success: false, 
@@ -48,7 +51,7 @@ app.post( '/api/create-account', async ( req, res ) => {
     const result = await c2_query( 
       `INSERT INTO users ( name, password_hash, created_at, email ) 
         VALUES ( ?, ?, NOW(), ? )`, 
-      [ username, password, username, email ] 
+      [ username, password, email ] 
     );
     const userId = result.insertId;
     const user = { id: userId, name: username };
@@ -99,6 +102,29 @@ app.post( '/api/login', async ( req, res ) => {
       success: false, 
       message: 'Invalid credentials' 
     } );
+  }
+} );
+
+/**
+ * Validate Session API Endpoint
+ * POST /api/validate-session
+ * Body: { token: string }
+ * Validates the provided session token and logins the user if valid.
+ */
+app.post( '/api/validate-session', async ( req, res ) => {
+  const token = req.body.token;
+  try {
+    const user = await validateAndAutoLogin( token );
+    console.log( 'Auto-login attempt with token:', token, 'Resulting user:', user );
+    if ( user ) {
+      res.json( { valid: true, user } );
+    }
+    else {
+      res.json( { valid: false } );
+    }
+  }
+  catch ( error ) {
+    res.status( 500 ).json( { valid: false, message: 'Error validating session' } );
   }
 } );
 

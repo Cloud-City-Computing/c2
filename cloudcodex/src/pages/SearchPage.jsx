@@ -8,14 +8,14 @@ import SearchResultItem from '../components/SearchResultItem'
 import Login from '../components/Login';
 import SearchBox from '../components/SearchBox';
 import { createRoot } from 'react-dom/client';
-import { clearInner, createAndAppend, showModal } from '../util';
+import { clearInner, createAndAppend, showModal, attemptAutoLogin, getSessionTokenFromCookie, serverReq } from '../util';
 
 /**
  * Function to fetch and display search results
  * @param { String } query - The search query
  * @returns { void }
  */
-export function getSearchResults( query ) {
+export async function getSearchResults( query ) {
     let container = document.getElementById( 'resultContainer' );
     if ( !container ) {
         const searchPageContainer = document.getElementById( 'searchPageContainer' );
@@ -26,19 +26,31 @@ export function getSearchResults( query ) {
         container = document.getElementById( 'resultContainer' );
     }
     clearInner( container );
-    // send query to backend API and get results at /search?query=
-    fetch( `/api/search?query=${ encodeURIComponent( query ) }` )
-    .then( response => response.json() )
-    .then( data => {
-        const results = data.results;
-        for ( const result of results ) {
-            const itemRoot = createRoot( createAndAppend( container, 'div', 'search-result-item' ) );
-            itemRoot.render( <SearchResultItem doc={ result } /> );
-        };
-    } )
-    .catch( error => {
-        console.error( 'Error fetching search results:', error );
-    } );
+    const response = await serverReq( 'GET', `/api/search?query=${ encodeURIComponent( query ) }` );
+    for ( const result of response.results ) {
+        const itemRoot = createRoot( createAndAppend( container, 'div', 'search-result-item' ) );
+        itemRoot.render( <SearchResultItem doc={ result } /> );
+    }
+}
+
+function getHeaderElement( loggedIn ) {
+  if ( !loggedIn ) {
+    return (
+        <header className="app-header">
+          <h1 className="app-title">Cloud Codex</h1>
+          <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>
+            Login
+          </button>
+        </header>
+    );
+  }
+  else {
+    return (
+      <header className="app-header">
+        <h1 className="app-title">Cloud Codex</h1>
+      </header>
+    );
+  }
 }
 
 /**
@@ -46,19 +58,16 @@ export function getSearchResults( query ) {
  * @returns { JSX.Element }
  */
 function SearchPage() {
+  const sessionToken = getSessionTokenFromCookie();
+  let userLoggedIn = false;
+  if ( sessionToken && sessionToken !== "" ) {
+    userLoggedIn = attemptAutoLogin( sessionToken );
+  }
   return (
     <>
       <div className="app-shell">
         {/* Top Header */}
-        <header className="app-header">
-          <h1 className="app-title">Cloud Codex</h1>
-          <button
-              className="c2-btn login-button"
-              onClick={() => showModal( <Login /> )}
-          >
-            Login
-          </button>
-        </header>
+        { getHeaderElement( userLoggedIn ) }
         {/* Main Page Content */}
         <main className="search-page-container" id="searchPageContainer">
           {/* Search Column */}

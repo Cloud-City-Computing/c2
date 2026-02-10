@@ -76,6 +76,41 @@ export async function generateSessionToken( user ) {
 }
 
 /**
+ * Validates the session token and returns the associated user if valid.
+ * Performs auto-login by retrieving user details from the database.
+ * @param { String } sessionToken - Session token string
+ * @returns { Promise<JSON|null> } - User object if valid, null if invalid
+ */
+export function validateAndAutoLogin( sessionToken ) {
+  return new Promise( async ( resolve, reject ) => {
+    try {
+      const sessions = await c2_query(
+        `SELECT user_id, expires_at FROM sessions WHERE id = ? LIMIT 1`,
+        [ sessionToken ]
+      );
+      if ( sessions.length === 1 ) {
+        const session = sessions[ 0 ];
+        if ( session.expires_at > new Date() ) {
+          const users = await c2_query(
+            `SELECT id, name FROM users WHERE id = ? LIMIT 1`,
+            [ session.user_id ]
+          );
+          if ( users.length === 1 ) {
+            const user = users[ 0 ];
+            resolve( user );
+            return;
+          }
+        }
+      }
+      resolve( null ); // Invalid or expired session
+    }
+    catch ( error ) {
+      reject( error );
+    }
+  } );
+}
+
+/**
  * Executes a SQL query against the MySQL database.
  * @param { String } sql - SQL query string
  * @param { Array<any> } params - Query parameters

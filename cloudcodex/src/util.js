@@ -7,6 +7,21 @@
 
 import { createRoot } from 'react-dom/client';
 
+export async function serverReq( reqType, url, data ) {
+  return await fetch( url, {
+    method: reqType,
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify( data )
+  } )
+  .then( response => response.json() )
+  .catch( error => {
+    console.error( `Error during ${ reqType } request to ${ url }:`, error );
+    throw error;
+  } );
+}
+
 /**
  * Function to clear all child elements of a given HTMLElement
  * @param { HTMLElement } element - The element to clear
@@ -133,4 +148,82 @@ export function showModal( content ) {
       };
     }
   }
+}
+
+/**
+ * Gets the session token from the browser cookies
+ * @returns { String | null } - The session token if found, or null if not found
+ */
+export function getSessionTokenFromCookie() {
+  const sessionToken = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('sessionToken='))
+    ?.split('=')[1];
+  if ( !sessionToken ) {
+    removeSessStorage( 'currentUser' );
+  }
+  return sessionToken ?? null;
+}
+
+/**
+ * Sets a value in session storage with a "c2-" prefix to avoid key collisions
+ * @param { String } key - The key to store the value under (without prefix)
+ * @param { Any } value - The value to store (will be converted to string)
+ */
+export function setSessStorage( key, value ) {
+  if ( value === null ) {
+    sessionStorage.setItem( "c2-" + key, "null" );
+  }
+  else {
+    sessionStorage.setItem( "c2-" + key, value.toString() );
+  }
+}
+
+/**
+ * Gets a value from session storage using a "c2-" prefix to avoid key collisions
+ * @param { String } key - The key to retrieve the value for (without prefix)
+ * @returns { Any | null } - The value from session storage, or null if not found
+ */
+export function getSessStorage( key ) {
+  const value = sessionStorage.getItem( "c2-" + key );
+  if ( value === "null" ) {
+    return null;
+  }
+  if ( JSON.parse( value ) ) {
+    return JSON.parse( value );
+  }
+  return value;
+}
+
+/**
+ * Removes a value from session storage using a "c2-" prefix to avoid key collisions
+ * @param { String } key - The key to remove (without prefix)
+ * @returns { void }
+ */
+export function removeSessStorage( key ) {
+  if ( getSessStorage( key ) ) {
+    sessionStorage.removeItem( "c2-" + key );
+  }
+}
+
+/**
+ * Performs an auto-login attempt by validating the session token from cookies and retrieving user details.
+ * If the session token is valid, it stores the user details in session storage and returns true.
+ * If the session token is invalid or an error occurs, it returns false.
+ * @param { String } sessionToken - The session token to validate
+ * @returns { Promise<Boolean> } - Resolves to true if auto-login is successful, false otherwise
+ */
+export async function attemptAutoLogin( sessionToken ) {
+  let loggedIn = false;
+  if ( !getSessStorage( 'currentUser' ) && sessionToken ) {
+    const response = await serverReq( 'POST', '/api/validate-session', { token: sessionToken } );
+    if ( response.valid ) {
+      loggedIn = true;
+      setSessStorage( 'currentUser', JSON.stringify( response.user ) );
+    }
+    else {
+      console.log( 'Session token invalid or expired.' );
+    }
+  }
+  return loggedIn;
 }
