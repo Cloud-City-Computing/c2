@@ -18,7 +18,7 @@ import StdLayout from '../page_layouts/Std_Layout';
 export async function getSearchResults( query ) {
     let container = document.getElementById( 'resultContainer' );
     if ( !container ) {
-        const searchPageContainer = document.getElementById( 'searchPageContainer' );
+        const searchPageContainer = document.querySelector( '.page-container' );
         if ( searchPageContainer ) {
             const newContainer = createAndAppend( searchPageContainer, 'div', 'search-section' );
             newContainer.id = 'resultContainer';
@@ -41,15 +41,10 @@ function HomePage() {
   return (
     <>
       <StdLayout>
-        {/* Main Page Content */}
-        <main className="search-page-container" id="searchPageContainer">
-          {/* Search Column */}
-          <SearchBox />
-          {/* Results Column */}
-          <section className="results-section">
-            <div id="resultPreviewContainer"></div>
-          </section>
-        </main>
+        <SearchBox />
+        <section className="results-section">
+          <div id="resultPreviewContainer"></div>
+        </section>
       </StdLayout>
     </>
   )

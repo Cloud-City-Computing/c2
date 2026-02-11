@@ -53,13 +53,11 @@ function getHeaderElement( user ) {
  */
 function noLoginMessage() {
   return (
-    <main className="search-page-container" id="searchPageContainer">
-      <div className="welcome-message">
-        <div className="logo-container">
-          <img src={ transparent_logo } alt="Cloud City Computing Logo" className="ccc-logo" />
-        </div>
+    <div className="welcome-message">
+      <div className="logo-container">
+        <img src={ transparent_logo } alt="Cloud City Computing Logo" className="ccc-logo" />
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -85,19 +83,13 @@ function StdLayout( { children } ) {
   return (
     <>
       <div className="app-shell">
-        {/* Top Header */}
         { getHeaderElement( user ) }
-        {/* Main Page Content */}
-        { user &&
-          <main className="main-page-content">
-            { children }
+        <main className="main-page-content">
+          <main className="page-container" id="searchPageContainer">
+            { user && children }
+            { !user && noLoginMessage() }
           </main>
-        }
-        {!user &&
-          <main className="main-page-content no-user">
-            { noLoginMessage() }
-          </main>
-        }
+        </main>
       </div>
     </>
   );
