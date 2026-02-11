@@ -145,6 +145,57 @@ app.post( '/api/validate-session', async ( req, res ) => {
 } );
 
 /**
+ * Document Fetch API Endpoint
+ * GET /api/document
+ * Body: { doc_id: integer }
+ * Fetches the content of a document by its ID.
+ */
+app.get( '/api/document', async ( req, res ) => {
+  const doc_id = req.query.doc_id;
+  try {
+    const docs = await c2_query( 
+      `SELECT * FROM pages WHERE id = ? LIMIT 1`, 
+      [ doc_id ] 
+    );
+    if ( docs.length === 1 ) {
+      res.json( { document: docs[ 0 ] } );
+    }
+    else {
+      res.status( 404 ).json( { message: 'Document not found' } );
+    }
+  }
+  catch ( error ) {
+    res.status( 500 ).json( { valid: false, message: 'Error validating session' } );
+  }
+} );
+
+/**
+ * Document Save API Endpoint
+ * POST /api/save-document
+ * Body: { doc_id: integer, html_content: string }
+ * Saves the content of a document by its ID.
+ */
+app.post( '/api/save-document', async ( req, res ) => {
+  const doc_id = req.body.doc_id;
+  const html_content = req.body.html_content;
+  try {
+    const resp = await c2_query( 
+      `UPDATE pages SET html_content = ? WHERE id = ?`, 
+      [ html_content, doc_id ]
+    );
+    if ( resp.affectedRows === 1 ) {
+      res.json( { success: true } );
+    }
+    else {
+      res.status( 404 ).json( { success: false, message: 'Document not found' } );
+    }
+  }
+  catch ( error ) {
+    res.status( 500 ).json( { success: false, message: 'Error saving document' } );
+  }
+} );
+
+/**
  * Start the Express server with Vite integration
  */
 ViteExpress.listen( app, 3000, () => {
