@@ -27,7 +27,7 @@ function previewDocumentModal( doc ) {
         <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
         <h2>{ doc.title }</h2>
         <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
-        <div className="modal-body" dangerouslySetInnerHTML={ { __html: doc.html_content } }></div>
+        <iframe title="Document Preview" srcDoc={ doc.html_content } className="document-preview-iframe"></iframe>
         <button className="c2-btn stretched-button" onClick={ () => launchEditor( doc ) }>Launch Editor</button>
       </div>
     );

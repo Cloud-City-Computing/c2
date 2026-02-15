@@ -104,6 +104,7 @@ export default function Editor() {
       </div>
       <div className="editor-footer">
         <button className="c2-btn save-button" onClick={ saveDocument() }>Save Document</button>
+        <button className="c2-btn cancel-button" onClick={ () => standardRedirect('/') }>Cancel</button>
       </div>
     </StdLayout>
   );
