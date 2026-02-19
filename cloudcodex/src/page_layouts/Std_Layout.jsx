@@ -70,13 +70,18 @@ function noLoginMessage() {
  */
 function StdLayout( { children } ) {
   const [ user, setUser ] = useState( null );
+  const [authChecked, setAuthChecked] = useState(false);
   useEffect( () => {
     const loadData = async () => {
       const sessionToken = getSessionTokenFromCookie();
-      if ( sessionToken && sessionToken !== "" ) {
-        const loggedInUser = await attemptAutoLogin( sessionToken );
-        setUser( loggedInUser );
+      if (sessionToken && sessionToken !== "") {
+        const loggedInUser = await attemptAutoLogin(sessionToken);
+        setUser(loggedInUser ?? false);
       }
+      else {
+        setUser(false);
+      }
+      setAuthChecked(true);
     };
     loadData();
   }, [] );
@@ -86,8 +91,9 @@ function StdLayout( { children } ) {
         { getHeaderElement( user ) }
         <main className="main-page-content">
           <main className="page-container" id="searchPageContainer">
-            { user && children }
-            { !user && noLoginMessage() }
+            {!authChecked && null}
+            {authChecked && user && children}
+            {authChecked && !user && noLoginMessage(user)}
           </main>
         </main>
       </div>
