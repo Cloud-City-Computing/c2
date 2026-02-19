@@ -16,7 +16,7 @@ import StdLayout from '../page_layouts/Std_Layout';
  * @returns { void }
  */
 export async function getSearchResults( query ) {
-    let container = document.getElementById( 'resultContainer' );
+    let container = document.getElementById( 'resultPreviewContainer' );
     if ( !container ) {
         const searchPageContainer = document.querySelector( '.page-container' );
         if ( searchPageContainer ) {

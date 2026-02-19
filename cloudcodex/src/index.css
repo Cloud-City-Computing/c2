@@ -69,7 +69,6 @@
 }
 
 /* Constrain content width */
-.search-section,
 .results-section {
   width: 100%;
   max-width: 900px;
