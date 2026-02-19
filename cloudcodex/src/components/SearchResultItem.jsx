@@ -42,7 +42,7 @@ function previewDocumentModal( doc ) {
 function SearchResultItem( { doc } ) {
   return (
     <>
-      <div onClick={ () => showModal( previewDocumentModal( doc ) ) }>
+      <div onClick={ () => showModal( previewDocumentModal( doc ), "modal-xl" ) }>
         <h3 className="result-title">{ doc.title }</h3>
         <img src={ document } alt="Document Icon" className="document-icon"/>
       </div>

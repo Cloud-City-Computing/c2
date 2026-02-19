@@ -133,11 +133,11 @@ export function standardRedirect( url ) {
  * @param { JSX.Element } content - The content to display in the modal
  * @returns { void }
  */
-export function showModal( content ) {
+export function showModal( content, extraClass = "" ) {
   const modalRoot = window.document.getElementById( 'modal-root' );
   clearInner( modalRoot );
   if ( modalRoot ) {
-    const modalContentRoot = createRoot( createAndAppend( modalRoot, 'div', 'modal-content-wrapper' ) );
+    const modalContentRoot = createRoot( createAndAppend( modalRoot, 'div', 'modal-content-wrapper ' + extraClass ) );
     showModalDimmer();
     modalContentRoot.render( content );
     const modalDimmer = window.document.getElementById( 'modal-dimmer' );
