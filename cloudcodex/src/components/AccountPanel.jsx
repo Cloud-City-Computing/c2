@@ -24,6 +24,14 @@ async function performLogout() {
 }
 
 /**
+ * Performs Navigation to account settings
+ * @returns { void }
+ */
+function navigateToAccountSettings() {
+  alert( 'Account settings coming soon!' );
+}
+
+/**
  * Logout component that displays user information and a logout button in a dropdown menu.
  * @param { JSON } id - User ID
  * @param { JSON } name - User name
@@ -33,10 +41,12 @@ async function performLogout() {
 function AccountPanel( { id, name, email } ) {
   return (
     <div className="dropdown-menu">
-      <p><strong>{ name }</strong></p>
-      <p>{ email }</p>
+      <p className="text-center"><strong>{ name }</strong> ({ email })</p>
       <hr />
-      <button className="c2-btn stretched-button" onClick={ () => performLogout() }>Logout</button>
+      <div className="button-group">
+        <button className="c2-btn stretched-button" onClick={ () => navigateToAccountSettings() }>Account Settings</button>
+        <button className="c2-btn stretched-button" onClick={ () => performLogout() }>Logout</button>
+      </div>
     </div>
   );
 }

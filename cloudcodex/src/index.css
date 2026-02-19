@@ -25,6 +25,10 @@
   box-sizing: border-box;
 }
 
+.text-center {
+  text-align: center;
+}
+
 /* =========================
    App Shell + Layout
 ========================= */
@@ -92,8 +96,6 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
   transition: transform 0.2s, box-shadow 0.2s;
   text-align: center;
-  margin-left: 5px;
-  margin-right: 5px;
 }
 
 .c2-btn:hover {
