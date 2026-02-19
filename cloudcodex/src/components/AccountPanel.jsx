@@ -28,7 +28,7 @@ async function performLogout() {
  * @returns { void }
  */
 function navigateToAccountSettings() {
-  alert( 'Account settings coming soon!' );
+  window.location.href = '/account';
 }
 
 /**
