@@ -17,18 +17,12 @@ import { serverReq, standardRedirect } from '../util';
  * @returns { JSX.Element } - The Jodit Editor component
  */
 function EditorComponent({ content, setContent }) {
+  const config = useMemo(() => ({
+    readonly: false,
+    placeholder: 'Start typing...',
+    theme: "dark"
+  }), []);
   const editor = useRef(null);
-  const config = useMemo(
-    () => ({
-      readonly: false,
-      placeholder: 'Start typing...',
-      style: {
-        color: '#000'
-      },
-      toolbarButtonSize: 'large'
-    }),
-    []
-  );
   return (
     <JoditEditor
       key={content}

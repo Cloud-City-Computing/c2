@@ -30,6 +30,8 @@
 
   /* Cloud City Brand Colors */
   --brand-blue: #2ca7db;
+  --brand-blue-light: #5ac0e8;
+  --brand-blue-dark: #1e7a9c;
   --brand-blue-hover: #21779c;
 
   /* Radius */
@@ -83,6 +85,10 @@ body {
   padding-bottom: var(--footer-height);
 }
 
+/* =========================
+   Premium App Header
+========================= */
+
 .app-header {
   position: fixed;
   top: 0;
@@ -94,21 +100,108 @@ body {
   align-items: center;
 
   padding: 20px 40px;
-  background-color: var(--bg-elevated);
+  background: linear-gradient(
+    to bottom,
+    var(--bg-elevated),
+    rgba(30, 30, 30, 0.95)
+  );
+
   border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(6px);
   z-index: 1000;
+
+  /* subtle depth */
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
 }
+
+/* Branded Accent Line */
+.app-header::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--brand-blue),
+    transparent
+  );
+
+  opacity: 0.6;
+}
+
+/* =========================
+   Title Styling
+========================= */
 
 .app-title {
   margin: 0;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.5px;
   cursor: pointer;
+  position: relative;
+  transition: all 0.25s ease;
 }
 
+/* Smooth brand shift on hover */
 .app-title:hover {
   color: var(--brand-blue);
-  transition: color 0.4s ease;
+  text-shadow: 0 0 10px rgba(44, 167, 219, 0.4);
+}
+
+/* Underline accent animation */
+.app-title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 0%;
+  height: 2px;
+  background: var(--brand-blue);
+  transition: width 0.25s ease;
+}
+
+.app-title:hover::after {
+  width: 100%;
+}
+
+/* =========================
+   Account Button
+========================= */
+
+.account-button {
+  cursor: pointer;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+
+  transition: all 0.25s ease;
+}
+
+/* Hover Glow Effect */
+.account-button:hover {
+  color: var(--brand-blue);
+  background: rgba(44, 167, 219, 0.08);
+  box-shadow: 0 0 12px rgba(44, 167, 219, 0.25);
+  transform: translateY(-2px);
+}
+
+/* Smooth icon animation */
+.account-button svg {
+  transition: transform 0.25s ease;
+}
+
+.account-button:hover svg {
+  transform: scale(1.1);
 }
 
 .main-page-content {
@@ -141,39 +234,53 @@ body {
 
 .c2-btn {
   display: inline-block;
-  padding: 10px 20px;
-  font-size: 16px;
+  padding: 10px 22px;
+  font-size: 15px;
   font-weight: 600;
-  border: 1px solid var(--border-color);
+  letter-spacing: 0.3px;
+
   border-radius: var(--radius-sm);
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-  cursor: pointer;
+  border: 1px solid transparent;
+
+  background: linear-gradient(
+    135deg,
+    var(--brand-blue),
+    var(--brand-blue-hover)
+  );
+
+  color: #fff;
   text-decoration: none;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
   text-align: center;
+  cursor: pointer;
+
+  box-shadow: 0 0 0 0 rgba(44, 167, 219, 0);
+  transition: all 0.25s ease;
 }
 
+/* Hover */
 .c2-btn:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  background-color: var(--bg-hover-strong);
+  box-shadow: 0 0 15px rgba(44, 167, 219, 0.35);
+  filter: brightness(1.05);
 }
 
+/* Active (Pressed) */
+.c2-btn:active {
+  transform: translateY(0px);
+  box-shadow: 0 0 8px rgba(44, 167, 219, 0.4) inset;
+  filter: brightness(0.95);
+}
+
+/* Focus (Accessibility) */
+.c2-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(44, 167, 219, 0.35);
+}
+
+/* Full Width Utility */
 .stretched-button {
   margin-top: 10px;
   width: 100%;
-}
-
-.account-button {
-  cursor: pointer;
-  color: var(--text-primary);
-}
-
-.account-button:hover {
-  color: var(--brand-blue);
-  transition: color 0.4s ease;
 }
 
 /* =========================
@@ -184,22 +291,41 @@ body {
   width: 100%;
 }
 
+/* Branded Card */
 .search-card {
-  background-color: var(--bg-elevated);
+  background: linear-gradient(
+    to bottom,
+    var(--bg-elevated),
+    var(--bg-panel)
+  );
+
   border: 1px solid var(--border-color);
+  /* border-top: 2px solid var(--brand-blue-dark); */
+  /* do this as a gradient border for a more modern look */
+  border-top: 2px solid transparent;
+  background-image:
+    linear-gradient(var(--bg-elevated), var(--bg-panel)),
+    linear-gradient(90deg, transparent, var(--brand-blue-dark), transparent);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
   border-radius: var(--radius-md);
-  padding: 25px;
-  box-shadow: var(--shadow-sm);
+  padding: 28px;
   width: 100%;
+
+  box-shadow: var(--shadow-sm);
+  transition: all 0.25s ease;
 }
 
+/* Label */
 .search-label {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   font-size: 18px;
   font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
+/* Input + Button Wrapper */
 .search-box {
   display: flex;
   gap: 12px;
@@ -207,67 +333,104 @@ body {
   margin-top: 10px;
 }
 
+/* Input Styling */
 .search-input {
   flex: 1;
-  padding: 12px;
-  font-size: 16px;
+  padding: 13px 14px;
+  font-size: 15px;
+
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
+
   background-color: var(--bg-elevated);
   color: var(--text-primary);
-  transition: border-color 0.2s, box-shadow 0.2s;
+
+  transition: all 0.25s ease;
 }
 
+/* Placeholder refinement */
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Focus (Branded Glow) */
 .search-input:focus {
   outline: none;
-  border-color: var(--bg-hover-strong);
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.25);
+  background-color: var(--bg-panel);
 }
 
-/* =========================
-   Results Grid
-========================= */
+/* Optional: Slight button alignment tweak */
+.search-button {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* ============================= */
+/* Results Section */
+/* ============================= */
+
+.results-section {
+  width: 100%;
+  margin-top: 24px;
+}
 
 #resultPreviewContainer {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 280px));
-  gap: 20px;
-  justify-content: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
+/* Individual Result Card */
 .search-result-item {
-  width: 100%;
-  max-width: 280px;
+  background-color: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 10px;
-  background-color: var(--bg-elevated);
+  padding: 20px;
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
-  text-align: center;
-}
-
-.search-result-item:hover {
-  transform: translateY(-5px);
-  box-shadow: var(--shadow-md);
   cursor: pointer;
 }
 
-.document-icon {
-  width: 80%;
-  height: auto;
+.search-result-item:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--brand-blue);
 }
 
+/* Layout inside result */
+.search-result-item > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Title */
 .result-title {
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
-  margin: 10px 0 5px 0;
+  color: var(--text-primary);
+  transition: color 0.2s ease;
 }
 
-.result-desc {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
+.search-result-item:hover .result-title {
+  color: var(--brand-blue);
+}
+
+/* Document Icon */
+.document-icon {
+  width: 42px;
+  height: 42px;
+  opacity: 0.8;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.search-result-item:hover .document-icon {
+  transform: scale(1.08);
+  opacity: 1;
 }
 
 /* =========================
@@ -306,24 +469,29 @@ body {
   background-color: var(--bg-hover-strong);
 }
 
-/* =========================
-   Modal + Dropdown System
-========================= */
+/* ============================= */
+/* Modal + Overlay System */
+/* ============================= */
 
+/* Background Dimmer */
 #modal-dimmer,
 #dropdown-backshadow {
   position: fixed;
   inset: 0;
-  background-color: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
   z-index: 999;
+  animation: fadeIn 0.15s ease;
 }
 
+/* Modal Positioning */
 .modal-content-wrapper {
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0.98);
   z-index: 9999;
+  animation: modalIn 0.18s ease forwards;
 }
 
 .dropdown-content-wrapper {
@@ -333,55 +501,111 @@ body {
   z-index: 9999;
 }
 
+/* Modal + Dropdown Panels */
 .dropdown-menu,
 .modal-content {
-  background-color: var(--bg-panel);
+  background: linear-gradient(
+    180deg,
+    var(--bg-elevated),
+    var(--bg-panel)
+  );
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  padding: 20px;
+  box-shadow: var(--shadow-lg);
+  padding: 24px;
+  color: var(--text-primary);
 }
 
+/* Modal Sizing */
 .modal-md {
   width: 60% !important;
-  max-width: 500px !important;
+  max-width: 520px !important;
 }
 
 .modal-lg {
   width: 80% !important;
-  max-width: 600px !important;
+  max-width: 680px !important;
 }
 
 .modal-xl {
   width: 100% !important;
-  max-width: 800px !important;
+  max-width: 900px !important;
 }
 
+/* Close Button */
 .close-button {
-  font-size: 36px;
-  font-weight: bold;
+  font-size: 28px;
+  font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
-  float: right;
-  position: relative;
-  top: -10px;
-  right: -10px;
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  transition: color 0.2s ease, transform 0.15s ease;
 }
 
 .close-button:hover {
+  color: var(--brand-blue);
+  transform: scale(1.1);
+}
+
+/* Modal Title */
+.modal-content h2 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 22px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
+/* Metadata / Subtitle */
+.modal-content p {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* Document Preview Iframe */
+.document-preview-iframe {
+  width: 100%;
+  height: 320px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-main);
+  margin-bottom: 20px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+}
+
+/* Preview Content Block (if used instead of iframe) */
 .preview-content {
   overflow-y: auto;
-  background-color: rgba(0,0,0,0.5);
+  background-color: var(--bg-main);
+  border: 1px solid var(--border-color);
   margin: 20px 0;
   border-radius: var(--radius-md);
-  padding: 15px;
+  padding: 18px;
+  max-height: 400px;
+}
+
+/* Animations */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* =========================
-   Footer
+   Premium App Footer
 ========================= */
 
 .page-footer {
@@ -389,21 +613,81 @@ body {
   bottom: 0;
   left: 0;
   width: 100%;
-  background-color: var(--bg-elevated);
+
+  background: linear-gradient(
+    to top,
+    var(--bg-elevated),
+    rgba(30, 30, 30, 0.95)
+  );
+
   color: var(--text-muted);
   text-align: center;
   font-size: 14px;
+
   border-top: 1px solid var(--border-color);
-  padding: 10px;
+  padding: 12px 20px;
+
+  backdrop-filter: blur(6px);
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.4);
+
   z-index: 1000;
-  a {
-    color: var(--text-muted);
-    text-decoration: none;
-    font-weight: bolder;
-  }
-  a:hover {
-    color: var(--text-primary);
-  }
+  position: fixed;
+}
+
+/* Branded Accent Line (mirrors header) */
+.page-footer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--brand-blue),
+    transparent
+  );
+
+  opacity: 0.6;
+}
+
+/* Footer Content Wrapper */
+.page-footer-content {
+  position: relative;
+  z-index: 2;
+}
+
+/* Footer Links */
+.page-footer a {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.25s ease;
+  position: relative;
+}
+
+/* Link Hover Animation */
+.page-footer a:hover {
+  color: var(--brand-blue);
+  text-shadow: 0 0 8px rgba(44, 167, 219, 0.4);
+}
+
+/* Subtle underline animation */
+.page-footer a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 0%;
+  height: 2px;
+  background: var(--brand-blue);
+  transition: width 0.25s ease;
+}
+
+.page-footer a:hover::after {
+  width: 100%;
 }
 
 /* =========================
@@ -455,18 +739,25 @@ body {
 }
 
 /* =========================
-   Account Sidebar Menu
+   Account Sidebar Menu + Settings Panel
 ========================= */
 
 .account-menu-container {
   width: 100%;
   padding: 20px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  margin-left: 10px;
+  height: 78vh;
 }
 
 .account-menu p {
   margin: 0 0 12px 0;
   font-weight: 600;
   font-size: 16px;
+  color: var(--text-primary);
 }
 
 .account-menu ul {
@@ -486,53 +777,59 @@ body {
   border-radius: var(--radius-sm);
   text-decoration: none;
   color: var(--text-primary);
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 .account-menu ul li a:hover {
   background-color: var(--bg-hover);
+  color: var(--brand-blue);
 }
 
-/* =========================
-   Account Settings Panels
-========================= */
-
+/* Account Settings Root */
 .account-menu-root {
   display: flex;
   gap: 30px;
   width: 100%;
 }
 
+/* Account Settings Panel */
 .account-settings-panel {
-  width: 100%;
+  flex: 1;
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   padding: 30px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
+.account-settings-panel:hover {
+  border-color: var(--brand-blue);
+  box-shadow: 0 4px 12px rgba(44, 167, 219, 0.35);
+}
+
+/* Panel Title */
 .panel-title {
   margin: 0 0 20px 0;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
+  color: var(--text-primary);
 }
 
+/* Panel Muted Text */
 .panel-muted {
   color: var(--text-secondary);
   margin: 0;
 }
 
-/* Form Layout */
-
+/* Account Form Layout */
 .account-form {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-/* Standard input group */
-
+/* Standard Input Group */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -552,17 +849,17 @@ body {
   border-radius: var(--radius-sm);
   background-color: var(--bg-panel);
   color: var(--text-primary);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .form-group input:focus {
   outline: none;
-  border-color: var(--bg-hover-strong);
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
+  background-color: var(--bg-elevated);
 }
 
-/* Checkbox groups */
-
+/* Checkbox Groups */
 .checkbox-group label {
   display: flex;
   align-items: center;
@@ -573,5 +870,20 @@ body {
 }
 
 .checkbox-group input[type="checkbox"] {
-  accent-color: var(--bg-hover-strong);
+  accent-color: var(--brand-blue);
+}
+
+/* Submit Button (matches .c2-btn theme) */
+.account-form .c2-btn {
+  background: linear-gradient(90deg, var(--brand-blue), var(--brand-blue-hover));
+  color: #fff;
+  border: 1px solid var(--brand-blue-hover);
+  box-shadow: 0 2px 6px rgba(44, 167, 219, 0.35);
+  transition: all 0.25s ease;
+}
+
+.account-form .c2-btn:hover {
+  background: linear-gradient(90deg, var(--brand-blue-hover), var(--brand-blue));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(44, 167, 219, 0.45);
 }
