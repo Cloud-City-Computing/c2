@@ -28,6 +28,10 @@
   --text-secondary: #ccc;
   --text-muted: #888;
 
+  /* Cloud City Brand Colors */
+  --brand-blue: #2ca7db;
+  --brand-blue-hover: #21779c;
+
   /* Radius */
   --radius-sm: 4px;
   --radius-md: 8px;
