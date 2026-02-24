@@ -47,6 +47,11 @@ function getHeaderElement( user ) {
   );
 }
 
+/**
+ * Clears the content of the left and right page margins to ensure a clean layout 
+ * when rendering new content.
+ * @returns { void }
+ */
 function clearPageMargins() {
   clearInner( GetElById( 'std-left' ) );
   clearInner( GetElById( 'std-right' ) );
