@@ -24,61 +24,77 @@ function replaceAccountMenu( jsxElement ) {
 }
 
 /**
- * Returns a JSX element for the account information update panel, which includes a form for updating
- * the user's name and email.
- * @returns { JSX.Element } - The account information update panel JSX
+ * Definition of the AccountMenu component that provides options for updating account information,
+ * changing preferences, and managing organizations.
+ * @returns { JSX.Element } - The AccountMenu component JSX
  */
 function accountInfoUpdatePanel() {
   return (
-    <div className="account-info-update-panel">
-      <h2>Update Account Information</h2>
-      <form>
-        <label>
-          Name:
-          <input type="text" name="name" />
-        </label>
-        <label>
-          Email:
-          <input type="email" name="email" />
-        </label>
-        <button type="submit" className="c2-btn">Update Info</button>
+    <div className="account-settings-panel">
+      <h2 className="panel-title">Update Account Information</h2>
+      <form className="account-form">
+        <div className="form-group">
+          <label htmlFor="name">Name</label>
+          <input id="name" type="text" name="name" />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="email">Email</label>
+          <input id="email" type="email" name="email" />
+        </div>
+
+        <button type="submit" className="c2-btn stretched-button">
+          Update Info
+        </button>
       </form>
     </div>
   );
 }
 
 /**
- * Returns a JSX element for the account preferences panel
+ * Renders the account preferences panel with options for receiving newsletters and 
+ * enabling two-factor authentication.
  * @returns { JSX.Element } - The account preferences panel JSX
  */
 function accountPreferencesPanel() {
   return (
-    <div className="account-preferences-panel">
-      <h2>Account Preferences</h2>
-      <form>
-        <label>
-          Receive Newsletter:
-          <input type="checkbox" name="newsletter" />
-        </label>
-        <label>
-          Enable Two-Factor Authentication:
-          <input type="checkbox" name="2fa" />
-        </label>
-        <button type="submit" className="c2-btn">Update Preferences</button>
+    <div className="account-settings-panel">
+      <h2 className="panel-title">Account Preferences</h2>
+      <form className="account-form">
+        <div className="checkbox-group">
+          <label>
+            <input type="checkbox" name="newsletter" />
+            Receive Newsletter
+          </label>
+        </div>
+
+        <div className="checkbox-group">
+          <label>
+            <input type="checkbox" name="2fa" />
+            Enable Two-Factor Authentication
+          </label>
+        </div>
+
+        <button type="submit" className="c2-btn stretched-button">
+          Update Preferences
+        </button>
       </form>
     </div>
   );
 }
 
 /**
- * Returns a JSX element for the manage organizations panel
+ * Renders the manage organizations panel with a placeholder message 
+ * indicating that the feature is coming soon.
  * @returns { JSX.Element } - The manage organizations panel JSX
  */
 function manageOrganizationsPanel() {
   return (
-    <div className="manage-organizations-panel">
-      <h2>Manage Organizations</h2>
-      <p>This feature is coming soon. Please check back later.</p>
+    <div className="account-settings-panel">
+      <h2 className="panel-title">Manage Organizations</h2>
+      <p className="panel-muted">
+        This feature is coming soon. Please check back later.
+      </p>
     </div>
   );
 }

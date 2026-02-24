@@ -474,3 +474,86 @@ body {
 .account-menu ul li a:hover {
   background-color: var(--bg-hover);
 }
+
+/* =========================
+   Account Settings Panels
+========================= */
+
+.account-menu-root {
+  display: flex;
+  gap: 30px;
+  width: 100%;
+}
+
+.account-settings-panel {
+  width: 100%;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 30px;
+}
+
+.panel-title {
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.panel-muted {
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Form Layout */
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Standard input group */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.form-group input {
+  padding: 10px;
+  font-size: 15px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--bg-hover-strong);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+}
+
+/* Checkbox groups */
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+  accent-color: var(--bg-hover-strong);
+}
