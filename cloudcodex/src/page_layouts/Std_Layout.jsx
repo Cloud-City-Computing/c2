@@ -47,11 +47,17 @@ function getHeaderElement( user ) {
   );
 }
 
+function clearPageMargins() {
+  clearInner( GetElById( 'std-left' ) );
+  clearInner( GetElById( 'std-right' ) );
+}
+
 /**
  * Displays a welcome message prompting the user to log in.
  * @returns { JSX.Element } - The welcome message JSX
  */
 function noLoginMessage() {
+  clearPageMargins(); // Ensure margins are cleared when showing the no-login message
   return (
     <div className="welcome-message">
       <div className="logo-container">
@@ -82,6 +88,9 @@ function StdLayout( { children } ) {
       }
       else {
         setUser(false);
+        if (window.location.pathname !== "/") {
+          standardRedirect("/");
+        }
       }
       setAuthChecked(true);
     };
