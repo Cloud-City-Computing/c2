@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import Login from '../components/Login';
 import AccountPanel from '../components/AccountPanel';
-import { showModal, getSessionTokenFromCookie, attemptAutoLogin, showDropdownMenu } from '../util';
+import { GetElById, showModal, getSessionTokenFromCookie, attemptAutoLogin, showDropdownMenu, clearInner, standardRedirect } from '../util';
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
 /**
@@ -34,7 +34,7 @@ function getAccountIconSVG() {
 function getHeaderElement( user ) {
   return (
     <header className="app-header">
-      <h1 className="app-title">Cloud Codex</h1>
+      <h1 className="app-title" onClick={() => standardRedirect( "/" )}>Cloud Codex</h1>
       { !user && 
         <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>Login</button> 
       }
@@ -73,6 +73,8 @@ function StdLayout( { children } ) {
   const [authChecked, setAuthChecked] = useState(false);
   useEffect( () => {
     const loadData = async () => {
+      clearInner( GetElById( 'std-left' ) );
+      clearInner( GetElById( 'std-right' ) );
       const sessionToken = getSessionTokenFromCookie();
       if (sessionToken && sessionToken !== "") {
         const loggedInUser = await attemptAutoLogin(sessionToken);
