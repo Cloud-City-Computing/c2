@@ -386,6 +386,14 @@ body {
   border-top: 1px solid var(--border-color);
   padding: 10px;
   z-index: 1000;
+  a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-weight: bolder;
+  }
+  a:hover {
+    color: var(--text-primary);
+  }
 }
 
 /* =========================
