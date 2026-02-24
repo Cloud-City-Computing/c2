@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { removeSessStorage, serverReq, getSessionTokenFromCookie } from "../util";
+import { removeSessStorage, serverReq, getSessionTokenFromCookie, standardRedirect } from "../util";
 
 /**
  * Performs logout by sending a request to the server and clearing session data on the client.
@@ -19,7 +19,7 @@ async function performLogout() {
     removeSessStorage( 'currentUser' );
     document.cookie = 'sessionToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     alert( 'Logged out successfully.' );
-    window.location.reload(); // Reload the page to update the UI
+    standardRedirect( "/" );
   }
 }
 
