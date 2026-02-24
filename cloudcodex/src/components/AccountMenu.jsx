@@ -1,6 +1,19 @@
+/**
+ * Cloud Codex - Account Settings Menu Component
+ * 
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
 import { clearInner, createAndAppend } from "../util";
 import { createRoot } from 'react-dom/client';
 
+/**
+ * Renders a new JSX element in the account menu area by clearing the existing content and 
+ * appending the new element.
+ * @param { JSX.Element } jsxElement - The new JSX element to render in the account menu area
+ * @returns { void }
+ */
 function replaceAccountMenu( jsxElement ) {
   const pageContainer = document.getElementById( 'searchPageContainer' );
   if ( pageContainer ) {
@@ -10,6 +23,11 @@ function replaceAccountMenu( jsxElement ) {
   }
 }
 
+/**
+ * Returns a JSX element for the account information update panel, which includes a form for updating
+ * the user's name and email.
+ * @returns { JSX.Element } - The account information update panel JSX
+ */
 function accountInfoUpdatePanel() {
   return (
     <div className="account-info-update-panel">
@@ -29,6 +47,10 @@ function accountInfoUpdatePanel() {
   );
 }
 
+/**
+ * Returns a JSX element for the account preferences panel
+ * @returns { JSX.Element } - The account preferences panel JSX
+ */
 function accountPreferencesPanel() {
   return (
     <div className="account-preferences-panel">
@@ -48,6 +70,10 @@ function accountPreferencesPanel() {
   );
 }
 
+/**
+ * Returns a JSX element for the manage organizations panel
+ * @returns { JSX.Element } - The manage organizations panel JSX
+ */
 function manageOrganizationsPanel() {
   return (
     <div className="manage-organizations-panel">
@@ -57,6 +83,11 @@ function manageOrganizationsPanel() {
   );
 }
 
+/**
+ * Renders the account menu with options for updating account information, 
+ * changing preferences, and managing organizations.
+ * @returns { JSX.Element } - The AccountMenu component JSX
+ */
 function AccountMenu() {
   const panels = [
     ["Change Account Info", accountInfoUpdatePanel],
