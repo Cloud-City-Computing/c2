@@ -36,7 +36,7 @@ function getHeaderElement( user ) {
     <header className="app-header">
       <h1 className="app-title" onClick={() => standardRedirect( "/" )}>Cloud Codex</h1>
       { !user && 
-        <button className="c2-btn login-button" onClick={() => showModal( <Login /> )}>Login</button> 
+        <button className="c2-btn login-button" onClick={() => showModal( <Login />, "modal-md" )}>Login</button> 
       }
       { user &&
         <span className="account-button" onClick={() => showDropdownMenu( <AccountPanel { ...user }/> )} role="img" aria-label="account">

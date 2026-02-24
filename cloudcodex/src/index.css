@@ -332,6 +332,16 @@ body {
   padding: 20px;
 }
 
+.modal-md {
+  width: 60% !important;
+  max-width: 500px !important;
+}
+
+.modal-lg {
+  width: 80% !important;
+  max-width: 600px !important;
+}
+
 .modal-xl {
   width: 100% !important;
   max-width: 800px !important;

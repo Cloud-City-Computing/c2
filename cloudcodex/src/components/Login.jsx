@@ -60,33 +60,31 @@ async function createC2Account() {
 }
 
 /**
- * Displays a create account form with username, email, and password fields.
- * @returns { void }
+ * Creates a JSX element for the account creation form, which includes 
+ * fields for username, email, and password.
+ * @returns { JSX.Element } - The account creation form JSX
  */
-function createAccount() {
-  destroyModal();
-  showModal(
+function createAccountForm() {
+  return (
     <div className="modal-content">
       <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
       <h2>Create Account</h2>
       <div className="login-form">
-        <form className="create-account-form">
-          <label htmlFor="new-username">Username:</label>
-          <div className="input-group">
-            <input type="text" id="new-username" name="new-username" required />
-          </div>
-          <label htmlFor="new-email">Email:</label>
-          <div className="input-group">
-            <input type="email" id="new-email" name="new-email" required />
-          </div>
-          <label htmlFor="new-password">Password:</label>
-          <div className="input-group">
-            <input type="password" id="new-password" name="new-password" required />
-          </div>
-          <button type="button" className="c2-btn stretched-button" onClick={ () => createC2Account() }>Create Account</button>
-        </form>
+        <label htmlFor="new-username">Username:</label>
+        <div className="input-group">
+          <input type="text" id="new-username" name="new-username" required />
+        </div>
+        <label htmlFor="new-email">Email:</label>
+        <div className="input-group">
+          <input type="email" id="new-email" name="new-email" required />
+        </div>
+        <label htmlFor="new-password">Password:</label>
+        <div className="input-group">
+          <input type="password" id="new-password" name="new-password" required />
+        </div>
+        <button type="button" className="c2-btn stretched-button" onClick={ () => createC2Account() }>Create Account</button>
       </div>
-    </div>  
+    </div>
   );
 }
 
@@ -109,6 +107,15 @@ function standardLoginForm() {
       <button className="c2-btn stretched-button" onClick={ () => createAccount() }>Create Account</button>
     </div>
   );
+}
+
+/**
+ * Displays a create account form with username, email, and password fields.
+ * @returns { void }
+ */
+function createAccount() {
+  destroyModal();
+  showModal( createAccountForm(), "modal-md" );
 }
 
 /**
