@@ -20,7 +20,10 @@ function EditorComponent({ content, setContent }) {
   const config = useMemo(() => ({
     readonly: false,
     placeholder: 'Start typing...',
-    theme: "dark"
+    theme: "dark",
+    uploader: {
+      insertImageAsBase64URI: true
+    }
   }), []);
   const editor = useRef(null);
   return (
@@ -90,15 +93,25 @@ export default function Editor() {
 
   return (
     <StdLayout>
-      <div className="editor-header">
-        <h2>{documentData ? documentData.title : 'Loading Document...'}</h2>
-      </div>
-      <div className="editor-container">
-        <EditorComponent content={content} setContent={setContent} />
-      </div>
-      <div className="editor-footer">
-        <button className="c2-btn save-button" onClick={ saveDocument() }>Save Document</button>
-        <button className="c2-btn cancel-button" onClick={ () => standardRedirect('/') }>Cancel</button>
+      <div className="editor-page">
+        <div className="editor-header">
+          <h2>{documentData ? documentData.title : 'Loading Document...'}</h2>
+          <div className="document-meta">
+            {documentData && (
+              <>
+                <span>Created by: {documentData.name} ({documentData.email})</span>
+                <span>Created at: {new Date(documentData.created_at).toLocaleString()}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="editor-toolbar">
+          <button className="c2-btn save-button" onClick={ saveDocument() }>Save Document</button>
+          <button className="c2-btn cancel-button" onClick={ () => standardRedirect('/') }>Cancel</button>
+        </div>
+        <div className="editor-container">
+          <EditorComponent content={content} setContent={setContent} />
+        </div>
       </div>
     </StdLayout>
   );

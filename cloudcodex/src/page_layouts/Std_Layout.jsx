@@ -107,11 +107,11 @@ function StdLayout( { children } ) {
         { getHeaderElement( user ) }
         <main className="main-page-content">
           <div className="page-margin" id="std-left"></div>
-          <main className="page-container" id="searchPageContainer">
+          <div className="page-container" id="searchPageContainer">
             {!authChecked && null}
             {authChecked && user && children}
             {authChecked && !user && noLoginMessage(user)}
-          </main>
+          </div>
           <div className="page-margin" id="std-right"></div>
         </main>
       </div>

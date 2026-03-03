@@ -864,3 +864,152 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(44, 167, 219, 0.45);
 }
+
+/* ============================= */
+/* PAGE CONTAINER WRAP */
+/* ============================= */
+
+.editor-page {
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 30px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+/* ============================= */
+/* HEADER */
+/* ============================= */
+
+.editor-header {
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.editor-header h2 {
+  margin: 0 0 6px 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.document-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.document-meta span {
+  opacity: 0.85;
+}
+
+/* ============================= */
+/* ACTION TOOLBAR */
+/* ============================= */
+
+.editor-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+/* Make Save feel primary */
+.save-button {
+  background: var(--brand-blue);
+  border-color: var(--brand-blue);
+  color: #fff;
+}
+
+.save-button:hover {
+  background: var(--brand-blue-hover);
+  border-color: var(--brand-blue-hover);
+}
+
+/* Make cancel subtle */
+.cancel-button {
+  background: var(--bg-hover);
+}
+
+.cancel-button:hover {
+  background: var(--bg-hover-strong);
+}
+
+/* ============================= */
+/* EDITOR CONTAINER */
+/* ============================= */
+
+.editor-container {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Remove extra spacing Jodit injects */
+.jodit-react-container {
+  border-radius: var(--radius-md);
+}
+
+/* Make Jodit inherit container look */
+.editor-container .jodit-container {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ============================= */
+/* JODIT TOOLBAR INSIDE PANEL */
+/* ============================= */
+
+.editor-container .jodit-toolbar__box {
+  background: var(--bg-panel) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  padding: 8px 10px;
+}
+
+/* Softer toolbar button hover */
+.editor-container .jodit-toolbar-button__button:hover {
+  background: rgba(44, 167, 219, 0.12) !important;
+  color: var(--brand-blue) !important;
+}
+
+/* Active state */
+.editor-container
+  .jodit-toolbar-button.jodit-toolbar-button_active
+  .jodit-toolbar-button__button {
+  background: rgba(44, 167, 219, 0.18) !important;
+  color: var(--brand-blue) !important;
+}
+
+/* ============================= */
+/* EDITOR BODY */
+/* ============================= */
+
+.editor-container .jodit-wysiwyg {
+  background: var(--bg-main) !important;
+  color: var(--text-primary) !important;
+  padding: 20px;
+  min-height: 400px;
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+/* Smooth scrollbar */
+.editor-container .jodit-wysiwyg::-webkit-scrollbar {
+  width: 8px;
+}
+
+.editor-container .jodit-wysiwyg::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 6px;
+}
+
+.editor-container .jodit-wysiwyg::-webkit-scrollbar-track {
+  background: transparent;
+}

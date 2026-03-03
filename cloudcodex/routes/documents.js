@@ -18,7 +18,15 @@ router.get('/document', async (req, res) => {
 
   try {
     const docs = await c2_query(
-      `SELECT * FROM pages WHERE id = ? LIMIT 1`,
+      `SELECT pages.html_content, 
+              pages.created_at, 
+              pages.title, 
+              users.name, 
+              users.email 
+        FROM pages 
+      INNER JOIN users ON pages.created_by = users.id 
+        WHERE pages.id = ? 
+        LIMIT 1`,
       [doc_id]
     );
 
