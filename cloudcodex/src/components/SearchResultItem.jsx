@@ -27,7 +27,6 @@ function previewDocumentModal( doc ) {
         <span className="close-button" onClick={ () => destroyModal() }>&times;</span>
         <h2>{ doc.title }</h2>
         <p>Created by: { doc.name } on { new Date( doc.created_at ).toLocaleDateString() }</p>
-        <iframe title="Document Preview" srcDoc={ doc.html_content } className="document-preview-iframe"></iframe>
         <button className="c2-btn stretched-button" onClick={ () => launchEditor( doc ) }>Launch Editor</button>
       </div>
     );
@@ -42,7 +41,7 @@ function previewDocumentModal( doc ) {
 function SearchResultItem( { doc } ) {
   return (
     <>
-      <div onClick={ () => showModal( previewDocumentModal( doc ), "modal-xl" ) }>
+      <div onClick={ () => showModal( previewDocumentModal( doc ), "modal-md" ) }>
         <h3 className="result-title">{ doc.title }</h3>
         <img src={ document } alt="Document Icon" className="document-icon"/>
       </div>
