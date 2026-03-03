@@ -5,7 +5,8 @@
  * https://cloudcitycomputing.com
  */
 
-import { clearInner, createAndAppend } from "../util";
+import { useState, useEffect } from "react";
+import { clearInner, createAndAppend, getSessStorage, getSessionTokenFromCookie, serverReq, SetVal } from "../util";
 import { createRoot } from 'react-dom/client';
 
 /**
@@ -23,12 +24,41 @@ function replaceAccountMenu( jsxElement ) {
   }
 }
 
+function populateForm( userData ) {
+  SetVal( 'name', userData?.name );
+  SetVal( 'email', userData?.email );
+}
+
 /**
  * Definition of the AccountMenu component that provides options for updating account information,
  * changing preferences, and managing organizations.
  * @returns { JSX.Element } - The AccountMenu component JSX
  */
-function accountInfoUpdatePanel() {
+function AccountInfoUpdatePanel() {
+  const [userObj, setContent] = useState('');
+
+  useEffect(() => {
+    const loadData = async () => {
+      const userId = getSessStorage( 'currentUser' )?.id;
+      const sessToken = await getSessionTokenFromCookie();
+      if ( !userId || !sessToken ) {
+        alert( 'User not authenticated. Please log in again.' );
+        return;
+      }
+      else {
+        const userData = await serverReq( 'POST', '/api/get-user', { token: sessToken, userId: userId } );
+        if ( userData.success ) {
+          setContent( JSON.stringify( userData.user ) );
+          populateForm( userData.user );
+        }
+        else {
+          alert( 'Error fetching user data: ' + userData.message );
+        }
+      }
+    };
+    loadData();
+  }, [] );
+
   return (
     <div className="account-settings-panel">
       <h2 className="panel-title">Update Account Information</h2>
@@ -41,6 +71,16 @@ function accountInfoUpdatePanel() {
         <div className="form-group">
           <label htmlFor="email">Email</label>
           <input id="email" type="email" name="email" />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="password">New Password</label>
+          <input id="password" type="password" name="password" />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="confirmPassword">Confirm New Password</label>
+          <input id="confirmPassword" type="password" name="confirmPassword" />
         </div>
 
         <button type="submit" className="c2-btn stretched-button">
@@ -56,7 +96,7 @@ function accountInfoUpdatePanel() {
  * enabling two-factor authentication.
  * @returns { JSX.Element } - The account preferences panel JSX
  */
-function accountPreferencesPanel() {
+function AccountPreferencesPanel() {
   return (
     <div className="account-settings-panel">
       <h2 className="panel-title">Account Preferences</h2>
@@ -88,7 +128,7 @@ function accountPreferencesPanel() {
  * indicating that the feature is coming soon.
  * @returns { JSX.Element } - The manage organizations panel JSX
  */
-function manageOrganizationsPanel() {
+function ManageOrganizationsPanel() {
   return (
     <div className="account-settings-panel">
       <h2 className="panel-title">Manage Organizations</h2>
@@ -106,17 +146,17 @@ function manageOrganizationsPanel() {
  */
 function AccountMenu() {
   const panels = [
-    ["Change Account Info", accountInfoUpdatePanel],
-    ["Change Preferences", accountPreferencesPanel],
-    ["Manage Organizations", manageOrganizationsPanel]
+    ["Change Account Info", <AccountInfoUpdatePanel />],
+    ["Change Preferences", <AccountPreferencesPanel />],
+    ["Manage Organizations", <ManageOrganizationsPanel />]
   ]
   return (
     <div className="account-menu">
       <p>Account Actions</p>
       <ul>
-        { panels.map( ( [ label, panelFunc ] ) => (
+        { panels.map( ( [ label, jsx_el ] ) => (
           <li key={ label }>
-            <a onClick={ () => replaceAccountMenu( panelFunc() ) } href="#">
+            <a onClick={ () => replaceAccountMenu( jsx_el ) } href="#">
               { label }
             </a>
           </li>

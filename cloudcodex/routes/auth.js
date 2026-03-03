@@ -110,4 +110,28 @@ router.post('/validate-session', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/get-user
+ */
+router.post('/get-user', async (req, res) => {
+  const { token, userId } = req.body;
+  if (!token || !userId) {
+    return res.status(400).json({ success: false, message: 'Token and userId are required' });
+  }
+  else {
+    const user = await c2_query(
+      `SELECT id, name, email FROM users
+       WHERE id = ? AND id IN (SELECT user_id FROM sessions WHERE id = ?)
+       LIMIT 1`,
+      [userId, token]
+    );
+    
+    if (user.length === 1) {
+      res.json({ success: true, user: user[0] });
+    } else {
+      res.status(401).json({ success: false, message: 'Invalid token or userId' });
+    }
+  }
+});
+
 export default router;
