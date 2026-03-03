@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { clearInner, createAndAppend, getSessStorage, getSessionTokenFromCookie, serverReq, SetVal } from "../util";
+import { clearInner, createAndAppend, getSessStorage, getSessionTokenFromCookie, serverReq, GetVal, SetVal } from "../util";
 import { createRoot } from 'react-dom/client';
 
 /**
@@ -24,9 +24,41 @@ function replaceAccountMenu( jsxElement ) {
   }
 }
 
-function populateForm( userData ) {
-  SetVal( 'name', userData?.name );
-  SetVal( 'email', userData?.email );
+/**
+ * Performs the account info update
+ * @returns { void }
+ */
+async function doCustUpdate() {
+  // validate password fields match
+  const password = GetVal( 'password' );
+  const confirmPassword = GetVal( 'confirmPassword' );
+  if ( password !== confirmPassword ) {
+    alert( 'Passwords do not match. Please try again.' );
+    return;
+  }
+
+  // send update request to server
+  const userId = getSessStorage( 'currentUser' )?.id;
+  const sessToken = getSessionTokenFromCookie();
+  if ( !userId || !sessToken ) {
+    alert( 'User not authenticated. Please log in again.' );
+    return;
+  }
+
+  const update = await serverReq( 'POST', '/api/update-account', {
+    token: sessToken,
+    userId: userId,
+    name: GetVal( 'name' ),
+    email: GetVal( 'email' ),
+    password: password
+  } );
+
+  if ( update.success ) {
+    alert( 'Account information updated successfully.' );
+  }
+  else {
+    alert( 'Error updating account information: ' + update.message );
+  }
 }
 
 /**
@@ -49,7 +81,10 @@ function AccountInfoUpdatePanel() {
         const userData = await serverReq( 'POST', '/api/get-user', { token: sessToken, userId: userId } );
         if ( userData.success ) {
           setContent( JSON.stringify( userData.user ) );
-          populateForm( userData.user );
+
+          // Pre-fill form fields with current user data
+          SetVal( 'name', userData?.user?.name );
+          SetVal( 'email', userData?.user?.email );
         }
         else {
           alert( 'Error fetching user data: ' + userData.message );
@@ -83,7 +118,7 @@ function AccountInfoUpdatePanel() {
           <input id="confirmPassword" type="password" name="confirmPassword" />
         </div>
 
-        <button type="submit" className="c2-btn stretched-button">
+        <button type="submit" className="c2-btn stretched-button" onClick={ () => doCustUpdate() }>
           Update Info
         </button>
       </form>

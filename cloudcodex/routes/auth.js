@@ -47,6 +47,32 @@ router.post('/create-account', async (req, res) => {
   }
 });
 
+router.post('/update-account', async (req, res) => {
+  const { token, userId, name, email, password } = req.body;
+
+  if (!token || !userId) {
+    return res.status(400).json({ success: false, message: 'Token and userId are required' });
+  }
+
+  try {
+    // Validate session token
+    const user = await validateAndAutoLogin(token);
+    if (!user || user.id !== userId) {
+      return res.status(401).json({ success: false, message: 'Invalid session token' });
+    }
+
+    // Update user information
+    await c2_query(
+      `UPDATE users SET name = ?, email = ?, password_hash = ? WHERE id = ?`,
+      [name, email, password, userId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error updating account information' });
+  }
+});
+
 /**
  * POST /api/login
  */
