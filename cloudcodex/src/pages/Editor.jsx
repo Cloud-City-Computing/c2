@@ -20,10 +20,7 @@ function EditorComponent({ content, setContent }) {
   const config = useMemo(() => ({
     readonly: false,
     placeholder: 'Start typing...',
-    theme: "dark",
-    uploader: {
-      insertImageAsBase64URI: true
-    }
+    theme: "dark"
   }), []);
   const editor = useRef(null);
   return (
