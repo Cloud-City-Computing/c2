@@ -1,6 +1,6 @@
 /**
  * MySQL Database Connection Module
- * 
+ *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
@@ -8,120 +8,93 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
+dotenv.config();
+
+const pool = mysql.createPool({
+  host:             process.env.DB_HOST ?? 'localhost',
+  user:             process.env.DB_USER ?? 'admin',
+  password:         process.env.DB_PASS ?? 'admin',
+  database:         process.env.DB_NAME ?? 'c2',
+  waitForConnections: true,
+  connectionLimit:  10,
+  queueLimit:       0,
+});
+
 /**
- * Creates and returns a MySQL connection pool.
- * @returns { mysql.Pool } - MySQL connection pool
+ * Executes a parameterized SQL query.
+ * @param { String } sql
+ * @param { Array }  params
+ * @returns { Promise<Array> }
  */
-function createDBConnection() {
-  dotenv.config();
-  const connection = mysql.createPool( {
-    host: process.env.DB_HOST ?? 'localhost',
-    user: process.env.DB_USER ?? 'admin',
-    password: process.env.DB_PASS ?? 'admin',
-    database: process.env.DB_NAME ?? 'c2',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-  } );
-  return connection;
+export async function c2_query(sql, params) {
+  const [rows] = await pool.execute(sql, params);
+  return rows;
 }
 
 /**
- * Generates a random session token string ( alphanumeric, length 64 by default ).
- * @param { Integer } length - Desired length of the session token
- * @returns { String } - Generated session token
+ * Generates a cryptographically random alphanumeric session token.
+ * @param { Number } length
+ * @returns { String }
  */
-function createNewSessionToken( length = 64 ) {
-  return [ ...Array( length ) ].map( () => Math.random().toString( 36 )[ 2 ] ).join( '' );
+function createNewSessionToken(length = 64) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, b => chars[b % chars.length]).join('');
 }
 
 /**
- * Returns a session token for the given user. 
- * If a valid session already exists, it returns the existing token.
- * If no valid session exists, it creates a new session and returns the new token.
- * @param { JSON } user - User object containing at least an 'id' property
- * @returns { String } - Session token string
+ * Returns a valid session token for the given user, reusing an existing
+ * non-expired session or creating/refreshing one as needed.
+ * @param { Object } user - Must contain an `id` property
+ * @returns { Promise<String> }
  */
-export async function generateSessionToken( user ) {
-  let sessionToken;
-  const existingSessions = await c2_query(
-    `SELECT id, expires_at, user_id FROM sessions WHERE user_id = ? LIMIT 1`,
-    [ user.id ]
+export async function generateSessionToken(user) {
+  const [session] = await c2_query(
+    `SELECT id, expires_at FROM sessions WHERE user_id = ? LIMIT 1`,
+    [user.id]
   );
 
-  // We found a session for this user, check if it's expired
-  if ( existingSessions.length === 1 ) {
-    const session = existingSessions[ 0 ];
-    if ( session.expires_at < new Date() ) {
-      sessionToken = createNewSessionToken(); // Generate a new token if the existing session is expired
-      await c2_query(
-        `UPDATE sessions SET created_at = NOW(), expires_at = DATE_ADD(NOW(), INTERVAL 7 DAY) 
-          WHERE id = ? AND user_id = ?`,
-        [ session.id, user.id ]
-      );
-    }
-    else {
-      sessionToken = session.id; // Return existing token if session is still valid
-    }
-  }
-  else {
-    sessionToken = createNewSessionToken(); // Generate a new token if no existing session is found
+  if (session) {
+    if (session.expires_at > new Date()) return session.id; // still valid
+
+    // Expired — refresh in place
+    const newToken = createNewSessionToken();
     await c2_query(
-      `INSERT INTO sessions (user_id, id, created_at, expires_at) 
-        VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))`,
-      [ user.id, sessionToken ]
+      `UPDATE sessions SET id = ?, created_at = NOW(), expires_at = DATE_ADD(NOW(), INTERVAL 7 DAY)
+       WHERE id = ? AND user_id = ?`,
+      [newToken, session.id, user.id]
     );
+    return newToken;
   }
-  return sessionToken;
+
+  // No session — create one
+  const token = createNewSessionToken();
+  await c2_query(
+    `INSERT INTO sessions (user_id, id, created_at, expires_at)
+     VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))`,
+    [user.id, token]
+  );
+  return token;
 }
 
 /**
- * Validates the session token and returns the associated user if valid.
- * Performs auto-login by retrieving user details from the database.
- * @param { String } sessionToken - Session token string
- * @returns { Promise<JSON|null> } - User object if valid, null if invalid
+ * Validates a session token and returns the associated user, or null if
+ * the token is missing, expired, or has no matching user.
+ * @param { String } sessionToken
+ * @returns { Promise<Object|null> }
  */
-export function validateAndAutoLogin( sessionToken ) {
-  return new Promise( async ( resolve, reject ) => {
-    try {
-      const sessions = await c2_query(
-        `SELECT user_id, expires_at FROM sessions WHERE id = ? LIMIT 1`,
-        [ sessionToken ]
-      );
-      if ( sessions.length === 1 ) {
-        const session = sessions[ 0 ];
-        if ( session.expires_at > new Date() ) {
-          const users = await c2_query(
-            `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
-            [ session.user_id ]
-          );
-          if ( users.length === 1 ) {
-            const user = users[ 0 ];
-            resolve( user );
-            return;
-          }
-        }
-      }
-      resolve( null ); // Invalid or expired session
-    }
-    catch ( error ) {
-      reject( error );
-    }
-  } );
-}
+export async function validateAndAutoLogin(sessionToken) {
+  const [session] = await c2_query(
+    `SELECT user_id, expires_at FROM sessions WHERE id = ? LIMIT 1`,
+    [sessionToken]
+  );
 
-/**
- * Executes a SQL query against the MySQL database.
- * @param { String } sql - SQL query string
- * @param { Array<any> } params - Query parameters
- * @returns { Promise<any> } - Query results
- */
-export async function c2_query( sql, params ) {
-  const db = createDBConnection();
-  const results = await db.execute( sql, params );
-  db.end();
-  if ( results.length > 0 ) {
-    return results[ 0 ];
-  }
-  return [];
+  if (!session || session.expires_at <= new Date()) return null;
+
+  const [user] = await c2_query(
+    `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
+    [session.user_id]
+  );
+
+  return user ?? null;
 }
