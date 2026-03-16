@@ -10,7 +10,6 @@
 ========================= */
 
 :root {
-  /* Typography */
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -45,6 +44,9 @@
   /* Layout */
   --header-height: 80px;
   --footer-height: 60px;
+
+  /* Shared transition */
+  --transition: all 0.25s ease;
 
   background-color: var(--bg-main);
   color: var(--text-primary);
@@ -86,51 +88,48 @@ body {
 }
 
 /* =========================
-   Premium App Header
+   Shared: Fixed Bar (Header + Footer)
 ========================= */
 
-.app-header {
+.app-header,
+.page-footer {
   position: fixed;
-  top: 0;
   left: 0;
   width: 100%;
-
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  padding: 20px 40px;
-  background: linear-gradient(
-    to bottom,
-    var(--bg-elevated),
-    rgba(30, 30, 30, 0.95)
-  );
-
-  border-bottom: 1px solid var(--border-color);
+  border-color: var(--border-color);
   backdrop-filter: blur(6px);
   z-index: 1000;
-
-  /* subtle depth */
-  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
 }
 
 /* Branded Accent Line */
-.app-header::after {
+.app-header::after,
+.page-footer::before {
   content: "";
   position: absolute;
-  bottom: 0;
   left: 0;
   width: 100%;
   height: 2px;
-
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--brand-blue),
-    transparent
-  );
-
+  background: linear-gradient(90deg, transparent, var(--brand-blue), transparent);
   opacity: 0.6;
+}
+
+/* =========================
+   App Header
+========================= */
+
+.app-header {
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 40px;
+  background: linear-gradient(to bottom, var(--bg-elevated), rgba(30, 30, 30, 0.95));
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
+
+.app-header::after {
+  bottom: 0;
 }
 
 /* =========================
@@ -144,16 +143,14 @@ body {
   letter-spacing: 0.5px;
   cursor: pointer;
   position: relative;
-  transition: all 0.25s ease;
+  transition: var(--transition);
 }
 
-/* Smooth brand shift on hover */
 .app-title:hover {
   color: var(--brand-blue);
   text-shadow: 0 0 10px rgba(44, 167, 219, 0.4);
 }
 
-/* Underline accent animation */
 .app-title::after {
   content: "";
   position: absolute;
@@ -179,15 +176,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-
   width: 40px;
   height: 40px;
   border-radius: 50%;
-
-  transition: all 0.25s ease;
+  transition: var(--transition);
 }
 
-/* Hover Glow Effect */
 .account-button:hover {
   color: var(--brand-blue);
   background: rgba(44, 167, 219, 0.08);
@@ -195,7 +189,6 @@ body {
   transform: translateY(-2px);
 }
 
-/* Smooth icon animation */
 .account-button svg {
   transition: transform 0.25s ease;
 }
@@ -203,6 +196,10 @@ body {
 .account-button:hover svg {
   transform: scale(1.1);
 }
+
+/* =========================
+   Page Layout
+========================= */
 
 .main-page-content {
   display: flex;
@@ -223,11 +220,6 @@ body {
   flex: 1;
 }
 
-.results-section {
-  width: 100%;
-  max-width: 900px;
-}
-
 /* =========================
    Buttons
 ========================= */
@@ -238,46 +230,33 @@ body {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.3px;
-
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-
-  background: linear-gradient(
-    135deg,
-    var(--brand-blue),
-    var(--brand-blue-hover)
-  );
-
+  background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-hover));
   color: #fff;
   text-decoration: none;
   text-align: center;
   cursor: pointer;
-
-  box-shadow: 0 0 0 0 rgba(44, 167, 219, 0);
-  transition: all 0.25s ease;
+  transition: var(--transition);
 }
 
-/* Hover */
 .c2-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 0 15px rgba(44, 167, 219, 0.35);
   filter: brightness(1.05);
 }
 
-/* Active (Pressed) */
 .c2-btn:active {
-  transform: translateY(0px);
+  transform: translateY(0);
   box-shadow: 0 0 8px rgba(44, 167, 219, 0.4) inset;
   filter: brightness(0.95);
 }
 
-/* Focus (Accessibility) */
 .c2-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(44, 167, 219, 0.35);
 }
 
-/* Full Width Utility */
 .stretched-button {
   margin-top: 10px;
   width: 100%;
@@ -291,32 +270,21 @@ body {
   width: 100%;
 }
 
-/* Branded Card */
 .search-card {
-  background: linear-gradient(
-    to bottom,
-    var(--bg-elevated),
-    var(--bg-panel)
-  );
-
-  border: 1px solid var(--border-color);
-  /* border-top: 2px solid var(--brand-blue-dark); */
-  /* do this as a gradient border for a more modern look */
-  border-top: 2px solid transparent;
   background-image:
     linear-gradient(var(--bg-elevated), var(--bg-panel)),
     linear-gradient(90deg, transparent, var(--brand-blue-dark), transparent);
   background-origin: border-box;
   background-clip: padding-box, border-box;
+  border: 1px solid var(--border-color);
+  border-top: 2px solid transparent;
   border-radius: var(--radius-md);
   padding: 28px;
   width: 100%;
-
   box-shadow: var(--shadow-sm);
-  transition: all 0.25s ease;
+  transition: var(--transition);
 }
 
-/* Label */
 .search-label {
   display: block;
   margin-bottom: 12px;
@@ -325,7 +293,6 @@ body {
   letter-spacing: 0.3px;
 }
 
-/* Input + Button Wrapper */
 .search-box {
   display: flex;
   gap: 12px;
@@ -333,27 +300,21 @@ body {
   margin-top: 10px;
 }
 
-/* Input Styling */
 .search-input {
   flex: 1;
   padding: 13px 14px;
   font-size: 15px;
-
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-
   background-color: var(--bg-elevated);
   color: var(--text-primary);
-
-  transition: all 0.25s ease;
+  transition: var(--transition);
 }
 
-/* Placeholder refinement */
 .search-input::placeholder {
   color: var(--text-muted);
 }
 
-/* Focus (Branded Glow) */
 .search-input:focus {
   outline: none;
   border-color: var(--brand-blue);
@@ -361,18 +322,18 @@ body {
   background-color: var(--bg-panel);
 }
 
-/* Optional: Slight button alignment tweak */
 .search-button {
   padding-left: 24px;
   padding-right: 24px;
 }
 
-/* ============================= */
-/* Results Section */
-/* ============================= */
+/* =========================
+   Results Section
+========================= */
 
 .results-section {
   width: 100%;
+  max-width: 900px;
   margin-top: 24px;
 }
 
@@ -382,14 +343,13 @@ body {
   gap: 16px;
 }
 
-/* Individual Result Card */
 .search-result-item {
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 20px;
   box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
+  transition: var(--transition);
   cursor: pointer;
 }
 
@@ -399,7 +359,6 @@ body {
   border-color: var(--brand-blue);
 }
 
-/* Layout inside result */
 .search-result-item > div {
   display: flex;
   align-items: center;
@@ -407,7 +366,6 @@ body {
   gap: 16px;
 }
 
-/* Title */
 .result-title {
   margin: 0;
   font-size: 18px;
@@ -420,7 +378,6 @@ body {
   color: var(--brand-blue);
 }
 
-/* Document Icon */
 .document-icon {
   width: 42px;
   height: 42px;
@@ -469,11 +426,10 @@ body {
   background-color: var(--bg-hover-strong);
 }
 
-/* ============================= */
-/* Modal + Overlay System */
-/* ============================= */
+/* =========================
+   Modal + Overlay System
+========================= */
 
-/* Background Dimmer */
 #modal-dimmer,
 #dropdown-backshadow {
   position: fixed;
@@ -484,7 +440,6 @@ body {
   animation: fadeIn 0.15s ease;
 }
 
-/* Modal Positioning */
 .modal-content-wrapper {
   position: fixed;
   top: 50%;
@@ -501,14 +456,9 @@ body {
   z-index: 9999;
 }
 
-/* Modal + Dropdown Panels */
 .dropdown-menu,
 .modal-content {
-  background: linear-gradient(
-    180deg,
-    var(--bg-elevated),
-    var(--bg-panel)
-  );
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-panel));
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -516,23 +466,10 @@ body {
   color: var(--text-primary);
 }
 
-/* Modal Sizing */
-.modal-md {
-  width: 60% !important;
-  max-width: 520px !important;
-}
+.modal-md { width: 60%; max-width: 520px; }
+.modal-lg { width: 80%; max-width: 680px; }
+.modal-xl { width: 100%; max-width: 900px; }
 
-.modal-lg {
-  width: 80% !important;
-  max-width: 680px !important;
-}
-
-.modal-xl {
-  width: 100% !important;
-  max-width: 900px !important;
-}
-
-/* Close Button */
 .close-button {
   font-size: 28px;
   font-weight: 600;
@@ -541,7 +478,7 @@ body {
   position: absolute;
   top: 16px;
   right: 18px;
-  transition: color 0.2s ease, transform 0.15s ease;
+  transition: var(--transition);
 }
 
 .close-button:hover {
@@ -549,23 +486,18 @@ body {
   transform: scale(1.1);
 }
 
-/* Modal Title */
 .modal-content h2 {
-  margin-top: 0;
-  margin-bottom: 8px;
+  margin: 0 0 8px;
   font-size: 22px;
   font-weight: 600;
-  color: var(--text-primary);
 }
 
-/* Metadata / Subtitle */
 .modal-content p {
-  margin: 0 0 20px 0;
+  margin: 0 0 20px;
   font-size: 14px;
   color: var(--text-muted);
 }
 
-/* Preview Content Block (if used instead of iframe) */
 .preview-content {
   overflow-y: auto;
   background-color: var(--bg-main);
@@ -576,94 +508,53 @@ body {
   max-height: 400px;
 }
 
-/* Animations */
 @keyframes modalIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
 
 /* =========================
-   Premium App Footer
+   App Footer
 ========================= */
 
 .page-footer {
-  position: fixed;
   bottom: 0;
-  left: 0;
-  width: 100%;
-
-  background: linear-gradient(
-    to top,
-    var(--bg-elevated),
-    rgba(30, 30, 30, 0.95)
-  );
-
+  background: linear-gradient(to top, var(--bg-elevated), rgba(30, 30, 30, 0.95));
   color: var(--text-muted);
   text-align: center;
   font-size: 14px;
-
   border-top: 1px solid var(--border-color);
   padding: 12px 20px;
-
-  backdrop-filter: blur(6px);
   box-shadow: 0 -2px 10px rgba(0,0,0,0.4);
-
-  z-index: 1000;
-  position: fixed;
 }
 
-/* Branded Accent Line (mirrors header) */
 .page-footer::before {
-  content: "";
-  position: absolute;
   top: 0;
-  left: 0;
-  width: 100%;
-  height: 2px;
-
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--brand-blue),
-    transparent
-  );
-
-  opacity: 0.6;
 }
 
-/* Footer Content Wrapper */
 .page-footer-content {
   position: relative;
   z-index: 2;
 }
 
-/* Footer Links */
 .page-footer a {
   color: var(--text-primary);
   text-decoration: none;
   font-weight: 600;
-  transition: all 0.25s ease;
   position: relative;
+  transition: var(--transition);
 }
 
-/* Link Hover Animation */
 .page-footer a:hover {
   color: var(--brand-blue);
   text-shadow: 0 0 8px rgba(44, 167, 219, 0.4);
 }
 
-/* Subtle underline animation */
 .page-footer a::after {
   content: "";
   position: absolute;
@@ -716,7 +607,7 @@ body {
 }
 
 /* =========================
-   Account Sidebar Menu + Settings Panel
+   Account Sidebar + Settings
 ========================= */
 
 .account-menu-container {
@@ -731,10 +622,9 @@ body {
 }
 
 .account-menu p {
-  margin: 0 0 12px 0;
+  margin: 0 0 12px;
   font-weight: 600;
   font-size: 16px;
-  color: var(--text-primary);
 }
 
 .account-menu ul {
@@ -762,14 +652,12 @@ body {
   color: var(--brand-blue);
 }
 
-/* Account Settings Root */
 .account-menu-root {
   display: flex;
   gap: 30px;
   width: 100%;
 }
 
-/* Account Settings Panel */
 .account-settings-panel {
   flex: 1;
   background-color: var(--bg-elevated);
@@ -785,28 +673,23 @@ body {
   box-shadow: 0 4px 12px rgba(44, 167, 219, 0.35);
 }
 
-/* Panel Title */
 .panel-title {
-  margin: 0 0 20px 0;
+  margin: 0 0 20px;
   font-size: 22px;
   font-weight: 600;
-  color: var(--text-primary);
 }
 
-/* Panel Muted Text */
 .panel-muted {
   color: var(--text-secondary);
   margin: 0;
 }
 
-/* Account Form Layout */
 .account-form {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-/* Standard Input Group */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -836,7 +719,6 @@ body {
   background-color: var(--bg-elevated);
 }
 
-/* Checkbox Groups */
 .checkbox-group label {
   display: flex;
   align-items: center;
@@ -850,13 +732,10 @@ body {
   accent-color: var(--brand-blue);
 }
 
-/* Submit Button (matches .c2-btn theme) */
 .account-form .c2-btn {
   background: linear-gradient(90deg, var(--brand-blue), var(--brand-blue-hover));
-  color: #fff;
-  border: 1px solid var(--brand-blue-hover);
+  border-color: var(--brand-blue-hover);
   box-shadow: 0 2px 6px rgba(44, 167, 219, 0.35);
-  transition: all 0.25s ease;
 }
 
 .account-form .c2-btn:hover {
@@ -865,9 +744,9 @@ body {
   box-shadow: 0 4px 12px rgba(44, 167, 219, 0.45);
 }
 
-/* ============================= */
-/* PAGE CONTAINER WRAP */
-/* ============================= */
+/* =========================
+   Editor Page
+========================= */
 
 .editor-page {
   max-width: 1100px;
@@ -879,10 +758,6 @@ body {
   box-shadow: var(--shadow-md);
 }
 
-/* ============================= */
-/* HEADER */
-/* ============================= */
-
 .editor-header {
   padding-bottom: 16px;
   margin-bottom: 20px;
@@ -890,10 +765,9 @@ body {
 }
 
 .editor-header h2 {
-  margin: 0 0 6px 0;
+  margin: 0 0 6px;
   font-size: 26px;
   font-weight: 700;
-  color: var(--text-primary);
 }
 
 .document-meta {
@@ -908,17 +782,12 @@ body {
   opacity: 0.85;
 }
 
-/* ============================= */
-/* ACTION TOOLBAR */
-/* ============================= */
-
 .editor-toolbar {
   display: flex;
   gap: 12px;
   margin-bottom: 20px;
 }
 
-/* Make Save feel primary */
 .save-button {
   background: var(--brand-blue);
   border-color: var(--brand-blue);
@@ -930,7 +799,6 @@ body {
   border-color: var(--brand-blue-hover);
 }
 
-/* Make cancel subtle */
 .cancel-button {
   background: var(--bg-hover);
 }
@@ -938,10 +806,6 @@ body {
 .cancel-button:hover {
   background: var(--bg-hover-strong);
 }
-
-/* ============================= */
-/* EDITOR CONTAINER */
-/* ============================= */
 
 .editor-container {
   background: var(--bg-elevated);
@@ -951,21 +815,16 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-/* Remove extra spacing Jodit injects */
 .jodit-react-container {
   border-radius: var(--radius-md);
 }
 
-/* Make Jodit inherit container look */
+/* Jodit Overrides */
 .editor-container .jodit-container {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
 }
-
-/* ============================= */
-/* JODIT TOOLBAR INSIDE PANEL */
-/* ============================= */
 
 .editor-container .jodit-toolbar__box {
   background: var(--bg-panel) !important;
@@ -973,23 +832,15 @@ body {
   padding: 8px 10px;
 }
 
-/* Softer toolbar button hover */
 .editor-container .jodit-toolbar-button__button:hover {
   background: rgba(44, 167, 219, 0.12) !important;
   color: var(--brand-blue) !important;
 }
 
-/* Active state */
-.editor-container
-  .jodit-toolbar-button.jodit-toolbar-button_active
-  .jodit-toolbar-button__button {
+.editor-container .jodit-toolbar-button_active .jodit-toolbar-button__button {
   background: rgba(44, 167, 219, 0.18) !important;
   color: var(--brand-blue) !important;
 }
-
-/* ============================= */
-/* EDITOR BODY */
-/* ============================= */
 
 .editor-container .jodit-wysiwyg {
   background: var(--bg-main) !important;
@@ -1000,16 +851,6 @@ body {
   font-size: 15px;
 }
 
-/* Smooth scrollbar */
-.editor-container .jodit-wysiwyg::-webkit-scrollbar {
-  width: 8px;
-}
-
-.editor-container .jodit-wysiwyg::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
-  border-radius: 6px;
-}
-
-.editor-container .jodit-wysiwyg::-webkit-scrollbar-track {
-  background: transparent;
-}
+.editor-container .jodit-wysiwyg::-webkit-scrollbar { width: 8px; }
+.editor-container .jodit-wysiwyg::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 6px; }
+.editor-container .jodit-wysiwyg::-webkit-scrollbar-track { background: transparent; }
