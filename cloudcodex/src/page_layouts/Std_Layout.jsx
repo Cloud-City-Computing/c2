@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import Login from '../components/Login';
 import AccountPanel from '../components/AccountPanel';
-import { GetElById, showModal, getSessionTokenFromCookie, attemptAutoLogin, showDropdownMenu, clearInner, standardRedirect } from '../util';
+import { getElById, showModal, getSessionTokenFromCookie, attemptAutoLogin, showDropdownMenu, clearInner, standardRedirect } from '../util';
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
 /**
@@ -53,8 +53,8 @@ function getHeaderElement( user ) {
  * @returns { void }
  */
 function clearPageMargins() {
-  clearInner( GetElById( 'std-left' ) );
-  clearInner( GetElById( 'std-right' ) );
+  clearInner( getElById( 'std-left' ) );
+  clearInner( getElById( 'std-right' ) );
 }
 
 /**
@@ -84,8 +84,8 @@ function StdLayout( { children } ) {
   const [authChecked, setAuthChecked] = useState(false);
   useEffect( () => {
     const loadData = async () => {
-      clearInner( GetElById( 'std-left' ) );
-      clearInner( GetElById( 'std-right' ) );
+      clearInner( getElById( 'std-left' ) );
+      clearInner( getElById( 'std-right' ) );
       const sessionToken = getSessionTokenFromCookie();
       if (sessionToken && sessionToken !== "") {
         const loggedInUser = await attemptAutoLogin(sessionToken);

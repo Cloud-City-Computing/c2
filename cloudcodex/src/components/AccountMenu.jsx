@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { clearInner, createAndAppend, getSessStorage, getSessionTokenFromCookie, serverReq, GetVal, SetVal } from "../util";
+import { clearInner, createAndAppend, getSessStorage, getSessionTokenFromCookie, serverReq, getVal, setVal } from "../util";
 import { createRoot } from 'react-dom/client';
 
 /**
@@ -30,8 +30,8 @@ function replaceAccountMenu( jsxElement ) {
  */
 async function doCustUpdate() {
   // validate password fields match
-  const password = GetVal( 'password' );
-  const confirmPassword = GetVal( 'confirmPassword' );
+  const password = getVal( 'password' );
+  const confirmPassword = getVal( 'confirmPassword' );
   if ( password !== confirmPassword ) {
     alert( 'Passwords do not match. Please try again.' );
     return;
@@ -48,8 +48,8 @@ async function doCustUpdate() {
   const update = await serverReq( 'POST', '/api/update-account', {
     token: sessToken,
     userId: userId,
-    name: GetVal( 'name' ),
-    email: GetVal( 'email' ),
+    name: getVal( 'name' ),
+    email: getVal( 'email' ),
     password: password
   } );
 
@@ -83,8 +83,8 @@ function AccountInfoUpdatePanel() {
           setContent( JSON.stringify( userData.user ) );
 
           // Pre-fill form fields with current user data
-          SetVal( 'name', userData?.user?.name );
-          SetVal( 'email', userData?.user?.email );
+          setVal( 'name', userData?.user?.name );
+          setVal( 'email', userData?.user?.email );
         }
         else {
           alert( 'Error fetching user data: ' + userData.message );
