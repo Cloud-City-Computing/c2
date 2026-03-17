@@ -12,6 +12,7 @@
   "dependencies": {
     "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
+    "eslint-plugin-react": "^7.37.5",
     "express": "^5.1.0",
     "jodit-react": "^5.3.21",
     "mysql2": "^3.16.2",
