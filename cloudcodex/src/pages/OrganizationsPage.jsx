@@ -17,6 +17,13 @@ import {
   createTeam,
   updateTeam,
   deleteTeam,
+  fetchTeamMembers,
+  inviteTeamMember,
+  updateTeamMember,
+  removeTeamMember,
+  fetchTeamInvitations,
+  cancelInvitation,
+  searchUsers,
   showModal,
   destroyModal,
 } from '../util';
@@ -154,12 +161,247 @@ function RenameTeamModal({ team, onRenamed }) {
   );
 }
 
+// --- Invite Member Modal ---
+
+function InviteMemberModal({ teamId, onInvited }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [role, setRole] = useState('member');
+  const [perms, setPerms] = useState({ can_read: true, can_write: false, can_create_page: false, can_create_project: false, can_manage_members: false });
+  const [error, setError] = useState(null);
+  const [searching, setSearching] = useState(false);
+
+  const handleSearch = useCallback(async (q) => {
+    setQuery(q);
+    if (q.trim().length < 2) { setResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await searchUsers(q);
+      setResults(res.users || []);
+    } catch { setResults([]); }
+    setSearching(false);
+  }, []);
+
+  const handleInvite = async () => {
+    setError(null);
+    if (!selected) { setError('Please select a user.'); return; }
+    try {
+      await inviteTeamMember(teamId, { userId: selected.id, role, ...perms });
+      destroyModal();
+      onInvited?.();
+    } catch (e) {
+      setError(e.body?.message ?? 'Error sending invitation.');
+    }
+  };
+
+  const togglePerm = (key) => setPerms(p => ({ ...p, [key]: !p[key] }));
+
+  return (
+    <div className="modal-content">
+      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <h2>Invite Member</h2>
+      {error && <p className="form-error">{error}</p>}
+      <div className="modal-form">
+        <label>Search Users:</label>
+        <div className="user-search">
+          <input
+            className="user-search__input"
+            type="text" value={query} placeholder="Search by name or email..."
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+          {searching && <p className="text-muted text-sm">Searching...</p>}
+          {results.length > 0 && !selected && (
+            <ul className="user-search__results">
+              {results.map(u => (
+                <li key={u.id} className="user-search__result" onClick={() => { setSelected(u); setResults([]); setQuery(u.email); }}>
+                  <span>{u.name}</span> <span className="text-muted">{u.email}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {selected && (
+          <div className="invite-selected">
+            <span>Selected: <strong>{selected.name}</strong> ({selected.email})</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setSelected(null); setQuery(''); }}>Change</button>
+          </div>
+        )}
+
+        <label style={{ marginTop: 12 }}>Role:</label>
+        <select value={role} onChange={(e) => setRole(e.target.value)} style={{ padding: '6px 10px', fontSize: 14, background: 'var(--bg-panel)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+
+        <label style={{ marginTop: 12 }}>Permissions:</label>
+        <div className="invite-perms-grid">
+          {[
+            ['can_read', 'Read', 'View projects and pages'],
+            ['can_write', 'Write', 'Edit pages and documents'],
+            ['can_create_page', 'Create Pages', 'Create new pages in projects'],
+            ['can_create_project', 'Create Projects', 'Create new projects in the team'],
+            ['can_manage_members', 'Manage Members', 'Invite/remove team members'],
+          ].map(([key, label, desc]) => (
+            <label key={key} className="invite-perm-toggle">
+              <input type="checkbox" checked={perms[key]} onChange={() => togglePerm(key)} />
+              <div>
+                <strong>{label}</strong>
+                <p className="text-muted text-sm">{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <button className="btn btn-primary stretched-button" style={{ marginTop: 16 }} onClick={handleInvite}>Send Invitation</button>
+      </div>
+    </div>
+  );
+}
+
+// --- Team Members Panel (inline in team row) ---
+
+const PERM_LABELS = {
+  can_read: 'Read',
+  can_write: 'Write',
+  can_create_page: 'Create Pages',
+  can_create_project: 'Create Projects',
+  can_manage_members: 'Manage Members',
+};
+
+function TeamMembersPanel({ teamId }) {
+  const [members, setMembers] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [mRes, iRes] = await Promise.all([
+        fetchTeamMembers(teamId),
+        fetchTeamInvitations(teamId),
+      ]);
+      setMembers(mRes.members || []);
+      setPending(iRes.invitations || []);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [teamId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleTogglePerm = async (member, key) => {
+    try {
+      await updateTeamMember(teamId, member.user_id, { [key]: !member[key] });
+      setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, [key]: !m[key] } : m));
+    } catch { /* ignore */ }
+  };
+
+  const handleRoleChange = async (member, newRole) => {
+    try {
+      await updateTeamMember(teamId, member.user_id, { role: newRole });
+      setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, role: newRole } : m));
+    } catch { /* ignore */ }
+  };
+
+  const handleRemove = (member) => {
+    showModal(
+      <ConfirmDialog
+        title="Remove Member"
+        message={`Remove ${member.name} from this team?`}
+        onConfirm={async () => {
+          await removeTeamMember(teamId, member.user_id);
+          destroyModal();
+          load();
+        }}
+        onCancel={destroyModal}
+      />,
+      'modal-md'
+    );
+  };
+
+  const handleCancelInvitation = async (inv) => {
+    try {
+      await cancelInvitation(inv.id);
+      load();
+    } catch { /* ignore */ }
+  };
+
+  if (loading) return <p className="text-muted text-sm" style={{ padding: '4px 0' }}>Loading members...</p>;
+
+  return (
+    <div className="team-members-panel">
+      <div className="team-members-panel__header">
+        <span className="text-muted text-sm">{members.length} member{members.length !== 1 ? 's' : ''}</span>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => showModal(<InviteMemberModal teamId={teamId} onInvited={load} />, 'modal-lg')}
+        >
+          + Invite
+        </button>
+      </div>
+
+      {members.length === 0 && pending.length === 0 && (
+        <p className="text-muted text-sm">No members yet. Invite someone to get started.</p>
+      )}
+
+      {members.map(member => (
+        <div key={member.user_id} className="member-row">
+          <div className="member-row__info">
+            <strong>{member.name}</strong>
+            <span className="text-muted text-sm">{member.email}</span>
+          </div>
+          <div className="member-row__role">
+            <select
+              value={member.role}
+              onChange={(e) => handleRoleChange(member, e.target.value)}
+              className="role-select"
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div className="member-row__perms">
+            {Object.entries(PERM_LABELS).map(([key, label]) => (
+              <label key={key} className="perm-chip" title={label}>
+                <input
+                  type="checkbox"
+                  checked={!!member[key]}
+                  onChange={() => handleTogglePerm(member, key)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <button className="btn btn-danger btn-sm" onClick={() => handleRemove(member)}>Remove</button>
+        </div>
+      ))}
+
+      {pending.length > 0 && (
+        <div className="pending-invitations">
+          <h5 className="text-muted" style={{ margin: '12px 0 4px' }}>Pending Invitations</h5>
+          {pending.map(inv => (
+            <div key={inv.id} className="member-row member-row--pending">
+              <div className="member-row__info">
+                <strong>{inv.name}</strong>
+                <span className="text-muted text-sm">{inv.email}</span>
+              </div>
+              <span className="text-muted text-sm">Invited by {inv.invited_by_name}</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleCancelInvitation(inv)}>Cancel</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Inline Teams for an Organization ---
 
 function OrgTeams({ orgId }) {
   const navigate = useNavigate();
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedTeam, setExpandedTeam] = useState(null);
 
   const loadTeams = useCallback(async () => {
     setLoading(true);
@@ -206,28 +448,34 @@ function OrgTeams({ orgId }) {
       {!loading && teams.length > 0 && (
         <ul className="settings-item-list compact">
           {teams.map(team => (
-            <li key={team.id} className="settings-item">
-              <div style={{ flex: 1 }}>
-                <span>{team.name}</span>
-                <span className="text-muted text-sm" style={{ marginLeft: 8 }}>
-                  Created: {new Date(team.created_at).toLocaleDateString()}
-                </span>
+            <li key={team.id} className="settings-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandedTeam(prev => prev === team.id ? null : team.id)}>
+                  <span style={{ fontSize: '0.8em', marginRight: 6 }}>{expandedTeam === team.id ? '▾' : '▸'}</span>
+                  <span>{team.name}</span>
+                  <span className="text-muted text-sm" style={{ marginLeft: 8 }}>
+                    Created: {new Date(team.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="card__actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => navigate(`/projects?team=${team.id}`)}
+                  >
+                    Projects
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => showModal(<RenameTeamModal team={team} onRenamed={loadTeams} />, 'modal-md')}
+                  >
+                    Rename
+                  </button>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleDeleteTeam(team)}>Delete</button>
+                </div>
               </div>
-              <div className="card__actions" onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => navigate(`/projects?team=${team.id}`)}
-                >
-                  Projects
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => showModal(<RenameTeamModal team={team} onRenamed={loadTeams} />, 'modal-md')}
-                >
-                  Rename
-                </button>
-                <button className="btn btn-danger btn-sm" onClick={() => handleDeleteTeam(team)}>Delete</button>
-              </div>
+              {expandedTeam === team.id && (
+                <TeamMembersPanel teamId={team.id} />
+              )}
             </li>
           ))}
         </ul>

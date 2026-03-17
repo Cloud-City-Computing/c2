@@ -2,6 +2,8 @@
 -- This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
 -- It defines the necessary tables and their relationships.
 
+DROP TABLE IF EXISTS team_invitations;
+DROP TABLE IF EXISTS team_members;
 DROP TABLE IF EXISTS versions;
 DROP TABLE IF EXISTS pages;
 DROP TABLE IF EXISTS projects;
@@ -66,6 +68,42 @@ CREATE TABLE team_permissions (
   create_page BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
   UNIQUE KEY (team_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE team_members (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  team_id INT NOT NULL,
+  user_id INT NOT NULL,
+  role ENUM('member', 'admin') DEFAULT 'member',
+  can_read BOOLEAN DEFAULT TRUE,
+  can_write BOOLEAN DEFAULT FALSE,
+  can_create_page BOOLEAN DEFAULT FALSE,
+  can_create_project BOOLEAN DEFAULT FALSE,
+  can_manage_members BOOLEAN DEFAULT FALSE,
+  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_team_user (team_id, user_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE team_invitations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  team_id INT NOT NULL,
+  invited_by INT NOT NULL,
+  invited_user_id INT NOT NULL,
+  role ENUM('member', 'admin') DEFAULT 'member',
+  can_read BOOLEAN DEFAULT TRUE,
+  can_write BOOLEAN DEFAULT FALSE,
+  can_create_page BOOLEAN DEFAULT FALSE,
+  can_create_project BOOLEAN DEFAULT FALSE,
+  can_manage_members BOOLEAN DEFAULT FALSE,
+  status ENUM('pending', 'accepted', 'declined') DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  responded_at TIMESTAMP NULL,
+  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+  FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (invited_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_invitation (team_id, invited_user_id, status)
 ) ENGINE=InnoDB;
 
 CREATE TABLE projects (

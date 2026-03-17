@@ -95,6 +95,21 @@ export const updatePermissions = (userId, perms) => apiFetch('PUT', `/api/permis
 export const fetchTeamPermissions = (teamId) => apiFetch('GET', `/api/teams/${teamId}/permissions`);
 export const updateTeamPermissions = (teamId, perms) => apiFetch('PUT', `/api/teams/${teamId}/permissions`, perms);
 
+// --- Team Member APIs ---
+
+export const fetchTeamMembers = (teamId) => apiFetch('GET', `/api/teams/${teamId}/members`);
+export const inviteTeamMember = (teamId, data) => apiFetch('POST', `/api/teams/${teamId}/members/invite`, data);
+export const updateTeamMember = (teamId, userId, data) => apiFetch('PUT', `/api/teams/${teamId}/members/${userId}`, data);
+export const removeTeamMember = (teamId, userId) => apiFetch('DELETE', `/api/teams/${teamId}/members/${userId}`);
+
+// --- Invitation APIs ---
+
+export const fetchMyInvitations = () => apiFetch('GET', '/api/invitations');
+export const fetchTeamInvitations = (teamId) => apiFetch('GET', `/api/teams/${teamId}/invitations`);
+export const acceptInvitation = (invId) => apiFetch('POST', `/api/invitations/${invId}/accept`);
+export const declineInvitation = (invId) => apiFetch('POST', `/api/invitations/${invId}/decline`);
+export const cancelInvitation = (invId) => apiFetch('DELETE', `/api/invitations/${invId}`);
+
 // --- User Search API ---
 
 export const searchUsers = (q) => apiFetch('GET', `/api/users/search?q=${encodeURIComponent(q)}`);
