@@ -80,7 +80,7 @@ function NoLoginMessage() {
 
 // --- Layout ---
 
-function StdLayout({ children }) {
+function StdLayout({ children, leftMargin }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -107,7 +107,13 @@ function StdLayout({ children }) {
     <div className="app-shell">
       <AppHeader user={user} />
       <main className="main-page-content">
-        <div className="page-margin" id="std-left" />
+        <div className="page-margin" id="std-left">
+          {leftMargin && (
+            <div className="account-menu-container">
+              {leftMargin}
+            </div>
+          )}
+        </div>
         <div className="page-container" id="searchPageContainer">
           {authChecked && (user ? children : <NoLoginMessage />)}
         </div>
