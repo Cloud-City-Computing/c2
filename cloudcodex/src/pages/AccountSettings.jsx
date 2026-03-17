@@ -1,13 +1,16 @@
-import { useState } from 'react';
 import StdLayout from '../page_layouts/Std_Layout';
-import AccountMenu, { AccountInfoUpdatePanel } from '../components/AccountMenu';
+import { AccountInfoUpdatePanel, AccountPreferencesPanel } from '../components/AccountMenu';
 
 function AccountSettings() {
-  const [activePanel, setActivePanel] = useState(<AccountInfoUpdatePanel />);
-
   return (
-    <StdLayout leftMargin={<AccountMenu onPanelChange={setActivePanel} />}>
-      {activePanel}
+    <StdLayout>
+      <div className="account-page">
+        <h1 className="page-heading">Account Management</h1>
+        <div className="account-page__panels">
+          <AccountInfoUpdatePanel />
+          <AccountPreferencesPanel />
+        </div>
+      </div>
     </StdLayout>
   );
 }

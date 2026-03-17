@@ -13,16 +13,4 @@
     <div id="modal-dimmer" style="display: none;"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
-  <script>
-    document.addEventListener( 'DOMContentLoaded', () => {
-      const footer = document.createElement( 'footer' );
-      footer.className = 'page-footer';
-      footer.innerHTML = `
-        <div class="page-footer-content">
-          <p>&copy; ${ new Date().getFullYear() } <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
-        </div>
-      `;
-      document.body.insertAdjacentElement( 'afterend', footer );
-    } );
-  </script>
 </html>

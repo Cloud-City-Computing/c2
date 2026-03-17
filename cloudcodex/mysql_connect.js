@@ -46,23 +46,33 @@ function createNewSessionToken(length = 64) {
  * Returns a valid session token for the given user, reusing an existing
  * non-expired session or creating/refreshing one as needed.
  * @param { Object } user - Must contain an `id` property
+ * @param { string } [ip] - Client IP address
+ * @param { string } [userAgent] - Client User-Agent header
  * @returns { Promise<String> }
  */
-export async function generateSessionToken(user) {
+export async function generateSessionToken(user, ip = null, userAgent = null) {
   const [session] = await c2_query(
     `SELECT id, expires_at FROM sessions WHERE user_id = ? LIMIT 1`,
     [user.id]
   );
 
   if (session) {
-    if (session.expires_at > new Date()) return session.id; // still valid
+    if (session.expires_at > new Date()) {
+      // Update metadata on reuse
+      await c2_query(
+        `UPDATE sessions SET ip_address = ?, user_agent = ?, last_active_at = NOW() WHERE id = ?`,
+        [ip, userAgent, session.id]
+      );
+      return session.id;
+    }
 
     // Expired — refresh in place
     const newToken = createNewSessionToken();
     await c2_query(
-      `UPDATE sessions SET id = ?, created_at = NOW(), expires_at = DATE_ADD(NOW(), INTERVAL 7 DAY)
+      `UPDATE sessions SET id = ?, created_at = NOW(), expires_at = DATE_ADD(NOW(), INTERVAL 7 DAY),
+       ip_address = ?, user_agent = ?, last_active_at = NOW()
        WHERE id = ? AND user_id = ?`,
-      [newToken, session.id, user.id]
+      [newToken, ip, userAgent, session.id, user.id]
     );
     return newToken;
   }
@@ -70,9 +80,9 @@ export async function generateSessionToken(user) {
   // No session — create one
   const token = createNewSessionToken();
   await c2_query(
-    `INSERT INTO sessions (user_id, id, created_at, expires_at)
-     VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))`,
-    [user.id, token]
+    `INSERT INTO sessions (user_id, id, created_at, expires_at, ip_address, user_agent)
+     VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), ?, ?)`,
+    [user.id, token, ip, userAgent]
   );
   return token;
 }
@@ -97,4 +107,16 @@ export async function validateAndAutoLogin(sessionToken) {
   );
 
   return user ?? null;
+}
+
+/**
+ * Updates last_active_at for a session token to track user activity.
+ * @param { String } sessionToken
+ */
+export async function touchSession(sessionToken) {
+  if (!sessionToken) return;
+  await c2_query(
+    `UPDATE sessions SET last_active_at = NOW() WHERE id = ?`,
+    [sessionToken]
+  );
 }

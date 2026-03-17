@@ -1,12 +1,11 @@
-/**
-* SQL script to initialize the database schema.
-* This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
-* It defines the necessary tables and their relationships.
-*/
+-- SQL script to initialize the database schema.
+-- This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
+-- It defines the necessary tables and their relationships.
 
 DROP TABLE IF EXISTS versions;
 DROP TABLE IF EXISTS pages;
 DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS team_permissions;
 DROP TABLE IF EXISTS permissions;
 DROP TABLE IF EXISTS teams;
 DROP TABLE IF EXISTS users;
@@ -58,6 +57,15 @@ CREATE TABLE permissions (
   create_project BOOLEAN DEFAULT FALSE,
   create_page BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE team_permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  team_id INT NOT NULL,
+  create_project BOOLEAN DEFAULT FALSE,
+  create_page BOOLEAN DEFAULT TRUE,
+  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+  UNIQUE KEY (team_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE projects (

@@ -1,18 +1,19 @@
 services:
   database:
-    image: 'postgres:17.6'
+    image: 'mysql:8'
     ports:
-      - 15432:5432
+      - 3306:3306
     environment:
-      POSTGRES_PASSWORD: password123
-      POSTGRES_USER: admin
-      POSTGRES_DB: codex_db
+      MYSQL_ROOT_PASSWORD: password123
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_DATABASE: c2
     networks:
-      - postgres-network
+      - mysql-network
     volumes:
-      - ${PWD}/db-data/:/var/lib/postgresql/data/
-      - ${PWD}/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db-data/:/var/lib/mysql/
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
-networks: 
-  postgres-network:
+networks:
+  mysql-network:
     driver: bridge

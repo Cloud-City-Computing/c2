@@ -6,7 +6,8 @@
  */
 
 import express from 'express';
-import { c2_query, validateAndAutoLogin } from '../mysql_connect.js';
+import { c2_query } from '../mysql_connect.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -20,19 +21,10 @@ const asyncHandler = (fn) => (req, res, next) =>
 
 /**
  * GET /api/search?query=<string>&limit=<number>
+ * Filtered to pages in projects where the user has read_access
  */
-router.get('/search', asyncHandler(async (req, res) => {
-  const { query = '', token, limit: rawLimit } = req.query;
-
-  // Authenticate — search should not be publicly accessible
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const sessionUser = await validateAndAutoLogin(token);
-  if (!sessionUser) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
+router.get('/search', requireAuth, asyncHandler(async (req, res) => {
+  const { query = '', limit: rawLimit } = req.query;
 
   // Reject empty searches before hitting the DB
   const trimmed = query.trim();
@@ -51,20 +43,22 @@ router.get('/search', asyncHandler(async (req, res) => {
   // Optional caller-controlled limit, capped at RESULTS_LIMIT
   const limit = Math.min(Math.max(parseInt(rawLimit) || RESULTS_LIMIT, 1), RESULTS_LIMIT);
 
-  // Strip html tags from html_content to return clean plaintext excerpts,
-  // and truncate to avoid sending entire page content over the wire
+  // Only return pages in projects the user can read
   const results = await c2_query(
     `SELECT p.id,
             p.title,
             p.created_at,
             u.name AS author,
+            pr.name AS project_name,
             LEFT(REGEXP_REPLACE(p.html_content, '<[^>]+>', ''), 200) AS excerpt
     FROM pages p
     LEFT JOIN users u ON p.created_by = u.id
-    WHERE p.title LIKE ? OR p.html_content LIKE ?
+    INNER JOIN projects pr ON p.project_id = pr.id
+    WHERE (p.title LIKE ? OR p.html_content LIKE ?)
+      AND (JSON_CONTAINS(pr.read_access, ?) OR pr.created_by = ?)
     ORDER BY p.created_at DESC
     LIMIT ${limit}`,
-    [`%${trimmed}%`, `%${trimmed}%`]
+    [`%${trimmed}%`, `%${trimmed}%`, JSON.stringify(req.user.id), req.user.id]
   );
 
   res.json({ results });

@@ -7,6 +7,7 @@
 
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -19,8 +20,9 @@ const asyncHandler = (fn) => (req, res, next) =>
 
 /**
  * GET /api/document?doc_id=<id>
+ * Requires auth; checks user read_access on parent project
  */
-router.get('/document', asyncHandler(async (req, res) => {
+router.get('/document', requireAuth, asyncHandler(async (req, res) => {
   const { doc_id } = req.query;
 
   if (!doc_id || !isValidId(doc_id)) {
@@ -28,20 +30,27 @@ router.get('/document', asyncHandler(async (req, res) => {
   }
 
   const docs = await c2_query(
-    `SELECT pages.html_content,
-            pages.created_at,
-            pages.title,
-            users.name,
-            users.email
-       FROM pages
- INNER JOIN users ON pages.created_by = users.id
-      WHERE pages.id = ?
+    `SELECT pg.id,
+            pg.html_content,
+            pg.created_at,
+            pg.updated_at,
+            pg.title,
+            pg.version,
+            pg.project_id,
+            u.name,
+            u.email,
+            p.name AS project_name
+       FROM pages pg
+ INNER JOIN users u ON pg.created_by = u.id
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND (JSON_CONTAINS(p.read_access, ?) OR p.created_by = ?)
       LIMIT 1`,
-    [Number(doc_id)]
+    [Number(doc_id), JSON.stringify(req.user.id), req.user.id]
   );
 
   if (!docs.length) {
-    return res.status(404).json({ message: 'Document not found' });
+    return res.status(404).json({ message: 'Document not found or access denied' });
   }
 
   res.json({ document: docs[0] });
@@ -50,8 +59,10 @@ router.get('/document', asyncHandler(async (req, res) => {
 /**
  * POST /api/save-document
  * Body: { doc_id: number, html_content: string }
+ * Requires auth; checks user write_access on parent project.
+ * Snapshots the previous version into the versions table.
  */
-router.post('/save-document', asyncHandler(async (req, res) => {
+router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   const { doc_id, html_content } = req.body;
 
   if (!doc_id || !isValidId(doc_id)) {
@@ -62,16 +73,195 @@ router.post('/save-document', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing html_content' });
   }
 
-  const { affectedRows } = await c2_query(
-    `UPDATE pages SET html_content = ?, updated_at = NOW() WHERE id = ?`,
-    [html_content, Number(doc_id)]
+  // Fetch existing page and verify write access
+  const [page] = await c2_query(
+    `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.project_id
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND (JSON_CONTAINS(p.write_access, ?) OR p.created_by = ?)
+      LIMIT 1`,
+    [Number(doc_id), JSON.stringify(req.user.id), req.user.id]
   );
 
-  if (!affectedRows) {
-    return res.status(404).json({ success: false, message: 'Document not found' });
+  if (!page) {
+    return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
 
+  // Snapshot current version before overwriting
+  await c2_query(
+    `INSERT INTO versions (page_id, version, html_content, created_by)
+     VALUES (?, ?, ?, ?)`,
+    [page.id, page.version, page.old_content, req.user.id]
+  );
+
+  // Update page with new content and bump version
+  const newVersion = page.version + 1;
+  await c2_query(
+    `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+    [html_content, newVersion, req.user.id, Number(doc_id)]
+  );
+
+  res.json({ success: true, version: newVersion });
+}));
+
+/**
+ * PUT /api/document/:pageId/title
+ * Body: { title: string }
+ * Update page title (requires write access)
+ */
+router.put('/document/:pageId/title', requireAuth, asyncHandler(async (req, res) => {
+  const { pageId } = req.params;
+  if (!isValidId(pageId)) {
+    return res.status(400).json({ success: false, message: 'Invalid page ID' });
+  }
+
+  const { title } = req.body;
+  if (!title?.trim()) {
+    return res.status(400).json({ success: false, message: 'Title is required' });
+  }
+
+  const [page] = await c2_query(
+    `SELECT pg.id
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND (JSON_CONTAINS(p.write_access, ?) OR p.created_by = ?)
+      LIMIT 1`,
+    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+  );
+
+  if (!page) {
+    return res.status(403).json({ success: false, message: 'Page not found or write access denied' });
+  }
+
+  await c2_query(`UPDATE pages SET title = ? WHERE id = ?`, [title.trim(), Number(pageId)]);
   res.json({ success: true });
+}));
+
+/**
+ * GET /api/document/:pageId/versions
+ * List all versions for a page
+ */
+router.get('/document/:pageId/versions', requireAuth, asyncHandler(async (req, res) => {
+  const { pageId } = req.params;
+  if (!isValidId(pageId)) {
+    return res.status(400).json({ success: false, message: 'Invalid page ID' });
+  }
+
+  // Verify read access
+  const [page] = await c2_query(
+    `SELECT pg.id
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND (JSON_CONTAINS(p.read_access, ?) OR p.created_by = ?)
+      LIMIT 1`,
+    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+  );
+  if (!page) {
+    return res.status(403).json({ success: false, message: 'Access denied' });
+  }
+
+  const versions = await c2_query(
+    `SELECT v.id, v.version, v.created_at, u.name AS created_by
+       FROM versions v
+  LEFT JOIN users u ON v.created_by = u.id
+      WHERE v.page_id = ?
+   ORDER BY v.version DESC`,
+    [Number(pageId)]
+  );
+
+  res.json({ success: true, versions });
+}));
+
+/**
+ * GET /api/document/:pageId/versions/:versionId
+ * Get a specific version's content
+ */
+router.get('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(async (req, res) => {
+  const { pageId, versionId } = req.params;
+  if (!isValidId(pageId) || !isValidId(versionId)) {
+    return res.status(400).json({ success: false, message: 'Invalid IDs' });
+  }
+
+  // Verify read access
+  const [page] = await c2_query(
+    `SELECT pg.id
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND (JSON_CONTAINS(p.read_access, ?) OR p.created_by = ?)
+      LIMIT 1`,
+    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+  );
+  if (!page) {
+    return res.status(403).json({ success: false, message: 'Access denied' });
+  }
+
+  const [version] = await c2_query(
+    `SELECT v.id, v.version, v.html_content, v.created_at, u.name AS created_by
+       FROM versions v
+  LEFT JOIN users u ON v.created_by = u.id
+      WHERE v.id = ? AND v.page_id = ?
+      LIMIT 1`,
+    [Number(versionId), Number(pageId)]
+  );
+
+  if (!version) {
+    return res.status(404).json({ success: false, message: 'Version not found' });
+  }
+
+  res.json({ success: true, version });
+}));
+
+/**
+ * POST /api/document/:pageId/versions/:versionId/restore
+ * Restore a page to a previous version (creates new version snapshot of current)
+ */
+router.post('/document/:pageId/versions/:versionId/restore', requireAuth, asyncHandler(async (req, res) => {
+  const { pageId, versionId } = req.params;
+  if (!isValidId(pageId) || !isValidId(versionId)) {
+    return res.status(400).json({ success: false, message: 'Invalid IDs' });
+  }
+
+  // Verify write access and get current content
+  const [currentPage] = await c2_query(
+    `SELECT pg.id, pg.html_content, pg.version
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND (JSON_CONTAINS(p.write_access, ?) OR p.created_by = ?)
+      LIMIT 1`,
+    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+  );
+  if (!currentPage) {
+    return res.status(403).json({ success: false, message: 'Write access denied' });
+  }
+
+  // Fetch the version to restore
+  const [targetVersion] = await c2_query(
+    `SELECT html_content FROM versions WHERE id = ? AND page_id = ? LIMIT 1`,
+    [Number(versionId), Number(pageId)]
+  );
+  if (!targetVersion) {
+    return res.status(404).json({ success: false, message: 'Version not found' });
+  }
+
+  // Snapshot current before restoring
+  await c2_query(
+    `INSERT INTO versions (page_id, version, html_content, created_by)
+     VALUES (?, ?, ?, ?)`,
+    [currentPage.id, currentPage.version, currentPage.html_content, req.user.id]
+  );
+
+  const newVersion = currentPage.version + 1;
+  await c2_query(
+    `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+    [targetVersion.html_content, newVersion, req.user.id, Number(pageId)]
+  );
+
+  res.json({ success: true, version: newVersion });
 }));
 
 router.use((err, req, res, _next) => {

@@ -1,51 +1,29 @@
 /**
- * Cloud Codex - Login Component
- * 
+ * Cloud Codex - Account Panel Component
+ *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 
-import { removeSessStorage, serverReq, getSessionTokenFromCookie, standardRedirect } from "../util";
+import { removeSessStorage, apiFetch } from '../util';
 
-/**
- * Performs logout by sending a request to the server and clearing session data on the client.
- * On successful logout, it reloads the page to update the UI.
- * @returns { void }
- */
 async function performLogout() {
-  const response = await serverReq( 'POST', '/api/logout', { token: getSessionTokenFromCookie() } );
-  if ( response.success ) {
-    // Clear session storage and cookies
-    removeSessStorage( 'currentUser' );
-    document.cookie = 'sessionToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    alert( 'Logged out successfully.' );
-    standardRedirect( "/" );
-  }
+  try {
+    await apiFetch('POST', '/api/logout', {});
+  } catch { /* best-effort */ }
+  removeSessStorage('currentUser');
+  document.cookie = 'sessionToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+  window.location.href = '/';
 }
 
-/**
- * Performs Navigation to account settings
- * @returns { void }
- */
-function navigateToAccountSettings() {
-  window.location.href = '/account';
-}
-
-/**
- * Logout component that displays user information and a logout button in a dropdown menu.
- * @param { JSON } id - User ID
- * @param { JSON } name - User name
- * @param { JSON } email - User email
- * @returns { JSX.Element } - The AccountPanel component JSX
- */
-function AccountPanel( { id, name, email } ) {
+function AccountPanel({ id, name, email }) {
   return (
     <div className="dropdown-menu">
-      <p className="text-center"><strong>{ name }</strong> ({ email })</p>
+      <p className="text-center"><strong>{name}</strong> ({email})</p>
       <hr />
       <div className="button-group">
-        <button className="c2-btn stretched-button" onClick={ () => navigateToAccountSettings() }>Account Settings</button>
-        <button className="c2-btn stretched-button" onClick={ () => performLogout() }>Logout</button>
+        <button className="btn btn-ghost stretched-button" onClick={() => { window.location.href = '/account'; }}>Account Settings</button>
+        <button className="btn btn-ghost stretched-button" onClick={performLogout}>Logout</button>
       </div>
     </div>
   );

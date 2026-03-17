@@ -55,7 +55,13 @@ router.post('/create-account', asyncHandler(async (req, res) => {
   );
 
   const user = { id: result.insertId, name: username };
-  const sessionToken = await generateSessionToken(user);
+  const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
+
+  // Create default permissions row for new user
+  await c2_query(
+    `INSERT INTO permissions (user_id, create_team, create_project, create_page) VALUES (?, TRUE, TRUE, TRUE)`,
+    [result.insertId]
+  );
 
   res.status(201).json({ success: true, token: sessionToken, user });
 }));
@@ -143,7 +149,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   }
 
   const { password_hash: _, ...user } = users[0]; // strip hash from response
-  const sessionToken = await generateSessionToken(user);
+  const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
 
   res.json({ success: true, token: sessionToken, user });
 }));
@@ -211,7 +217,197 @@ router.post('/get-user', asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
-  res.json({ success: true, user: rows[0] });
+  // Include permissions
+  const [perms] = await c2_query(
+    `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+    [Number(userId)]
+  );
+
+  res.json({
+    success: true,
+    user: rows[0],
+    permissions: perms || { create_team: false, create_project: false, create_page: true }
+  });
+}));
+
+/**
+ * GET /api/users/search?q=...
+ * Search for users by name or email (authenticated, min 2 chars)
+ */
+router.get('/users/search', asyncHandler(async (req, res) => {
+  const token =
+    req.headers['authorization']?.replace('Bearer ', '') ||
+    null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const user = await validateAndAutoLogin(token);
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+  }
+
+  const q = (req.query.q || '').trim();
+  if (q.length < 2) {
+    return res.json({ success: true, users: [] });
+  }
+
+  const pattern = `%${q}%`;
+  const users = await c2_query(
+    `SELECT id, name, email FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY name ASC LIMIT 10`,
+    [pattern, pattern]
+  );
+
+  res.json({ success: true, users });
+}));
+
+/**
+ * GET /api/permissions
+ * Returns the authenticated user's permissions
+ */
+router.get('/permissions', asyncHandler(async (req, res) => {
+  const token =
+    req.headers['authorization']?.replace('Bearer ', '') ||
+    req.body?.token ||
+    null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const user = await validateAndAutoLogin(token);
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+  }
+
+  const [perms] = await c2_query(
+    `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+    [user.id]
+  );
+
+  res.json({
+    success: true,
+    permissions: perms || { create_team: false, create_project: false, create_page: true }
+  });
+}));
+
+/**
+ * GET /api/permissions/:userId
+ * Returns a specific user's permissions (org owners only, or self)
+ */
+router.get('/permissions/:userId', asyncHandler(async (req, res) => {
+  const token =
+    req.headers['authorization']?.replace('Bearer ', '') ||
+    null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const caller = await validateAndAutoLogin(token);
+  if (!caller) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+  }
+
+  const { userId } = req.params;
+  if (!isValidId(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid userId' });
+  }
+
+  const targetId = Number(userId);
+
+  // Allow self or org owners
+  if (caller.id !== targetId) {
+    const orgs = await c2_query(
+      `SELECT id FROM organizations WHERE owner = ? LIMIT 1`,
+      [caller.email]
+    );
+    if (!orgs.length) {
+      return res.status(403).json({ success: false, message: 'Only organization owners can view other users\' permissions' });
+    }
+  }
+
+  const [perms] = await c2_query(
+    `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+    [targetId]
+  );
+
+  res.json({
+    success: true,
+    permissions: perms || { create_team: false, create_project: false, create_page: true }
+  });
+}));
+
+/**
+ * PUT /api/permissions/:userId
+ * Update a user's permissions (only org owners can update permissions for users in their orgs)
+ * Body: { create_team?, create_project?, create_page? }
+ */
+router.put('/permissions/:userId', asyncHandler(async (req, res) => {
+  const token =
+    req.headers['authorization']?.replace('Bearer ', '') ||
+    req.body?.token ||
+    null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const caller = await validateAndAutoLogin(token);
+  if (!caller) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+  }
+
+  const { userId } = req.params;
+  if (!isValidId(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid userId' });
+  }
+
+  const targetId = Number(userId);
+
+  // Users can update their own permissions, or org owners can update others'
+  if (caller.id !== targetId) {
+    // Check if caller owns any org — only org owners can modify others' permissions
+    const orgs = await c2_query(
+      `SELECT id FROM organizations WHERE owner = ? LIMIT 1`,
+      [caller.email]
+    );
+    if (!orgs.length) {
+      return res.status(403).json({ success: false, message: 'Only organization owners can update other users\' permissions' });
+    }
+  }
+
+  const { create_team, create_project, create_page } = req.body;
+  const fields = [];
+  const params = [];
+
+  if (create_team !== undefined)    { fields.push('create_team = ?');    params.push(!!create_team);    }
+  if (create_project !== undefined) { fields.push('create_project = ?'); params.push(!!create_project); }
+  if (create_page !== undefined)    { fields.push('create_page = ?');    params.push(!!create_page);    }
+
+  if (!fields.length) {
+    return res.status(400).json({ success: false, message: 'No permission fields provided' });
+  }
+
+  params.push(targetId);
+
+  // Upsert — create row if missing
+  const [existing] = await c2_query(
+    `SELECT id FROM permissions WHERE user_id = ? LIMIT 1`,
+    [targetId]
+  );
+
+  if (existing) {
+    await c2_query(`UPDATE permissions SET ${fields.join(', ')} WHERE user_id = ?`, params);
+  } else {
+    await c2_query(
+      `INSERT INTO permissions (user_id, create_team, create_project, create_page) VALUES (?, ?, ?, ?)`,
+      [targetId, !!create_team, !!create_project, create_page !== false]
+    );
+  }
+
+  res.json({ success: true });
 }));
 
 // --- Centralized error handler ---

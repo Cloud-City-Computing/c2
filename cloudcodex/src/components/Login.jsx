@@ -6,16 +6,31 @@
  */
 
 import { useState } from 'react';
-import { destroyModal, showModal, serverReq } from '../util';
+import { destroyModal, serverReq } from '../util';
 
-function CreateAccountForm() {
+export default function Login() {
+  const [tab, setTab] = useState('login'); // 'login' | 'signup'
   const [fields, setFields] = useState({ username: '', email: '', password: '' });
   const [error, setError] = useState(null);
 
   const handleChange = (e) => setFields(f => ({ ...f, [e.target.name]: e.target.value }));
 
-  const handleSubmit = async () => {
+  const switchTab = (t) => { setTab(t); setError(null); };
+
+  const handleLogin = async () => {
     setError(null);
+    const res = await serverReq('POST', '/api/login', { username: fields.username, password: fields.password });
+    if (res.success) {
+      document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+      window.location.reload();
+    } else {
+      setError(res.message ?? 'Login failed.');
+    }
+  };
+
+  const handleSignup = async () => {
+    setError(null);
+    if (!fields.username || !fields.email || !fields.password) { setError('All fields are required.'); return; }
     const res = await serverReq('POST', '/api/create-account', fields);
     if (res.success) {
       document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
@@ -25,60 +40,33 @@ function CreateAccountForm() {
     }
   };
 
+  const handleSubmit = tab === 'login' ? handleLogin : handleSignup;
+
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>Create Account</h2>
-      {error && <p className="form-error">{error}</p>}
-      <div className="login-form">
-        <label htmlFor="new-username">Username:</label>
-        <input type="text" id="new-username" name="username" value={fields.username} onChange={handleChange} required />
-        <label htmlFor="new-email">Email:</label>
-        <input type="email" id="new-email" name="email" value={fields.email} onChange={handleChange} required />
-        <label htmlFor="new-password">Password:</label>
-        <input type="password" id="new-password" name="password" value={fields.password} onChange={handleChange} required />
-        <button type="button" className="c2-btn stretched-button" onClick={handleSubmit}>
-          Create Account
-        </button>
+      <div className="login-tabs">
+        <button className={`login-tab ${tab === 'login' ? 'active' : ''}`} onClick={() => switchTab('login')}>Login</button>
+        <button className={`login-tab ${tab === 'signup' ? 'active' : ''}`} onClick={() => switchTab('signup')}>Sign Up</button>
       </div>
-    </div>
-  );
-}
-
-export default function Login() {
-  const [fields, setFields] = useState({ username: '', password: '' });
-  const [error, setError] = useState(null);
-
-  const handleChange = (e) => setFields(f => ({ ...f, [e.target.name]: e.target.value }));
-
-  const handleLogin = async () => {
-    setError(null);
-    const res = await serverReq('POST', '/api/login', fields);
-    if (res.success) {
-      document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
-      window.location.reload();
-    } else {
-      setError(res.message ?? 'Login failed.');
-    }
-  };
-
-  const handleCreateAccount = () => {
-    destroyModal();
-    showModal(<CreateAccountForm />, 'modal-md');
-  };
-
-  return (
-    <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>Login</h2>
       {error && <p className="form-error">{error}</p>}
-      <div className="login-form">
+      <div className="modal-form">
         <label htmlFor="username">Username:</label>
-        <input type="text" id="username" name="username" value={fields.username} onChange={handleChange} />
+        <input type="text" id="username" name="username" value={fields.username} onChange={handleChange}
+          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
+        {tab === 'signup' && (
+          <>
+            <label htmlFor="email">Email:</label>
+            <input type="email" id="email" name="email" value={fields.email} onChange={handleChange}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
+          </>
+        )}
         <label htmlFor="password">Password:</label>
-        <input type="password" id="password" name="password" value={fields.password} onChange={handleChange} />
-        <button className="c2-btn stretched-button" onClick={handleLogin}>Login</button>
-        <button className="c2-btn stretched-button" onClick={handleCreateAccount}>Create Account</button>
+        <input type="password" id="password" name="password" value={fields.password} onChange={handleChange}
+          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
+        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>
+          {tab === 'login' ? 'Login' : 'Create Account'}
+        </button>
       </div>
     </div>
   );
