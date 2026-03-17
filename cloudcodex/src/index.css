@@ -1519,6 +1519,16 @@ body {
   display: flex;
   gap: 10px;
   margin-bottom: 16px;
+  align-items: center;
+}
+
+.editor-mode-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 2px;
 }
 
 .editor-status {
@@ -1572,6 +1582,166 @@ body {
 .editor-container .jodit-wysiwyg::-webkit-scrollbar { width: 6px; }
 .editor-container .jodit-wysiwyg::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
 .editor-container .jodit-wysiwyg::-webkit-scrollbar-track { background: transparent; }
+
+/* =========================
+   Markdown Editor
+========================= */
+
+.markdown-editor {
+  display: flex;
+  gap: 0;
+  min-height: 420px;
+}
+
+.markdown-editor__pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.markdown-editor__input {
+  border-right: 1px solid var(--border-color);
+}
+
+.markdown-editor__label {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.markdown-editor__textarea {
+  flex: 1;
+  resize: none;
+  padding: 16px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: var(--bg-main);
+  border: none;
+  outline: none;
+  tab-size: 2;
+}
+
+.markdown-editor__textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.markdown-editor__rendered {
+  flex: 1;
+  padding: 16px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  background: var(--bg-main);
+  overflow-y: auto;
+}
+
+.markdown-editor__rendered h1,
+.markdown-editor__rendered h2,
+.markdown-editor__rendered h3,
+.markdown-editor__rendered h4 {
+  margin: 0.8em 0 0.4em;
+  line-height: 1.3;
+}
+
+.markdown-editor__rendered h1 { font-size: 1.8em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
+.markdown-editor__rendered h2 { font-size: 1.4em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.2em; }
+.markdown-editor__rendered h3 { font-size: 1.15em; }
+
+.markdown-editor__rendered p {
+  margin: 0.6em 0;
+}
+
+.markdown-editor__rendered code {
+  background: var(--bg-panel);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.9em;
+}
+
+.markdown-editor__rendered pre {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  overflow-x: auto;
+}
+
+.markdown-editor__rendered pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-editor__rendered blockquote {
+  border-left: 3px solid var(--brand-blue);
+  margin: 0.8em 0;
+  padding: 4px 16px;
+  color: var(--text-secondary);
+  background: rgba(44, 167, 219, 0.05);
+}
+
+.markdown-editor__rendered ul,
+.markdown-editor__rendered ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.markdown-editor__rendered table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+}
+
+.markdown-editor__rendered th,
+.markdown-editor__rendered td {
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  text-align: left;
+}
+
+.markdown-editor__rendered th {
+  background: var(--bg-panel);
+  font-weight: 600;
+}
+
+.markdown-editor__rendered a {
+  color: var(--brand-blue);
+}
+
+.markdown-editor__rendered img {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.markdown-editor__rendered hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1em 0;
+}
+
+@media (max-width: 768px) {
+  .markdown-editor {
+    flex-direction: column;
+  }
+  .markdown-editor__input {
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .markdown-editor__textarea {
+    min-height: 200px;
+  }
+  .editor-mode-toggle {
+    order: -1;
+  }
+}
 
 /* =========================
    Version History

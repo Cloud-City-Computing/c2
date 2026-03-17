@@ -9,6 +9,8 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import JoditEditor from 'jodit-react';
+import { marked } from 'marked';
+import TurndownService from 'turndown';
 import {
   fetchDocument,
   saveDocument,
@@ -18,9 +20,24 @@ import {
   restoreVersion,
 } from '../util';
 
+// Configure marked for safe rendering
+marked.setOptions({ breaks: true, gfm: true });
+
+const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+
+function htmlToMarkdown(html) {
+  if (!html) return '';
+  return turndown.turndown(html);
+}
+
+function markdownToHtml(md) {
+  if (!md) return '';
+  return marked.parse(md);
+}
+
 // --- Jodit Editor wrapper ---
 
-function EditorComponent({ content, setContent }) {
+function RichTextEditor({ content, setContent }) {
   const editor = useRef(null);
   const config = useMemo(() => ({
     readonly: false,
@@ -35,6 +52,76 @@ function EditorComponent({ content, setContent }) {
       config={config}
       onBlur={setContent}
     />
+  );
+}
+
+// --- Markdown Editor with live preview ---
+
+function MarkdownEditor({ content, setContent }) {
+  const [md, setMd] = useState(() => htmlToMarkdown(content));
+  const [preview, setPreview] = useState(() => content || '');
+  const textareaRef = useRef(null);
+  const initializedRef = useRef(false);
+
+  // Sync when content changes externally (e.g. version restore)
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      return;
+    }
+    const newMd = htmlToMarkdown(content);
+    setMd(newMd);
+    setPreview(markdownToHtml(newMd));
+  }, [content]);
+
+  const handleChange = useCallback((e) => {
+    const val = e.target.value;
+    setMd(val);
+    const html = markdownToHtml(val);
+    setPreview(html);
+    setContent(html);
+  }, [setContent]);
+
+  // Tab key inserts spaces instead of changing focus
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const ta = textareaRef.current;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const val = ta.value;
+      const newVal = val.substring(0, start) + '  ' + val.substring(end);
+      setMd(newVal);
+      setPreview(markdownToHtml(newVal));
+      setContent(markdownToHtml(newVal));
+      requestAnimationFrame(() => {
+        ta.selectionStart = ta.selectionEnd = start + 2;
+      });
+    }
+  }, [setContent]);
+
+  return (
+    <div className="markdown-editor">
+      <div className="markdown-editor__pane markdown-editor__input">
+        <div className="markdown-editor__label">Markdown</div>
+        <textarea
+          ref={textareaRef}
+          className="markdown-editor__textarea"
+          value={md}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Write markdown here..."
+          spellCheck={false}
+        />
+      </div>
+      <div className="markdown-editor__pane markdown-editor__preview">
+        <div className="markdown-editor__label">Preview</div>
+        <div
+          className="markdown-editor__rendered"
+          dangerouslySetInnerHTML={{ __html: preview }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -112,6 +199,7 @@ export default function Editor() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
+  const [editorMode, setEditorMode] = useState('richtext'); // 'richtext' | 'markdown'
 
   const loadDocument = useCallback(async () => {
     if (!pageId) return;
@@ -192,6 +280,20 @@ export default function Editor() {
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Document'}
           </button>
+          <div className="editor-mode-toggle">
+            <button
+              className={`btn btn-sm ${editorMode === 'richtext' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setEditorMode('richtext')}
+            >
+              Rich Text
+            </button>
+            <button
+              className={`btn btn-sm ${editorMode === 'markdown' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setEditorMode('markdown')}
+            >
+              Markdown
+            </button>
+          </div>
           <button className="btn btn-ghost" onClick={() => setShowVersions(v => !v)}>
             {showVersions ? 'Hide History' : 'Version History'}
           </button>
@@ -201,7 +303,11 @@ export default function Editor() {
         {showVersions && <VersionHistory pageId={pageId} onRestore={loadDocument} />}
 
         <div className="editor-container">
-          <EditorComponent content={content} setContent={setContent} />
+          {editorMode === 'richtext' ? (
+            <RichTextEditor content={content} setContent={setContent} />
+          ) : (
+            <MarkdownEditor content={content} setContent={setContent} />
+          )}
         </div>
       </div>
     </StdLayout>
