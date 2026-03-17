@@ -1,3 +1,10 @@
+/**
+ * Cloud Codex - Home Page
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';

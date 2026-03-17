@@ -1,3 +1,8 @@
+-- Cloud Codex - Seed Data
+--
+-- All Rights Reserved to Cloud City Computing, LLC 2026
+-- https://cloudcitycomputing.com
+
 DELETE FROM organizations;
 
 -- =========================

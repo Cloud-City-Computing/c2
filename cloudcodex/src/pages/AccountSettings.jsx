@@ -1,3 +1,10 @@
+/**
+ * Cloud Codex - Account Settings Page
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
 import StdLayout from '../page_layouts/Std_Layout';
 import { AccountInfoUpdatePanel, AccountPreferencesPanel, PersonalPermissionsPanel } from '../components/AccountMenu';
 

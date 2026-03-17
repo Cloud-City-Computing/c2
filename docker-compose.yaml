@@ -1,3 +1,8 @@
+# Cloud Codex - Docker Compose Configuration
+#
+# All Rights Reserved to Cloud City Computing, LLC 2026
+# https://cloudcitycomputing.com
+
 services:
   database:
     image: 'mysql:8'

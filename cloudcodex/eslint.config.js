@@ -1,3 +1,10 @@
+/**
+ * Cloud Codex - ESLint Configuration
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'

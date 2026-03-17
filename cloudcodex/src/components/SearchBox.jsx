@@ -1,3 +1,10 @@
+/**
+ * Cloud Codex - Search Box Component
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../util';

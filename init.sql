@@ -1,3 +1,8 @@
+-- Cloud Codex - Database Schema
+--
+-- All Rights Reserved to Cloud City Computing, LLC 2026
+-- https://cloudcitycomputing.com
+
 -- SQL script to initialize the database schema.
 -- This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
 -- It defines the necessary tables and their relationships.

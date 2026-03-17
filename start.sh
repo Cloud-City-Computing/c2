@@ -2,6 +2,9 @@
 # ──────────────────────────────────────────────────────────────
 #  Cloud Codex – WSL Startup Script
 #  Checks dependencies, starts Docker + MySQL, launches the app.
+#
+#  All Rights Reserved to Cloud City Computing, LLC 2026
+#  https://cloudcitycomputing.com
 # ──────────────────────────────────────────────────────────────
 set -euo pipefail
 
