@@ -85,7 +85,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Home', Icon: HomeIcon },
   { to: '/organizations', label: 'Organizations', Icon: OrgIcon },
   { to: '/projects', label: 'Projects', Icon: ProjectIcon },
-  { to: '/settings', label: 'Settings', Icon: SettingsIcon },
+  { to: '/account', label: 'Account', Icon: AccountIcon },
 ];
 
 function Sidebar({ collapsed, onToggle }) {

@@ -1,18 +1,5 @@
-import { useState } from 'react';
-import StdLayout from '../page_layouts/Std_Layout';
-import SettingsMenu from '../components/AccountMenu';
+import { Navigate } from 'react-router-dom';
 
 export default function SettingsPage() {
-  const [activePanel, setActivePanel] = useState(null);
-
-  return (
-    <StdLayout>
-      <div className="settings-layout">
-        <SettingsMenu onPanelChange={setActivePanel} />
-        <div className="settings-layout__content">
-          {activePanel}
-        </div>
-      </div>
-    </StdLayout>
-  );
+  return <Navigate to="/account" replace />;
 }

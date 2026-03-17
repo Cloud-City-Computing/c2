@@ -10,8 +10,6 @@ import Editor from './pages/Editor'
 import AccountSettings from './pages/AccountSettings'
 import ProjectsPage from './pages/ProjectsPage'
 import OrganizationsPage from './pages/OrganizationsPage'
-import TeamsPage from './pages/TeamsPage'
-import SettingsPage from './pages/SettingsPage'
 
 function NotFound() {
   return (
@@ -29,11 +27,11 @@ function App() {
       <Route path="/" element={<HomePage />} />
       <Route path="/editor/:pageId" element={<Editor />} />
       <Route path="/account" element={<AccountSettings />} />
-      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/settings" element={<Navigate to="/account" replace />} />
       <Route path="/projects" element={<ProjectsPage />} />
       <Route path="/projects/:projectId" element={<ProjectsPage />} />
       <Route path="/organizations" element={<OrganizationsPage />} />
-      <Route path="/organizations/:orgId/teams" element={<TeamsPage />} />
+      <Route path="/organizations/:orgId" element={<OrganizationsPage />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/404" replace />} />
     </Routes>

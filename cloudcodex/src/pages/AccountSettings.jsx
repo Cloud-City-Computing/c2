@@ -1,14 +1,15 @@
 import StdLayout from '../page_layouts/Std_Layout';
-import { AccountInfoUpdatePanel, AccountPreferencesPanel } from '../components/AccountMenu';
+import { AccountInfoUpdatePanel, AccountPreferencesPanel, PersonalPermissionsPanel } from '../components/AccountMenu';
 
 function AccountSettings() {
   return (
     <StdLayout>
       <div className="account-page">
-        <h1 className="page-heading">Account Management</h1>
+        <h1 className="page-heading">Account</h1>
         <div className="account-page__panels">
           <AccountInfoUpdatePanel />
           <AccountPreferencesPanel />
+          <PersonalPermissionsPanel />
         </div>
       </div>
     </StdLayout>

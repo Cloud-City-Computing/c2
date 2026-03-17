@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   fetchProjects, createProject, updateProject, deleteProject,
   fetchPages, createPage, updatePage, deletePage,
+  manageProjectAccess, searchUsers,
   showModal, destroyModal,
 } from '../util';
 import ConfirmDialog from './ConfirmDialog';
@@ -194,6 +195,134 @@ function PageTree({ projectId, onPageCreated }) {
   );
 }
 
+// --- User Search (inline for access management) ---
+
+function UserSearchInput({ onSelect, placeholder = 'Search users by name or email...' }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await searchUsers(query.trim());
+        setResults(res.users || []);
+        setOpen(true);
+      } catch { setResults([]); }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleSelect = (user) => {
+    onSelect(user);
+    setQuery('');
+    setResults([]);
+    setOpen(false);
+  };
+
+  return (
+    <div className="user-search">
+      <input
+        type="text"
+        className="user-search__input"
+        placeholder={placeholder}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onFocus={() => results.length && setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+      />
+      {open && results.length > 0 && (
+        <ul className="user-search__results">
+          {results.map(u => (
+            <li key={u.id} className="user-search__item" onMouseDown={() => handleSelect(u)}>
+              <span className="user-search__name">{u.name}</span>
+              <span className="user-search__email">{u.email}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// --- Project Settings (inline) ---
+
+function ProjectSettings({ project, onRenamed }) {
+  const [showSettings, setShowSettings] = useState(false);
+  const [renameValue, setRenameValue] = useState(project.name);
+  const [accessUser, setAccessUser] = useState(null);
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => { setRenameValue(project.name); setStatus(null); setAccessUser(null); }, [project.id, project.name]);
+
+  const handleRename = async () => {
+    if (!renameValue.trim()) return;
+    setStatus(null);
+    try {
+      await updateProject(project.id, renameValue.trim());
+      setStatus({ type: 'success', message: 'Project renamed.' });
+      onRenamed?.();
+    } catch (e) {
+      setStatus({ type: 'error', message: e.body?.message ?? 'Error renaming project.' });
+    }
+  };
+
+  const handleAccess = async (accessType, action) => {
+    if (!accessUser) { setStatus({ type: 'error', message: 'Search and select a user first.' }); return; }
+    try {
+      await manageProjectAccess(project.id, accessUser.id, accessType, action);
+      setStatus({ type: 'success', message: `${action === 'add' ? 'Added' : 'Removed'} ${accessType} access for ${accessUser.name}.` });
+      setAccessUser(null);
+    } catch (e) {
+      setStatus({ type: 'error', message: e.body?.message ?? 'Error updating access.' });
+    }
+  };
+
+  if (!showSettings) {
+    return (
+      <button className="btn btn-ghost btn-sm" onClick={() => setShowSettings(true)}>
+        Settings
+      </button>
+    );
+  }
+
+  return (
+    <div className="project-settings-inline">
+      <div className="project-settings-inline__header">
+        <h4>Project Settings</h4>
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowSettings(false)}>Close</button>
+      </div>
+      {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
+
+      <div className="settings-section">
+        <h4>Rename Project</h4>
+        <div className="inline-form">
+          <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
+          <button className="btn btn-primary btn-sm" onClick={handleRename}>Rename</button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h4>Manage Access</h4>
+        <UserSearchInput onSelect={setAccessUser} placeholder="Search for a user..." />
+        {accessUser && (
+          <div className="access-selected-user">
+            <span className="text-sm">Selected: <strong>{accessUser.name}</strong> ({accessUser.email})</span>
+            <div className="inline-form" style={{ marginTop: 8 }}>
+              <button className="btn btn-primary btn-sm" onClick={() => handleAccess('read', 'add')}>+ Read</button>
+              <button className="btn btn-primary btn-sm" onClick={() => handleAccess('write', 'add')}>+ Write</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleAccess('read', 'remove')}>- Read</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleAccess('write', 'remove')}>- Write</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- Project Browser ---
 
 export default function ProjectBrowser() {
@@ -273,10 +402,13 @@ export default function ProjectBrowser() {
           ? (
             <>
               <div className="project-browser-content-header">
-                <h2 className="panel-title">{activeProject.name}</h2>
-                <p className="text-muted">
-                  Created by {activeProject.created_by} on {new Date(activeProject.created_at).toLocaleDateString()}
-                </p>
+                <div>
+                  <h2 className="panel-title">{activeProject.name}</h2>
+                  <p className="text-muted">
+                    Created by {activeProject.created_by} on {new Date(activeProject.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <ProjectSettings project={activeProject} onRenamed={loadProjects} />
               </div>
               <PageTree key={activeProject.id} projectId={activeProject.id} />
             </>
