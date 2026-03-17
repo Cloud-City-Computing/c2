@@ -11,6 +11,7 @@ import StdLayout from '../page_layouts/Std_Layout';
 import JoditEditor from 'jodit-react';
 import { marked } from 'marked';
 import TurndownService from 'turndown';
+import DOMPurify from 'dompurify';
 import {
   fetchDocument,
   saveDocument,
@@ -23,6 +24,14 @@ import {
 // Configure marked for safe rendering
 marked.setOptions({ breaks: true, gfm: true });
 
+/** Sanitize HTML to prevent XSS — strips scripts, event handlers, and dangerous URIs */
+function sanitizeHtml(html) {
+  if (!html) return '';
+  return DOMPurify.sanitize(html, {
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+  });
+}
+
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
 function htmlToMarkdown(html) {
@@ -32,7 +41,7 @@ function htmlToMarkdown(html) {
 
 function markdownToHtml(md) {
   if (!md) return '';
-  return marked.parse(md);
+  return sanitizeHtml(marked.parse(md));
 }
 
 // --- Jodit Editor wrapper ---
@@ -169,7 +178,7 @@ function VersionHistory({ pageId, onRestore }) {
             <span>v{preview.version_number} — {new Date(preview.saved_at).toLocaleString()}</span>
             <button className="btn btn-ghost btn-sm" onClick={() => setPreview(null)}>Close</button>
           </div>
-          <div className="version-preview__content" dangerouslySetInnerHTML={{ __html: preview.html_content }} />
+          <div className="version-preview__content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html_content) }} />
           <button className="btn btn-primary btn-sm" onClick={() => handleRestore(preview)}>Restore This Version</button>
         </div>
       )}

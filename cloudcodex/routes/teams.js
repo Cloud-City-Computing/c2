@@ -26,6 +26,21 @@ router.get('/organizations/:orgId/teams', requireAuth, asyncHandler(async (req, 
     return res.status(400).json({ success: false, message: 'Invalid organization ID' });
   }
 
+  // Verify user belongs to this org (owner, team creator, team member, or has project access)
+  const [access] = await c2_query(
+    `SELECT 1 FROM organizations o
+     LEFT JOIN teams t ON t.organization_id = o.id
+     LEFT JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
+     LEFT JOIN projects p ON p.team_id = t.id
+     WHERE o.id = ?
+       AND (o.owner = ? OR t.created_by = ? OR tm.id IS NOT NULL OR JSON_CONTAINS(p.read_access, ?))
+     LIMIT 1`,
+    [req.user.id, Number(orgId), req.user.email, req.user.id, JSON.stringify(req.user.id)]
+  );
+  if (!access) {
+    return res.status(403).json({ success: false, message: 'Access denied' });
+  }
+
   const teams = await c2_query(
     `SELECT t.id, t.name, t.created_at, u.name AS created_by
      FROM teams t
@@ -256,11 +271,29 @@ async function canManageTeam(teamId, user) {
 
 /**
  * GET /api/teams/:id/members
- * List members of a team
+ * List members of a team (requires org owner, team creator, or team membership)
  */
 router.get('/teams/:id/members', requireAuth, asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!isValidId(id)) return res.status(400).json({ success: false, message: 'Invalid team ID' });
+
+  // Verify caller has visibility into this team
+  const [team] = await c2_query(
+    `SELECT t.id, t.created_by, o.owner
+     FROM teams t LEFT JOIN organizations o ON t.organization_id = o.id
+     WHERE t.id = ? LIMIT 1`,
+    [Number(id)]
+  );
+  if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+
+  const isOwnerOrCreator = team.owner === req.user.email || team.created_by === req.user.id;
+  if (!isOwnerOrCreator) {
+    const [membership] = await c2_query(
+      `SELECT id FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
+      [Number(id), req.user.id]
+    );
+    if (!membership) return res.status(403).json({ success: false, message: 'Access denied' });
+  }
 
   const members = await c2_query(
     `SELECT tm.id, tm.user_id, u.name, u.email, tm.role,
@@ -407,6 +440,10 @@ router.get('/invitations', requireAuth, asyncHandler(async (req, res) => {
 router.get('/teams/:id/invitations', requireAuth, asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!isValidId(id)) return res.status(400).json({ success: false, message: 'Invalid team ID' });
+
+  const { team, allowed } = await canManageTeam(Number(id), req.user);
+  if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+  if (!allowed) return res.status(403).json({ success: false, message: 'Access denied' });
 
   const pending = await c2_query(
     `SELECT ti.id, ti.invited_user_id, u.name, u.email, ti.role,

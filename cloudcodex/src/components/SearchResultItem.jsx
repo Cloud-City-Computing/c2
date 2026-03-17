@@ -6,6 +6,7 @@
  */
 
 import { useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { destroyModal, showModal } from '../util';
 
 function DocumentPreviewModal({ doc, onOpen }) {
@@ -15,7 +16,7 @@ function DocumentPreviewModal({ doc, onOpen }) {
       <h2>{doc.title}</h2>
       {doc.project_name && <p className="text-muted">Project: {doc.project_name}</p>}
       <p>Created by: {doc.author} on {new Date(doc.created_at).toLocaleDateString()}</p>
-      {doc.excerpt && <div className="preview-content" dangerouslySetInnerHTML={{ __html: doc.excerpt }} />}
+      {doc.excerpt && <div className="preview-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.excerpt) }} />}
       <button className="btn btn-primary stretched-button" onClick={() => { destroyModal(); onOpen(); }}>Open in Editor</button>
     </div>
   );
