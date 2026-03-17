@@ -7,7 +7,7 @@
 import SearchResultItem from '../components/SearchResultItem'
 import SearchBox from '../components/SearchBox';
 import { createRoot } from 'react-dom/client';
-import { clearInner, createAndAppend, serverReq } from '../util';
+import { clearInner, createAndAppend, getSessionTokenFromCookie, serverReq } from '../util';
 import StdLayout from '../page_layouts/Std_Layout';
 
 /**
@@ -26,7 +26,7 @@ export async function getSearchResults( query ) {
         container = document.getElementById( 'resultContainer' );
     }
     clearInner( container );
-    const response = await serverReq( 'GET', `/api/search?query=${ encodeURIComponent( query ) }` );
+    const response = await serverReq( 'GET', `/api/search?query=${ encodeURIComponent( query ) }&token=${ getSessionTokenFromCookie() }` );
     for ( const result of response.results ) {
         const itemRoot = createRoot( createAndAppend( container, 'div', 'search-result-item' ) );
         itemRoot.render( <SearchResultItem doc={ result } /> );
