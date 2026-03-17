@@ -70,11 +70,20 @@ function SettingsIcon() {
   );
 }
 
-function MenuIcon() {
+function CollapseIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+function ExpandIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="9 18 15 12 9 6" />
     </svg>
   );
 }
@@ -93,8 +102,8 @@ function Sidebar({ collapsed, onToggle }) {
 
   return (
     <aside className="sidebar">
-      <button className="sidebar__toggle" onClick={onToggle} aria-label="Toggle sidebar">
-        <MenuIcon />
+      <button className="sidebar__toggle" onClick={onToggle} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+        {collapsed ? <ExpandIcon /> : <CollapseIcon />}
       </button>
       <nav className="sidebar__nav">
         {NAV_ITEMS.map(({ to, label, Icon }) => (
@@ -102,10 +111,10 @@ function Sidebar({ collapsed, onToggle }) {
             key={to}
             to={to}
             className={`sidebar__link ${location.pathname === to ? 'active' : ''}`}
-            title={collapsed ? label : undefined}
+            title={label}
           >
             <Icon />
-            {!collapsed && <span>{label}</span>}
+            <span>{label}</span>
           </Link>
         ))}
       </nav>
