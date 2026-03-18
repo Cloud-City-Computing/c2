@@ -57,8 +57,8 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
     WHERE (p.title LIKE ? OR p.html_content LIKE ?)
       AND (JSON_CONTAINS(pr.read_access, ?) OR pr.created_by = ?)
     ORDER BY p.created_at DESC
-    LIMIT ${limit}`,
-    [`%${trimmed}%`, `%${trimmed}%`, JSON.stringify(req.user.id), req.user.id]
+    LIMIT ?`,
+    [`%${trimmed}%`, `%${trimmed}%`, JSON.stringify(req.user.id), req.user.id, limit]
   );
 
   res.json({ results });

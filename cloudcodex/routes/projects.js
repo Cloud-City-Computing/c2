@@ -188,18 +188,21 @@ router.post('/projects/:id/access', requireAuth, asyncHandler(async (req, res) =
 
   const column = accessType === 'read' ? 'read_access' : 'write_access';
 
+  // Read current access array, modify in JS, write back (avoids JSON_SEARCH int/string mismatch)
+  const [proj] = await c2_query(`SELECT ${column} AS acl FROM projects WHERE id = ?`, [Number(id)]);
+  const arr = JSON.parse(proj.acl || '[]');
+  const targetUid = Number(userId);
+
   if (action === 'add') {
-    await c2_query(
-      `UPDATE projects SET ${column} = JSON_ARRAY_APPEND(${column}, '$', ?) WHERE id = ?`,
-      [Number(userId), Number(id)]
-    );
+    if (!arr.includes(targetUid)) {
+      arr.push(targetUid);
+      await c2_query(`UPDATE projects SET ${column} = ? WHERE id = ?`, [JSON.stringify(arr), Number(id)]);
+    }
   } else {
-    await c2_query(
-      `UPDATE projects SET ${column} = JSON_REMOVE(${column},
-        JSON_UNQUOTE(JSON_SEARCH(${column}, 'one', ?)))
-       WHERE id = ? AND JSON_SEARCH(${column}, 'one', ?) IS NOT NULL`,
-      [Number(userId), Number(id), Number(userId)]
-    );
+    const filtered = arr.filter(uid => uid !== targetUid);
+    if (filtered.length !== arr.length) {
+      await c2_query(`UPDATE projects SET ${column} = ? WHERE id = ?`, [JSON.stringify(filtered), Number(id)]);
+    }
   }
 
   res.json({ success: true });

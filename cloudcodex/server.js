@@ -56,6 +56,16 @@ app.use('/api/2fa/verify', authLimiter);
 app.use('/api/2fa/totp/confirm', authLimiter);
 app.use('/api/2fa/disable/confirm', authLimiter);
 
+// Rate limiting for user search (prevents user enumeration)
+const searchLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many search requests, please try again later' },
+});
+app.use('/api/users/search', searchLimiter);
+
 // Mount route groups
 app.use('/api', authRoutes);
 app.use('/api', searchRoutes);

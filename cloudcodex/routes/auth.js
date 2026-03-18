@@ -12,6 +12,7 @@ import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
 import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
 import { sendEmail } from '../services/email.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -291,20 +292,7 @@ router.post('/get-user', asyncHandler(async (req, res) => {
  * GET /api/users/search?q=...
  * Search for users by name or email (authenticated, min 2 chars)
  */
-router.get('/users/search', asyncHandler(async (req, res) => {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    null;
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const user = await validateAndAutoLogin(token);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.get('/users/search', requireAuth, asyncHandler(async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) {
     return res.json({ success: true, users: [] });
@@ -323,24 +311,10 @@ router.get('/users/search', asyncHandler(async (req, res) => {
  * GET /api/permissions
  * Returns the authenticated user's permissions
  */
-router.get('/permissions', asyncHandler(async (req, res) => {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    req.body?.token ||
-    null;
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const user = await validateAndAutoLogin(token);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.get('/permissions', requireAuth, asyncHandler(async (req, res) => {
   const [perms] = await c2_query(
     `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
-    [user.id]
+    [req.user.id]
   );
 
   res.json({
@@ -353,20 +327,7 @@ router.get('/permissions', asyncHandler(async (req, res) => {
  * GET /api/permissions/:userId
  * Returns a specific user's permissions (org owners only, or self)
  */
-router.get('/permissions/:userId', asyncHandler(async (req, res) => {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    null;
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const caller = await validateAndAutoLogin(token);
-  if (!caller) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.get('/permissions/:userId', requireAuth, asyncHandler(async (req, res) => {
   const { userId } = req.params;
   if (!isValidId(userId)) {
     return res.status(400).json({ success: false, message: 'Invalid userId' });
@@ -374,14 +335,18 @@ router.get('/permissions/:userId', asyncHandler(async (req, res) => {
 
   const targetId = Number(userId);
 
-  // Allow self or org owners
-  if (caller.id !== targetId) {
-    const orgs = await c2_query(
-      `SELECT id FROM organizations WHERE owner = ? LIMIT 1`,
-      [caller.email]
+  // Allow self; org owners may view permissions of users in their org
+  if (req.user.id !== targetId) {
+    const [link] = await c2_query(
+      `SELECT 1 FROM team_members tm
+       JOIN teams t ON tm.team_id = t.id
+       JOIN organizations o ON t.organization_id = o.id
+       WHERE tm.user_id = ? AND o.owner = ?
+       LIMIT 1`,
+      [targetId, req.user.email]
     );
-    if (!orgs.length) {
-      return res.status(403).json({ success: false, message: 'Only organization owners can view other users\' permissions' });
+    if (!link) {
+      return res.status(403).json({ success: false, message: 'You can only view permissions for users in your organization' });
     }
   }
 
@@ -401,21 +366,7 @@ router.get('/permissions/:userId', asyncHandler(async (req, res) => {
  * Update a user's permissions (only org owners can update permissions for users in their orgs)
  * Body: { create_team?, create_project?, create_page? }
  */
-router.put('/permissions/:userId', asyncHandler(async (req, res) => {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    req.body?.token ||
-    null;
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const caller = await validateAndAutoLogin(token);
-  if (!caller) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) => {
   const { userId } = req.params;
   if (!isValidId(userId)) {
     return res.status(400).json({ success: false, message: 'Invalid userId' });
@@ -423,16 +374,17 @@ router.put('/permissions/:userId', asyncHandler(async (req, res) => {
 
   const targetId = Number(userId);
 
-  // Users can update their own permissions, or org owners can update others'
-  if (caller.id !== targetId) {
-    // Check if caller owns any org — only org owners can modify others' permissions
-    const orgs = await c2_query(
-      `SELECT id FROM organizations WHERE owner = ? LIMIT 1`,
-      [caller.email]
-    );
-    if (!orgs.length) {
-      return res.status(403).json({ success: false, message: 'Only organization owners can update other users\' permissions' });
-    }
+  // Only org owners can update permissions for users in their organization
+  const [link] = await c2_query(
+    `SELECT 1 FROM team_members tm
+     JOIN teams t ON tm.team_id = t.id
+     JOIN organizations o ON t.organization_id = o.id
+     WHERE tm.user_id = ? AND o.owner = ?
+     LIMIT 1`,
+    [targetId, req.user.email]
+  );
+  if (!link) {
+    return res.status(403).json({ success: false, message: 'Only organization owners can update permissions for users in their organization' });
   }
 
   const { create_team, create_project, create_page } = req.body;
@@ -652,36 +604,21 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
  * For 'totp': generates a secret, emails the QR code to the user, returns a setup token.
  *   The user must then call POST /api/2fa/totp/confirm with the setup token and a code from their app.
  */
-router.post('/2fa/enable', asyncHandler(async (req, res) => {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    req.body?.token ||
-    null;
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const user = await validateAndAutoLogin(token);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
   const method = req.body.method || 'email';
 
   if (method === 'email') {
-    await c2_query(`UPDATE users SET two_factor_method = 'email', totp_secret = NULL WHERE id = ?`, [user.id]);
+    await c2_query(`UPDATE users SET two_factor_method = 'email', totp_secret = NULL WHERE id = ?`, [req.user.id]);
     return res.json({ success: true, message: 'Email two-factor authentication has been enabled.' });
   }
 
   if (method === 'totp') {
     // Generate a TOTP secret
     const secret = new OTPAuth.Secret({ size: 20 });
-    const [userRow] = await c2_query(`SELECT email FROM users WHERE id = ? LIMIT 1`, [user.id]);
 
     const totp = new OTPAuth.TOTP({
       issuer: 'Cloud Codex',
-      label: userRow.email,
+      label: req.user.email,
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
@@ -695,19 +632,19 @@ router.post('/2fa/enable', asyncHandler(async (req, res) => {
 
     // Store the secret temporarily (not active yet — user must confirm with a valid code)
     // We store it in the totp_secret column but keep method unchanged until confirmed
-    await c2_query(`UPDATE users SET totp_secret = ? WHERE id = ?`, [secret.base32, user.id]);
+    await c2_query(`UPDATE users SET totp_secret = ? WHERE id = ?`, [secret.base32, req.user.id]);
 
     // Create a setup token to tie the confirmation back
     const setupToken = crypto.randomBytes(32).toString('hex');
     await c2_query(
       `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))`,
-      [user.id, setupToken]
+      [req.user.id, setupToken]
     );
 
     // Email the QR code to the user
     try {
       await sendEmail({
-        to: userRow.email,
+        to: req.user.email,
         subject: 'Cloud Codex — Authenticator App Setup',
         text: `You requested to set up an authenticator app for Cloud Codex.\n\nOpen your authenticator app (e.g. Google Authenticator, Authy) and scan the QR code attached to this email, or manually enter this secret key:\n\n${secret.base32}\n\nThen enter the 6-digit code from your app into Cloud Codex to complete setup.`,
         html: `
@@ -737,21 +674,7 @@ router.post('/2fa/enable', asyncHandler(async (req, res) => {
  * Body: { setupToken, code }
  * Verifies the user's first TOTP code to activate authenticator-app-based 2FA.
  */
-router.post('/2fa/totp/confirm', asyncHandler(async (req, res) => {
-  const authToken =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    req.body?.token ||
-    null;
-
-  if (!authToken) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const user = await validateAndAutoLogin(authToken);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.post('/2fa/totp/confirm', requireAuth, asyncHandler(async (req, res) => {
   const { setupToken, code } = req.body;
 
   if (!setupToken || !code) {
@@ -764,14 +687,14 @@ router.post('/2fa/totp/confirm', asyncHandler(async (req, res) => {
     [setupToken]
   );
 
-  if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date() || tokenRecord.user_id !== user.id) {
+  if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date() || tokenRecord.user_id !== req.user.id) {
     return res.status(401).json({ success: false, message: 'Setup session expired. Please start again.' });
   }
 
   // Get the stored secret
   const [userRow] = await c2_query(
     `SELECT totp_secret FROM users WHERE id = ? LIMIT 1`,
-    [user.id]
+    [req.user.id]
   );
 
   if (!userRow?.totp_secret) {
@@ -794,7 +717,7 @@ router.post('/2fa/totp/confirm', asyncHandler(async (req, res) => {
   }
 
   // Activate TOTP
-  await c2_query(`UPDATE users SET two_factor_method = 'totp' WHERE id = ?`, [user.id]);
+  await c2_query(`UPDATE users SET two_factor_method = 'totp' WHERE id = ?`, [req.user.id]);
   await c2_query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [tokenRecord.id]);
 
   res.json({ success: true, message: 'Authenticator app has been successfully linked.' });
@@ -805,39 +728,25 @@ router.post('/2fa/totp/confirm', asyncHandler(async (req, res) => {
  * Sends a verification code to the user's email. Returns a confirmToken.
  * The user must call POST /api/2fa/disable/confirm with the token and code to complete.
  */
-router.post('/2fa/disable', asyncHandler(async (req, res) => {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    req.body?.token ||
-    null;
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const user = await validateAndAutoLogin(token);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
-  const [userRow] = await c2_query(`SELECT email, two_factor_method FROM users WHERE id = ? LIMIT 1`, [user.id]);
+router.post('/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
+  const [userRow] = await c2_query(`SELECT email, two_factor_method FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
   if (!userRow || userRow.two_factor_method === 'none') {
     return res.json({ success: true, message: 'Two-factor authentication is already disabled.' });
   }
 
   // Invalidate any existing unused codes for this user
-  await c2_query(`UPDATE two_factor_codes SET used = TRUE WHERE user_id = ? AND used = FALSE`, [user.id]);
+  await c2_query(`UPDATE two_factor_codes SET used = TRUE WHERE user_id = ? AND used = FALSE`, [req.user.id]);
 
   const code = generate2FACode();
   await c2_query(
     `INSERT INTO two_factor_codes (user_id, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
-    [user.id, code]
+    [req.user.id, code]
   );
 
   const confirmToken = crypto.randomBytes(32).toString('hex');
   await c2_query(
     `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
-    [user.id, confirmToken]
+    [req.user.id, confirmToken]
   );
 
   try {
@@ -864,21 +773,7 @@ router.post('/2fa/disable', asyncHandler(async (req, res) => {
  * Body: { confirmToken, code }
  * Validates the email code and disables 2FA.
  */
-router.post('/2fa/disable/confirm', asyncHandler(async (req, res) => {
-  const authToken =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    req.body?.token ||
-    null;
-
-  if (!authToken) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const user = await validateAndAutoLogin(authToken);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.post('/2fa/disable/confirm', requireAuth, asyncHandler(async (req, res) => {
   const { confirmToken, code } = req.body;
 
   if (!confirmToken || !code) {
@@ -891,14 +786,14 @@ router.post('/2fa/disable/confirm', asyncHandler(async (req, res) => {
     [confirmToken]
   );
 
-  if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date() || tokenRecord.user_id !== user.id) {
+  if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date() || tokenRecord.user_id !== req.user.id) {
     return res.status(401).json({ success: false, message: 'Verification session expired. Please try again.' });
   }
 
   // Validate email code
   const [codeRecord] = await c2_query(
     `SELECT id, expires_at FROM two_factor_codes WHERE user_id = ? AND code = ? AND used = FALSE ORDER BY created_at DESC LIMIT 1`,
-    [user.id, code]
+    [req.user.id, code]
   );
 
   if (!codeRecord || codeRecord.expires_at <= new Date()) {
@@ -910,8 +805,8 @@ router.post('/2fa/disable/confirm', asyncHandler(async (req, res) => {
   await c2_query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [tokenRecord.id]);
 
   // Disable 2FA
-  await c2_query(`UPDATE users SET two_factor_method = 'none', totp_secret = NULL WHERE id = ?`, [user.id]);
-  await c2_query(`DELETE FROM two_factor_codes WHERE user_id = ? AND used = FALSE`, [user.id]);
+  await c2_query(`UPDATE users SET two_factor_method = 'none', totp_secret = NULL WHERE id = ?`, [req.user.id]);
+  await c2_query(`DELETE FROM two_factor_codes WHERE user_id = ? AND used = FALSE`, [req.user.id]);
 
   res.json({ success: true, message: 'Two-factor authentication has been disabled.' });
 }));
@@ -920,23 +815,10 @@ router.post('/2fa/disable/confirm', asyncHandler(async (req, res) => {
  * GET /api/2fa/status
  * Returns the authenticated user's current 2FA method.
  */
-router.get('/2fa/status', asyncHandler(async (req, res) => {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    null;
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const user = await validateAndAutoLogin(token);
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
-  }
-
+router.get('/2fa/status', requireAuth, asyncHandler(async (req, res) => {
   const [row] = await c2_query(
     `SELECT two_factor_method FROM users WHERE id = ? LIMIT 1`,
-    [user.id]
+    [req.user.id]
   );
 
   const method = row?.two_factor_method ?? 'none';
