@@ -14,6 +14,7 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
   const [twoFactorToken, setTwoFactorToken] = useState(null);
+  const [twoFactorMethod, setTwoFactorMethod] = useState(null); // 'email' | 'totp'
 
   const handleChange = (e) => setFields(f => ({ ...f, [e.target.name]: e.target.value }));
 
@@ -24,9 +25,13 @@ export default function Login() {
     const res = await serverReq('POST', '/api/login', { username: fields.username, password: fields.password });
     if (res.success && res.requires_2fa) {
       setTwoFactorToken(res.twoFactorToken);
+      setTwoFactorMethod(res.method);
       setFields(f => ({ ...f, code: '' }));
       setTab('2fa');
-      setInfo('A verification code has been sent to your email.');
+      setInfo(res.method === 'email'
+        ? 'A verification code has been sent to your email.'
+        : 'Enter the code from your authenticator app.'
+      );
       return;
     }
     if (res.success) {
@@ -92,7 +97,11 @@ export default function Login() {
           {error && <p className="form-error">{error}</p>}
           {info && <p className="form-success">{info}</p>}
           <div className="modal-form">
-            <label htmlFor="code">Enter the 6-digit code sent to your email:</label>
+            <label htmlFor="code">
+              {twoFactorMethod === 'totp'
+                ? 'Enter the 6-digit code from your authenticator app:'
+                : 'Enter the 6-digit code sent to your email:'}
+            </label>
             <input
               type="text"
               id="code"

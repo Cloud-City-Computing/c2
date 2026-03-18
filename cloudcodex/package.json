@@ -21,6 +21,8 @@
     "marked": "^17.0.4",
     "mysql2": "^3.16.2",
     "nodemailer": "^8.0.2",
+    "otpauth": "^9.5.0",
+    "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.13.0",

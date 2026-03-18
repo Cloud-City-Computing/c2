@@ -73,29 +73,102 @@ export function AccountInfoUpdatePanel() {
 }
 
 export function AccountPreferencesPanel() {
-  const [twoFactor, setTwoFactor] = useState(false);
+  const [method, setMethod] = useState('none'); // 'none' | 'email' | 'totp'
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
+  const [totpSetup, setTotpSetup] = useState(null); // { setupToken } when awaiting TOTP confirmation
+  const [totpCode, setTotpCode] = useState('');
+  const [disableConfirm, setDisableConfirm] = useState(null); // { confirmToken } when awaiting disable confirmation
+  const [disableCode, setDisableCode] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
         const res = await apiFetch('GET', '/api/2fa/status');
-        if (res.success) setTwoFactor(res.enabled);
+        if (res.success) setMethod(res.method ?? 'none');
       } catch { /* ignore */ }
       setLoading(false);
     })();
   }, []);
 
-  const toggle2FA = async () => {
+  const handleDisable = async () => {
     setStatus(null);
-    const endpoint = twoFactor ? '/api/2fa/disable' : '/api/2fa/enable';
+    setTotpSetup(null);
+    if (method === 'none') return;
     try {
-      const res = await apiFetch('POST', endpoint);
-      setTwoFactor(!twoFactor);
+      const res = await apiFetch('POST', '/api/2fa/disable');
+      if (res.confirmToken) {
+        setDisableConfirm({ confirmToken: res.confirmToken });
+        setDisableCode('');
+        setStatus({ type: 'success', message: res.message });
+      } else {
+        setMethod('none');
+        setStatus({ type: 'success', message: res.message });
+      }
+    } catch (e) {
+      setStatus({ type: 'error', message: e.body?.message ?? 'Error disabling 2FA.' });
+    }
+  };
+
+  const handleConfirmDisable = async () => {
+    setStatus(null);
+    if (!disableCode || disableCode.length !== 6) {
+      setStatus({ type: 'error', message: 'Please enter the 6-digit code sent to your email.' });
+      return;
+    }
+    try {
+      const res = await apiFetch('POST', '/api/2fa/disable/confirm', {
+        confirmToken: disableConfirm.confirmToken,
+        code: disableCode,
+      });
+      setMethod('none');
+      setDisableConfirm(null);
+      setDisableCode('');
       setStatus({ type: 'success', message: res.message });
     } catch (e) {
-      setStatus({ type: 'error', message: e.body?.message ?? 'Error updating 2FA setting.' });
+      setStatus({ type: 'error', message: e.body?.message ?? 'Invalid code.' });
+    }
+  };
+
+  const handleEnableEmail = async () => {
+    setStatus(null);
+    setTotpSetup(null);
+    try {
+      const res = await apiFetch('POST', '/api/2fa/enable', { method: 'email' });
+      setMethod('email');
+      setStatus({ type: 'success', message: res.message });
+    } catch (e) {
+      setStatus({ type: 'error', message: e.body?.message ?? 'Error enabling email 2FA.' });
+    }
+  };
+
+  const handleEnableTotp = async () => {
+    setStatus(null);
+    setTotpSetup(null);
+    setTotpCode('');
+    try {
+      const res = await apiFetch('POST', '/api/2fa/enable', { method: 'totp' });
+      setTotpSetup({ setupToken: res.setupToken });
+      setStatus({ type: 'success', message: res.message });
+    } catch (e) {
+      setStatus({ type: 'error', message: e.body?.message ?? 'Error starting authenticator setup.' });
+    }
+  };
+
+  const handleConfirmTotp = async () => {
+    setStatus(null);
+    if (!totpCode || totpCode.length !== 6) {
+      setStatus({ type: 'error', message: 'Please enter the 6-digit code from your authenticator app.' });
+      return;
+    }
+    try {
+      const res = await apiFetch('POST', '/api/2fa/totp/confirm', { setupToken: totpSetup.setupToken, code: totpCode });
+      setMethod('totp');
+      setTotpSetup(null);
+      setTotpCode('');
+      setStatus({ type: 'success', message: res.message });
+    } catch (e) {
+      setStatus({ type: 'error', message: e.body?.message ?? 'Invalid code.' });
     }
   };
 
@@ -103,22 +176,74 @@ export function AccountPreferencesPanel() {
 
   return (
     <div className="settings-panel">
-      <h2 className="panel-title">Account Preferences</h2>
+      <h2 className="panel-title">Two-Factor Authentication</h2>
       {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
-      <form className="account-form" onSubmit={(e) => e.preventDefault()}>
-        <div className="checkbox-group">
-          <label><input type="checkbox" name="newsletter" /> Receive Newsletter</label>
+
+      <div className="tfa-method-options">
+        <label className={`tfa-method-option${method === 'none' ? ' active' : ''}`}>
+          <input type="radio" name="2fa-method" checked={method === 'none' && !totpSetup} onChange={handleDisable} />
+          <div>
+            <strong>Disabled</strong>
+            <p className="text-muted text-sm">No two-factor authentication required at login.</p>
+          </div>
+        </label>
+
+        <label className={`tfa-method-option${method === 'email' ? ' active' : ''}`}>
+          <input type="radio" name="2fa-method" checked={method === 'email'} onChange={handleEnableEmail} />
+          <div>
+            <strong>Email Verification</strong>
+            <p className="text-muted text-sm">A 6-digit code is sent to your email each time you log in.</p>
+          </div>
+        </label>
+
+        <label className={`tfa-method-option${method === 'totp' ? ' active' : ''}`}>
+          <input type="radio" name="2fa-method" checked={method === 'totp' && !totpSetup} onChange={handleEnableTotp} />
+          <div>
+            <strong>Authenticator App</strong>
+            <p className="text-muted text-sm">Use an app like Google Authenticator or Authy to generate codes.</p>
+          </div>
+        </label>
+      </div>
+
+      {totpSetup && (
+        <div className="totp-confirm-section">
+          <p className="text-sm">Check your email for the QR code. Scan it with your authenticator app, then enter the code below:</p>
+          <div className="totp-confirm-form">
+            <input
+              type="text"
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmTotp()}
+              placeholder="000000"
+              maxLength={6}
+              inputMode="numeric"
+              className="totp-code-input"
+            />
+            <button className="btn btn-primary" onClick={handleConfirmTotp}>Confirm</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setTotpSetup(null); setStatus(null); }}>Cancel</button>
+          </div>
         </div>
-        <div className="checkbox-group">
-          <label>
-            <input type="checkbox" checked={twoFactor} onChange={toggle2FA} />
-            Enable Two-Factor Authentication
-          </label>
-          <p className="text-muted text-sm" style={{ marginLeft: 24, marginTop: 4 }}>
-            A verification code will be sent to your email each time you log in.
-          </p>
+      )}
+
+      {disableConfirm && (
+        <div className="totp-confirm-section" style={{ borderColor: 'var(--color-danger)' }}>
+          <p className="text-sm">Enter the verification code sent to your email to confirm disabling 2FA:</p>
+          <div className="totp-confirm-form">
+            <input
+              type="text"
+              value={disableCode}
+              onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmDisable()}
+              placeholder="000000"
+              maxLength={6}
+              inputMode="numeric"
+              className="totp-code-input"
+            />
+            <button className="btn btn-danger" onClick={handleConfirmDisable}>Disable 2FA</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setDisableConfirm(null); setDisableCode(''); setStatus(null); }}>Cancel</button>
+          </div>
         </div>
-      </form>
+      )}
     </div>
   );
 }

@@ -1378,6 +1378,77 @@ body {
 }
 .checkbox-group input[type="checkbox"] { accent-color: var(--brand-blue); }
 
+/* 2FA Method Selection */
+.tfa-method-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tfa-method-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.tfa-method-option:hover {
+  border-color: var(--brand-blue-dark);
+  background: var(--bg-hover);
+}
+.tfa-method-option.active {
+  border-color: var(--brand-blue);
+  background: rgba(44, 167, 219, 0.06);
+}
+.tfa-method-option input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--brand-blue);
+  flex-shrink: 0;
+}
+.tfa-method-option strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.tfa-method-option p { margin: 0; }
+
+.totp-confirm-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--brand-blue-dark);
+  border-radius: var(--radius-md);
+}
+
+.totp-confirm-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.totp-code-input {
+  width: 140px;
+  padding: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  text-align: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-main);
+  color: var(--text-primary);
+}
+.totp-code-input:focus {
+  outline: none;
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
+}
+
 /* =========================
    Project Browser
 ========================= */

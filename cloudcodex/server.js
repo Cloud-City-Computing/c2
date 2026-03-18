@@ -53,6 +53,8 @@ app.use('/api/login', authLimiter);
 app.use('/api/create-account', authLimiter);
 app.use('/api/forgot-password', authLimiter);
 app.use('/api/2fa/verify', authLimiter);
+app.use('/api/2fa/totp/confirm', authLimiter);
+app.use('/api/2fa/disable/confirm', authLimiter);
 
 // Mount route groups
 app.use('/api', authRoutes);
