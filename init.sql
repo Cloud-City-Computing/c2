@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS team_permissions;
 DROP TABLE IF EXISTS permissions;
 DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS organizations;
@@ -44,6 +45,18 @@ CREATE TABLE sessions (
   expires_at TIMESTAMP NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (user_id),
+  INDEX (expires_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE password_reset_tokens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  token CHAR(64) NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX (token),
   INDEX (expires_at)
 ) ENGINE=InnoDB;
 

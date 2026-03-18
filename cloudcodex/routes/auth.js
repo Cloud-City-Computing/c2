@@ -7,7 +7,9 @@
 
 import express from 'express';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
+import { sendEmail } from '../services/email.js';
 
 const router = express.Router();
 
@@ -408,6 +410,106 @@ router.put('/permissions/:userId', asyncHandler(async (req, res) => {
   }
 
   res.json({ success: true });
+}));
+
+// --- Password Reset ---
+
+/**
+ * Generates a cryptographically random 64-character hex token.
+ */
+function generateResetToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
+
+/**
+ * POST /api/forgot-password
+ * Body: { email }
+ * Sends a password reset link to the user's email. Always responds with success
+ * to prevent email enumeration.
+ */
+router.post('/forgot-password', asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ success: false, message: 'A valid email address is required' });
+  }
+
+  // Always respond the same way — don't reveal whether the email exists
+  const [user] = await c2_query(`SELECT id FROM users WHERE email = ? LIMIT 1`, [email]);
+
+  if (user) {
+    // Invalidate any existing unused tokens for this user
+    await c2_query(
+      `UPDATE password_reset_tokens SET used = TRUE WHERE user_id = ? AND used = FALSE`,
+      [user.id]
+    );
+
+    const token = generateResetToken();
+    await c2_query(
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
+       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))`,
+      [user.id, token]
+    );
+
+    const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+
+    try {
+      await sendEmail({
+        to: email,
+        subject: 'Cloud Codex — Password Reset',
+        text: `You requested a password reset.\n\nClick the link below to reset your password (expires in 1 hour):\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
+        html: `
+          <h2>Password Reset</h2>
+          <p>You requested a password reset for your Cloud Codex account.</p>
+          <p><a href="${resetUrl}" style="display:inline-block;padding:10px 20px;background:#4a9eff;color:#fff;text-decoration:none;border-radius:6px;">Reset Password</a></p>
+          <p style="color:#999;font-size:13px;">This link expires in 1 hour. If you did not request this, you can safely ignore this email.</p>
+        `,
+      });
+    } catch (err) {
+      console.error('Failed to send password reset email:', err);
+    }
+  }
+
+  // Always return success to prevent email enumeration
+  res.json({ success: true, message: 'If an account with that email exists, a reset link has been sent.' });
+}));
+
+/**
+ * POST /api/reset-password
+ * Body: { token, password }
+ * Validates the reset token and updates the user's password.
+ */
+router.post('/reset-password', asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res.status(400).json({ success: false, message: 'Token and new password are required' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  }
+
+  const [resetRecord] = await c2_query(
+    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? LIMIT 1`,
+    [token]
+  );
+
+  if (!resetRecord || resetRecord.used || resetRecord.expires_at <= new Date()) {
+    return res.status(400).json({ success: false, message: 'Invalid or expired reset link' });
+  }
+
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+  await c2_query(`UPDATE users SET password_hash = ? WHERE id = ?`, [passwordHash, resetRecord.user_id]);
+  await c2_query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [resetRecord.id]);
+
+  // Invalidate all sessions for this user so they must log in with the new password
+  await c2_query(`DELETE FROM sessions WHERE user_id = ?`, [resetRecord.user_id]);
+
+  res.json({ success: true, message: 'Password has been reset. Please log in with your new password.' });
 }));
 
 // --- Centralized error handler ---

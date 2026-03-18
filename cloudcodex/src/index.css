@@ -791,6 +791,54 @@ body {
   margin: 4px 0;
 }
 
+.form-success {
+  color: #4caf50;
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.forgot-password-link {
+  display: block;
+  text-align: center;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.forgot-password-title {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.reset-password-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: var(--bg-main);
+  padding: 20px;
+}
+
+.reset-password-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 32px;
+  max-width: 400px;
+  width: 100%;
+}
+
+.reset-password-card h1 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+
+.reset-password-card .modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 @keyframes modalIn {
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }

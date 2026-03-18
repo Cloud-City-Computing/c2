@@ -10,6 +10,7 @@ import Editor from './pages/Editor'
 import AccountSettings from './pages/AccountSettings'
 import ProjectsPage from './pages/ProjectsPage'
 import OrganizationsPage from './pages/OrganizationsPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 function NotFound() {
   return (
@@ -25,6 +26,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/editor/:pageId" element={<Editor />} />
       <Route path="/account" element={<AccountSettings />} />
       <Route path="/settings" element={<Navigate to="/account" replace />} />

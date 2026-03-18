@@ -20,6 +20,7 @@
     "jodit-react": "^5.3.21",
     "marked": "^17.0.4",
     "mysql2": "^3.16.2",
+    "nodemailer": "^8.0.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.13.0",

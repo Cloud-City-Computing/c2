@@ -10,6 +10,8 @@ import ViteExpress from 'vite-express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
+import { verifyEmailConnection } from './services/email.js';
+
 import authRoutes from './routes/auth.js';
 import searchRoutes from './routes/search.js';
 import documentRoutes from './routes/documents.js';
@@ -49,6 +51,7 @@ app.use(express.json({ limit: '2mb' }));
 // Apply auth rate limiter
 app.use('/api/login', authLimiter);
 app.use('/api/create-account', authLimiter);
+app.use('/api/forgot-password', authLimiter);
 
 // Mount route groups
 app.use('/api', authRoutes);
@@ -58,6 +61,8 @@ app.use('/api', documentRoutes);
 app.use('/api', organizationsRouter);
 app.use('/api', teamsRouter);
 
-ViteExpress.listen(app, 3000, () => {
+ViteExpress.listen(app, 3000, async () => {
   console.log('CloudCodex API Server is running on http://localhost:3000');
+  const emailOk = await verifyEmailConnection();
+  console.log(emailOk ? '✔ SMTP connection verified' : '✖ SMTP connection failed — check .env credentials');
 });
