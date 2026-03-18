@@ -168,7 +168,7 @@ function InviteMemberModal({ teamId, onInvited }) {
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null);
   const [role, setRole] = useState('member');
-  const [perms, setPerms] = useState({ can_read: true, can_write: false, can_create_page: false, can_create_project: false, can_manage_members: false });
+  const [perms, setPerms] = useState({ can_read: true, can_write: false, can_create_page: false, can_create_project: false, can_manage_members: false, can_delete_version: false });
   const [error, setError] = useState(null);
   const [searching, setSearching] = useState(false);
 
@@ -242,6 +242,7 @@ function InviteMemberModal({ teamId, onInvited }) {
             ['can_create_page', 'Create Pages', 'Create new pages in projects'],
             ['can_create_project', 'Create Projects', 'Create new projects in the team'],
             ['can_manage_members', 'Manage Members', 'Invite/remove team members'],
+            ['can_delete_version', 'Delete Versions', 'Delete version history entries'],
           ].map(([key, label, desc]) => (
             <label key={key} className="invite-perm-toggle">
               <input type="checkbox" checked={perms[key]} onChange={() => togglePerm(key)} />
@@ -267,6 +268,7 @@ const PERM_LABELS = {
   can_create_page: 'Create Pages',
   can_create_project: 'Create Projects',
   can_manage_members: 'Manage Members',
+  can_delete_version: 'Delete Versions',
 };
 
 function TeamMembersPanel({ teamId }) {

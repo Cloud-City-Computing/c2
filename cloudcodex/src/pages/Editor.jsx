@@ -19,6 +19,8 @@ import {
   fetchVersions,
   fetchVersion,
   restoreVersion,
+  deleteVersion,
+  getSessStorage,
 } from '../util';
 
 // Configure marked for safe rendering
@@ -136,25 +138,45 @@ function MarkdownEditor({ content, setContent }) {
 
 // --- Version History Panel ---
 
+function timeAgo(dateStr) {
+  const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
 function VersionHistory({ pageId, onRestore }) {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
+  const currentUserId = getSessStorage('currentUser')?.id;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetchVersions(pageId);
-        setVersions(res.versions || []);
-      } catch { /* ignore */ }
-      setLoading(false);
-    })();
+  const loadVersions = useCallback(async () => {
+    try {
+      const res = await fetchVersions(pageId);
+      setVersions(res.versions || []);
+    } catch { /* ignore */ }
+    setLoading(false);
   }, [pageId]);
 
+  useEffect(() => { loadVersions(); }, [loadVersions]);
+
   const handlePreview = async (v) => {
+    if (previewId === v.id) {
+      setPreview(null);
+      setPreviewId(null);
+      return;
+    }
     try {
       const res = await fetchVersion(pageId, v.id);
       setPreview(res.version);
+      setPreviewId(v.id);
     } catch { /* ignore */ }
   };
 
@@ -163,6 +185,15 @@ function VersionHistory({ pageId, onRestore }) {
       await restoreVersion(pageId, v.id);
       onRestore?.();
       setPreview(null);
+      setPreviewId(null);
+    } catch { /* ignore */ }
+  };
+
+  const handleDelete = async (v) => {
+    try {
+      await deleteVersion(pageId, v.id);
+      setVersions(prev => prev.filter(ver => ver.id !== v.id));
+      if (previewId === v.id) { setPreview(null); setPreviewId(null); }
     } catch { /* ignore */ }
   };
 
@@ -172,23 +203,30 @@ function VersionHistory({ pageId, onRestore }) {
   return (
     <div className="version-history">
       <h3>Version History</h3>
-      {preview && (
-        <div className="version-preview">
-          <div className="version-preview__header">
-            <span>v{preview.version_number} — {new Date(preview.saved_at).toLocaleString()}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setPreview(null)}>Close</button>
-          </div>
-          <div className="version-preview__content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html_content) }} />
-          <button className="btn btn-primary btn-sm" onClick={() => handleRestore(preview)}>Restore This Version</button>
-        </div>
-      )}
       <ul className="version-list">
         {versions.map(v => (
-          <li key={v.id} className="version-list__item">
-            <span className="version-list__label">v{v.version_number}</span>
-            <span className="version-list__date">{new Date(v.saved_at).toLocaleString()}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => handlePreview(v)}>Preview</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => handleRestore(v)}>Restore</button>
+          <li key={v.id}>
+            <div className={`version-list__item${previewId === v.id ? ' version-list__item--active' : ''}`}
+                 onClick={() => handlePreview(v)} role="button" tabIndex={0}>
+              <span className="version-list__label">v{v.version_number}</span>
+              <span className="version-list__meta">
+                <span className="version-list__date">{timeAgo(v.saved_at)}</span>
+                {v.created_by && <span className="version-list__author">{v.created_by}</span>}
+              </span>
+              {previewId !== v.id && <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); handleRestore(v); }}>Restore</button>}
+            </div>
+            {previewId === v.id && preview && (
+              <div className="version-preview">
+                <div className="version-preview__header">
+                  <span>v{preview.version_number} &middot; {new Date(preview.saved_at).toLocaleString()}{preview.created_by ? ` · ${preview.created_by}` : ''}</span>
+                  <span className="version-preview__actions">
+                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(preview)}>Delete</button>
+                    <button className="btn btn-primary btn-sm" onClick={() => handleRestore(preview)}>Restore</button>
+                  </span>
+                </div>
+                <div className="version-preview__content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html_content) }} />
+              </div>
+            )}
           </li>
         ))}
       </ul>

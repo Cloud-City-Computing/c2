@@ -59,6 +59,7 @@ function PendingInvitations() {
                 {inv.can_create_page && <span className="perm-badge">Create Pages</span>}
                 {inv.can_create_project && <span className="perm-badge">Create Projects</span>}
                 {inv.can_manage_members && <span className="perm-badge">Manage Members</span>}
+                {inv.can_delete_version && <span className="perm-badge">Delete Versions</span>}
               </div>
             </div>
             <div className="invitation-card__actions">

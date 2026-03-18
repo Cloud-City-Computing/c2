@@ -164,7 +164,7 @@ router.get('/document/:pageId/versions', requireAuth, asyncHandler(async (req, r
   }
 
   const versions = await c2_query(
-    `SELECT v.id, v.version, v.created_at, u.name AS created_by
+    `SELECT v.id, v.version AS version_number, v.created_at AS saved_at, v.created_by AS created_by_id, u.name AS created_by
        FROM versions v
   LEFT JOIN users u ON v.created_by = u.id
       WHERE v.page_id = ?
@@ -200,7 +200,7 @@ router.get('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(as
   }
 
   const [version] = await c2_query(
-    `SELECT v.id, v.version, v.html_content, v.created_at, u.name AS created_by
+    `SELECT v.id, v.version AS version_number, v.html_content, v.created_at AS saved_at, u.name AS created_by
        FROM versions v
   LEFT JOIN users u ON v.created_by = u.id
       WHERE v.id = ? AND v.page_id = ?
@@ -262,6 +262,53 @@ router.post('/document/:pageId/versions/:versionId/restore', requireAuth, asyncH
   );
 
   res.json({ success: true, version: newVersion });
+}));
+
+/**
+ * DELETE /api/document/:pageId/versions/:versionId
+ * Delete a version. Allowed if the user is the version author, or has can_delete_version permission via team membership.
+ */
+router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(async (req, res) => {
+  const { pageId, versionId } = req.params;
+  if (!isValidId(pageId) || !isValidId(versionId)) {
+    return res.status(400).json({ success: false, message: 'Invalid IDs' });
+  }
+
+  // Verify the version exists and belongs to this page
+  const [version] = await c2_query(
+    `SELECT v.id, v.created_by, pg.project_id
+       FROM versions v
+ INNER JOIN pages pg ON v.page_id = pg.id
+      WHERE v.id = ? AND v.page_id = ?
+      LIMIT 1`,
+    [Number(versionId), Number(pageId)]
+  );
+  if (!version) {
+    return res.status(404).json({ success: false, message: 'Version not found' });
+  }
+
+  // Allow if user is the version author
+  if (version.created_by === req.user.id) {
+    await c2_query(`DELETE FROM versions WHERE id = ?`, [Number(versionId)]);
+    return res.json({ success: true });
+  }
+
+  // Otherwise check can_delete_version via team membership on the project's team
+  const [perm] = await c2_query(
+    `SELECT tm.can_delete_version
+       FROM projects p
+ INNER JOIN team_members tm ON tm.team_id = p.team_id AND tm.user_id = ?
+      WHERE p.id = ?
+      LIMIT 1`,
+    [req.user.id, version.project_id]
+  );
+
+  if (!perm?.can_delete_version) {
+    return res.status(403).json({ success: false, message: 'You do not have permission to delete this version' });
+  }
+
+  await c2_query(`DELETE FROM versions WHERE id = ?`, [Number(versionId)]);
+  res.json({ success: true });
 }));
 
 router.use((err, req, res, _next) => {

@@ -148,6 +148,8 @@ export const fetchVersion = (pageId, versionId) =>
   apiFetch('GET', `/api/document/${pageId}/versions/${versionId}`);
 export const restoreVersion = (pageId, versionId) =>
   apiFetch('POST', `/api/document/${pageId}/versions/${versionId}/restore`);
+export const deleteVersion = (pageId, versionId) =>
+  apiFetch('DELETE', `/api/document/${pageId}/versions/${versionId}`);
 
 // --- DOM Helpers ---
 

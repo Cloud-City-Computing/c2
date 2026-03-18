@@ -298,7 +298,7 @@ router.get('/teams/:id/members', requireAuth, asyncHandler(async (req, res) => {
   const members = await c2_query(
     `SELECT tm.id, tm.user_id, u.name, u.email, tm.role,
             tm.can_read, tm.can_write, tm.can_create_page,
-            tm.can_create_project, tm.can_manage_members, tm.joined_at
+            tm.can_create_project, tm.can_manage_members, tm.can_delete_version, tm.joined_at
      FROM team_members tm
      JOIN users u ON tm.user_id = u.id
      WHERE tm.team_id = ?
@@ -317,7 +317,7 @@ router.post('/teams/:id/members/invite', requireAuth, asyncHandler(async (req, r
   const { id } = req.params;
   if (!isValidId(id)) return res.status(400).json({ success: false, message: 'Invalid team ID' });
 
-  const { userId, role, can_read, can_write, can_create_page, can_create_project, can_manage_members } = req.body;
+  const { userId, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version } = req.body;
   if (!isValidId(userId)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
 
   const { team, allowed } = await canManageTeam(Number(id), req.user);
@@ -345,10 +345,10 @@ router.post('/teams/:id/members/invite', requireAuth, asyncHandler(async (req, r
   const safeRole = role === 'admin' ? 'admin' : 'member';
 
   await c2_query(
-    `INSERT INTO team_invitations (team_id, invited_by, invited_user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO team_invitations (team_id, invited_by, invited_user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [Number(id), req.user.id, Number(userId), safeRole,
-     can_read !== false, !!can_write, !!can_create_page, !!can_create_project, !!can_manage_members]
+     can_read !== false, !!can_write, !!can_create_page, !!can_create_project, !!can_manage_members, !!can_delete_version]
   );
 
   res.status(201).json({ success: true });
@@ -372,7 +372,7 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
   );
   if (!member) return res.status(404).json({ success: false, message: 'Member not found' });
 
-  const { role, can_read, can_write, can_create_page, can_create_project, can_manage_members } = req.body;
+  const { role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version } = req.body;
   const fields = [];
   const params = [];
 
@@ -382,6 +382,7 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
   if (can_create_page !== undefined) { fields.push('can_create_page = ?'); params.push(!!can_create_page); }
   if (can_create_project !== undefined) { fields.push('can_create_project = ?'); params.push(!!can_create_project); }
   if (can_manage_members !== undefined) { fields.push('can_manage_members = ?'); params.push(!!can_manage_members); }
+  if (can_delete_version !== undefined) { fields.push('can_delete_version = ?'); params.push(!!can_delete_version); }
 
   if (fields.length) {
     params.push(Number(id), Number(userId));
@@ -420,7 +421,7 @@ router.get('/invitations', requireAuth, asyncHandler(async (req, res) => {
     `SELECT ti.id, ti.team_id, t.name AS team_name, o.name AS org_name,
             inviter.name AS invited_by_name, ti.role,
             ti.can_read, ti.can_write, ti.can_create_page,
-            ti.can_create_project, ti.can_manage_members, ti.created_at
+            ti.can_create_project, ti.can_manage_members, ti.can_delete_version, ti.created_at
      FROM team_invitations ti
      JOIN teams t ON ti.team_id = t.id
      LEFT JOIN organizations o ON t.organization_id = o.id
@@ -448,7 +449,7 @@ router.get('/teams/:id/invitations', requireAuth, asyncHandler(async (req, res) 
   const pending = await c2_query(
     `SELECT ti.id, ti.invited_user_id, u.name, u.email, ti.role,
             ti.can_read, ti.can_write, ti.can_create_page,
-            ti.can_create_project, ti.can_manage_members,
+            ti.can_create_project, ti.can_manage_members, ti.can_delete_version,
             inviter.name AS invited_by_name, ti.created_at
      FROM team_invitations ti
      JOIN users u ON ti.invited_user_id = u.id
@@ -478,13 +479,13 @@ router.post('/invitations/:id/accept', requireAuth, asyncHandler(async (req, res
 
   // Create membership
   await c2_query(
-    `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE role = VALUES(role), can_read = VALUES(can_read), can_write = VALUES(can_write),
        can_create_page = VALUES(can_create_page), can_create_project = VALUES(can_create_project),
-       can_manage_members = VALUES(can_manage_members)`,
+       can_manage_members = VALUES(can_manage_members), can_delete_version = VALUES(can_delete_version)`,
     [inv.team_id, inv.invited_user_id, inv.role,
-     inv.can_read, inv.can_write, inv.can_create_page, inv.can_create_project, inv.can_manage_members]
+     inv.can_read, inv.can_write, inv.can_create_page, inv.can_create_project, inv.can_manage_members, inv.can_delete_version]
   );
 
   // Mark invitation accepted

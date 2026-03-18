@@ -1762,22 +1762,50 @@ body {
   margin: 0;
 }
 
+.version-list > li {
+  border-bottom: 1px solid var(--border-color);
+}
+.version-list > li:last-child { border-bottom: none; }
+
 .version-list__item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-color);
+  gap: 10px;
+  padding: 8px 6px;
   font-size: 13px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
 }
-.version-list__item:last-child { border-bottom: none; }
+.version-list__item:hover { background: var(--bg-elevated); }
+.version-list__item--active {
+  background: var(--bg-elevated);
+  border-left: 2px solid var(--brand-blue);
+  padding-left: 4px;
+}
 
-.version-list__label { font-weight: 600; color: var(--brand-blue); min-width: 36px; }
-.version-list__date { flex: 1; color: var(--text-muted); }
+.version-list__label { font-weight: 600; color: var(--brand-blue); min-width: 32px; flex-shrink: 0; }
+
+.version-list__meta {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.version-list__date { color: var(--text-muted); white-space: nowrap; }
+.version-list__author {
+  color: var(--text-muted);
+  font-size: 12px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .version-preview {
-  margin-bottom: 16px;
-  padding: 16px;
+  padding: 12px;
+  margin: 4px 0 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -1786,17 +1814,28 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  font-size: 13px;
+  margin-bottom: 10px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 .version-preview__content {
-  max-height: 260px;
+  max-height: 240px;
   overflow-y: auto;
   background: var(--bg-main);
   padding: 12px;
   border-radius: var(--radius-sm);
-  margin-bottom: 10px;
+  font-size: 13px;
+}
+.version-preview__actions {
+  display: flex;
+  gap: 6px;
+}
+.btn-danger {
+  color: #ff6b6b;
+}
+.btn-danger:hover {
+  color: #ff4040;
+  background: rgba(255, 75, 75, 0.1);
 }
 
 /* =========================
