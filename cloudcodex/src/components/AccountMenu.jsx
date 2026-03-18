@@ -16,7 +16,7 @@ import {
 // ===========================
 
 export function AccountInfoUpdatePanel() {
-  const [fields, setFields] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [fields, setFields] = useState({ name: '', email: '' });
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
@@ -41,19 +41,11 @@ export function AccountInfoUpdatePanel() {
     e.preventDefault();
     setStatus(null);
 
-    if (fields.password && fields.password !== fields.confirmPassword) {
-      setStatus({ type: 'error', message: 'Passwords do not match.' });
-      return;
-    }
-
     const userId = getSessStorage('currentUser')?.id;
     if (!userId) { setStatus({ type: 'error', message: 'Not authenticated.' }); return; }
 
-    const payload = { userId, name: fields.name, email: fields.email };
-    if (fields.password) payload.password = fields.password;
-
     try {
-      await apiFetch('POST', '/api/update-account', payload);
+      await apiFetch('POST', '/api/update-account', { userId, name: fields.name, email: fields.email });
       setStatus({ type: 'success', message: 'Account updated successfully.' });
     } catch (e) {
       setStatus({ type: 'error', message: `Error updating account: ${e.body?.message ?? e.message}` });
@@ -73,14 +65,7 @@ export function AccountInfoUpdatePanel() {
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" value={fields.email} onChange={handleChange} />
         </div>
-        <div className="form-group">
-          <label htmlFor="password">New Password</label>
-          <input id="password" name="password" type="password" value={fields.password} onChange={handleChange} />
-        </div>
-        <div className="form-group">
-          <label htmlFor="confirmPassword">Confirm New Password</label>
-          <input id="confirmPassword" name="confirmPassword" type="password" value={fields.confirmPassword} onChange={handleChange} />
-        </div>
+        <p className="text-muted text-sm">To change your password, use the "Forgot Password?" link on the login screen.</p>
         <button type="submit" className="btn btn-primary stretched-button">Update Info</button>
       </form>
     </div>
@@ -88,17 +73,51 @@ export function AccountInfoUpdatePanel() {
 }
 
 export function AccountPreferencesPanel() {
+  const [twoFactor, setTwoFactor] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('GET', '/api/2fa/status');
+        if (res.success) setTwoFactor(res.enabled);
+      } catch { /* ignore */ }
+      setLoading(false);
+    })();
+  }, []);
+
+  const toggle2FA = async () => {
+    setStatus(null);
+    const endpoint = twoFactor ? '/api/2fa/disable' : '/api/2fa/enable';
+    try {
+      const res = await apiFetch('POST', endpoint);
+      setTwoFactor(!twoFactor);
+      setStatus({ type: 'success', message: res.message });
+    } catch (e) {
+      setStatus({ type: 'error', message: e.body?.message ?? 'Error updating 2FA setting.' });
+    }
+  };
+
+  if (loading) return <div className="settings-panel"><p className="text-muted">Loading...</p></div>;
+
   return (
     <div className="settings-panel">
       <h2 className="panel-title">Account Preferences</h2>
-      <form className="account-form">
+      {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
+      <form className="account-form" onSubmit={(e) => e.preventDefault()}>
         <div className="checkbox-group">
           <label><input type="checkbox" name="newsletter" /> Receive Newsletter</label>
         </div>
         <div className="checkbox-group">
-          <label><input type="checkbox" name="2fa" /> Enable Two-Factor Authentication</label>
+          <label>
+            <input type="checkbox" checked={twoFactor} onChange={toggle2FA} />
+            Enable Two-Factor Authentication
+          </label>
+          <p className="text-muted text-sm" style={{ marginLeft: 24, marginTop: 4 }}>
+            A verification code will be sent to your email each time you log in.
+          </p>
         </div>
-        <button type="submit" className="btn btn-primary stretched-button">Update Preferences</button>
       </form>
     </div>
   );

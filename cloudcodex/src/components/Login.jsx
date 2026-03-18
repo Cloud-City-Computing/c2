@@ -9,10 +9,11 @@ import { useState } from 'react';
 import { destroyModal, serverReq } from '../util';
 
 export default function Login() {
-  const [tab, setTab] = useState('login'); // 'login' | 'signup' | 'forgot'
-  const [fields, setFields] = useState({ username: '', email: '', password: '' });
+  const [tab, setTab] = useState('login'); // 'login' | 'signup' | 'forgot' | '2fa'
+  const [fields, setFields] = useState({ username: '', email: '', password: '', code: '' });
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
+  const [twoFactorToken, setTwoFactorToken] = useState(null);
 
   const handleChange = (e) => setFields(f => ({ ...f, [e.target.name]: e.target.value }));
 
@@ -21,11 +22,38 @@ export default function Login() {
   const handleLogin = async () => {
     setError(null);
     const res = await serverReq('POST', '/api/login', { username: fields.username, password: fields.password });
+    if (res.success && res.requires_2fa) {
+      setTwoFactorToken(res.twoFactorToken);
+      setFields(f => ({ ...f, code: '' }));
+      setTab('2fa');
+      setInfo('A verification code has been sent to your email.');
+      return;
+    }
     if (res.success) {
       document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
       window.location.reload();
     } else {
       setError(res.message ?? 'Login failed.');
+    }
+  };
+
+  const handleVerify2FA = async () => {
+    setError(null);
+    setInfo(null);
+    if (!fields.code || fields.code.length !== 6) {
+      setError('Please enter the 6-digit code.');
+      return;
+    }
+    try {
+      const res = await serverReq('POST', '/api/2fa/verify', { twoFactorToken, code: fields.code });
+      if (res.success) {
+        document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+        window.location.reload();
+      } else {
+        setError(res.message ?? 'Verification failed.');
+      }
+    } catch {
+      setError('Invalid or expired verification code.');
     }
   };
 
@@ -53,12 +81,40 @@ export default function Login() {
     }
   };
 
-  const handleSubmit = tab === 'forgot' ? handleForgotPassword : tab === 'login' ? handleLogin : handleSignup;
+  const handleSubmit = tab === 'forgot' ? handleForgotPassword : tab === '2fa' ? handleVerify2FA : tab === 'login' ? handleLogin : handleSignup;
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      {tab !== 'forgot' ? (
+      {tab === '2fa' ? (
+        <>
+          <h2 className="forgot-password-title">Two-Factor Verification</h2>
+          {error && <p className="form-error">{error}</p>}
+          {info && <p className="form-success">{info}</p>}
+          <div className="modal-form">
+            <label htmlFor="code">Enter the 6-digit code sent to your email:</label>
+            <input
+              type="text"
+              id="code"
+              name="code"
+              value={fields.code}
+              onChange={handleChange}
+              onKeyDown={(e) => e.key === 'Enter' && handleVerify2FA()}
+              maxLength={6}
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              style={{ textAlign: 'center', fontSize: '24px', letterSpacing: '6px' }}
+            />
+            <button className="btn btn-primary stretched-button" onClick={handleVerify2FA}>
+              Verify
+            </button>
+            <button className="btn btn-ghost btn-sm forgot-password-link" onClick={() => switchTab('login')}>
+              Back to Login
+            </button>
+          </div>
+        </>
+      ) : tab !== 'forgot' ? (
         <>
           <div className="login-tabs">
             <button className={`login-tab ${tab === 'login' ? 'active' : ''}`} onClick={() => switchTab('login')}>Login</button>

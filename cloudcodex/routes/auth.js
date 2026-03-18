@@ -25,6 +25,15 @@ const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isValidId = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
 
 /**
+ * Generates a cryptographically random 6-digit numeric code for 2FA email verification.
+ */
+function generate2FACode() {
+  const buf = crypto.randomBytes(4);
+  const num = buf.readUInt32BE(0) % 1000000;
+  return String(num).padStart(6, '0');
+}
+
+/**
  * POST /api/create-account
  * Body: { username, password, email }
  */
@@ -126,6 +135,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
 /**
  * POST /api/login
  * Body: { username, password }
+ * If 2FA is enabled, returns { requires_2fa: true, twoFactorToken } instead of a session.
  */
 router.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body;
@@ -136,7 +146,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   // Fetch by username only — never compare passwords in SQL
   const users = await c2_query(
-    `SELECT id, name, password_hash FROM users WHERE name = ? LIMIT 1`,
+    `SELECT id, name, email, password_hash, two_factor_enabled FROM users WHERE name = ? LIMIT 1`,
     [username]
   );
 
@@ -150,7 +160,49 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 
-  const { password_hash: _, ...user } = users[0]; // strip hash from response
+  const { password_hash: _, two_factor_enabled, ...user } = users[0];
+
+  // If 2FA is enabled, send a code and return a temporary token
+  if (two_factor_enabled) {
+    // Invalidate any existing unused codes for this user
+    await c2_query(
+      `UPDATE two_factor_codes SET used = TRUE WHERE user_id = ? AND used = FALSE`,
+      [user.id]
+    );
+
+    const code = generate2FACode();
+    await c2_query(
+      `INSERT INTO two_factor_codes (user_id, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
+      [user.id, code]
+    );
+
+    // Create a short-lived temporary token to tie the 2FA verification back to this login attempt
+    const twoFactorToken = crypto.randomBytes(32).toString('hex');
+    await c2_query(
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
+      [user.id, twoFactorToken]
+    );
+
+    const [emailRow] = await c2_query(`SELECT email FROM users WHERE id = ? LIMIT 1`, [user.id]);
+    try {
+      await sendEmail({
+        to: emailRow.email,
+        subject: 'Cloud Codex — Verification Code',
+        text: `Your verification code is: ${code}\n\nThis code expires in 10 minutes. If you did not attempt to log in, please secure your account.`,
+        html: `
+          <h2>Verification Code</h2>
+          <p>Your Cloud Codex verification code is:</p>
+          <p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#2ca7db;margin:20px 0;">${code}</p>
+          <p style="color:#999;font-size:13px;">This code expires in 10 minutes. If you did not attempt to log in, please secure your account.</p>
+        `,
+      });
+    } catch (err) {
+      console.error('Failed to send 2FA code email:', err);
+    }
+
+    return res.json({ success: true, requires_2fa: true, twoFactorToken });
+  }
+
   const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
 
   res.json({ success: true, token: sessionToken, user });
@@ -510,6 +562,136 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
   await c2_query(`DELETE FROM sessions WHERE user_id = ?`, [resetRecord.user_id]);
 
   res.json({ success: true, message: 'Password has been reset. Please log in with your new password.' });
+}));
+
+// --- Two-Factor Authentication ---
+
+/**
+ * POST /api/2fa/verify
+ * Body: { twoFactorToken, code }
+ * Verifies the 2FA code and issues a session token.
+ */
+router.post('/2fa/verify', asyncHandler(async (req, res) => {
+  const { twoFactorToken, code } = req.body;
+
+  if (!twoFactorToken || !code) {
+    return res.status(400).json({ success: false, message: 'Verification code is required' });
+  }
+
+  // Validate the temporary token (stored in password_reset_tokens for reuse)
+  const [tokenRecord] = await c2_query(
+    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? LIMIT 1`,
+    [twoFactorToken]
+  );
+
+  if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date()) {
+    return res.status(401).json({ success: false, message: 'Verification session expired. Please log in again.' });
+  }
+
+  // Validate the 2FA code
+  const [codeRecord] = await c2_query(
+    `SELECT id, expires_at, used FROM two_factor_codes WHERE user_id = ? AND code = ? AND used = FALSE ORDER BY created_at DESC LIMIT 1`,
+    [tokenRecord.user_id, code]
+  );
+
+  if (!codeRecord || codeRecord.expires_at <= new Date()) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired verification code' });
+  }
+
+  // Mark both as used
+  await c2_query(`UPDATE two_factor_codes SET used = TRUE WHERE id = ?`, [codeRecord.id]);
+  await c2_query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [tokenRecord.id]);
+
+  // Fetch user and create session
+  const [user] = await c2_query(
+    `SELECT id, name FROM users WHERE id = ? LIMIT 1`,
+    [tokenRecord.user_id]
+  );
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'User not found' });
+  }
+
+  const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
+
+  res.json({ success: true, token: sessionToken, user });
+}));
+
+/**
+ * POST /api/2fa/enable
+ * Enables 2FA for the authenticated user. Sends a verification code to confirm.
+ */
+router.post('/2fa/enable', asyncHandler(async (req, res) => {
+  const token =
+    req.headers['authorization']?.replace('Bearer ', '') ||
+    req.body?.token ||
+    null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const user = await validateAndAutoLogin(token);
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+  }
+
+  await c2_query(`UPDATE users SET two_factor_enabled = TRUE WHERE id = ?`, [user.id]);
+
+  res.json({ success: true, message: 'Two-factor authentication has been enabled.' });
+}));
+
+/**
+ * POST /api/2fa/disable
+ * Disables 2FA for the authenticated user.
+ */
+router.post('/2fa/disable', asyncHandler(async (req, res) => {
+  const token =
+    req.headers['authorization']?.replace('Bearer ', '') ||
+    req.body?.token ||
+    null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const user = await validateAndAutoLogin(token);
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+  }
+
+  await c2_query(`UPDATE users SET two_factor_enabled = FALSE WHERE id = ?`, [user.id]);
+
+  // Clean up any unused codes
+  await c2_query(`DELETE FROM two_factor_codes WHERE user_id = ? AND used = FALSE`, [user.id]);
+
+  res.json({ success: true, message: 'Two-factor authentication has been disabled.' });
+}));
+
+/**
+ * GET /api/2fa/status
+ * Returns whether the authenticated user has 2FA enabled.
+ */
+router.get('/2fa/status', asyncHandler(async (req, res) => {
+  const token =
+    req.headers['authorization']?.replace('Bearer ', '') ||
+    null;
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const user = await validateAndAutoLogin(token);
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+  }
+
+  const [row] = await c2_query(
+    `SELECT two_factor_enabled FROM users WHERE id = ? LIMIT 1`,
+    [user.id]
+  );
+
+  res.json({ success: true, enabled: !!row?.two_factor_enabled });
 }));
 
 // --- Centralized error handler ---

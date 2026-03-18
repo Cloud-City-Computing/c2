@@ -52,6 +52,7 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/api/login', authLimiter);
 app.use('/api/create-account', authLimiter);
 app.use('/api/forgot-password', authLimiter);
+app.use('/api/2fa/verify', authLimiter);
 
 // Mount route groups
 app.use('/api', authRoutes);

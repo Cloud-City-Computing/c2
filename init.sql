@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS team_permissions;
 DROP TABLE IF EXISTS permissions;
 DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS two_factor_codes;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS sessions;
@@ -32,6 +33,7 @@ CREATE TABLE users (
   name TEXT NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  two_factor_enabled BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -57,6 +59,18 @@ CREATE TABLE password_reset_tokens (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (token),
+  INDEX (expires_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE two_factor_codes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  code CHAR(6) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX (user_id),
   INDEX (expires_at)
 ) ENGINE=InnoDB;
 
