@@ -8,7 +8,6 @@
 import { useState, useEffect } from 'react';
 import {
   getSessStorage, apiFetch, getSessionTokenFromCookie,
-  fetchPermissions, updatePermissions,
 } from '../util';
 
 // ===========================
@@ -249,70 +248,174 @@ export function AccountPreferencesPanel() {
 }
 
 // ===========================
-//  Personal Permissions Panel (for Account page)
+//  User Preferences Panel
 // ===========================
 
-function PermissionToggles({ perms, fields, onToggle }) {
-  const labels = {
-    create_team:    { title: 'Create Teams',    desc: 'Create teams within organizations' },
-    create_project: { title: 'Create Projects', desc: 'Create new projects' },
-    create_page:    { title: 'Create Pages',    desc: 'Create pages within projects' },
-  };
+const ACCENT_COLORS = [
+  { id: 'blue',    label: 'Ocean Blue',     value: '#2ca7db', light: '#5ac0e8', dark: '#1e7a9c', hover: '#21779c' },
+  { id: 'violet',  label: 'Soft Violet',    value: '#8b5cf6', light: '#a78bfa', dark: '#6d3ad4', hover: '#7c3aed' },
+  { id: 'emerald', label: 'Emerald',        value: '#10b981', light: '#34d399', dark: '#059669', hover: '#047857' },
+  { id: 'rose',    label: 'Rose',           value: '#f43f5e', light: '#fb7185', dark: '#e11d48', hover: '#be123c' },
+  { id: 'amber',   label: 'Amber',          value: '#f59e0b', light: '#fbbf24', dark: '#d97706', hover: '#b45309' },
+  { id: 'cyan',    label: 'Cyan',           value: '#06b6d4', light: '#22d3ee', dark: '#0891b2', hover: '#0e7490' },
+  { id: 'pink',    label: 'Fuchsia',        value: '#d946ef', light: '#e879f9', dark: '#c026d3', hover: '#a21caf' },
+  { id: 'lime',    label: 'Lime',           value: '#84cc16', light: '#a3e635', dark: '#65a30d', hover: '#4d7c0f' },
+];
 
-  return (
-    <div className="permissions-grid">
-      {fields.map(key => (
-        <label key={key} className="permission-toggle">
-          <input type="checkbox" checked={!!perms[key]} onChange={() => onToggle(key)} />
-          <div>
-            <strong>{labels[key].title}</strong>
-            <p className="text-muted text-sm">{labels[key].desc}</p>
-          </div>
-        </label>
-      ))}
-    </div>
-  );
+const FONT_SIZE_OPTIONS = [
+  { id: 'sm', label: 'Small', value: '13px' },
+  { id: 'md', label: 'Medium', value: '15px' },
+  { id: 'lg', label: 'Large', value: '17px' },
+];
+
+const DENSITY_OPTIONS = [
+  { id: 'compact',     label: 'Compact',     padScale: 0.7 },
+  { id: 'comfortable', label: 'Comfortable', padScale: 1.0 },
+  { id: 'spacious',    label: 'Spacious',    padScale: 1.3 },
+];
+
+const PREFS_KEY = 'c2-user-prefs';
+
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; }
 }
 
-export function PersonalPermissionsPanel() {
-  const [myPerms, setMyPerms] = useState({ create_team: false, create_project: false, create_page: true });
-  const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
+function savePrefs(prefs) {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+}
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetchPermissions();
-        if (res.permissions) setMyPerms(res.permissions);
-      } catch { /* ignore */ }
-      setLoading(false);
-    })();
-  }, []);
+export function applyPrefsToDOM(prefs) {
+  const root = document.documentElement;
+  const color = ACCENT_COLORS.find(c => c.id === prefs.accentColor);
+  if (color) {
+    root.style.setProperty('--brand-blue', color.value);
+    root.style.setProperty('--brand-blue-light', color.light);
+    root.style.setProperty('--brand-blue-dark', color.dark);
+    root.style.setProperty('--brand-blue-hover', color.hover);
+  } else {
+    root.style.removeProperty('--brand-blue');
+    root.style.removeProperty('--brand-blue-light');
+    root.style.removeProperty('--brand-blue-dark');
+    root.style.removeProperty('--brand-blue-hover');
+  }
+  const fontSize = FONT_SIZE_OPTIONS.find(f => f.id === prefs.fontSize);
+  if (fontSize) {
+    root.style.setProperty('--editor-font-size', fontSize.value);
+  } else {
+    root.style.removeProperty('--editor-font-size');
+  }
+  const density = DENSITY_OPTIONS.find(d => d.id === prefs.density);
+  if (density) {
+    root.style.setProperty('--density-scale', String(density.padScale));
+  } else {
+    root.style.removeProperty('--density-scale');
+  }
 
-  const handleToggle = async (key) => {
-    const prev = { ...myPerms };
-    const updated = { ...myPerms, [key]: !myPerms[key] };
-    setMyPerms(updated);
-    setStatus(null);
-    const userId = getSessStorage('currentUser')?.id;
-    if (!userId) return;
-    try {
-      await updatePermissions(userId, updated);
-      setStatus({ type: 'success', message: 'Permissions updated.' });
-    } catch (e) {
-      setMyPerms(prev);
-      setStatus({ type: 'error', message: e.body?.message ?? 'Error updating permissions.' });
-    }
+  if (prefs.sidebarDefault === 'collapsed') {
+    document.body.setAttribute('data-sidebar-default', 'collapsed');
+  } else {
+    document.body.removeAttribute('data-sidebar-default');
+  }
+}
+
+// Apply preferences on module load
+applyPrefsToDOM(loadPrefs());
+
+export function UserPreferencesPanel() {
+  const [prefs, setPrefs] = useState(() => {
+    const saved = loadPrefs();
+    return {
+      accentColor: saved.accentColor || 'blue',
+      fontSize: saved.fontSize || 'md',
+      density: saved.density || 'comfortable',
+      sidebarDefault: saved.sidebarDefault || 'expanded',
+    };
+  });
+
+  const update = (key, value) => {
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    savePrefs(next);
+    applyPrefsToDOM(next);
   };
-
-  if (loading) return <p className="text-muted">Loading...</p>;
 
   return (
     <div className="settings-panel">
-      <h2 className="panel-title">Permissions</h2>
-      <p className="text-muted text-sm">Controls what you can do across the application.</p>
-      {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
-      <PermissionToggles perms={myPerms} fields={['create_team', 'create_project', 'create_page']} onToggle={handleToggle} />
+      <h2 className="panel-title">Appearance</h2>
+
+      {/* Accent Color */}
+      <div className="pref-section">
+        <h3 className="pref-section__title">Accent Color</h3>
+        <p className="text-muted text-sm">Personalize the interface with your favorite color.</p>
+        <div className="color-swatch-row">
+          {ACCENT_COLORS.map(c => (
+            <button
+              key={c.id}
+              className={`color-swatch${prefs.accentColor === c.id ? ' active' : ''}`}
+              style={{ '--swatch-color': c.value }}
+              onClick={() => update('accentColor', c.id)}
+              title={c.label}
+              aria-label={c.label}
+            >
+              {prefs.accentColor === c.id && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Editor Font Size */}
+      <div className="pref-section">
+        <h3 className="pref-section__title">Editor Font Size</h3>
+        <div className="pref-toggle-group">
+          {FONT_SIZE_OPTIONS.map(f => (
+            <button
+              key={f.id}
+              className={`pref-toggle-btn${prefs.fontSize === f.id ? ' active' : ''}`}
+              onClick={() => update('fontSize', f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* UI Density */}
+      <div className="pref-section">
+        <h3 className="pref-section__title">UI Density</h3>
+        <div className="pref-toggle-group">
+          {DENSITY_OPTIONS.map(d => (
+            <button
+              key={d.id}
+              className={`pref-toggle-btn${prefs.density === d.id ? ' active' : ''}`}
+              onClick={() => update('density', d.id)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sidebar Default */}
+      <div className="pref-section">
+        <h3 className="pref-section__title">Sidebar Default</h3>
+        <p className="text-muted text-sm">Choose how the sidebar appears when you load the app.</p>
+        <div className="pref-toggle-group">
+          <button
+            className={`pref-toggle-btn${prefs.sidebarDefault === 'expanded' ? ' active' : ''}`}
+            onClick={() => update('sidebarDefault', 'expanded')}
+          >
+            Expanded
+          </button>
+          <button
+            className={`pref-toggle-btn${prefs.sidebarDefault === 'collapsed' ? ' active' : ''}`}
+            onClick={() => update('sidebarDefault', 'collapsed')}
+          >
+            Collapsed
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

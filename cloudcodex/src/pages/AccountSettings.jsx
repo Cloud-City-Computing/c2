@@ -6,7 +6,7 @@
  */
 
 import StdLayout from '../page_layouts/Std_Layout';
-import { AccountInfoUpdatePanel, AccountPreferencesPanel, PersonalPermissionsPanel } from '../components/AccountMenu';
+import { AccountInfoUpdatePanel, AccountPreferencesPanel, UserPreferencesPanel } from '../components/AccountMenu';
 
 function AccountSettings() {
   return (
@@ -15,8 +15,8 @@ function AccountSettings() {
         <h1 className="page-heading">Account</h1>
         <div className="account-page__panels">
           <AccountInfoUpdatePanel />
+          <UserPreferencesPanel />
           <AccountPreferencesPanel />
-          <PersonalPermissionsPanel />
         </div>
       </div>
     </StdLayout>

@@ -7,7 +7,11 @@
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from "react-router-dom";
 import './index.css'
+import { applyPrefsToDOM } from './components/AccountMenu.jsx'
 import App from './App.jsx'
+
+// Apply user preferences (accent color, density, etc.) before first render
+applyPrefsToDOM(JSON.parse(localStorage.getItem('c2-user-prefs') || '{}'));
 
 createRoot( document.getElementById( 'root' ) ).render(
   <BrowserRouter>

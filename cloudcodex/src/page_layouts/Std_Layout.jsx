@@ -174,7 +174,12 @@ function NoLoginMessage() {
 function StdLayout({ children }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('c2-user-prefs'));
+      return prefs?.sidebarDefault === 'collapsed';
+    } catch { return false; }
+  });
 
   const checkAuth = useCallback(async () => {
     const token = getSessionTokenFromCookie();
