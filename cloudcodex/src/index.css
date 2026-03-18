@@ -526,6 +526,11 @@ body {
   border-top: 1px solid var(--border-color);
 }
 
+.card__expanded-content {
+  border-top: 1px solid var(--border-color);
+  padding: 0 16px 16px;
+}
+
 /* =========================
    Empty State
 ========================= */
@@ -1450,65 +1455,39 @@ body {
 }
 
 /* =========================
-   Project Browser
+   Projects Management
 ========================= */
 
-.project-browser {
+.project-management {
+  width: 100%;
+}
+
+.project-list-cards {
   display: flex;
-  gap: 20px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.project-browser-sidebar {
-  flex-shrink: 0;
-  width: 240px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.project-browser-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-elevated);
-}
-.project-browser-header p { margin: 0; font-weight: 600; font-size: 14px; }
-
-.project-list {
-  list-style: none;
-  margin: 0;
+.project-list-cards .card {
   padding: 0;
+  gap: 0;
 }
 
-.project-list-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  cursor: pointer;
-  transition: background 0.15s;
-  border-bottom: 1px solid var(--border-color);
-}
-.project-list-item:last-child { border-bottom: none; }
-.project-list-item:hover { background: var(--bg-hover); }
-.project-list-item.active { background: rgba(44, 167, 219, 0.08); border-left: 3px solid var(--brand-blue); }
-
-.project-name { flex: 1; font-size: 14px; font-weight: 500; }
-.project-team { font-size: 11px; color: var(--text-muted); }
-
-.project-browser-content {
-  flex: 1;
-  min-width: 0;
+.project-list-cards .card:hover {
+  transform: none;
 }
 
-.project-browser-content-header {
-  margin-bottom: 16px;
+.project-list-cards .card__body {
+  padding: 16px;
 }
-.project-browser-content-header h2 { margin: 0 0 4px; }
+
+.project-list-cards .card__actions {
+  padding: 10px 16px;
+}
+
+.project-card__expanded {
+  padding-top: 12px;
+}
 
 /* =========================
    Page Tree
@@ -2062,10 +2041,9 @@ body {
 
   .topbar__center { display: none; }
 
-  .project-browser {
-    flex-direction: column;
+  .project-list-cards .card__actions {
+    flex-wrap: wrap;
   }
-  .project-browser-sidebar { width: 100%; }
 
   .account-settings, .settings-layout {
     flex-direction: column;

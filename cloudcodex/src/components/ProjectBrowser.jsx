@@ -5,11 +5,11 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchProjects, createProject, updateProject, deleteProject,
-  fetchPages, createPage, updatePage, deletePage,
+  fetchPages, createPage, deletePage,
   manageProjectAccess, searchUsers,
   showModal, destroyModal,
 } from '../util';
@@ -44,6 +44,196 @@ function NewProjectModal({ onCreated }) {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create Project</button>
+      </div>
+    </div>
+  );
+}
+
+function RenameProjectModal({ project, onRenamed }) {
+  const [name, setName] = useState(project.name);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (!name.trim()) { setError('Project name is required.'); return; }
+    try {
+      await updateProject(project.id, name.trim());
+      destroyModal();
+      onRenamed?.();
+    } catch (e) {
+      setError(e.body?.message ?? 'Error renaming project.');
+    }
+  };
+
+  return (
+    <div className="modal-content">
+      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <h2>Rename Project</h2>
+      {error && <p className="form-error">{error}</p>}
+      <div className="modal-form">
+        <label htmlFor="rename-project-name">Project Name:</label>
+        <input
+          id="rename-project-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+        />
+        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Save</button>
+      </div>
+    </div>
+  );
+}
+
+function ManageProjectAccessModal({ project, onAccessUpdated, onAccessSaved }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [perms, setPerms] = useState({ read: true, write: false });
+  const [mode, setMode] = useState('add');
+  const [error, setError] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSearch = useCallback(async (q) => {
+    setQuery(q);
+    if (q.trim().length < 2) { setResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await searchUsers(q.trim());
+      setResults(res.users || []);
+    } catch {
+      setResults([]);
+    }
+    setSearching(false);
+  }, []);
+
+  const togglePerm = (key) => setPerms((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const handleAccessUpdate = async (action) => {
+    setError(null);
+    setStatus(null);
+    if (!selected) {
+      setError('Please select a user.');
+      return;
+    }
+
+    const selectedPerms = Object.entries(perms)
+      .filter(([, enabled]) => enabled)
+      .map(([perm]) => perm);
+
+    if (selectedPerms.length === 0) {
+      setError('Select at least one permission to update.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await Promise.all(
+        selectedPerms.map((perm) => manageProjectAccess(project.id, selected.id, perm, action))
+      );
+      const verb = action === 'add' ? 'granted' : 'revoked';
+      const labels = selectedPerms.join(' + ');
+      const successMessage = `Successfully ${verb} ${labels} access for ${selected.name}.`;
+      setStatus(successMessage);
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      onAccessSaved?.(successMessage);
+      destroyModal();
+      onAccessUpdated?.();
+    } catch (e) {
+      setError(e.body?.message ?? 'Error updating project access.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-content">
+      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <h2>Manage Project Access</h2>
+      <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
+        Project: <strong>{project.name}</strong>
+      </p>
+      {error && <p className="form-error">{error}</p>}
+      {status && <p className="form-success">{status}</p>}
+
+      <div className="modal-form">
+        <label>Search Users:</label>
+        <div className="user-search">
+          <input
+            className="user-search__input"
+            type="text"
+            value={query}
+            placeholder="Search by name or email..."
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+          {searching && <p className="text-muted text-sm">Searching...</p>}
+          {results.length > 0 && !selected && (
+            <ul className="user-search__results">
+              {results.map((user) => (
+                <li
+                  key={user.id}
+                  className="user-search__item"
+                  onClick={() => {
+                    setSelected(user);
+                    setResults([]);
+                    setQuery(user.email);
+                  }}
+                >
+                  <span className="user-search__name">{user.name}</span>
+                  <span className="user-search__email">{user.email}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {selected && (
+          <div className="invite-selected">
+            <span>Selected: <strong>{selected.name}</strong> ({selected.email})</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setSelected(null); setQuery(''); }}>
+              Change
+            </button>
+          </div>
+        )}
+
+        <label style={{ marginTop: 12 }}>Permissions:</label>
+        <div className="invite-perms-grid">
+          {[
+            ['read', 'Read', 'Can view project pages and documents'],
+            ['write', 'Write', 'Can edit pages and project content'],
+          ].map(([key, label, desc]) => (
+            <label key={key} className="invite-perm-toggle">
+              <input
+                type="checkbox"
+                checked={perms[key]}
+                onChange={() => togglePerm(key)}
+              />
+              <div>
+                <strong>{label}</strong>
+                <p className="text-muted text-sm">{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <label style={{ marginTop: 12 }}>Action:</label>
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value)}
+          className="form-select"
+          disabled={submitting}
+        >
+          <option value="add">Grant selected permissions</option>
+          <option value="remove">Revoke selected permissions</option>
+        </select>
+
+        <div className="inline-form" style={{ marginTop: 12 }}>
+          <button className="btn btn-primary stretched-button" onClick={() => handleAccessUpdate(mode)} disabled={submitting}>
+            {submitting ? 'Applying Changes...' : (mode === 'add' ? 'Grant Permissions' : 'Revoke Permissions')}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -181,7 +371,7 @@ function PageTree({ projectId, onPageCreated }) {
         <button className="btn btn-primary btn-sm" onClick={handleNewRootPage}>+ New Page</button>
       </div>
       {pages.length === 0
-        ? <p className="text-muted">No pages yet. Create one above.</p>
+        ? <p className="text-muted">No pages yet. Create one to get started.</p>
         : (
           <ul className="page-tree-list">
             {pages.map(page => (
@@ -195,141 +385,27 @@ function PageTree({ projectId, onPageCreated }) {
   );
 }
 
-// --- User Search (inline for access management) ---
-
-function UserSearchInput({ onSelect, placeholder = 'Search users by name or email...' }) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return; }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await searchUsers(query.trim());
-        setResults(res.users || []);
-        setOpen(true);
-      } catch { setResults([]); }
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  const handleSelect = (user) => {
-    onSelect(user);
-    setQuery('');
-    setResults([]);
-    setOpen(false);
-  };
-
-  return (
-    <div className="user-search">
-      <input
-        type="text"
-        className="user-search__input"
-        placeholder={placeholder}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => results.length && setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 200)}
-      />
-      {open && results.length > 0 && (
-        <ul className="user-search__results">
-          {results.map(u => (
-            <li key={u.id} className="user-search__item" onMouseDown={() => handleSelect(u)}>
-              <span className="user-search__name">{u.name}</span>
-              <span className="user-search__email">{u.email}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// --- Project Settings (inline) ---
-
-function ProjectSettings({ project, onRenamed }) {
-  const [showSettings, setShowSettings] = useState(false);
-  const [renameValue, setRenameValue] = useState(project.name);
-  const [accessUser, setAccessUser] = useState(null);
-  const [status, setStatus] = useState(null);
-
-  useEffect(() => { setRenameValue(project.name); setStatus(null); setAccessUser(null); }, [project.id, project.name]);
-
-  const handleRename = async () => {
-    if (!renameValue.trim()) return;
-    setStatus(null);
-    try {
-      await updateProject(project.id, renameValue.trim());
-      setStatus({ type: 'success', message: 'Project renamed.' });
-      onRenamed?.();
-    } catch (e) {
-      setStatus({ type: 'error', message: e.body?.message ?? 'Error renaming project.' });
-    }
-  };
-
-  const handleAccess = async (accessType, action) => {
-    if (!accessUser) { setStatus({ type: 'error', message: 'Search and select a user first.' }); return; }
-    try {
-      await manageProjectAccess(project.id, accessUser.id, accessType, action);
-      setStatus({ type: 'success', message: `${action === 'add' ? 'Added' : 'Removed'} ${accessType} access for ${accessUser.name}.` });
-      setAccessUser(null);
-    } catch (e) {
-      setStatus({ type: 'error', message: e.body?.message ?? 'Error updating access.' });
-    }
-  };
-
-  if (!showSettings) {
-    return (
-      <button className="btn btn-ghost btn-sm" onClick={() => setShowSettings(true)}>
-        Settings
-      </button>
-    );
-  }
-
-  return (
-    <div className="project-settings-inline">
-      <div className="project-settings-inline__header">
-        <h4>Project Settings</h4>
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowSettings(false)}>Close</button>
-      </div>
-      {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
-
-      <div className="settings-section">
-        <h4>Rename Project</h4>
-        <div className="inline-form">
-          <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
-          <button className="btn btn-primary btn-sm" onClick={handleRename}>Rename</button>
-        </div>
-      </div>
-
-      <div className="settings-section">
-        <h4>Manage Access</h4>
-        <UserSearchInput onSelect={setAccessUser} placeholder="Search for a user..." />
-        {accessUser && (
-          <div className="access-selected-user">
-            <span className="text-sm">Selected: <strong>{accessUser.name}</strong> ({accessUser.email})</span>
-            <div className="inline-form" style={{ marginTop: 8 }}>
-              <button className="btn btn-primary btn-sm" onClick={() => handleAccess('read', 'add')}>+ Read</button>
-              <button className="btn btn-primary btn-sm" onClick={() => handleAccess('write', 'add')}>+ Write</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => handleAccess('read', 'remove')}>- Read</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => handleAccess('write', 'remove')}>- Write</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // --- Project Browser ---
 
 export default function ProjectBrowser() {
+  const { projectId } = useParams();
+  const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
-  const [activeProject, setActiveProject] = useState(null);
+  const [expandedProject, setExpandedProject] = useState(projectId ? Number(projectId) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [accessNotice, setAccessNotice] = useState(null);
+  const hasAutoExpanded = useRef(false);
+
+  const teamFilter = searchParams.get('team');
+
+  const visibleProjects = useMemo(() => {
+    if (!teamFilter) return projects;
+    return projects.filter((project) => {
+      const idCandidates = [project.team_id, project.teamId, project.team?.id];
+      return idCandidates.some((id) => id !== null && id !== undefined && String(id) === String(teamFilter));
+    });
+  }, [projects, teamFilter]);
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -337,16 +413,31 @@ export default function ProjectBrowser() {
     try {
       const res = await fetchProjects();
       setProjects(res.projects || []);
-      if (res.projects?.length > 0 && !activeProject) {
-        setActiveProject(res.projects[0]);
-      }
     } catch (e) {
       setError(e.body?.message ?? 'Error loading projects.');
     }
     setLoading(false);
-  }, [activeProject]);
+  }, []);
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
+
+  useEffect(() => {
+    if (projectId) setExpandedProject(Number(projectId));
+  }, [projectId]);
+
+  useEffect(() => {
+    if (projectId || hasAutoExpanded.current) return;
+    if (projects.length > 0 && expandedProject === null) {
+      setExpandedProject(projects[0].id);
+      hasAutoExpanded.current = true;
+    }
+  }, [projects, expandedProject, projectId]);
+
+  useEffect(() => {
+    if (!accessNotice) return undefined;
+    const timer = setTimeout(() => setAccessNotice(null), 3500);
+    return () => clearTimeout(timer);
+  }, [accessNotice]);
 
   const handleNewProject = () => {
     showModal(<NewProjectModal onCreated={loadProjects} />, 'modal-md');
@@ -360,7 +451,7 @@ export default function ProjectBrowser() {
         onConfirm={async () => {
           await deleteProject(project.id);
           destroyModal();
-          if (activeProject?.id === project.id) setActiveProject(null);
+          if (expandedProject === project.id) setExpandedProject(null);
           loadProjects();
         }}
         onCancel={destroyModal}
@@ -369,52 +460,95 @@ export default function ProjectBrowser() {
     );
   };
 
+  const toggleProject = (id) => {
+    setExpandedProject((prev) => (prev === id ? null : id));
+  };
+
   if (loading) return <p className="text-muted">Loading projects...</p>;
   if (error) return <p className="form-error">{error}</p>;
 
   return (
-    <div className="project-browser">
-      <div className="project-browser-sidebar">
-        <div className="project-browser-header">
-          <p>Projects</p>
-          <button className="btn btn-primary btn-sm" onClick={handleNewProject}>+ New</button>
-        </div>
-        <ul className="project-list">
-          {projects.length === 0
-            ? <li className="text-muted">No projects yet.</li>
-            : projects.map(project => (
-              <li key={project.id}
-                className={`project-list-item ${activeProject?.id === project.id ? 'active' : ''}`}
-                onClick={() => setActiveProject(project)}>
-                <span className="project-name">{project.name}</span>
-                {project.team_name && <span className="project-team">{project.team_name}</span>}
-                <button className="btn btn-danger btn-xs"
-                  onClick={(e) => { e.stopPropagation(); handleDeleteProject(project); }}
-                  title="Delete project">&times;</button>
-              </li>
-            ))
-          }
-        </ul>
+    <div className="project-management">
+      <div className="page-header">
+        <h1>Projects</h1>
+        <button className="btn btn-primary" onClick={handleNewProject}>+ New Project</button>
       </div>
 
-      <div className="project-browser-content">
-        {activeProject
-          ? (
-            <>
-              <div className="project-browser-content-header">
-                <div>
-                  <h2 className="panel-title">{activeProject.name}</h2>
-                  <p className="text-muted">
-                    Created by {activeProject.created_by} on {new Date(activeProject.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <ProjectSettings project={activeProject} onRenamed={loadProjects} />
+      {accessNotice && <p className="panel-status success">{accessNotice}</p>}
+
+      {teamFilter && (
+        <p className="text-muted" style={{ marginBottom: 14 }}>
+          Showing projects for the selected team.
+        </p>
+      )}
+
+      {!loading && visibleProjects.length > 0 && (
+        <p className="text-muted" style={{ marginBottom: 14 }}>
+          {visibleProjects.length} project{visibleProjects.length !== 1 ? 's' : ''}
+        </p>
+      )}
+
+      {!loading && projects.length === 0 && (
+        <div className="empty-state">
+          <p>No projects yet. Create one to get started.</p>
+        </div>
+      )}
+
+      {!loading && projects.length > 0 && visibleProjects.length === 0 && (
+        <div className="empty-state">
+          <p>No projects matched the selected team.</p>
+        </div>
+      )}
+
+      <div className="project-list-cards">
+        {visibleProjects.map((project) => (
+          <div key={project.id} className={`card ${expandedProject === project.id ? 'card--expanded' : ''}`}>
+            <div className="card__body" onClick={() => toggleProject(project.id)} style={{ cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.8em' }}>{expandedProject === project.id ? '▾' : '▸'}</span>
+                <h3 className="card__title" style={{ margin: 0 }}>{project.name}</h3>
               </div>
-              <PageTree key={activeProject.id} projectId={activeProject.id} />
-            </>
-          )
-          : <p className="text-muted">Select a project to view its pages.</p>
-        }
+              <p className="card__meta">
+                {project.team_name ? `Team: ${project.team_name} · ` : ''}
+                Owner: {project.created_by} · Created: {new Date(project.created_at).toLocaleDateString()}
+              </p>
+            </div>
+
+            <div className="card__actions" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => showModal(
+                  <RenameProjectModal project={project} onRenamed={loadProjects} />,
+                  'modal-md'
+                )}
+              >
+                Rename
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => showModal(
+                  <ManageProjectAccessModal
+                    project={project}
+                    onAccessUpdated={loadProjects}
+                    onAccessSaved={setAccessNotice}
+                  />,
+                  'modal-lg'
+                )}
+              >
+                Manage Access
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={() => handleDeleteProject(project)}>
+                Delete
+              </button>
+            </div>
+
+            {expandedProject === project.id && (
+              <div className="card__expanded-content project-card__expanded">
+                <PageTree key={project.id} projectId={project.id} />
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
