@@ -163,7 +163,7 @@ CREATE TABLE pages (
   created_by INT,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   updated_by INT,
-  version INT DEFAULT 1,
+  version INT DEFAULT 0,
   read_access JSON DEFAULT (JSON_ARRAY()),
   write_access JSON DEFAULT (JSON_ARRAY()),
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,

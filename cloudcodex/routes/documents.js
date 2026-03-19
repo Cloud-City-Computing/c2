@@ -89,21 +89,18 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
 
-  // Snapshot the current (old) content before overwriting — skip if page is blank (first save)
-  const oldContent = page.old_content || '';
-  if (oldContent.trim()) {
-    await c2_query(
-      `INSERT INTO versions (page_id, version, html_content, created_by)
-       VALUES (?, ?, ?, ?)`,
-      [page.id, page.version, oldContent, req.user.id]
-    );
-  }
-
-  // Update page with new content and bump version
+  // Bump version and save new content
   const newVersion = page.version + 1;
   await c2_query(
     `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [html_content, newVersion, req.user.id, Number(doc_id)]
+  );
+
+  // Snapshot the newly saved content into the versions table
+  await c2_query(
+    `INSERT INTO versions (page_id, version, html_content, created_by)
+     VALUES (?, ?, ?, ?)`,
+    [page.id, newVersion, html_content, req.user.id]
   );
 
   res.json({ success: true, version: newVersion });
@@ -252,17 +249,18 @@ router.post('/document/:pageId/versions/:versionId/restore', requireAuth, asyncH
     return res.status(404).json({ success: false, message: 'Version not found' });
   }
 
-  // Snapshot current before restoring
-  await c2_query(
-    `INSERT INTO versions (page_id, version, html_content, created_by)
-     VALUES (?, ?, ?, ?)`,
-    [currentPage.id, currentPage.version, currentPage.html_content, req.user.id]
-  );
-
+  // Bump version and restore content
   const newVersion = currentPage.version + 1;
   await c2_query(
     `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [targetVersion.html_content, newVersion, req.user.id, Number(pageId)]
+  );
+
+  // Snapshot the restored content into version history
+  await c2_query(
+    `INSERT INTO versions (page_id, version, html_content, created_by)
+     VALUES (?, ?, ?, ?)`,
+    [currentPage.id, newVersion, targetVersion.html_content, req.user.id]
   );
 
   res.json({ success: true, version: newVersion });
