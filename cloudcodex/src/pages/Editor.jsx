@@ -12,6 +12,7 @@ import JoditEditor from 'jodit-react';
 import { marked } from 'marked';
 import TurndownService from 'turndown';
 import DOMPurify from 'dompurify';
+import { getPreferredEditorMode } from '../userPrefs';
 import {
   fetchDocument,
   saveDocument,
@@ -20,7 +21,6 @@ import {
   fetchVersion,
   restoreVersion,
   deleteVersion,
-  getSessStorage,
 } from '../util';
 
 // Configure marked for safe rendering
@@ -46,15 +46,31 @@ function markdownToHtml(md) {
   return sanitizeHtml(marked.parse(md));
 }
 
+function isHtmlEffectivelyEmpty(html) {
+  if (!html) return true;
+
+  const probe = document.createElement('div');
+  probe.innerHTML = html;
+
+  const text = (probe.textContent || '')
+    .replace(/\u00a0/g, ' ')
+    .trim();
+
+  if (text) return false;
+
+  return !probe.querySelector('img, video, iframe, table, hr, ul, ol, blockquote, pre');
+}
+
 // --- Jodit Editor wrapper ---
 
 function RichTextEditor({ content, setContent }) {
   const editor = useRef(null);
+  const shouldShowPlaceholder = useMemo(() => isHtmlEffectivelyEmpty(content), [content]);
   const config = useMemo(() => ({
     readonly: false,
-    placeholder: 'Start typing...',
+    placeholder: shouldShowPlaceholder ? 'Start typing...' : '',
     theme: 'dark',
-  }), []);
+  }), [shouldShowPlaceholder]);
 
   return (
     <JoditEditor
@@ -155,7 +171,6 @@ function VersionHistory({ pageId, onRestore }) {
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState(null);
   const [previewId, setPreviewId] = useState(null);
-  const currentUserId = getSessStorage('currentUser')?.id;
 
   const loadVersions = useCallback(async () => {
     try {
@@ -246,7 +261,7 @@ export default function Editor() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
-  const [editorMode, setEditorMode] = useState('richtext'); // 'richtext' | 'markdown'
+  const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
 
   const loadDocument = useCallback(async () => {
     if (!pageId) return;

@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import {
   getSessStorage, apiFetch, getSessionTokenFromCookie,
 } from '../util';
+import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs } from '../userPrefs';
 
 // ===========================
 //  Account Panels (used by AccountSettings page)
@@ -274,68 +275,27 @@ const DENSITY_OPTIONS = [
   { id: 'spacious',    label: 'Spacious',    padScale: 1.3 },
 ];
 
-const PREFS_KEY = 'c2-user-prefs';
-
-function loadPrefs() {
-  try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; }
-}
-
-function savePrefs(prefs) {
-  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-}
-
-export function applyPrefsToDOM(prefs) {
-  const root = document.documentElement;
-  const color = ACCENT_COLORS.find(c => c.id === prefs.accentColor);
-  if (color) {
-    root.style.setProperty('--brand-blue', color.value);
-    root.style.setProperty('--brand-blue-light', color.light);
-    root.style.setProperty('--brand-blue-dark', color.dark);
-    root.style.setProperty('--brand-blue-hover', color.hover);
-  } else {
-    root.style.removeProperty('--brand-blue');
-    root.style.removeProperty('--brand-blue-light');
-    root.style.removeProperty('--brand-blue-dark');
-    root.style.removeProperty('--brand-blue-hover');
-  }
-  const fontSize = FONT_SIZE_OPTIONS.find(f => f.id === prefs.fontSize);
-  if (fontSize) {
-    root.style.setProperty('--editor-font-size', fontSize.value);
-  } else {
-    root.style.removeProperty('--editor-font-size');
-  }
-  const density = DENSITY_OPTIONS.find(d => d.id === prefs.density);
-  if (density) {
-    root.style.setProperty('--density-scale', String(density.padScale));
-  } else {
-    root.style.removeProperty('--density-scale');
-  }
-
-  if (prefs.sidebarDefault === 'collapsed') {
-    document.body.setAttribute('data-sidebar-default', 'collapsed');
-  } else {
-    document.body.removeAttribute('data-sidebar-default');
-  }
-}
-
-// Apply preferences on module load
-applyPrefsToDOM(loadPrefs());
+const EDITOR_MODE_OPTIONS = [
+  { id: 'richtext', label: 'Rich Text' },
+  { id: 'markdown', label: 'Markdown' },
+];
 
 export function UserPreferencesPanel() {
   const [prefs, setPrefs] = useState(() => {
-    const saved = loadPrefs();
+    const saved = loadUserPrefs();
     return {
       accentColor: saved.accentColor || 'blue',
       fontSize: saved.fontSize || 'md',
       density: saved.density || 'comfortable',
       sidebarDefault: saved.sidebarDefault || 'expanded',
+      preferredEditor: saved.preferredEditor === 'markdown' ? 'markdown' : 'richtext',
     };
   });
 
   const update = (key, value) => {
     const next = { ...prefs, [key]: value };
     setPrefs(next);
-    savePrefs(next);
+    saveUserPrefs(next);
     applyPrefsToDOM(next);
   };
 
@@ -414,6 +374,22 @@ export function UserPreferencesPanel() {
           >
             Collapsed
           </button>
+        </div>
+      </div>
+
+      <div className="pref-section">
+        <h3 className="pref-section__title">Preferred Editor</h3>
+        <p className="text-muted text-sm">Choose which editor opens by default when you load a page.</p>
+        <div className="pref-toggle-group">
+          {EDITOR_MODE_OPTIONS.map(mode => (
+            <button
+              key={mode.id}
+              className={`pref-toggle-btn${prefs.preferredEditor === mode.id ? ' active' : ''}`}
+              onClick={() => update('preferredEditor', mode.id)}
+            >
+              {mode.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>
