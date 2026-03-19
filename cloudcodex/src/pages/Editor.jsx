@@ -46,38 +46,48 @@ function markdownToHtml(md) {
   return sanitizeHtml(marked.parse(md));
 }
 
-function isHtmlEffectivelyEmpty(html) {
-  if (!html) return true;
-
-  const probe = document.createElement('div');
-  probe.innerHTML = html;
-
-  const text = (probe.textContent || '')
-    .replace(/\u00a0/g, ' ')
-    .trim();
-
-  if (text) return false;
-
-  return !probe.querySelector('img, video, iframe, table, hr, ul, ol, blockquote, pre');
-}
-
 // --- Jodit Editor wrapper ---
 
-function RichTextEditor({ content, setContent }) {
+function RichTextEditor({ content, setContent, contentRef }) {
   const editor = useRef(null);
-  const shouldShowPlaceholder = useMemo(() => isHtmlEffectivelyEmpty(content), [content]);
+  // Local state drives Jodit's value — prevents parent re-renders from resetting the editor
+  const [local, setLocal] = useState(content);
+  const internalRef = useRef(false);
+
+  // Sync from parent only on genuine external changes (doc load, version restore)
+  useEffect(() => {
+    if (internalRef.current) {
+      internalRef.current = false;
+      return;
+    }
+    setLocal(content);
+    contentRef.current = content;
+  }, [content, contentRef]);
+
   const config = useMemo(() => ({
     readonly: false,
-    placeholder: shouldShowPlaceholder ? 'Start typing...' : '',
+    placeholder: 'Start typing...',
     theme: 'dark',
-  }), [shouldShowPlaceholder]);
+  }), []);
+
+  const handleBlur = useCallback((newContent) => {
+    contentRef.current = newContent;
+    setLocal(newContent);
+    internalRef.current = true;
+    setContent(newContent);
+  }, [setContent, contentRef]);
+
+  const handleChange = useCallback((newContent) => {
+    contentRef.current = newContent;
+  }, [contentRef]);
 
   return (
     <JoditEditor
       ref={editor}
-      value={content}
+      value={local}
       config={config}
-      onBlur={setContent}
+      onBlur={handleBlur}
+      onChange={handleChange}
     />
   );
 }
@@ -89,11 +99,17 @@ function MarkdownEditor({ content, setContent }) {
   const [preview, setPreview] = useState(() => content || '');
   const textareaRef = useRef(null);
   const initializedRef = useRef(false);
+  const selfUpdateRef = useRef(false);
 
   // Sync when content changes externally (e.g. version restore)
   useEffect(() => {
     if (!initializedRef.current) {
       initializedRef.current = true;
+      return;
+    }
+    // Skip round-trip when we caused the change ourselves
+    if (selfUpdateRef.current) {
+      selfUpdateRef.current = false;
       return;
     }
     const newMd = htmlToMarkdown(content);
@@ -106,6 +122,7 @@ function MarkdownEditor({ content, setContent }) {
     setMd(val);
     const html = markdownToHtml(val);
     setPreview(html);
+    selfUpdateRef.current = true;
     setContent(html);
   }, [setContent]);
 
@@ -120,6 +137,7 @@ function MarkdownEditor({ content, setContent }) {
       const newVal = val.substring(0, start) + '  ' + val.substring(end);
       setMd(newVal);
       setPreview(markdownToHtml(newVal));
+      selfUpdateRef.current = true;
       setContent(markdownToHtml(newVal));
       requestAnimationFrame(() => {
         ta.selectionStart = ta.selectionEnd = start + 2;
@@ -255,6 +273,7 @@ export default function Editor() {
   const { pageId } = useParams();
   const navigate = useNavigate();
   const [content, setContent] = useState('');
+  const contentRef = useRef('');
   const [documentData, setDocumentData] = useState(null);
   const [status, setStatus] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -262,6 +281,9 @@ export default function Editor() {
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
+
+  // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
+  useEffect(() => { contentRef.current = content; }, [content]);
 
   const loadDocument = useCallback(async () => {
     if (!pageId) return;
@@ -280,16 +302,22 @@ export default function Editor() {
 
   const handleSave = useCallback(async () => {
     if (saving) return;
+    const latestContent = contentRef.current;
     setStatus(null);
     setSaving(true);
     try {
-      await saveDocument(Number(pageId), content);
+      const result = await saveDocument(Number(pageId), latestContent);
+      // Sync state so parent and editor agree on current content
+      setContent(latestContent);
+      if (result?.version) {
+        setDocumentData(d => d ? { ...d, version: result.version } : d);
+      }
       setStatus({ type: 'success', message: 'Document saved.' });
     } catch (e) {
       setStatus({ type: 'error', message: `Error saving: ${e.body?.message ?? e.message}` });
     }
     setSaving(false);
-  }, [pageId, content, saving]);
+  }, [pageId, saving]);
 
   const handleTitleSave = async () => {
     if (!title.trim()) return;
@@ -328,7 +356,7 @@ export default function Editor() {
             {documentData && (
               <>
                 <span>Created by: {documentData.name} ({documentData.email})</span>
-                <span>v{documentData.version_number ?? 1} &middot; {new Date(documentData.created_at).toLocaleString()}</span>
+                <span>v{documentData.version ?? 1} &middot; {new Date(documentData.created_at).toLocaleString()}</span>
               </>
             )}
           </div>
@@ -366,7 +394,7 @@ export default function Editor() {
 
         <div className="editor-container">
           {editorMode === 'richtext' ? (
-            <RichTextEditor content={content} setContent={setContent} />
+            <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} />
           ) : (
             <MarkdownEditor content={content} setContent={setContent} />
           )}

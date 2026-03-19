@@ -8,6 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 
 const router = express.Router();
 
@@ -44,9 +45,9 @@ router.get('/document', requireAuth, asyncHandler(async (req, res) => {
  INNER JOIN users u ON pg.created_by = u.id
  INNER JOIN projects p ON pg.project_id = p.id
       WHERE pg.id = ?
-        AND (JSON_CONTAINS(p.read_access, ?) OR p.created_by = ?)
+        AND ${readAccessWhere('p')}
       LIMIT 1`,
-    [Number(doc_id), JSON.stringify(req.user.id), req.user.id]
+    [Number(doc_id), ...readAccessParams(req.user)]
   );
 
   if (!docs.length) {
@@ -79,21 +80,24 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
        FROM pages pg
  INNER JOIN projects p ON pg.project_id = p.id
       WHERE pg.id = ?
-        AND (JSON_CONTAINS(p.write_access, ?) OR p.created_by = ?)
+        AND ${writeAccessWhere('p')}
       LIMIT 1`,
-    [Number(doc_id), JSON.stringify(req.user.id), req.user.id]
+    [Number(doc_id), ...writeAccessParams(req.user)]
   );
 
   if (!page) {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
 
-  // Snapshot current version before overwriting
-  await c2_query(
-    `INSERT INTO versions (page_id, version, html_content, created_by)
-     VALUES (?, ?, ?, ?)`,
-    [page.id, page.version, page.old_content, req.user.id]
-  );
+  // Snapshot the current (old) content before overwriting — skip if page is blank (first save)
+  const oldContent = page.old_content || '';
+  if (oldContent.trim()) {
+    await c2_query(
+      `INSERT INTO versions (page_id, version, html_content, created_by)
+       VALUES (?, ?, ?, ?)`,
+      [page.id, page.version, oldContent, req.user.id]
+    );
+  }
 
   // Update page with new content and bump version
   const newVersion = page.version + 1;
@@ -126,9 +130,9 @@ router.put('/document/:pageId/title', requireAuth, asyncHandler(async (req, res)
        FROM pages pg
  INNER JOIN projects p ON pg.project_id = p.id
       WHERE pg.id = ?
-        AND (JSON_CONTAINS(p.write_access, ?) OR p.created_by = ?)
+        AND ${writeAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+    [Number(pageId), ...writeAccessParams(req.user)]
   );
 
   if (!page) {
@@ -155,9 +159,9 @@ router.get('/document/:pageId/versions', requireAuth, asyncHandler(async (req, r
        FROM pages pg
  INNER JOIN projects p ON pg.project_id = p.id
       WHERE pg.id = ?
-        AND (JSON_CONTAINS(p.read_access, ?) OR p.created_by = ?)
+        AND ${readAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+    [Number(pageId), ...readAccessParams(req.user)]
   );
   if (!page) {
     return res.status(403).json({ success: false, message: 'Access denied' });
@@ -191,9 +195,9 @@ router.get('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(as
        FROM pages pg
  INNER JOIN projects p ON pg.project_id = p.id
       WHERE pg.id = ?
-        AND (JSON_CONTAINS(p.read_access, ?) OR p.created_by = ?)
+        AND ${readAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+    [Number(pageId), ...readAccessParams(req.user)]
   );
   if (!page) {
     return res.status(403).json({ success: false, message: 'Access denied' });
@@ -231,9 +235,9 @@ router.post('/document/:pageId/versions/:versionId/restore', requireAuth, asyncH
        FROM pages pg
  INNER JOIN projects p ON pg.project_id = p.id
       WHERE pg.id = ?
-        AND (JSON_CONTAINS(p.write_access, ?) OR p.created_by = ?)
+        AND ${writeAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), JSON.stringify(req.user.id), req.user.id]
+    [Number(pageId), ...writeAccessParams(req.user)]
   );
   if (!currentPage) {
     return res.status(403).json({ success: false, message: 'Write access denied' });
@@ -293,9 +297,9 @@ router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler
     return res.json({ success: true });
   }
 
-  // Otherwise check can_delete_version via team membership on the project's team
+  // Otherwise check can_delete_version via team membership, or org/team owner bypass
   const [perm] = await c2_query(
-    `SELECT tm.can_delete_version
+    `SELECT tm.can_delete_version, tm.role
        FROM projects p
  INNER JOIN team_members tm ON tm.team_id = p.team_id AND tm.user_id = ?
       WHERE p.id = ?
@@ -303,7 +307,7 @@ router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler
     [req.user.id, version.project_id]
   );
 
-  if (!perm?.can_delete_version) {
+  if (!perm?.can_delete_version && perm?.role !== 'owner') {
     return res.status(403).json({ success: false, message: 'You do not have permission to delete this version' });
   }
 

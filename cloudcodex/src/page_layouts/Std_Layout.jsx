@@ -202,7 +202,7 @@ function StdLayout({ children }) {
   }, [checkAuth]);
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
       <TopBar user={user} />
       {user && (
         <Sidebar

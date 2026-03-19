@@ -17,7 +17,7 @@ import ConfirmDialog from './ConfirmDialog';
 
 // --- New Project Form ---
 
-function NewProjectModal({ onCreated }) {
+function NewProjectModal({ onCreated, teamId }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
 
@@ -25,7 +25,7 @@ function NewProjectModal({ onCreated }) {
     setError(null);
     if (!name.trim()) { setError('Project name is required.'); return; }
     try {
-      await createProject(name);
+      await createProject(name, teamId || undefined);
       destroyModal();
       onCreated?.();
     } catch (e) {
@@ -440,7 +440,7 @@ export default function ProjectBrowser() {
   }, [accessNotice]);
 
   const handleNewProject = () => {
-    showModal(<NewProjectModal onCreated={loadProjects} />, 'modal-md');
+    showModal(<NewProjectModal onCreated={loadProjects} teamId={teamFilter} />, 'modal-md');
   };
 
   const handleDeleteProject = (project) => {

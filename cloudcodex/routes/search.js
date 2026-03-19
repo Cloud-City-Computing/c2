@@ -8,6 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
+import { readAccessWhere, readAccessParams } from './helpers/ownership.js';
 
 const router = express.Router();
 
@@ -55,10 +56,10 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
     LEFT JOIN users u ON p.created_by = u.id
     INNER JOIN projects pr ON p.project_id = pr.id
     WHERE (p.title LIKE ? OR p.html_content LIKE ?)
-      AND (JSON_CONTAINS(pr.read_access, ?) OR pr.created_by = ?)
+      AND ${readAccessWhere('pr')}
     ORDER BY p.created_at DESC
     LIMIT ?`,
-    [`%${trimmed}%`, `%${trimmed}%`, JSON.stringify(req.user.id), req.user.id, limit]
+    [`%${trimmed}%`, `%${trimmed}%`, ...readAccessParams(req.user), limit]
   );
 
   res.json({ results });

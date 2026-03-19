@@ -9,6 +9,7 @@ import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isProjectOwner } from './helpers/ownership.js';
 
 const router = express.Router();
 
@@ -35,10 +36,9 @@ router.get('/projects', requireAuth, asyncHandler(async (req, res) => {
      FROM projects p
      LEFT JOIN users u  ON p.created_by  = u.id
      LEFT JOIN teams t  ON p.team_id     = t.id
-     WHERE JSON_CONTAINS(p.read_access, ?)
-        OR p.created_by = ?
+     WHERE ${readAccessWhere('p')}
      ORDER BY p.created_at DESC`,
-    [JSON.stringify(req.user.id), req.user.id]
+    [...readAccessParams(req.user)]
   );
 
   res.json({ success: true, projects });
@@ -56,11 +56,11 @@ router.get('/projects/:projectId/pages', requireAuth, asyncHandler(async (req, r
 
   // Verify user has read access to the project
   const [project] = await c2_query(
-    `SELECT id FROM projects
-     WHERE id = ?
-       AND (JSON_CONTAINS(read_access, ?) OR created_by = ?)
+    `SELECT p.id FROM projects p
+     WHERE p.id = ?
+       AND ${readAccessWhere('p')}
      LIMIT 1`,
-    [Number(projectId), JSON.stringify(req.user.id), req.user.id]
+    [Number(projectId), ...readAccessParams(req.user)]
   );
 
   if (!project) return res.status(403).json({ success: false, message: 'Access denied' });
@@ -131,11 +131,11 @@ router.put('/projects/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const [project] = await c2_query(
-    `SELECT id FROM projects
-     WHERE id = ?
-       AND (JSON_CONTAINS(write_access, ?) OR created_by = ?)
+    `SELECT p.id FROM projects p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
      LIMIT 1`,
-    [Number(id), JSON.stringify(req.user.id), req.user.id]
+    [Number(id), ...writeAccessParams(req.user)]
   );
   if (!project) return res.status(403).json({ success: false, message: 'Write access denied' });
 
@@ -153,11 +153,8 @@ router.delete('/projects/:id', requireAuth, asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid projectId' });
   }
 
-  const [project] = await c2_query(
-    `SELECT id FROM projects WHERE id = ? AND created_by = ? LIMIT 1`,
-    [Number(id), req.user.id]
-  );
-  if (!project) return res.status(403).json({ success: false, message: 'Only the creator can delete this project' });
+  const allowed = await isProjectOwner(req.user, id);
+  if (!allowed) return res.status(403).json({ success: false, message: 'Only a project or team owner can delete this project' });
 
   await c2_query(`DELETE FROM projects WHERE id = ?`, [Number(id)]);
   res.json({ success: true });
@@ -179,12 +176,9 @@ router.post('/projects/:id/access', requireAuth, asyncHandler(async (req, res) =
     return res.status(400).json({ success: false, message: 'Invalid parameters' });
   }
 
-  // Only creator can manage access
-  const [project] = await c2_query(
-    `SELECT id FROM projects WHERE id = ? AND created_by = ? LIMIT 1`,
-    [Number(id), req.user.id]
-  );
-  if (!project) return res.status(403).json({ success: false, message: 'Only the creator can manage access' });
+  // Only project/team/org owners can manage access
+  const allowed = await isProjectOwner(req.user, id);
+  if (!allowed) return res.status(403).json({ success: false, message: 'Only a project or team owner can manage access' });
 
   const column = accessType === 'read' ? 'read_access' : 'write_access';
 
@@ -225,11 +219,11 @@ router.post('/projects/:projectId/pages', requireAuth, requirePermission('create
 
   // Verify write access
   const [project] = await c2_query(
-    `SELECT id FROM projects
-     WHERE id = ?
-       AND (JSON_CONTAINS(write_access, ?) OR created_by = ?)
+    `SELECT p.id FROM projects p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
      LIMIT 1`,
-    [Number(projectId), JSON.stringify(req.user.id), req.user.id]
+    [Number(projectId), ...writeAccessParams(req.user)]
   );
 
   if (!project) return res.status(403).json({ success: false, message: 'Write access denied' });
@@ -256,11 +250,11 @@ router.put('/projects/:projectId/pages/:pageId', requireAuth, asyncHandler(async
   const { title, parent_id } = req.body;
 
   const [project] = await c2_query(
-    `SELECT id FROM projects
-     WHERE id = ?
-       AND (JSON_CONTAINS(write_access, ?) OR created_by = ?)
+    `SELECT p.id FROM projects p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
      LIMIT 1`,
-    [Number(projectId), JSON.stringify(req.user.id), req.user.id]
+    [Number(projectId), ...writeAccessParams(req.user)]
   );
   if (!project) return res.status(403).json({ success: false, message: 'Write access denied' });
 
@@ -293,11 +287,11 @@ router.delete('/projects/:projectId/pages/:pageId', requireAuth, asyncHandler(as
   }
 
   const [project] = await c2_query(
-    `SELECT id FROM projects
-     WHERE id = ?
-       AND (JSON_CONTAINS(write_access, ?) OR created_by = ?)
+    `SELECT p.id FROM projects p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
      LIMIT 1`,
-    [Number(projectId), JSON.stringify(req.user.id), req.user.id]
+    [Number(projectId), ...writeAccessParams(req.user)]
   );
   if (!project) return res.status(403).json({ success: false, message: 'Write access denied' });
 

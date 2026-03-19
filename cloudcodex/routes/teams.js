@@ -98,7 +98,31 @@ router.post(
       [Number(orgId), name.trim(), req.user.id]
     );
 
-    res.status(201).json({ success: true, teamId: result.insertId });
+    const newTeamId = result.insertId;
+
+    // Auto-add the creator as a team owner with full permissions
+    await c2_query(
+      `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
+       VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
+      [newTeamId, req.user.id]
+    );
+
+    // If the org owner is someone else, also add them as a team owner
+    if (!isOwner) {
+      const [ownerUser] = await c2_query(
+        `SELECT id FROM users WHERE email = ? LIMIT 1`,
+        [org.owner]
+      );
+      if (ownerUser) {
+        await c2_query(
+          `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
+           VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
+          [newTeamId, ownerUser.id]
+        );
+      }
+    }
+
+    res.status(201).json({ success: true, teamId: newTeamId });
   })
 );
 
@@ -367,10 +391,15 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
   if (!allowed) return res.status(403).json({ success: false, message: 'You do not have permission to manage this team' });
 
   const [member] = await c2_query(
-    `SELECT id FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
+    `SELECT id, role FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
     [Number(id), Number(userId)]
   );
   if (!member) return res.status(404).json({ success: false, message: 'Member not found' });
+
+  // Owners cannot be modified
+  if (member.role === 'owner') {
+    return res.status(403).json({ success: false, message: 'Cannot modify the permissions of a team owner' });
+  }
 
   const { role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version } = req.body;
   const fields = [];
@@ -403,6 +432,15 @@ router.delete('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req
   const { team, allowed } = await canManageTeam(Number(id), req.user);
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
   if (!allowed) return res.status(403).json({ success: false, message: 'You do not have permission to manage this team' });
+
+  // Owners cannot be removed
+  const [member] = await c2_query(
+    `SELECT role FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
+    [Number(id), Number(userId)]
+  );
+  if (member?.role === 'owner') {
+    return res.status(403).json({ success: false, message: 'Cannot remove a team owner' });
+  }
 
   await c2_query(`DELETE FROM team_members WHERE team_id = ? AND user_id = ?`, [Number(id), Number(userId)]);
   res.json({ success: true });

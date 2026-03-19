@@ -353,14 +353,18 @@ function TeamMembersPanel({ teamId }) {
             <span className="text-muted text-sm">{member.email}</span>
           </div>
           <div className="member-row__role">
-            <select
-              value={member.role}
-              onChange={(e) => handleRoleChange(member, e.target.value)}
-              className="role-select"
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
+            {member.role === 'owner' ? (
+              <span className="role-badge role-badge--owner">Owner</span>
+            ) : (
+              <select
+                value={member.role}
+                onChange={(e) => handleRoleChange(member, e.target.value)}
+                className="role-select"
+              >
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+            )}
           </div>
           <div className="member-row__perms">
             {Object.entries(PERM_LABELS).map(([key, label]) => (
@@ -368,13 +372,16 @@ function TeamMembersPanel({ teamId }) {
                 <input
                   type="checkbox"
                   checked={!!member[key]}
+                  disabled={member.role === 'owner'}
                   onChange={() => handleTogglePerm(member, key)}
                 />
                 <span>{label}</span>
               </label>
             ))}
           </div>
-          <button className="btn btn-danger btn-sm" onClick={() => handleRemove(member)}>Remove</button>
+          {member.role !== 'owner' && (
+            <button className="btn btn-danger btn-sm" onClick={() => handleRemove(member)}>Remove</button>
+          )}
         </div>
       ))}
 
