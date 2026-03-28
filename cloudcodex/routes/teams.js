@@ -102,8 +102,8 @@ router.post(
 
     // Auto-add the creator as a team owner with full permissions
     await c2_query(
-      `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
-       VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
+      `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
+       VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
       [newTeamId, req.user.id]
     );
 
@@ -115,8 +115,8 @@ router.post(
       );
       if (ownerUser) {
         await c2_query(
-          `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
-           VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
+          `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
+           VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
           [newTeamId, ownerUser.id]
         );
       }
@@ -322,7 +322,7 @@ router.get('/teams/:id/members', requireAuth, asyncHandler(async (req, res) => {
   const members = await c2_query(
     `SELECT tm.id, tm.user_id, u.name, u.email, tm.role,
             tm.can_read, tm.can_write, tm.can_create_page,
-            tm.can_create_project, tm.can_manage_members, tm.can_delete_version, tm.joined_at
+            tm.can_create_project, tm.can_manage_members, tm.can_delete_version, tm.can_publish, tm.joined_at
      FROM team_members tm
      JOIN users u ON tm.user_id = u.id
      WHERE tm.team_id = ?
@@ -341,7 +341,7 @@ router.post('/teams/:id/members/invite', requireAuth, asyncHandler(async (req, r
   const { id } = req.params;
   if (!isValidId(id)) return res.status(400).json({ success: false, message: 'Invalid team ID' });
 
-  const { userId, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version } = req.body;
+  const { userId, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish } = req.body;
   if (!isValidId(userId)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
 
   const { team, allowed } = await canManageTeam(Number(id), req.user);
@@ -381,10 +381,10 @@ router.post('/teams/:id/members/invite', requireAuth, asyncHandler(async (req, r
   const safeRole = role === 'admin' ? 'admin' : 'member';
 
   await c2_query(
-    `INSERT INTO team_invitations (team_id, invited_by, invited_user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO team_invitations (team_id, invited_by, invited_user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [Number(id), req.user.id, Number(userId), safeRole,
-     can_read !== false, Boolean(can_write), Boolean(can_create_page), Boolean(can_create_project), Boolean(can_manage_members), Boolean(can_delete_version)]
+     can_read !== false, Boolean(can_write), Boolean(can_create_page), Boolean(can_create_project), Boolean(can_manage_members), Boolean(can_delete_version), Boolean(can_publish)]
   );
 
   res.status(201).json({ success: true });
@@ -421,7 +421,7 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
   // Only org owners and team creators can grant can_manage_members or set role to admin
   // (prevents privilege escalation by members who only have can_manage_members)
   const isOrgOwnerOrCreator = team.owner === req.user.email || team.created_by === req.user.id;
-  const { role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version } = req.body;
+  const { role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish } = req.body;
 
   if (!isOrgOwnerOrCreator) {
     if (can_manage_members === true) {
@@ -441,6 +441,7 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
   if (can_create_project !== undefined) { fields.push('can_create_project = ?'); params.push(Boolean(can_create_project)); }
   if (can_manage_members !== undefined) { fields.push('can_manage_members = ?'); params.push(Boolean(can_manage_members)); }
   if (can_delete_version !== undefined) { fields.push('can_delete_version = ?'); params.push(Boolean(can_delete_version)); }
+  if (can_publish !== undefined) { fields.push('can_publish = ?'); params.push(Boolean(can_publish)); }
 
   if (fields.length) {
     params.push(Number(id), Number(userId));
@@ -546,13 +547,14 @@ router.post('/invitations/:id/accept', requireAuth, asyncHandler(async (req, res
 
   // Create membership
   await c2_query(
-    `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE role = VALUES(role), can_read = VALUES(can_read), can_write = VALUES(can_write),
        can_create_page = VALUES(can_create_page), can_create_project = VALUES(can_create_project),
-       can_manage_members = VALUES(can_manage_members), can_delete_version = VALUES(can_delete_version)`,
+       can_manage_members = VALUES(can_manage_members), can_delete_version = VALUES(can_delete_version),
+       can_publish = VALUES(can_publish)`,
     [inv.team_id, inv.invited_user_id, inv.role,
-     inv.can_read, inv.can_write, inv.can_create_page, inv.can_create_project, inv.can_manage_members, inv.can_delete_version]
+     inv.can_read, inv.can_write, inv.can_create_page, inv.can_create_project, inv.can_manage_members, inv.can_delete_version, inv.can_publish]
   );
 
   // Remove old accepted/declined invitations for this team+user to avoid unique key conflict

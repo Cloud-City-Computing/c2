@@ -103,7 +103,7 @@ function xmlFragmentToHtml(xmlFragment) {
 
 /**
  * Debounced save: writes the current Yjs document content back to MySQL.
- * Creates a version snapshot just like the regular save endpoint.
+ * Saves content only — does not create a version snapshot.
  */
 function scheduleSave(entry, userId) {
   if (entry.saveTimer) clearTimeout(entry.saveTimer);
@@ -116,20 +116,9 @@ function scheduleSave(entry, userId) {
       // Skip if content hasn't changed
       if (html === entry.lastSavedHtml) return;
 
-      const [page] = await c2_query(
-        `SELECT version FROM pages WHERE id = ? LIMIT 1`,
-        [entry.pageId]
-      );
-      if (!page) return;
-
-      const newVersion = page.version + 1;
       await c2_query(
-        `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-        [html, newVersion, userId, entry.pageId]
-      );
-      await c2_query(
-        `INSERT INTO versions (page_id, version, html_content, created_by) VALUES (?, ?, ?, ?)`,
-        [entry.pageId, newVersion, html, userId]
+        `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+        [html, userId, entry.pageId]
       );
 
       entry.lastSavedHtml = html;
@@ -381,7 +370,7 @@ export function setupCollabServer(server) {
       }
 
       // Validate message type is a known string
-      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save'].includes(msg.type)) {
+      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save', 'publish'].includes(msg.type)) {
         return;
       }
 
@@ -434,42 +423,96 @@ export function setupCollabServer(server) {
       }
 
       if (msg.type === 'save' && canWrite) {
-        // Force immediate save
+        // Immediate content save (no version snapshot)
         if (entry.saveTimer) clearTimeout(entry.saveTimer);
-        scheduleSave(entry, user.id);
-        entry.saveTimer = null;
-        // Trigger save immediately by setting debounce to 0
         const xmlFragment = entry.doc.getXmlFragment('document');
         const currentHtml = sanitizeHtml(xmlFragmentToHtml(xmlFragment));
         if (currentHtml !== entry.lastSavedHtml) {
           (async () => {
             try {
-              const [page] = await c2_query(
-                `SELECT version FROM pages WHERE id = ? LIMIT 1`,
-                [entry.pageId]
-              );
-              if (!page) return;
-              const newVersion = page.version + 1;
               await c2_query(
-                `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-                [currentHtml, newVersion, user.id, entry.pageId]
-              );
-              await c2_query(
-                `INSERT INTO versions (page_id, version, html_content, created_by) VALUES (?, ?, ?, ?)`,
-                [entry.pageId, newVersion, currentHtml, user.id]
+                `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+                [currentHtml, user.id, entry.pageId]
               );
               entry.lastSavedHtml = currentHtml;
 
-              // Notify all clients of the new version
-              const versionMsg = JSON.stringify({ type: 'saved', version: newVersion });
-              for (const [client] of entry.conns) {
-                if (client.readyState === 1) client.send(versionMsg);
-              }
+              // Notify sender that save completed
+              ws.send(JSON.stringify({ type: 'saved' }));
             } catch (err) {
               console.error(`[collab] Immediate save failed for page ${entry.pageId}:`, err);
             }
           })();
+        } else {
+          ws.send(JSON.stringify({ type: 'saved' }));
         }
+      }
+
+      if (msg.type === 'publish' && canWrite) {
+        // Validate optional title and notes
+        const pubTitle = typeof msg.title === 'string' ? msg.title.trim().slice(0, 255) : null;
+        const pubNotes = typeof msg.notes === 'string' ? msg.notes.trim().slice(0, 5000) : null;
+
+        // Check can_publish permission
+        (async () => {
+          try {
+            // Get team context for the page
+            const [pageInfo] = await c2_query(
+              `SELECT p.team_id, p.created_by AS project_creator FROM pages pg
+               INNER JOIN projects p ON pg.project_id = p.id
+               WHERE pg.id = ? LIMIT 1`,
+              [entry.pageId]
+            );
+
+            if (pageInfo?.team_id) {
+              // Check org owner
+              const [orgOwner] = await c2_query(
+                `SELECT 1 FROM teams t JOIN organizations o ON t.organization_id = o.id
+                 WHERE t.id = ? AND o.owner = ? LIMIT 1`,
+                [pageInfo.team_id, user.email]
+              );
+              if (!orgOwner) {
+                // Check team member can_publish or owner role
+                const [member] = await c2_query(
+                  `SELECT can_publish, role FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
+                  [pageInfo.team_id, user.id]
+                );
+                if (!member?.can_publish && member?.role !== 'owner' && pageInfo.project_creator !== user.id) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'You do not have permission to publish versions' }));
+                  return;
+                }
+              }
+            }
+
+            // Publish: save content AND create a formal version snapshot
+            if (entry.saveTimer) clearTimeout(entry.saveTimer);
+            const xmlFragment = entry.doc.getXmlFragment('document');
+            const currentHtml = sanitizeHtml(xmlFragmentToHtml(xmlFragment));
+
+            const [page] = await c2_query(
+              `SELECT version FROM pages WHERE id = ? LIMIT 1`,
+              [entry.pageId]
+            );
+            if (!page) return;
+            const newVersion = page.version + 1;
+            await c2_query(
+              `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+              [currentHtml, newVersion, user.id, entry.pageId]
+            );
+            await c2_query(
+              `INSERT INTO versions (page_id, version, title, notes, html_content, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
+              [entry.pageId, newVersion, pubTitle || null, pubNotes || null, currentHtml, user.id]
+            );
+            entry.lastSavedHtml = currentHtml;
+
+            // Notify all clients of the new published version
+            const versionMsg = JSON.stringify({ type: 'published', version: newVersion, title: pubTitle || null });
+            for (const [client] of entry.conns) {
+              if (client.readyState === 1) client.send(versionMsg);
+            }
+          } catch (err) {
+            console.error(`[collab] Publish failed for page ${entry.pageId}:`, err);
+          }
+        })();
       }
     });
 

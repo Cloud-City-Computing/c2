@@ -89,7 +89,11 @@ export default function useCollab(pageId, onRemoteUpdate) {
             break;
 
           case 'saved':
-            // Server confirmed save — could show a version toast
+            // Server confirmed content save
+            break;
+
+          case 'published':
+            // Server confirmed publish — could show a version toast
             break;
         }
       };
@@ -143,7 +147,7 @@ export default function useCollab(pageId, onRemoteUpdate) {
   }, []);
 
   /**
-   * Request an immediate save (creates a version snapshot).
+   * Request an immediate content save (no version snapshot).
    */
   const sendSave = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -151,5 +155,15 @@ export default function useCollab(pageId, onRemoteUpdate) {
     }
   }, []);
 
-  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, canWrite };
+  /**
+   * Publish a formal version snapshot of the current document.
+   * @param {{ title?: string, notes?: string }} [opts]
+   */
+  const sendPublish = useCallback((opts = {}) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'publish', title: opts.title, notes: opts.notes }));
+    }
+  }, []);
+
+  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, canWrite };
 }

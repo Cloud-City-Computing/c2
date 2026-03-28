@@ -85,8 +85,7 @@ describe('Document Routes', () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1, old_content: '<p>old</p>', version: 2, project_id: 1 }]) // fetch page
-        .mockResolvedValueOnce([])  // UPDATE pages
-        .mockResolvedValueOnce([]); // INSERT version
+        .mockResolvedValueOnce([]);  // UPDATE pages
 
       const res = await request(app)
         .post('/api/save-document')
@@ -95,7 +94,6 @@ describe('Document Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.version).toBe(3);
     });
 
     it('rejects without write access', async () => {
@@ -183,6 +181,91 @@ describe('Document Routes', () => {
         .send({ title: 'Test' });
 
       expect(res.status).toBe(403);
+    });
+  });
+
+  // ── POST /api/document/:pageId/publish ────────────────────
+
+  describe('POST /api/document/:pageId/publish', () => {
+    it('publishes a version with write access (no team)', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, version: 2, project_id: 1, team_id: null, project_creator: 1 }]) // fetch page with write access
+        .mockResolvedValueOnce([])  // UPDATE pages (bump version)
+        .mockResolvedValueOnce([]); // INSERT version
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'Release v1', notes: 'Initial publish' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.version).toBe(3);
+    });
+
+    it('publishes when user has can_publish permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, version: 2, project_id: 1, team_id: 5, project_creator: 99 }]) // page with team
+        .mockResolvedValueOnce([])   // org owner check (not owner)
+        .mockResolvedValueOnce([{ can_publish: true, role: 'member' }]) // team member with can_publish
+        .mockResolvedValueOnce([])   // UPDATE pages
+        .mockResolvedValueOnce([]);  // INSERT version
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects publish without can_publish permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, version: 2, project_id: 1, team_id: 5, project_creator: 99 }]) // page with team
+        .mockResolvedValueOnce([])   // org owner check (not owner)
+        .mockResolvedValueOnce([{ can_publish: false, role: 'member' }]); // team member without can_publish
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('permission to publish');
+    });
+
+    it('rejects without write access', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]); // no page found
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid page ID', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/document/abc/publish')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects title exceeding 255 characters', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'a'.repeat(256) });
+
+      expect(res.status).toBe(400);
     });
   });
 

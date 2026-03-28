@@ -21,11 +21,15 @@ import {
   fetchDocument,
   saveDocument,
   updatePageTitle,
+  publishVersion,
   fetchVersions,
   fetchVersion,
   restoreVersion,
   deleteVersion,
+  showModal,
+  destroyModal,
 } from '../util';
+import PublishModal from '../components/PublishModal';
 
 // Configure marked for safe rendering
 marked.setOptions({ breaks: true, gfm: true });
@@ -322,23 +326,36 @@ function VersionHistory({ pageId, onRestore }) {
           <li key={v.id}>
             <div className={`version-list__item${previewId === v.id ? ' version-list__item--active' : ''}`}
                  onClick={() => handlePreview(v)} role="button" tabIndex={0}>
-              <span className="version-list__label">v{v.version_number}</span>
-              <span className="version-list__meta">
-                <span className="version-list__date">{timeAgo(v.saved_at)}</span>
-                {v.created_by && <span className="version-list__author">{v.created_by}</span>}
-              </span>
+              <div className="version-list__info">
+                <span className="version-list__heading">
+                  {v.title || `Version ${v.version_number}`}
+                </span>
+                {v.notes && <span className="version-list__notes">{v.notes}</span>}
+                <span className="version-list__meta">
+                  <span className="version-list__badge">v{v.version_number}</span>
+                  <span className="version-list__date">{timeAgo(v.saved_at)}</span>
+                  {v.created_by && <span className="version-list__author">{v.created_by}</span>}
+                </span>
+              </div>
               {previewId !== v.id && <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); handleRestore(v); }}>Restore</button>}
             </div>
             {previewId === v.id && preview && (
               <div className="version-preview">
                 <div className="version-preview__header">
-                  <span>v{preview.version_number} &middot; {new Date(preview.saved_at).toLocaleString()}{preview.created_by ? ` · ${preview.created_by}` : ''}</span>
+                  <div className="version-preview__title-block">
+                    <span className="version-preview__title">{preview.title || `Version ${preview.version_number}`}</span>
+                    <span className="version-preview__meta">v{preview.version_number} &middot; {new Date(preview.saved_at).toLocaleString()}{preview.created_by ? ` · ${preview.created_by}` : ''}</span>
+                  </div>
                   <span className="version-preview__actions">
                     <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(preview)}>Delete</button>
                     <button className="btn btn-primary btn-sm" onClick={() => handleRestore(preview)}>Restore</button>
                   </span>
                 </div>
-                <div className="version-preview__content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html_content) }} />
+                {preview.notes && <p className="version-preview__notes">{preview.notes}</p>}
+                <details className="version-preview__details">
+                  <summary>View document content</summary>
+                  <div className="version-preview__content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html_content) }} />
+                </details>
               </div>
             )}
           </li>
@@ -365,7 +382,7 @@ export default function Editor() {
   const remoteUpdateRef = useRef(false);
 
   // Collaborative editing hook
-  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave } = useCollab(
+  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish } = useCollab(
     pageId,
     // onRemoteUpdate — called when a peer changes the document
     useCallback((html) => {
@@ -429,18 +446,57 @@ export default function Editor() {
 
     // Fallback to REST save when collab is disconnected
     try {
-      const result = await saveDocument(Number(pageId), latestContent);
-      // Sync state so parent and editor agree on current content
+      await saveDocument(Number(pageId), latestContent);
       setContent(latestContent);
-      if (result?.version) {
-        setDocumentData(d => d ? { ...d, version: result.version } : d);
-      }
       setStatus({ type: 'success', message: 'Document saved.' });
     } catch (e) {
       setStatus({ type: 'error', message: `Error saving: ${e.body?.message ?? e.message}` });
     }
     setSaving(false);
   }, [pageId, saving, collabConnected, sendSave]);
+
+  const [publishing, setPublishing] = useState(false);
+
+  const handlePublish = useCallback(async ({ title, notes } = {}) => {
+    if (publishing) return;
+    setStatus(null);
+    setPublishing(true);
+
+    // Save content first, then publish a version snapshot
+    if (collabConnected) {
+      sendPublish({ title, notes });
+      setStatus({ type: 'success', message: 'Version published.' });
+      setPublishing(false);
+      return;
+    }
+
+    // REST fallback: save content first, then publish
+    try {
+      const latestContent = contentRef.current;
+      await saveDocument(Number(pageId), latestContent);
+      const result = await publishVersion(pageId, { title, notes });
+      if (result?.version) {
+        setDocumentData(d => d ? { ...d, version: result.version } : d);
+      }
+      setStatus({ type: 'success', message: `Version ${result?.version ?? ''} published.` });
+    } catch (e) {
+      setStatus({ type: 'error', message: `Error publishing: ${e.body?.message ?? e.message}` });
+    }
+    setPublishing(false);
+  }, [pageId, publishing, collabConnected, sendPublish]);
+
+  const openPublishModal = useCallback(() => {
+    showModal(
+      <PublishModal
+        onPublish={async (opts) => {
+          destroyModal();
+          await handlePublish(opts);
+        }}
+        onCancel={destroyModal}
+      />,
+      'modal-md'
+    );
+  }, [handlePublish]);
 
   const handleTitleSave = async () => {
     if (!title.trim()) return;
@@ -492,7 +548,10 @@ export default function Editor() {
 
         <div className="editor-toolbar">
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Document'}
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+          <button className="btn btn-ghost" onClick={openPublishModal} disabled={publishing}>
+            {publishing ? 'Publishing...' : 'Publish Version'}
           </button>
           <div className="editor-mode-toggle">
             <button

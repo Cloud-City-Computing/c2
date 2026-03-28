@@ -150,6 +150,8 @@ export const restoreVersion = (pageId, versionId) =>
   apiFetch('POST', `/api/document/${pageId}/versions/${versionId}/restore`);
 export const deleteVersion = (pageId, versionId) =>
   apiFetch('DELETE', `/api/document/${pageId}/versions/${versionId}`);
+export const publishVersion = (pageId, { title, notes } = {}) =>
+  apiFetch('POST', `/api/document/${pageId}/publish`, { title, notes });
 
 // --- DOM Helpers ---
 
