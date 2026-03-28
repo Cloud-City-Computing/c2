@@ -1,6 +1,6 @@
 # Cloud Codex
 
-Cloud Codex is a documentation and knowledge-management application built with React, Express, and MySQL. The current codebase provides authenticated document editing, organization and team management, project/page hierarchies, invitation-based membership, version history, search, password reset, and two-factor authentication.
+Cloud Codex is a real-time collaborative documentation and knowledge-management platform built with React, Express, and MySQL. It provides authenticated document editing with live multi-user collaboration, organization and team management, project/page hierarchies, invitation-based membership, version history, search, password reset, and two-factor authentication.
 
 This repository is structured as a small full-stack app:
 
@@ -25,24 +25,44 @@ The application currently includes these implemented areas:
 - Document editing with two modes:
   - Rich text editing with Jodit
   - Markdown editing with live preview
+- Real-time collaborative editing via WebSocket:
+  - Yjs CRDT-based document sync
+  - Live presence indicators showing connected users
+  - Remote cursor tracking with colored name labels in both editor modes
+  - Debounced auto-save with version snapshots
 - Version history with preview, restore, and deletion controls
 - Search across pages the current user can read
 - User preferences and account settings
+- Server-side HTML sanitization on all save paths (REST and WebSocket)
 
-What this codebase is not today:
+## Security
 
-- It is not a real-time collaborative editor
-- It does not currently include a separate production deployment configuration beyond the local development setup
+- Security headers applied to API routes with Helmet (CSP, X-Frame-Options, etc.)
+- Rate limiting on login, signup, password reset, 2FA verification, and user search endpoints
+- Server-side HTML sanitization with DOMPurify on both REST and WebSocket document saves
+- Client-side HTML sanitization on render with DOMPurify
+- WebSocket origin validation to prevent Cross-Site WebSocket Hijacking
+- WebSocket message size limits (5 MB max payload)
+- WebSocket per-connection rate limiting (60 messages/second)
+- Per-user WebSocket connection cap (10 concurrent connections)
+- Cursor data validation — only numeric position fields are forwarded to peers
+- Parameterized SQL queries throughout (no string concatenation in queries)
+- Duplicate email prevention on registration
+- Privilege escalation prevention on team invitations and member permission updates
+- bcrypt password hashing with 12 rounds
+- Cryptographically random session tokens (64 characters)
 
 ## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | React 19, React Router 7, Vite |
+| Frontend | React 19, React Router 7, Vite 7 |
 | Backend | Express 5, ViteExpress |
 | Database | MySQL 8 |
 | Auth/Security | bcrypt, Helmet, express-rate-limit |
 | Editor | Jodit, Marked, Turndown, DOMPurify |
+| Collaboration | Yjs, WebSocket (ws) |
+| Sanitization | isomorphic-dompurify (server), DOMPurify (client) |
 | Email | Nodemailer |
 | 2FA | OTPAuth, QRCode |
 | Testing | Vitest, Supertest |
@@ -55,28 +75,30 @@ What this codebase is not today:
 .
 ├── .github/
 │   └── workflows/
-│       └── ci.yml              # GitHub Actions CI (lint + tests)
+│       └── ci.yml                  # GitHub Actions CI (lint + tests)
 ├── cloudcodex/
-│   ├── server.js               # ViteExpress startup
-│   ├── app.js                  # Express app setup (importable for tests)
-│   ├── mysql_connect.js        # MySQL pool and session helpers
-│   ├── vitest.config.js        # Test runner configuration
+│   ├── server.js                   # ViteExpress startup + WebSocket attach
+│   ├── app.js                      # Express app setup (importable for tests)
+│   ├── mysql_connect.js            # MySQL pool and session helpers
+│   ├── vitest.config.js            # Test runner configuration
 │   ├── services/
-│   │   └── email.js            # SMTP-backed email service
+│   │   ├── collab.js               # WebSocket collaborative editing server
+│   │   └── email.js                # SMTP-backed email service
 │   ├── middleware/
-│   │   ├── auth.js             # Session auth middleware
-│   │   └── permissions.js      # Permission gate helpers
+│   │   ├── auth.js                 # Session auth middleware
+│   │   └── permissions.js          # Permission gate helpers
 │   ├── routes/
-│   │   ├── auth.js             # Accounts, sessions, reset, 2FA, permissions
-│   │   ├── documents.js        # Document fetch/save/version APIs
-│   │   ├── organizations.js    # Organization CRUD
-│   │   ├── projects.js         # Projects, pages, access control
-│   │   ├── search.js           # Page search
-│   │   ├── teams.js            # Teams, members, invitations
+│   │   ├── auth.js                 # Accounts, sessions, reset, 2FA, permissions
+│   │   ├── documents.js            # Document fetch/save/version APIs
+│   │   ├── organizations.js        # Organization CRUD
+│   │   ├── projects.js             # Projects, pages, access control
+│   │   ├── search.js               # Page search
+│   │   ├── teams.js                # Teams, members, invitations
 │   │   └── helpers/
+│   │       └── ownership.js        # Read/write access SQL helpers
 │   ├── tests/
-│   │   ├── setup.js            # Global mocks (DB, email)
-│   │   ├── helpers.js          # Shared test utilities
+│   │   ├── setup.js                # Global mocks (DB, email)
+│   │   ├── helpers.js              # Shared test utilities
 │   │   ├── middleware/
 │   │   │   ├── auth.test.js
 │   │   │   └── permissions.test.js
@@ -88,19 +110,45 @@ What this codebase is not today:
 │   │       ├── search.test.js
 │   │       └── teams.test.js
 │   ├── src/
-│   │   ├── App.jsx             # Frontend routes
-│   │   ├── util.jsx            # API helpers and modal helpers
-│   │   ├── page_layouts/
+│   │   ├── App.jsx                 # Frontend routes
+│   │   ├── main.jsx                # React entry point
+│   │   ├── index.css               # Global styles
+│   │   ├── util.jsx                # API helpers and modal helpers
+│   │   ├── userPrefs.js            # Editor mode preferences
+│   │   ├── hooks/
+│   │   │   └── useCollab.js        # WebSocket collab React hook
 │   │   ├── components/
-│   │   └── pages/
+│   │   │   ├── AccountMenu.jsx
+│   │   │   ├── AccountPanel.jsx
+│   │   │   ├── CollabPresence.jsx  # Connected-user avatars
+│   │   │   ├── ConfirmDialog.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── ProjectBrowser.jsx
+│   │   │   ├── RemoteCursors.jsx   # Remote cursor overlays
+│   │   │   ├── SearchBox.jsx
+│   │   │   └── SearchResultItem.jsx
+│   │   ├── pages/
+│   │   │   ├── AccountSettings.jsx
+│   │   │   ├── Editor.jsx          # Document editor with collab
+│   │   │   ├── HomePage.jsx
+│   │   │   ├── OrganizationsPage.jsx
+│   │   │   ├── ProjectsPage.jsx
+│   │   │   ├── ResetPasswordPage.jsx
+│   │   │   ├── SettingsPage.jsx
+│   │   │   └── TeamsPage.jsx
+│   │   ├── page_layouts/
+│   │   └── assets/
+│   ├── public/
 │   ├── package.json
-│   └── vite.config.js
-├── docker-compose.yaml         # Local MySQL 8 container
-├── init.sql                    # Schema bootstrap
-├── seed.sql                    # Optional seed data
-├── start.sh                    # One-command local startup
+│   ├── eslint.config.js
+│   ├── vite.config.js
+│   └── index.html
+├── docker-compose.yaml             # Local MySQL 8 container
+├── init.sql                        # Schema bootstrap
+├── seed.sql                        # Optional seed data
+├── start.sh                        # One-command local startup
 └── docs/
-    └── database.MD             # Short DB access note
+    └── database.MD                 # Short DB access note
 ```
 
 ## Requirements
@@ -255,17 +303,31 @@ The current frontend route map includes:
 
 ## Main API Areas
 
-The Express API under `/api` is currently organized into these groups:
+The Express API under `/api` is organized into these groups:
 
-- account and session APIs
-- permission APIs
-- password reset APIs
-- 2FA APIs
-- organization APIs
-- team, membership, and invitation APIs
-- project and page APIs
-- document and version-history APIs
-- search APIs
+- Account and session APIs
+- Permission APIs
+- Password reset APIs
+- 2FA APIs (email codes and TOTP)
+- Organization APIs
+- Team, membership, and invitation APIs
+- Project and page APIs
+- Document and version-history APIs
+- Search APIs
+- WebSocket collaborative editing (`/collab`)
+
+## Collaborative Editing
+
+The WebSocket-based collaboration server runs alongside the Express API on the same HTTP server. When a user opens a document in the editor:
+
+1. The client connects to `ws://<host>/collab?pageId=<id>&token=<sessionToken>`
+2. The server authenticates the token, verifies page access, and joins the user to the document room
+3. Document state is managed via a Yjs CRDT — edits are broadcast to all connected peers in real time
+4. The server debounce-saves content back to MySQL (3-second delay) and creates version snapshots
+5. Presence awareness shows connected users with colored avatars
+6. Remote cursors are rendered as colored name labels in both rich text and markdown modes
+
+The collaboration service enforces origin validation, per-connection rate limiting, message size caps, per-user connection limits, cursor data validation, and server-side HTML sanitization before persistence.
 
 ## Testing
 
@@ -278,7 +340,7 @@ cd cloudcodex
 npm test
 ```
 
-Tests cover all route groups (auth, documents, projects, organizations, teams, search) and both middleware modules (auth, permissions).
+122 tests cover all route groups (auth, documents, projects, organizations, teams, search) and both middleware modules (auth, permissions).
 
 ## CI
 
@@ -286,11 +348,9 @@ A GitHub Actions workflow at `.github/workflows/ci.yml` runs lint and tests on e
 
 ## Notes
 
-- Security headers are applied to API routes with Helmet
-- Rate limiting is enabled for login, signup, password reset, 2FA verification, and user search endpoints
-- The document editor sanitizes rendered HTML with DOMPurify
-- Search results are limited and filtered by project read access
-- Version history is persisted in the database
+- This codebase does not currently include a separate production deployment configuration beyond the local development setup
+- The WebSocket collaboration server shares the same HTTP server as the Express API
+- Email-based features (password reset, email 2FA) require valid SMTP credentials in `.env`
 
 ## License
 
