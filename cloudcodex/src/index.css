@@ -2022,12 +2022,13 @@ body {
   display: flex;
   gap: 6px;
 }
-.btn-danger {
+.btn-ghost.btn-danger {
   color: #ff6b6b;
+  background: transparent;
 }
-.btn-danger:hover {
-  color: #ff4040;
-  background: rgba(255, 75, 75, 0.1);
+.btn-ghost.btn-danger:hover {
+  color: #fff;
+  background: var(--color-danger);
 }
 
 /* =========================
