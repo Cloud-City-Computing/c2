@@ -2494,4 +2494,89 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* =========================
+   Remote Cursors — Collaborative Editing
+========================= */
+
+.remote-cursors {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: visible;
+}
+
+.remote-cursor {
+  position: absolute;
+  pointer-events: none;
+  transition: top 0.15s ease, left 0.15s ease;
+}
+
+.remote-cursor__caret {
+  width: 2px;
+  height: 1.2em;
+  border-radius: 1px;
+  animation: cursor-blink 1s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  50% { opacity: 0.4; }
+}
+
+.remote-cursor__label {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  padding: 2px 6px;
+  border-radius: 4px 4px 4px 0;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  line-height: 1.4;
+  opacity: 0.92;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+/* Markdown editor cursor positioning */
+.markdown-editor__textarea-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.markdown-editor__textarea-wrapper .markdown-editor__textarea {
+  flex: 1;
+}
+
+.remote-cursors--markdown {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.remote-cursor--markdown {
+  position: absolute;
+  transition: top 0.15s ease, left 0.15s ease;
+}
+
+.remote-cursor--markdown .remote-cursor__caret {
+  height: 1.4em;
+}
+
+.remote-cursor--markdown .remote-cursor__label {
+  bottom: auto;
+  top: -1.2em;
+  border-radius: 4px 4px 4px 0;
+}
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }

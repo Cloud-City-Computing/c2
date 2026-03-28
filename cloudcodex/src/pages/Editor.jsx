@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import JoditEditor from 'jodit-react';
@@ -15,6 +16,7 @@ import DOMPurify from 'dompurify';
 import { getPreferredEditorMode } from '../userPrefs';
 import useCollab from '../hooks/useCollab';
 import CollabPresence from '../components/CollabPresence';
+import { RichTextCursors, MarkdownCursors } from '../components/RemoteCursors';
 import {
   fetchDocument,
   saveDocument,
@@ -38,6 +40,18 @@ function sanitizeHtml(html) {
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
+/** Calculate character offset from the start of a contentEditable element to a given node+offset */
+function getCharOffset(root, targetNode, targetOffset) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  let offset = 0;
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node === targetNode) return offset + targetOffset;
+    offset += node.textContent.length;
+  }
+  return offset;
+}
+
 function htmlToMarkdown(html) {
   if (!html) return '';
   return turndown.turndown(html);
@@ -50,7 +64,7 @@ function markdownToHtml(md) {
 
 // --- Jodit Editor wrapper ---
 
-function RichTextEditor({ content, setContent, contentRef, onLocalChange }) {
+function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors }) {
   const editor = useRef(null);
   // Local state drives Jodit's value — prevents parent re-renders from resetting the editor
   const [local, setLocal] = useState(content);
@@ -65,6 +79,34 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange }) {
     setLocal(content);
     contentRef.current = content;
   }, [content, contentRef]);
+
+  // Track cursor/selection position inside Jodit's iframe
+  useEffect(() => {
+    const jodit = editor.current;
+    if (!jodit?.editor || !onCursorChange) return;
+
+    const editorEl = jodit.editor;
+    const editorDoc = editorEl.ownerDocument;
+
+    const handleSelection = () => {
+      const sel = editorDoc.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      // Calculate character offset from start of editor
+      const offset = getCharOffset(editorEl, range.startContainer, range.startOffset);
+      onCursorChange({ index: offset, length: 0 });
+    };
+
+    editorDoc.addEventListener('selectionchange', handleSelection);
+    editorEl.addEventListener('click', handleSelection);
+    editorEl.addEventListener('keyup', handleSelection);
+
+    return () => {
+      editorDoc.removeEventListener('selectionchange', handleSelection);
+      editorEl.removeEventListener('click', handleSelection);
+      editorEl.removeEventListener('keyup', handleSelection);
+    };
+  }, [onCursorChange]);
 
   const config = useMemo(() => ({
     readonly: false,
@@ -85,25 +127,52 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange }) {
     onLocalChange?.(newContent);
   }, [contentRef, onLocalChange]);
 
+  // Mount cursor overlay into .jodit-workplace so it sits over only the content area
+  const [cursorContainer, setCursorContainer] = useState(null);
+  useEffect(() => {
+    const jodit = editor.current;
+    if (!jodit?.container) return;
+    const workplace = jodit.container.querySelector('.jodit-workplace');
+    if (workplace) {
+      workplace.style.position = 'relative';
+      setCursorContainer(workplace);
+    }
+  }, [local]); // re-check when editor content initializes
+
   return (
-    <JoditEditor
-      ref={editor}
-      value={local}
-      config={config}
-      onBlur={handleBlur}
-      onChange={handleChange}
-    />
+    <>
+      <JoditEditor
+        ref={editor}
+        value={local}
+        config={config}
+        onBlur={handleBlur}
+        onChange={handleChange}
+      />
+      {cursorContainer && createPortal(
+        <RichTextCursors remoteCursors={remoteCursors} editorRef={editor} />,
+        cursorContainer
+      )}
+    </>
   );
 }
 
 // --- Markdown Editor with live preview ---
 
-function MarkdownEditor({ content, setContent, onLocalChange }) {
+function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, remoteCursors }) {
   const [md, setMd] = useState(() => htmlToMarkdown(content));
   const [preview, setPreview] = useState(() => content || '');
   const textareaRef = useRef(null);
   const initializedRef = useRef(false);
   const selfUpdateRef = useRef(false);
+
+  // Track cursor position
+  const trackCursor = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta || !onCursorChange) return;
+    const text = ta.value.substring(0, ta.selectionStart);
+    const line = (text.match(/\n/g) || []).length;
+    onCursorChange({ index: ta.selectionStart, line, length: ta.selectionEnd - ta.selectionStart });
+  }, [onCursorChange]);
 
   // Sync when content changes externally (e.g. version restore)
   useEffect(() => {
@@ -129,7 +198,8 @@ function MarkdownEditor({ content, setContent, onLocalChange }) {
     selfUpdateRef.current = true;
     setContent(html);
     onLocalChange?.(html);
-  }, [setContent, onLocalChange]);
+    trackCursor();
+  }, [setContent, onLocalChange, trackCursor]);
 
   // Tab key inserts spaces instead of changing focus
   const handleKeyDown = useCallback((e) => {
@@ -155,15 +225,20 @@ function MarkdownEditor({ content, setContent, onLocalChange }) {
     <div className="markdown-editor">
       <div className="markdown-editor__pane markdown-editor__input">
         <div className="markdown-editor__label">Markdown</div>
-        <textarea
-          ref={textareaRef}
-          className="markdown-editor__textarea"
-          value={md}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Write markdown here..."
-          spellCheck={false}
-        />
+        <div className="markdown-editor__textarea-wrapper">
+          <textarea
+            ref={textareaRef}
+            className="markdown-editor__textarea"
+            value={md}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onKeyUp={trackCursor}
+            onClick={trackCursor}
+            placeholder="Write markdown here..."
+            spellCheck={false}
+          />
+          <MarkdownCursors remoteCursors={remoteCursors} textareaRef={textareaRef} />
+        </div>
       </div>
       <div className="markdown-editor__pane markdown-editor__preview">
         <div className="markdown-editor__label">Preview</div>
@@ -290,7 +365,7 @@ export default function Editor() {
   const remoteUpdateRef = useRef(false);
 
   // Collaborative editing hook
-  const { collabUsers, collabConnected, sendUpdate, sendSave } = useCollab(
+  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave } = useCollab(
     pageId,
     // onRemoteUpdate — called when a peer changes the document
     useCallback((html) => {
@@ -314,6 +389,13 @@ export default function Editor() {
     if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
     sendTimerRef.current = setTimeout(() => sendUpdate(html), 150);
   }, [sendUpdate]);
+
+  // Debounced cursor position broadcast
+  const cursorTimerRef = useRef(null);
+  const handleCursorChange = useCallback((position) => {
+    if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+    cursorTimerRef.current = setTimeout(() => sendCursor(position), 100);
+  }, [sendCursor]);
 
   const loadDocument = useCallback(async () => {
     if (!pageId) return;
@@ -436,9 +518,9 @@ export default function Editor() {
 
         <div className="editor-container">
           {editorMode === 'richtext' ? (
-            <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} />
+            <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} />
           ) : (
-            <MarkdownEditor content={content} setContent={setContent} onLocalChange={handleLocalChange} />
+            <MarkdownEditor content={content} setContent={setContent} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} />
           )}
         </div>
       </div>

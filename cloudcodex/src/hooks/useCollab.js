@@ -20,6 +20,7 @@ export default function useCollab(pageId, onRemoteUpdate) {
   const [collabUsers, setCollabUsers] = useState([]);
   const [collabConnected, setCollabConnected] = useState(false);
   const [canWrite, setCanWrite] = useState(true);
+  const [remoteCursors, setRemoteCursors] = useState({});
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
@@ -74,6 +75,19 @@ export default function useCollab(pageId, onRemoteUpdate) {
             setCollabUsers(msg.users || []);
             break;
 
+          case 'cursor':
+            setRemoteCursors(prev => ({
+              ...prev,
+              [msg.userId]: {
+                userId: msg.userId,
+                userName: msg.userName,
+                color: msg.color,
+                position: msg.position,
+                timestamp: Date.now(),
+              },
+            }));
+            break;
+
           case 'saved':
             // Server confirmed save — could show a version toast
             break;
@@ -105,6 +119,7 @@ export default function useCollab(pageId, onRemoteUpdate) {
       }
       setCollabConnected(false);
       setCollabUsers([]);
+      setRemoteCursors({});
     };
   }, [pageId]);
 
@@ -118,6 +133,16 @@ export default function useCollab(pageId, onRemoteUpdate) {
   }, []);
 
   /**
+   * Send local cursor/selection position to peers.
+   * @param {{ index: number, length: number, context: string }} position
+   */
+  const sendCursor = useCallback((position) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cursor', position }));
+    }
+  }, []);
+
+  /**
    * Request an immediate save (creates a version snapshot).
    */
   const sendSave = useCallback(() => {
@@ -126,5 +151,5 @@ export default function useCollab(pageId, onRemoteUpdate) {
     }
   }, []);
 
-  return { collabUsers, collabConnected, sendUpdate, sendSave, canWrite };
+  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, canWrite };
 }
