@@ -6,29 +6,14 @@
  */
 
 import express from 'express';
-import DOMPurify from 'isomorphic-dompurify';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
 
 const MAX_CONTENT_SIZE = 2 * 1024 * 1024; // 2 MB max document content
 
-/** Sanitize HTML to prevent stored XSS — strips scripts, event handlers, and dangerous URIs */
-function sanitizeHtml(html) {
-  if (!html) return '';
-  return DOMPurify.sanitize(html, {
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
-  });
-}
-
 const router = express.Router();
-
-// --- Helpers ---
-
-const isValidId = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
-
-const asyncHandler = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
 
 /**
  * GET /api/document?doc_id=<id>
@@ -154,23 +139,9 @@ router.post('/document/:pageId/publish', requireAuth, asyncHandler(async (req, r
   }
 
   // Check can_publish permission: org owner, team owner, project creator, or team member with can_publish
-  if (page.team_id) {
-    const [access] = await c2_query(
-      `SELECT 1 FROM teams t
-       JOIN organizations o ON t.organization_id = o.id
-       WHERE t.id = ? AND o.owner = ?
-       LIMIT 1`,
-      [page.team_id, req.user.email]
-    );
-    if (!access) {
-      const [member] = await c2_query(
-        `SELECT can_publish, role FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
-        [page.team_id, req.user.id]
-      );
-      if (!member?.can_publish && member?.role !== 'owner' && page.project_creator !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'You do not have permission to publish versions' });
-      }
-    }
+  const publishAllowed = await canPublish(page.team_id, page.project_creator, req.user);
+  if (!publishAllowed) {
+    return res.status(403).json({ success: false, message: 'You do not have permission to publish versions' });
   }
 
   // Bump version and create snapshot
@@ -395,12 +366,6 @@ router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler
   res.json({ success: true });
 }));
 
-router.use((err, req, res, _next) => {
-  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);
-  res.status(500).json({
-    success: false,
-    message: 'An internal server error occurred'
-  });
-});
+router.use(errorHandler);
 
 export default router;

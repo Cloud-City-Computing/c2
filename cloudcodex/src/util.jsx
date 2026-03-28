@@ -163,14 +163,6 @@ export function clearInner(element) {
   element.replaceChildren();
 }
 
-export const getElById = (id) => document.getElementById(id);
-export const getVal = (id) => getElById(id)?.value ?? null;
-
-export function setVal(id, value) {
-  const el = getElById(id);
-  if (el) el.value = value;
-}
-
 export function createAndAppend(parent, tag, className) {
   const el = document.createElement(tag);
   if (className) el.className = className;
@@ -291,30 +283,4 @@ export async function attemptAutoLogin(sessionToken) {
   }
 
   return null;
-}
-
-/**
- * Fetches search results and renders them into the results container
- */
-export async function getSearchResults(query) {
-  let container = document.getElementById('resultPreviewContainer')
-               ?? document.getElementById('resultContainer');
-
-  if (!container) {
-    const pageContainer = document.querySelector('.page-container');
-    if (!pageContainer) return;
-    container = createAndAppend(pageContainer, 'div', 'search-section');
-    container.id = 'resultContainer';
-  }
-
-  clearInner(container);
-
-  const response = await apiFetch('GET', `/api/search?query=${encodeURIComponent(query)}`);
-
-  const { default: SearchResultItem } = await import('./components/SearchResultItem');
-
-  for (const result of response.results) {
-    const wrapper = createAndAppend(container, 'div', 'search-result-item');
-    getOrCreateRoot(wrapper).render(<SearchResultItem doc={result} />);
-  }
 }

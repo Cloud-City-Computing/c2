@@ -6,8 +6,7 @@
  */
 
 import { c2_query } from '../mysql_connect.js';
-
-const isValidId = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
+import { isValidId, DEFAULT_PERMISSIONS } from '../routes/helpers/shared.js';
 
 /**
  * Middleware that loads user permissions from the permissions table
@@ -24,7 +23,7 @@ export async function loadPermissions(req, res, next) {
       [req.user.id]
     );
 
-    req.permissions = perms || { create_team: false, create_project: false, create_page: true };
+    req.permissions = perms || DEFAULT_PERMISSIONS;
     next();
   } catch (err) {
     next(err);
@@ -51,7 +50,7 @@ export function requirePermission(permission) {
           `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
           [req.user.id]
         );
-        req.permissions = perms || { create_team: false, create_project: false, create_page: true };
+        req.permissions = perms || DEFAULT_PERMISSIONS;
       } catch (err) {
         return next(err);
       }

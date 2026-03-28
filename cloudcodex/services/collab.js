@@ -14,15 +14,9 @@
 
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
-import DOMPurify from 'isomorphic-dompurify';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
-import {
-  writeAccessWhere,
-  writeAccessParams,
-  readAccessWhere,
-  readAccessParams,
-} from '../routes/helpers/ownership.js';
+import { sanitizeHtml, canPublish, checkPageReadAccess, checkPageWriteAccess } from '../routes/helpers/shared.js';
 
 // In-memory store: pageId → { doc, conns, saveTimer, lastSavedHtml }
 const docs = new Map();
@@ -37,14 +31,6 @@ const MAX_HTML_SIZE   = 2 * 1024 * 1024;    // 2 MB max document HTML
 const MAX_CONNECTIONS_PER_USER = 10;         // Max simultaneous WS connections per user
 const RATE_LIMIT_WINDOW_MS = 1000;           // 1 second window
 const RATE_LIMIT_MAX_MESSAGES = 60;          // Max messages per window
-
-/** Sanitize HTML to prevent stored XSS on collab saves */
-function sanitizeHtml(html) {
-  if (!html) return '';
-  return DOMPurify.sanitize(html, {
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
-  });
-}
 
 /**
  * Get or create a Yjs document for a page.
@@ -189,38 +175,6 @@ function nextColor() {
 }
 
 /**
- * Check if a user has read access to a page's project.
- */
-async function checkReadAccess(pageId, user) {
-  const [page] = await c2_query(
-    `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
-      WHERE pg.id = ?
-        AND ${readAccessWhere('p')}
-      LIMIT 1`,
-    [pageId, ...readAccessParams(user)]
-  );
-  return Boolean(page);
-}
-
-/**
- * Check if a user has write access to a page's project.
- */
-async function checkWriteAccess(pageId, user) {
-  const [page] = await c2_query(
-    `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
-      WHERE pg.id = ?
-        AND ${writeAccessWhere('p')}
-      LIMIT 1`,
-    [pageId, ...writeAccessParams(user)]
-  );
-  return Boolean(page);
-}
-
-/**
  * Attach the collaborative WebSocket server to an existing HTTP server.
  *
  * Protocol:
@@ -295,14 +249,14 @@ export function setupCollabServer(server) {
     }
 
     // Check read access at minimum
-    const hasAccess = await checkReadAccess(pageId, user);
+    const hasAccess = await checkPageReadAccess(pageId, user);
     if (!hasAccess) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
     }
 
-    const canWrite = await checkWriteAccess(pageId, user);
+    const canWrite = Boolean(await checkPageWriteAccess(pageId, user));
 
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, { user, pageId, canWrite });
@@ -463,24 +417,10 @@ export function setupCollabServer(server) {
               [entry.pageId]
             );
 
-            if (pageInfo?.team_id) {
-              // Check org owner
-              const [orgOwner] = await c2_query(
-                `SELECT 1 FROM teams t JOIN organizations o ON t.organization_id = o.id
-                 WHERE t.id = ? AND o.owner = ? LIMIT 1`,
-                [pageInfo.team_id, user.email]
-              );
-              if (!orgOwner) {
-                // Check team member can_publish or owner role
-                const [member] = await c2_query(
-                  `SELECT can_publish, role FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
-                  [pageInfo.team_id, user.id]
-                );
-                if (!member?.can_publish && member?.role !== 'owner' && pageInfo.project_creator !== user.id) {
-                  ws.send(JSON.stringify({ type: 'error', message: 'You do not have permission to publish versions' }));
-                  return;
-                }
-              }
+            const publishAllowed = await canPublish(pageInfo?.team_id, pageInfo?.project_creator, user);
+            if (!publishAllowed) {
+              ws.send(JSON.stringify({ type: 'error', message: 'You do not have permission to publish versions' }));
+              return;
             }
 
             // Publish: save content AND create a formal version snapshot

@@ -10,13 +10,9 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isProjectOwner } from './helpers/ownership.js';
+import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
 
 const router = express.Router();
-
-const asyncHandler = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
-
-const isValidId = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
 
 // --- Routes ---
 
@@ -305,9 +301,6 @@ router.delete('/projects/:projectId/pages/:pageId', requireAuth, asyncHandler(as
 
 // --- Centralized error handler ---
 
-router.use((err, req, res, _next) => {
-  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);
-  res.status(500).json({ success: false, message: 'An internal server error occurred' });
-});
+router.use(errorHandler);
 
 export default router;

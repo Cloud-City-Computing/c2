@@ -9,16 +9,12 @@ import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams } from './helpers/ownership.js';
+import { asyncHandler, errorHandler } from './helpers/shared.js';
 
 const router = express.Router();
 
 const MAX_QUERY_LENGTH = 100;
 const RESULTS_LIMIT = 10;
-
-// --- Helpers ---
-
-const asyncHandler = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
 
 /**
  * GET /api/search?query=<string>&limit=<number>
@@ -65,11 +61,6 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
   res.json({ results });
 }));
 
-// --- Centralized error handler ---
-
-router.use((err, req, res, _next) => {
-  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);
-  res.status(500).json({ success: false, message: 'An internal server error occurred' });
-});
+router.use(errorHandler);
 
 export default router;

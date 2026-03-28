@@ -13,6 +13,7 @@ import QRCode from 'qrcode';
 import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
 import { sendEmail } from '../services/email.js';
 import { requireAuth } from '../middleware/auth.js';
+import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS } from './helpers/shared.js';
 
 const router = express.Router();
 
@@ -20,12 +21,7 @@ const BCRYPT_ROUNDS = 12;
 
 // --- Helpers ---
 
-const asyncHandler = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
-
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-const isValidId = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
 
 /**
  * Generates a cryptographically random 6-digit numeric code for 2FA email verification.
@@ -293,7 +289,7 @@ router.post('/get-user', asyncHandler(async (req, res) => {
   res.json({
     success: true,
     user: rows[0],
-    permissions: perms || { create_team: false, create_project: false, create_page: true }
+    permissions: perms || DEFAULT_PERMISSIONS
   });
 }));
 
@@ -328,7 +324,7 @@ router.get('/permissions', requireAuth, asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    permissions: perms || { create_team: false, create_project: false, create_page: true }
+    permissions: perms || DEFAULT_PERMISSIONS
   });
 }));
 
@@ -366,7 +362,7 @@ router.get('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
 
   res.json({
     success: true,
-    permissions: perms || { create_team: false, create_project: false, create_page: true }
+    permissions: perms || DEFAULT_PERMISSIONS
   });
 }));
 
@@ -836,9 +832,6 @@ router.get('/2fa/status', requireAuth, asyncHandler(async (req, res) => {
 
 // --- Centralized error handler ---
 
-router.use((err, req, res, _next) => {
-  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);
-  res.status(500).json({ success: false, message: 'An internal server error occurred' });
-});
+router.use(errorHandler);
 
 export default router;
