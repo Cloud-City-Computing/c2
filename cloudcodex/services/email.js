@@ -35,7 +35,7 @@ const DEFAULT_FROM = process.env.SMTP_FROM ?? 'Cloud Codex <noreply@cloudcitycom
  * @param {string} [options.from] - Override the default sender
  * @returns {Promise<Object>} nodemailer send result
  */
-export async function sendEmail({ to, subject, text, html, from }) {
+export function sendEmail({ to, subject, text, html, from }) {
   return transporter.sendMail({
     from: from ?? DEFAULT_FROM,
     to,

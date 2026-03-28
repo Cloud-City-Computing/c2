@@ -254,8 +254,8 @@ router.put('/teams/:id/permissions', requireAuth, asyncHandler(async (req, res) 
   if (existing) {
     const fields = [];
     const params = [];
-    if (create_project !== undefined) { fields.push('create_project = ?'); params.push(!!create_project); }
-    if (create_page !== undefined)    { fields.push('create_page = ?');    params.push(!!create_page);    }
+    if (create_project !== undefined) { fields.push('create_project = ?'); params.push(Boolean(create_project)); }
+    if (create_page !== undefined)    { fields.push('create_page = ?');    params.push(Boolean(create_page));    }
     if (fields.length) {
       params.push(Number(id));
       await c2_query(`UPDATE team_permissions SET ${fields.join(', ')} WHERE team_id = ?`, params);
@@ -263,7 +263,7 @@ router.put('/teams/:id/permissions', requireAuth, asyncHandler(async (req, res) 
   } else {
     await c2_query(
       `INSERT INTO team_permissions (team_id, create_project, create_page) VALUES (?, ?, ?)`,
-      [Number(id), !!create_project, create_page !== false]
+      [Number(id), Boolean(create_project), create_page !== false]
     );
   }
 
@@ -290,7 +290,7 @@ async function canManageTeam(teamId, user) {
     `SELECT can_manage_members FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
     [teamId, user.id]
   );
-  return { team, allowed: !!membership?.can_manage_members };
+  return { team, allowed: Boolean(membership?.can_manage_members) };
 }
 
 /**
@@ -372,7 +372,7 @@ router.post('/teams/:id/members/invite', requireAuth, asyncHandler(async (req, r
     `INSERT INTO team_invitations (team_id, invited_by, invited_user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [Number(id), req.user.id, Number(userId), safeRole,
-     can_read !== false, !!can_write, !!can_create_page, !!can_create_project, !!can_manage_members, !!can_delete_version]
+     can_read !== false, Boolean(can_write), Boolean(can_create_page), Boolean(can_create_project), Boolean(can_manage_members), Boolean(can_delete_version)]
   );
 
   res.status(201).json({ success: true });
@@ -406,12 +406,12 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
   const params = [];
 
   if (role !== undefined) { fields.push('role = ?'); params.push(role === 'admin' ? 'admin' : 'member'); }
-  if (can_read !== undefined) { fields.push('can_read = ?'); params.push(!!can_read); }
-  if (can_write !== undefined) { fields.push('can_write = ?'); params.push(!!can_write); }
-  if (can_create_page !== undefined) { fields.push('can_create_page = ?'); params.push(!!can_create_page); }
-  if (can_create_project !== undefined) { fields.push('can_create_project = ?'); params.push(!!can_create_project); }
-  if (can_manage_members !== undefined) { fields.push('can_manage_members = ?'); params.push(!!can_manage_members); }
-  if (can_delete_version !== undefined) { fields.push('can_delete_version = ?'); params.push(!!can_delete_version); }
+  if (can_read !== undefined) { fields.push('can_read = ?'); params.push(Boolean(can_read)); }
+  if (can_write !== undefined) { fields.push('can_write = ?'); params.push(Boolean(can_write)); }
+  if (can_create_page !== undefined) { fields.push('can_create_page = ?'); params.push(Boolean(can_create_page)); }
+  if (can_create_project !== undefined) { fields.push('can_create_project = ?'); params.push(Boolean(can_create_project)); }
+  if (can_manage_members !== undefined) { fields.push('can_manage_members = ?'); params.push(Boolean(can_manage_members)); }
+  if (can_delete_version !== undefined) { fields.push('can_delete_version = ?'); params.push(Boolean(can_delete_version)); }
 
   if (fields.length) {
     params.push(Number(id), Number(userId));

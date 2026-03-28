@@ -35,7 +35,7 @@ export default defineConfig([
     },
     rules: {
       // --- Variables ---
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
       'no-var': 'error',
       'prefer-const': 'error',
 
@@ -59,10 +59,36 @@ export default defineConfig([
       }],
       'react/no-direct-mutation-state': 'error',
       'react/jsx-key': 'error',                          // require key on mapped elements
+      'react/jsx-uses-vars': 'error',                     // mark JSX component refs as used
 
       // --- React Hooks ---
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',             // catch missing useEffect deps
+    },
+  },
+  {
+    files: ['server.js', 'app.js', 'mysql_connect.js', 'routes/**/*.js', 'middleware/**/*.js', 'services/**/*.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        vi: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+      },
+    },
+    rules: {
+      'require-await': 'off',
     },
   },
 ])

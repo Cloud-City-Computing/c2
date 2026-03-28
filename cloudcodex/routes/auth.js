@@ -163,7 +163,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 
-  const { password_hash: _, two_factor_method, totp_secret, ...user } = users[0];
+  const { password_hash: _, two_factor_method, ...user } = users[0];
 
   // If 2FA is enabled (email or TOTP), require verification
   if (two_factor_method === 'email' || two_factor_method === 'totp') {
@@ -391,9 +391,9 @@ router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
   const fields = [];
   const params = [];
 
-  if (create_team !== undefined)    { fields.push('create_team = ?');    params.push(!!create_team);    }
-  if (create_project !== undefined) { fields.push('create_project = ?'); params.push(!!create_project); }
-  if (create_page !== undefined)    { fields.push('create_page = ?');    params.push(!!create_page);    }
+  if (create_team !== undefined)    { fields.push('create_team = ?');    params.push(Boolean(create_team));    }
+  if (create_project !== undefined) { fields.push('create_project = ?'); params.push(Boolean(create_project)); }
+  if (create_page !== undefined)    { fields.push('create_page = ?');    params.push(Boolean(create_page));    }
 
   if (!fields.length) {
     return res.status(400).json({ success: false, message: 'No permission fields provided' });
@@ -412,7 +412,7 @@ router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
   } else {
     await c2_query(
       `INSERT INTO permissions (user_id, create_team, create_project, create_page) VALUES (?, ?, ?, ?)`,
-      [targetId, !!create_team, !!create_project, create_page !== false]
+      [targetId, Boolean(create_team), Boolean(create_project), create_page !== false]
     );
   }
 

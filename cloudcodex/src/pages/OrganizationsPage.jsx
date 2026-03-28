@@ -371,7 +371,7 @@ function TeamMembersPanel({ teamId }) {
               <label key={key} className="perm-chip" title={label}>
                 <input
                   type="checkbox"
-                  checked={!!member[key]}
+                  checked={Boolean(member[key])}
                   disabled={member.role === 'owner'}
                   onChange={() => handleTogglePerm(member, key)}
                 />

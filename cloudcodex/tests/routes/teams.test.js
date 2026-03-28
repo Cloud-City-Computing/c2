@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
-import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 describe('Team Routes', () => {
   beforeEach(() => {

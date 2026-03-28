@@ -65,5 +65,5 @@ export async function isProjectOwner(user, projectId) {
      LIMIT 1`,
     [Number(projectId), user.id, user.email, user.id]
   );
-  return !!result;
+  return Boolean(result);
 }

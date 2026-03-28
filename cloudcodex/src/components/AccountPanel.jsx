@@ -16,7 +16,7 @@ async function performLogout() {
   window.location.href = '/';
 }
 
-function AccountPanel({ id, name, email }) {
+function AccountPanel({ name, email }) {
   return (
     <div className="dropdown-menu">
       <p className="text-center"><strong>{name}</strong> ({email})</p>

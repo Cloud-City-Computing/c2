@@ -307,7 +307,6 @@ export async function getSearchResults(query) {
 
   clearInner(container);
 
-  const token = getSessionTokenFromCookie();
   const response = await apiFetch('GET', `/api/search?query=${encodeURIComponent(query)}`);
 
   const { default: SearchResultItem } = await import('./components/SearchResultItem');
