@@ -14,7 +14,7 @@ import { getSessionTokenFromCookie } from '../util';
 /**
  * @param {number|string} pageId  — The document/page ID to collaborate on
  * @param {function} onRemoteUpdate — Called with new HTML when a remote peer makes a change
- * @returns {{ collabUsers, collabConnected, sendUpdate, sendSave, canWrite }}
+ * @returns {{ collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendUpdate: function, sendCursor: function, sendSave: function, sendPublish: function, canWrite: boolean }}
  */
 export default function useCollab(pageId, onRemoteUpdate) {
   const [collabUsers, setCollabUsers] = useState([]);

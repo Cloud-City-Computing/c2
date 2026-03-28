@@ -21,10 +21,12 @@ import {
 
 // --- Input validation ---
 
+/** Check whether a value is a valid positive integer ID. */
 export const isValidId = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
 
 // --- Async route handler ---
 
+/** Wrap an async route handler to forward rejected promises to Express error handling. */
 export const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -40,6 +42,7 @@ export function sanitizeHtml(html) {
 
 // --- Default permissions fallback ---
 
+/** Default permission values for users without a row in the permissions table. */
 export const DEFAULT_PERMISSIONS = { create_team: false, create_project: false, create_page: true };
 
 // --- Page-level access checks ---

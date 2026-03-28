@@ -179,11 +179,18 @@ function nextColor() {
  *
  * Protocol:
  * - Client connects to ws://host/collab?pageId=<id>&token=<sessionToken>
- * - Server authenticates the token, checks page access
- * - Server sends: { type: 'sync', html, version } on connect
+ * - Server authenticates the token, checks page read/write access
+ * - Server sends: { type: 'sync', html, canWrite, user: { id, name } } on connect
  * - Client sends: { type: 'update', html } when content changes
- * - Server broadcasts updates to other clients and debounce-saves
+ * - Client sends: { type: 'cursor', position: { index, line?, length? } } for cursor position
+ * - Client sends: { type: 'save' } to request an immediate content save
+ * - Client sends: { type: 'publish', title?, notes? } to publish a version snapshot
+ * - Server broadcasts: { type: 'update', html, userId } to other clients
+ * - Server broadcasts: { type: 'cursor', userId, userName, color, position } to other clients
+ * - Server sends: { type: 'saved' } to confirm a content save
+ * - Server broadcasts: { type: 'published', version, title } on successful publish
  * - Server sends: { type: 'awareness', users: [...] } on join/leave
+ * - Server sends: { type: 'error', message } on failures
  *
  * @param {import('http').Server} server
  */

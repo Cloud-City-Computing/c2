@@ -51,7 +51,12 @@ export async function apiFetch(method, url, data) {
 }
 
 /**
- * Legacy API request function (kept for backward compat)
+ * Legacy API request function — use apiFetch() for new code.
+ * @param {'GET'|'POST'|'PUT'|'DELETE'} reqType
+ * @param {string} url
+ * @param {object} [data]
+ * @param {object} [headers]
+ * @returns {Promise<any>}
  */
 export async function serverReq(reqType, url, data, headers = {}) {
   const options = {
@@ -205,6 +210,12 @@ export function showModalDimmer(onClose) {
   };
 }
 
+/**
+ * Render a React element inside the global modal overlay.
+ * The modal is dismissed on Escape key or clicking the dimmer backdrop.
+ * @param {import('react').ReactNode} content — React element to render inside the modal
+ * @param {string} [extraClass] — Additional CSS class for the modal wrapper
+ */
 export function showModal(content, extraClass = '') {
   const modalRoot = getModalRoot();
   if (!modalRoot) return;
@@ -225,6 +236,11 @@ export function showModal(content, extraClass = '') {
   document.addEventListener('keydown', handler);
 }
 
+/**
+ * Render a React element inside the global dropdown overlay.
+ * Dismissed when clicking the dimmer backdrop.
+ * @param {import('react').ReactNode} content — React element to render
+ */
 export function showDropdownMenu(content) {
   const dropdownRoot = document.getElementById('dropdown-root');
   if (!dropdownRoot) return;
@@ -261,6 +277,11 @@ export function removeSessStorage(key) {
 
 // --- Auth ---
 
+/**
+ * Extract the session token from the `sessionToken` cookie.
+ * Clears the cached user from session storage if no token is found.
+ * @returns {string|null}
+ */
 export function getSessionTokenFromCookie() {
   const match = document.cookie
     .split('; ')
@@ -271,6 +292,11 @@ export function getSessionTokenFromCookie() {
   return token;
 }
 
+/**
+ * Attempt to restore a user session from cache or by validating the token with the server.
+ * @param {string} sessionToken
+ * @returns {Promise<Object|null>} The user object if valid, otherwise null
+ */
 export async function attemptAutoLogin(sessionToken) {
   const cached = getSessStorage('currentUser');
   if (cached) return cached;

@@ -1,3 +1,10 @@
+/**
+ * Cloud Codex - Vitest Configuration
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

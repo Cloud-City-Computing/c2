@@ -1,5 +1,17 @@
+/**
+ * Cloud Codex - User Preferences
+ *
+ * Manages user UI preferences (accent color, font size, density,
+ * sidebar default, editor mode) in localStorage and applies
+ * them as CSS custom properties on the document root.
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
 const PREFS_KEY = 'c2-user-prefs';
 
+/** Load user preferences from localStorage. Returns an empty object if none are stored. */
 export function loadUserPrefs() {
   try {
     return JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
@@ -8,10 +20,16 @@ export function loadUserPrefs() {
   }
 }
 
+/** Persist user preferences to localStorage. */
 export function saveUserPrefs(prefs) {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 }
 
+/**
+ * Apply user preferences to the DOM by setting CSS custom properties
+ * (accent color, font size, density) and data attributes (sidebar default).
+ * @param {Object} prefs
+ */
 export function applyPrefsToDOM(prefs) {
   const root = document.documentElement;
 
@@ -72,6 +90,7 @@ export function applyPrefsToDOM(prefs) {
   }
 }
 
+/** Return the user's preferred editor mode ('markdown' or 'richtext'). Defaults to 'richtext'. */
 export function getPreferredEditorMode() {
   return loadUserPrefs().preferredEditor === 'markdown' ? 'markdown' : 'richtext';
 }
