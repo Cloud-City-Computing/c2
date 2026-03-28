@@ -14,6 +14,7 @@
 
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
+import DOMPurify from 'isomorphic-dompurify';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
 import {
@@ -26,8 +27,24 @@ import {
 // In-memory store: pageId → { doc, conns, saveTimer, lastSavedHtml }
 const docs = new Map();
 
+// Track per-user connection count across all documents
+const userConnectionCounts = new Map(); // userId → count
+
 const SAVE_DEBOUNCE_MS = 3000;
 const CLEANUP_DELAY_MS = 30000;
+const MAX_MESSAGE_SIZE = 5 * 1024 * 1024;   // 5 MB max WebSocket message
+const MAX_HTML_SIZE   = 2 * 1024 * 1024;    // 2 MB max document HTML
+const MAX_CONNECTIONS_PER_USER = 10;         // Max simultaneous WS connections per user
+const RATE_LIMIT_WINDOW_MS = 1000;           // 1 second window
+const RATE_LIMIT_MAX_MESSAGES = 60;          // Max messages per window
+
+/** Sanitize HTML to prevent stored XSS on collab saves */
+function sanitizeHtml(html) {
+  if (!html) return '';
+  return DOMPurify.sanitize(html, {
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+  });
+}
 
 /**
  * Get or create a Yjs document for a page.
@@ -93,7 +110,8 @@ function scheduleSave(entry, userId) {
   entry.saveTimer = setTimeout(async () => {
     try {
       const xmlFragment = entry.doc.getXmlFragment('document');
-      const html = xmlFragmentToHtml(xmlFragment);
+      const rawHtml = xmlFragmentToHtml(xmlFragment);
+      const html = sanitizeHtml(rawHtml);
 
       // Skip if content hasn't changed
       if (html === entry.lastSavedHtml) return;
@@ -227,7 +245,10 @@ async function checkWriteAccess(pageId, user) {
  * @param {import('http').Server} server
  */
 export function setupCollabServer(server) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: MAX_MESSAGE_SIZE,
+  });
 
   server.on('upgrade', async (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
@@ -235,10 +256,28 @@ export function setupCollabServer(server) {
     // Only handle /collab path
     if (url.pathname !== '/collab') return;
 
+    // Origin validation to prevent Cross-Site WebSocket Hijacking (CSWSH)
+    const origin = request.headers.origin;
+    const host = request.headers.host;
+    if (origin) {
+      try {
+        const originHost = new URL(origin).host;
+        if (originHost !== host) {
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+      } catch {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+    }
+
     const pageId = Number(url.searchParams.get('pageId'));
     const token = url.searchParams.get('token');
 
-    if (!pageId || !token) {
+    if (!pageId || !Number.isInteger(pageId) || pageId <= 0 || !token) {
       socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
       socket.destroy();
       return;
@@ -254,6 +293,14 @@ export function setupCollabServer(server) {
 
     if (!user) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // Enforce per-user connection limit
+    const currentCount = userConnectionCounts.get(user.id) || 0;
+    if (currentCount >= MAX_CONNECTIONS_PER_USER) {
+      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
       socket.destroy();
       return;
     }
@@ -292,6 +339,13 @@ export function setupCollabServer(server) {
     const color = nextColor();
     entry.conns.set(ws, { user, canWrite, color });
 
+    // Track per-user connection count
+    userConnectionCounts.set(user.id, (userConnectionCounts.get(user.id) || 0) + 1);
+
+    // Per-connection rate limiter state
+    let messageCount = 0;
+    let rateLimitWindowStart = Date.now();
+
     // Send initial sync: current HTML content
     const xmlFragment = entry.doc.getXmlFragment('document');
     const html = xmlFragmentToHtml(xmlFragment);
@@ -307,6 +361,18 @@ export function setupCollabServer(server) {
 
     // Handle incoming messages
     ws.on('message', (data) => {
+      // Rate limit: max RATE_LIMIT_MAX_MESSAGES per RATE_LIMIT_WINDOW_MS
+      const now = Date.now();
+      if (now - rateLimitWindowStart > RATE_LIMIT_WINDOW_MS) {
+        messageCount = 0;
+        rateLimitWindowStart = now;
+      }
+      messageCount++;
+      if (messageCount > RATE_LIMIT_MAX_MESSAGES) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Rate limit exceeded' }));
+        return;
+      }
+
       let msg;
       try {
         msg = JSON.parse(data.toString());
@@ -314,7 +380,17 @@ export function setupCollabServer(server) {
         return;
       }
 
+      // Validate message type is a known string
+      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save'].includes(msg.type)) {
+        return;
+      }
+
       if (msg.type === 'update' && canWrite && typeof msg.html === 'string') {
+        // Enforce HTML content size limit
+        if (msg.html.length > MAX_HTML_SIZE) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Document content exceeds maximum size' }));
+          return;
+        }
         // Apply the update to the Yjs doc
         const xmlFragment = entry.doc.getXmlFragment('document');
         entry.doc.transact(() => {
@@ -333,13 +409,27 @@ export function setupCollabServer(server) {
       }
 
       if (msg.type === 'cursor' && canWrite) {
-        // Forward cursor position to others
+        // Validate cursor position structure before forwarding
+        const pos = msg.position;
+        if (!pos || typeof pos !== 'object' || typeof pos.index !== 'number' || !Number.isFinite(pos.index)) {
+          return;
+        }
+        // Sanitize: only forward safe numeric fields
+        const safePosition = { index: Math.max(0, Math.floor(pos.index)) };
+        if (typeof pos.line === 'number' && Number.isFinite(pos.line)) {
+          safePosition.line = Math.max(0, Math.floor(pos.line));
+        }
+        if (typeof pos.length === 'number' && Number.isFinite(pos.length)) {
+          safePosition.length = Math.max(0, Math.floor(pos.length));
+        }
+
+        // Forward validated cursor position to others
         broadcastExcept(entry, ws, {
           type: 'cursor',
           userId: user.id,
           userName: user.name,
           color,
-          position: msg.position,
+          position: safePosition,
         });
       }
 
@@ -350,7 +440,7 @@ export function setupCollabServer(server) {
         entry.saveTimer = null;
         // Trigger save immediately by setting debounce to 0
         const xmlFragment = entry.doc.getXmlFragment('document');
-        const currentHtml = xmlFragmentToHtml(xmlFragment);
+        const currentHtml = sanitizeHtml(xmlFragmentToHtml(xmlFragment));
         if (currentHtml !== entry.lastSavedHtml) {
           (async () => {
             try {
@@ -385,6 +475,12 @@ export function setupCollabServer(server) {
 
     ws.on('close', () => {
       entry.conns.delete(ws);
+
+      // Decrement per-user connection count
+      const count = (userConnectionCounts.get(user.id) || 1) - 1;
+      if (count <= 0) userConnectionCounts.delete(user.id);
+      else userConnectionCounts.set(user.id, count);
+
       broadcastAwareness(entry);
 
       if (entry.conns.size === 0) {
@@ -396,6 +492,12 @@ export function setupCollabServer(server) {
 
     ws.on('error', () => {
       entry.conns.delete(ws);
+
+      // Decrement per-user connection count
+      const count = (userConnectionCounts.get(user.id) || 1) - 1;
+      if (count <= 0) userConnectionCounts.delete(user.id);
+      else userConnectionCounts.set(user.id, count);
+
       broadcastAwareness(entry);
     });
   });

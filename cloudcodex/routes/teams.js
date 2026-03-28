@@ -348,6 +348,18 @@ router.post('/teams/:id/members/invite', requireAuth, asyncHandler(async (req, r
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
   if (!allowed) return res.status(403).json({ success: false, message: 'You do not have permission to invite members to this team' });
 
+  // Prevent privilege escalation: only org owners / team creators can grant
+  // can_manage_members or invite as admin
+  const isOrgOwnerOrCreator = team.owner === req.user.email || team.created_by === req.user.id;
+  if (!isOrgOwnerOrCreator) {
+    if (can_manage_members === true) {
+      return res.status(403).json({ success: false, message: 'Only org owners and team creators can grant member management permissions' });
+    }
+    if (role === 'admin') {
+      return res.status(403).json({ success: false, message: 'Only org owners and team creators can invite members as admin' });
+    }
+  }
+
   // Check user exists
   const [targetUser] = await c2_query(`SELECT id FROM users WHERE id = ? LIMIT 1`, [Number(userId)]);
   if (!targetUser) return res.status(404).json({ success: false, message: 'User not found' });

@@ -14,6 +14,7 @@ describe('Auth Routes', () => {
 
   describe('POST /api/create-account', () => {
     it('creates account with valid input', async () => {
+      c2_query.mockResolvedValueOnce([]);             // SELECT duplicate email check
       c2_query.mockResolvedValueOnce({ insertId: 10 }); // INSERT user
       generateSessionToken.mockResolvedValueOnce('new-token');
       c2_query.mockResolvedValueOnce([]); // INSERT permissions
@@ -53,6 +54,18 @@ describe('Auth Routes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/8 characters/);
+    });
+
+    it('rejects duplicate email', async () => {
+      c2_query.mockResolvedValueOnce([{ id: 5 }]); // SELECT duplicate email check — found existing
+
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'newuser', password: 'password123', email: 'existing@test.com' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/already exists/i);
     });
   });
 

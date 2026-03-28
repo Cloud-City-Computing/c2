@@ -59,6 +59,15 @@ router.post('/create-account', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
   }
 
+  // Check for duplicate email before inserting
+  const [existingUser] = await c2_query(
+    `SELECT id FROM users WHERE email = ? LIMIT 1`,
+    [email]
+  );
+  if (existingUser) {
+    return res.status(409).json({ success: false, message: 'An account with this email already exists' });
+  }
+
   // Hash password before storing — never store plaintext passwords
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 

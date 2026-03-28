@@ -20,6 +20,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.3.1",
     "helmet": "^8.1.0",
+    "isomorphic-dompurify": "^3.7.1",
     "jodit-react": "^5.3.21",
     "marked": "^17.0.4",
     "mysql2": "^3.16.2",

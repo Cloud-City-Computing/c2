@@ -6,9 +6,20 @@
  */
 
 import express from 'express';
+import DOMPurify from 'isomorphic-dompurify';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+
+const MAX_CONTENT_SIZE = 2 * 1024 * 1024; // 2 MB max document content
+
+/** Sanitize HTML to prevent stored XSS — strips scripts, event handlers, and dangerous URIs */
+function sanitizeHtml(html) {
+  if (!html) return '';
+  return DOMPurify.sanitize(html, {
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+  });
+}
 
 const router = express.Router();
 
@@ -74,6 +85,13 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing html_content' });
   }
 
+  if (typeof html_content !== 'string' || html_content.length > MAX_CONTENT_SIZE) {
+    return res.status(413).json({ success: false, message: 'Document content exceeds maximum size' });
+  }
+
+  // Sanitize HTML to prevent stored XSS
+  const cleanHtml = sanitizeHtml(html_content);
+
   // Fetch existing page and verify write access
   const [page] = await c2_query(
     `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.project_id
@@ -89,18 +107,18 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
 
-  // Bump version and save new content
+  // Bump version and save sanitized content
   const newVersion = page.version + 1;
   await c2_query(
     `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-    [html_content, newVersion, req.user.id, Number(doc_id)]
+    [cleanHtml, newVersion, req.user.id, Number(doc_id)]
   );
 
   // Snapshot the newly saved content into the versions table
   await c2_query(
     `INSERT INTO versions (page_id, version, html_content, created_by)
      VALUES (?, ?, ?, ?)`,
-    [page.id, newVersion, html_content, req.user.id]
+    [page.id, newVersion, cleanHtml, req.user.id]
   );
 
   res.json({ success: true, version: newVersion });
