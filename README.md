@@ -32,7 +32,6 @@ The application currently includes these implemented areas:
 What this codebase is not today:
 
 - It is not a real-time collaborative editor
-- It does not currently include automated tests in the repository
 - It does not currently include a separate production deployment configuration beyond the local development setup
 
 ## Tech Stack
@@ -46,15 +45,22 @@ What this codebase is not today:
 | Editor | Jodit, Marked, Turndown, DOMPurify |
 | Email | Nodemailer |
 | 2FA | OTPAuth, QRCode |
+| Testing | Vitest, Supertest |
+| CI | GitHub Actions |
 | Tooling | ESLint 9 |
 
 ## Repository Layout
 
 ```text
 .
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # GitHub Actions CI (lint + tests)
 ├── cloudcodex/
-│   ├── server.js               # Express entry point mounted through ViteExpress
+│   ├── server.js               # ViteExpress startup
+│   ├── app.js                  # Express app setup (importable for tests)
 │   ├── mysql_connect.js        # MySQL pool and session helpers
+│   ├── vitest.config.js        # Test runner configuration
 │   ├── services/
 │   │   └── email.js            # SMTP-backed email service
 │   ├── middleware/
@@ -68,6 +74,19 @@ What this codebase is not today:
 │   │   ├── search.js           # Page search
 │   │   ├── teams.js            # Teams, members, invitations
 │   │   └── helpers/
+│   ├── tests/
+│   │   ├── setup.js            # Global mocks (DB, email)
+│   │   ├── helpers.js          # Shared test utilities
+│   │   ├── middleware/
+│   │   │   ├── auth.test.js
+│   │   │   └── permissions.test.js
+│   │   └── routes/
+│   │       ├── auth.test.js
+│   │       ├── documents.test.js
+│   │       ├── organizations.test.js
+│   │       ├── projects.test.js
+│   │       ├── search.test.js
+│   │       └── teams.test.js
 │   ├── src/
 │   │   ├── App.jsx             # Frontend routes
 │   │   ├── util.jsx            # API helpers and modal helpers
@@ -201,6 +220,9 @@ From `cloudcodex/`:
 | `npm run build` | Build the frontend with Vite |
 | `npm run preview` | Preview the Vite production build |
 | `npm run lint` | Run ESLint |
+| `npm test` | Run backend tests once (CI-friendly) |
+| `npm run test:watch` | Run tests in watch mode during development |
+| `npm run test:coverage` | Run tests with coverage report |
 
 From the repository root:
 
@@ -244,6 +266,23 @@ The Express API under `/api` is currently organized into these groups:
 - project and page APIs
 - document and version-history APIs
 - search APIs
+
+## Testing
+
+The backend API has a functional test suite using Vitest and Supertest. Tests mock the database and email layers so they run without any external services.
+
+Run all tests:
+
+```bash
+cd cloudcodex
+npm test
+```
+
+Tests cover all route groups (auth, documents, projects, organizations, teams, search) and both middleware modules (auth, permissions).
+
+## CI
+
+A GitHub Actions workflow at `.github/workflows/ci.yml` runs lint and tests on every push and pull request to `main`.
 
 ## Notes
 
