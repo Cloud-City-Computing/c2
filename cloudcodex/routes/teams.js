@@ -390,6 +390,11 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
   if (!allowed) return res.status(403).json({ success: false, message: 'You do not have permission to manage this team' });
 
+  // Members cannot modify their own role or permissions
+  if (Number(userId) === req.user.id) {
+    return res.status(403).json({ success: false, message: 'You cannot modify your own permissions' });
+  }
+
   const [member] = await c2_query(
     `SELECT id, role FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
     [Number(id), Number(userId)]
@@ -401,7 +406,19 @@ router.put('/teams/:id/members/:userId', requireAuth, asyncHandler(async (req, r
     return res.status(403).json({ success: false, message: 'Cannot modify the permissions of a team owner' });
   }
 
+  // Only org owners and team creators can grant can_manage_members or set role to admin
+  // (prevents privilege escalation by members who only have can_manage_members)
+  const isOrgOwnerOrCreator = team.owner === req.user.email || team.created_by === req.user.id;
   const { role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version } = req.body;
+
+  if (!isOrgOwnerOrCreator) {
+    if (can_manage_members === true) {
+      return res.status(403).json({ success: false, message: 'Only org owners and team creators can grant member management permissions' });
+    }
+    if (role === 'admin') {
+      return res.status(403).json({ success: false, message: 'Only org owners and team creators can promote members to admin' });
+    }
+  }
   const fields = [];
   const params = [];
 
@@ -524,6 +541,12 @@ router.post('/invitations/:id/accept', requireAuth, asyncHandler(async (req, res
        can_manage_members = VALUES(can_manage_members), can_delete_version = VALUES(can_delete_version)`,
     [inv.team_id, inv.invited_user_id, inv.role,
      inv.can_read, inv.can_write, inv.can_create_page, inv.can_create_project, inv.can_manage_members, inv.can_delete_version]
+  );
+
+  // Remove old accepted/declined invitations for this team+user to avoid unique key conflict
+  await c2_query(
+    `DELETE FROM team_invitations WHERE team_id = ? AND invited_user_id = ? AND status IN ('accepted', 'declined') AND id != ?`,
+    [inv.team_id, inv.invited_user_id, Number(id)]
   );
 
   // Mark invitation accepted

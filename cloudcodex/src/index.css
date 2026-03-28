@@ -2383,4 +2383,115 @@ body {
   background: var(--brand-blue);
   color: #fff;
 }
+
+/* =========================
+   Collaborative Editing — Presence UI
+========================= */
+
+.collab-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.collab-presence:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.collab-presence--disconnected {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.collab-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.collab-status-dot--online {
+  background: #50c878;
+  box-shadow: 0 0 6px rgba(80, 200, 120, 0.5);
+}
+
+.collab-status-dot--offline {
+  background: #888;
+}
+
+.collab-status-label {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.collab-avatars {
+  display: flex;
+  gap: 0;
+}
+
+.collab-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  border: 2px solid var(--bg-primary, #1a1a2e);
+  margin-left: -6px;
+  flex-shrink: 0;
+}
+
+.collab-avatar:first-child {
+  margin-left: 0;
+}
+
+.collab-avatar--sm {
+  width: 22px;
+  height: 22px;
+  font-size: 0.65rem;
+  border-width: 1px;
+  margin-left: 0;
+}
+
+.collab-user-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: var(--bg-secondary, #2a2a3e);
+  border: 1px solid var(--border-color, #3a3a4e);
+  border-radius: 8px;
+  padding: 8px 0;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+
+.collab-user-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.collab-user-list__item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.collab-user-list__name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }

@@ -13,6 +13,8 @@ import { marked } from 'marked';
 import TurndownService from 'turndown';
 import DOMPurify from 'dompurify';
 import { getPreferredEditorMode } from '../userPrefs';
+import useCollab from '../hooks/useCollab';
+import CollabPresence from '../components/CollabPresence';
 import {
   fetchDocument,
   saveDocument,
@@ -48,13 +50,13 @@ function markdownToHtml(md) {
 
 // --- Jodit Editor wrapper ---
 
-function RichTextEditor({ content, setContent, contentRef }) {
+function RichTextEditor({ content, setContent, contentRef, onLocalChange }) {
   const editor = useRef(null);
   // Local state drives Jodit's value — prevents parent re-renders from resetting the editor
   const [local, setLocal] = useState(content);
   const internalRef = useRef(false);
 
-  // Sync from parent only on genuine external changes (doc load, version restore)
+  // Sync from parent only on genuine external changes (doc load, version restore, remote collab update)
   useEffect(() => {
     if (internalRef.current) {
       internalRef.current = false;
@@ -75,11 +77,13 @@ function RichTextEditor({ content, setContent, contentRef }) {
     setLocal(newContent);
     internalRef.current = true;
     setContent(newContent);
-  }, [setContent, contentRef]);
+    onLocalChange?.(newContent);
+  }, [setContent, contentRef, onLocalChange]);
 
   const handleChange = useCallback((newContent) => {
     contentRef.current = newContent;
-  }, [contentRef]);
+    onLocalChange?.(newContent);
+  }, [contentRef, onLocalChange]);
 
   return (
     <JoditEditor
@@ -94,7 +98,7 @@ function RichTextEditor({ content, setContent, contentRef }) {
 
 // --- Markdown Editor with live preview ---
 
-function MarkdownEditor({ content, setContent }) {
+function MarkdownEditor({ content, setContent, onLocalChange }) {
   const [md, setMd] = useState(() => htmlToMarkdown(content));
   const [preview, setPreview] = useState(() => content || '');
   const textareaRef = useRef(null);
@@ -124,7 +128,8 @@ function MarkdownEditor({ content, setContent }) {
     setPreview(html);
     selfUpdateRef.current = true;
     setContent(html);
-  }, [setContent]);
+    onLocalChange?.(html);
+  }, [setContent, onLocalChange]);
 
   // Tab key inserts spaces instead of changing focus
   const handleKeyDown = useCallback((e) => {
@@ -139,11 +144,12 @@ function MarkdownEditor({ content, setContent }) {
       setPreview(markdownToHtml(newVal));
       selfUpdateRef.current = true;
       setContent(markdownToHtml(newVal));
+      onLocalChange?.(markdownToHtml(newVal));
       requestAnimationFrame(() => {
         ta.selectionStart = ta.selectionEnd = start + 2;
       });
     }
-  }, [setContent]);
+  }, [setContent, onLocalChange]);
 
   return (
     <div className="markdown-editor">
@@ -281,9 +287,33 @@ export default function Editor() {
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
+  const remoteUpdateRef = useRef(false);
+
+  // Collaborative editing hook
+  const { collabUsers, collabConnected, sendUpdate, sendSave } = useCollab(
+    pageId,
+    // onRemoteUpdate — called when a peer changes the document
+    useCallback((html) => {
+      remoteUpdateRef.current = true;
+      contentRef.current = html;
+      setContent(html);
+    }, [])
+  );
 
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
   useEffect(() => { contentRef.current = content; }, [content]);
+
+  // Debounced send to collab peers on local change
+  const sendTimerRef = useRef(null);
+  const handleLocalChange = useCallback((html) => {
+    // Don't echo remote updates back to the server
+    if (remoteUpdateRef.current) {
+      remoteUpdateRef.current = false;
+      return;
+    }
+    if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
+    sendTimerRef.current = setTimeout(() => sendUpdate(html), 150);
+  }, [sendUpdate]);
 
   const loadDocument = useCallback(async () => {
     if (!pageId) return;
@@ -305,6 +335,17 @@ export default function Editor() {
     const latestContent = contentRef.current;
     setStatus(null);
     setSaving(true);
+
+    // If connected via collab, use the WebSocket save path
+    if (collabConnected) {
+      sendSave();
+      setContent(latestContent);
+      setStatus({ type: 'success', message: 'Document saved.' });
+      setSaving(false);
+      return;
+    }
+
+    // Fallback to REST save when collab is disconnected
     try {
       const result = await saveDocument(Number(pageId), latestContent);
       // Sync state so parent and editor agree on current content
@@ -317,7 +358,7 @@ export default function Editor() {
       setStatus({ type: 'error', message: `Error saving: ${e.body?.message ?? e.message}` });
     }
     setSaving(false);
-  }, [pageId, saving]);
+  }, [pageId, saving, collabConnected, sendSave]);
 
   const handleTitleSave = async () => {
     if (!title.trim()) return;
@@ -359,6 +400,7 @@ export default function Editor() {
                 <span>v{documentData.version ?? 1} &middot; {new Date(documentData.created_at).toLocaleString()}</span>
               </>
             )}
+            <CollabPresence users={collabUsers} connected={collabConnected} />
           </div>
         </div>
 
@@ -394,9 +436,9 @@ export default function Editor() {
 
         <div className="editor-container">
           {editorMode === 'richtext' ? (
-            <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} />
+            <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} />
           ) : (
-            <MarkdownEditor content={content} setContent={setContent} />
+            <MarkdownEditor content={content} setContent={setContent} onLocalChange={handleLocalChange} />
           )}
         </div>
       </div>

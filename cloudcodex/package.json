@@ -30,7 +30,11 @@
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.13.0",
     "turndown": "^7.2.2",
-    "vite-express": "^0.21.1"
+    "vite-express": "^0.21.1",
+    "ws": "^8.20.0",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

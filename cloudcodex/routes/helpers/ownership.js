@@ -16,7 +16,7 @@ import { c2_query } from '../../mysql_connect.js';
  *   1. User is in the project's read_access JSON array
  *   2. User is the project creator
  *   3. User is the org owner (via team → organization)
- *   4. User has 'owner' role in the project's team
+ *   4. User is a team member with owner role OR can_read permission
  *
  * Use with readAccessParams(user) — always 4 params.
  */
@@ -24,7 +24,7 @@ export function readAccessWhere(alias = 'p') {
   return `(
     JSON_CONTAINS(${alias}.read_access, ?) OR ${alias}.created_by = ?
     OR EXISTS (SELECT 1 FROM teams _ot JOIN organizations _oo ON _ot.organization_id = _oo.id WHERE _ot.id = ${alias}.team_id AND _oo.owner = ?)
-    OR EXISTS (SELECT 1 FROM team_members _om WHERE _om.team_id = ${alias}.team_id AND _om.user_id = ? AND _om.role = 'owner')
+    OR EXISTS (SELECT 1 FROM team_members _om WHERE _om.team_id = ${alias}.team_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_read = TRUE))
   )`;
 }
 
@@ -41,7 +41,7 @@ export function writeAccessWhere(alias = 'p') {
   return `(
     JSON_CONTAINS(${alias}.write_access, ?) OR ${alias}.created_by = ?
     OR EXISTS (SELECT 1 FROM teams _ot JOIN organizations _oo ON _ot.organization_id = _oo.id WHERE _ot.id = ${alias}.team_id AND _oo.owner = ?)
-    OR EXISTS (SELECT 1 FROM team_members _om WHERE _om.team_id = ${alias}.team_id AND _om.user_id = ? AND _om.role = 'owner')
+    OR EXISTS (SELECT 1 FROM team_members _om WHERE _om.team_id = ${alias}.team_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_write = TRUE))
   )`;
 }
 

@@ -25,12 +25,14 @@ router.get('/organizations', requireAuth, asyncHandler(async (req, res) => {
     `SELECT DISTINCT o.id, o.name, o.owner, o.created_at
      FROM organizations o
      LEFT JOIN teams t ON t.organization_id = o.id
+     LEFT JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
      LEFT JOIN projects p ON p.team_id = t.id
      WHERE o.owner = ?
         OR t.created_by = ?
+        OR tm.id IS NOT NULL
         OR JSON_CONTAINS(p.read_access, ?)
      ORDER BY o.created_at DESC`,
-    [req.user.email, req.user.id, JSON.stringify(req.user.id)]
+    [req.user.id, req.user.email, req.user.id, JSON.stringify(req.user.id)]
   );
   res.json({ success: true, organizations: orgs });
 }));

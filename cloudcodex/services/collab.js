@@ -1,0 +1,424 @@
+/**
+ * Collaborative Editing Service for Cloud Codex
+ *
+ * Manages Yjs documents over WebSocket connections. Each document (page)
+ * gets a shared Yjs Doc that multiple users can edit simultaneously.
+ * The CRDT handles merge/conflict resolution automatically.
+ *
+ * Auth: Validates session tokens on WebSocket upgrade.
+ * Persistence: Loads initial content from MySQL, debounce-saves back.
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
+import { WebSocketServer } from 'ws';
+import * as Y from 'yjs';
+import { validateAndAutoLogin } from '../mysql_connect.js';
+import { c2_query } from '../mysql_connect.js';
+import {
+  writeAccessWhere,
+  writeAccessParams,
+  readAccessWhere,
+  readAccessParams,
+} from '../routes/helpers/ownership.js';
+
+// In-memory store: pageId → { doc, conns, saveTimer, lastSavedHtml }
+const docs = new Map();
+
+const SAVE_DEBOUNCE_MS = 3000;
+const CLEANUP_DELAY_MS = 30000;
+
+/**
+ * Get or create a Yjs document for a page.
+ * On first access, loads html_content from the database.
+ */
+async function getOrCreateDoc(pageId) {
+  if (docs.has(pageId)) return docs.get(pageId);
+
+  const ydoc = new Y.Doc();
+  const entry = {
+    doc: ydoc,
+    conns: new Map(),   // ws → { user, awareness }
+    saveTimer: null,
+    cleanupTimer: null,
+    lastSavedHtml: null,
+    pageId,
+  };
+
+  // Load current content from DB
+  const [page] = await c2_query(
+    `SELECT html_content, version FROM pages WHERE id = ? LIMIT 1`,
+    [pageId]
+  );
+
+  if (page?.html_content) {
+    const xmlFragment = ydoc.getXmlFragment('document');
+    // Initialize with existing HTML by inserting it as a single XmlText node.
+    // This gives us a starting point; subsequent edits are CRDT-tracked.
+    const textNode = new Y.XmlText();
+    textNode.insert(0, page.html_content);
+    xmlFragment.insert(0, [textNode]);
+    entry.lastSavedHtml = page.html_content;
+  }
+
+  docs.set(pageId, entry);
+  return entry;
+}
+
+/**
+ * Serialize the Yjs XmlFragment back to an HTML string.
+ */
+function xmlFragmentToHtml(xmlFragment) {
+  let html = '';
+  for (let i = 0; i < xmlFragment.length; i++) {
+    const item = xmlFragment.get(i);
+    if (item instanceof Y.XmlText) {
+      html += item.toString();
+    } else if (item instanceof Y.XmlElement) {
+      html += item.toString();
+    } else {
+      html += String(item);
+    }
+  }
+  return html;
+}
+
+/**
+ * Debounced save: writes the current Yjs document content back to MySQL.
+ * Creates a version snapshot just like the regular save endpoint.
+ */
+function scheduleSave(entry, userId) {
+  if (entry.saveTimer) clearTimeout(entry.saveTimer);
+  entry.saveTimer = setTimeout(async () => {
+    try {
+      const xmlFragment = entry.doc.getXmlFragment('document');
+      const html = xmlFragmentToHtml(xmlFragment);
+
+      // Skip if content hasn't changed
+      if (html === entry.lastSavedHtml) return;
+
+      const [page] = await c2_query(
+        `SELECT version FROM pages WHERE id = ? LIMIT 1`,
+        [entry.pageId]
+      );
+      if (!page) return;
+
+      const newVersion = page.version + 1;
+      await c2_query(
+        `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+        [html, newVersion, userId, entry.pageId]
+      );
+      await c2_query(
+        `INSERT INTO versions (page_id, version, html_content, created_by) VALUES (?, ?, ?, ?)`,
+        [entry.pageId, newVersion, html, userId]
+      );
+
+      entry.lastSavedHtml = html;
+    } catch (err) {
+      console.error(`[collab] Save failed for page ${entry.pageId}:`, err);
+    }
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Remove a document from memory after all connections close (with delay).
+ */
+function scheduleCleanup(entry) {
+  if (entry.cleanupTimer) clearTimeout(entry.cleanupTimer);
+  entry.cleanupTimer = setTimeout(() => {
+    if (entry.conns.size === 0) {
+      if (entry.saveTimer) clearTimeout(entry.saveTimer);
+      entry.doc.destroy();
+      docs.delete(entry.pageId);
+    }
+  }, CLEANUP_DELAY_MS);
+}
+
+/**
+ * Encode awareness state update for broadcasting.
+ */
+function encodeAwarenessUpdate(entry) {
+  const users = [];
+  for (const [, meta] of entry.conns) {
+    users.push({ id: meta.user.id, name: meta.user.name, color: meta.color });
+  }
+  return JSON.stringify({ type: 'awareness', users });
+}
+
+/**
+ * Broadcast a message to all connections on a document except the sender.
+ */
+function broadcastExcept(entry, senderWs, message) {
+  const data = typeof message === 'string' ? message : JSON.stringify(message);
+  for (const [ws] of entry.conns) {
+    if (ws !== senderWs && ws.readyState === 1) {
+      ws.send(data);
+    }
+  }
+}
+
+/**
+ * Broadcast awareness state to ALL connections (including sender).
+ */
+function broadcastAwareness(entry) {
+  const msg = encodeAwarenessUpdate(entry);
+  for (const [ws] of entry.conns) {
+    if (ws.readyState === 1) ws.send(msg);
+  }
+}
+
+// Color palette for user cursors
+const COLORS = [
+  '#2ca7db', '#e5544e', '#50c878', '#ffa500', '#9b59b6',
+  '#e91e63', '#00bcd4', '#8bc34a', '#ff5722', '#607d8b',
+];
+
+let colorIndex = 0;
+function nextColor() {
+  const c = COLORS[colorIndex % COLORS.length];
+  colorIndex++;
+  return c;
+}
+
+/**
+ * Check if a user has read access to a page's project.
+ */
+async function checkReadAccess(pageId, user) {
+  const [page] = await c2_query(
+    `SELECT pg.id
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND ${readAccessWhere('p')}
+      LIMIT 1`,
+    [pageId, ...readAccessParams(user)]
+  );
+  return Boolean(page);
+}
+
+/**
+ * Check if a user has write access to a page's project.
+ */
+async function checkWriteAccess(pageId, user) {
+  const [page] = await c2_query(
+    `SELECT pg.id
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND ${writeAccessWhere('p')}
+      LIMIT 1`,
+    [pageId, ...writeAccessParams(user)]
+  );
+  return Boolean(page);
+}
+
+/**
+ * Attach the collaborative WebSocket server to an existing HTTP server.
+ *
+ * Protocol:
+ * - Client connects to ws://host/collab?pageId=<id>&token=<sessionToken>
+ * - Server authenticates the token, checks page access
+ * - Server sends: { type: 'sync', html, version } on connect
+ * - Client sends: { type: 'update', html } when content changes
+ * - Server broadcasts updates to other clients and debounce-saves
+ * - Server sends: { type: 'awareness', users: [...] } on join/leave
+ *
+ * @param {import('http').Server} server
+ */
+export function setupCollabServer(server) {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', async (request, socket, head) => {
+    const url = new URL(request.url, `http://${request.headers.host}`);
+
+    // Only handle /collab path
+    if (url.pathname !== '/collab') return;
+
+    const pageId = Number(url.searchParams.get('pageId'));
+    const token = url.searchParams.get('token');
+
+    if (!pageId || !token) {
+      socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // Authenticate
+    let user;
+    try {
+      user = await validateAndAutoLogin(token);
+    } catch {
+      // auth error
+    }
+
+    if (!user) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // Check read access at minimum
+    const hasAccess = await checkReadAccess(pageId, user);
+    if (!hasAccess) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const canWrite = await checkWriteAccess(pageId, user);
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, { user, pageId, canWrite });
+    });
+  });
+
+  wss.on('connection', async (ws, { user, pageId, canWrite }) => {
+    let entry;
+    try {
+      entry = await getOrCreateDoc(pageId);
+    } catch (err) {
+      console.error(`[collab] Failed to load doc ${pageId}:`, err);
+      ws.close(1011, 'Failed to load document');
+      return;
+    }
+
+    // Cancel cleanup timer if someone reconnects
+    if (entry.cleanupTimer) {
+      clearTimeout(entry.cleanupTimer);
+      entry.cleanupTimer = null;
+    }
+
+    const color = nextColor();
+    entry.conns.set(ws, { user, canWrite, color });
+
+    // Send initial sync: current HTML content
+    const xmlFragment = entry.doc.getXmlFragment('document');
+    const html = xmlFragmentToHtml(xmlFragment);
+    ws.send(JSON.stringify({
+      type: 'sync',
+      html,
+      canWrite,
+      user: { id: user.id, name: user.name },
+    }));
+
+    // Broadcast updated awareness to all
+    broadcastAwareness(entry);
+
+    // Handle incoming messages
+    ws.on('message', (data) => {
+      let msg;
+      try {
+        msg = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
+
+      if (msg.type === 'update' && canWrite && typeof msg.html === 'string') {
+        // Apply the update to the Yjs doc
+        const xmlFragment = entry.doc.getXmlFragment('document');
+        entry.doc.transact(() => {
+          // Clear and replace — for HTML-based sync this is the straightforward approach
+          while (xmlFragment.length > 0) xmlFragment.delete(0);
+          const textNode = new Y.XmlText();
+          textNode.insert(0, msg.html);
+          xmlFragment.insert(0, [textNode]);
+        });
+
+        // Broadcast to other clients
+        broadcastExcept(entry, ws, { type: 'update', html: msg.html, userId: user.id });
+
+        // Schedule debounced save
+        scheduleSave(entry, user.id);
+      }
+
+      if (msg.type === 'cursor' && canWrite) {
+        // Forward cursor position to others
+        broadcastExcept(entry, ws, {
+          type: 'cursor',
+          userId: user.id,
+          userName: user.name,
+          color,
+          position: msg.position,
+        });
+      }
+
+      if (msg.type === 'save' && canWrite) {
+        // Force immediate save
+        if (entry.saveTimer) clearTimeout(entry.saveTimer);
+        scheduleSave(entry, user.id);
+        entry.saveTimer = null;
+        // Trigger save immediately by setting debounce to 0
+        const xmlFragment = entry.doc.getXmlFragment('document');
+        const currentHtml = xmlFragmentToHtml(xmlFragment);
+        if (currentHtml !== entry.lastSavedHtml) {
+          (async () => {
+            try {
+              const [page] = await c2_query(
+                `SELECT version FROM pages WHERE id = ? LIMIT 1`,
+                [entry.pageId]
+              );
+              if (!page) return;
+              const newVersion = page.version + 1;
+              await c2_query(
+                `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+                [currentHtml, newVersion, user.id, entry.pageId]
+              );
+              await c2_query(
+                `INSERT INTO versions (page_id, version, html_content, created_by) VALUES (?, ?, ?, ?)`,
+                [entry.pageId, newVersion, currentHtml, user.id]
+              );
+              entry.lastSavedHtml = currentHtml;
+
+              // Notify all clients of the new version
+              const versionMsg = JSON.stringify({ type: 'saved', version: newVersion });
+              for (const [client] of entry.conns) {
+                if (client.readyState === 1) client.send(versionMsg);
+              }
+            } catch (err) {
+              console.error(`[collab] Immediate save failed for page ${entry.pageId}:`, err);
+            }
+          })();
+        }
+      }
+    });
+
+    ws.on('close', () => {
+      entry.conns.delete(ws);
+      broadcastAwareness(entry);
+
+      if (entry.conns.size === 0) {
+        // Final save then schedule cleanup
+        scheduleSave(entry, user.id);
+        scheduleCleanup(entry);
+      }
+    });
+
+    ws.on('error', () => {
+      entry.conns.delete(ws);
+      broadcastAwareness(entry);
+    });
+  });
+
+  return wss;
+}
+
+/**
+ * Returns the number of active collaborative sessions (for diagnostics).
+ */
+export function getActiveDocCount() {
+  return docs.size;
+}
+
+/**
+ * Returns active users for a specific page (for the REST API).
+ */
+export function getActiveUsers(pageId) {
+  const entry = docs.get(pageId);
+  if (!entry) return [];
+  const users = [];
+  for (const [, meta] of entry.conns) {
+    users.push({ id: meta.user.id, name: meta.user.name, color: meta.color });
+  }
+  return users;
+}

@@ -29,7 +29,7 @@ app.use('/api', helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "ws:", "wss:"],
       fontSrc: ["'self'", "data:"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
