@@ -6,10 +6,14 @@
  */
 
 import express from 'express';
+import TurndownService from 'turndown';
+import HTMLtoDOCX from 'html-to-docx';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
+
+const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
 const MAX_CONTENT_SIZE = 2 * 1024 * 1024; // 2 MB max document content
 
@@ -364,6 +368,83 @@ router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler
 
   await c2_query(`DELETE FROM versions WHERE id = ?`, [Number(versionId)]);
   res.json({ success: true });
+}));
+
+/**
+ * GET /api/document/:pageId/export?format=html|md|txt|docx
+ * Export a document in the requested format as a downloadable file.
+ * Requires auth and read access on the parent project.
+ */
+router.get('/document/:pageId/export', requireAuth, asyncHandler(async (req, res) => {
+  const { pageId } = req.params;
+  const { format } = req.query;
+
+  if (!isValidId(pageId)) {
+    return res.status(400).json({ success: false, message: 'Invalid page ID' });
+  }
+
+  const validFormats = ['html', 'md', 'txt', 'docx'];
+  if (!validFormats.includes(format)) {
+    return res.status(400).json({ success: false, message: `Invalid format. Supported: ${validFormats.join(', ')}` });
+  }
+
+  // Fetch document with read access check
+  const [doc] = await c2_query(
+    `SELECT pg.id, pg.title, pg.html_content
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id = ?
+        AND ${readAccessWhere('p')}
+      LIMIT 1`,
+    [Number(pageId), ...readAccessParams(req.user)]
+  );
+
+  if (!doc) {
+    return res.status(404).json({ success: false, message: 'Document not found or access denied' });
+  }
+
+  const safeTitle = (doc.title || 'document').replace(/[^a-zA-Z0-9_\- ]/g, '_');
+  const htmlContent = doc.html_content || '';
+
+  switch (format) {
+    case 'html': {
+      const fullHtml = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${doc.title || 'Document'}</title></head>\n<body>\n${htmlContent}\n</body>\n</html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.html"`);
+      return res.send(fullHtml);
+    }
+    case 'md': {
+      const markdown = turndown.turndown(htmlContent || '<p></p>');
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.md"`);
+      return res.send(markdown);
+    }
+    case 'txt': {
+      const text = htmlContent
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.txt"`);
+      return res.send(text);
+    }
+    case 'docx': {
+      const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlContent}</body></html>`;
+      const docxBuffer = await HTMLtoDOCX(wrappedHtml, null, {
+        table: { row: { cantSplit: true } },
+        footer: true,
+        pageNumber: true,
+      });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.docx"`);
+      return res.send(Buffer.from(docxBuffer));
+    }
+  }
 }));
 
 router.use(errorHandler);

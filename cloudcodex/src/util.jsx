@@ -158,6 +158,128 @@ export const deleteVersion = (pageId, versionId) =>
 export const publishVersion = (pageId, { title, notes } = {}) =>
   apiFetch('POST', `/api/document/${pageId}/publish`, { title, notes });
 
+// --- Upload API ---
+
+/**
+ * Upload a document file to create a new page in a project.
+ * Uses FormData (multipart) instead of JSON.
+ */
+export async function uploadDocument(projectId, file, parentId) {
+  const token = getSessionTokenFromCookie();
+  const formData = new FormData();
+  formData.append('file', file);
+  if (parentId) formData.append('parent_id', parentId);
+
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(`/api/projects/${projectId}/pages/upload`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || `Upload failed with status ${response.status}`);
+    err.status = response.status;
+    err.body = body;
+    throw err;
+  }
+
+  return response.json();
+}
+
+// --- Export API ---
+
+/**
+ * Export/download a document in the specified format.
+ * Triggers a browser download of the resulting file.
+ * @param {number} pageId
+ * @param {'html'|'md'|'txt'|'docx'|'pdf'} format
+ * @param {string} [title] - Document title for PDF filename
+ * @param {string} [htmlContent] - HTML content for client-side PDF generation
+ */
+export async function exportDocument(pageId, format, title, htmlContent) {
+  // PDF uses the browser's native print-to-PDF via a print window.
+  // This gives perfect text selection, formatting, and pagination.
+  if (format === 'pdf') {
+    const docTitle = title || 'Document';
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      throw new Error('Pop-up blocked. Please allow pop-ups for this site to export PDF.');
+    }
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${docTitle}</title>
+  <style>
+    * { color: #000 !important; }
+    body {
+      margin: 20mm;
+      font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #000;
+      background: #fff;
+    }
+    img { max-width: 100%; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+    pre, code { background: #f4f4f4; padding: 2px 4px; border-radius: 3px; font-size: 13px; }
+    pre { padding: 12px; overflow-x: auto; }
+    a { color: #000 !important; text-decoration: underline; }
+    @media print {
+      body { margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  ${htmlContent || ''}
+  <script>
+    window.onafterprint = function() { window.close(); };
+    window.onload = function() { window.print(); };
+  <\/script>
+</body>
+</html>`);
+    printWindow.document.close();
+    return;
+  }
+
+  // All other formats are handled server-side
+  const token = getSessionTokenFromCookie();
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(`/api/document/${pageId}/export?format=${format}`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || `Export failed with status ${response.status}`);
+    err.status = response.status;
+    err.body = body;
+    throw err;
+  }
+
+  const disposition = response.headers.get('Content-Disposition');
+  const match = disposition?.match(/filename="(.+)"/);
+  const filename = match?.[1] || `document.${format}`;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // --- DOM Helpers ---
 
 /**

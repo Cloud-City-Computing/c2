@@ -11,6 +11,7 @@ import {
   fetchProjects, createProject, updateProject, deleteProject,
   fetchPages, createPage, deletePage,
   manageProjectAccess, searchUsers,
+  uploadDocument, exportDocument, fetchDocument,
   showModal, destroyModal,
 } from '../util';
 import ConfirmDialog from './ConfirmDialog';
@@ -273,11 +274,88 @@ function NewPageModal({ projectId, parentId, onCreated }) {
   );
 }
 
+// --- Upload Document Modal ---
+
+function UploadDocumentModal({ projectId, parentId, onUploaded }) {
+  const [file, setFile] = useState(null);
+  const [error, setError] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (!file) { setError('Please select a file.'); return; }
+    setUploading(true);
+    try {
+      const res = await uploadDocument(projectId, file, parentId);
+      destroyModal();
+      onUploaded?.(res.pageId);
+    } catch (e) {
+      setError(e.body?.message ?? 'Error uploading document.');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div className="modal-content">
+      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <h2>Upload Document</h2>
+      <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
+        Supported formats: HTML, Markdown, Plain Text, PDF, Word (DOCX)
+      </p>
+      {error && <p className="form-error">{error}</p>}
+      <div className="modal-form">
+        <label htmlFor="upload-file">Select File:</label>
+        <input
+          id="upload-file"
+          type="file"
+          accept=".html,.htm,.md,.markdown,.txt,.pdf,.docx"
+          onChange={(e) => setFile(e.target.files[0] || null)}
+        />
+        {file && (
+          <p className="text-muted text-sm">
+            Selected: {file.name} ({(file.size / 1024).toFixed(1)} KB)
+          </p>
+        )}
+        <button className="btn btn-primary stretched-button" onClick={handleSubmit} disabled={uploading}>
+          {uploading ? 'Uploading...' : 'Upload'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- Page Tree ---
 
 function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted }) {
   const [expanded, setExpanded] = useState(depth === 0);
+  const [showExport, setShowExport] = useState(false);
+  const exportRef = useRef(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!showExport) return undefined;
+    const handleClickOutside = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setShowExport(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, [showExport]);
+
+  const handleExport = async (format) => {
+    setShowExport(false);
+    try {
+      if (format === 'pdf') {
+        const res = await fetchDocument(page.id);
+        await exportDocument(page.id, format, page.title, res.document.html_content);
+      } else {
+        await exportDocument(page.id, format, page.title, null);
+      }
+    } catch {
+      // silent — browser may block popup for PDF
+    }
+  };
 
   const handleNewSubpage = () => {
     showModal(
@@ -315,6 +393,18 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
           {page.title}
         </span>
         <div className="page-tree-actions">
+          <div className="export-dropdown" ref={exportRef}>
+            <button className="page-tree-export" onClick={() => setShowExport(v => !v)} title="Export page">⤓</button>
+            {showExport && (
+              <div className="export-dropdown__menu export-dropdown__menu--up">
+                <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
+              </div>
+            )}
+          </div>
           <button className="page-tree-add" onClick={handleNewSubpage} title="Add subpage">+</button>
           <button className="page-tree-delete" onClick={handleDelete} title="Delete page">&times;</button>
         </div>
@@ -362,6 +452,13 @@ function PageTree({ projectId, onPageCreated }) {
     );
   };
 
+  const handleUpload = () => {
+    showModal(
+      <UploadDocumentModal projectId={projectId} parentId={null} onUploaded={handlePageCreated} />,
+      'modal-md'
+    );
+  };
+
   if (loading) return <p className="text-muted">Loading pages...</p>;
   if (error) return <p className="form-error">{error}</p>;
 
@@ -369,6 +466,7 @@ function PageTree({ projectId, onPageCreated }) {
     <div className="page-tree">
       <div className="page-tree-header">
         <button className="btn btn-primary btn-sm" onClick={handleNewRootPage}>+ New Page</button>
+        <button className="btn btn-ghost btn-sm" onClick={handleUpload}>Upload Document</button>
       </div>
       {pages.length === 0
         ? <p className="text-muted">No pages yet. Create one to get started.</p>

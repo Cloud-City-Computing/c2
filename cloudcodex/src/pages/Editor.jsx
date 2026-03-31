@@ -26,6 +26,7 @@ import {
   fetchVersion,
   restoreVersion,
   deleteVersion,
+  exportDocument,
   showModal,
   destroyModal,
 } from '../util';
@@ -378,6 +379,8 @@ export default function Editor() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const exportRef = useRef(null);
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
   const remoteUpdateRef = useRef(false);
 
@@ -394,6 +397,18 @@ export default function Editor() {
 
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
   useEffect(() => { contentRef.current = content; }, [content]);
+
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    if (!showExport) return;
+    const handleClickOutside = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setShowExport(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExport]);
 
   // Debounced send to collab peers on local change
   const sendTimerRef = useRef(null);
@@ -507,6 +522,16 @@ export default function Editor() {
     setEditingTitle(false);
   };
 
+  const handleExport = useCallback(async (format) => {
+    setShowExport(false);
+    setStatus(null);
+    try {
+      await exportDocument(Number(pageId), format, documentData?.title, contentRef.current);
+    } catch (e) {
+      setStatus({ type: 'error', message: `Export failed: ${e.body?.message ?? e.message}` });
+    }
+  }, [pageId, documentData?.title]);
+
   return (
     <StdLayout>
       <div className="editor-page">
@@ -570,6 +595,20 @@ export default function Editor() {
           <button className="btn btn-ghost" onClick={() => setShowVersions(v => !v)}>
             {showVersions ? 'Hide History' : 'Version History'}
           </button>
+          <div className="export-dropdown" ref={exportRef}>
+            <button className="btn btn-ghost" onClick={() => setShowExport(v => !v)}>
+              Export ▾
+            </button>
+            {showExport && (
+              <div className="export-dropdown__menu">
+                <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
+                <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
+              </div>
+            )}
+          </div>
           <button className="btn btn-ghost" onClick={() => navigate(-1)}>Back</button>
         </div>
 
