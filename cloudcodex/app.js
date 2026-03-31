@@ -44,6 +44,7 @@ const authLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
   message: { success: false, message: 'Too many attempts, please try again later' },
 });
 
@@ -63,6 +64,7 @@ const searchLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
   message: { success: false, message: 'Too many search requests, please try again later' },
 });
 app.use('/api/users/search', searchLimiter);

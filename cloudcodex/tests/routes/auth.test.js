@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcrypt';
 import app from '../../app.js';
 import { c2_query, validateAndAutoLogin, generateSessionToken } from '../../mysql_connect.js';
 import { sendEmail } from '../../services/email.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+
+// Pre-compute a bcrypt hash for login tests (low rounds for speed)
+const TEST_PASSWORD = 'password123';
+const TEST_HASH = bcrypt.hashSync(TEST_PASSWORD, 1);
 
 describe('Auth Routes', () => {
   beforeEach(() => {
@@ -417,6 +422,467 @@ describe('Auth Routes', () => {
       const res = await request(app)
         .post('/api/2fa/verify')
         .send({ twoFactorToken: 'expired', code: '123456' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('verifies email 2FA code and issues session', async () => {
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, user_id: 5, expires_at: new Date(Date.now() + 600000), used: false }])   // token valid
+        .mockResolvedValueOnce([{ two_factor_method: 'email', totp_secret: null }])  // user row
+        .mockResolvedValueOnce([{ id: 10, expires_at: new Date(Date.now() + 600000) }])  // code record valid
+        .mockResolvedValueOnce([])   // mark code used
+        .mockResolvedValueOnce([])   // mark token used
+        .mockResolvedValueOnce([{ id: 5, name: 'testuser' }]);  // fetch user
+      generateSessionToken.mockResolvedValueOnce('session-tok');
+
+      const res = await request(app)
+        .post('/api/2fa/verify')
+        .send({ twoFactorToken: 'valid-tok', code: '123456' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.token).toBe('session-tok');
+    });
+
+    it('rejects invalid email 2FA code', async () => {
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, user_id: 5, expires_at: new Date(Date.now() + 600000), used: false }])
+        .mockResolvedValueOnce([{ two_factor_method: 'email', totp_secret: null }])
+        .mockResolvedValueOnce([]);  // no matching code
+
+      const res = await request(app)
+        .post('/api/2fa/verify')
+        .send({ twoFactorToken: 'valid-tok', code: '000000' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.message).toMatch(/invalid|expired/i);
+    });
+  });
+
+  // ── POST /api/login (success paths) ──────────────────────
+
+  describe('POST /api/login (success)', () => {
+    it('logs in without 2FA', async () => {
+      c2_query.mockResolvedValueOnce([{
+        id: 5, name: 'testuser', email: 'test@example.com',
+        password_hash: TEST_HASH,
+        two_factor_method: 'none', totp_secret: null,
+      }]);
+      generateSessionToken.mockResolvedValueOnce('session-123');
+
+      const res = await request(app)
+        .post('/api/login')
+        .send({ username: 'testuser', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.token).toBe('session-123');
+      expect(res.body.user.name).toBe('testuser');
+    });
+
+    it('triggers email 2FA when enabled', async () => {
+      c2_query
+        .mockResolvedValueOnce([{
+          id: 5, name: 'testuser', email: 'test@example.com',
+          password_hash: TEST_HASH,
+          two_factor_method: 'email', totp_secret: null,
+        }])
+        .mockResolvedValueOnce([])   // INSERT password_reset_tokens (2FA token)
+        .mockResolvedValueOnce([])   // UPDATE invalidate old codes
+        .mockResolvedValueOnce([]);  // INSERT two_factor_codes
+
+      const res = await request(app)
+        .post('/api/login')
+        .send({ username: 'testuser', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(res.body.requires_2fa).toBe(true);
+      expect(res.body.method).toBe('email');
+      expect(res.body.twoFactorToken).toBeDefined();
+      expect(sendEmail).toHaveBeenCalled();
+    });
+
+    it('triggers TOTP 2FA when enabled', async () => {
+      c2_query
+        .mockResolvedValueOnce([{
+          id: 5, name: 'testuser', email: 'test@example.com',
+          password_hash: TEST_HASH,
+          two_factor_method: 'totp', totp_secret: 'JBSWY3DPEHPK3PXP',
+        }])
+        .mockResolvedValueOnce([]);  // INSERT password_reset_tokens
+
+      const res = await request(app)
+        .post('/api/login')
+        .send({ username: 'testuser', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(res.body.requires_2fa).toBe(true);
+      expect(res.body.method).toBe('totp');
+    });
+  });
+
+  // ── GET /api/permissions/:userId ──────────────────────────
+
+  describe('GET /api/permissions/:userId', () => {
+    it('returns own permissions', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ create_team: true, create_project: false, create_page: true }]);
+
+      const res = await request(app)
+        .get(`/api/permissions/${TEST_USER.id}`)
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.permissions.create_team).toBe(true);
+      expect(res.body.permissions.create_project).toBe(false);
+    });
+
+    it('allows org owner to view other user permissions', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ 1: 1 }])  // org ownership link exists
+        .mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
+
+      const res = await request(app)
+        .get('/api/permissions/99')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects non-owner viewing other user permissions', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // no org link
+
+      const res = await request(app)
+        .get('/api/permissions/99')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid userId', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .get('/api/permissions/abc')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── PUT /api/permissions/:userId ──────────────────────────
+
+  describe('PUT /api/permissions/:userId', () => {
+    it('updates existing permissions as org owner', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ 1: 1 }])  // org link exists
+        .mockResolvedValueOnce([{ id: 10 }]) // existing perms row
+        .mockResolvedValueOnce([]);           // UPDATE
+
+      const res = await request(app)
+        .put('/api/permissions/99')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_team: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('inserts permissions when none exist', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ 1: 1 }])  // org link
+        .mockResolvedValueOnce([])           // no existing row
+        .mockResolvedValueOnce([]);          // INSERT
+
+      const res = await request(app)
+        .put('/api/permissions/99')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_project: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects non-org-owner', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // no org link
+
+      const res = await request(app)
+        .put('/api/permissions/99')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_team: true });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects with no permission fields', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ 1: 1 }]);  // org link
+
+      const res = await request(app)
+        .put('/api/permissions/99')
+        .set('Authorization', 'Bearer valid-token')
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/no permission/i);
+    });
+  });
+
+  // ── POST /api/2fa/enable ──────────────────────────────────
+
+  describe('POST /api/2fa/enable', () => {
+    it('enables email 2FA', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // UPDATE users
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ method: 'email' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toMatch(/email/i);
+    });
+
+    it('initiates TOTP setup', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([])   // UPDATE users (store totp_secret)
+        .mockResolvedValueOnce([]);  // INSERT setup token
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ method: 'totp' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.setupToken).toBeDefined();
+      expect(sendEmail).toHaveBeenCalled();
+    });
+
+    it('rejects invalid method', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ method: 'sms' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/invalid method/i);
+    });
+
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer bad-token')
+        .send({ method: 'email' });
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ── POST /api/2fa/totp/confirm ────────────────────────────
+
+  describe('POST /api/2fa/totp/confirm', () => {
+    it('rejects missing fields', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/2fa/totp/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects expired setup token', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{
+        id: 1, user_id: TEST_USER.id,
+        expires_at: new Date(Date.now() - 1000), used: false,
+      }]);
+
+      const res = await request(app)
+        .post('/api/2fa/totp/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ setupToken: 'expired-tok', code: '123456' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects when no TOTP setup in progress', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, user_id: TEST_USER.id, expires_at: new Date(Date.now() + 600000), used: false }])
+        .mockResolvedValueOnce([{ totp_secret: null }]);  // no secret stored
+
+      const res = await request(app)
+        .post('/api/2fa/totp/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ setupToken: 'valid-tok', code: '123456' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/no authenticator/i);
+    });
+  });
+
+  // ── POST /api/2fa/disable ─────────────────────────────────
+
+  describe('POST /api/2fa/disable', () => {
+    it('sends verification code when 2FA is enabled', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ email: 'test@example.com', two_factor_method: 'email' }])  // user row
+        .mockResolvedValueOnce([])   // invalidate old codes
+        .mockResolvedValueOnce([])   // INSERT code
+        .mockResolvedValueOnce([]);  // INSERT confirm token
+
+      const res = await request(app)
+        .post('/api/2fa/disable')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.confirmToken).toBeDefined();
+      expect(sendEmail).toHaveBeenCalled();
+    });
+
+    it('returns success when 2FA already disabled', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ email: 'test@example.com', two_factor_method: 'none' }]);
+
+      const res = await request(app)
+        .post('/api/2fa/disable')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toMatch(/already disabled/i);
+    });
+  });
+
+  // ── POST /api/2fa/disable/confirm ─────────────────────────
+
+  describe('POST /api/2fa/disable/confirm', () => {
+    it('disables 2FA with valid token and code', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, user_id: TEST_USER.id, expires_at: new Date(Date.now() + 600000), used: false }])  // confirm token
+        .mockResolvedValueOnce([{ id: 10, expires_at: new Date(Date.now() + 600000) }])  // code record
+        .mockResolvedValueOnce([])   // mark code used
+        .mockResolvedValueOnce([])   // mark token used
+        .mockResolvedValueOnce([])   // UPDATE users (disable)
+        .mockResolvedValueOnce([]);  // DELETE unused codes
+
+      const res = await request(app)
+        .post('/api/2fa/disable/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ confirmToken: 'valid-tok', code: '123456' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toMatch(/disabled/i);
+    });
+
+    it('rejects missing fields', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/2fa/disable/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects expired confirm token', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{
+        id: 1, user_id: TEST_USER.id,
+        expires_at: new Date(Date.now() - 1000), used: false,
+      }]);
+
+      const res = await request(app)
+        .post('/api/2fa/disable/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ confirmToken: 'expired', code: '123456' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects invalid verification code', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, user_id: TEST_USER.id, expires_at: new Date(Date.now() + 600000), used: false }])
+        .mockResolvedValueOnce([]);  // no matching code
+
+      const res = await request(app)
+        .post('/api/2fa/disable/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ confirmToken: 'valid-tok', code: '000000' });
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ── GET /api/2fa/status ───────────────────────────────────
+
+  describe('GET /api/2fa/status', () => {
+    it('returns none when 2FA is disabled', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ two_factor_method: 'none' }]);
+
+      const res = await request(app)
+        .get('/api/2fa/status')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.method).toBe('none');
+      expect(res.body.enabled).toBe(false);
+    });
+
+    it('returns email when email 2FA is enabled', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ two_factor_method: 'email' }]);
+
+      const res = await request(app)
+        .get('/api/2fa/status')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.method).toBe('email');
+      expect(res.body.enabled).toBe(true);
+    });
+
+    it('returns totp when authenticator is enabled', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ two_factor_method: 'totp' }]);
+
+      const res = await request(app)
+        .get('/api/2fa/status')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.method).toBe('totp');
+      expect(res.body.enabled).toBe(true);
+    });
+
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+
+      const res = await request(app)
+        .get('/api/2fa/status')
+        .set('Authorization', 'Bearer bad-token');
 
       expect(res.status).toBe(401);
     });

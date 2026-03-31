@@ -354,7 +354,7 @@ cd cloudcodex
 npm test
 ```
 
-128 tests cover all route groups (auth, documents, projects, organizations, teams, search) and both middleware modules (auth, permissions).
+216 tests cover all route groups (auth, documents, projects, organizations, teams, search, upload) and both middleware modules (auth, permissions).
 
 ## CI
 

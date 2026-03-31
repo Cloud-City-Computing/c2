@@ -284,4 +284,112 @@ describe('Project Routes', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  // ── PUT /api/projects/:projectId/pages/:pageId ────────────
+
+  describe('PUT /api/projects/:projectId/pages/:pageId', () => {
+    it('renames a page with write access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])  // write access
+        .mockResolvedValueOnce([]);           // UPDATE pages
+
+      const res = await request(app)
+        .put('/api/projects/1/pages/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Title' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('moves a page to a new parent', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])  // write access
+        .mockResolvedValueOnce([]);           // UPDATE pages
+
+      const res = await request(app)
+        .put('/api/projects/1/pages/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 5 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects with no fields to update', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]);  // write access
+
+      const res = await request(app)
+        .put('/api/projects/1/pages/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects without write access', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // no access
+
+      const res = await request(app)
+        .put('/api/projects/1/pages/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Title' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .put('/api/projects/abc/pages/xyz')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Title' });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── DELETE /api/projects/:projectId/pages/:pageId ─────────
+
+  describe('DELETE /api/projects/:projectId/pages/:pageId', () => {
+    it('deletes a page with write access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])  // write access
+        .mockResolvedValueOnce([]);           // DELETE
+
+      const res = await request(app)
+        .delete('/api/projects/1/pages/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects without write access', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // no access
+
+      const res = await request(app)
+        .delete('/api/projects/1/pages/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .delete('/api/projects/abc/pages/xyz')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
 });

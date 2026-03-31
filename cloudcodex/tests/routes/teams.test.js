@@ -341,4 +341,320 @@ describe('Team Routes', () => {
       expect(res.body.success).toBe(true);
     });
   });
+
+  // ── GET /api/teams/:id/permissions ────────────────────────
+
+  describe('GET /api/teams/:id/permissions', () => {
+    it('returns permissions for org owner', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // team found, user is owner
+        .mockResolvedValueOnce([{ create_project: true, create_page: true }]);  // perms
+
+      const res = await request(app)
+        .get('/api/teams/1/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.permissions.create_project).toBe(true);
+    });
+
+    it('returns defaults when no permissions row exists', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([]);  // no perms row
+
+      const res = await request(app)
+        .get('/api/teams/1/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.permissions.create_project).toBe(false);
+      expect(res.body.permissions.create_page).toBe(true);
+    });
+
+    it('rejects non-owner', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'other@example.com' }]);
+
+      const res = await request(app)
+        .get('/api/teams/1/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 for unknown team', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .get('/api/teams/999/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── PUT /api/teams/:id/permissions ────────────────────────
+
+  describe('PUT /api/teams/:id/permissions', () => {
+    it('updates existing permissions for org owner', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // team found, user is owner
+        .mockResolvedValueOnce([{ id: 10 }])  // existing row
+        .mockResolvedValueOnce([]);            // UPDATE
+
+      const res = await request(app)
+        .put('/api/teams/1/permissions')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_project: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('inserts permissions when none exist', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([])   // no existing row
+        .mockResolvedValueOnce([]);  // INSERT
+
+      const res = await request(app)
+        .put('/api/teams/1/permissions')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_project: true, create_page: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects non-owner', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'other@example.com' }]);
+
+      const res = await request(app)
+        .put('/api/teams/1/permissions')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_project: true });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ── PUT /api/teams/:id/members/:userId ────────────────────
+
+  describe('PUT /api/teams/:id/members/:userId', () => {
+    it('updates member role with manage permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam: team found
+        .mockResolvedValueOnce([{ id: 50, role: 'member' }])  // member found
+        .mockResolvedValueOnce([]);  // UPDATE
+
+      const res = await request(app)
+        .put('/api/teams/1/members/2')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ can_write: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('prevents modifying own permissions', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }]);
+
+      const res = await request(app)
+        .put(`/api/teams/1/members/${TEST_USER.id}`)
+        .set('Authorization', 'Bearer valid-token')
+        .send({ can_write: true });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('your own');
+    });
+
+    it('prevents modifying a team owner', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([{ id: 50, role: 'owner' }]);  // target is owner
+
+      const res = await request(app)
+        .put('/api/teams/1/members/2')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ can_write: false });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('owner');
+    });
+
+    it('prevents privilege escalation by non-creator', async () => {
+      mockAuthenticated();
+      // canManageTeam: user is not owner/creator but has can_manage_members
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // team (not owner/creator)
+        .mockResolvedValueOnce([{ can_manage_members: true }])  // membership check in canManageTeam
+        .mockResolvedValueOnce([{ id: 50, role: 'member' }]);   // target member
+
+      const res = await request(app)
+        .put('/api/teams/1/members/2')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ can_manage_members: true });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('org owners');
+    });
+
+    it('rejects without management permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])
+        .mockResolvedValueOnce([]);  // no can_manage_members
+
+      const res = await request(app)
+        .put('/api/teams/1/members/2')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ can_read: true });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ── DELETE /api/teams/:id/members/:userId ─────────────────
+
+  describe('DELETE /api/teams/:id/members/:userId', () => {
+    it('removes a member', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam
+        .mockResolvedValueOnce([{ role: 'member' }])  // member found, not owner
+        .mockResolvedValueOnce([]);                    // DELETE
+
+      const res = await request(app)
+        .delete('/api/teams/1/members/2')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('prevents removing a team owner', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([{ role: 'owner' }]);  // target is owner
+
+      const res = await request(app)
+        .delete('/api/teams/1/members/2')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('owner');
+    });
+
+    it('rejects without management permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])
+        .mockResolvedValueOnce([]);  // no can_manage_members
+
+      const res = await request(app)
+        .delete('/api/teams/1/members/2')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ── GET /api/teams/:id/invitations ────────────────────────
+
+  describe('GET /api/teams/:id/invitations', () => {
+    it('returns pending invitations for team manager', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam
+        .mockResolvedValueOnce([{ id: 10, name: 'Invited User', email: 'inv@example.com' }]);   // invitations
+
+      const res = await request(app)
+        .get('/api/teams/1/invitations')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.invitations).toHaveLength(1);
+    });
+
+    it('rejects without management permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])
+        .mockResolvedValueOnce([]);  // no can_manage_members
+
+      const res = await request(app)
+        .get('/api/teams/1/invitations')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 for unknown team', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // team not found (canManageTeam returns null)
+
+      const res = await request(app)
+        .get('/api/teams/999/invitations')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── DELETE /api/invitations/:id ───────────────────────────
+
+  describe('DELETE /api/invitations/:id', () => {
+    it('cancels a pending invitation', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 10, team_id: 1 }])  // invitation found
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam
+        .mockResolvedValueOnce([]);  // DELETE
+
+      const res = await request(app)
+        .delete('/api/invitations/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('returns 404 when invitation not found', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // not found
+
+      const res = await request(app)
+        .delete('/api/invitations/999')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects without management permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 10, team_id: 1 }])  // invitation found
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // team (not owner)
+        .mockResolvedValueOnce([]);  // no can_manage_members
+
+      const res = await request(app)
+        .delete('/api/invitations/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+  });
 });

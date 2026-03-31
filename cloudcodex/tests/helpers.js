@@ -31,7 +31,7 @@ export function mockUnauthenticated() {
  * Reset all database and email mocks between tests.
  */
 export function resetMocks() {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   // Restore default mock implementations
   c2_query.mockResolvedValue([]);
   generateSessionToken.mockResolvedValue('mock-session-token');

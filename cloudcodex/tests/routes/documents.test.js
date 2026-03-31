@@ -310,4 +310,284 @@ describe('Document Routes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // ── GET /api/document/:pageId/versions/:versionId ─────────
+
+  describe('GET /api/document/:pageId/versions/:versionId', () => {
+    it('returns a specific version with read access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])  // read access check
+        .mockResolvedValueOnce([{ id: 5, version_number: 2, title: 'v2', html_content: '<p>old</p>', saved_at: '2026-01-01', created_by: 'user' }]);
+
+      const res = await request(app)
+        .get('/api/document/1/versions/5')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.version.html_content).toBe('<p>old</p>');
+    });
+
+    it('returns 404 when version not found', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])  // read access
+        .mockResolvedValueOnce([]);           // version not found
+
+      const res = await request(app)
+        .get('/api/document/1/versions/999')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects without read access', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // no access
+
+      const res = await request(app)
+        .get('/api/document/1/versions/5')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .get('/api/document/abc/versions/xyz')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── POST /api/document/:pageId/versions/:versionId/restore ─
+
+  describe('POST /api/document/:pageId/versions/:versionId/restore', () => {
+    it('restores a version with write access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, html_content: '<p>current</p>', version: 3 }])  // write access + current page
+        .mockResolvedValueOnce([{ html_content: '<p>restored</p>' }])  // target version
+        .mockResolvedValueOnce([])   // UPDATE pages
+        .mockResolvedValueOnce([]);  // INSERT version snapshot
+
+      const res = await request(app)
+        .post('/api/document/1/versions/5/restore')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.version).toBe(4);
+    });
+
+    it('returns 404 when target version not found', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, html_content: '<p>current</p>', version: 3 }])  // write access
+        .mockResolvedValueOnce([]);  // version not found
+
+      const res = await request(app)
+        .post('/api/document/1/versions/999/restore')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects without write access', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // no access
+
+      const res = await request(app)
+        .post('/api/document/1/versions/5/restore')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/document/abc/versions/xyz/restore')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── DELETE /api/document/:pageId/versions/:versionId ──────
+
+  describe('DELETE /api/document/:pageId/versions/:versionId', () => {
+    it('allows the version author to delete', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 5, created_by: TEST_USER.id, project_id: 1 }])  // version found, user is author
+        .mockResolvedValueOnce([]);  // DELETE
+
+      const res = await request(app)
+        .delete('/api/document/1/versions/5')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('allows team owner to delete', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 5, created_by: 999, project_id: 1 }])  // version found, different author
+        .mockResolvedValueOnce([{ can_delete_version: false, role: 'owner' }])  // team member is owner
+        .mockResolvedValueOnce([]);  // DELETE
+
+      const res = await request(app)
+        .delete('/api/document/1/versions/5')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('allows member with can_delete_version permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 5, created_by: 999, project_id: 1 }])  // version found
+        .mockResolvedValueOnce([{ can_delete_version: true, role: 'member' }])  // has perm
+        .mockResolvedValueOnce([]);  // DELETE
+
+      const res = await request(app)
+        .delete('/api/document/1/versions/5')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects without permission', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 5, created_by: 999, project_id: 1 }])  // version found
+        .mockResolvedValueOnce([{ can_delete_version: false, role: 'member' }]);  // no perm
+
+      const res = await request(app)
+        .delete('/api/document/1/versions/5')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 when version not found', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // not found
+
+      const res = await request(app)
+        .delete('/api/document/1/versions/999')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .delete('/api/document/abc/versions/xyz')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── GET /api/document/:pageId/export ──────────────────────
+
+  describe('GET /api/document/:pageId/export', () => {
+    it('exports as HTML', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1, title: 'My Doc', html_content: '<p>Hello</p>' }]);
+
+      const res = await request(app)
+        .get('/api/document/1/export?format=html')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/html');
+      expect(res.headers['content-disposition']).toContain('My Doc.html');
+      expect(res.text).toContain('<p>Hello</p>');
+    });
+
+    it('exports as Markdown', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1, title: 'My Doc', html_content: '<h1>Title</h1><p>Text</p>' }]);
+
+      const res = await request(app)
+        .get('/api/document/1/export?format=md')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/markdown');
+      expect(res.headers['content-disposition']).toContain('My Doc.md');
+    });
+
+    it('exports as plain text', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1, title: 'My Doc', html_content: '<p>Hello World</p>' }]);
+
+      const res = await request(app)
+        .get('/api/document/1/export?format=txt')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/plain');
+      expect(res.headers['content-disposition']).toContain('My Doc.txt');
+      expect(res.text).toContain('Hello World');
+    });
+
+    it('exports as DOCX', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1, title: 'My Doc', html_content: '<p>Hello</p>' }]);
+
+      const res = await request(app)
+        .get('/api/document/1/export?format=docx')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('wordprocessingml.document');
+      expect(res.headers['content-disposition']).toContain('My Doc.docx');
+    });
+
+    it('rejects invalid format', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .get('/api/document/1/export?format=pdf')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid format');
+    });
+
+    it('returns 404 when document not found', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);  // not found
+
+      const res = await request(app)
+        .get('/api/document/1/export?format=html')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid page ID', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .get('/api/document/abc/export?format=html')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
 });
