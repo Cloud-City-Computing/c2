@@ -352,6 +352,19 @@ describe('Project Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('rejects non-numeric parent_id', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]);  // write access
+
+      const res = await request(app)
+        .put('/api/projects/1/pages/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 'malicious' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid parent_id');
+    });
   });
 
   // ── DELETE /api/projects/:projectId/pages/:pageId ─────────

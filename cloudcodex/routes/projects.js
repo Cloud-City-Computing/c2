@@ -213,6 +213,11 @@ router.post('/projects/:projectId/pages', requireAuth, requirePermission('create
     return res.status(400).json({ success: false, message: 'Page title is required' });
   }
 
+  const parentId = parent_id ? Number(parent_id) : null;
+  if (parentId !== null && !isValidId(parentId)) {
+    return res.status(400).json({ success: false, message: 'Invalid parent_id' });
+  }
+
   // Verify write access
   const [project] = await c2_query(
     `SELECT p.id FROM projects p
@@ -227,7 +232,7 @@ router.post('/projects/:projectId/pages', requireAuth, requirePermission('create
   const result = await c2_query(
     `INSERT INTO pages (project_id, title, html_content, parent_id, created_by, updated_by)
      VALUES (?, ?, '', ?, ?, ?)`,
-    [Number(projectId), title.trim(), parent_id ?? null, req.user.id, req.user.id]
+    [Number(projectId), title.trim(), parentId, req.user.id, req.user.id]
   );
 
   res.status(201).json({ success: true, pageId: result.insertId });
@@ -257,7 +262,14 @@ router.put('/projects/:projectId/pages/:pageId', requireAuth, asyncHandler(async
   const fields = [];
   const params = [];
   if (title !== undefined) { fields.push('title = ?'); params.push(title.trim()); }
-  if (parent_id !== undefined) { fields.push('parent_id = ?'); params.push(parent_id); }
+  if (parent_id !== undefined) {
+    const pid = parent_id === null ? null : Number(parent_id);
+    if (pid !== null && !isValidId(pid)) {
+      return res.status(400).json({ success: false, message: 'Invalid parent_id' });
+    }
+    fields.push('parent_id = ?');
+    params.push(pid);
+  }
 
   if (!fields.length) {
     return res.status(400).json({ success: false, message: 'No fields to update' });

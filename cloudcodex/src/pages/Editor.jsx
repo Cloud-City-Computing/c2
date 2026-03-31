@@ -165,7 +165,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
 
 function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, remoteCursors }) {
   const [md, setMd] = useState(() => htmlToMarkdown(content));
-  const [preview, setPreview] = useState(() => content || '');
+  const [preview, setPreview] = useState(() => sanitizeHtml(content || ''));
   const textareaRef = useRef(null);
   const initializedRef = useRef(false);
   const selfUpdateRef = useRef(false);

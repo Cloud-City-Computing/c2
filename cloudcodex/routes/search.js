@@ -40,6 +40,9 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
   // Optional caller-controlled limit, capped at RESULTS_LIMIT
   const limit = Math.min(Math.max(parseInt(rawLimit) || RESULTS_LIMIT, 1), RESULTS_LIMIT);
 
+  // Escape LIKE wildcards so user input is treated literally
+  const escapedQuery = trimmed.replace(/[%_\\]/g, '\\$&');
+
   // Only return pages in projects the user can read
   const results = await c2_query(
     `SELECT p.id,
@@ -51,11 +54,11 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
     FROM pages p
     LEFT JOIN users u ON p.created_by = u.id
     INNER JOIN projects pr ON p.project_id = pr.id
-    WHERE (p.title LIKE ? OR p.html_content LIKE ?)
+    WHERE (p.title LIKE ? ESCAPE '\\\\' OR p.html_content LIKE ? ESCAPE '\\\\')
       AND ${readAccessWhere('pr')}
     ORDER BY p.created_at DESC
     LIMIT ?`,
-    [`%${trimmed}%`, `%${trimmed}%`, ...readAccessParams(req.user), limit]
+    [`%${escapedQuery}%`, `%${escapedQuery}%`, ...readAccessParams(req.user), limit]
   );
 
   res.json({ results });

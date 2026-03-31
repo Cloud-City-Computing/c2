@@ -589,5 +589,22 @@ describe('Document Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('escapes document title in HTML export to prevent XSS', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{
+        id: 1,
+        title: '</title><script>alert("xss")</script>',
+        html_content: '<p>Hello</p>',
+      }]);
+
+      const res = await request(app)
+        .get('/api/document/1/export?format=html')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.text).not.toContain('<script>');
+      expect(res.text).toContain('&lt;script&gt;');
+    });
   });
 });

@@ -225,52 +225,82 @@ export function setupCollabServer(server) {
     }
 
     const pageId = Number(url.searchParams.get('pageId'));
-    const token = url.searchParams.get('token');
 
-    if (!pageId || !Number.isInteger(pageId) || pageId <= 0 || !token) {
+    if (!pageId || !Number.isInteger(pageId) || pageId <= 0) {
       socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
       socket.destroy();
       return;
     }
 
-    // Authenticate
-    let user;
-    try {
-      user = await validateAndAutoLogin(token);
-    } catch {
-      // auth error
-    }
-
-    if (!user) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-
-    // Enforce per-user connection limit
-    const currentCount = userConnectionCounts.get(user.id) || 0;
-    if (currentCount >= MAX_CONNECTIONS_PER_USER) {
-      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-
-    // Check read access at minimum
-    const hasAccess = await checkPageReadAccess(pageId, user);
-    if (!hasAccess) {
-      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-
-    const canWrite = Boolean(await checkPageWriteAccess(pageId, user));
-
+    // Upgrade the connection first — auth happens in the first message
     wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, { user, pageId, canWrite });
+      wss.emit('connection', ws, { pageId });
     });
   });
 
-  wss.on('connection', async (ws, { user, pageId, canWrite }) => {
+  wss.on('connection', async (ws, { pageId }) => {
+    // Wait for the first message to be an auth message with the session token.
+    // The client must send { type: 'auth', token: '...' } within 5 seconds.
+    const AUTH_TIMEOUT_MS = 5000;
+    const authTimer = setTimeout(() => {
+      ws.close(4001, 'Authentication timeout');
+    }, AUTH_TIMEOUT_MS);
+
+    ws.once('message', async (data) => {
+      clearTimeout(authTimer);
+
+      let msg;
+      try {
+        msg = JSON.parse(data.toString());
+      } catch {
+        ws.close(4002, 'Invalid auth message');
+        return;
+      }
+
+      if (msg.type !== 'auth' || typeof msg.token !== 'string') {
+        ws.close(4002, 'First message must be auth');
+        return;
+      }
+
+      // Authenticate
+      let user;
+      try {
+        user = await validateAndAutoLogin(msg.token);
+      } catch {
+        // auth error
+      }
+
+      if (!user) {
+        ws.close(4003, 'Unauthorized');
+        return;
+      }
+
+      // Enforce per-user connection limit
+      const currentCount = userConnectionCounts.get(user.id) || 0;
+      if (currentCount >= MAX_CONNECTIONS_PER_USER) {
+        ws.close(4004, 'Too many connections');
+        return;
+      }
+
+      // Check read access at minimum
+      const hasAccess = await checkPageReadAccess(pageId, user);
+      if (!hasAccess) {
+        ws.close(4003, 'Access denied');
+        return;
+      }
+
+      const canWrite = Boolean(await checkPageWriteAccess(pageId, user));
+
+      // Auth succeeded — set up the document session
+      setupDocSession(ws, user, pageId, canWrite);
+    });
+  });
+}
+
+/**
+ * Set up a fully authenticated document editing session.
+ */
+async function setupDocSession(ws, user, pageId, canWrite) {
     let entry;
     try {
       entry = await getOrCreateDoc(pageId);
@@ -490,9 +520,6 @@ export function setupCollabServer(server) {
 
       broadcastAwareness(entry);
     });
-  });
-
-  return wss;
 }
 
 /**

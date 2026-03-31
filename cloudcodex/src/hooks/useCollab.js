@@ -40,11 +40,13 @@ export default function useCollab(pageId, onRemoteUpdate) {
       if (!token) return;
 
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${proto}//${window.location.host}/collab?pageId=${pageId}&token=${encodeURIComponent(token)}`;
+      const url = `${proto}//${window.location.host}/collab?pageId=${pageId}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        // Send auth token as first message instead of in URL (avoids log/history exposure)
+        ws.send(JSON.stringify({ type: 'auth', token }));
         if (!disposed) setCollabConnected(true);
       };
 

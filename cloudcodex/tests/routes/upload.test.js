@@ -126,5 +126,21 @@ describe('Upload Routes', () => {
 
       expect(res.status).toBe(401);
     });
+
+    it('rejects non-numeric parent_id', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ create_page: true }])  // permissions
+        .mockResolvedValueOnce([{ id: 1 }]);              // project write access
+
+      const res = await request(app)
+        .post('/api/projects/1/pages/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('file', Buffer.from('<p>hi</p>'), 'test.html')
+        .field('parent_id', 'abc');
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid parent_id');
+    });
   });
 });

@@ -6,6 +6,7 @@
  */
 
 import { createRoot } from 'react-dom/client';
+import DOMPurify from 'dompurify';
 
 // --- Constants ---
 
@@ -204,7 +205,8 @@ export async function exportDocument(pageId, format, title, htmlContent) {
   // PDF uses the browser's native print-to-PDF via a print window.
   // This gives perfect text selection, formatting, and pagination.
   if (format === 'pdf') {
-    const docTitle = title || 'Document';
+    const docTitle = (title || 'Document').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const safeHtml = DOMPurify.sanitize(htmlContent || '');
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) {
       throw new Error('Pop-up blocked. Please allow pop-ups for this site to export PDF.');
@@ -236,7 +238,7 @@ export async function exportDocument(pageId, format, title, htmlContent) {
   </style>
 </head>
 <body>
-  ${htmlContent || ''}
+  ${safeHtml}
   <script>
     window.onafterprint = function() { window.close(); };
     window.onload = function() { window.print(); };

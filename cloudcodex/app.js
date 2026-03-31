@@ -11,6 +11,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import cors from 'cors';
 
 import authRoutes from './routes/auth.js';
 import searchRoutes from './routes/search.js';
@@ -21,6 +22,19 @@ import organizationsRouter from './routes/organizations.js';
 import teamsRouter from './routes/teams.js';
 
 const app = express();
+
+// CORS: restrict API to same-origin requests only
+app.use('/api', cors({
+  origin: (origin, cb) => {
+    // Allow same-origin requests (origin is undefined for same-origin)
+    if (!origin) return cb(null, true);
+    // In production, compare against a configured origin
+    const allowed = process.env.CORS_ORIGIN || false;
+    if (allowed && origin === allowed) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
 
 // Security headers (scoped to API routes so Vite dev server isn't affected)
 app.use('/api', helmet({
@@ -54,6 +68,7 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/api/login', authLimiter);
 app.use('/api/create-account', authLimiter);
 app.use('/api/forgot-password', authLimiter);
+app.use('/api/reset-password', authLimiter);
 app.use('/api/2fa/verify', authLimiter);
 app.use('/api/2fa/totp/confirm', authLimiter);
 app.use('/api/2fa/disable/confirm', authLimiter);

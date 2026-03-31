@@ -168,7 +168,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 
-  const { password_hash: _, two_factor_method, ...user } = users[0];
+  const { password_hash: _, two_factor_method, totp_secret: __, ...user } = users[0];
 
   // If 2FA is enabled (email or TOTP), require verification
   if (two_factor_method === 'email' || two_factor_method === 'totp') {

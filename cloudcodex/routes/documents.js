@@ -404,11 +404,12 @@ router.get('/document/:pageId/export', requireAuth, asyncHandler(async (req, res
   }
 
   const safeTitle = (doc.title || 'document').replace(/[^a-zA-Z0-9_\- ]/g, '_');
+  const escapedTitle = (doc.title || 'Document').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const htmlContent = doc.html_content || '';
 
   switch (format) {
     case 'html': {
-      const fullHtml = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${doc.title || 'Document'}</title></head>\n<body>\n${htmlContent}\n</body>\n</html>`;
+      const fullHtml = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${escapedTitle}</title></head>\n<body>\n${htmlContent}\n</body>\n</html>`;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.html"`);
       return res.send(fullHtml);

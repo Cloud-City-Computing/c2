@@ -123,7 +123,10 @@ router.post(
     // Derive page title from filename (strip extension)
     const title = req.file.originalname.replace(/\.[^.]+$/, '').trim() || 'Uploaded Document';
 
-    const parentId = req.body.parent_id || null;
+    const parentId = req.body.parent_id ? Number(req.body.parent_id) : null;
+    if (parentId !== null && !isValidId(parentId)) {
+      return res.status(400).json({ success: false, message: 'Invalid parent_id' });
+    }
 
     const result = await c2_query(
       `INSERT INTO pages (project_id, title, html_content, parent_id, created_by, updated_by)

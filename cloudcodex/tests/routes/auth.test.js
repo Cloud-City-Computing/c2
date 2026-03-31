@@ -520,6 +520,42 @@ describe('Auth Routes', () => {
       expect(res.body.requires_2fa).toBe(true);
       expect(res.body.method).toBe('totp');
     });
+
+    it('does not leak totp_secret in login response', async () => {
+      c2_query.mockResolvedValueOnce([{
+        id: 5, name: 'testuser', email: 'test@example.com',
+        password_hash: TEST_HASH,
+        two_factor_method: 'none', totp_secret: 'JBSWY3DPEHPK3PXP',
+      }]);
+      generateSessionToken.mockResolvedValueOnce('session-123');
+
+      const res = await request(app)
+        .post('/api/login')
+        .send({ username: 'testuser', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.totp_secret).toBeUndefined();
+      expect(res.body.user.password_hash).toBeUndefined();
+      expect(JSON.stringify(res.body)).not.toContain('JBSWY3DPEHPK3PXP');
+    });
+
+    it('does not leak totp_secret in 2FA response', async () => {
+      c2_query
+        .mockResolvedValueOnce([{
+          id: 5, name: 'testuser', email: 'test@example.com',
+          password_hash: TEST_HASH,
+          two_factor_method: 'totp', totp_secret: 'JBSWY3DPEHPK3PXP',
+        }])
+        .mockResolvedValueOnce([]);  // INSERT password_reset_tokens
+
+      const res = await request(app)
+        .post('/api/login')
+        .send({ username: 'testuser', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain('JBSWY3DPEHPK3PXP');
+    });
   });
 
   // ── GET /api/permissions/:userId ──────────────────────────
