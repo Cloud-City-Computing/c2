@@ -240,7 +240,7 @@ export async function exportDocument(pageId, format, title, htmlContent) {
   <script>
     window.onafterprint = function() { window.close(); };
     window.onload = function() { window.print(); };
-  <\/script>
+  ${"<"}/script>
 </body>
 </html>`);
     printWindow.document.close();
