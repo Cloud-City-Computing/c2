@@ -33,6 +33,14 @@ The application currently includes these implemented areas:
 - Version history with preview, restore, and deletion controls
 - Search across pages the current user can read
 - User preferences and account settings
+- Document upload with automatic format conversion:
+  - Accepts HTML, Markdown, Plain Text, PDF, and Word DOCX files
+  - Converts uploaded content to editable HTML pages
+  - Accessible from the project browser page tree
+- Document export/download in multiple formats:
+  - HTML, Markdown, Plain Text, Word DOCX (server-side conversion)
+  - PDF (browser native print-to-PDF with selectable text)
+  - Export available from both the editor toolbar and project browser page tree
 - Server-side HTML sanitization on all save paths (REST and WebSocket)
 
 ## Security
@@ -61,6 +69,8 @@ The application currently includes these implemented areas:
 | Database | MySQL 8 |
 | Auth/Security | bcrypt, Helmet, express-rate-limit |
 | Editor | Jodit, Marked, Turndown, DOMPurify |
+| File Upload | Multer (multipart handling) |
+| File Conversion | Mammoth (DOCX→HTML), pdf-parse (PDF→text), html-to-docx (HTML→DOCX), Turndown (HTML→Markdown) |
 | Collaboration | Yjs, WebSocket (ws) |
 | Sanitization | isomorphic-dompurify (server), DOMPurify (client) |
 | Email | Nodemailer |
@@ -89,13 +99,15 @@ The application currently includes these implemented areas:
 │   │   └── permissions.js          # Permission gate helpers
 │   ├── routes/
 │   │   ├── auth.js                 # Accounts, sessions, reset, 2FA, permissions
-│   │   ├── documents.js            # Document fetch/save/version APIs
+│   │   ├── documents.js            # Document fetch/save/version/export APIs
 │   │   ├── organizations.js        # Organization CRUD
 │   │   ├── projects.js             # Projects, pages, access control
 │   │   ├── search.js               # Page search
 │   │   ├── teams.js                # Teams, members, invitations
+│   │   ├── upload.js               # Document file upload and conversion
 │   │   └── helpers/
-│   │       └── ownership.js        # Read/write access SQL helpers
+│   │       ├── ownership.js        # Read/write access SQL helpers
+│   │       └── shared.js           # Validation, sanitization, error handling
 │   ├── tests/
 │   │   ├── setup.js                # Global mocks (DB, email)
 │   │   ├── helpers.js              # Shared test utilities
@@ -313,6 +325,8 @@ The Express API under `/api` is organized into these groups:
 - Team, membership, and invitation APIs
 - Project and page APIs
 - Document and version-history APIs
+- Document export APIs (HTML, Markdown, Plain Text, DOCX)
+- Document upload and conversion APIs (HTML, Markdown, Plain Text, PDF, DOCX)
 - Search APIs
 - WebSocket collaborative editing (`/collab`)
 
@@ -340,7 +354,7 @@ cd cloudcodex
 npm test
 ```
 
-122 tests cover all route groups (auth, documents, projects, organizations, teams, search) and both middleware modules (auth, permissions).
+128 tests cover all route groups (auth, documents, projects, organizations, teams, search) and both middleware modules (auth, permissions).
 
 ## CI
 
