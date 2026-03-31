@@ -59,6 +59,11 @@ The application currently includes these implemented areas:
 - Privilege escalation prevention on team invitations and member permission updates
 - bcrypt password hashing with 12 rounds
 - Cryptographically random session tokens (64 characters)
+- CORS policy restricting cross-origin API requests
+- WebSocket authentication via first-message token (not exposed in URL)
+- LIKE wildcard escaping in search queries
+- Input validation on parent page IDs
+- HTML entity escaping in document export titles
 
 ## Tech Stack
 
@@ -253,6 +258,12 @@ Used when building password reset links:
 
 Default: `http://localhost:3000`
 
+### CORS
+
+Used by `cloudcodex/app.js`:
+
+- `CORS_ORIGIN` — Allowed origin for cross-origin API requests. In development, `localhost` origins are allowed automatically. In production, set this to your domain (e.g. `https://your-domain.com`).
+
 ### SMTP
 
 Used by `cloudcodex/services/email.js` for password reset and 2FA email delivery:
@@ -334,12 +345,13 @@ The Express API under `/api` is organized into these groups:
 
 The WebSocket-based collaboration server runs alongside the Express API on the same HTTP server. When a user opens a document in the editor:
 
-1. The client connects to `ws://<host>/collab?pageId=<id>&token=<sessionToken>`
-2. The server authenticates the token, verifies page access, and joins the user to the document room
-3. Document state is managed via a Yjs CRDT — edits are broadcast to all connected peers in real time
-4. The server debounce-saves content back to MySQL (3-second delay) and creates version snapshots
-5. Presence awareness shows connected users with colored avatars
-6. Remote cursors are rendered as colored name labels in both rich text and markdown modes
+1. The client connects to `ws://<host>/collab?pageId=<id>`
+2. The client sends `{ type: 'auth', token }` as the first WebSocket message (token is not passed in the URL to avoid log/proxy exposure)
+3. The server authenticates the token, verifies page access, and joins the user to the document room
+4. Document state is managed via a Yjs CRDT — edits are broadcast to all connected peers in real time
+5. The server debounce-saves content back to MySQL (3-second delay) and creates version snapshots
+6. Presence awareness shows connected users with colored avatars
+7. Remote cursors are rendered as colored name labels in both rich text and markdown modes
 
 The collaboration service enforces origin validation, per-connection rate limiting, message size caps, per-user connection limits, cursor data validation, and server-side HTML sanitization before persistence.
 
@@ -354,7 +366,7 @@ cd cloudcodex
 npm test
 ```
 
-216 tests cover all route groups (auth, documents, projects, organizations, teams, search, upload) and both middleware modules (auth, permissions).
+221 tests cover all route groups (auth, documents, projects, organizations, teams, search, upload) and both middleware modules (auth, permissions).
 
 ## CI
 

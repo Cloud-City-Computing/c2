@@ -26,11 +26,18 @@ const app = express();
 // CORS: restrict API to same-origin requests only
 app.use('/api', cors({
   origin: (origin, cb) => {
-    // Allow same-origin requests (origin is undefined for same-origin)
+    // Allow requests with no Origin header (same-origin, server-to-server, etc.)
     if (!origin) return cb(null, true);
-    // In production, compare against a configured origin
-    const allowed = process.env.CORS_ORIGIN || false;
+    // Allow if an explicit allowlist is configured
+    const allowed = process.env.CORS_ORIGIN;
     if (allowed && origin === allowed) return cb(null, true);
+    // In development, allow localhost origins on any port
+    try {
+      const parsed = new URL(origin);
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+        return cb(null, true);
+      }
+    } catch { /* invalid origin */ }
     cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
