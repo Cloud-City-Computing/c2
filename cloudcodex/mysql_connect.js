@@ -12,13 +12,19 @@ dotenv.config();
 
 const pool = mysql.createPool({
   host:             process.env.DB_HOST ?? 'localhost',
-  user:             process.env.DB_USER ?? 'admin',
-  password:         process.env.DB_PASS ?? 'admin',
+  user:             process.env.DB_USER,
+  password:         process.env.DB_PASS,
   database:         process.env.DB_NAME ?? 'c2',
   waitForConnections: true,
   connectionLimit:  10,
   queueLimit:       0,
 });
+
+if (!process.env.DB_USER || !process.env.DB_PASS) {
+  console.error('Missing required environment variables: DB_USER, DB_PASS');
+  console.error('Copy .env.example to .env and fill in your database credentials.');
+  process.exit(1);
+}
 
 /**
  * Executes a parameterized SQL query.

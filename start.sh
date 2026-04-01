@@ -174,9 +174,17 @@ ok "Compose services started"
 # ── 4. Wait for MySQL to accept connections ───────────────────
 echo -e "\n${CYAN}[4/5]${NC} Waiting for MySQL to be ready…"
 
-DB_USER="admin"
-DB_PASS="admin"
-DB_NAME="c2"
+# Load credentials from .env (create from .env.example if missing)
+ENV_FILE="$SCRIPT_DIR/.env"
+if [ ! -f "$ENV_FILE" ]; then
+  fail ".env file not found. Copy .env.example to .env and fill in your credentials."
+  exit 1
+fi
+set -a; source "$ENV_FILE"; set +a
+
+DB_USER="${DB_USER:?DB_USER not set in .env}"
+DB_PASS="${DB_PASS:?DB_PASS not set in .env}"
+DB_NAME="${DB_NAME:-c2}"
 MAX_WAIT=60
 WAITED=0
 

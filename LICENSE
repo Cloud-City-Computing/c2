@@ -1,47 +1,127 @@
-                    Cloud Codex Source-Available License
-                                 Version 1.0
-                           Copyright 2026
-                      Cloud City Computing, LLC
+Cloud Codex Source-Available License
+Version 1.0, 2026
 
-1. Definitions
+Copyright (c) 2026 Cloud City Computing, LLC. All rights reserved.
 
-   "Software" means Cloud Codex and all derivative works of it.
-   
-   "Use" means running the Software locally for personal or internal business purposes.
-   
-   "Commercial Hosting Service" means offering the Software (modified or unmodified) over the Internet, network, or other means to provide real-time access or collaboration to paying or public users.
-   
-   "You" or "Your" means an individual or legal entity exercising permissions under this License.
+https://cloudcitycomputing.com
 
-2. Grant of Rights
+================================================================================
 
-   a) You may:
-      - view, download, and run the Software locally
-      - modify the Software for personal or internal business use
-      - distribute modifications or derivative works internally
+1. DEFINITIONS
 
-   b) You may NOT:
-      - provide a Commercial Hosting Service using the Software
-      - sell, sublicense, or otherwise commercialize the Software as a hosted product
-      - circumvent or attempt to bypass Section 2(b)
+   "Software" means the Cloud Codex source code, documentation, and any
+   accompanying files distributed under this License.
 
-3. Attribution
+   "Licensor" means Cloud City Computing, LLC.
 
-   - All copies of the Software, modified or unmodified, must retain this License and the copyright notice:
-     "Copyright 2026 Cloud City Computing, LLC"
+   "You" (or "Your") means the individual or legal entity exercising the
+   rights granted under this License.
 
-4. Disclaimer of Warranty
+   "Self-Host" means installing and running the Software on infrastructure
+   that You own or control for use by You, Your employees, or Your
+   organization's internal users.
 
-   The Software is provided "AS IS," without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement. Use is at Your own risk.
+   "Commercial Service" means making the Software available — in whole or
+   in part, modified or unmodified — to third parties as a paid product,
+   hosted platform, managed service, or any other offering from which You
+   derive direct or indirect revenue.
 
-5. Limitation of Liability
+2. GRANT OF RIGHTS
 
-   In no event shall the Licensor be liable for any damages, direct or indirect, arising from the use or inability to use the Software, even if advised of the possibility of such damages.
+   Subject to the terms of this License, the Licensor grants You a
+   non-exclusive, non-transferable, royalty-free right to:
 
-6. Permission for Commercial Use
+   a) View, copy, and study the Software source code.
 
-   - For permission to provide Commercial Hosting Services or redistribute the Software commercially, contact Cloud City Computing, LLC for a separate commercial license.
+   b) Self-Host the Software for personal, educational, or internal
+      business purposes.
 
-7. Contribution
+   c) Modify the Software and create derivative works, provided such
+      works are used only in accordance with this License.
 
-   - Any contributions submitted to Cloud Codex are under the same terms and do not change this License unless explicitly stated.
+   d) Distribute the Software or derivative works to others, provided
+      each recipient receives a complete copy of this License and is
+      bound by its terms.
+
+3. RESTRICTIONS
+
+   You may NOT:
+
+   a) Offer a Commercial Service using the Software without a separate
+      written commercial license from the Licensor.
+
+   b) Sell, sublicense, lease, or otherwise commercialize the Software
+      or any derivative work as a hosted or distributed product.
+
+   c) Remove, alter, or obscure any copyright notices, license texts,
+      or attribution statements included in the Software.
+
+   d) Circumvent, or attempt to circumvent, any of the restrictions in
+      this Section.
+
+4. SELF-HOSTING CLARIFICATION
+
+   For the avoidance of doubt, You are expressly permitted to Self-Host
+   the Software for Your own use at no cost. This includes running the
+   Software on private servers, virtual machines, containers, or cloud
+   infrastructure that You control, so long as access is limited to Your
+   organization's internal users and the Software is not offered as a
+   Commercial Service.
+
+5. ATTRIBUTION
+
+   All copies or substantial portions of the Software must retain the
+   following notice:
+
+       Copyright (c) 2026 Cloud City Computing, LLC
+       Licensed under the Cloud Codex Source-Available License v1.0
+
+6. DISCLAIMER OF WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+   NON-INFRINGEMENT. THE ENTIRE RISK ARISING OUT OF THE USE OR
+   PERFORMANCE OF THE SOFTWARE REMAINS WITH YOU.
+
+7. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+   OTHER DEALINGS IN THE SOFTWARE.
+
+8. COMMERCIAL LICENSING
+
+   To obtain a commercial license permitting Commercial Services or
+   redistribution beyond the scope of this License, contact:
+
+       Cloud City Computing, LLC
+       https://cloudcitycomputing.com
+
+9. CONTRIBUTIONS
+
+   Unless otherwise agreed in writing, any contribution intentionally
+   submitted by You for inclusion in the Software shall be licensed under
+   the same terms as this License, without any additional terms or
+   conditions.
+
+10. TERMINATION
+
+    This License and the rights granted hereunder will terminate
+    automatically if You fail to comply with any of its terms. Upon
+    termination, You must cease all use and distribution of the Software
+    and destroy any copies in Your possession.
+
+11. GENERAL
+
+    a) This License constitutes the entire agreement between the parties
+       with respect to the Software and supersedes all prior negotiations,
+       representations, or agreements relating thereto.
+
+    b) If any provision of this License is held to be unenforceable, the
+       remaining provisions shall remain in full force and effect.
+
+    c) This License shall be governed by and construed in accordance with
+       the laws of the jurisdiction in which the Licensor is organized,
+       without regard to its conflict-of-laws provisions.

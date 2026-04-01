@@ -1,6 +1,10 @@
-Current database is using MySQL 8 on a Docker Container. In order to start up the DB and connect to it run these commands:
+# Database
 
-'''
-docker-compose up -d
-mysql -h 127.0.0.1 -P 3306 -u admin -padmin c2
-'''
+Cloud Codex uses MySQL 8 running in a Docker container. Start the container and connect:
+
+```bash
+docker compose up -d
+mysql -h 127.0.0.1 -P 3306 -u <DB_USER> -p <DB_NAME>
+```
+
+See `.env.example` for the required credentials.
