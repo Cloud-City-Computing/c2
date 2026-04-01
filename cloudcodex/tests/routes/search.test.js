@@ -59,7 +59,7 @@ describe('Search Routes', () => {
       expect(res.status).toBe(200);
       // Verify the limit was passed to the query
       const queryCall = c2_query.mock.calls[0];
-      expect(queryCall[1]).toContain(5); // limit param
+      expect(queryCall[1]).toContain('5'); // limit param
     });
 
     it('caps limit at 10', async () => {
@@ -71,7 +71,7 @@ describe('Search Routes', () => {
         .set('Authorization', 'Bearer valid-token');
 
       const queryCall = c2_query.mock.calls[0];
-      expect(queryCall[1]).toContain(10); // capped at RESULTS_LIMIT
+      expect(queryCall[1]).toContain('10'); // capped at RESULTS_LIMIT
     });
 
     it('requires authentication', async () => {
