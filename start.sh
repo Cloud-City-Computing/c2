@@ -155,6 +155,14 @@ fi
 # ── 3. Docker Compose – bring the database up ────────────────
 echo -e "\n${CYAN}[3/5]${NC} Starting Docker Compose services…"
 
+# Load credentials from .env before compose needs them for interpolation
+ENV_FILE="$SCRIPT_DIR/.env"
+if [ ! -f "$ENV_FILE" ]; then
+  fail ".env file not found. Copy .env.example to .env and fill in your credentials."
+  exit 1
+fi
+set -a; source "$ENV_FILE"; set +a
+
 COMPOSE_CMD="$DOCKER_SUDO docker compose"
 if ! $COMPOSE_CMD version &>/dev/null 2>&1; then
   COMPOSE_CMD="$DOCKER_SUDO docker-compose"
@@ -173,14 +181,6 @@ ok "Compose services started"
 
 # ── 4. Wait for MySQL to accept connections ───────────────────
 echo -e "\n${CYAN}[4/5]${NC} Waiting for MySQL to be ready…"
-
-# Load credentials from .env (create from .env.example if missing)
-ENV_FILE="$SCRIPT_DIR/.env"
-if [ ! -f "$ENV_FILE" ]; then
-  fail ".env file not found. Copy .env.example to .env and fill in your credentials."
-  exit 1
-fi
-set -a; source "$ENV_FILE"; set +a
 
 DB_USER="${DB_USER:?DB_USER not set in .env}"
 DB_PASS="${DB_PASS:?DB_PASS not set in .env}"
