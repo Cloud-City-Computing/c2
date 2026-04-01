@@ -58,7 +58,7 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
       AND ${readAccessWhere('pr')}
     ORDER BY p.created_at DESC
     LIMIT ?`,
-    [`%${escapedQuery}%`, `%${escapedQuery}%`, ...readAccessParams(req.user), limit]
+    [`%${escapedQuery}%`, `%${escapedQuery}%`, ...readAccessParams(req.user), String(limit)]
   );
 
   res.json({ results });
