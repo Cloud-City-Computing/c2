@@ -28,6 +28,7 @@ import {
   destroyModal,
 } from '../util';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { toastError } from '../components/Toast';
 
 function NewOrgModal({ onCreated }) {
   const [name, setName] = useState('');
@@ -295,14 +296,14 @@ function TeamMembersPanel({ teamId }) {
     try {
       await updateTeamMember(teamId, member.user_id, { [key]: !member[key] });
       setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, [key]: !m[key] } : m));
-    } catch { /* ignore */ }
+    } catch (e) { toastError(e); }
   };
 
   const handleRoleChange = async (member, newRole) => {
     try {
       await updateTeamMember(teamId, member.user_id, { role: newRole });
       setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, role: newRole } : m));
-    } catch { /* ignore */ }
+    } catch (e) { toastError(e); }
   };
 
   const handleRemove = (member) => {
@@ -325,7 +326,7 @@ function TeamMembersPanel({ teamId }) {
     try {
       await cancelInvitation(inv.id);
       load();
-    } catch { /* ignore */ }
+    } catch (e) { toastError(e); }
   };
 
   if (loading) return <p className="text-muted text-sm" style={{ padding: '4px 0' }}>Loading members...</p>;
