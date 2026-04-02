@@ -31,6 +31,7 @@ import {
   destroyModal,
 } from '../util';
 import PublishModal from '../components/PublishModal';
+import { toastError } from '../components/Toast';
 
 // Configure marked for safe rendering
 marked.setOptions({ breaks: true, gfm: true });
@@ -305,7 +306,7 @@ function VersionHistory({ pageId, onRestore }) {
       onRestore?.();
       setPreview(null);
       setPreviewId(null);
-    } catch { /* ignore */ }
+    } catch (e) { toastError(e); }
   };
 
   const handleDelete = async (v) => {
@@ -313,7 +314,7 @@ function VersionHistory({ pageId, onRestore }) {
       await deleteVersion(pageId, v.id);
       setVersions(prev => prev.filter(ver => ver.id !== v.id));
       if (previewId === v.id) { setPreview(null); setPreviewId(null); }
-    } catch { /* ignore */ }
+    } catch (e) { toastError(e); }
   };
 
   if (loading) return <p className="text-muted">Loading history...</p>;

@@ -15,6 +15,7 @@ import {
   showModal, destroyModal,
 } from '../util';
 import ConfirmDialog from './ConfirmDialog';
+import { toastError } from './Toast';
 
 // --- New Project Form ---
 
@@ -352,8 +353,8 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
       } else {
         await exportDocument(page.id, format, page.title, null);
       }
-    } catch {
-      // silent — browser may block popup for PDF
+    } catch (e) {
+      toastError(e);
     }
   };
 
