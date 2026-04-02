@@ -56,6 +56,7 @@ function buildSnippet(text, query) {
 /**
  * GET /api/search?query=<string>&page=<number>&limit=<number>
  * Filtered to pages in projects where the user has read_access.
+ * Uses MySQL FULLTEXT index for fast, relevance-ranked search.
  * Returns paginated results with contextual match snippets.
  */
 router.get('/search', requireAuth, asyncHandler(async (req, res) => {
@@ -77,23 +78,50 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
   const page = Math.max(parseInt(rawPage) || 1, 1);
   const offset = (page - 1) * limit;
 
-  const escapedQuery = trimmed.replace(/[%_\\]/g, '\\$&');
   const accessWhere = readAccessWhere('pr');
-  const likeParams = [`%${escapedQuery}%`, `%${escapedQuery}%`];
   const accessParams = readAccessParams(req.user);
+
+  // Build the FULLTEXT search term.
+  // Words are prefixed with + for required match and * for prefix matching,
+  // which allows partial-word matching (e.g. "auth" matches "authentication").
+  const ftTerms = trimmed
+    .replace(/[+\-><()~*"@]/g, ' ')   // strip boolean operators from user input
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(w => `+${w}*`)
+    .join(' ');
+
+  // Also keep a LIKE fallback parameter for short/single-char queries
+  // that FULLTEXT's minimum word length (default 3) may miss.
+  const escapedQuery = trimmed.replace(/[%_\\]/g, '\\$&');
+  const useFulltext = ftTerms.length > 0 && trimmed.length >= 3;
+
+  const matchExpr = useFulltext
+    ? `MATCH(p.title, p.plain_content) AGAINST(? IN BOOLEAN MODE)`
+    : `(p.title LIKE ? ESCAPE '\\\\' OR p.plain_content LIKE ? ESCAPE '\\\\')`;
+
+  const searchParams = useFulltext
+    ? [ftTerms]
+    : [`%${escapedQuery}%`, `%${escapedQuery}%`];
 
   // Count total matches
   const [countRow] = await c2_query(
     `SELECT COUNT(*) AS total
      FROM pages p
      INNER JOIN projects pr ON p.project_id = pr.id
-     WHERE (p.title LIKE ? ESCAPE '\\\\' OR p.html_content LIKE ? ESCAPE '\\\\')
+     WHERE ${matchExpr}
        AND ${accessWhere}`,
-    [...likeParams, ...accessParams]
+    [...searchParams, ...accessParams]
   );
   const total = countRow?.total || 0;
 
-  // Fetch the page of results
+  // Fetch the page of results, ordered by relevance when using FULLTEXT
+  const orderBy = useFulltext
+    ? `MATCH(p.title, p.plain_content) AGAINST(? IN BOOLEAN MODE) DESC, p.created_at DESC`
+    : `p.created_at DESC`;
+
+  const orderParams = useFulltext ? [ftTerms] : [];
+
   const results = await c2_query(
     `SELECT p.id,
             p.title,
@@ -101,16 +129,16 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
             p.project_id,
             u.name AS author,
             pr.name AS project_name,
-            CHAR_LENGTH(REGEXP_REPLACE(p.html_content, '<[^>]+>', '')) AS char_count,
+            CHAR_LENGTH(p.plain_content) AS char_count,
             p.html_content
     FROM pages p
     LEFT JOIN users u ON p.created_by = u.id
     INNER JOIN projects pr ON p.project_id = pr.id
-    WHERE (p.title LIKE ? ESCAPE '\\\\' OR p.html_content LIKE ? ESCAPE '\\\\')
+    WHERE ${matchExpr}
       AND ${accessWhere}
-    ORDER BY p.created_at DESC
+    ORDER BY ${orderBy}
     LIMIT ? OFFSET ?`,
-    [...likeParams, ...accessParams, String(limit), String(offset)]
+    [...searchParams, ...accessParams, ...orderParams, String(limit), String(offset)]
   );
 
   // Build contextual snippets and remove raw html_content from response
@@ -174,8 +202,8 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
             p.project_id,
             u.name AS author,
             pr.name AS project_name,
-            LEFT(REGEXP_REPLACE(p.html_content, '<[^>]+>', ''), 200) AS excerpt,
-            CHAR_LENGTH(REGEXP_REPLACE(p.html_content, '<[^>]+>', '')) AS char_count
+            LEFT(p.plain_content, 200) AS excerpt,
+            CHAR_LENGTH(p.plain_content) AS char_count
     FROM pages p
     LEFT JOIN users u ON p.created_by = u.id
     INNER JOIN projects pr ON p.project_id = pr.id
