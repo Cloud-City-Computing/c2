@@ -120,6 +120,14 @@ export const cancelInvitation = (invId) => apiFetch('DELETE', `/api/invitations/
 
 export const searchUsers = (q) => apiFetch('GET', `/api/users/search?q=${encodeURIComponent(q)}`);
 
+// --- Browse / Search APIs ---
+
+export const browsePages = ({ page = 1, limit = 12, sort = 'newest' } = {}) =>
+  apiFetch('GET', `/api/browse?page=${page}&limit=${limit}&sort=${encodeURIComponent(sort)}`);
+
+export const searchPages = ({ query, page = 1, limit = 12 } = {}) =>
+  apiFetch('GET', `/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+
 // --- Project APIs ---
 
 export const fetchProjects = () => apiFetch('GET', '/api/projects');
