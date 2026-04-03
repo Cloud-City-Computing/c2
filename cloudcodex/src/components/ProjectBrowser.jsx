@@ -421,7 +421,7 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
           <button className="page-tree-add" onClick={handleNewSubpage} title="Add subpage">+</button>
           <button className="page-tree-comments" onClick={() => {
             showModal(
-              <CommentManager pageId={page.id} pageTitle={page.title} onClose={destroyModal} onNavigate={(c) => { destroyModal(); navigate(`/editor/${page.id}`); }} />,
+              <CommentManager pageId={page.id} pageTitle={page.title} onClose={destroyModal} onNavigate={(_c) => { destroyModal(); navigate(`/editor/${page.id}`); }} />,
               'modal-lg'
             );
           }} title="Manage comments">

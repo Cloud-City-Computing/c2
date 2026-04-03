@@ -50,7 +50,7 @@ function ExploreCard({ item, isSearch, onClick, activeUsers }) {
         {item.project_name && <span className="explore-card__project">{item.project_name}</span>}
         {item.author && <span className="explore-card__author">{item.author}</span>}
         {date && <span className="explore-card__date">{date}</span>}
-        {words != null && <span className="explore-card__words">~{words.toLocaleString()} words</span>}
+        {words !== null && <span className="explore-card__words">~{words.toLocaleString()} words</span>}
       </div>
       {isSearch && item.snippet ? (
         <p className="explore-card__snippet">
@@ -69,7 +69,7 @@ function Pagination({ page, totalPages, onPageChange }) {
   const pages = [];
   const maxVisible = 5;
   let start = Math.max(1, page - Math.floor(maxVisible / 2));
-  let end = Math.min(totalPages, start + maxVisible - 1);
+  const end = Math.min(totalPages, start + maxVisible - 1);
   if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1);
 
   for (let i = start; i <= end; i++) pages.push(i);

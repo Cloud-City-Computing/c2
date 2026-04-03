@@ -25,6 +25,7 @@ let toastRoot = null;
  * @param {'info'|'success'|'error'} type
  * @param {number} duration - ms before auto-dismiss (default 4000)
  */
+/* eslint-disable react-refresh/only-export-components */
 export function showToast(message, type = 'info', duration = 4000) {
   if (!addToastFn) mountContainer();
   addToastFn?.({ message, type, duration, id: Date.now() + Math.random() });
