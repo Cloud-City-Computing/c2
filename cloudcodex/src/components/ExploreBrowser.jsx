@@ -11,6 +11,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { browsePages, searchPages } from '../util';
+import usePresence from '../hooks/usePresence';
+import PresenceAvatars from './PresenceAvatars';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -27,7 +29,7 @@ function HighlightedSnippet({ snippet, matchStart, matchEnd }) {
   );
 }
 
-function ExploreCard({ item, isSearch, onClick }) {
+function ExploreCard({ item, isSearch, onClick, activeUsers }) {
   const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : null;
   const words = item.char_count ? Math.round(item.char_count / 5) : null;
 
@@ -35,11 +37,14 @@ function ExploreCard({ item, isSearch, onClick }) {
     <div className="explore-card" onClick={onClick}>
       <div className="explore-card__header">
         <h3 className="explore-card__title">{item.title}</h3>
-        {item.matchedOn && (
-          <span className={`explore-badge explore-badge--${item.matchedOn}`}>
-            {item.matchedOn === 'title' ? 'Title match' : 'Content match'}
-          </span>
-        )}
+        <div className="explore-card__indicators">
+          <PresenceAvatars users={activeUsers} />
+          {item.matchedOn && (
+            <span className={`explore-badge explore-badge--${item.matchedOn}`}>
+              {item.matchedOn === 'title' ? 'Title match' : 'Content match'}
+            </span>
+          )}
+        </div>
       </div>
       <div className="explore-card__meta">
         {item.project_name && <span className="explore-card__project">{item.project_name}</span>}
@@ -114,6 +119,7 @@ export default function ExploreBrowser() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+  const { getPageUsers } = usePresence();
 
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('newest');
@@ -229,6 +235,7 @@ export default function ExploreBrowser() {
             key={item.id}
             item={item}
             isSearch={isSearch}
+            activeUsers={getPageUsers(item.id)}
             onClick={() => navigate(`/editor/${item.id}`)}
           />
         ))}

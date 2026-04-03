@@ -129,6 +129,8 @@ export const browsePages = ({ page = 1, limit = 12, sort = 'newest' } = {}) =>
 export const searchPages = ({ query, page = 1, limit = 12 } = {}) =>
   apiFetch('GET', `/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
 
+export const fetchPresence = () => apiFetch('GET', '/api/presence');
+
 // --- Project APIs ---
 
 export const fetchProjects = () => apiFetch('GET', '/api/projects');
