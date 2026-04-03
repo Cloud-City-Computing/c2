@@ -209,6 +209,11 @@ export function setupCollabServer(server) {
     // Origin validation to prevent Cross-Site WebSocket Hijacking (CSWSH)
     const origin = request.headers.origin;
     const host = request.headers.host;
+    if (!origin) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     if (origin) {
       try {
         const originHost = new URL(origin).host;
@@ -371,18 +376,22 @@ async function setupDocSession(ws, user, pageId, canWrite) {
           ws.send(JSON.stringify({ type: 'error', message: 'Document content exceeds maximum size' }));
           return;
         }
+
+        // Sanitize before broadcast to prevent XSS to other clients
+        const safeHtml = sanitizeHtml(msg.html);
+
         // Apply the update to the Yjs doc
         const xmlFragment = entry.doc.getXmlFragment('document');
         entry.doc.transact(() => {
           // Clear and replace — for HTML-based sync this is the straightforward approach
           while (xmlFragment.length > 0) xmlFragment.delete(0);
           const textNode = new Y.XmlText();
-          textNode.insert(0, msg.html);
+          textNode.insert(0, safeHtml);
           xmlFragment.insert(0, [textNode]);
         });
 
-        // Broadcast to other clients
-        broadcastExcept(entry, ws, { type: 'update', html: msg.html, userId: user.id });
+        // Broadcast sanitized content to other clients
+        broadcastExcept(entry, ws, { type: 'update', html: safeHtml, userId: user.id });
 
         // Schedule debounced save
         scheduleSave(entry, user.id);
@@ -495,16 +504,16 @@ async function setupDocSession(ws, user, pageId, canWrite) {
       // --- Comment broadcast ---
       // Relays comment events (add, update, resolve, delete) to all other clients on the same page.
       // The actual CRUD is handled by the REST API; this just broadcasts for real-time sync.
-      if (msg.type === 'comment') {
+      if (msg.type === 'comment' && canWrite) {
         const validActions = ['add', 'update', 'resolve', 'reopen', 'delete', 'reply', 'clear'];
         if (typeof msg.action === 'string' && validActions.includes(msg.action)) {
           broadcastExcept(entry, ws, {
             type: 'comment',
             action: msg.action,
-            comment: msg.comment || null,
-            reply: msg.reply || null,
-            commentId: msg.commentId || null,
-            replyId: msg.replyId || null,
+            comment: msg.comment ? { id: msg.comment.id } : null,
+            reply: msg.reply ? { id: msg.reply.id, comment_id: msg.reply.comment_id } : null,
+            commentId: typeof msg.commentId === 'number' ? msg.commentId : null,
+            replyId: typeof msg.replyId === 'number' ? msg.replyId : null,
             userId: user.id,
             userName: user.name,
           });

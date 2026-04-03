@@ -42,6 +42,9 @@ router.post('/organizations', requireAuth, asyncHandler(async (req, res) => {
   if (!name?.trim()) {
     return res.status(400).json({ success: false, message: 'Organization name is required' });
   }
+  if (name.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Organization name must be 255 characters or less' });
+  }
 
   const orgResult = await c2_query(
     `INSERT INTO organizations (name, owner) VALUES (?, ?)`,
@@ -93,6 +96,9 @@ router.put('/organizations/:id', requireAuth, asyncHandler(async (req, res) => {
   const { name } = req.body;
   if (!name?.trim()) {
     return res.status(400).json({ success: false, message: 'Organization name is required' });
+  }
+  if (name.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Organization name must be 255 characters or less' });
   }
 
   const [org] = await c2_query(

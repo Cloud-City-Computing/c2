@@ -32,13 +32,15 @@ app.use('/api', cors({
     // Allow if an explicit allowlist is configured
     const allowed = process.env.CORS_ORIGIN;
     if (allowed && origin === allowed) return cb(null, true);
-    // In development, allow localhost origins on any port
-    try {
-      const parsed = new URL(origin);
-      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-        return cb(null, true);
-      }
-    } catch { /* invalid origin */ }
+    // In development only, allow localhost origins on any port
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const parsed = new URL(origin);
+        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+          return cb(null, true);
+        }
+      } catch { /* invalid origin */ }
+    }
     cb(new Error('Not allowed by CORS'));
   },
   credentials: true,

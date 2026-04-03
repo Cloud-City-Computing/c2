@@ -189,6 +189,11 @@ router.post('/update-account', asyncHandler(async (req, res) => {
     params
   );
 
+  // If password was changed, invalidate all other sessions for this user
+  if (password !== undefined) {
+    await c2_query(`DELETE FROM sessions WHERE user_id = ? AND id != ?`, [Number(userId), token]);
+  }
+
   res.json({ success: true });
 }));
 
@@ -213,7 +218,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   // Use a constant-time comparison to prevent timing attacks
   const validPassword = users.length
     ? await bcrypt.compare(password, users[0].password_hash)
-    : await bcrypt.compare(password, '$2b$12$invalidhashfortimingpurposesonly00000000000');
+    : await bcrypt.compare(password, '$2b$12$000000000000000000000000000000000000000000000000000000');
 
   if (!validPassword || !users.length) {
     // Intentionally vague — don't reveal whether the username exists
