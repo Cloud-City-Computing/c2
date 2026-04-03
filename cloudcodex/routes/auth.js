@@ -86,6 +86,58 @@ router.post('/create-account', asyncHandler(async (req, res) => {
 }));
 
 /**
+ * POST /api/setup
+ * Quick-start workspace setup for new users.
+ * Optionally creates an organization, team, and project in one step.
+ * Body: { orgName?, teamName?, projectName? }
+ */
+router.post('/setup', requireAuth, asyncHandler(async (req, res) => {
+  const { orgName, teamName, projectName } = req.body;
+
+  // At least one thing to create
+  if (!orgName?.trim() && !projectName?.trim()) {
+    return res.status(400).json({ success: false, message: 'Provide at least an organization or project name' });
+  }
+
+  let organizationId = null;
+  let teamId = null;
+  let projectId = null;
+
+  if (orgName?.trim()) {
+    const orgResult = await c2_query(
+      `INSERT INTO organizations (name, owner) VALUES (?, ?)`,
+      [orgName.trim(), req.user.email]
+    );
+    organizationId = orgResult.insertId;
+
+    if (teamName?.trim()) {
+      const teamResult = await c2_query(
+        `INSERT INTO teams (organization_id, name, created_by) VALUES (?, ?, ?)`,
+        [organizationId, teamName.trim(), req.user.id]
+      );
+      teamId = teamResult.insertId;
+
+      await c2_query(
+        `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
+         VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
+        [teamId, req.user.id]
+      );
+    }
+  }
+
+  if (projectName?.trim()) {
+    const projResult = await c2_query(
+      `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
+       VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+      [projectName.trim(), teamId, req.user.id, req.user.id, req.user.id]
+    );
+    projectId = projResult.insertId;
+  }
+
+  res.status(201).json({ success: true, organizationId, teamId, projectId });
+}));
+
+/**
  * POST /api/update-account
  * Body: { token, userId, name?, email?, password? }
  */

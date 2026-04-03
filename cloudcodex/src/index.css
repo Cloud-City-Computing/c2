@@ -3083,4 +3083,48 @@ body {
     max-width: none;
   }
 }
+
+/* ── Welcome Setup & Cascading Creation ────────────────────── */
+
+.welcome-setup {
+  text-align: center;
+}
+
+.welcome-setup h2 {
+  margin-bottom: 4px;
+}
+
+.welcome-subtitle {
+  color: var(--text-secondary, #888);
+  margin-bottom: 20px;
+  font-size: 0.95rem;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.welcome-actions .btn {
+  width: 100%;
+}
+
+.setup-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin: 8px 0 4px;
+  user-select: none;
+}
+
+.setup-checkbox input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent, #4a9eff);
+  cursor: pointer;
+}
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }
