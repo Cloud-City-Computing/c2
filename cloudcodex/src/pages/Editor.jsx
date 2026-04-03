@@ -17,6 +17,7 @@ import { getPreferredEditorMode } from '../userPrefs';
 import useCollab from '../hooks/useCollab';
 import CollabPresence from '../components/CollabPresence';
 import { RichTextCursors, MarkdownCursors } from '../components/RemoteCursors';
+import { RichTextHighlights, MarkdownHighlights } from '../components/CommentHighlights';
 import {
   fetchDocument,
   saveDocument,
@@ -29,9 +30,21 @@ import {
   exportDocument,
   showModal,
   destroyModal,
+  fetchComments,
+  createComment,
+  resolveComment,
+  reopenComment,
+  deleteComment as apiDeleteComment,
+  clearAllComments,
+  addCommentReply,
+  deleteCommentReply,
+  getSessStorage,
 } from '../util';
 import PublishModal from '../components/PublishModal';
 import { toastError } from '../components/Toast';
+import CommentSidebar from '../components/CommentSidebar';
+import CommentForm from '../components/CommentForm';
+import CommentManager from '../components/CommentManager';
 
 // Configure marked for safe rendering
 marked.setOptions({ breaks: true, gfm: true });
@@ -70,7 +83,7 @@ function markdownToHtml(md) {
 
 // --- Jodit Editor wrapper ---
 
-function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors }) {
+function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId }) {
   const editor = useRef(null);
   // Local state drives Jodit's value — prevents parent re-renders from resetting the editor
   const [local, setLocal] = useState(content);
@@ -100,7 +113,8 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
       const range = sel.getRangeAt(0);
       // Calculate character offset from start of editor
       const offset = getCharOffset(editorEl, range.startContainer, range.startOffset);
-      onCursorChange({ index: offset, length: 0 });
+      const selectedText = sel.toString();
+      onCursorChange({ index: offset, length: selectedText.length, selectedText });
     };
 
     editorDoc.addEventListener('selectionchange', handleSelection);
@@ -158,16 +172,21 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
         <RichTextCursors remoteCursors={remoteCursors} editorRef={editor} />,
         cursorContainer
       )}
+      {cursorContainer && createPortal(
+        <RichTextHighlights editorRef={editor} comments={comments || []} activeCommentId={activeCommentId} />,
+        cursorContainer
+      )}
     </>
   );
 }
 
 // --- Markdown Editor with live preview ---
 
-function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, remoteCursors }) {
+function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId }) {
   const [md, setMd] = useState(() => htmlToMarkdown(content));
   const [preview, setPreview] = useState(() => sanitizeHtml(content || ''));
   const textareaRef = useRef(null);
+  const previewRef = useRef(null);
   const initializedRef = useRef(false);
   const selfUpdateRef = useRef(false);
 
@@ -177,7 +196,8 @@ function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, re
     if (!ta || !onCursorChange) return;
     const text = ta.value.substring(0, ta.selectionStart);
     const line = (text.match(/\n/g) || []).length;
-    onCursorChange({ index: ta.selectionStart, line, length: ta.selectionEnd - ta.selectionStart });
+    const selectedText = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+    onCursorChange({ index: ta.selectionStart, line, length: ta.selectionEnd - ta.selectionStart, selectedText });
   }, [onCursorChange]);
 
   // Sync when content changes externally (e.g. version restore)
@@ -249,9 +269,11 @@ function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, re
       <div className="markdown-editor__pane markdown-editor__preview">
         <div className="markdown-editor__label">Preview</div>
         <div
+          ref={previewRef}
           className="markdown-editor__rendered"
           dangerouslySetInnerHTML={{ __html: preview }}
         />
+        <MarkdownHighlights previewRef={previewRef} comments={comments || []} activeCommentId={activeCommentId} />
       </div>
     </div>
   );
@@ -385,15 +407,55 @@ export default function Editor() {
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
   const remoteUpdateRef = useRef(false);
 
+  // --- Comment state ---
+  const [comments, setComments] = useState([]);
+  const [showComments, setShowComments] = useState(false);
+  const [showCommentForm, setShowCommentForm] = useState(false);
+  const [commentSelection, setCommentSelection] = useState(null); // { start, end, text }
+  const [highlightedCommentId, setHighlightedCommentId] = useState(null);
+  const [commentFilterStatus, setCommentFilterStatus] = useState('open');
+
+  // Get current user ID from session storage
+  const currentUserId = getSessStorage('currentUser')?.id;
+
+  // Handle remote comment events from WebSocket
+  const handleRemoteComment = useCallback((msg) => {
+    switch (msg.action) {
+      case 'add':
+        if (msg.comment) setComments(prev => [...prev, msg.comment]);
+        break;
+      case 'update':
+        if (msg.comment) setComments(prev => prev.map(c => c.id === msg.comment.id ? { ...c, ...msg.comment, replies: c.replies } : c));
+        break;
+      case 'resolve':
+        if (msg.comment) setComments(prev => prev.map(c => c.id === msg.comment.id ? { ...c, ...msg.comment, replies: c.replies } : c));
+        break;
+      case 'reopen':
+        if (msg.commentId) setComments(prev => prev.map(c => c.id === msg.commentId ? { ...c, status: 'open', resolved_by: null, resolved_at: null } : c));
+        break;
+      case 'delete':
+        if (msg.commentId) setComments(prev => prev.filter(c => c.id !== msg.commentId));
+        break;
+      case 'reply':
+        if (msg.reply && msg.commentId) setComments(prev => prev.map(c => c.id === msg.commentId ? { ...c, replies: [...(c.replies || []), msg.reply] } : c));
+        break;
+      case 'clear':
+        setComments([]);
+        break;
+    }
+  }, []);
+
   // Collaborative editing hook
-  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish } = useCollab(
+  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendCommentEvent } = useCollab(
     pageId,
     // onRemoteUpdate — called when a peer changes the document
     useCallback((html) => {
       remoteUpdateRef.current = true;
       contentRef.current = html;
       setContent(html);
-    }, [])
+    }, []),
+    // onRemoteComment — called when a peer performs a comment action
+    handleRemoteComment
   );
 
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
@@ -425,9 +487,13 @@ export default function Editor() {
 
   // Debounced cursor position broadcast
   const cursorTimerRef = useRef(null);
+  const selectionRef = useRef({ text: '', start: 0, end: 0 });
   const handleCursorChange = useCallback((position) => {
     if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
     cursorTimerRef.current = setTimeout(() => sendCursor(position), 100);
+    if (position.selectedText !== undefined) {
+      selectionRef.current = { text: position.selectedText, start: position.index, end: position.index + (position.length || 0) };
+    }
   }, [sendCursor]);
 
   const loadDocument = useCallback(async () => {
@@ -444,6 +510,130 @@ export default function Editor() {
   }, [pageId]);
 
   useEffect(() => { loadDocument(); }, [loadDocument]);
+
+  // Load comments for this page
+  const loadComments = useCallback(async () => {
+    if (!pageId) return;
+    try {
+      const res = await fetchComments(pageId);
+      setComments(res.comments || []);
+    } catch { /* ignore */ }
+  }, [pageId]);
+
+  useEffect(() => { loadComments(); }, [loadComments]);
+
+  // --- Comment action handlers ---
+  const handleAddComment = useCallback(async ({ content: text, tag }) => {
+    try {
+      const res = await createComment(pageId, {
+        content: text,
+        tag,
+        selection_start: commentSelection?.start ?? null,
+        selection_end: commentSelection?.end ?? null,
+        selected_text: commentSelection?.text ?? null,
+      });
+      setComments(prev => [...prev, res.comment]);
+      sendCommentEvent({ action: 'add', comment: res.comment });
+      setShowCommentForm(false);
+      setCommentSelection(null);
+    } catch (e) { toastError(e); }
+  }, [pageId, commentSelection, sendCommentEvent]);
+
+  const handleResolveComment = useCallback(async (id) => {
+    try {
+      const res = await resolveComment(id, 'resolved');
+      setComments(prev => prev.map(c => c.id === id ? { ...c, ...res.comment, replies: c.replies } : c));
+      sendCommentEvent({ action: 'resolve', comment: res.comment, commentId: id });
+    } catch (e) { toastError(e); }
+  }, [sendCommentEvent]);
+
+  const handleDismissComment = useCallback(async (id) => {
+    try {
+      const res = await resolveComment(id, 'dismissed');
+      setComments(prev => prev.map(c => c.id === id ? { ...c, ...res.comment, replies: c.replies } : c));
+      sendCommentEvent({ action: 'resolve', comment: res.comment, commentId: id });
+    } catch (e) { toastError(e); }
+  }, [sendCommentEvent]);
+
+  const handleReopenComment = useCallback(async (id) => {
+    try {
+      await reopenComment(id);
+      setComments(prev => prev.map(c => c.id === id ? { ...c, status: 'open', resolved_by: null, resolved_at: null } : c));
+      sendCommentEvent({ action: 'reopen', commentId: id });
+    } catch (e) { toastError(e); }
+  }, [sendCommentEvent]);
+
+  const handleDeleteComment = useCallback(async (id) => {
+    try {
+      await apiDeleteComment(id);
+      setComments(prev => prev.filter(c => c.id !== id));
+      sendCommentEvent({ action: 'delete', commentId: id });
+    } catch (e) { toastError(e); }
+  }, [sendCommentEvent]);
+
+  const handleCommentReply = useCallback(async (commentId, text) => {
+    try {
+      const res = await addCommentReply(commentId, text);
+      setComments(prev => prev.map(c =>
+        c.id === commentId ? { ...c, replies: [...(c.replies || []), res.reply] } : c
+      ));
+      sendCommentEvent({ action: 'reply', reply: res.reply, commentId });
+    } catch (e) { toastError(e); throw e; }
+  }, [sendCommentEvent]);
+
+  const handleDeleteReply = useCallback(async (replyId, commentId) => {
+    try {
+      await deleteCommentReply(replyId);
+      setComments(prev => prev.map(c =>
+        c.id === commentId ? { ...c, replies: (c.replies || []).filter(r => r.id !== replyId) } : c
+      ));
+      sendCommentEvent({ action: 'delete', replyId, commentId });
+    } catch (e) { toastError(e); }
+  }, [sendCommentEvent]);
+
+  const handleClearAllComments = useCallback(async () => {
+    try {
+      await clearAllComments(pageId);
+      setComments([]);
+      sendCommentEvent({ action: 'clear' });
+    } catch (e) { toastError(e); }
+  }, [pageId, sendCommentEvent]);
+
+  // Get selected text for comment creation
+  const handleStartComment = useCallback(() => {
+    const sel = selectionRef.current;
+    if (sel.text?.trim()) {
+      setCommentSelection({
+        start: sel.start,
+        end: sel.end,
+        text: sel.text.trim().slice(0, 500),
+      });
+      setShowCommentForm(true);
+      setShowComments(true);
+    } else {
+      // No selection — create a general comment
+      setCommentSelection(null);
+      setShowCommentForm(true);
+      setShowComments(true);
+    }
+  }, []);
+
+  const openCommentManager = useCallback(() => {
+    showModal(
+      <CommentManager
+        pageId={pageId}
+        pageTitle={documentData?.title}
+        onClose={destroyModal}
+        onNavigate={(c) => {
+          destroyModal();
+          setShowComments(true);
+          setHighlightedCommentId(c.id);
+          setTimeout(() => setHighlightedCommentId(null), 3000);
+        }}
+      />,
+      'modal-lg'
+    );
+  }, [pageId, documentData?.title]);
 
   const handleSave = useCallback(async () => {
     if (saving) return;
@@ -573,13 +763,18 @@ export default function Editor() {
         )}
 
         <div className="editor-toolbar">
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          <button className="btn btn-ghost" onClick={openPublishModal} disabled={publishing}>
-            {publishing ? 'Publishing...' : 'Publish Version'}
-          </button>
-          <div className="editor-mode-toggle">
+          <div className="toolbar-group">
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : '💾 Save'}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={openPublishModal} disabled={publishing}>
+              {publishing ? 'Publishing...' : '📦 Publish'}
+            </button>
+          </div>
+
+          <span className="toolbar-divider" />
+
+          <div className="toolbar-group editor-mode-toggle">
             <button
               className={`btn btn-sm ${editorMode === 'richtext' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={() => setEditorMode('richtext')}
@@ -593,33 +788,88 @@ export default function Editor() {
               Markdown
             </button>
           </div>
-          <button className="btn btn-ghost" onClick={() => setShowVersions(v => !v)}>
-            {showVersions ? 'Hide History' : 'Version History'}
-          </button>
-          <div className="export-dropdown" ref={exportRef}>
-            <button className="btn btn-ghost" onClick={() => setShowExport(v => !v)}>
-              Export ▾
+
+          <span className="toolbar-divider" />
+
+          <div className="toolbar-group">
+            <button className="btn btn-ghost btn-sm" onMouseDown={(e) => { e.preventDefault(); handleStartComment(); }} title="Add a comment on selected text">
+              💬 Comment
             </button>
-            {showExport && (
-              <div className="export-dropdown__menu">
-                <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
-              </div>
-            )}
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowComments(v => !v)}>
+              {showComments ? '💬 Hide' : `💬 ${comments.filter(c => c.status === 'open').length || ''}`}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={openCommentManager} title="Manage all comments">
+              📋
+            </button>
           </div>
-          <button className="btn btn-ghost" onClick={() => navigate(-1)}>Back</button>
+
+          <span className="toolbar-divider" />
+
+          <div className="toolbar-group">
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowVersions(v => !v)}>
+              {showVersions ? '🕓 Hide History' : '🕓 History'}
+            </button>
+            <div className="export-dropdown" ref={exportRef}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowExport(v => !v)}>
+                📥 Export ▾
+              </button>
+              {showExport && (
+                <div className="export-dropdown__menu">
+                  <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
+                  <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
+                  <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
+                  <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
+                  <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="toolbar-spacer" />
+
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>
         </div>
 
         {showVersions && <VersionHistory pageId={pageId} onRestore={loadDocument} />}
 
-        <div className="editor-container">
-          {editorMode === 'richtext' ? (
-            <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} />
-          ) : (
-            <MarkdownEditor content={content} setContent={setContent} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} />
+        <div className="editor-with-comments">
+          <div className="editor-container">
+            {editorMode === 'richtext' ? (
+              <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
+            ) : (
+              <MarkdownEditor content={content} setContent={setContent} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
+            )}
+          </div>
+
+          {showComments && (
+            <div className="editor-comments-panel">
+              {showCommentForm && (
+                <CommentForm
+                  selectedText={commentSelection?.text}
+                  onSubmit={handleAddComment}
+                  onCancel={() => { setShowCommentForm(false); setCommentSelection(null); }}
+                />
+              )}
+              <CommentSidebar
+                comments={comments}
+                currentUserId={currentUserId}
+                onResolve={handleResolveComment}
+                onDismiss={handleDismissComment}
+                onReopen={handleReopenComment}
+                onDelete={handleDeleteComment}
+                onReply={handleCommentReply}
+                onDeleteReply={handleDeleteReply}
+                highlightedCommentId={highlightedCommentId}
+                onHoverComment={setHighlightedCommentId}
+                filterStatus={commentFilterStatus}
+                onFilterChange={setCommentFilterStatus}
+              />
+              {comments.length > 0 && (
+                <button className="btn btn-ghost btn-sm btn-danger comment-clear-btn" onClick={handleClearAllComments}>
+                  Clear All Comments
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

@@ -20,6 +20,7 @@ import uploadRoutes from './routes/upload.js';
 import projectsRouter from './routes/projects.js';
 import organizationsRouter from './routes/organizations.js';
 import teamsRouter from './routes/teams.js';
+import commentsRouter from './routes/comments.js';
 
 const app = express();
 
@@ -99,5 +100,6 @@ app.use('/api', documentRoutes);
 app.use('/api', uploadRoutes);
 app.use('/api', organizationsRouter);
 app.use('/api', teamsRouter);
+app.use('/api', commentsRouter);
 
 export default app;

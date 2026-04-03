@@ -7,6 +7,8 @@
 -- This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
 -- It defines the necessary tables and their relationships.
 
+DROP TABLE IF EXISTS comment_replies;
+DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS team_invitations;
 DROP TABLE IF EXISTS team_members;
 DROP TABLE IF EXISTS versions;
@@ -188,5 +190,38 @@ CREATE TABLE versions (
   read_access JSON DEFAULT (JSON_ARRAY()),
   FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE comments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  page_id INT NOT NULL,
+  user_id INT NOT NULL,
+  content TEXT NOT NULL,
+  tag ENUM('comment', 'suggestion', 'question', 'issue', 'note') DEFAULT 'comment',
+  status ENUM('open', 'resolved', 'dismissed') DEFAULT 'open',
+  selection_start INT DEFAULT NULL,
+  selection_end INT DEFAULT NULL,
+  selected_text TEXT DEFAULT NULL,
+  resolved_by INT DEFAULT NULL,
+  resolved_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_comments_page (page_id),
+  INDEX idx_comments_status (page_id, status)
+) ENGINE=InnoDB;
+
+CREATE TABLE comment_replies (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  comment_id INT NOT NULL,
+  user_id INT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_replies_comment (comment_id)
 ) ENGINE=InnoDB;
 

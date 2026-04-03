@@ -13,11 +13,13 @@ import {
   manageProjectAccess, searchUsers,
   uploadDocument, exportDocument, fetchDocument,
   showModal, destroyModal,
+  fetchCommentCount,
 } from '../util';
 import ConfirmDialog from './ConfirmDialog';
 import { toastError } from './Toast';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
+import CommentManager from './CommentManager';
 
 // --- New Project Form ---
 
@@ -332,9 +334,15 @@ function UploadDocumentModal({ projectId, parentId, onUploaded }) {
 function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted, getPageUsers }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [showExport, setShowExport] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
   const exportRef = useRef(null);
   const navigate = useNavigate();
   const activeUsers = getPageUsers(page.id);
+
+  // Load open comment count
+  useEffect(() => {
+    fetchCommentCount(page.id).then(r => setCommentCount(r.count || 0)).catch(() => {});
+  }, [page.id]);
 
   useEffect(() => {
     if (!showExport) return undefined;
@@ -411,6 +419,14 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
             )}
           </div>
           <button className="page-tree-add" onClick={handleNewSubpage} title="Add subpage">+</button>
+          <button className="page-tree-comments" onClick={() => {
+            showModal(
+              <CommentManager pageId={page.id} pageTitle={page.title} onClose={destroyModal} onNavigate={(c) => { destroyModal(); navigate(`/editor/${page.id}`); }} />,
+              'modal-lg'
+            );
+          }} title="Manage comments">
+            💬{commentCount > 0 && <span className="comment-count-badge">{commentCount}</span>}
+          </button>
           <button className="page-tree-delete" onClick={handleDelete} title="Delete page">&times;</button>
         </div>
       </div>
