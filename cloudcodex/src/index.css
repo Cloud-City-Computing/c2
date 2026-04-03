@@ -2681,6 +2681,15 @@ body {
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 
+/* Remote selection highlights */
+.remote-selection {
+  position: absolute;
+  opacity: 0.18;
+  border-radius: 2px;
+  pointer-events: none;
+  transition: top 0.15s ease, left 0.15s ease, width 0.15s ease;
+}
+
 /* Markdown editor cursor positioning */
 .markdown-editor__textarea-wrapper {
   position: relative;
