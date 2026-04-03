@@ -361,7 +361,7 @@ async function setupDocSession(ws, user, pageId, canWrite) {
       }
 
       // Validate message type is a known string
-      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save', 'publish'].includes(msg.type)) {
+      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save', 'publish', 'comment'].includes(msg.type)) {
         return;
       }
 
@@ -490,6 +490,25 @@ async function setupDocSession(ws, user, pageId, canWrite) {
             console.error(`[collab] Publish failed for page ${entry.pageId}:`, err);
           }
         })();
+      }
+
+      // --- Comment broadcast ---
+      // Relays comment events (add, update, resolve, delete) to all other clients on the same page.
+      // The actual CRUD is handled by the REST API; this just broadcasts for real-time sync.
+      if (msg.type === 'comment') {
+        const validActions = ['add', 'update', 'resolve', 'reopen', 'delete', 'reply', 'clear'];
+        if (typeof msg.action === 'string' && validActions.includes(msg.action)) {
+          broadcastExcept(entry, ws, {
+            type: 'comment',
+            action: msg.action,
+            comment: msg.comment || null,
+            reply: msg.reply || null,
+            commentId: msg.commentId || null,
+            replyId: msg.replyId || null,
+            userId: user.id,
+            userName: user.name,
+          });
+        }
       }
     });
 

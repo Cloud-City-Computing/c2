@@ -16,7 +16,7 @@ import { getSessionTokenFromCookie } from '../util';
  * @param {function} onRemoteUpdate — Called with new HTML when a remote peer makes a change
  * @returns {{ collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendUpdate: function, sendCursor: function, sendSave: function, sendPublish: function, canWrite: boolean }}
  */
-export default function useCollab(pageId, onRemoteUpdate) {
+export default function useCollab(pageId, onRemoteUpdate, onRemoteComment) {
   const [collabUsers, setCollabUsers] = useState([]);
   const [collabConnected, setCollabConnected] = useState(false);
   const [canWrite, setCanWrite] = useState(true);
@@ -24,11 +24,16 @@ export default function useCollab(pageId, onRemoteUpdate) {
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
+  const onRemoteCommentRef = useRef(onRemoteComment);
 
   // Keep ref up to date so we don't re-create the WebSocket on every render
   useEffect(() => {
     onRemoteUpdateRef.current = onRemoteUpdate;
   }, [onRemoteUpdate]);
+
+  useEffect(() => {
+    onRemoteCommentRef.current = onRemoteComment;
+  }, [onRemoteComment]);
 
   useEffect(() => {
     if (!pageId) return;
@@ -96,6 +101,11 @@ export default function useCollab(pageId, onRemoteUpdate) {
 
           case 'published':
             // Server confirmed publish — could show a version toast
+            break;
+
+          case 'comment':
+            // Remote user performed a comment action
+            onRemoteCommentRef.current?.(msg);
             break;
         }
       };
@@ -167,5 +177,15 @@ export default function useCollab(pageId, onRemoteUpdate) {
     }
   }, []);
 
-  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, canWrite };
+  /**
+   * Broadcast a comment event to peers.
+   * @param {{ action: string, comment?: object, reply?: object, commentId?: number, replyId?: number }} data
+   */
+  const sendCommentEvent = useCallback((data) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'comment', ...data }));
+    }
+  }, []);
+
+  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendCommentEvent, canWrite };
 }

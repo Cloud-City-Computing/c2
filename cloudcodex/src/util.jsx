@@ -131,6 +131,23 @@ export const searchPages = ({ query, page = 1, limit = 12 } = {}) =>
 
 export const fetchPresence = () => apiFetch('GET', '/api/presence');
 
+// --- Comment APIs ---
+
+export const fetchComments = (pageId, status) => {
+  let url = `/api/pages/${pageId}/comments`;
+  if (status) url += `?status=${encodeURIComponent(status)}`;
+  return apiFetch('GET', url);
+};
+export const fetchCommentCount = (pageId) => apiFetch('GET', `/api/pages/${pageId}/comments/count`);
+export const createComment = (pageId, data) => apiFetch('POST', `/api/pages/${pageId}/comments`, data);
+export const updateComment = (commentId, data) => apiFetch('PUT', `/api/comments/${commentId}`, data);
+export const resolveComment = (commentId, status) => apiFetch('POST', `/api/comments/${commentId}/resolve`, { status });
+export const reopenComment = (commentId) => apiFetch('POST', `/api/comments/${commentId}/reopen`);
+export const deleteComment = (commentId) => apiFetch('DELETE', `/api/comments/${commentId}`);
+export const clearAllComments = (pageId) => apiFetch('DELETE', `/api/pages/${pageId}/comments`);
+export const addCommentReply = (commentId, content) => apiFetch('POST', `/api/comments/${commentId}/replies`, { content });
+export const deleteCommentReply = (replyId) => apiFetch('DELETE', `/api/replies/${replyId}`);
+
 // --- Project APIs ---
 
 export const fetchProjects = () => apiFetch('GET', '/api/projects');
