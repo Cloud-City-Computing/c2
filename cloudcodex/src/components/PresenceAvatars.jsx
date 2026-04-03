@@ -26,10 +26,12 @@ export default function PresenceAvatars({ users }) {
         <span
           key={u.id}
           className="presence-avatar"
-          style={{ backgroundColor: u.color }}
+          style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}
           title={u.name}
         >
-          {u.name?.charAt(0)?.toUpperCase() || '?'}
+          {u.avatar_url
+            ? <img src={u.avatar_url} alt={u.name} />
+            : (u.name?.charAt(0)?.toUpperCase() || '?')}
         </span>
       ))}
       {users.length > 3 && (
@@ -39,8 +41,10 @@ export default function PresenceAvatars({ users }) {
         <div className="presence-tooltip">
           {users.map((u) => (
             <div key={u.id} className="presence-tooltip__user">
-              <span className="presence-avatar presence-avatar--sm" style={{ backgroundColor: u.color }}>
-                {u.name?.charAt(0)?.toUpperCase() || '?'}
+              <span className="presence-avatar presence-avatar--sm" style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}>
+                {u.avatar_url
+                  ? <img src={u.avatar_url} alt={u.name} />
+                  : (u.name?.charAt(0)?.toUpperCase() || '?')}
               </span>
               <span>{u.name}</span>
             </div>

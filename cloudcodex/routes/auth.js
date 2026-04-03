@@ -211,7 +211,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   // Fetch by username only — never compare passwords in SQL
   const users = await c2_query(
-    `SELECT id, name, email, password_hash, two_factor_method, totp_secret FROM users WHERE name = ? LIMIT 1`,
+    `SELECT id, name, email, avatar_url, password_hash, two_factor_method, totp_secret FROM users WHERE name = ? LIMIT 1`,
     [username]
   );
 
@@ -329,7 +329,7 @@ router.post('/get-user', asyncHandler(async (req, res) => {
   }
 
   const rows = await c2_query(
-    `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, name, email, avatar_url FROM users WHERE id = ? LIMIT 1`,
     [Number(userId)]
   );
 
@@ -362,7 +362,7 @@ router.get('/users/search', requireAuth, asyncHandler(async (req, res) => {
 
   const pattern = `%${q}%`;
   const users = await c2_query(
-    `SELECT id, name, email FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY name ASC LIMIT 10`,
+    `SELECT id, name, email, avatar_url FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY name ASC LIMIT 10`,
     [pattern, pattern]
   );
 
@@ -646,7 +646,7 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
 
   // Fetch user and create session
   const [user] = await c2_query(
-    `SELECT id, name FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, name, avatar_url FROM users WHERE id = ? LIMIT 1`,
     [tokenRecord.user_id]
   );
 

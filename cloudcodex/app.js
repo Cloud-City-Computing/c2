@@ -12,6 +12,8 @@ import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.js';
 import searchRoutes from './routes/search.js';
@@ -21,7 +23,9 @@ import projectsRouter from './routes/projects.js';
 import organizationsRouter from './routes/organizations.js';
 import teamsRouter from './routes/teams.js';
 import commentsRouter from './routes/comments.js';
+import avatarsRouter from './routes/avatars.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // CORS: restrict API to same-origin requests only
@@ -94,6 +98,12 @@ const searchLimiter = rateLimit({
 });
 app.use('/api/users/search', searchLimiter);
 
+// Serve uploaded avatars as static files
+app.use('/avatars', express.static(path.join(__dirname, 'public', 'avatars'), {
+  maxAge: '7d',
+  immutable: true,
+}));
+
 // Mount route groups
 app.use('/api', authRoutes);
 app.use('/api', searchRoutes);
@@ -103,5 +113,6 @@ app.use('/api', uploadRoutes);
 app.use('/api', organizationsRouter);
 app.use('/api', teamsRouter);
 app.use('/api', commentsRouter);
+app.use('/api', avatarsRouter);
 
 export default app;

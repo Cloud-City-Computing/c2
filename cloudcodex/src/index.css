@@ -456,6 +456,12 @@ body {
 .account-button svg {
   width: 22px; height: 22px;
 }
+.account-button__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
 
 /* =========================
    Page Headers
@@ -3798,5 +3804,62 @@ body {
 .markdown-editor__rendered mark[data-comment-highlight] {
   padding: 0;
   color: inherit;
+}
+
+/* =========================================
+   Avatar Upload Panel
+   ========================================= */
+
+.avatar-upload {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 12px;
+}
+
+.avatar-upload__preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-hover);
+  border: 2px solid var(--border-color);
+}
+
+.avatar-upload__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-upload__placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+.avatar-upload__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.avatar-upload__actions .btn { width: fit-content; }
+
+/* ── Avatar image inside collab/presence avatars ── */
+
+.collab-avatar img,
+.presence-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }

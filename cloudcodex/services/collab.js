@@ -134,7 +134,7 @@ function scheduleCleanup(entry) {
 function encodeAwarenessUpdate(entry) {
   const users = [];
   for (const [, meta] of entry.conns) {
-    users.push({ id: meta.user.id, name: meta.user.name, color: meta.color });
+    users.push({ id: meta.user.id, name: meta.user.name, avatar_url: meta.user.avatar_url || null, color: meta.color });
   }
   return JSON.stringify({ type: 'awareness', users });
 }
@@ -565,7 +565,7 @@ export function getActiveUsers(pageId) {
   if (!entry) return [];
   const users = [];
   for (const [, meta] of entry.conns) {
-    users.push({ id: meta.user.id, name: meta.user.name, color: meta.color });
+    users.push({ id: meta.user.id, name: meta.user.name, avatar_url: meta.user.avatar_url || null, color: meta.color });
   }
   return users;
 }
@@ -579,7 +579,7 @@ export function getAllPresence() {
     if (entry.conns.size === 0) continue;
     const users = [];
     for (const [, meta] of entry.conns) {
-      users.push({ id: meta.user.id, name: meta.user.name, color: meta.color });
+      users.push({ id: meta.user.id, name: meta.user.name, avatar_url: meta.user.avatar_url || null, color: meta.color });
     }
     presence[pageId] = users;
   }

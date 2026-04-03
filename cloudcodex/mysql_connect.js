@@ -108,7 +108,7 @@ export async function validateAndAutoLogin(sessionToken) {
   if (!session || session.expires_at <= new Date()) return null;
 
   const [user] = await c2_query(
-    `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, name, email, avatar_url FROM users WHERE id = ? LIMIT 1`,
     [session.user_id]
   );
 

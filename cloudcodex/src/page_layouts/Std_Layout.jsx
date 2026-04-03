@@ -147,7 +147,11 @@ function TopBar({ user }) {
             onClick={() => showDropdownMenu(<AccountPanel {...user} />)}
             aria-label="Account menu"
           >
-            <AccountIcon />
+            {user.avatar_url ? (
+              <img src={user.avatar_url} alt={user.name} className="account-button__avatar" />
+            ) : (
+              <AccountIcon />
+            )}
           </button>
         )}
       </div>
