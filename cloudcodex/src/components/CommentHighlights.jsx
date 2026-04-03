@@ -11,7 +11,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 const TAG_COLORS = {
   comment:    { r: 74,  g: 158, b: 255 },
@@ -45,7 +45,7 @@ function findTextRanges(rootEl, doc, searchText) {
   // Concatenate all text for searching
   const fullText = textNodes.map(n => n.node.textContent).join('');
   const needle = searchText.toLowerCase();
-  let searchFrom = 0;
+  const searchFrom = 0;
   // Find first occurrence only (avoid flooding for repeated text)
   const idx = fullText.toLowerCase().indexOf(needle, searchFrom);
   if (idx === -1) return ranges;
@@ -83,7 +83,6 @@ function findTextRanges(rootEl, doc, searchText) {
  */
 export function RichTextHighlights({ editorRef, comments, activeCommentId }) {
   const [highlights, setHighlights] = useState([]);
-  const rafRef = useRef(null);
 
   const computeHighlights = useCallback(() => {
     const jodit = editorRef.current;
