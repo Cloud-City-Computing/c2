@@ -82,14 +82,15 @@ export async function serverReq(reqType, url, data, headers = {}) {
 // --- Organization APIs ---
 
 export const fetchOrganizations = () => apiFetch('GET', '/api/organizations');
-export const createOrganization = (name) => apiFetch('POST', '/api/organizations', { name });
+export const createOrganization = (name, { teamName, projectName } = {}) => apiFetch('POST', '/api/organizations', { name, teamName, projectName });
 export const updateOrganization = (id, name) => apiFetch('PUT', `/api/organizations/${id}`, { name });
 export const deleteOrganization = (id) => apiFetch('DELETE', `/api/organizations/${id}`);
 
 // --- Team APIs ---
 
 export const fetchTeams = (orgId) => apiFetch('GET', `/api/organizations/${orgId}/teams`);
-export const createTeam = (orgId, name) => apiFetch('POST', `/api/organizations/${orgId}/teams`, { name });
+export const createTeam = (orgId, name, { projectName } = {}) => apiFetch('POST', `/api/organizations/${orgId}/teams`, { name, projectName });
+export const setupWorkspace = (opts) => apiFetch('POST', '/api/setup', opts);
 export const updateTeam = (id, name) => apiFetch('PUT', `/api/teams/${id}`, { name });
 export const deleteTeam = (id) => apiFetch('DELETE', `/api/teams/${id}`);
 

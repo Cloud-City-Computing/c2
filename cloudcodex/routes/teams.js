@@ -63,7 +63,7 @@ router.post(
       return res.status(400).json({ success: false, message: 'Invalid organization ID' });
     }
 
-    const { name } = req.body;
+    const { name, projectName } = req.body;
     if (!name?.trim()) {
       return res.status(400).json({ success: false, message: 'Team name is required' });
     }
@@ -118,7 +118,19 @@ router.post(
       }
     }
 
-    res.status(201).json({ success: true, teamId: newTeamId });
+    let projectId = null;
+
+    // Optionally create a project alongside the team
+    if (projectName?.trim()) {
+      const projResult = await c2_query(
+        `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
+         VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+        [projectName.trim(), newTeamId, req.user.id, req.user.id, req.user.id]
+      );
+      projectId = projResult.insertId;
+    }
+
+    res.status(201).json({ success: true, teamId: newTeamId, projectId });
   })
 );
 

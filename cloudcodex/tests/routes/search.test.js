@@ -12,8 +12,9 @@ describe('Search Routes', () => {
   describe('GET /api/search', () => {
     it('returns matching results', async () => {
       mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ total: 1 }]);
       c2_query.mockResolvedValueOnce([
-        { id: 1, title: 'Getting Started', created_at: '2026-01-01', author: 'user', project_name: 'Proj', excerpt: 'Welcome...' },
+        { id: 1, title: 'Getting Started', created_at: '2026-01-01', author: 'user', project_name: 'Proj', html_content: '<p>Welcome to getting started</p>', char_count: 30 },
       ]);
 
       const res = await request(app)
@@ -50,6 +51,7 @@ describe('Search Routes', () => {
 
     it('respects limit parameter', async () => {
       mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ total: 0 }]);
       c2_query.mockResolvedValueOnce([]);
 
       const res = await request(app)
@@ -57,21 +59,23 @@ describe('Search Routes', () => {
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
-      // Verify the limit was passed to the query
-      const queryCall = c2_query.mock.calls[0];
+      // The second call is the results query — limit is passed as a param
+      const queryCall = c2_query.mock.calls[1];
       expect(queryCall[1]).toContain('5'); // limit param
     });
 
-    it('caps limit at 10', async () => {
+    it('caps limit at 48', async () => {
       mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ total: 0 }]);
       c2_query.mockResolvedValueOnce([]);
 
       await request(app)
         .get('/api/search?query=test&limit=50')
         .set('Authorization', 'Bearer valid-token');
 
-      const queryCall = c2_query.mock.calls[0];
-      expect(queryCall[1]).toContain('10'); // capped at RESULTS_LIMIT
+      // The second call is the results query — limit is capped at MAX_BROWSE_LIMIT (48)
+      const queryCall = c2_query.mock.calls[1];
+      expect(queryCall[1]).toContain('48');
     });
 
     it('requires authentication', async () => {

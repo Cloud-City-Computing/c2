@@ -6,7 +6,8 @@
  */
 
 import { useState } from 'react';
-import { destroyModal, serverReq } from '../util';
+import { destroyModal, serverReq, showModal } from '../util';
+import WelcomeSetup from './WelcomeSetup';
 
 export default function Login() {
   const [tab, setTab] = useState('login'); // 'login' | 'signup' | 'forgot' | '2fa'
@@ -68,7 +69,8 @@ export default function Login() {
     const res = await serverReq('POST', '/api/create-account', fields);
     if (res.success) {
       document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
-      window.location.reload();
+      destroyModal();
+      showModal(<WelcomeSetup onComplete={() => window.location.reload()} />);
     } else {
       setError(res.message ?? 'Error creating account.');
     }

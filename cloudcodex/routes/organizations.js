@@ -38,17 +38,46 @@ router.get('/organizations', requireAuth, asyncHandler(async (req, res) => {
  * Create a new organization
  */
 router.post('/organizations', requireAuth, asyncHandler(async (req, res) => {
-  const { name } = req.body;
+  const { name, teamName, projectName } = req.body;
   if (!name?.trim()) {
     return res.status(400).json({ success: false, message: 'Organization name is required' });
   }
 
-  const result = await c2_query(
+  const orgResult = await c2_query(
     `INSERT INTO organizations (name, owner) VALUES (?, ?)`,
     [name.trim(), req.user.email]
   );
+  const organizationId = orgResult.insertId;
 
-  res.status(201).json({ success: true, organizationId: result.insertId });
+  let teamId = null;
+  let projectId = null;
+
+  // Optionally create a team alongside the organization
+  if (teamName?.trim()) {
+    const teamResult = await c2_query(
+      `INSERT INTO teams (organization_id, name, created_by) VALUES (?, ?, ?)`,
+      [organizationId, teamName.trim(), req.user.id]
+    );
+    teamId = teamResult.insertId;
+
+    await c2_query(
+      `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
+       VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
+      [teamId, req.user.id]
+    );
+
+    // Optionally create a project alongside the team
+    if (projectName?.trim()) {
+      const projResult = await c2_query(
+        `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
+         VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+        [projectName.trim(), teamId, req.user.id, req.user.id, req.user.id]
+      );
+      projectId = projResult.insertId;
+    }
+  }
+
+  res.status(201).json({ success: true, organizationId, teamId, projectId });
 }));
 
 /**

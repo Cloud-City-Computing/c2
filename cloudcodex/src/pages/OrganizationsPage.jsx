@@ -32,13 +32,20 @@ import { toastError } from '../components/Toast';
 
 function NewOrgModal({ onCreated }) {
   const [name, setName] = useState('');
+  const [teamName, setTeamName] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [addTeam, setAddTeam] = useState(false);
+  const [addProject, setAddProject] = useState(false);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
     if (!name.trim()) { setError('Organization name is required.'); return; }
     try {
-      await createOrganization(name);
+      await createOrganization(name, {
+        teamName: addTeam ? teamName.trim() || undefined : undefined,
+        projectName: addTeam && addProject ? projectName.trim() || undefined : undefined,
+      });
       destroyModal();
       onCreated?.();
     } catch (e) {
@@ -58,6 +65,37 @@ function NewOrgModal({ onCreated }) {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
         />
+
+        <label className="setup-checkbox">
+          <input type="checkbox" checked={addTeam} onChange={(e) => {
+            setAddTeam(e.target.checked);
+            if (!e.target.checked) setAddProject(false);
+          }} />
+          Also create a team
+        </label>
+        {addTeam && (
+          <>
+            <input
+              type="text" value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              placeholder="e.g. Engineering"
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            />
+            <label className="setup-checkbox">
+              <input type="checkbox" checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />
+              Also create a project
+            </label>
+            {addProject && (
+              <input
+                type="text" value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="e.g. Documentation"
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+              />
+            )}
+          </>
+        )}
+
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create</button>
       </div>
     </div>
@@ -100,13 +138,17 @@ function RenameOrgModal({ org, onRenamed }) {
 
 function NewTeamModal({ orgId, onCreated }) {
   const [name, setName] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [addProject, setAddProject] = useState(false);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
     if (!name.trim()) { setError('Team name is required.'); return; }
     try {
-      await createTeam(orgId, name);
+      await createTeam(orgId, name, {
+        projectName: addProject ? projectName.trim() || undefined : undefined,
+      });
       destroyModal();
       onCreated?.();
     } catch (e) {
@@ -124,6 +166,18 @@ function NewTeamModal({ orgId, onCreated }) {
         <input id="team-name" type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
+        <label className="setup-checkbox">
+          <input type="checkbox" checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />
+          Also create a project
+        </label>
+        {addProject && (
+          <input
+            type="text" value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            placeholder="e.g. Documentation"
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+          />
+        )}
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create</button>
       </div>
     </div>
