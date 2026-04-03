@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getSessStorage, apiFetch, getSessionTokenFromCookie,
 } from '../util';
@@ -14,6 +14,132 @@ import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs } from '../userPrefs';
 // ===========================
 //  Account Panels (used by AccountSettings page)
 // ===========================
+
+export function AvatarUploadPanel() {
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const userId = getSessStorage('currentUser')?.id;
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const res = await apiFetch('POST', '/api/get-user', { userId, token: getSessionTokenFromCookie() });
+        if (res.success && res.user.avatar_url) {
+          setAvatarUrl(res.user.avatar_url);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [userId]);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+
+    // Client-side validation
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowed.includes(file.type)) {
+      setStatus({ type: 'error', message: 'Unsupported format. Use JPEG, PNG, WebP, or GIF.' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setStatus({ type: 'error', message: 'Image too large. Maximum size is 5 MB.' });
+      return;
+    }
+
+    setUploading(true);
+    setStatus(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = getSessionTokenFromCookie();
+      const response = await fetch(`/api/users/${userId}/avatar`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Upload failed');
+
+      // Cache-bust: append timestamp
+      setAvatarUrl(data.avatar_url + '?t=' + Date.now());
+      setStatus({ type: 'success', message: 'Profile picture updated.' });
+
+      // Update cached user
+      const cached = getSessStorage('currentUser');
+      if (cached) {
+        cached.avatar_url = data.avatar_url;
+        sessionStorage.setItem('c2-currentUser', JSON.stringify(cached));
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Upload failed.' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemove = async () => {
+    if (!userId) return;
+    setStatus(null);
+    try {
+      await apiFetch('DELETE', `/api/users/${userId}/avatar`);
+      setAvatarUrl(null);
+      setStatus({ type: 'success', message: 'Profile picture removed.' });
+
+      const cached = getSessStorage('currentUser');
+      if (cached) {
+        cached.avatar_url = null;
+        sessionStorage.setItem('c2-currentUser', JSON.stringify(cached));
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: err.body?.message ?? err.message ?? 'Remove failed.' });
+    }
+  };
+
+  const userName = getSessStorage('currentUser')?.name || '';
+
+  return (
+    <div className="settings-panel">
+      <h2 className="panel-title">Profile Picture</h2>
+      {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
+      <div className="avatar-upload">
+        <div className="avatar-upload__preview">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Profile" className="avatar-upload__img" />
+          ) : (
+            <span className="avatar-upload__placeholder">
+              {userName.charAt(0)?.toUpperCase() || '?'}
+            </span>
+          )}
+        </div>
+        <div className="avatar-upload__actions">
+          <label className={`btn btn-primary btn-sm${uploading ? ' disabled' : ''}`}>
+            {uploading ? 'Uploading...' : 'Upload Image'}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={handleUpload}
+              disabled={uploading}
+              hidden
+            />
+          </label>
+          {avatarUrl && (
+            <button className="btn btn-ghost btn-sm" onClick={handleRemove}>
+              Remove
+            </button>
+          )}
+          <p className="text-muted text-sm">JPEG, PNG, WebP, or GIF. Max 5 MB. Resized to 256×256.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function AccountInfoUpdatePanel() {
   const [fields, setFields] = useState({ name: '', email: '' });

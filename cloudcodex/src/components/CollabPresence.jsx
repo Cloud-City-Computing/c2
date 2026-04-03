@@ -29,10 +29,12 @@ export default function CollabPresence({ users, connected }) {
           <span
             key={u.id}
             className="collab-avatar"
-            style={{ backgroundColor: u.color }}
+            style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}
             title={u.name}
           >
-            {u.name?.charAt(0)?.toUpperCase() || '?'}
+            {u.avatar_url
+              ? <img src={u.avatar_url} alt={u.name} />
+              : (u.name?.charAt(0)?.toUpperCase() || '?')}
           </span>
         ))}
       </div>
@@ -40,8 +42,10 @@ export default function CollabPresence({ users, connected }) {
         <div className="collab-user-list">
           {users.map((u) => (
             <div key={u.id} className="collab-user-list__item">
-              <span className="collab-avatar collab-avatar--sm" style={{ backgroundColor: u.color }}>
-                {u.name?.charAt(0)?.toUpperCase() || '?'}
+              <span className="collab-avatar collab-avatar--sm" style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}>
+                {u.avatar_url
+                  ? <img src={u.avatar_url} alt={u.name} />
+                  : (u.name?.charAt(0)?.toUpperCase() || '?')}
               </span>
               <span className="collab-user-list__name">{u.name}</span>
             </div>

@@ -35,6 +35,7 @@ CREATE TABLE users (
   name TEXT NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  avatar_url VARCHAR(512) DEFAULT NULL,
   two_factor_method ENUM('none', 'email', 'totp') DEFAULT 'none',
   totp_secret VARCHAR(64) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
