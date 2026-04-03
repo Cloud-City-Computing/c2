@@ -1,280 +1,369 @@
-# Cloud Codex
+<p align="center">
+  <img src="cloudcodex/src/assets/ccc_brand/ccc_no_txt_transparent.png" alt="Cloud Codex" width="120" />
+</p>
 
-A real-time collaborative documentation platform built with React, Express, and MySQL. Features live multi-user editing with CRDT conflict resolution, organization and team management, inline comments and annotations, version history, profile avatars, full-text search, and two-factor authentication.
+<h1 align="center">Cloud Codex</h1>
+
+<p align="center">
+  A real-time collaborative documentation platform by <a href="https://cloudcitycomputing.com">Cloud City Computing, LLC</a>
+</p>
+
+---
+
+## About
+
+Cloud Codex is a self-hosted documentation platform that lets teams write, organize, and collaborate on documents in real time. Multiple users can edit the same page simultaneously with conflict-free merging, leave inline comments and annotations, manage access through organizations and teams, and track change history with publishable versions — all from a modern browser-based interface.
+
+The project is designed for organizations that want full control over their documentation infrastructure without relying on third-party SaaS platforms. It runs entirely on your own hardware or cloud with a single Docker container for the database and a Node.js application server.
 
 ## Features
 
-### Real-Time Collaboration
-- **Live co-editing** — Yjs CRDT-based document sync across multiple simultaneous users
-- **Remote cursors & selections** — See other users' cursor positions and text selections in real time
-- **Presence indicators** — Colored avatar badges showing who is active on each page
-- **WebSocket protocol** — Auth-first handshake, 60 msg/s rate limiting, 5 MB message cap, per-user connection limits
+### Real-Time Collaborative Editing
+Multiple users can edit the same document simultaneously. Changes are merged automatically using Yjs CRDTs (Conflict-free Replicated Data Types), ensuring every user sees a consistent view without manual conflict resolution. Remote cursors and text selections are displayed in real time so collaborators can see exactly where others are working.
 
-### Document Editing
-- **Rich text editor** — Full WYSIWYG editing powered by Jodit
-- **Markdown editor** — Source editing with live rendered preview
-- **Switchable modes** — Per-user preferred editor mode saved in preferences
+### Presence Awareness
+Live presence indicators show which users are currently viewing or editing each page. Avatar badges appear throughout the interface — in the page tree sidebar, the editor toolbar, and the top navigation bar — giving teams immediate visibility into who is active.
 
-### Comments & Annotations
-- **Inline comments** — Anchor comments to selected text ranges within documents
-- **Tag system** — Categorize as comment, suggestion, question, issue, or note
-- **Status workflow** — Open → resolved / dismissed, with attribution and timestamps
-- **Threaded replies** — Nested conversation threads on each comment
-- **Text highlighting** — Visual overlays for commented text in both editor modes
-- **Real-time sync** — Comment events broadcast via WebSocket to all connected clients
+### Rich Text & Markdown Editing
+Documents can be authored in either a full WYSIWYG rich text editor (powered by Jodit) or a Markdown source editor with a live rendered preview. Users can switch between modes at any time, and their preference is saved across sessions.
+
+### Inline Comments & Annotations
+Team members can highlight text and attach comments anchored to specific passages. Comments support a tag system (comment, suggestion, question, issue, note) and a status workflow (open → resolved / dismissed). Threaded replies enable focused discussions, and all comment activity is broadcast in real time via WebSocket.
 
 ### Organizations & Teams
-- **Organizations** — Top-level grouping with single-owner management
-- **Teams** — Groups within organizations, with role-based membership (member, admin, owner)
-- **Invitations** — Invite users to teams with pending/accepted/declined status tracking
-- **Granular permissions** — Per-member toggles for read, write, create page, create project, manage members, delete versions, and publish
+Content is organized under organizations, each managed by a single owner. Within an organization, teams group users with role-based membership (member, admin, owner). Team invitations track pending, accepted, and declined states. Granular per-member permissions control read, write, page creation, project creation, member management, version deletion, and publishing rights.
 
-### Projects & Pages
-- **Projects** — Containers for pages, optionally tied to a team
-- **Nested page trees** — Hierarchical parent-child page structure with drag-free reordering
-- **Access control lists** — Per-project and per-page read/write JSON ACLs
-- **Breadcrumb navigation** — Full path display for nested pages
+### Projects & Nested Page Trees
+Projects serve as top-level containers for related pages and can optionally be scoped to a specific team. Pages are arranged in a hierarchical parent-child tree structure with breadcrumb navigation. Access control lists (JSON ACLs) can be set at both the project and individual page level.
 
 ### Version History
-- **Version snapshots** — Publish named versions with release notes
-- **Version browser** — Browse, preview, and compare historical versions
-- **Restore** — Roll back to any previous version with HTML re-sanitization
-- **Permission-gated publishing** — Only users with `can_publish` can create snapshots
+Any authorized user can publish a named version snapshot with release notes. The version browser lets users browse, preview, and compare historical snapshots. Previous versions can be restored at any time, with all content re-sanitized on restoration.
 
 ### Document Import & Export
-- **Import** — Upload HTML, Markdown, plain text, PDF, and Word DOCX files as new pages
-- **Export** — Download pages as DOCX documents
-- **Auto-conversion** — All imported formats converted to sanitized HTML
+Pages can be created by uploading HTML, Markdown, plain text, PDF, or Word DOCX files. All imported formats are automatically converted to sanitized HTML. Pages can also be exported as DOCX documents.
 
-### Search
-- **Full-text search** — MySQL FULLTEXT index across page titles and plain-text content
-- **Access-scoped results** — Only returns pages the current user can read
-- **Paginated results** — Configurable limit with snippet previews
+### Full-Text Search
+Search is powered by a MySQL FULLTEXT index across page titles and plain-text content. Results are scoped to pages the current user has permission to access and are returned with paginated snippet previews.
 
-### User Accounts
-- **Profile pictures** — Upload, replace, and remove avatars (resized to 256×256 WebP via Sharp)
-- **Account settings** — Update name, email, and password
-- **Appearance preferences** — Accent color, font size, UI density, sidebar default, preferred editor mode
+### User Profiles & Preferences
+Users can upload a profile picture (automatically resized to 256×256 WebP), update their name, email, and password, and customize appearance preferences including accent color, font size, UI density, sidebar behavior, and default editor mode.
 
-### Authentication & Security
-- **Session-based auth** — 64-character cryptographically random tokens, 7-day expiry
-- **Password reset** — Email-based token flow with session invalidation
-- **Two-factor authentication** — Email OTP codes and TOTP authenticator app support with QR code setup
-- **Parameterized queries** — All SQL uses prepared statements (no concatenation)
-- **HTML sanitization** — DOMPurify on both server and client, `data:` URIs restricted to `<img>` tags
-- **Security headers** — Helmet with Content Security Policy
-- **Rate limiting** — Auth endpoints (20/15min), search (60/15min), WebSocket messages (60/s)
-- **WebSocket hardening** — Origin validation, auth timeout, message size limits, per-user connection caps
-- **CORS policy** — Configurable allowed origin, localhost bypass only in development
+### Authentication & Two-Factor Security
+Authentication uses 64-character cryptographically random session tokens with a 7-day expiry. Password reset is handled via email-based token flow. Two-factor authentication supports both email OTP codes and TOTP authenticator apps (with QR code setup).
 
-### Onboarding
-- **Welcome setup** — Post-signup wizard to create an organization, team, and first project in one step
+### Guided Onboarding
+A post-signup welcome wizard walks new users through creating their first organization, team, and project in a single guided flow.
+
+---
 
 ## Tech Stack
 
-| Layer | Technology |
+### Frontend
+
+| Technology | Purpose |
 | --- | --- |
-| Frontend | React 19, React Router 7, Vite 7 |
-| Rich Text Editor | Jodit React |
-| Markdown | Marked (parse), Turndown (HTML→MD) |
-| Backend | Express 5, ViteExpress |
-| Database | MySQL 8 (Docker) |
-| Real-Time | Yjs CRDTs, WebSocket (ws) |
-| Image Processing | Sharp |
-| Auth | bcrypt (12 rounds), OTPAuth, QRCode |
-| Security | Helmet, express-rate-limit, DOMPurify, CORS |
-| Email | Nodemailer |
-| File Conversion | Mammoth (DOCX→HTML), html-to-docx, pdf-parse |
-| Testing | Vitest, Supertest |
+| [React](https://react.dev) 19 | UI framework |
+| [React Router](https://reactrouter.com) 7 | Client-side routing |
+| [Vite](https://vite.dev) 7 | Build tool and dev server |
+| [Jodit React](https://github.com/nicksrandall/jodit-react) | WYSIWYG rich text editor |
+| [Marked](https://marked.js.org) | Markdown → HTML parsing |
+| [Turndown](https://github.com/mixmark-io/turndown) | HTML → Markdown conversion |
+| [Yjs](https://yjs.dev) | CRDT framework for real-time sync |
 
-## Database Schema
+### Backend
 
-| Table | Purpose |
+| Technology | Purpose |
 | --- | --- |
-| `organizations` | Top-level organizational units |
-| `users` | User accounts with avatar and 2FA settings |
-| `sessions` | Active login sessions with IP/UA tracking |
-| `password_reset_tokens` | Password reset and 2FA setup tokens |
-| `two_factor_codes` | Email-based OTP codes |
-| `teams` | Team groups within organizations |
-| `team_members` | Membership with role and granular permissions |
-| `team_invitations` | Pending team invitations |
-| `permissions` | Global user permission flags |
-| `team_permissions` | Team-level permission defaults |
-| `projects` | Document projects with JSON ACLs |
-| `pages` | Document pages with FULLTEXT index |
-| `versions` | Published version snapshots |
-| `comments` | Inline comments with text anchoring |
-| `comment_replies` | Threaded replies on comments |
+| [Express](https://expressjs.com) 5 | HTTP framework |
+| [ViteExpress](https://github.com/szymmis/vite-express) | Vite + Express integration |
+| [mysql2](https://github.com/sidorares/node-mysql2) | MySQL driver with prepared statements |
+| [ws](https://github.com/websockets/ws) | WebSocket server |
+| [Sharp](https://sharp.pixelplumbing.com) | Image processing (avatar resizing) |
+| [Multer](https://github.com/expressjs/multer) 2 | Multipart file upload handling |
+| [Nodemailer](https://nodemailer.com) | Transactional email delivery |
+| [Mammoth](https://github.com/mwilliamson/mammoth.js) | DOCX → HTML conversion |
+| [html-to-docx](https://github.com/nicksrandall/html-to-docx) | HTML → DOCX export |
+| [pdf-parse](https://github.com/nicksrandall/pdf-parse) | PDF text extraction |
 
-## Requirements
+### Security
 
-- **Linux** or **WSL**
-- **Docker** with Compose
-- **Node.js** 20+
+| Technology | Purpose |
+| --- | --- |
+| [bcrypt](https://github.com/kelektiv/node.bcrypt.js) | Password hashing (12 rounds) |
+| [Helmet](https://helmetjs.github.io) | Security headers & Content Security Policy |
+| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | Request rate limiting |
+| [DOMPurify](https://github.com/cure53/DOMPurify) | HTML sanitization (server & client) |
+| [CORS](https://github.com/expressjs/cors) | Cross-origin request policy |
+| [OTPAuth](https://github.com/nicksrandall/otpauth) | TOTP two-factor authentication |
+| [QRCode](https://github.com/nicksrandall/qrcode) | QR code generation for 2FA setup |
+
+### Infrastructure
+
+| Technology | Purpose |
+| --- | --- |
+| [MySQL](https://www.mysql.com) 8 | Relational database |
+| [Docker Compose](https://docs.docker.com/compose/) | Container orchestration |
+
+### Testing
+
+| Technology | Purpose |
+| --- | --- |
+| [Vitest](https://vitest.dev) 4 | Test runner |
+| [Supertest](https://github.com/ladjs/supertest) 7 | HTTP endpoint testing |
+
+---
+
+## Prerequisites
+
+- **Linux** or **Windows Subsystem for Linux (WSL)**
+- **Docker** with Compose v2
+- **Node.js** 20 or later
 - **npm**
 
-## Quick Start
+> On Debian/Ubuntu, the included startup script can install missing system packages automatically.
 
-### 1. Configure environment
+---
+
+## Getting Started
+
+### 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd c2
+```
+
+### 2. Configure environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set your database credentials and (optionally) SMTP settings.
+Open `.env` and set your database credentials. SMTP settings are optional but required for password reset and email-based two-factor authentication.
 
-### 2. Start the app
+```dotenv
+# ─── Database ────────────────────────────────────────────────
+DB_HOST=localhost
+DB_USER=admin
+DB_PASS=changeme
+DB_NAME=c2
+MYSQL_ROOT_PASSWORD=changeme
+
+# ─── App ─────────────────────────────────────────────────────
+APP_URL=http://localhost:3000
+CORS_ORIGIN=
+
+# ─── SMTP (optional — required for password reset & email 2FA)
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+```
+
+### 3. Start the application
+
+The quickest way to get everything running is the included startup script:
 
 ```bash
 ./start.sh
 ```
 
-This script checks dependencies, starts the MySQL container, installs npm packages, and launches the app at **http://localhost:3000**.
+This script will:
+1. Verify and install system dependencies (Docker, Node.js, npm, mysql-client)
+2. Start the Docker daemon if it is not already running
+3. Launch the MySQL 8 container via Docker Compose
+4. Wait for the database to accept connections
+5. Install npm dependencies
+6. Start the development server on **http://localhost:3000**
 
-> On Debian/Ubuntu, the script can install missing system packages automatically.
+### Manual Setup
 
-### Manual startup
+If you prefer to start services individually:
 
 ```bash
-# Start the database
+# Start the MySQL container
 docker compose up -d
 
-# Install dependencies and start the dev server
+# Install dependencies
 cd cloudcodex
 npm install
+
+# Start the dev server
 npm run dev
 ```
 
-## Environment Variables
+The application will be available at **http://localhost:3000**.
 
-All configuration is read from a `.env` file in the repository root. See [.env.example](.env.example) for the full template.
+### 4. Load sample data (optional)
 
-| Variable | Purpose | Required |
-| --- | --- | --- |
-| `DB_HOST` | MySQL host | No (defaults to `localhost`) |
-| `DB_USER` | MySQL user | **Yes** |
-| `DB_PASS` | MySQL password | **Yes** |
-| `DB_NAME` | MySQL database name | No (defaults to `c2`) |
-| `MYSQL_ROOT_PASSWORD` | MySQL root password (used by Docker) | **Yes** |
-| `APP_URL` | Base URL for email links | No (defaults to `http://localhost:3000`) |
-| `CORS_ORIGIN` | Allowed origin for API requests | No (auto-allows `localhost` in development) |
-| `SMTP_HOST` | SMTP server hostname | For email features |
-| `SMTP_PORT` | SMTP server port | For email features |
-| `SMTP_USER` | SMTP username | For email features |
-| `SMTP_PASS` | SMTP password | For email features |
-| `SMTP_FROM` | Sender address for outbound email | For email features |
-
-> Password reset and email-based 2FA require valid SMTP credentials.
-
-## Available Scripts
-
-From `cloudcodex/`:
-
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Start the development server |
-| `npm run build` | Build the frontend for production |
-| `npm run preview` | Preview the production build |
-| `npm run lint` | Run ESLint |
-| `npm test` | Run the test suite |
-| `npm run test:watch` | Run tests in watch mode |
-| `npm run test:coverage` | Run tests with coverage |
-
-## Seed Data
-
-After the database is running, optionally load sample data:
+A seed script is provided with sample users, an organization, a team, a project, and several pages:
 
 ```bash
 mysql -u $DB_USER -p -h 127.0.0.1 c2 < seed.sql
 ```
 
-This creates a sample organization, three users (Alice, Bob, Carol), a team, a project with pages, and permission assignments.
+---
+
+## Environment Variables
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `DB_HOST` | MySQL server hostname | `localhost` |
+| `DB_USER` | MySQL username | — (required) |
+| `DB_PASS` | MySQL password | — (required) |
+| `DB_NAME` | MySQL database name | `c2` |
+| `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
+| `APP_URL` | Base URL used in outbound email links | `http://localhost:3000` |
+| `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
+| `SMTP_HOST` | SMTP server hostname | — |
+| `SMTP_PORT` | SMTP server port | `587` |
+| `SMTP_USER` | SMTP username | — |
+| `SMTP_PASS` | SMTP password | — |
+| `SMTP_FROM` | Sender address for outbound email | — |
+
+---
+
+## NPM Scripts
+
+Run these from the `cloudcodex/` directory:
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the development server with hot reload |
+| `npm run build` | Build the frontend for production |
+| `npm run preview` | Preview the production build locally |
+| `npm run lint` | Run ESLint across the codebase |
+| `npm test` | Run the full test suite |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run test:coverage` | Run tests with code coverage reporting |
+
+---
+
+## Database Schema
+
+The MySQL database consists of 15 tables:
+
+| Table | Description |
+| --- | --- |
+| `organizations` | Top-level organizational units |
+| `users` | User accounts, credentials, avatar URLs, and 2FA configuration |
+| `sessions` | Active login sessions with IP address and user-agent tracking |
+| `password_reset_tokens` | Time-limited tokens for password reset and 2FA setup flows |
+| `two_factor_codes` | Email-based one-time password codes |
+| `teams` | Team groups within organizations |
+| `team_members` | Membership records with role and granular permission flags |
+| `team_invitations` | Pending, accepted, and declined team invitations |
+| `permissions` | Global user-level permission flags |
+| `team_permissions` | Team-level default permission settings |
+| `projects` | Document projects with JSON-based access control lists |
+| `pages` | Document pages with FULLTEXT-indexed content |
+| `versions` | Published version snapshots with release notes |
+| `comments` | Inline comments anchored to text ranges |
+| `comment_replies` | Threaded replies on comments |
+
+The schema is automatically created on first startup via `init.sql` mounted into the MySQL container's entrypoint directory.
+
+---
+
+## Project Structure
+
+```
+c2/
+├── docker-compose.yaml       # MySQL 8 container definition
+├── init.sql                  # Database schema (runs on first startup)
+├── seed.sql                  # Optional sample data
+├── start.sh                  # One-command startup script
+├── .env.example              # Environment variable template
+│
+└── cloudcodex/               # Application root
+    ├── app.js                # Express app: middleware, CORS, route mounting
+    ├── server.js             # HTTP + WebSocket server startup
+    ├── mysql_connect.js      # Connection pool and session management
+    │
+    ├── middleware/
+    │   ├── auth.js           # Session token validation
+    │   └── permissions.js    # Permission loading and enforcement
+    │
+    ├── routes/
+    │   ├── auth.js           # Authentication, 2FA, password reset
+    │   ├── avatars.js        # Profile picture upload and removal
+    │   ├── comments.js       # Comments and replies CRUD
+    │   ├── documents.js      # Page content, versions, export
+    │   ├── organizations.js  # Organization management
+    │   ├── projects.js       # Projects and page tree operations
+    │   ├── search.js         # Full-text search and presence
+    │   ├── teams.js          # Teams, members, invitations
+    │   ├── upload.js         # Document file import
+    │   └── helpers/          # Shared validators and access control
+    │
+    ├── services/
+    │   ├── collab.js         # WebSocket collaboration server (Yjs)
+    │   └── email.js          # Email delivery via Nodemailer
+    │
+    ├── src/                  # React frontend
+    │   ├── App.jsx           # Router configuration
+    │   ├── main.jsx          # Entry point
+    │   ├── index.css         # Global styles
+    │   ├── components/       # Reusable UI components
+    │   ├── pages/            # Top-level page views
+    │   ├── page_layouts/     # Layout shells (sidebar, topbar, footer)
+    │   └── hooks/            # Custom React hooks
+    │
+    └── tests/                # Test suite
+        ├── setup.js          # Global mocks (DB, email, sharp, fs)
+        ├── helpers.js        # Shared test fixtures
+        ├── middleware/       # Middleware unit tests
+        └── routes/           # API endpoint tests
+```
+
+---
 
 ## Testing
 
-Tests use Vitest and Supertest with mocked database and email layers — no external services required.
+The test suite uses **Vitest** and **Supertest** with fully mocked database and email layers — no running services are required.
 
 ```bash
 cd cloudcodex
 npm test
 ```
 
-**291 tests** across 11 test files covering all API routes and middleware:
+**291 tests** across 11 test files:
 
-| File | Tests | Coverage |
+| Test File | Tests | Scope |
 | --- | --- | --- |
-| `auth.test.js` | 65 | Account creation, login, 2FA, password reset, sessions, permissions |
+| `auth.test.js` | 65 | Account creation, login, 2FA, password reset, sessions |
 | `comments.test.js` | 58 | Comments, replies, tags, status workflow, access control |
 | `documents.test.js` | 44 | Page save, publish, versions, restore, export |
 | `teams.test.js` | 43 | Team CRUD, invitations, member roles, permissions |
-| `projects.test.js` | 28 | Project/page tree, access control, page operations |
-| `organizations.test.js` | 13 | Organization CRUD, ownership |
+| `projects.test.js` | 28 | Project and page tree, access control, page operations |
+| `organizations.test.js` | 13 | Organization CRUD, ownership transfer |
 | `avatars.test.js` | 12 | Upload, replace, remove, validation, authorization |
 | `upload.test.js` | 9 | File import, format conversion, error handling |
-| `search.test.js` | 6 | Full-text search, presence, pagination |
 | `permissions.test.js` | 8 | Permission middleware, role fallbacks |
+| `search.test.js` | 6 | Full-text search, presence, pagination |
 | `auth.test.js` (middleware) | 5 | Token validation, session refresh |
 
-## Project Structure
-
-```
-cloudcodex/
-├── app.js                  # Express app setup, middleware, CORS, routes
-├── server.js               # HTTP server with ViteExpress + WebSocket
-├── mysql_connect.js        # Database pool, session management
-├── middleware/
-│   ├── auth.js             # requireAuth middleware
-│   └── permissions.js      # Permission loading & enforcement
-├── routes/
-│   ├── auth.js             # Auth, 2FA, password reset, user management
-│   ├── avatars.js          # Profile picture upload/delete
-│   ├── comments.js         # Comments & replies CRUD
-│   ├── documents.js        # Page content, versions, export
-│   ├── organizations.js    # Organization CRUD
-│   ├── projects.js         # Projects & page tree
-│   ├── search.js           # Full-text search & presence
-│   ├── teams.js            # Teams, members, invitations
-│   ├── upload.js           # Document file import
-│   └── helpers/
-│       ├── shared.js       # Validators, sanitization, access checks
-│       └── ownership.js    # SQL access control helpers
-├── services/
-│   ├── collab.js           # WebSocket collaboration server (Yjs)
-│   └── email.js            # Nodemailer email service
-├── src/
-│   ├── App.jsx             # React Router configuration
-│   ├── main.jsx            # React entry point
-│   ├── index.css           # Global styles
-│   ├── util.jsx            # API fetch, session, modal utilities
-│   ├── userPrefs.js        # Local preference persistence
-│   ├── components/         # Reusable UI components
-│   ├── pages/              # Top-level page views
-│   ├── page_layouts/       # Layout shells (sidebar, topbar)
-│   └── hooks/              # Custom React hooks
-├── tests/
-│   ├── setup.js            # Global mocks (DB, email, sharp, fs)
-│   ├── helpers.js          # Shared test fixtures
-│   ├── middleware/          # Middleware tests
-│   └── routes/             # Route endpoint tests
-└── public/
-    └── avatars/            # Uploaded profile pictures
-```
+---
 
 ## Security
 
-- Parameterized SQL queries throughout — no string concatenation
-- bcrypt password hashing (12 rounds) with constant-time comparison
-- Cryptographically random 64-character session tokens
-- HTML sanitization via DOMPurify on both server writes and WebSocket broadcasts
-- `data:` URI scheme restricted to `<img>` tags only
-- Helmet security headers with strict Content Security Policy
-- Rate limiting on auth and search endpoints
-- WebSocket origin validation, auth timeouts, message size limits, and per-user connection caps
-- CORS policy with configurable allowlist, localhost bypass gated to non-production
-- Session invalidation on password change and password reset
-- Input length validation on all user-provided strings
+Cloud Codex follows security best practices across all layers:
+
+- **SQL injection prevention** — All database queries use parameterized prepared statements
+- **Password storage** — bcrypt hashing with 12 salt rounds and constant-time comparison
+- **Session management** — Cryptographically random 64-character tokens with 7-day expiry; sessions are invalidated on password change and password reset
+- **HTML sanitization** — DOMPurify applied on server writes, WebSocket broadcasts, and client rendering; `data:` URIs restricted to `<img>` tags
+- **Security headers** — Helmet middleware with Content Security Policy
+- **Rate limiting** — Auth endpoints (20 requests/15 min), search (60/15 min), WebSocket messages (60/s)
+- **WebSocket hardening** — Origin validation, authentication timeout, 5 MB message size limit, per-user connection caps
+- **CORS** — Configurable allowed origin; localhost bypass is disabled in production
+- **Input validation** — Length limits enforced on all user-provided strings
+
+---
 
 ## License
 
-See [LICENSE](LICENSE) for terms.
+Cloud Codex is released under a **source-available license**. You may view, modify, and self-host the software for personal, educational, or internal business use at no cost. Commercial use as a hosted service requires a separate license from [Cloud City Computing, LLC](https://cloudcitycomputing.com).
+
+See [LICENSE](LICENSE) for full terms.
