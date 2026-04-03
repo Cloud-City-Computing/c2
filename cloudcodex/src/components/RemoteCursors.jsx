@@ -85,6 +85,71 @@ function getRichTextPosition(editorRef, charIndex) {
 }
 
 /**
+ * Get bounding rectangles for a selection range (start to end character offset)
+ * inside Jodit's contentEditable, relative to .jodit-workplace.
+ */
+function getRichTextSelectionRects(editorRef, startIndex, endIndex) {
+  const jodit = editorRef.current;
+  if (!jodit?.editor) return [];
+
+  const editorEl = jodit.editor;
+  const workplace = findJoditContentArea(editorRef);
+  if (!workplace) return [];
+
+  const workplaceRect = workplace.getBoundingClientRect();
+  const iframe = workplace.querySelector('iframe.jodit-wysiwyg_iframe');
+
+  const walker = editorEl.ownerDocument.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null);
+  const textNodes = [];
+  let totalLen = 0;
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push({ node, start: totalLen });
+    totalLen += node.textContent.length;
+  }
+
+  if (textNodes.length === 0) return [];
+
+  try {
+    const range = editorEl.ownerDocument.createRange();
+    let setStart = false;
+    for (let i = 0; i < textNodes.length; i++) {
+      const tn = textNodes[i];
+      const nodeEnd = tn.start + tn.node.textContent.length;
+      if (!setStart && nodeEnd > startIndex) {
+        range.setStart(tn.node, Math.min(startIndex - tn.start, tn.node.textContent.length));
+        setStart = true;
+      }
+      if (setStart && nodeEnd >= endIndex) {
+        range.setEnd(tn.node, Math.min(endIndex - tn.start, tn.node.textContent.length));
+        break;
+      }
+    }
+    if (!setStart) return [];
+
+    const clientRects = range.getClientRects();
+    const rects = [];
+    for (let i = 0; i < clientRects.length; i++) {
+      const rect = clientRects[i];
+      if (rect.width === 0 && rect.height === 0) continue;
+      let top, left;
+      if (iframe) {
+        const iframeRect = iframe.getBoundingClientRect();
+        top = iframeRect.top - workplaceRect.top + rect.top;
+        left = iframeRect.left - workplaceRect.left + rect.left;
+      } else {
+        top = rect.top - workplaceRect.top;
+        left = rect.left - workplaceRect.left;
+      }
+      rects.push({ top, left, width: rect.width, height: rect.height });
+    }
+    return rects;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * RemoteCursors for the rich text (Jodit) editor.
  * Positioned over .jodit-workplace (content area only, below toolbar).
  */
@@ -100,8 +165,17 @@ export function RichTextCursors({ remoteCursors, editorRef }) {
       if (!cursor.position) continue;
 
       const pos = getRichTextPosition(editorRef, cursor.position.index || 0);
+      const selectionLength = cursor.position.length || 0;
+      let selectionRects = [];
+      if (selectionLength > 0) {
+        selectionRects = getRichTextSelectionRects(
+          editorRef,
+          cursor.position.index || 0,
+          (cursor.position.index || 0) + selectionLength
+        );
+      }
       if (pos) {
-        newPositions[userId] = { ...cursor, top: pos.top, left: pos.left };
+        newPositions[userId] = { ...cursor, top: pos.top, left: pos.left, selectionRects };
       }
     }
 
@@ -114,15 +188,29 @@ export function RichTextCursors({ remoteCursors, editorRef }) {
   return (
     <div className="remote-cursors">
       {entries.map((cursor) => (
-        <div
-          key={cursor.userId}
-          className="remote-cursor"
-          style={{ top: cursor.top, left: cursor.left }}
-        >
-          <div className="remote-cursor__caret" style={{ backgroundColor: cursor.color }} />
-          <span className="remote-cursor__label" style={{ backgroundColor: cursor.color }}>
-            {cursor.userName}
-          </span>
+        <div key={cursor.userId}>
+          {cursor.selectionRects?.length > 0 && cursor.selectionRects.map((rect, i) => (
+            <div
+              key={`${cursor.userId}-sel-${i}`}
+              className="remote-selection"
+              style={{
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+                backgroundColor: cursor.color,
+              }}
+            />
+          ))}
+          <div
+            className="remote-cursor"
+            style={{ top: cursor.top, left: cursor.left }}
+          >
+            <div className="remote-cursor__caret" style={{ backgroundColor: cursor.color }} />
+            <span className="remote-cursor__label" style={{ backgroundColor: cursor.color }}>
+              {cursor.userName}
+            </span>
+          </div>
         </div>
       ))}
     </div>
@@ -181,6 +269,65 @@ function getTextareaPosition(textarea, charIndex) {
 }
 
 /**
+ * Get bounding rectangles for a selection range in a textarea,
+ * relative to the textarea element, using a hidden mirror div.
+ */
+function getTextareaSelectionRects(textarea, startIndex, endIndex) {
+  if (!textarea || startIndex >= endIndex) return [];
+
+  const style = getComputedStyle(textarea);
+  const mirror = document.createElement('div');
+  const ms = mirror.style;
+  ms.position = 'absolute';
+  ms.top = '-9999px';
+  ms.left = '-9999px';
+  ms.visibility = 'hidden';
+  ms.whiteSpace = 'pre-wrap';
+  ms.wordWrap = 'break-word';
+  ms.overflow = 'hidden';
+  ms.width = `${textarea.clientWidth}px`;
+  ms.font = style.font;
+  ms.fontSize = style.fontSize;
+  ms.fontFamily = style.fontFamily;
+  ms.lineHeight = style.lineHeight;
+  ms.letterSpacing = style.letterSpacing;
+  ms.padding = style.padding;
+  ms.border = style.border;
+  ms.boxSizing = style.boxSizing;
+  ms.tabSize = style.tabSize;
+
+  const before = document.createTextNode(textarea.value.substring(0, startIndex));
+  const selected = document.createElement('span');
+  selected.textContent = textarea.value.substring(startIndex, endIndex);
+  const after = document.createTextNode(textarea.value.substring(endIndex));
+
+  mirror.appendChild(before);
+  mirror.appendChild(selected);
+  mirror.appendChild(after);
+  document.body.appendChild(mirror);
+
+  const mirrorRect = mirror.getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(selected);
+  const clientRects = range.getClientRects();
+  const rects = [];
+
+  for (let i = 0; i < clientRects.length; i++) {
+    const r = clientRects[i];
+    if (r.width === 0 && r.height === 0) continue;
+    rects.push({
+      top: r.top - mirrorRect.top - textarea.scrollTop,
+      left: r.left - mirrorRect.left,
+      width: r.width,
+      height: r.height,
+    });
+  }
+
+  document.body.removeChild(mirror);
+  return rects;
+}
+
+/**
  * RemoteCursors for the markdown textarea editor.
  * Positioned absolutely within the textarea wrapper.
  */
@@ -200,8 +347,17 @@ export function MarkdownCursors({ remoteCursors, textareaRef }) {
       if (!cursor.position) continue;
 
       const pos = getTextareaPosition(textarea, cursor.position.index || 0);
+      const selectionLength = cursor.position.length || 0;
+      let selectionRects = [];
+      if (selectionLength > 0) {
+        selectionRects = getTextareaSelectionRects(
+          textarea,
+          cursor.position.index || 0,
+          (cursor.position.index || 0) + selectionLength
+        );
+      }
       if (pos && pos.top >= -20 && pos.top < visibleHeight + 20) {
-        newPositions[userId] = { ...cursor, top: pos.top, left: pos.left };
+        newPositions[userId] = { ...cursor, top: pos.top, left: pos.left, selectionRects };
       }
     }
 
@@ -214,15 +370,29 @@ export function MarkdownCursors({ remoteCursors, textareaRef }) {
   return (
     <div className="remote-cursors remote-cursors--markdown">
       {entries.map((cursor) => (
-        <div
-          key={cursor.userId}
-          className="remote-cursor remote-cursor--markdown"
-          style={{ top: cursor.top, left: cursor.left }}
-        >
-          <div className="remote-cursor__caret" style={{ backgroundColor: cursor.color }} />
-          <span className="remote-cursor__label" style={{ backgroundColor: cursor.color }}>
-            {cursor.userName}
-          </span>
+        <div key={cursor.userId}>
+          {cursor.selectionRects?.length > 0 && cursor.selectionRects.map((rect, i) => (
+            <div
+              key={`${cursor.userId}-sel-${i}`}
+              className="remote-selection"
+              style={{
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+                backgroundColor: cursor.color,
+              }}
+            />
+          ))}
+          <div
+            className="remote-cursor remote-cursor--markdown"
+            style={{ top: cursor.top, left: cursor.left }}
+          >
+            <div className="remote-cursor__caret" style={{ backgroundColor: cursor.color }} />
+            <span className="remote-cursor__label" style={{ backgroundColor: cursor.color }}>
+              {cursor.userName}
+            </span>
+          </div>
         </div>
       ))}
     </div>
