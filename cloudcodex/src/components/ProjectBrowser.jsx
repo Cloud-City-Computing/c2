@@ -16,6 +16,8 @@ import {
 } from '../util';
 import ConfirmDialog from './ConfirmDialog';
 import { toastError } from './Toast';
+import usePresence from '../hooks/usePresence';
+import PresenceAvatars from './PresenceAvatars';
 
 // --- New Project Form ---
 
@@ -327,11 +329,12 @@ function UploadDocumentModal({ projectId, parentId, onUploaded }) {
 
 // --- Page Tree ---
 
-function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted }) {
+function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted, getPageUsers }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [showExport, setShowExport] = useState(false);
   const exportRef = useRef(null);
   const navigate = useNavigate();
+  const activeUsers = getPageUsers(page.id);
 
   useEffect(() => {
     if (!showExport) return undefined;
@@ -393,6 +396,7 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
         <span className="page-tree-title" onClick={() => navigate(`/editor/${page.id}`)}>
           {page.title}
         </span>
+        <PresenceAvatars users={activeUsers} />
         <div className="page-tree-actions">
           <div className="export-dropdown" ref={exportRef}>
             <button className="page-tree-export" onClick={() => setShowExport(v => !v)} title="Export page">⤓</button>
@@ -414,7 +418,7 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
         <ul className="page-tree-children">
           {page.children.map(child => (
             <PageTreeItem key={child.id} page={child} projectId={projectId}
-              depth={depth + 1} onPageCreated={onPageCreated} onPageDeleted={onPageDeleted} />
+              depth={depth + 1} onPageCreated={onPageCreated} onPageDeleted={onPageDeleted} getPageUsers={getPageUsers} />
           ))}
         </ul>
       )}
@@ -422,7 +426,7 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
   );
 }
 
-function PageTree({ projectId, onPageCreated }) {
+function PageTree({ projectId, onPageCreated, getPageUsers }) {
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -475,7 +479,7 @@ function PageTree({ projectId, onPageCreated }) {
           <ul className="page-tree-list">
             {pages.map(page => (
               <PageTreeItem key={page.id} page={page} projectId={projectId}
-                onPageCreated={handlePageCreated} onPageDeleted={loadPages} />
+                onPageCreated={handlePageCreated} onPageDeleted={loadPages} getPageUsers={getPageUsers} />
             ))}
           </ul>
         )
@@ -495,6 +499,7 @@ export default function ProjectBrowser() {
   const [error, setError] = useState(null);
   const [accessNotice, setAccessNotice] = useState(null);
   const hasAutoExpanded = useRef(false);
+  const { getPageUsers } = usePresence();
 
   const teamFilter = searchParams.get('team');
 
@@ -643,7 +648,7 @@ export default function ProjectBrowser() {
 
             {expandedProject === project.id && (
               <div className="card__expanded-content project-card__expanded">
-                <PageTree key={project.id} projectId={project.id} />
+                <PageTree key={project.id} projectId={project.id} getPageUsers={getPageUsers} />
               </div>
             )}
           </div>

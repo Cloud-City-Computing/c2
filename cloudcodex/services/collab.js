@@ -541,3 +541,19 @@ export function getActiveUsers(pageId) {
   }
   return users;
 }
+
+/**
+ * Returns a map of all pages with active users: { [pageId]: [{ id, name, color }] }
+ */
+export function getAllPresence() {
+  const presence = {};
+  for (const [pageId, entry] of docs) {
+    if (entry.conns.size === 0) continue;
+    const users = [];
+    for (const [, meta] of entry.conns) {
+      users.push({ id: meta.user.id, name: meta.user.name, color: meta.color });
+    }
+    presence[pageId] = users;
+  }
+  return presence;
+}

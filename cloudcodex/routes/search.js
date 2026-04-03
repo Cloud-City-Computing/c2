@@ -10,6 +10,7 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams } from './helpers/ownership.js';
 import { asyncHandler, errorHandler } from './helpers/shared.js';
+import { getAllPresence } from '../services/collab.js';
 
 const router = express.Router();
 
@@ -220,6 +221,15 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
     totalPages: Math.ceil(total / limit),
   });
 }));
+
+/**
+ * GET /api/presence
+ * Returns a map of page IDs to active users currently editing.
+ * { presence: { [pageId]: [{ id, name, color }] } }
+ */
+router.get('/presence', requireAuth, (req, res) => {
+  res.json({ success: true, presence: getAllPresence() });
+});
 
 router.use(errorHandler);
 

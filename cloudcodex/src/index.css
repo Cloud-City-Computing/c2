@@ -3127,4 +3127,94 @@ body {
   accent-color: var(--accent, #4a9eff);
   cursor: pointer;
 }
+
+/* ── Presence Avatars (compact indicator) ──────────────────── */
+
+.presence-avatars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.presence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #50c878;
+  box-shadow: 0 0 5px rgba(80, 200, 120, 0.5);
+  flex-shrink: 0;
+}
+
+.presence-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+  border: 2px solid var(--bg-primary, #1a1a2e);
+  margin-left: -5px;
+  flex-shrink: 0;
+}
+
+.presence-avatar:first-of-type {
+  margin-left: 0;
+}
+
+.presence-avatar--sm {
+  width: 18px;
+  height: 18px;
+  font-size: 0.6rem;
+  border-width: 1px;
+  margin-left: 0;
+}
+
+.presence-overflow {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #888);
+  margin-left: 2px;
+}
+
+.presence-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-secondary, #2a2a3e);
+  border: 1px solid var(--border-color, #3a3a4e);
+  border-radius: 8px;
+  padding: 6px 0;
+  min-width: 150px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.presence-tooltip__user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  color: var(--text-primary, #e0e0e0);
+  white-space: nowrap;
+}
+
+/* Indicator layout inside explore cards */
+.explore-card__indicators {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Presence in page tree rows — inline with title */
+.page-tree-row .presence-avatars {
+  margin-left: 4px;
+  margin-right: auto;
+}
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }
