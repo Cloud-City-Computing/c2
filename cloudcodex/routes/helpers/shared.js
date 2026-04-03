@@ -36,7 +36,9 @@ export const asyncHandler = (fn) => (req, res, next) =>
 export function sanitizeHtml(html) {
   if (!html) return '';
   return DOMPurify.sanitize(html, {
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+    // Allow data: URIs only on img tags (for pasted/embedded images)
+    ADD_DATA_URI_TAGS: ['img'],
   });
 }
 

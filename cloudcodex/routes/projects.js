@@ -101,6 +101,12 @@ router.post('/projects', requireAuth, requirePermission('create_project'), async
   if (!name?.trim()) {
     return res.status(400).json({ success: false, message: 'Project name is required' });
   }
+  if (name.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Project name must be 255 characters or less' });
+  }
+  if (team_id !== undefined && team_id !== null && !isValidId(team_id)) {
+    return res.status(400).json({ success: false, message: 'Invalid team_id' });
+  }
 
   const result = await c2_query(
     `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
@@ -124,6 +130,9 @@ router.put('/projects/:id', requireAuth, asyncHandler(async (req, res) => {
   const { name } = req.body;
   if (!name?.trim()) {
     return res.status(400).json({ success: false, message: 'Project name is required' });
+  }
+  if (name.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Project name must be 255 characters or less' });
   }
 
   const [project] = await c2_query(

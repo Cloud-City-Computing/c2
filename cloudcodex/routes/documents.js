@@ -178,6 +178,9 @@ router.put('/document/:pageId/title', requireAuth, asyncHandler(async (req, res)
   if (!title?.trim()) {
     return res.status(400).json({ success: false, message: 'Title is required' });
   }
+  if (title.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Title must be 255 characters or fewer' });
+  }
 
   const [page] = await c2_query(
     `SELECT pg.id
@@ -308,16 +311,17 @@ router.post('/document/:pageId/versions/:versionId/restore', requireAuth, asyncH
 
   // Bump version and restore content
   const newVersion = currentPage.version + 1;
+  const restoredHtml = sanitizeHtml(targetVersion.html_content);
   await c2_query(
     `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-    [targetVersion.html_content, newVersion, req.user.id, Number(pageId)]
+    [restoredHtml, newVersion, req.user.id, Number(pageId)]
   );
 
   // Snapshot the restored content into version history
   await c2_query(
     `INSERT INTO versions (page_id, version, html_content, created_by)
      VALUES (?, ?, ?, ?)`,
-    [currentPage.id, newVersion, targetVersion.html_content, req.user.id]
+    [currentPage.id, newVersion, restoredHtml, req.user.id]
   );
 
   res.json({ success: true, version: newVersion });

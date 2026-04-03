@@ -225,11 +225,37 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
 /**
  * GET /api/presence
  * Returns a map of page IDs to active users currently editing.
+ * Filtered to only include pages the requesting user has read access to.
  * { presence: { [pageId]: [{ id, name, color }] } }
  */
-router.get('/presence', requireAuth, (req, res) => {
-  res.json({ success: true, presence: getAllPresence() });
-});
+router.get('/presence', requireAuth, asyncHandler(async (req, res) => {
+  const allPresence = getAllPresence();
+  const pageIds = Object.keys(allPresence).map(Number).filter(id => id > 0);
+  if (pageIds.length === 0) {
+    return res.json({ success: true, presence: {} });
+  }
+
+  // Check which of these pages the user can read
+  const placeholders = pageIds.map(() => '?').join(',');
+  const accessiblePages = await c2_query(
+    `SELECT pg.id
+       FROM pages pg
+ INNER JOIN projects p ON pg.project_id = p.id
+      WHERE pg.id IN (${placeholders})
+        AND ${readAccessWhere('p')}`,
+    [...pageIds, ...readAccessParams(req.user)]
+  );
+  const accessibleIds = new Set(accessiblePages.map(r => r.id));
+
+  const filtered = {};
+  for (const [pageId, users] of Object.entries(allPresence)) {
+    if (accessibleIds.has(Number(pageId))) {
+      filtered[pageId] = users;
+    }
+  }
+
+  res.json({ success: true, presence: filtered });
+}));
 
 router.use(errorHandler);
 
