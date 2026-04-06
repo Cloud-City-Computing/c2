@@ -19,6 +19,7 @@ describe('Auth Routes', () => {
 
   describe('POST /api/create-account', () => {
     it('creates account with valid input', async () => {
+      c2_query.mockResolvedValueOnce([]);             // SELECT duplicate username check
       c2_query.mockResolvedValueOnce([]);             // SELECT duplicate email check
       c2_query.mockResolvedValueOnce({ insertId: 10 }); // INSERT user
       generateSessionToken.mockResolvedValueOnce('new-token');
@@ -26,7 +27,7 @@ describe('Auth Routes', () => {
 
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'newuser', password: 'password123', email: 'new@test.com' });
+        .send({ username: 'newuser', password: 'Password1!', email: 'new@test.com' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
@@ -43,30 +44,51 @@ describe('Auth Routes', () => {
       expect(res.body.success).toBe(false);
     });
 
+    it('rejects invalid username format', async () => {
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'bad user!', password: 'Password1!', email: 'ok@test.com' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/username/i);
+    });
+
     it('rejects invalid email', async () => {
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'user', password: 'password123', email: 'not-an-email' });
+        .send({ username: 'user123', password: 'Password1!', email: 'not-an-email' });
 
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/email/i);
     });
 
-    it('rejects short password', async () => {
+    it('rejects weak password', async () => {
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'user', password: 'short', email: 'ok@test.com' });
+        .send({ username: 'user123', password: 'short', email: 'ok@test.com' });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/8 characters/);
+      expect(res.body.message).toMatch(/password/i);
+    });
+
+    it('rejects duplicate username', async () => {
+      c2_query.mockResolvedValueOnce([{ id: 3 }]); // SELECT duplicate username check — found existing
+
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'newuser', password: 'Password1!', email: 'new@test.com' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/username.*taken/i);
     });
 
     it('rejects duplicate email', async () => {
+      c2_query.mockResolvedValueOnce([]);           // SELECT duplicate username check — not found
       c2_query.mockResolvedValueOnce([{ id: 5 }]); // SELECT duplicate email check — found existing
 
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'newuser', password: 'password123', email: 'existing@test.com' });
+        .send({ username: 'newuser', password: 'Password1!', email: 'existing@test.com' });
 
       expect(res.status).toBe(409);
       expect(res.body.success).toBe(false);
@@ -219,7 +241,7 @@ describe('Auth Routes', () => {
       expect(res.body.message).toMatch(/no fields/i);
     });
 
-    it('rejects short password on update', async () => {
+    it('rejects weak password on update', async () => {
       validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
 
       const res = await request(app)
@@ -227,7 +249,7 @@ describe('Auth Routes', () => {
         .send({ token: 'tok', userId: 1, password: 'short' });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/8 characters/);
+      expect(res.body.message).toMatch(/password/i);
     });
 
     it('rejects invalid email on update', async () => {
