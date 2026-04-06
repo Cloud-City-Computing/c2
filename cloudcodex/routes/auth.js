@@ -22,6 +22,21 @@ const BCRYPT_ROUNDS = 12;
 // --- Helpers ---
 
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const isValidUsername = (name) => /^[a-zA-Z0-9_]{3,32}$/.test(name);
+
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_RULES = [
+  { test: (p) => p.length >= PASSWORD_MIN_LENGTH, msg: 'At least 8 characters' },
+  { test: (p) => /[A-Z]/.test(p), msg: 'At least one uppercase letter' },
+  { test: (p) => /[a-z]/.test(p), msg: 'At least one lowercase letter' },
+  { test: (p) => /[0-9]/.test(p), msg: 'At least one number' },
+  { test: (p) => /[^A-Za-z0-9]/.test(p), msg: 'At least one special character' },
+];
+
+function validatePassword(password) {
+  const failures = PASSWORD_RULES.filter(r => !r.test(password)).map(r => r.msg);
+  return failures;
+}
 
 /**
  * Generates a cryptographically random 6-digit numeric code for 2FA email verification.
@@ -42,8 +57,15 @@ router.post('/create-account', asyncHandler(async (req, res) => {
   if (!username || !password || !email) {
     return res.status(400).json({
       success: false,
-      // Fixed: original message omitted 'email' despite validating all three fields
       message: 'Username, password, and email are required'
+    });
+  }
+
+  // Username: alphanumeric + underscores, 3-32 chars, no spaces
+  if (!isValidUsername(username)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username must be 3-32 characters and contain only letters, numbers, and underscores (no spaces)'
     });
   }
 
@@ -51,8 +73,23 @@ router.post('/create-account', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid email address' });
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  // Validate password against all rules
+  const passwordFailures = validatePassword(password);
+  if (passwordFailures.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password does not meet requirements',
+      failures: passwordFailures
+    });
+  }
+
+  // Check for duplicate username (case-insensitive)
+  const [existingUsername] = await c2_query(
+    `SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+    [username]
+  );
+  if (existingUsername) {
+    return res.status(409).json({ success: false, message: 'This username is already taken' });
   }
 
   // Check for duplicate email before inserting
@@ -83,6 +120,25 @@ router.post('/create-account', asyncHandler(async (req, res) => {
   );
 
   res.status(201).json({ success: true, token: sessionToken, user });
+}));
+
+/**
+ * GET /api/check-username/:username
+ * Returns whether a username is available and valid.
+ */
+router.get('/check-username/:username', asyncHandler(async (req, res) => {
+  const { username } = req.params;
+
+  if (!isValidUsername(username)) {
+    return res.json({ available: false, message: 'Username must be 3-32 characters: letters, numbers, and underscores only' });
+  }
+
+  const [existing] = await c2_query(
+    `SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+    [username]
+  );
+
+  res.json({ available: !existing, message: existing ? 'Username is already taken' : 'Username is available' });
 }));
 
 /**
@@ -161,7 +217,18 @@ router.post('/update-account', asyncHandler(async (req, res) => {
   const fields = [];
   const params = [];
 
-  if (name !== undefined)  { fields.push('name = ?');          params.push(name); }
+  if (name !== undefined) {
+    if (!isValidUsername(name)) {
+      return res.status(400).json({ success: false, message: 'Username must be 3-32 characters: letters, numbers, and underscores only' });
+    }
+    // Check uniqueness if changing name
+    const [dup] = await c2_query(`SELECT id FROM users WHERE LOWER(name) = LOWER(?) AND id != ? LIMIT 1`, [name, Number(userId)]);
+    if (dup) {
+      return res.status(409).json({ success: false, message: 'This username is already taken' });
+    }
+    fields.push('name = ?');
+    params.push(name);
+  }
   if (email !== undefined) {
     if (!isValidEmail(email)) {
       return res.status(400).json({ success: false, message: 'Invalid email address' });
@@ -170,8 +237,9 @@ router.post('/update-account', asyncHandler(async (req, res) => {
     params.push(email);
   }
   if (password !== undefined) {
-    if (password.length < 8) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+    const pwFailures = validatePassword(password);
+    if (pwFailures.length > 0) {
+      return res.status(400).json({ success: false, message: 'Password does not meet requirements', failures: pwFailures });
     }
     // Hash updated password before storing
     fields.push('password_hash = ?');
