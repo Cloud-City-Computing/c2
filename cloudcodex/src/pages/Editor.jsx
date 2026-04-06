@@ -293,7 +293,7 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString();
 }
 
-function VersionHistory({ pageId, onRestore }) {
+function VersionHistory({ pageId, onRestore, versionKey }) {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState(null);
@@ -305,7 +305,7 @@ function VersionHistory({ pageId, onRestore }) {
       setVersions(res.versions || []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [pageId]);
+  }, [pageId, versionKey]);
 
   useEffect(() => { loadVersions(); }, [loadVersions]);
 
@@ -406,6 +406,7 @@ export default function Editor() {
   const exportRef = useRef(null);
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
   const remoteUpdateRef = useRef(false);
+  const [versionKey, setVersionKey] = useState(0);
 
   // --- Comment state ---
   const [comments, setComments] = useState([]);
@@ -455,7 +456,9 @@ export default function Editor() {
       setContent(html);
     }, []),
     // onRemoteComment — called when a peer performs a comment action
-    handleRemoteComment
+    handleRemoteComment,
+    // onPublished — called when the server confirms a version was published
+    useCallback(() => { setVersionKey(k => k + 1); }, [])
   );
 
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
@@ -684,6 +687,7 @@ export default function Editor() {
       if (result?.version) {
         setDocumentData(d => d ? { ...d, version: result.version } : d);
       }
+      setVersionKey(k => k + 1);
       setStatus({ type: 'success', message: `Version ${result?.version ?? ''} published.` });
     } catch (e) {
       setStatus({ type: 'error', message: `Error publishing: ${e.body?.message ?? e.message}` });
@@ -830,7 +834,7 @@ export default function Editor() {
           <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>
         </div>
 
-        {showVersions && <VersionHistory pageId={pageId} onRestore={loadDocument} />}
+        {showVersions && <VersionHistory pageId={pageId} onRestore={loadDocument} versionKey={versionKey} />}
 
         <div className="editor-with-comments">
           <div className="editor-container">

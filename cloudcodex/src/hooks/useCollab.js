@@ -16,7 +16,7 @@ import { getSessionTokenFromCookie } from '../util';
  * @param {function} onRemoteUpdate — Called with new HTML when a remote peer makes a change
  * @returns {{ collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendUpdate: function, sendCursor: function, sendSave: function, sendPublish: function, canWrite: boolean }}
  */
-export default function useCollab(pageId, onRemoteUpdate, onRemoteComment) {
+export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPublished) {
   const [collabUsers, setCollabUsers] = useState([]);
   const [collabConnected, setCollabConnected] = useState(false);
   const [canWrite, setCanWrite] = useState(true);
@@ -25,6 +25,7 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment) {
   const reconnectTimer = useRef(null);
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
   const onRemoteCommentRef = useRef(onRemoteComment);
+  const onPublishedRef = useRef(onPublished);
 
   // Keep ref up to date so we don't re-create the WebSocket on every render
   useEffect(() => {
@@ -34,6 +35,10 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment) {
   useEffect(() => {
     onRemoteCommentRef.current = onRemoteComment;
   }, [onRemoteComment]);
+
+  useEffect(() => {
+    onPublishedRef.current = onPublished;
+  }, [onPublished]);
 
   useEffect(() => {
     if (!pageId) return;
@@ -100,7 +105,7 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment) {
             break;
 
           case 'published':
-            // Server confirmed publish — could show a version toast
+            onPublishedRef.current?.(msg);
             break;
 
           case 'comment':
