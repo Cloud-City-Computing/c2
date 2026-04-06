@@ -197,11 +197,29 @@ The application will be available at **http://localhost:3000**.
 
 ### 4. Load sample data (optional)
 
-A seed script is provided with sample users, an organization, a team, a project, and several pages:
+A seed script populates the database with an organization, three teams, eight projects, and ~60 pages of realistic content for testing search, pagination, and collaboration features.
 
 ```bash
 mysql -u $DB_USER -p -h 127.0.0.1 c2 < seed.sql
 ```
+
+All seed accounts use the password **`password`**.
+
+| Account | Email | Role / Notes |
+| --- | --- | --- |
+| `alice` | alice@acme.com | Organization owner. Engineering team owner. Full permissions (create teams, projects, pages). |
+| `bob` | bob@acme.com | Engineering and Operations member. Can create projects and pages. |
+| `carol` | carol@acme.com | Design team owner. Can create projects and pages. |
+| `dave` | dave@acme.com | Operations team owner. Can create projects and pages. |
+| `eve` | eve@acme.com | Engineering member and Data Pipeline lead. Can create pages only. |
+
+**Teams and projects:**
+
+| Team | Owner | Projects |
+| --- | --- | --- |
+| Engineering | alice | Platform API, Cloud Infrastructure, Mobile App, Data Pipeline |
+| Design | carol | Brand Guidelines, Website Redesign |
+| Operations | dave | Incident Runbooks, Onboarding |
 
 ---
 
@@ -272,7 +290,7 @@ The schema is automatically created on first startup via `init.sql` mounted into
 c2/
 ├── docker-compose.yaml       # MySQL 8 container definition
 ├── init.sql                  # Database schema (runs on first startup)
-├── seed.sql                  # Optional sample data
+├── seed.sql                  # Optional sample data (~60 pages, 5 users)
 ├── start.sh                  # One-command startup script
 ├── .env.example              # Environment variable template
 │
