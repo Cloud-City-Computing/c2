@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
+    "start": "NODE_ENV=production node server.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

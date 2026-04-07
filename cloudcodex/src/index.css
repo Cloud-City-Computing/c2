@@ -1764,6 +1764,19 @@ body {
   gap: 4px;
 }
 
+.auto-save-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding: 0 4px;
+  animation: autoSaveFadeIn 0.3s ease;
+}
+
+@keyframes autoSaveFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .toolbar-divider {
   width: 1px;
   height: 20px;

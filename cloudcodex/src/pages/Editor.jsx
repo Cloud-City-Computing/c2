@@ -399,6 +399,7 @@ export default function Editor() {
   const [documentData, setDocumentData] = useState(null);
   const [status, setStatus] = useState(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
@@ -407,6 +408,11 @@ export default function Editor() {
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
   const remoteUpdateRef = useRef(false);
   const [versionKey, setVersionKey] = useState(0);
+
+  // --- Auto-save state ---
+  const dirtyRef = useRef(false);          // true when local edits haven't been saved yet
+  const lastSavedRef = useRef(null);       // timestamp of last successful save
+  const [autoSaveLabel, setAutoSaveLabel] = useState(''); // shown next to save button
 
   // --- Comment state ---
   const [comments, setComments] = useState([]);
@@ -484,6 +490,7 @@ export default function Editor() {
       remoteUpdateRef.current = false;
       return;
     }
+    dirtyRef.current = true;
     if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
     sendTimerRef.current = setTimeout(() => sendUpdate(html), 150);
   }, [sendUpdate]);
@@ -638,17 +645,21 @@ export default function Editor() {
     );
   }, [pageId, documentData?.title]);
 
-  const handleSave = useCallback(async () => {
-    if (saving) return;
+  const handleSave = useCallback(async (silent = false) => {
+    if (savingRef.current) return;
     const latestContent = contentRef.current;
-    setStatus(null);
+    if (!silent) setStatus(null);
+    savingRef.current = true;
     setSaving(true);
 
     // If connected via collab, use the WebSocket save path
     if (collabConnected) {
       sendSave();
       setContent(latestContent);
-      setStatus({ type: 'success', message: 'Document saved.' });
+      dirtyRef.current = false;
+      lastSavedRef.current = Date.now();
+      if (!silent) setStatus({ type: 'success', message: 'Document saved.' });
+      savingRef.current = false;
       setSaving(false);
       return;
     }
@@ -657,12 +668,43 @@ export default function Editor() {
     try {
       await saveDocument(Number(pageId), latestContent);
       setContent(latestContent);
-      setStatus({ type: 'success', message: 'Document saved.' });
+      dirtyRef.current = false;
+      lastSavedRef.current = Date.now();
+      if (!silent) setStatus({ type: 'success', message: 'Document saved.' });
     } catch (e) {
       setStatus({ type: 'error', message: `Error saving: ${e.body?.message ?? e.message}` });
     }
+    savingRef.current = false;
     setSaving(false);
-  }, [pageId, saving, collabConnected, sendSave]);
+  }, [pageId, collabConnected, sendSave]);
+
+  // --- Auto-save every 30 seconds when there are unsaved changes ---
+  const AUTO_SAVE_INTERVAL = 30_000;
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => { handleSaveRef.current = handleSave; }, [handleSave]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (dirtyRef.current) {
+        handleSaveRef.current(true);
+        setAutoSaveLabel('Auto-saved');
+        setTimeout(() => setAutoSaveLabel(''), 3000);
+      }
+    }, AUTO_SAVE_INTERVAL);
+    return () => clearInterval(id);
+  }, []);
+
+  // Update auto-save label periodically to show time since last save
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!lastSavedRef.current) return;
+      const ago = Math.round((Date.now() - lastSavedRef.current) / 1000);
+      if (ago < 5) return; // freshly saved, don't overwrite "Auto-saved" or "Document saved."
+      if (ago < 60) setAutoSaveLabel(`Saved ${ago}s ago`);
+      else setAutoSaveLabel(`Saved ${Math.floor(ago / 60)}m ago`);
+    }, 10_000);
+    return () => clearInterval(id);
+  }, []);
 
   const [publishing, setPublishing] = useState(false);
 
@@ -768,9 +810,10 @@ export default function Editor() {
 
         <div className="editor-toolbar">
           <div className="toolbar-group">
-            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+            <button className="btn btn-primary btn-sm" onClick={() => handleSave()} disabled={saving}>
               {saving ? 'Saving...' : '💾 Save'}
             </button>
+            {autoSaveLabel && <span className="auto-save-label">{autoSaveLabel}</span>}
             <button className="btn btn-ghost btn-sm" onClick={openPublishModal} disabled={publishing}>
               {publishing ? 'Publishing...' : '📦 Publish'}
             </button>
