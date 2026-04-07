@@ -182,7 +182,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
 
 // --- Markdown Editor with live preview ---
 
-function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId }) {
+function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId }) {
   const [md, setMd] = useState(() => htmlToMarkdown(content));
   const [preview, setPreview] = useState(() => sanitizeHtml(content || ''));
   const textareaRef = useRef(null);
@@ -222,10 +222,11 @@ function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, re
     const html = markdownToHtml(val);
     setPreview(html);
     selfUpdateRef.current = true;
+    if (contentRef) contentRef.current = html;
     setContent(html);
     onLocalChange?.(html);
     trackCursor();
-  }, [setContent, onLocalChange, trackCursor]);
+  }, [setContent, contentRef, onLocalChange, trackCursor]);
 
   // Tab key inserts spaces instead of changing focus
   const handleKeyDown = useCallback((e) => {
@@ -237,15 +238,17 @@ function MarkdownEditor({ content, setContent, onLocalChange, onCursorChange, re
       const val = ta.value;
       const newVal = val.substring(0, start) + '  ' + val.substring(end);
       setMd(newVal);
-      setPreview(markdownToHtml(newVal));
+      const tabHtml = markdownToHtml(newVal);
+      setPreview(tabHtml);
       selfUpdateRef.current = true;
-      setContent(markdownToHtml(newVal));
-      onLocalChange?.(markdownToHtml(newVal));
+      if (contentRef) contentRef.current = tabHtml;
+      setContent(tabHtml);
+      onLocalChange?.(tabHtml);
       requestAnimationFrame(() => {
         ta.selectionStart = ta.selectionEnd = start + 2;
       });
     }
-  }, [setContent, onLocalChange]);
+  }, [setContent, contentRef, onLocalChange]);
 
   return (
     <div className="markdown-editor">
@@ -654,6 +657,9 @@ export default function Editor() {
 
     // If connected via collab, use the WebSocket save path
     if (collabConnected) {
+      // Flush current content to the server before requesting save,
+      // in case the debounced sendUpdate hasn't fired yet
+      sendUpdate(latestContent);
       sendSave();
       setContent(latestContent);
       dirtyRef.current = false;
@@ -676,7 +682,7 @@ export default function Editor() {
     }
     savingRef.current = false;
     setSaving(false);
-  }, [pageId, collabConnected, sendSave]);
+  }, [pageId, collabConnected, sendUpdate, sendSave]);
 
   // --- Auto-save every 30 seconds when there are unsaved changes ---
   const AUTO_SAVE_INTERVAL = 30_000;
@@ -884,7 +890,7 @@ export default function Editor() {
             {editorMode === 'richtext' ? (
               <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
             ) : (
-              <MarkdownEditor content={content} setContent={setContent} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
+              <MarkdownEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
             )}
           </div>
 
