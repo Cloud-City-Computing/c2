@@ -456,7 +456,7 @@ export default function Editor() {
   }, []);
 
   // Collaborative editing hook
-  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendCommentEvent } = useCollab(
+  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendTitle, sendCommentEvent } = useCollab(
     pageId,
     // onRemoteUpdate — called when a peer changes the document
     useCallback((html) => {
@@ -467,7 +467,12 @@ export default function Editor() {
     // onRemoteComment — called when a peer performs a comment action
     handleRemoteComment,
     // onPublished — called when the server confirms a version was published
-    useCallback(() => { setVersionKey(k => k + 1); }, [])
+    useCallback(() => { setVersionKey(k => k + 1); }, []),
+    // onRemoteTitle — called when a peer changes the document title
+    useCallback((newTitle) => {
+      setTitle(newTitle);
+      setDocumentData(d => d ? { ...d, title: newTitle } : d);
+    }, [])
   );
 
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
@@ -759,7 +764,13 @@ export default function Editor() {
   const handleTitleSave = async () => {
     if (!title.trim()) return;
     try {
-      await updatePageTitle(pageId, title);
+      if (collabConnected) {
+        // Save + broadcast via WebSocket (server persists and notifies peers)
+        sendTitle(title);
+      } else {
+        // Fallback to REST when collab is disconnected
+        await updatePageTitle(pageId, title);
+      }
       setDocumentData(d => ({ ...d, title }));
     } catch { /* ignore */ }
     setEditingTitle(false);

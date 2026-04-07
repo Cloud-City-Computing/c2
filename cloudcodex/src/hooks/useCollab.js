@@ -14,9 +14,9 @@ import { getSessionTokenFromCookie } from '../util';
 /**
  * @param {number|string} pageId  — The document/page ID to collaborate on
  * @param {function} onRemoteUpdate — Called with new HTML when a remote peer makes a change
- * @returns {{ collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendUpdate: function, sendCursor: function, sendSave: function, sendPublish: function, canWrite: boolean }}
+ * @returns {{ collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendUpdate: function, sendCursor: function, sendSave: function, sendPublish: function, sendTitle: function, canWrite: boolean }}
  */
-export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPublished) {
+export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPublished, onRemoteTitle) {
   const [collabUsers, setCollabUsers] = useState([]);
   const [collabConnected, setCollabConnected] = useState(false);
   const [canWrite, setCanWrite] = useState(true);
@@ -26,6 +26,7 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
   const onRemoteCommentRef = useRef(onRemoteComment);
   const onPublishedRef = useRef(onPublished);
+  const onRemoteTitleRef = useRef(onRemoteTitle);
 
   // Keep ref up to date so we don't re-create the WebSocket on every render
   useEffect(() => {
@@ -39,6 +40,10 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
   useEffect(() => {
     onPublishedRef.current = onPublished;
   }, [onPublished]);
+
+  useEffect(() => {
+    onRemoteTitleRef.current = onRemoteTitle;
+  }, [onRemoteTitle]);
 
   useEffect(() => {
     if (!pageId) return;
@@ -112,6 +117,11 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
             // Remote user performed a comment action
             onRemoteCommentRef.current?.(msg);
             break;
+
+          case 'title':
+            // Remote user changed the document title
+            onRemoteTitleRef.current?.(msg.title);
+            break;
         }
       };
 
@@ -183,6 +193,16 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
   }, []);
 
   /**
+   * Send a title change to the server for persistence and broadcast.
+   * @param {string} title
+   */
+  const sendTitle = useCallback((title) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'title', title }));
+    }
+  }, []);
+
+  /**
    * Broadcast a comment event to peers.
    * @param {{ action: string, comment?: object, reply?: object, commentId?: number, replyId?: number }} data
    */
@@ -192,5 +212,5 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
     }
   }, []);
 
-  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendCommentEvent, canWrite };
+  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendTitle, sendCommentEvent, canWrite };
 }
