@@ -200,7 +200,7 @@ export function setupCollabServer(server) {
     maxPayload: MAX_MESSAGE_SIZE,
   });
 
-  server.on('upgrade', async (request, socket, head) => {
+  server.prependListener('upgrade', async (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
 
     // Only handle /collab path

@@ -8,7 +8,12 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
-dotenv.config();
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+// Load .env from the project root (one level up from cloudcodex/)
+dotenv.config({ path: path.resolve(dirname, '..', '.env') });
 
 const pool = mysql.createPool({
   host:             process.env.DB_HOST ?? 'localhost',
