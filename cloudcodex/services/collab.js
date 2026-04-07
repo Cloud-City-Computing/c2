@@ -366,7 +366,7 @@ async function setupDocSession(ws, user, pageId, canWrite) {
       }
 
       // Validate message type is a known string
-      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save', 'publish', 'comment'].includes(msg.type)) {
+      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save', 'publish', 'comment', 'title'].includes(msg.type)) {
         return;
       }
 
@@ -445,6 +445,24 @@ async function setupDocSession(ws, user, pageId, canWrite) {
         } else {
           ws.send(JSON.stringify({ type: 'saved' }));
         }
+      }
+
+      if (msg.type === 'title' && typeof msg.title === 'string') {
+        const safeTitle = msg.title.trim().slice(0, 255);
+        if (!safeTitle) return;
+
+        (async () => {
+          try {
+            await c2_query(
+              `UPDATE pages SET title = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+              [safeTitle, user.id, entry.pageId]
+            );
+            // Broadcast to all other clients
+            broadcastExcept(entry, ws, { type: 'title', title: safeTitle, userId: user.id });
+          } catch (err) {
+            console.error(`[collab] Title update failed for page ${entry.pageId}:`, err);
+          }
+        })();
       }
 
       if (msg.type === 'publish' && canWrite) {
