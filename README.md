@@ -25,7 +25,7 @@ Multiple users can edit the same document simultaneously. Changes are merged aut
 Live presence indicators show which users are currently viewing or editing each page. Avatar badges appear throughout the interface — in the page tree sidebar, the editor toolbar, and the top navigation bar — giving teams immediate visibility into who is active.
 
 ### Rich Text & Markdown Editing
-Documents can be authored in either a full WYSIWYG rich text editor (powered by Jodit) or a Markdown source editor with a live rendered preview. Users can switch between modes at any time, and their preference is saved across sessions.
+Documents can be authored in either a full WYSIWYG rich text editor (powered by Tiptap) or a Markdown source editor with a live rendered preview. Users can switch between modes at any time, and their preference is saved across sessions.
 
 ### Inline Comments & Annotations
 Team members can highlight text and attach comments anchored to specific passages. Comments support a tag system (comment, suggestion, question, issue, note) and a status workflow (open → resolved / dismissed). Threaded replies enable focused discussions, and all comment activity is broadcast in real time via WebSocket.
@@ -65,7 +65,7 @@ A post-signup welcome wizard walks new users through creating their first organi
 | [React](https://react.dev) 19 | UI framework |
 | [React Router](https://reactrouter.com) 7 | Client-side routing |
 | [Vite](https://vite.dev) 7 | Build tool and dev server |
-| [Jodit React](https://github.com/nicksrandall/jodit-react) | WYSIWYG rich text editor |
+| [Tiptap](https://tiptap.dev) | Headless rich text editor (ProseMirror-based) |
 | [Marked](https://marked.js.org) | Markdown → HTML parsing |
 | [Turndown](https://github.com/mixmark-io/turndown) | HTML → Markdown conversion |
 | [Yjs](https://yjs.dev) | CRDT framework for real-time sync |

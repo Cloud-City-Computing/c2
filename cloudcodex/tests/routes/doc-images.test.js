@@ -42,6 +42,8 @@ describe('Doc Image Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+      expect(res.body.urls).toHaveLength(1);
+      expect(res.body.urls[0]).toBe('/doc-images/abc123.webp');
       expect(res.body.data.files).toHaveLength(1);
       expect(res.body.data.files[0]).toBe('/doc-images/abc123.webp');
       expect(res.body.data.isImages).toEqual([true]);

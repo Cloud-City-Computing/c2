@@ -1,8 +1,8 @@
 /**
  * RemoteCursors — Renders colored cursor labels for remote collaborators.
  *
- * For the rich text (Jodit) editor, cursors are shown as colored name tags
- * positioned within the editor's content area based on character offset.
+ * For the rich text (Tiptap) editor, cursors are shown as colored name tags
+ * positioned within the editor's content area based on ProseMirror document offset.
  *
  * For the markdown editor, cursors are shown as line-based indicators
  * overlaid on the textarea.
@@ -16,142 +16,94 @@ import { useEffect, useState } from 'react';
 const CURSOR_STALE_MS = 10000; // Hide cursors older than 10s
 
 /**
- * Find the Jodit content area (.jodit-wysiwyg) wrapper in the parent DOM
- * so we can position cursors relative to it (not the toolbar).
+ * Find the Tiptap content area (.tiptap / .ProseMirror) and its parent wrapper
+ * so we can position cursors relative to it.
  */
-function findJoditContentArea(editorRef) {
-  const jodit = editorRef.current;
-  if (!jodit) return null;
-  // jodit-react exposes the Jodit instance; its container is the root .jodit element
-  const container = jodit.container || jodit.parentElement;
-  if (!container) return null;
-  // Find the .jodit-workplace which wraps just the editing area (below toolbar)
-  return container.querySelector('.jodit-workplace') || container;
+function findEditorContentArea(editorRef) {
+  const editor = editorRef.current;
+  if (!editor?.view?.dom) return null;
+  const dom = editor.view.dom; // The .tiptap / .ProseMirror element
+  return { editorEl: dom, container: dom.parentElement || dom };
 }
 
 /**
- * Get coordinates for a character offset inside Jodit's contentEditable.
- * Returns { top, left } relative to the .jodit-workplace element in the parent document.
+ * Get coordinates for a ProseMirror document position inside Tiptap's editor.
+ * Returns { top, left } relative to the container element.
  */
 function getRichTextPosition(editorRef, charIndex) {
-  const jodit = editorRef.current;
-  if (!jodit?.editor) return null;
+  const editor = editorRef.current;
+  if (!editor?.view) return null;
 
-  const editorEl = jodit.editor; // contentEditable inside iframe or inline
-  const workplace = findJoditContentArea(editorRef);
-  if (!workplace) return null;
+  const result = findEditorContentArea(editorRef);
+  if (!result) return null;
+  const { container } = result;
+  const containerRect = container.getBoundingClientRect();
 
-  const workplaceRect = workplace.getBoundingClientRect();
-
-  // Walk text nodes to find the one containing our offset
-  const walker = editorEl.ownerDocument.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null);
-  let offset = 0;
-  let node;
-
-  while ((node = walker.nextNode())) {
-    const len = node.textContent.length;
-    if (offset + len >= charIndex) {
-      const localOffset = charIndex - offset;
-      try {
-        const range = editorEl.ownerDocument.createRange();
-        range.setStart(node, Math.min(localOffset, len));
-        range.collapse(true);
-        const rect = range.getBoundingClientRect();
-        if (rect.width === 0 && rect.height === 0 && rect.top === 0) return null;
-
-        // If Jodit uses an iframe, coordinates are relative to the iframe viewport.
-        // The iframe element itself is positioned inside .jodit-workplace.
-        const iframe = workplace.querySelector('iframe.jodit-wysiwyg_iframe');
-        if (iframe) {
-          const iframeRect = iframe.getBoundingClientRect();
-          return {
-            top: iframeRect.top - workplaceRect.top + rect.top,
-            left: iframeRect.left - workplaceRect.left + rect.left,
-          };
-        }
-
-        // Inline mode — coordinates are already in parent viewport
-        return {
-          top: rect.top - workplaceRect.top,
-          left: rect.left - workplaceRect.left,
-        };
-      } catch {
-        return null;
-      }
-    }
-    offset += len;
+  try {
+    // Clamp position to valid doc range
+    const pos = Math.min(Math.max(charIndex, 0), editor.state.doc.content.size);
+    const coords = editor.view.coordsAtPos(pos);
+    return {
+      top: coords.top - containerRect.top,
+      left: coords.left - containerRect.left,
+    };
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /**
- * Get bounding rectangles for a selection range (start to end character offset)
- * inside Jodit's contentEditable, relative to .jodit-workplace.
+ * Get bounding rectangles for a selection range (start to end document position)
+ * inside Tiptap's editor, relative to its container.
  */
 function getRichTextSelectionRects(editorRef, startIndex, endIndex) {
-  const jodit = editorRef.current;
-  if (!jodit?.editor) return [];
+  const editor = editorRef.current;
+  if (!editor?.view) return [];
 
-  const editorEl = jodit.editor;
-  const workplace = findJoditContentArea(editorRef);
-  if (!workplace) return [];
+  const result = findEditorContentArea(editorRef);
+  if (!result) return [];
+  const { container } = result;
+  const containerRect = container.getBoundingClientRect();
 
-  const workplaceRect = workplace.getBoundingClientRect();
-  const iframe = workplace.querySelector('iframe.jodit-wysiwyg_iframe');
-
-  const walker = editorEl.ownerDocument.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null);
-  const textNodes = [];
-  let totalLen = 0;
-  let node;
-  while ((node = walker.nextNode())) {
-    textNodes.push({ node, start: totalLen });
-    totalLen += node.textContent.length;
-  }
-
-  if (textNodes.length === 0) return [];
-
+  const rects = [];
   try {
-    const range = editorEl.ownerDocument.createRange();
-    let setStart = false;
-    for (let i = 0; i < textNodes.length; i++) {
-      const tn = textNodes[i];
-      const nodeEnd = tn.start + tn.node.textContent.length;
-      if (!setStart && nodeEnd > startIndex) {
-        range.setStart(tn.node, Math.min(startIndex - tn.start, tn.node.textContent.length));
-        setStart = true;
-      }
-      if (setStart && nodeEnd >= endIndex) {
-        range.setEnd(tn.node, Math.min(endIndex - tn.start, tn.node.textContent.length));
-        break;
-      }
-    }
-    if (!setStart) return [];
+    const docSize = editor.state.doc.content.size;
+    const from = Math.min(Math.max(startIndex, 0), docSize);
+    const to = Math.min(Math.max(endIndex, 0), docSize);
+    if (from >= to) return [];
+
+    // Use the DOM to get selection rectangles via ProseMirror's view
+    const editorDom = editor.view.dom;
+    const editorDoc = editorDom.ownerDocument;
+
+    // Walk ProseMirror's DOM to resolve positions to DOM nodes
+    const startDomPos = editor.view.domAtPos(from);
+    const endDomPos = editor.view.domAtPos(to);
+
+    const range = editorDoc.createRange();
+    range.setStart(startDomPos.node, startDomPos.offset);
+    range.setEnd(endDomPos.node, endDomPos.offset);
 
     const clientRects = range.getClientRects();
-    const rects = [];
     for (let i = 0; i < clientRects.length; i++) {
       const rect = clientRects[i];
       if (rect.width === 0 && rect.height === 0) continue;
-      let top, left;
-      if (iframe) {
-        const iframeRect = iframe.getBoundingClientRect();
-        top = iframeRect.top - workplaceRect.top + rect.top;
-        left = iframeRect.left - workplaceRect.left + rect.left;
-      } else {
-        top = rect.top - workplaceRect.top;
-        left = rect.left - workplaceRect.left;
-      }
-      rects.push({ top, left, width: rect.width, height: rect.height });
+      rects.push({
+        top: rect.top - containerRect.top,
+        left: rect.left - containerRect.left,
+        width: rect.width,
+        height: rect.height,
+      });
     }
-    return rects;
   } catch {
-    return [];
+    // Position resolution can fail during DOM updates
   }
+  return rects;
 }
 
 /**
- * RemoteCursors for the rich text (Jodit) editor.
- * Positioned over .jodit-workplace (content area only, below toolbar).
+ * RemoteCursors for the rich text (Tiptap) editor.
+ * Positioned over the .tiptap content area.
  */
 export function RichTextCursors({ remoteCursors, editorRef }) {
   const [positions, setPositions] = useState({});
