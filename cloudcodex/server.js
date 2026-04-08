@@ -8,12 +8,35 @@
 import ViteExpress from 'vite-express';
 import { verifyEmailConnection } from './services/email.js';
 import { setupCollabServer } from './services/collab.js';
+import { ensureAdminUser } from './routes/admin.js';
 import app from './app.js';
+
+// ─── Require SMTP credentials before starting ───────────────
+if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  console.error('✖ Missing required SMTP configuration: SMTP_HOST, SMTP_USER, SMTP_PASS');
+  console.error('  Copy .env.example to .env and fill in your SMTP credentials.');
+  process.exit(1);
+}
+
+// ─── Require Admin credentials before starting ──────────────
+if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_EMAIL) {
+  console.error('✖ Missing required admin configuration: ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_EMAIL');
+  console.error('  Copy .env.example to .env and fill in your admin credentials.');
+  process.exit(1);
+}
 
 const server = ViteExpress.listen(app, 3000, async () => {
   console.log('CloudCodex API Server is running on http://localhost:3000');
+
   const emailOk = await verifyEmailConnection();
-  console.log(emailOk ? '✔ SMTP connection verified' : '✖ SMTP connection failed — check .env credentials');
+  if (!emailOk) {
+    console.error('✖ SMTP connection failed — check .env credentials. Server shutting down.');
+    process.exit(1);
+  }
+  console.log('✔ SMTP connection verified');
+
+  // Ensure the admin super user exists in the database
+  await ensureAdminUser();
 });
 
 // Attach WebSocket collaborative editing server to the HTTP server

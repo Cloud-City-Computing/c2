@@ -19,15 +19,18 @@ describe('Auth Routes', () => {
 
   describe('POST /api/create-account', () => {
     it('creates account with valid input', async () => {
+      // SELECT invitation by token
+      c2_query.mockResolvedValueOnce([{ id: 1, invite_email: 'new@test.com', accepted: false, expires_at: new Date(Date.now() + 60000) }]);
       c2_query.mockResolvedValueOnce([]);             // SELECT duplicate username check
       c2_query.mockResolvedValueOnce([]);             // SELECT duplicate email check
       c2_query.mockResolvedValueOnce({ insertId: 10 }); // INSERT user
       generateSessionToken.mockResolvedValueOnce('new-token');
       c2_query.mockResolvedValueOnce([]); // INSERT permissions
+      c2_query.mockResolvedValueOnce([]); // UPDATE invitation accepted
 
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'newuser', password: 'Password1!', email: 'new@test.com' });
+        .send({ username: 'newuser', password: 'Password1!', email: 'new@test.com', inviteToken: 'valid-token' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
@@ -44,51 +47,73 @@ describe('Auth Routes', () => {
       expect(res.body.success).toBe(false);
     });
 
-    it('rejects invalid username format', async () => {
+    it('rejects missing invite token', async () => {
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'bad user!', password: 'Password1!', email: 'ok@test.com' });
+        .send({ username: 'newuser', password: 'Password1!', email: 'new@test.com' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/invitation/i);
+    });
+
+    it('rejects invalid username format', async () => {
+      // SELECT invitation by token
+      c2_query.mockResolvedValueOnce([{ id: 1, invite_email: 'ok@test.com', accepted: false, expires_at: new Date(Date.now() + 60000) }]);
+
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'bad user!', password: 'Password1!', email: 'ok@test.com', inviteToken: 'valid-token' });
 
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/username/i);
     });
 
     it('rejects invalid email', async () => {
+      // SELECT invitation by token
+      c2_query.mockResolvedValueOnce([{ id: 1, invite_email: 'not-an-email', accepted: false, expires_at: new Date(Date.now() + 60000) }]);
+
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'user123', password: 'Password1!', email: 'not-an-email' });
+        .send({ username: 'user123', password: 'Password1!', email: 'not-an-email', inviteToken: 'valid-token' });
 
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/email/i);
     });
 
     it('rejects weak password', async () => {
+      // SELECT invitation by token
+      c2_query.mockResolvedValueOnce([{ id: 1, invite_email: 'ok@test.com', accepted: false, expires_at: new Date(Date.now() + 60000) }]);
+
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'user123', password: 'short', email: 'ok@test.com' });
+        .send({ username: 'user123', password: 'short', email: 'ok@test.com', inviteToken: 'valid-token' });
 
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/password/i);
     });
 
     it('rejects duplicate username', async () => {
+      // SELECT invitation by token
+      c2_query.mockResolvedValueOnce([{ id: 1, invite_email: 'new@test.com', accepted: false, expires_at: new Date(Date.now() + 60000) }]);
       c2_query.mockResolvedValueOnce([{ id: 3 }]); // SELECT duplicate username check — found existing
 
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'newuser', password: 'Password1!', email: 'new@test.com' });
+        .send({ username: 'newuser', password: 'Password1!', email: 'new@test.com', inviteToken: 'valid-token' });
 
       expect(res.status).toBe(409);
       expect(res.body.message).toMatch(/username.*taken/i);
     });
 
     it('rejects duplicate email', async () => {
+      // SELECT invitation by token
+      c2_query.mockResolvedValueOnce([{ id: 1, invite_email: 'existing@test.com', accepted: false, expires_at: new Date(Date.now() + 60000) }]);
       c2_query.mockResolvedValueOnce([]);           // SELECT duplicate username check — not found
       c2_query.mockResolvedValueOnce([{ id: 5 }]); // SELECT duplicate email check — found existing
 
       const res = await request(app)
         .post('/api/create-account')
-        .send({ username: 'newuser', password: 'Password1!', email: 'existing@test.com' });
+        .send({ username: 'newuser', password: 'Password1!', email: 'existing@test.com', inviteToken: 'valid-token' });
 
       expect(res.status).toBe(409);
       expect(res.body.success).toBe(false);
@@ -1014,42 +1039,7 @@ describe('Auth Routes', () => {
   // ── POST /api/setup ───────────────────────────────────────
 
   describe('POST /api/setup', () => {
-    it('creates org, team, and project in one step', async () => {
-      mockAuthenticated();
-      c2_query
-        .mockResolvedValueOnce({ insertId: 10 })   // INSERT organization
-        .mockResolvedValueOnce({ insertId: 20 })   // INSERT team
-        .mockResolvedValueOnce([])                  // INSERT team_members (owner)
-        .mockResolvedValueOnce({ insertId: 30 });   // INSERT project
-
-      const res = await request(app)
-        .post('/api/setup')
-        .set('Authorization', 'Bearer valid-token')
-        .send({ orgName: 'My Org', teamName: 'My Team', projectName: 'My Project' });
-
-      expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.organizationId).toBe(10);
-      expect(res.body.teamId).toBe(20);
-      expect(res.body.projectId).toBe(30);
-    });
-
-    it('creates only an organization (no team/project)', async () => {
-      mockAuthenticated();
-      c2_query.mockResolvedValueOnce({ insertId: 10 }); // INSERT organization
-
-      const res = await request(app)
-        .post('/api/setup')
-        .set('Authorization', 'Bearer valid-token')
-        .send({ orgName: 'My Org' });
-
-      expect(res.status).toBe(201);
-      expect(res.body.organizationId).toBe(10);
-      expect(res.body.teamId).toBeNull();
-      expect(res.body.projectId).toBeNull();
-    });
-
-    it('creates only a project (no org/team)', async () => {
+    it('creates a standalone project', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce({ insertId: 30 }); // INSERT project
 
@@ -1060,10 +1050,11 @@ describe('Auth Routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.organizationId).toBeNull();
+      expect(res.body.teamId).toBeNull();
       expect(res.body.projectId).toBe(30);
     });
 
-    it('rejects when no org or project name provided', async () => {
+    it('rejects when no project name provided', async () => {
       mockAuthenticated();
 
       const res = await request(app)
@@ -1072,7 +1063,6 @@ describe('Auth Routes', () => {
         .send({});
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/at least/i);
     });
 
     it('requires authentication', async () => {
@@ -1081,7 +1071,7 @@ describe('Auth Routes', () => {
       const res = await request(app)
         .post('/api/setup')
         .set('Authorization', 'Bearer bad-token')
-        .send({ orgName: 'My Org' });
+        .send({ projectName: 'My Project' });
 
       expect(res.status).toBe(401);
     });

@@ -33,3 +33,14 @@ export function requireAuth(req, res, next) {
     })
     .catch(next);
 }
+
+/**
+ * Express middleware that requires the authenticated user to be a super admin.
+ * Must be used after requireAuth.
+ */
+export function requireAdmin(req, res, next) {
+  if (!req.user?.is_admin) {
+    return res.status(403).json({ success: false, message: 'Admin access required' });
+  }
+  next();
+}

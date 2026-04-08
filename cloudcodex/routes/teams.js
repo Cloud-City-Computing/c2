@@ -8,6 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
+import { sendEmail } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
 
 const router = express.Router();
@@ -394,6 +395,27 @@ router.post('/teams/:id/members/invite', requireAuth, asyncHandler(async (req, r
     [Number(id), req.user.id, Number(userId), safeRole,
      can_read !== false, Boolean(can_write), Boolean(can_create_page), Boolean(can_create_project), Boolean(can_manage_members), Boolean(can_delete_version), Boolean(can_publish)]
   );
+
+  // Send email notification to the invited user
+  const [invitedUser] = await c2_query(`SELECT email, name FROM users WHERE id = ? LIMIT 1`, [Number(userId)]);
+  if (invitedUser?.email) {
+    const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
+    try {
+      await sendEmail({
+        to: invitedUser.email,
+        subject: `Cloud Codex — You've been invited to ${team.name}`,
+        text: `Hi ${invitedUser.name},\n\n${req.user.name} has invited you to join the team "${team.name}" as ${safeRole === 'admin' ? 'an admin' : 'a member'}.\n\nLog in to accept or decline: ${APP_URL}\n`,
+        html: `
+          <h2>Team Invitation</h2>
+          <p>Hi ${invitedUser.name},</p>
+          <p><strong>${req.user.name}</strong> has invited you to join the team <strong>${team.name}</strong> as ${safeRole === 'admin' ? 'an admin' : 'a member'}.</p>
+          <p><a href="${APP_URL}" style="display:inline-block;padding:10px 20px;background:#2ca7db;color:#fff;text-decoration:none;border-radius:6px;">View Invitation</a></p>
+        `,
+      });
+    } catch (err) {
+      console.error('Failed to send team invitation email:', err);
+    }
+  }
 
   res.status(201).json({ success: true });
 }));

@@ -14,30 +14,47 @@ const router = express.Router();
 
 /**
  * GET /api/organizations
- * Returns organizations the user owns or belongs to (via teams)
+ * Returns organizations the user owns or belongs to (via teams).
+ * Admin users see all organizations.
  */
 router.get('/organizations', requireAuth, asyncHandler(async (req, res) => {
-  const orgs = await c2_query(
-    `SELECT DISTINCT o.id, o.name, o.owner, o.created_at
-     FROM organizations o
-     LEFT JOIN teams t ON t.organization_id = o.id
-     LEFT JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
-     LEFT JOIN projects p ON p.team_id = t.id
-     WHERE o.owner = ?
-        OR t.created_by = ?
-        OR tm.id IS NOT NULL
-        OR JSON_CONTAINS(p.read_access, ?)
-     ORDER BY o.created_at DESC`,
-    [req.user.id, req.user.email, req.user.id, JSON.stringify(req.user.id)]
-  );
+  let orgs;
+
+  if (req.user.is_admin) {
+    orgs = await c2_query(
+      `SELECT DISTINCT o.id, o.name, o.owner, o.created_at
+       FROM organizations o
+       ORDER BY o.created_at DESC`
+    );
+  } else {
+    orgs = await c2_query(
+      `SELECT DISTINCT o.id, o.name, o.owner, o.created_at
+       FROM organizations o
+       LEFT JOIN teams t ON t.organization_id = o.id
+       LEFT JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
+       LEFT JOIN projects p ON p.team_id = t.id
+       WHERE o.owner = ?
+          OR t.created_by = ?
+          OR tm.id IS NOT NULL
+          OR JSON_CONTAINS(p.read_access, ?)
+       ORDER BY o.created_at DESC`,
+      [req.user.id, req.user.email, req.user.id, JSON.stringify(req.user.id)]
+    );
+  }
+
   res.json({ success: true, organizations: orgs });
 }));
 
 /**
  * POST /api/organizations
- * Create a new organization
+ * Create a new organization (admin only)
  */
 router.post('/organizations', requireAuth, asyncHandler(async (req, res) => {
+  // Only admins can create organizations
+  if (!req.user.is_admin) {
+    return res.status(403).json({ success: false, message: 'Only administrators can create organizations' });
+  }
+
   const { name, teamName, projectName } = req.body;
   if (!name?.trim()) {
     return res.status(400).json({ success: false, message: 'Organization name is required' });
