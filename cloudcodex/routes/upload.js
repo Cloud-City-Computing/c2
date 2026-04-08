@@ -21,6 +21,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, errorHandler } from './helpers/shared.js';
+import { extractImagesFromHtml } from './helpers/images.js';
 
 const ALLOWED_EXTENSIONS = ['html', 'htm', 'md', 'markdown', 'txt', 'pdf', 'docx'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -120,6 +121,9 @@ router.post(
     const rawHtml = await convertToHtml(req.file.buffer, req.file.originalname);
     const cleanHtml = sanitizeHtml(rawHtml);
 
+    // Extract embedded base64 images from imported content
+    const storedHtml = await extractImagesFromHtml(cleanHtml);
+
     // Derive page title from filename (strip extension)
     const title = req.file.originalname.replace(/\.[^.]+$/, '').trim() || 'Uploaded Document';
 
@@ -131,7 +135,7 @@ router.post(
     const result = await c2_query(
       `INSERT INTO pages (project_id, title, html_content, parent_id, created_by, updated_by)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [Number(projectId), title, cleanHtml, parentId, req.user.id, req.user.id]
+      [Number(projectId), title, storedHtml, parentId, req.user.id, req.user.id]
     );
 
     res.status(201).json({ success: true, pageId: result.insertId, title });

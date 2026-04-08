@@ -39,6 +39,7 @@ import {
   addCommentReply,
   deleteCommentReply,
   getSessStorage,
+  getSessionTokenFromCookie,
 } from '../util';
 import PublishModal from '../components/PublishModal';
 import { toastError } from '../components/Toast';
@@ -48,6 +49,34 @@ import CommentManager from '../components/CommentManager';
 
 // Configure marked for safe rendering
 marked.setOptions({ breaks: true, gfm: true });
+
+/**
+ * Upload an image file to the server and return the served URL.
+ * Used by the markdown editor's paste handler.
+ * @param {File} file
+ * @returns {Promise<string|null>} The image URL, or null on failure
+ */
+async function uploadImageFile(file) {
+  const token = getSessionTokenFromCookie();
+  const formData = new FormData();
+  formData.append('files', file);
+  try {
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch('/api/doc-images/upload', {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    const json = await res.json();
+    if (json.success && json.data?.files?.length) {
+      return json.data.files[0];
+    }
+  } catch (err) {
+    console.error('[editor] Image upload failed:', err);
+  }
+  return null;
+}
 
 /** Sanitize HTML to prevent XSS — strips scripts, event handlers, and dangerous URIs */
 function sanitizeHtml(html) {
@@ -128,11 +157,46 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
     };
   }, [onCursorChange]);
 
-  const config = useMemo(() => ({
-    readonly: false,
-    placeholder: 'Start typing...',
-    theme: 'dark',
-  }), []);
+  const config = useMemo(() => {
+    const token = getSessionTokenFromCookie();
+    return {
+      readonly: false,
+      placeholder: 'Start typing...',
+      theme: 'dark',
+      // Image upload: send pasted/dropped/chosen images to the server immediately,
+      // which processes, deduplicates, and returns a served URL.
+      uploader: {
+        url: '/api/doc-images/upload',
+        format: 'json',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        filesVariableName: () => 'files',
+        withCredentials: false,
+        pathVariableName: 'path',
+        prepareData: (formdata) => formdata,
+        isSuccess: (resp) => resp.success,
+        getMsg: (resp) => resp.message || '',
+        process: (resp) => ({
+          files: resp.data?.files || [],
+          isImages: resp.data?.isImages || [],
+          baseurl: '',
+          error: resp.success ? 0 : 1,
+          message: resp.message || '',
+        }),
+        defaultHandlerSuccess: function (data) {
+          if (data.files?.length) {
+            data.files.forEach((url) => {
+              this.s.insertImage(url);
+            });
+          }
+        },
+        defaultHandlerError: function (resp) {
+          console.error('[editor] Image upload failed:', resp?.message);
+        },
+      },
+      // Also accept base64 as fallback when offline or upload fails
+      insertImageAsBase64URI: false,
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBlur = useCallback((newContent) => {
     contentRef.current = newContent;
@@ -250,6 +314,47 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
     }
   }, [setContent, contentRef, onLocalChange]);
 
+  // Handle image paste in markdown editor — intercepts clipboard images,
+  // uploads them to the server, and inserts a markdown image reference.
+  const handlePaste = useCallback(async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+
+        const ta = textareaRef.current;
+        const start = ta.selectionStart;
+        const val = ta.value;
+
+        // Insert placeholder while uploading
+        const placeholder = '![Uploading image...]()';
+        const withPlaceholder = val.substring(0, start) + placeholder + val.substring(ta.selectionEnd);
+        setMd(withPlaceholder);
+
+        const url = await uploadImageFile(file);
+        if (url) {
+          const imgMarkdown = `![image](${url})`;
+          const newVal = withPlaceholder.replace(placeholder, imgMarkdown);
+          setMd(newVal);
+          const html = markdownToHtml(newVal);
+          setPreview(html);
+          selfUpdateRef.current = true;
+          if (contentRef) contentRef.current = html;
+          setContent(html);
+          onLocalChange?.(html);
+        } else {
+          // Upload failed — remove placeholder
+          setMd(val);
+        }
+        return; // Only handle the first image
+      }
+    }
+  }, [setContent, contentRef, onLocalChange]);
+
   return (
     <div className="markdown-editor">
       <div className="markdown-editor__pane markdown-editor__input">
@@ -263,6 +368,7 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
             onKeyDown={handleKeyDown}
             onKeyUp={trackCursor}
             onClick={trackCursor}
+            onPaste={handlePaste}
             placeholder="Write markdown here..."
             spellCheck={false}
           />
