@@ -24,6 +24,7 @@ import organizationsRouter from './routes/organizations.js';
 import teamsRouter from './routes/teams.js';
 import commentsRouter from './routes/comments.js';
 import avatarsRouter from './routes/avatars.js';
+import docImagesRouter from './routes/doc-images.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -104,6 +105,12 @@ app.use('/avatars', express.static(path.join(__dirname, 'public', 'avatars'), {
   immutable: true,
 }));
 
+// Serve document images as static files (extracted from embedded base64)
+app.use('/doc-images', express.static(path.join(__dirname, 'public', 'doc-images'), {
+  maxAge: '30d',
+  immutable: true,
+}));
+
 // Mount route groups
 app.use('/api', authRoutes);
 app.use('/api', searchRoutes);
@@ -114,5 +121,6 @@ app.use('/api', organizationsRouter);
 app.use('/api', teamsRouter);
 app.use('/api', commentsRouter);
 app.use('/api', avatarsRouter);
+app.use('/api', docImagesRouter);
 
 export default app;

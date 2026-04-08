@@ -17,6 +17,7 @@ import * as Y from 'yjs';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
 import { sanitizeHtml, canPublish, checkPageReadAccess, checkPageWriteAccess } from '../routes/helpers/shared.js';
+import { extractImagesFromHtml } from '../routes/helpers/images.js';
 
 // In-memory store: pageId → { doc, conns, saveTimer, lastSavedHtml }
 const docs = new Map();
@@ -99,15 +100,34 @@ function scheduleSave(entry, userId) {
       const rawHtml = xmlFragmentToHtml(xmlFragment);
       const html = sanitizeHtml(rawHtml);
 
+      // Extract embedded base64 images to disk, replace with served URLs
+      const storedHtml = await extractImagesFromHtml(html);
+
       // Skip if content hasn't changed
-      if (html === entry.lastSavedHtml) return;
+      if (storedHtml === entry.lastSavedHtml) return;
 
       await c2_query(
         `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-        [html, userId, entry.pageId]
+        [storedHtml, userId, entry.pageId]
       );
 
-      entry.lastSavedHtml = html;
+      // If images were extracted, broadcast the cleaned HTML back to all clients
+      // so they use served URLs instead of inline base64 blobs
+      if (storedHtml !== html) {
+        const xmlFrag = entry.doc.getXmlFragment('document');
+        entry.doc.transact(() => {
+          while (xmlFrag.length > 0) xmlFrag.delete(0);
+          const textNode = new Y.XmlText();
+          textNode.insert(0, storedHtml);
+          xmlFrag.insert(0, [textNode]);
+        });
+        const updateMsg = JSON.stringify({ type: 'update', html: storedHtml, userId: 0 });
+        for (const [ws] of entry.conns) {
+          if (ws.readyState === 1) ws.send(updateMsg);
+        }
+      }
+
+      entry.lastSavedHtml = storedHtml;
     } catch (err) {
       console.error(`[collab] Save failed for page ${entry.pageId}:`, err);
     }
@@ -427,24 +447,40 @@ async function setupDocSession(ws, user, pageId, canWrite) {
         if (entry.saveTimer) clearTimeout(entry.saveTimer);
         const xmlFragment = entry.doc.getXmlFragment('document');
         const currentHtml = sanitizeHtml(xmlFragmentToHtml(xmlFragment));
-        if (currentHtml !== entry.lastSavedHtml) {
-          (async () => {
-            try {
+        (async () => {
+          try {
+            const storedHtml = await extractImagesFromHtml(currentHtml);
+            if (storedHtml !== entry.lastSavedHtml) {
               await c2_query(
                 `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-                [currentHtml, user.id, entry.pageId]
+                [storedHtml, user.id, entry.pageId]
               );
-              entry.lastSavedHtml = currentHtml;
+              entry.lastSavedHtml = storedHtml;
+
+              // If images were extracted, update the Yjs doc and broadcast
+              if (storedHtml !== currentHtml) {
+                const xmlFrag = entry.doc.getXmlFragment('document');
+                entry.doc.transact(() => {
+                  while (xmlFrag.length > 0) xmlFrag.delete(0);
+                  const textNode = new Y.XmlText();
+                  textNode.insert(0, storedHtml);
+                  xmlFrag.insert(0, [textNode]);
+                });
+                const updateMsg = JSON.stringify({ type: 'update', html: storedHtml, userId: 0 });
+                for (const [client] of entry.conns) {
+                  if (client.readyState === 1) client.send(updateMsg);
+                }
+              }
 
               // Notify sender that save completed
               ws.send(JSON.stringify({ type: 'saved' }));
-            } catch (err) {
-              console.error(`[collab] Immediate save failed for page ${entry.pageId}:`, err);
+            } else {
+              ws.send(JSON.stringify({ type: 'saved' }));
             }
-          })();
-        } else {
-          ws.send(JSON.stringify({ type: 'saved' }));
-        }
+          } catch (err) {
+            console.error(`[collab] Immediate save failed for page ${entry.pageId}:`, err);
+          }
+        })();
       }
 
       if (msg.type === 'title' && typeof msg.title === 'string') {
@@ -490,7 +526,7 @@ async function setupDocSession(ws, user, pageId, canWrite) {
             // Publish: save content AND create a formal version snapshot
             if (entry.saveTimer) clearTimeout(entry.saveTimer);
             const xmlFragment = entry.doc.getXmlFragment('document');
-            const currentHtml = sanitizeHtml(xmlFragmentToHtml(xmlFragment));
+            const currentHtml = await extractImagesFromHtml(sanitizeHtml(xmlFragmentToHtml(xmlFragment)));
 
             const [page] = await c2_query(
               `SELECT version FROM pages WHERE id = ? LIMIT 1`,

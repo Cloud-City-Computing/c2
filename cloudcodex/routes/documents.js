@@ -12,6 +12,7 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
+import { extractImagesFromHtml, inlineImagesForExport, inlineImagesForMarkdownExport } from './helpers/images.js';
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
@@ -82,6 +83,9 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   // Sanitize HTML to prevent stored XSS
   const cleanHtml = sanitizeHtml(html_content);
 
+  // Extract embedded base64 images to disk, replace with served URLs
+  const storedHtml = await extractImagesFromHtml(cleanHtml);
+
   // Fetch existing page and verify write access
   const [page] = await c2_query(
     `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.project_id
@@ -100,7 +104,7 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   // Save content without creating a version snapshot
   await c2_query(
     `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-    [cleanHtml, req.user.id, Number(doc_id)]
+    [storedHtml, req.user.id, Number(doc_id)]
   );
 
   res.json({ success: true });
@@ -150,6 +154,8 @@ router.post('/document/:pageId/publish', requireAuth, asyncHandler(async (req, r
 
   // Bump version and create snapshot
   const newVersion = page.version + 1;
+  // Extract embedded base64 images before persisting
+  const publishHtml = await extractImagesFromHtml(sanitizeHtml(page.html_content));
   await c2_query(
     `UPDATE pages SET version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [newVersion, req.user.id, Number(pageId)]
@@ -157,7 +163,7 @@ router.post('/document/:pageId/publish', requireAuth, asyncHandler(async (req, r
   await c2_query(
     `INSERT INTO versions (page_id, version, title, notes, html_content, created_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [page.id, newVersion, title?.trim() || null, notes?.trim() || null, sanitizeHtml(page.html_content), req.user.id]
+    [page.id, newVersion, title?.trim() || null, notes?.trim() || null, publishHtml, req.user.id]
   );
 
   res.json({ success: true, version: newVersion });
@@ -311,7 +317,7 @@ router.post('/document/:pageId/versions/:versionId/restore', requireAuth, asyncH
 
   // Bump version and restore content
   const newVersion = currentPage.version + 1;
-  const restoredHtml = sanitizeHtml(targetVersion.html_content);
+  const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content));
   await c2_query(
     `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [restoredHtml, newVersion, req.user.id, Number(pageId)]
@@ -413,16 +419,20 @@ router.get('/document/:pageId/export', requireAuth, asyncHandler(async (req, res
 
   switch (format) {
     case 'html': {
-      const fullHtml = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${escapedTitle}</title></head>\n<body>\n${htmlContent}\n</body>\n</html>`;
+      // Inline /doc-images/ URLs as base64 data URIs so the file is self-contained
+      const inlinedHtml = await inlineImagesForExport(htmlContent);
+      const fullHtml = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${escapedTitle}</title></head>\n<body>\n${inlinedHtml}\n</body>\n</html>`;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.html"`);
       return res.send(fullHtml);
     }
     case 'md': {
       const markdown = turndown.turndown(htmlContent || '<p></p>');
+      // Inline /doc-images/ URLs in markdown image refs so the file is portable
+      const inlinedMarkdown = await inlineImagesForMarkdownExport(markdown);
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.md"`);
-      return res.send(markdown);
+      return res.send(inlinedMarkdown);
     }
     case 'txt': {
       const text = htmlContent
@@ -439,7 +449,9 @@ router.get('/document/:pageId/export', requireAuth, asyncHandler(async (req, res
       return res.send(text);
     }
     case 'docx': {
-      const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlContent}</body></html>`;
+      // Inline images as base64 so html-to-docx can embed them in the Word file
+      const inlinedHtml = await inlineImagesForExport(htmlContent);
+      const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${inlinedHtml}</body></html>`;
       const docxBuffer = await HTMLtoDOCX(wrappedHtml, null, {
         table: { row: { cantSplit: true } },
         footer: true,
