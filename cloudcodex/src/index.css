@@ -4224,4 +4224,181 @@ body {
   object-fit: cover;
   border-radius: 50%;
 }
+
+/* =========================
+   Admin Console
+========================= */
+
+.admin-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.admin-page__header {
+  margin-bottom: 8px;
+}
+
+.admin-page__header h1 {
+  margin: 0 0 4px;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border-color);
+  margin-bottom: 24px;
+}
+
+.admin-tab {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: var(--transition);
+}
+
+.admin-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.admin-tab.active {
+  color: var(--brand-blue);
+  border-bottom-color: var(--brand-blue);
+}
+
+/* Stats grid */
+
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.admin-stat-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.admin-stat-card__value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--brand-blue);
+}
+
+.admin-stat-card__label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Sections */
+
+.admin-section {
+  margin-bottom: 32px;
+}
+
+.admin-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.admin-section__header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+/* Tables */
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.admin-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.admin-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.admin-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.admin-user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+/* Status badges */
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-badge--pending {
+  background: rgba(44, 167, 219, 0.15);
+  color: var(--brand-blue);
+}
+
+.status-badge--accepted {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--color-success);
+}
+
+.status-badge--expired {
+  background: rgba(136, 136, 136, 0.15);
+  color: var(--text-muted);
+}
+
+/* Danger ghost button */
+
+.btn-danger.btn-ghost,
+.btn.btn-ghost.btn-danger {
+  color: var(--color-danger);
+}
+
+.btn-danger.btn-ghost:hover,
+.btn.btn-ghost.btn-danger:hover {
+  background: rgba(229, 69, 69, 0.1);
+}
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }

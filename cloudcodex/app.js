@@ -25,6 +25,7 @@ import teamsRouter from './routes/teams.js';
 import commentsRouter from './routes/comments.js';
 import avatarsRouter from './routes/avatars.js';
 import docImagesRouter from './routes/doc-images.js';
+import adminRouter from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -122,5 +123,6 @@ app.use('/api', teamsRouter);
 app.use('/api', commentsRouter);
 app.use('/api', avatarsRouter);
 app.use('/api', docImagesRouter);
+app.use('/api', adminRouter);
 
 export default app;

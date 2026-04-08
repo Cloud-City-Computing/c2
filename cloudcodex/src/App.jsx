@@ -11,6 +11,7 @@ import AccountSettings from './pages/AccountSettings'
 import ProjectsPage from './pages/ProjectsPage'
 import OrganizationsPage from './pages/OrganizationsPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import AdminPage from './pages/AdminPage'
 
 function NotFound() {
   return (
@@ -34,6 +35,7 @@ function App() {
       <Route path="/projects/:projectId" element={<ProjectsPage />} />
       <Route path="/organizations" element={<OrganizationsPage />} />
       <Route path="/organizations/:orgId" element={<OrganizationsPage />} />
+      <Route path="/admin" element={<AdminPage />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/404" replace />} />
     </Routes>

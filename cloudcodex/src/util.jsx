@@ -121,6 +121,21 @@ export const cancelInvitation = (invId) => apiFetch('DELETE', `/api/invitations/
 
 export const searchUsers = (q) => apiFetch('GET', `/api/users/search?q=${encodeURIComponent(q)}`);
 
+// --- Admin APIs ---
+
+export const fetchAdminStatus = () => apiFetch('GET', '/api/admin/status');
+export const fetchAdminStats = () => apiFetch('GET', '/api/admin/stats');
+export const fetchAdminOrganizations = () => apiFetch('GET', '/api/admin/organizations');
+export const createAdminOrganization = (name, ownerEmail, { teamName, projectName } = {}) =>
+  apiFetch('POST', '/api/admin/organizations', { name, ownerEmail, teamName, projectName });
+export const deleteAdminOrganization = (id) => apiFetch('DELETE', `/api/admin/organizations/${id}`);
+export const fetchAdminUsers = () => apiFetch('GET', '/api/admin/users');
+export const deleteAdminUser = (id) => apiFetch('DELETE', `/api/admin/users/${id}`);
+export const fetchAdminInvitations = () => apiFetch('GET', '/api/admin/invitations');
+export const createAdminInvitation = (email) => apiFetch('POST', '/api/admin/invitations', { email });
+export const deleteAdminInvitation = (id) => apiFetch('DELETE', `/api/admin/invitations/${id}`);
+export const validateInviteToken = (token) => apiFetch('GET', `/api/invite/validate/${encodeURIComponent(token)}`);
+
 // --- Browse / Search APIs ---
 
 export const browsePages = ({ page = 1, limit = 12, sort = 'newest' } = {}) =>

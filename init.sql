@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS permissions;
 DROP TABLE IF EXISTS teams;
 DROP TABLE IF EXISTS two_factor_codes;
 DROP TABLE IF EXISTS password_reset_tokens;
+DROP TABLE IF EXISTS user_invitations;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS organizations;
@@ -38,6 +39,7 @@ CREATE TABLE users (
   avatar_url VARCHAR(512) DEFAULT NULL,
   two_factor_method ENUM('none', 'email', 'totp') DEFAULT 'none',
   totp_secret VARCHAR(64) DEFAULT NULL,
+  is_admin BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -75,6 +77,20 @@ CREATE TABLE two_factor_codes (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (user_id),
+  INDEX (expires_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE user_invitations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  token CHAR(64) NOT NULL UNIQUE,
+  invited_by INT NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  accepted BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX (token),
+  INDEX (email),
   INDEX (expires_at)
 ) ENGINE=InnoDB;
 

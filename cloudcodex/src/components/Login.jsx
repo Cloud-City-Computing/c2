@@ -5,8 +5,8 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useRef, useCallback } from 'react';
-import { destroyModal, serverReq, showModal } from '../util';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { destroyModal, serverReq, showModal, validateInviteToken } from '../util';
 import WelcomeSetup from './WelcomeSetup';
 
 /* ─── Password rules (mirrored from server) ─── */
@@ -31,11 +31,12 @@ function getPasswordStrength(password) {
 const isValidUsername = (name) => /^[a-zA-Z0-9_]{3,32}$/.test(name);
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-export default function Login() {
-  const [tab, setTab] = useState('login'); // 'login' | 'signup' | 'forgot' | '2fa'
+export default function Login({ inviteToken: propInviteToken, inviteEmail: propInviteEmail }) {
+  const [tab, setTab] = useState(propInviteToken ? 'signup' : 'login'); // 'login' | 'signup' | 'forgot' | '2fa'
   const [fields, setFields] = useState({
-    username: '', email: '', confirmEmail: '', password: '', confirmPassword: '', code: ''
+    username: '', email: propInviteEmail || '', confirmEmail: propInviteEmail || '', password: '', confirmPassword: '', code: ''
   });
+  const [inviteToken] = useState(propInviteToken || null);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
   const [twoFactorToken, setTwoFactorToken] = useState(null);
@@ -132,6 +133,9 @@ export default function Login() {
     if (!fields.username || !fields.email || !fields.password) {
       setError('All fields are required.'); return;
     }
+    if (!inviteToken) {
+      setError('An invitation is required to create an account. Contact your administrator.'); return;
+    }
     if (!isValidUsername(fields.username)) {
       setError('Username must be 3-32 characters: letters, numbers, and underscores only.'); return;
     }
@@ -156,7 +160,7 @@ export default function Login() {
       const resp = await fetch('/api/create-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: fields.username, email: fields.email, password: fields.password })
+        body: JSON.stringify({ username: fields.username, email: fields.email, password: fields.password, inviteToken })
       });
       res = await resp.json();
     } catch {
@@ -225,7 +229,9 @@ export default function Login() {
         <>
           <div className="login-tabs">
             <button className={`login-tab ${tab === 'login' ? 'active' : ''}`} onClick={() => switchTab('login')}>Login</button>
-            <button className={`login-tab ${tab === 'signup' ? 'active' : ''}`} onClick={() => switchTab('signup')}>Sign Up</button>
+            {inviteToken && (
+              <button className={`login-tab ${tab === 'signup' ? 'active' : ''}`} onClick={() => switchTab('signup')}>Sign Up</button>
+            )}
           </div>
           {error && <p className="form-error">{error}</p>}
           <div className="modal-form">
@@ -252,6 +258,7 @@ export default function Login() {
                 <label htmlFor="email">Email:</label>
                 <input type="email" id="email" name="email" value={fields.email} onChange={handleChange}
                   onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                  readOnly={!!inviteToken}
                   className={fields.email && !isValidEmail(fields.email) ? 'input--invalid' : fields.email ? 'input--available' : ''} />
                 {fields.email && !isValidEmail(fields.email) && (
                   <span className="input-hint input-hint--invalid">Please enter a valid email</span>

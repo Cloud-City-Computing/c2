@@ -54,8 +54,10 @@ describe('Organization Routes', () => {
   // ── POST /api/organizations ───────────────────────────────
 
   describe('POST /api/organizations', () => {
+    const ADMIN_USER = { ...TEST_USER, is_admin: true };
+
     it('creates organization', async () => {
-      mockAuthenticated();
+      mockAuthenticated(ADMIN_USER);
       c2_query.mockResolvedValueOnce({ insertId: 5 });
 
       const res = await request(app)
@@ -68,8 +70,19 @@ describe('Organization Routes', () => {
       expect(res.body.organizationId).toBe(5);
     });
 
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(); // default TEST_USER, not admin
+
+      const res = await request(app)
+        .post('/api/organizations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'New Org' });
+
+      expect(res.status).toBe(403);
+    });
+
     it('rejects empty name', async () => {
-      mockAuthenticated();
+      mockAuthenticated(ADMIN_USER);
 
       const res = await request(app)
         .post('/api/organizations')
@@ -80,7 +93,7 @@ describe('Organization Routes', () => {
     });
 
     it('rejects missing name', async () => {
-      mockAuthenticated();
+      mockAuthenticated(ADMIN_USER);
 
       const res = await request(app)
         .post('/api/organizations')

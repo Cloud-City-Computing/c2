@@ -26,6 +26,7 @@ import {
   searchUsers,
   showModal,
   destroyModal,
+  fetchAdminStatus,
 } from '../util';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { toastError } from '../components/Toast';
@@ -554,13 +555,18 @@ export default function OrganizationsPage() {
   const [expandedOrg, setExpandedOrg] = useState(orgId ? Number(orgId) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchOrganizations();
-      setOrgs(res.organizations || []);
+      const [orgRes, adminRes] = await Promise.all([
+        fetchOrganizations(),
+        fetchAdminStatus().catch(() => ({ isAdmin: false })),
+      ]);
+      setOrgs(orgRes.organizations || []);
+      setIsAdmin(adminRes.isAdmin === true);
     } catch (e) {
       setError(e.body?.message ?? 'Error loading organizations.');
     }
@@ -598,12 +604,14 @@ export default function OrganizationsPage() {
     <StdLayout>
       <div className="page-header">
         <h1>Organizations</h1>
-        <button
-          className="btn btn-primary"
-          onClick={() => showModal(<NewOrgModal onCreated={load} />, 'modal-md')}
-        >
-          + New Organization
-        </button>
+        {isAdmin && (
+          <button
+            className="btn btn-primary"
+            onClick={() => showModal(<NewOrgModal onCreated={load} />, 'modal-md')}
+          >
+            + New Organization
+          </button>
+        )}
       </div>
 
       {loading && <p className="text-muted">Loading organizations...</p>}

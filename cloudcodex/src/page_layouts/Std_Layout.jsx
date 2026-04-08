@@ -16,6 +16,8 @@ import {
   attemptAutoLogin,
   showDropdownMenu,
   standardRedirect,
+  fetchAdminStatus,
+  validateInviteToken,
 } from '../util';
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
@@ -70,6 +72,15 @@ function SettingsIcon() {
   );
 }
 
+function AdminIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
 function CollapseIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -97,8 +108,11 @@ const NAV_ITEMS = [
   { to: '/account', label: 'Account', Icon: AccountIcon },
 ];
 
-function Sidebar({ collapsed, onToggle }) {
+const ADMIN_NAV_ITEM = { to: '/admin', label: 'Admin', Icon: AdminIcon };
+
+function Sidebar({ collapsed, onToggle, isAdmin }) {
   const location = useLocation();
+  const items = isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
 
   return (
     <aside className="sidebar">
@@ -106,7 +120,7 @@ function Sidebar({ collapsed, onToggle }) {
         {collapsed ? <ExpandIcon /> : <CollapseIcon />}
       </button>
       <nav className="sidebar__nav">
-        {NAV_ITEMS.map(({ to, label, Icon }) => (
+        {items.map(({ to, label, Icon }) => (
           <Link
             key={to}
             to={to}
@@ -178,6 +192,7 @@ function NoLoginMessage() {
 function StdLayout({ children }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('c2-user-prefs'));
@@ -191,6 +206,14 @@ function StdLayout({ children }) {
     if (token) {
       const loggedInUser = await attemptAutoLogin(token);
       setUser(loggedInUser ?? false);
+
+      // Check admin status if logged in
+      if (loggedInUser) {
+        try {
+          const adminRes = await fetchAdminStatus();
+          setIsAdmin(adminRes.isAdmin === true);
+        } catch { /* ignore */ }
+      }
     } else {
       setUser(false);
       if (window.location.pathname !== '/' && window.location.pathname !== '/404') {
@@ -205,6 +228,22 @@ function StdLayout({ children }) {
     checkAuth();
   }, [checkAuth]);
 
+  // Handle invitation tokens from URL
+  useEffect(() => {
+    if (user !== false || !authChecked) return;
+    const params = new URLSearchParams(window.location.search);
+    const inviteParam = params.get('invite');
+    if (!inviteParam) return;
+
+    validateInviteToken(inviteParam)
+      .then(res => {
+        if (res.valid) {
+          showModal(<Login inviteToken={inviteParam} inviteEmail={res.email} />, 'modal-md');
+        }
+      })
+      .catch(() => {});
+  }, [user, authChecked]);
+
   return (
     <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
       <TopBar user={user} />
@@ -212,6 +251,7 @@ function StdLayout({ children }) {
         <Sidebar
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(c => !c)}
+          isAdmin={isAdmin}
         />
       )}
       <main className="main-content">

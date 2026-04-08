@@ -49,15 +49,44 @@ function generate2FACode() {
 
 /**
  * POST /api/create-account
- * Body: { username, password, email }
+ * Body: { username, password, email, inviteToken }
+ * Requires a valid invitation token to create an account.
  */
 router.post('/create-account', asyncHandler(async (req, res) => {
-  const { username, password, email } = req.body;
+  const { username, password, email, inviteToken } = req.body;
 
   if (!username || !password || !email) {
     return res.status(400).json({
       success: false,
       message: 'Username, password, and email are required'
+    });
+  }
+
+  if (!inviteToken) {
+    return res.status(400).json({
+      success: false,
+      message: 'An invitation is required to create an account'
+    });
+  }
+
+  // Validate invitation token
+  const [invitation] = await c2_query(
+    `SELECT id, email AS invite_email, accepted, expires_at FROM user_invitations WHERE token = ? LIMIT 1`,
+    [inviteToken]
+  );
+
+  if (!invitation || invitation.accepted || invitation.expires_at <= new Date()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid or expired invitation. Please request a new one from your administrator.'
+    });
+  }
+
+  // Email must match the invitation
+  if (invitation.invite_email.toLowerCase() !== email.toLowerCase()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email address must match the invitation'
     });
   }
 
@@ -119,6 +148,12 @@ router.post('/create-account', asyncHandler(async (req, res) => {
     [result.insertId]
   );
 
+  // Mark invitation as accepted
+  await c2_query(
+    `UPDATE user_invitations SET accepted = TRUE WHERE id = ?`,
+    [invitation.id]
+  );
+
   res.status(201).json({ success: true, token: sessionToken, user });
 }));
 
@@ -144,53 +179,24 @@ router.get('/check-username/:username', asyncHandler(async (req, res) => {
 /**
  * POST /api/setup
  * Quick-start workspace setup for new users.
- * Optionally creates an organization, team, and project in one step.
- * Body: { orgName?, teamName?, projectName? }
+ * Creates a standalone personal project. Organization creation
+ * is admin-only and handled via the admin console.
+ * Body: { projectName }
  */
 router.post('/setup', requireAuth, asyncHandler(async (req, res) => {
-  const { orgName, teamName, projectName } = req.body;
+  const { projectName } = req.body;
 
-  // At least one thing to create
-  if (!orgName?.trim() && !projectName?.trim()) {
-    return res.status(400).json({ success: false, message: 'Provide at least an organization or project name' });
+  if (!projectName?.trim()) {
+    return res.status(400).json({ success: false, message: 'Provide a project name' });
   }
 
-  let organizationId = null;
-  let teamId = null;
-  let projectId = null;
+  const projResult = await c2_query(
+    `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
+     VALUES (?, NULL, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+    [projectName.trim(), req.user.id, req.user.id, req.user.id]
+  );
 
-  if (orgName?.trim()) {
-    const orgResult = await c2_query(
-      `INSERT INTO organizations (name, owner) VALUES (?, ?)`,
-      [orgName.trim(), req.user.email]
-    );
-    organizationId = orgResult.insertId;
-
-    if (teamName?.trim()) {
-      const teamResult = await c2_query(
-        `INSERT INTO teams (organization_id, name, created_by) VALUES (?, ?, ?)`,
-        [organizationId, teamName.trim(), req.user.id]
-      );
-      teamId = teamResult.insertId;
-
-      await c2_query(
-        `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
-         VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
-        [teamId, req.user.id]
-      );
-    }
-  }
-
-  if (projectName?.trim()) {
-    const projResult = await c2_query(
-      `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
-       VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
-      [projectName.trim(), teamId, req.user.id, req.user.id, req.user.id]
-    );
-    projectId = projResult.insertId;
-  }
-
-  res.status(201).json({ success: true, organizationId, teamId, projectId });
+  res.status(201).json({ success: true, organizationId: null, teamId: null, projectId: projResult.insertId });
 }));
 
 /**
@@ -284,7 +290,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   // Fetch by username only — never compare passwords in SQL
   const users = await c2_query(
-    `SELECT id, name, email, avatar_url, password_hash, two_factor_method, totp_secret FROM users WHERE name = ? LIMIT 1`,
+    `SELECT id, name, email, avatar_url, password_hash, two_factor_method, totp_secret, is_admin FROM users WHERE name = ? LIMIT 1`,
     [username]
   );
 
@@ -302,6 +308,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   }
 
   const { password_hash: _, two_factor_method, totp_secret: __, ...user } = users[0];
+  user.is_admin = Boolean(user.is_admin);
 
   // If 2FA is enabled (email or TOTP), require verification
   if (two_factor_method === 'email' || two_factor_method === 'totp') {
@@ -378,6 +385,7 @@ router.post('/validate-session', asyncHandler(async (req, res) => {
   }
 
   const user = await validateAndAutoLogin(token);
+  if (user) user.is_admin = Boolean(user.is_admin);
 
   res.json(user ? { valid: true, user } : { valid: false });
 }));
@@ -405,13 +413,14 @@ router.post('/get-user', asyncHandler(async (req, res) => {
   }
 
   const rows = await c2_query(
-    `SELECT id, name, email, avatar_url FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, name, email, avatar_url, is_admin FROM users WHERE id = ? LIMIT 1`,
     [Number(userId)]
   );
 
   if (!rows.length) {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
+  rows[0].is_admin = Boolean(rows[0].is_admin);
 
   // Include permissions
   const [perms] = await c2_query(
@@ -733,7 +742,7 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
 
   // Fetch user and create session
   const [user] = await c2_query(
-    `SELECT id, name, avatar_url FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, name, avatar_url, is_admin FROM users WHERE id = ? LIMIT 1`,
     [tokenRecord.user_id]
   );
 
@@ -741,6 +750,7 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'User not found' });
   }
 
+  user.is_admin = Boolean(user.is_admin);
   const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
 
   res.json({ success: true, token: sessionToken, user });
