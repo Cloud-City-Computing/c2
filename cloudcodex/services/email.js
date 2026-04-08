@@ -52,9 +52,14 @@ export function sendEmail({ to, subject, text, html, from }) {
   return transporter.sendMail({
     from: sanitizeHeaderValue(from ?? DEFAULT_FROM, 'from'),
     to: sanitizeHeaderValue(to, 'to'),
+    replyTo: sanitizeHeaderValue(from ?? DEFAULT_FROM, 'replyTo'),
     subject: sanitizeHeaderValue(subject, 'subject'),
     text,
     html,
+    headers: {
+      'X-Mailer': 'Cloud Codex',
+      'Precedence': 'bulk',
+    },
   });
 }
 

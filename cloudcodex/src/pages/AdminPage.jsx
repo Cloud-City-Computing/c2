@@ -195,12 +195,9 @@ function OrganizationsSection() {
         confirmLabel="Delete"
         danger
         onConfirm={async () => {
-          try {
-            await deleteAdminOrganization(org.id);
-            load();
-          } catch (e) {
-            toastError(e.body?.message ?? 'Error deleting organization.');
-          }
+          await deleteAdminOrganization(org.id);
+          destroyModal();
+          load();
         }}
       />
     );
@@ -276,12 +273,9 @@ function UsersSection() {
         confirmLabel="Delete"
         danger
         onConfirm={async () => {
-          try {
-            await deleteAdminUser(user.id);
-            load();
-          } catch (e) {
-            toastError(e.body?.message ?? 'Error deleting user.');
-          }
+          await deleteAdminUser(user.id);
+          destroyModal();
+          load();
         }}
       />
     );

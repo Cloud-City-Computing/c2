@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { destroyModal } from '../util';
 
 /**
  * Parse a user-friendly message from an API error.
@@ -21,6 +22,8 @@ export default function ConfirmDialog({ title, message, onConfirm, onCancel, con
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const handleCancel = onCancel ?? destroyModal;
+
   const handleConfirm = async () => {
     setLoading(true);
     setError(null);
@@ -34,12 +37,12 @@ export default function ConfirmDialog({ title, message, onConfirm, onCancel, con
 
   return (
     <div className="modal-content confirm-dialog">
-      <span className="close-button" onClick={onCancel}>&times;</span>
+      <span className="close-button" onClick={handleCancel}>&times;</span>
       <h2>{title}</h2>
       <p>{message}</p>
       {error && <p className="form-error">{error}</p>}
       <div className="confirm-dialog__actions">
-        <button className="btn btn-ghost" onClick={onCancel} disabled={loading}>Cancel</button>
+        <button className="btn btn-ghost" onClick={handleCancel} disabled={loading}>Cancel</button>
         <button
           className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`}
           onClick={handleConfirm}
