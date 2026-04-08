@@ -1,7 +1,7 @@
 /**
  * API routes for document image uploads in Cloud Codex
  *
- * Provides an upload endpoint that editors (Jodit, markdown) can use
+ * Provides an upload endpoint that editors (Tiptap, markdown) can use
  * to upload images directly. Images are processed, deduplicated, and
  * served as static files from /doc-images/.
  *
@@ -39,8 +39,7 @@ const router = express.Router();
  * Processes each image (resize, convert to webp, dedup by content hash)
  * and returns the served URLs.
  *
- * Response format matches what Jodit's uploader expects:
- * { success: true, data: { files: ["/doc-images/abc.webp"], isImages: [true], baseurl: "" } }
+ * Response: { success: true, urls: ["/doc-images/abc.webp"], data: { files: [...], isImages: [...], baseurl: "" } }
  */
 router.post(
   '/doc-images/upload',
@@ -65,9 +64,10 @@ router.post(
       return res.status(422).json({ success: false, message: 'No images could be processed' });
     }
 
-    // Jodit uploader expected format
+    // Response includes both the simple `urls` array and the legacy `data` shape
     res.json({
       success: true,
+      urls: results,
       data: {
         files: results,
         isImages: results.map(() => true),

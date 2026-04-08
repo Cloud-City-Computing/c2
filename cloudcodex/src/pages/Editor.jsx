@@ -5,11 +5,17 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
-import JoditEditor from 'jodit-react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import ResizableImage from '../components/ResizableImage';
+import ImageCropModal from '../components/ImageCropModal';
+import Placeholder from '@tiptap/extension-placeholder';
+import Underline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
 import { marked } from 'marked';
 import TurndownService from 'turndown';
 import DOMPurify from 'dompurify';
@@ -69,13 +75,55 @@ async function uploadImageFile(file) {
       body: formData,
     });
     const json = await res.json();
-    if (json.success && json.data?.files?.length) {
-      return json.data.files[0];
+    if (json.success && json.urls?.length) {
+      return json.urls[0];
     }
   } catch (err) {
     console.error('[editor] Image upload failed:', err);
   }
   return null;
+}
+
+/**
+ * Insert a placeholder image at the current cursor position (or a specified pos),
+ * upload the file, then replace the placeholder with the served URL.
+ * Uses the Tiptap editor API so it works from toolbar, paste, and drop.
+ */
+async function insertImagePlaceholderAndUpload(editor, file, insertPos) {
+  if (!editor) return;
+  // Insert a placeholder image with a loading indicator via alt text
+  const placeholderSrc = URL.createObjectURL(file);
+  const pos = insertPos ?? editor.state.selection.from;
+  editor.chain().focus().insertContentAt(pos, {
+    type: 'image',
+    attrs: { src: placeholderSrc, alt: 'Uploading…' },
+  }).run();
+
+  const url = await uploadImageFile(file);
+  URL.revokeObjectURL(placeholderSrc);
+
+  if (url) {
+    // Find the placeholder node and replace its src
+    const { doc } = editor.state;
+    doc.descendants((node, nodePos) => {
+      if (node.type.name === 'image' && node.attrs.src === placeholderSrc) {
+        editor.chain().setNodeSelection(nodePos).updateAttributes('image', {
+          src: url,
+          alt: '',
+        }).run();
+        return false; // stop traversal
+      }
+    });
+  } else {
+    // Upload failed — remove the placeholder
+    const { doc } = editor.state;
+    doc.descendants((node, nodePos) => {
+      if (node.type.name === 'image' && node.attrs.src === placeholderSrc) {
+        editor.chain().setNodeSelection(nodePos).deleteSelection().run();
+        return false;
+      }
+    });
+  }
 }
 
 /** Sanitize HTML to prevent XSS — strips scripts, event handlers, and dangerous URIs */
@@ -88,18 +136,6 @@ function sanitizeHtml(html) {
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
-/** Calculate character offset from the start of a contentEditable element to a given node+offset */
-function getCharOffset(root, targetNode, targetOffset) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-  let offset = 0;
-  let node;
-  while ((node = walker.nextNode())) {
-    if (node === targetNode) return offset + targetOffset;
-    offset += node.textContent.length;
-  }
-  return offset;
-}
-
 function htmlToMarkdown(html) {
   if (!html) return '';
   return turndown.turndown(html);
@@ -110,136 +146,248 @@ function markdownToHtml(md) {
   return sanitizeHtml(marked.parse(md));
 }
 
-// --- Jodit Editor wrapper ---
+// --- Tiptap Formatting Toolbar ---
+
+function TiptapToolbar({ editor, onImageSelect }) {
+  const fileInputRef = useRef(null);
+  // Force re-render on every editor transaction so active states update immediately
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!editor) return;
+    const handler = () => setTick(t => t + 1);
+    editor.on('transaction', handler);
+    return () => editor.off('transaction', handler);
+  }, [editor]);
+
+  if (!editor) return null;
+
+  const handleFileSelect = (e) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const images = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (onImageSelect && images.length > 0) onImageSelect(images);
+    e.target.value = ''; // reset so the same file can be selected again
+  };
+
+  const btnClass = (active) => `tiptap-toolbar__btn${active ? ' tiptap-toolbar__btn--active' : ''}`;
+
+  return (
+    <div className="tiptap-toolbar">
+      <div className="tiptap-toolbar__group">
+        <button className={btnClass(editor.isActive('bold'))} onClick={() => editor.chain().focus().toggleBold().run()} title="Bold">
+          <strong>B</strong>
+        </button>
+        <button className={btnClass(editor.isActive('italic'))} onClick={() => editor.chain().focus().toggleItalic().run()} title="Italic">
+          <em>I</em>
+        </button>
+        <button className={btnClass(editor.isActive('underline'))} onClick={() => editor.chain().focus().toggleUnderline().run()} title="Underline">
+          <u>U</u>
+        </button>
+        <button className={btnClass(editor.isActive('strike'))} onClick={() => editor.chain().focus().toggleStrike().run()} title="Strikethrough">
+          <s>S</s>
+        </button>
+        <button className={btnClass(editor.isActive('code'))} onClick={() => editor.chain().focus().toggleCode().run()} title="Inline Code">
+          <code>&lt;/&gt;</code>
+        </button>
+      </div>
+
+      <span className="tiptap-toolbar__divider" />
+
+      <div className="tiptap-toolbar__group">
+        <button className={btnClass(editor.isActive('heading', { level: 1 }))} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1">
+          H1
+        </button>
+        <button className={btnClass(editor.isActive('heading', { level: 2 }))} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2">
+          H2
+        </button>
+        <button className={btnClass(editor.isActive('heading', { level: 3 }))} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} title="Heading 3">
+          H3
+        </button>
+      </div>
+
+      <span className="tiptap-toolbar__divider" />
+
+      <div className="tiptap-toolbar__group">
+        <button className={btnClass(editor.isActive('bulletList'))} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Bullet List">
+          &#8226; List
+        </button>
+        <button className={btnClass(editor.isActive('orderedList'))} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Numbered List">
+          1. List
+        </button>
+        <button className={btnClass(editor.isActive('blockquote'))} onClick={() => editor.chain().focus().toggleBlockquote().run()} title="Blockquote">
+          &ldquo; Quote
+        </button>
+        <button className={btnClass(editor.isActive('codeBlock'))} onClick={() => editor.chain().focus().toggleCodeBlock().run()} title="Code Block">
+          {'{ }'}
+        </button>
+      </div>
+
+      <span className="tiptap-toolbar__divider" />
+
+      <div className="tiptap-toolbar__group">
+        <button className={btnClass(editor.isActive({ textAlign: 'left' }))} onClick={() => editor.chain().focus().setTextAlign('left').run()} title="Align Left">
+          &#8676;
+        </button>
+        <button className={btnClass(editor.isActive({ textAlign: 'center' }))} onClick={() => editor.chain().focus().setTextAlign('center').run()} title="Align Center">
+          &#8596;
+        </button>
+        <button className={btnClass(editor.isActive({ textAlign: 'right' }))} onClick={() => editor.chain().focus().setTextAlign('right').run()} title="Align Right">
+          &#8677;
+        </button>
+      </div>
+
+      <span className="tiptap-toolbar__divider" />
+
+      <div className="tiptap-toolbar__group">
+        <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal Rule">
+          ―
+        </button>
+        <button className="tiptap-toolbar__btn" onClick={() => fileInputRef.current?.click()} title="Upload Image">
+          🖼
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/bmp"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
+      </div>
+
+      <span className="tiptap-toolbar__divider" />
+
+      <div className="tiptap-toolbar__group">
+        <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo">
+          ↩
+        </button>
+        <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo">
+          ↪
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Tiptap Rich Text Editor wrapper ---
 
 function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId }) {
-  const editor = useRef(null);
-  // Local state drives Jodit's value — prevents parent re-renders from resetting the editor
-  const [local, setLocal] = useState(content);
+  const editorContainerRef = useRef(null);
   const internalRef = useRef(false);
+  // Stable ref to the editor instance for use in editorProps closures (avoids stale closures)
+  const editorInstanceRef = useRef(null);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      ResizableImage.configure({ inline: false, allowBase64: false }),
+      Placeholder.configure({ placeholder: 'Start typing...' }),
+      Underline,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    ],
+    content: content || '',
+    editorProps: {
+      attributes: { class: 'tiptap-editor' },
+      handleDrop: (view, event) => {
+        const files = event.dataTransfer?.files;
+        if (!files?.length) return false;
+        const images = Array.from(files).filter(f => f.type.startsWith('image/'));
+        if (images.length === 0) return false;
+        event.preventDefault();
+        // Use the drop coordinates to determine insertion position
+        const dropPos = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        images.forEach(file => insertImagePlaceholderAndUpload(editorInstanceRef.current, file, dropPos?.pos));
+        return true;
+      },
+      handlePaste: (view, event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            event.preventDefault();
+            const file = item.getAsFile();
+            if (file) insertImagePlaceholderAndUpload(editorInstanceRef.current, file);
+            return true;
+          }
+        }
+        return false;
+      },
+    },
+    onUpdate({ editor }) {
+      const html = editor.getHTML();
+      contentRef.current = html;
+      internalRef.current = true;
+      setContent(html);
+      onLocalChange?.(html);
+    },
+    onSelectionUpdate({ editor }) {
+      if (!onCursorChange) return;
+      const { from, to } = editor.state.selection;
+      const text = editor.state.doc.textBetween(from, to, ' ');
+      onCursorChange({ index: from, length: to - from, selectedText: text });
+    },
+  });
+
+  // Keep editor ref in sync for editorProps closures
+  useEffect(() => { editorInstanceRef.current = editor; }, [editor]);
 
   // Sync from parent only on genuine external changes (doc load, version restore, remote collab update)
   useEffect(() => {
+    if (!editor) return;
     if (internalRef.current) {
       internalRef.current = false;
       return;
     }
-    setLocal(content);
-    contentRef.current = content;
-  }, [content, contentRef]);
-
-  // Track cursor/selection position inside Jodit's iframe
-  useEffect(() => {
-    const jodit = editor.current;
-    if (!jodit?.editor || !onCursorChange) return;
-
-    const editorEl = jodit.editor;
-    const editorDoc = editorEl.ownerDocument;
-
-    const handleSelection = () => {
-      const sel = editorDoc.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-      const range = sel.getRangeAt(0);
-      // Calculate character offset from start of editor
-      const offset = getCharOffset(editorEl, range.startContainer, range.startOffset);
-      const selectedText = sel.toString();
-      onCursorChange({ index: offset, length: selectedText.length, selectedText });
-    };
-
-    editorDoc.addEventListener('selectionchange', handleSelection);
-    editorEl.addEventListener('click', handleSelection);
-    editorEl.addEventListener('keyup', handleSelection);
-
-    return () => {
-      editorDoc.removeEventListener('selectionchange', handleSelection);
-      editorEl.removeEventListener('click', handleSelection);
-      editorEl.removeEventListener('keyup', handleSelection);
-    };
-  }, [onCursorChange]);
-
-  const config = useMemo(() => {
-    const token = getSessionTokenFromCookie();
-    return {
-      readonly: false,
-      placeholder: 'Start typing...',
-      theme: 'dark',
-      // Image upload: send pasted/dropped/chosen images to the server immediately,
-      // which processes, deduplicates, and returns a served URL.
-      uploader: {
-        url: '/api/doc-images/upload',
-        format: 'json',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        filesVariableName: () => 'files',
-        withCredentials: false,
-        pathVariableName: 'path',
-        prepareData: (formdata) => formdata,
-        isSuccess: (resp) => resp.success,
-        getMsg: (resp) => resp.message || '',
-        process: (resp) => ({
-          files: resp.data?.files || [],
-          isImages: resp.data?.isImages || [],
-          baseurl: '',
-          error: resp.success ? 0 : 1,
-          message: resp.message || '',
-        }),
-        defaultHandlerSuccess: function (data) {
-          if (data.files?.length) {
-            data.files.forEach((url) => {
-              this.s.insertImage(url);
-            });
-          }
-        },
-        defaultHandlerError: function (resp) {
-          console.error('[editor] Image upload failed:', resp?.message);
-        },
-      },
-      // Also accept base64 as fallback when offline or upload fails
-      insertImageAsBase64URI: false,
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleBlur = useCallback((newContent) => {
-    contentRef.current = newContent;
-    setLocal(newContent);
-    internalRef.current = true;
-    setContent(newContent);
-    onLocalChange?.(newContent);
-  }, [setContent, contentRef, onLocalChange]);
-
-  const handleChange = useCallback((newContent) => {
-    contentRef.current = newContent;
-    onLocalChange?.(newContent);
-  }, [contentRef, onLocalChange]);
-
-  // Mount cursor overlay into .jodit-workplace so it sits over only the content area
-  const [cursorContainer, setCursorContainer] = useState(null);
-  useEffect(() => {
-    const jodit = editor.current;
-    if (!jodit?.container) return;
-    const workplace = jodit.container.querySelector('.jodit-workplace');
-    if (workplace) {
-      workplace.style.position = 'relative';
-      setCursorContainer(workplace);
+    // Only update if content actually differs to prevent cursor jumps
+    const currentHtml = editor.getHTML();
+    if (currentHtml !== content) {
+      editor.commands.setContent(content || '', false);
     }
-  }, [local]); // re-check when editor content initializes
+  }, [content, editor]);
+
+  // Detect the Tiptap editor DOM container for portal overlays
+  const [overlayContainer, setOverlayContainer] = useState(null);
+  useEffect(() => {
+    if (!editorContainerRef.current) return;
+    const tiptapEl = editorContainerRef.current.querySelector('.tiptap');
+    if (tiptapEl) {
+      tiptapEl.parentElement.style.position = 'relative';
+      setOverlayContainer(tiptapEl.parentElement);
+    }
+  }, [editor]);
+
+  // --- Crop modal state (for toolbar uploads only) ---
+  const [cropQueue, setCropQueue] = useState([]);
+  const cropFile = cropQueue.length > 0 ? cropQueue[0] : null;
+
+  const handleToolbarImageSelect = (files) => {
+    setCropQueue(files);
+  };
+
+  const handleCropConfirm = (resultFile) => {
+    insertImagePlaceholderAndUpload(editorInstanceRef.current || editor, resultFile);
+    setCropQueue(prev => prev.slice(1));
+  };
+
+  const handleCropCancel = () => {
+    setCropQueue(prev => prev.slice(1));
+  };
 
   return (
     <>
-      <JoditEditor
-        ref={editor}
-        value={local}
-        config={config}
-        onBlur={handleBlur}
-        onChange={handleChange}
-      />
-      {cursorContainer && createPortal(
-        <RichTextCursors remoteCursors={remoteCursors} editorRef={editor} />,
-        cursorContainer
+      <TiptapToolbar editor={editor} onImageSelect={handleToolbarImageSelect} />
+      <div ref={editorContainerRef}>
+        <EditorContent editor={editor} />
+      </div>
+      {overlayContainer && createPortal(
+        <RichTextCursors remoteCursors={remoteCursors} editorRef={{ current: editor }} />,
+        overlayContainer
       )}
-      {cursorContainer && createPortal(
-        <RichTextHighlights editorRef={editor} comments={comments || []} activeCommentId={activeCommentId} />,
-        cursorContainer
+      {overlayContainer && createPortal(
+        <RichTextHighlights editorRef={{ current: editor }} comments={comments || []} activeCommentId={activeCommentId} />,
+        overlayContainer
       )}
+      {cropFile && <ImageCropModal file={cropFile} onConfirm={handleCropConfirm} onCancel={handleCropCancel} />}
     </>
   );
 }

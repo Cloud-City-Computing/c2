@@ -1,9 +1,9 @@
 /**
  * CommentHighlights — Renders colored overlays on text referenced by comments.
  *
- * For Jodit (rich text): traverses the editor DOM to find text matching each
+ * For Tiptap (rich text): traverses the editor DOM to find text matching each
  * comment's selected_text, gets bounding rects, and draws transparent overlay
- * rectangles. Uses the same portal-into-.jodit-workplace pattern as RemoteCursors.
+ * rectangles positioned relative to the editor container.
  *
  * For Markdown: injects highlight marks into the preview pane.
  *
@@ -78,24 +78,21 @@ function findTextRanges(rootEl, doc, searchText) {
 }
 
 /**
- * CommentHighlights for the rich text (Jodit) editor.
- * Rendered via createPortal into .jodit-workplace.
+ * CommentHighlights for the rich text (Tiptap) editor.
+ * Rendered via createPortal into the Tiptap content wrapper.
  */
 export function RichTextHighlights({ editorRef, comments, activeCommentId }) {
   const [highlights, setHighlights] = useState([]);
 
   const computeHighlights = useCallback(() => {
-    const jodit = editorRef.current;
-    if (!jodit?.editor) { setHighlights([]); return; }
+    const editor = editorRef.current;
+    if (!editor?.view?.dom) { setHighlights([]); return; }
 
-    const editorEl = jodit.editor;
+    const editorEl = editor.view.dom;
     const editorDoc = editorEl.ownerDocument;
-    const container = jodit.container || jodit.parentElement;
+    const container = editorEl.parentElement;
     if (!container) { setHighlights([]); return; }
-    const workplace = container.querySelector('.jodit-workplace');
-    if (!workplace) { setHighlights([]); return; }
-    const workplaceRect = workplace.getBoundingClientRect();
-    const iframe = workplace.querySelector('iframe.jodit-wysiwyg_iframe');
+    const containerRect = container.getBoundingClientRect();
 
     const items = [];
 
@@ -109,22 +106,12 @@ export function RichTextHighlights({ editorRef, comments, activeCommentId }) {
           const rect = rects[i];
           if (rect.width === 0 && rect.height === 0) continue;
 
-          let top, left;
-          if (iframe) {
-            const iframeRect = iframe.getBoundingClientRect();
-            top = iframeRect.top - workplaceRect.top + rect.top;
-            left = iframeRect.left - workplaceRect.left + rect.left;
-          } else {
-            top = rect.top - workplaceRect.top;
-            left = rect.left - workplaceRect.left;
-          }
-
           items.push({
             key: `${c.id}-${i}`,
             commentId: c.id,
             tag: c.tag,
-            top,
-            left,
+            top: rect.top - containerRect.top,
+            left: rect.left - containerRect.left,
             width: rect.width,
             height: rect.height,
           });
