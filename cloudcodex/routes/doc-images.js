@@ -15,7 +15,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler, errorHandler } from './helpers/shared.js';
 import { processAndSaveImage } from './helpers/images.js';
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/svg+xml'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const upload = multer({
@@ -25,7 +25,7 @@ const upload = multer({
     if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Unsupported image type. Supported: JPEG, PNG, WebP, GIF, BMP, SVG'));
+      cb(new Error('Unsupported image type. Supported: JPEG, PNG, WebP, GIF, BMP'));
     }
   },
 });
@@ -54,12 +54,6 @@ router.post(
     const results = [];
     for (const file of req.files) {
       try {
-        // Skip SVG files from sharp processing (serve as-is would need separate handling)
-        // For now, process all raster types through sharp
-        if (file.mimetype === 'image/svg+xml') {
-          // SVGs are not processed through sharp — skip for security
-          continue;
-        }
         const result = await processAndSaveImage(file.buffer);
         results.push(result.url);
       } catch (err) {

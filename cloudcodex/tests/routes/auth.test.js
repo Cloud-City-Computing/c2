@@ -262,6 +262,30 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/email/i);
     });
+
+    it('rejects duplicate email on update', async () => {
+      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
+      c2_query.mockResolvedValueOnce([{ id: 5 }]); // dup email found
+
+      const res = await request(app)
+        .post('/api/update-account')
+        .send({ token: 'tok', userId: 1, email: 'taken@example.com' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/already exists/i);
+    });
+
+    it('rejects duplicate username on update', async () => {
+      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
+      c2_query.mockResolvedValueOnce([{ id: 5 }]); // dup name found
+
+      const res = await request(app)
+        .post('/api/update-account')
+        .send({ token: 'tok', userId: 1, name: 'takenuser' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/taken/i);
+    });
   });
 
   // ── GET /api/users/search ─────────────────────────────────
@@ -384,7 +408,7 @@ describe('Auth Routes', () => {
 
       const res = await request(app)
         .post('/api/reset-password')
-        .send({ token: 'valid-reset-token', password: 'newpassword123' });
+        .send({ token: 'valid-reset-token', password: 'NewPassword1!' });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -941,6 +965,123 @@ describe('Auth Routes', () => {
       const res = await request(app)
         .get('/api/2fa/status')
         .set('Authorization', 'Bearer bad-token');
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ── GET /api/check-username/:username ─────────────────────
+
+  describe('GET /api/check-username/:username', () => {
+    it('returns available for valid unused username', async () => {
+      c2_query.mockResolvedValueOnce([]); // no existing user
+
+      const res = await request(app)
+        .get('/api/check-username/newuser');
+
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(true);
+    });
+
+    it('returns unavailable for taken username', async () => {
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // existing user
+
+      const res = await request(app)
+        .get('/api/check-username/testuser');
+
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(false);
+      expect(res.body.message).toMatch(/taken/i);
+    });
+
+    it('returns unavailable for invalid username format', async () => {
+      const res = await request(app)
+        .get('/api/check-username/ab'); // too short
+
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(false);
+    });
+
+    it('returns unavailable for username with spaces', async () => {
+      const res = await request(app)
+        .get('/api/check-username/bad%20user');
+
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(false);
+    });
+  });
+
+  // ── POST /api/setup ───────────────────────────────────────
+
+  describe('POST /api/setup', () => {
+    it('creates org, team, and project in one step', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce({ insertId: 10 })   // INSERT organization
+        .mockResolvedValueOnce({ insertId: 20 })   // INSERT team
+        .mockResolvedValueOnce([])                  // INSERT team_members (owner)
+        .mockResolvedValueOnce({ insertId: 30 });   // INSERT project
+
+      const res = await request(app)
+        .post('/api/setup')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ orgName: 'My Org', teamName: 'My Team', projectName: 'My Project' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.organizationId).toBe(10);
+      expect(res.body.teamId).toBe(20);
+      expect(res.body.projectId).toBe(30);
+    });
+
+    it('creates only an organization (no team/project)', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce({ insertId: 10 }); // INSERT organization
+
+      const res = await request(app)
+        .post('/api/setup')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ orgName: 'My Org' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.organizationId).toBe(10);
+      expect(res.body.teamId).toBeNull();
+      expect(res.body.projectId).toBeNull();
+    });
+
+    it('creates only a project (no org/team)', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce({ insertId: 30 }); // INSERT project
+
+      const res = await request(app)
+        .post('/api/setup')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ projectName: 'Solo Project' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.organizationId).toBeNull();
+      expect(res.body.projectId).toBe(30);
+    });
+
+    it('rejects when no org or project name provided', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/setup')
+        .set('Authorization', 'Bearer valid-token')
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/at least/i);
+    });
+
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+
+      const res = await request(app)
+        .post('/api/setup')
+        .set('Authorization', 'Bearer bad-token')
+        .send({ orgName: 'My Org' });
 
       expect(res.status).toBe(401);
     });

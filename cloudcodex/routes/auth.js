@@ -233,6 +233,11 @@ router.post('/update-account', asyncHandler(async (req, res) => {
     if (!isValidEmail(email)) {
       return res.status(400).json({ success: false, message: 'Invalid email address' });
     }
+    // Check uniqueness if changing email
+    const [dupEmail] = await c2_query(`SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1`, [email, Number(userId)]);
+    if (dupEmail) {
+      return res.status(409).json({ success: false, message: 'An account with this email already exists' });
+    }
     fields.push('email = ?');
     params.push(email);
   }
@@ -283,10 +288,13 @@ router.post('/login', asyncHandler(async (req, res) => {
     [username]
   );
 
-  // Use a constant-time comparison to prevent timing attacks
+  // Use a constant-time comparison to prevent timing attacks.
+  // The dummy hash is a real pre-computed bcrypt hash so that bcrypt.compare
+  // takes the same amount of time whether or not the user exists.
+  const DUMMY_HASH = '$2b$12$ECTURXTU8jI1L8AA/8m.iOiowQDH1nAW3raB55X5cPKzEjL9xDsSe';
   const validPassword = users.length
     ? await bcrypt.compare(password, users[0].password_hash)
-    : await bcrypt.compare(password, '$2b$12$000000000000000000000000000000000000000000000000000000');
+    : await bcrypt.compare(password, DUMMY_HASH);
 
   if (!validPassword || !users.length) {
     // Intentionally vague — don't reveal whether the username exists
@@ -573,6 +581,9 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'A valid email address is required' });
   }
 
+  // Track start time so we can normalize response timing to prevent email enumeration
+  const start = Date.now();
+
   // Always respond the same way — don't reveal whether the email exists
   const [user] = await c2_query(`SELECT id FROM users WHERE email = ? LIMIT 1`, [email]);
 
@@ -609,6 +620,13 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
     }
   }
 
+  // Ensure consistent response timing (minimum 200ms) to prevent email enumeration via timing
+  const elapsed = Date.now() - start;
+  const MIN_RESPONSE_MS = 200;
+  if (elapsed < MIN_RESPONSE_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_RESPONSE_MS - elapsed));
+  }
+
   // Always return success to prevent email enumeration
   res.json({ success: true, message: 'If an account with that email exists, a reset link has been sent.' });
 }));
@@ -625,8 +643,9 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Token and new password are required' });
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  const pwFailures = validatePassword(password);
+  if (pwFailures.length > 0) {
+    return res.status(400).json({ success: false, message: 'Password does not meet requirements', failures: pwFailures });
   }
 
   const [resetRecord] = await c2_query(

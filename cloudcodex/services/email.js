@@ -26,6 +26,16 @@ const transporter = nodemailer.createTransport({
 const DEFAULT_FROM = process.env.SMTP_FROM ?? 'Cloud Codex <noreply@cloudcitycomputing.com>';
 
 /**
+ * Reject strings containing newlines or carriage returns to prevent email header injection.
+ */
+function sanitizeHeaderValue(value, fieldName) {
+  if (typeof value === 'string' && /[\r\n]/.test(value)) {
+    throw new Error(`Invalid ${fieldName}: must not contain newline characters`);
+  }
+  return value;
+}
+
+/**
  * Send an email.
  * @param {Object} options
  * @param {string} options.to - Recipient email address
@@ -37,9 +47,9 @@ const DEFAULT_FROM = process.env.SMTP_FROM ?? 'Cloud Codex <noreply@cloudcitycom
  */
 export function sendEmail({ to, subject, text, html, from }) {
   return transporter.sendMail({
-    from: from ?? DEFAULT_FROM,
-    to,
-    subject,
+    from: sanitizeHeaderValue(from ?? DEFAULT_FROM, 'from'),
+    to: sanitizeHeaderValue(to, 'to'),
+    subject: sanitizeHeaderValue(subject, 'subject'),
     text,
     html,
   });
