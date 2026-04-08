@@ -15,7 +15,6 @@ import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
 export function requireAuth(req, res, next) {
   const token =
     req.headers['authorization']?.replace('Bearer ', '') ||
-    req.body?.token ||
     null;
 
   if (!token) {

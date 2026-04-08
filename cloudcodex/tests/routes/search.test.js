@@ -1,12 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
+import { getAllPresence } from '../../services/collab.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+
+vi.mock('../../services/collab.js', () => ({
+  getAllPresence: vi.fn(() => ({})),
+}));
 
 describe('Search Routes', () => {
   beforeEach(() => {
     resetMocks();
+    getAllPresence.mockReset().mockReturnValue({});
   });
 
   describe('GET /api/search', () => {
@@ -83,6 +89,108 @@ describe('Search Routes', () => {
 
       const res = await request(app)
         .get('/api/search?query=test')
+        .set('Authorization', 'Bearer bad');
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ── GET /api/browse ───────────────────────────────────────
+
+  describe('GET /api/browse', () => {
+    it('returns paginated results', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ total: 2 }]);
+      c2_query.mockResolvedValueOnce([
+        { id: 1, title: 'Page One', created_at: '2026-01-01', author: 'user', project_name: 'Proj', excerpt: 'Hello', char_count: 100 },
+        { id: 2, title: 'Page Two', created_at: '2026-01-02', author: 'user', project_name: 'Proj', excerpt: 'World', char_count: 200 },
+      ]);
+
+      const res = await request(app)
+        .get('/api/browse?page=1&limit=12')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.results).toHaveLength(2);
+      expect(res.body.total).toBe(2);
+      expect(res.body.page).toBe(1);
+      expect(res.body.totalPages).toBe(1);
+    });
+
+    it('accepts sort parameter', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ total: 0 }]);
+      c2_query.mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .get('/api/browse?sort=title')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+    });
+
+    it('defaults to newest sort for unknown sort value', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ total: 0 }]);
+      c2_query.mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .get('/api/browse?sort=invalid')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+    });
+
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+
+      const res = await request(app)
+        .get('/api/browse')
+        .set('Authorization', 'Bearer bad');
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ── GET /api/presence ─────────────────────────────────────
+
+  describe('GET /api/presence', () => {
+    it('returns empty presence when no editors', async () => {
+      mockAuthenticated();
+      getAllPresence.mockReturnValue({});
+
+      const res = await request(app)
+        .get('/api/presence')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.presence).toEqual({});
+    });
+
+    it('returns presence filtered by read access', async () => {
+      mockAuthenticated();
+      getAllPresence.mockReturnValue({
+        '10': [{ id: 2, name: 'other', color: '#ff0000' }],
+        '20': [{ id: 3, name: 'hidden', color: '#00ff00' }],
+      });
+      // Accessible pages query returns only page 10
+      c2_query.mockResolvedValueOnce([{ id: 10 }]);
+
+      const res = await request(app)
+        .get('/api/presence')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.presence).toHaveProperty('10');
+      expect(res.body.presence).not.toHaveProperty('20');
+    });
+
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+
+      const res = await request(app)
+        .get('/api/presence')
         .set('Authorization', 'Bearer bad');
 
       expect(res.status).toBe(401);

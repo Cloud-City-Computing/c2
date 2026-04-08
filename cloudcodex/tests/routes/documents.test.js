@@ -129,6 +129,20 @@ describe('Document Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('rejects oversized content (>2MB)', async () => {
+      mockAuthenticated();
+      // Content exactly at 2MB + 1 byte — the JSON body including wrapper fields
+      // exceeds the express.json({ limit: '2mb' }) parser, which also returns 413
+      const hugeContent = 'x'.repeat(2 * 1024 * 1024 + 1);
+
+      const res = await request(app)
+        .post('/api/save-document')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ doc_id: 1, html_content: hugeContent });
+
+      expect(res.status).toBe(413);
+    });
   });
 
   // ── PUT /api/document/:pageId/title ───────────────────────

@@ -42,17 +42,16 @@ describe('requireAuth Middleware', () => {
     expect(req.sessionToken).toBe('valid-token');
   });
 
-  it('passes with token in body', async () => {
-    validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
-
+  it('rejects token in body (only Authorization header accepted)', () => {
     const { req, res, next } = createMocks({
       body: { token: 'body-token' },
     });
 
     requireAuth(req, res, next);
-    await vi.waitFor(() => expect(next).toHaveBeenCalled());
 
-    expect(req.user).toEqual(TEST_USER);
+    expect(res.statusCode).toBe(401);
+    expect(res.body.message).toMatch(/authentication required/i);
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('returns 401 when no token provided', () => {
