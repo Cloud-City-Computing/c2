@@ -21,10 +21,10 @@ describe('Document Routes', () => {
         updated_at: '2026-01-02',
         title: 'Test Doc',
         version: 3,
-        project_id: 1,
+        archive_id: 1,
         name: 'author',
         email: 'author@test.com',
-        project_name: 'My Project',
+        archive_name: 'My Archive',
       }]);
 
       const res = await request(app)
@@ -84,8 +84,8 @@ describe('Document Routes', () => {
     it('saves document with write access', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, old_content: '<p>old</p>', version: 2, project_id: 1 }]) // fetch page
-        .mockResolvedValueOnce([]);  // UPDATE pages
+        .mockResolvedValueOnce([{ id: 1, old_content: '<p>old</p>', version: 2, archive_id: 1 }]) // fetch log
+        .mockResolvedValueOnce([]);  // UPDATE logs
 
       const res = await request(app)
         .post('/api/save-document')
@@ -98,7 +98,7 @@ describe('Document Routes', () => {
 
     it('rejects without write access', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]); // no page found (access denied)
+      c2_query.mockResolvedValueOnce([]); // no log found (access denied)
 
       const res = await request(app)
         .post('/api/save-document')
@@ -145,14 +145,14 @@ describe('Document Routes', () => {
     });
   });
 
-  // ── PUT /api/document/:pageId/title ───────────────────────
+  // ── PUT /api/document/:logId/title ───────────────────────
 
-  describe('PUT /api/document/:pageId/title', () => {
+  describe('PUT /api/document/:logId/title', () => {
     it('updates title with write access', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])  // page found with write access
-        .mockResolvedValueOnce([]);            // UPDATE pages
+        .mockResolvedValueOnce([{ id: 1 }])  // log found with write access
+        .mockResolvedValueOnce([]);            // UPDATE logs
 
       const res = await request(app)
         .put('/api/document/1/title')
@@ -174,7 +174,7 @@ describe('Document Routes', () => {
       expect(res.status).toBe(400);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
@@ -187,7 +187,7 @@ describe('Document Routes', () => {
 
     it('rejects without write access', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]); // no page found
+      c2_query.mockResolvedValueOnce([]); // no log found
 
       const res = await request(app)
         .put('/api/document/1/title')
@@ -198,14 +198,14 @@ describe('Document Routes', () => {
     });
   });
 
-  // ── POST /api/document/:pageId/publish ────────────────────
+  // ── POST /api/document/:logId/publish ────────────────────
 
-  describe('POST /api/document/:pageId/publish', () => {
-    it('publishes a version with write access (no team)', async () => {
+  describe('POST /api/document/:logId/publish', () => {
+    it('publishes a version with write access (no squad)', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, version: 2, project_id: 1, team_id: null, project_creator: 1 }]) // fetch page with write access
-        .mockResolvedValueOnce([])  // UPDATE pages (bump version)
+        .mockResolvedValueOnce([{ id: 1, version: 2, archive_id: 1, squad_id: null, archive_creator: 1 }]) // fetch log with write access
+        .mockResolvedValueOnce([])  // UPDATE logs (bump version)
         .mockResolvedValueOnce([]); // INSERT version
 
       const res = await request(app)
@@ -221,10 +221,10 @@ describe('Document Routes', () => {
     it('publishes when user has can_publish permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, version: 2, project_id: 1, team_id: 5, project_creator: 99 }]) // page with team
-        .mockResolvedValueOnce([])   // org owner check (not owner)
-        .mockResolvedValueOnce([{ can_publish: true, role: 'member' }]) // team member with can_publish
-        .mockResolvedValueOnce([])   // UPDATE pages
+        .mockResolvedValueOnce([{ id: 1, version: 2, archive_id: 1, squad_id: 5, archive_creator: 99 }]) // log with squad
+        .mockResolvedValueOnce([])   // workspace owner check (not owner)
+        .mockResolvedValueOnce([{ can_publish: true, role: 'member' }]) // squad member with can_publish
+        .mockResolvedValueOnce([])   // UPDATE logs
         .mockResolvedValueOnce([]);  // INSERT version
 
       const res = await request(app)
@@ -238,9 +238,9 @@ describe('Document Routes', () => {
     it('rejects publish without can_publish permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, version: 2, project_id: 1, team_id: 5, project_creator: 99 }]) // page with team
-        .mockResolvedValueOnce([])   // org owner check (not owner)
-        .mockResolvedValueOnce([{ can_publish: false, role: 'member' }]); // team member without can_publish
+        .mockResolvedValueOnce([{ id: 1, version: 2, archive_id: 1, squad_id: 5, archive_creator: 99 }]) // log with squad
+        .mockResolvedValueOnce([])   // workspace owner check (not owner)
+        .mockResolvedValueOnce([{ can_publish: false, role: 'member' }]); // squad member without can_publish
 
       const res = await request(app)
         .post('/api/document/1/publish')
@@ -252,7 +252,7 @@ describe('Document Routes', () => {
 
     it('rejects without write access', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]); // no page found
+      c2_query.mockResolvedValueOnce([]); // no log found
 
       const res = await request(app)
         .post('/api/document/1/publish')
@@ -261,7 +261,7 @@ describe('Document Routes', () => {
       expect(res.status).toBe(403);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
@@ -283,13 +283,13 @@ describe('Document Routes', () => {
     });
   });
 
-  // ── GET /api/document/:pageId/versions ────────────────────
+  // ── GET /api/document/:logId/versions ────────────────────
 
-  describe('GET /api/document/:pageId/versions', () => {
-    it('returns versions for accessible page', async () => {
+  describe('GET /api/document/:logId/versions', () => {
+    it('returns versions for accessible log', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])  // page access check
+        .mockResolvedValueOnce([{ id: 1 }])  // log access check
         .mockResolvedValueOnce([
           { id: 1, version_number: 2, saved_at: '2026-01-02', created_by: 'user', created_by_id: 1 },
           { id: 2, version_number: 1, saved_at: '2026-01-01', created_by: 'user', created_by_id: 1 },
@@ -314,7 +314,7 @@ describe('Document Routes', () => {
       expect(res.status).toBe(403);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
@@ -325,9 +325,9 @@ describe('Document Routes', () => {
     });
   });
 
-  // ── GET /api/document/:pageId/versions/:versionId ─────────
+  // ── GET /api/document/:logId/versions/:versionId ─────────
 
-  describe('GET /api/document/:pageId/versions/:versionId', () => {
+  describe('GET /api/document/:logId/versions/:versionId', () => {
     it('returns a specific version with read access', async () => {
       mockAuthenticated();
       c2_query
@@ -378,15 +378,15 @@ describe('Document Routes', () => {
     });
   });
 
-  // ── POST /api/document/:pageId/versions/:versionId/restore ─
+  // ── POST /api/document/:logId/versions/:versionId/restore ─
 
-  describe('POST /api/document/:pageId/versions/:versionId/restore', () => {
+  describe('POST /api/document/:logId/versions/:versionId/restore', () => {
     it('restores a version with write access', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, html_content: '<p>current</p>', version: 3 }])  // write access + current page
+        .mockResolvedValueOnce([{ id: 1, html_content: '<p>current</p>', version: 3 }])  // write access + current log
         .mockResolvedValueOnce([{ html_content: '<p>restored</p>' }])  // target version
-        .mockResolvedValueOnce([])   // UPDATE pages
+        .mockResolvedValueOnce([])   // UPDATE logs
         .mockResolvedValueOnce([]);  // INSERT version snapshot
 
       const res = await request(app)
@@ -433,13 +433,13 @@ describe('Document Routes', () => {
     });
   });
 
-  // ── DELETE /api/document/:pageId/versions/:versionId ──────
+  // ── DELETE /api/document/:logId/versions/:versionId ──────
 
-  describe('DELETE /api/document/:pageId/versions/:versionId', () => {
+  describe('DELETE /api/document/:logId/versions/:versionId', () => {
     it('allows the version author to delete', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 5, created_by: TEST_USER.id, project_id: 1 }])  // version found, user is author
+        .mockResolvedValueOnce([{ id: 5, created_by: TEST_USER.id, archive_id: 1 }])  // version found, user is author
         .mockResolvedValueOnce([]);  // DELETE
 
       const res = await request(app)
@@ -450,11 +450,11 @@ describe('Document Routes', () => {
       expect(res.body.success).toBe(true);
     });
 
-    it('allows team owner to delete', async () => {
+    it('allows squad owner to delete', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 5, created_by: 999, project_id: 1 }])  // version found, different author
-        .mockResolvedValueOnce([{ can_delete_version: false, role: 'owner' }])  // team member is owner
+        .mockResolvedValueOnce([{ id: 5, created_by: 999, archive_id: 1 }])  // version found, different author
+        .mockResolvedValueOnce([{ can_delete_version: false, role: 'owner' }])  // squad member is owner
         .mockResolvedValueOnce([]);  // DELETE
 
       const res = await request(app)
@@ -468,7 +468,7 @@ describe('Document Routes', () => {
     it('allows member with can_delete_version permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 5, created_by: 999, project_id: 1 }])  // version found
+        .mockResolvedValueOnce([{ id: 5, created_by: 999, archive_id: 1 }])  // version found
         .mockResolvedValueOnce([{ can_delete_version: true, role: 'member' }])  // has perm
         .mockResolvedValueOnce([]);  // DELETE
 
@@ -483,7 +483,7 @@ describe('Document Routes', () => {
     it('rejects without permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 5, created_by: 999, project_id: 1 }])  // version found
+        .mockResolvedValueOnce([{ id: 5, created_by: 999, archive_id: 1 }])  // version found
         .mockResolvedValueOnce([{ can_delete_version: false, role: 'member' }]);  // no perm
 
       const res = await request(app)
@@ -515,9 +515,9 @@ describe('Document Routes', () => {
     });
   });
 
-  // ── GET /api/document/:pageId/export ──────────────────────
+  // ── GET /api/document/:logId/export ──────────────────────
 
-  describe('GET /api/document/:pageId/export', () => {
+  describe('GET /api/document/:logId/export', () => {
     it('exports as HTML', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([{ id: 1, title: 'My Doc', html_content: '<p>Hello</p>' }]);
@@ -594,7 +594,7 @@ describe('Document Routes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)

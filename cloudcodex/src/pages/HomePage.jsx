@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Home Page
+ * Cloud Codex - Home Log
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -47,8 +47,8 @@ function PendingInvitations() {
         {invitations.map(inv => (
           <div key={inv.id} className="invitation-card">
             <div className="invitation-card__info">
-              <strong>{inv.team_name}</strong>
-              {inv.org_name && <span className="text-muted text-sm"> in {inv.org_name}</span>}
+              <strong>{inv.squad_name}</strong>
+              {inv.workspace_name && <span className="text-muted text-sm"> in {inv.workspace_name}</span>}
               <p className="text-muted text-sm">
                 Invited by {inv.invited_by_name} &middot; Role: {inv.role}
                 &middot; {new Date(inv.created_at).toLocaleDateString()}
@@ -56,8 +56,8 @@ function PendingInvitations() {
               <div className="invitation-card__perms">
                 {inv.can_read && <span className="perm-badge">Read</span>}
                 {inv.can_write && <span className="perm-badge">Write</span>}
-                {inv.can_create_page && <span className="perm-badge">Create Pages</span>}
-                {inv.can_create_project && <span className="perm-badge">Create Projects</span>}
+                {inv.can_create_log && <span className="perm-badge">Create Logs</span>}
+                {inv.can_create_archive && <span className="perm-badge">Create Archives</span>}
                 {inv.can_manage_members && <span className="perm-badge">Manage Members</span>}
                 {inv.can_delete_version && <span className="perm-badge">Delete Versions</span>}
               </div>
@@ -76,7 +76,7 @@ function PendingInvitations() {
 export default function HomePage() {
   return (
     <StdLayout>
-      <div className="home-page">
+      <div className="home-log">
         <section className="home-hero">
           <h1>Welcome to Cloud Codex</h1>
           <p className="text-muted">Your collaborative document workspace. Browse and search your documents below.</p>

@@ -1,8 +1,8 @@
 /**
- * CommentManager — Modal dialog for managing all comments on a page.
+ * CommentManager — Modal dialog for managing all comments on a log.
  *
  * Features: filter by tag/status, bulk resolve, clear all, navigate to comment.
- * Can be invoked from the Editor toolbar or ProjectBrowser.
+ * Can be invoked from the Editor toolbar or ArchiveBrowser.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -40,7 +40,7 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString();
 }
 
-export default function CommentManager({ pageId, pageTitle, onClose, onNavigate }) {
+export default function CommentManager({ logId, logTitle, onClose, onNavigate }) {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterTag, setFilterTag] = useState('all');
@@ -51,11 +51,11 @@ export default function CommentManager({ pageId, pageTitle, onClose, onNavigate 
 
   const loadComments = useCallback(async () => {
     try {
-      const res = await fetchComments(pageId);
+      const res = await fetchComments(logId);
       setComments(res.comments || []);
     } catch (e) { toastError(e); }
     setLoading(false);
-  }, [pageId]);
+  }, [logId]);
 
   useEffect(() => { loadComments(); }, [loadComments]);
 
@@ -97,7 +97,7 @@ export default function CommentManager({ pageId, pageTitle, onClose, onNavigate 
     if (clearing) return;
     setClearing(true);
     try {
-      await clearAllComments(pageId);
+      await clearAllComments(logId);
       setComments([]);
     } catch (e) { toastError(e); }
     setClearing(false);
@@ -130,7 +130,7 @@ export default function CommentManager({ pageId, pageTitle, onClose, onNavigate 
   return (
     <div className="comment-manager">
       <div className="comment-manager__header">
-        <h2>Comments{pageTitle ? ` — ${pageTitle}` : ''}</h2>
+        <h2>Comments{logTitle ? ` — ${logTitle}` : ''}</h2>
         <button className="btn btn-ghost" onClick={onClose}>&times;</button>
       </div>
 

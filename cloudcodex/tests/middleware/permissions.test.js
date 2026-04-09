@@ -26,12 +26,12 @@ describe('loadPermissions Middleware', () => {
   });
 
   it('loads permissions from database', async () => {
-    c2_query.mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
+    c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]);
 
     const { req, res, next } = createMocks();
     await loadPermissions(req, res, next);
 
-    expect(req.permissions).toEqual({ create_team: true, create_project: true, create_page: true });
+    expect(req.permissions).toEqual({ create_squad: true, create_archive: true, create_log: true });
     expect(next).toHaveBeenCalled();
   });
 
@@ -41,7 +41,7 @@ describe('loadPermissions Middleware', () => {
     const { req, res, next } = createMocks();
     await loadPermissions(req, res, next);
 
-    expect(req.permissions).toEqual({ create_team: false, create_project: false, create_page: true });
+    expect(req.permissions).toEqual({ create_squad: false, create_archive: false, create_log: true });
     expect(next).toHaveBeenCalled();
   });
 
@@ -60,56 +60,56 @@ describe('requirePermission Middleware', () => {
   });
 
   it('passes when global permission is granted', async () => {
-    c2_query.mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
+    c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]);
 
-    const middleware = requirePermission('create_project');
+    const middleware = requirePermission('create_archive');
     const { req, res, next } = createMocks();
     await middleware(req, res, next);
 
     expect(next).toHaveBeenCalled();
   });
 
-  it('denies when global permission is false and no team context', async () => {
-    c2_query.mockResolvedValueOnce([{ create_team: false, create_project: false, create_page: false }]);
+  it('denies when global permission is false and no squad context', async () => {
+    c2_query.mockResolvedValueOnce([{ create_squad: false, create_archive: false, create_log: false }]);
 
-    const middleware = requirePermission('create_project');
+    const middleware = requirePermission('create_archive');
     const { req, res, next } = createMocks();
     await middleware(req, res, next);
 
     expect(res.statusCode).toBe(403);
-    expect(res.body.message).toMatch(/create_project/);
+    expect(res.body.message).toMatch(/create_archive/);
   });
 
-  it('passes via team-level permission fallback', async () => {
+  it('passes via squad-level permission fallback', async () => {
     // Global permissions deny
-    c2_query.mockResolvedValueOnce([{ create_team: false, create_project: false, create_page: false }]);
-    // Not org owner
+    c2_query.mockResolvedValueOnce([{ create_squad: false, create_archive: false, create_log: false }]);
+    // Not workspace owner
     c2_query.mockResolvedValueOnce([]);
-    // Team member has permission
+    // Squad member has permission
     c2_query.mockResolvedValueOnce([{ allowed: true }]);
 
-    const middleware = requirePermission('create_project');
-    const { req, res, next } = createMocks({ body: { team_id: 1 } });
+    const middleware = requirePermission('create_archive');
+    const { req, res, next } = createMocks({ body: { squad_id: 1 } });
     await middleware(req, res, next);
 
     expect(next).toHaveBeenCalled();
   });
 
-  it('passes via org owner bypass', async () => {
+  it('passes via workspace owner bypass', async () => {
     // Global permissions deny
-    c2_query.mockResolvedValueOnce([{ create_team: false, create_project: false, create_page: false }]);
-    // Org owner
+    c2_query.mockResolvedValueOnce([{ create_squad: false, create_archive: false, create_log: false }]);
+    // Workspace owner
     c2_query.mockResolvedValueOnce([{ '1': 1 }]);
 
-    const middleware = requirePermission('create_project');
-    const { req, res, next } = createMocks({ body: { team_id: 1 } });
+    const middleware = requirePermission('create_archive');
+    const { req, res, next } = createMocks({ body: { squad_id: 1 } });
     await middleware(req, res, next);
 
     expect(next).toHaveBeenCalled();
   });
 
   it('returns 401 when no user', async () => {
-    const middleware = requirePermission('create_project');
+    const middleware = requirePermission('create_archive');
     const { req, res, next } = createMocks({ user: undefined });
     await middleware(req, res, next);
 

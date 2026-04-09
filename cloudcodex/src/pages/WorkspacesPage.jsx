@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Organizations Page
+ * Cloud Codex - Workspaces Log
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -9,19 +9,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import {
-  fetchOrganizations,
-  createOrganization,
-  updateOrganization,
-  deleteOrganization,
-  fetchTeams,
-  createTeam,
-  updateTeam,
-  deleteTeam,
-  fetchTeamMembers,
-  inviteTeamMember,
-  updateTeamMember,
-  removeTeamMember,
-  fetchTeamInvitations,
+  fetchWorkspaces,
+  createWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+  fetchSquads,
+  createSquad,
+  updateSquad,
+  deleteSquad,
+  fetchSquadMembers,
+  inviteSquadMember,
+  updateSquadMember,
+  removeSquadMember,
+  fetchSquadInvitations,
   cancelInvitation,
   searchUsers,
   showModal,
@@ -33,63 +33,63 @@ import { toastError } from '../components/Toast';
 
 function NewOrgModal({ onCreated }) {
   const [name, setName] = useState('');
-  const [teamName, setTeamName] = useState('');
-  const [projectName, setProjectName] = useState('');
-  const [addTeam, setAddTeam] = useState(false);
-  const [addProject, setAddProject] = useState(false);
+  const [squadName, setSquadName] = useState('');
+  const [archiveName, setArchiveName] = useState('');
+  const [addSquad, setAddSquad] = useState(false);
+  const [addArchive, setAddArchive] = useState(false);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
-    if (!name.trim()) { setError('Organization name is required.'); return; }
+    if (!name.trim()) { setError('Workspace name is required.'); return; }
     try {
-      await createOrganization(name, {
-        teamName: addTeam ? teamName.trim() || undefined : undefined,
-        projectName: addTeam && addProject ? projectName.trim() || undefined : undefined,
+      await createWorkspace(name, {
+        squadName: addSquad ? squadName.trim() || undefined : undefined,
+        archiveName: addSquad && addArchive ? archiveName.trim() || undefined : undefined,
       });
       destroyModal();
       onCreated?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error creating organization.');
+      setError(e.body?.message ?? 'Error creating workspace.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>New Organization</h2>
+      <h2>New Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="org-name">Organization Name:</label>
+        <label htmlFor="workspace-name">Workspace Name:</label>
         <input
-          id="org-name" type="text" value={name}
+          id="workspace-name" type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
         />
 
         <label className="setup-checkbox">
-          <input type="checkbox" checked={addTeam} onChange={(e) => {
-            setAddTeam(e.target.checked);
-            if (!e.target.checked) setAddProject(false);
+          <input type="checkbox" checked={addSquad} onChange={(e) => {
+            setAddSquad(e.target.checked);
+            if (!e.target.checked) setAddArchive(false);
           }} />
-          Also create a team
+          Also create a squad
         </label>
-        {addTeam && (
+        {addSquad && (
           <>
             <input
-              type="text" value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
+              type="text" value={squadName}
+              onChange={(e) => setSquadName(e.target.value)}
               placeholder="e.g. Engineering"
               onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             />
             <label className="setup-checkbox">
-              <input type="checkbox" checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />
-              Also create a project
+              <input type="checkbox" checked={addArchive} onChange={(e) => setAddArchive(e.target.checked)} />
+              Also create a archive
             </label>
-            {addProject && (
+            {addArchive && (
               <input
-                type="text" value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+                type="text" value={archiveName}
+                onChange={(e) => setArchiveName(e.target.value)}
                 placeholder="e.g. Documentation"
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
               />
@@ -103,31 +103,31 @@ function NewOrgModal({ onCreated }) {
   );
 }
 
-function RenameOrgModal({ org, onRenamed }) {
-  const [name, setName] = useState(org.name);
+function RenameOrgModal({ workspace, onRenamed }) {
+  const [name, setName] = useState(workspace.name);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
     if (!name.trim()) { setError('Name is required.'); return; }
     try {
-      await updateOrganization(org.id, name);
+      await updateWorkspace(workspace.id, name);
       destroyModal();
       onRenamed?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error renaming organization.');
+      setError(e.body?.message ?? 'Error renaming workspace.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>Rename Organization</h2>
+      <h2>Rename Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="rename-org">Name:</label>
+        <label htmlFor="rename-workspace">Name:</label>
         <input
-          id="rename-org" type="text" value={name}
+          id="rename-workspace" type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
         />
@@ -137,44 +137,44 @@ function RenameOrgModal({ org, onRenamed }) {
   );
 }
 
-function NewTeamModal({ orgId, onCreated }) {
+function NewSquadModal({ workspaceId, onCreated }) {
   const [name, setName] = useState('');
-  const [projectName, setProjectName] = useState('');
-  const [addProject, setAddProject] = useState(false);
+  const [archiveName, setArchiveName] = useState('');
+  const [addArchive, setAddArchive] = useState(false);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
-    if (!name.trim()) { setError('Team name is required.'); return; }
+    if (!name.trim()) { setError('Squad name is required.'); return; }
     try {
-      await createTeam(orgId, name, {
-        projectName: addProject ? projectName.trim() || undefined : undefined,
+      await createSquad(workspaceId, name, {
+        archiveName: addArchive ? archiveName.trim() || undefined : undefined,
       });
       destroyModal();
       onCreated?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error creating team.');
+      setError(e.body?.message ?? 'Error creating squad.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>New Team</h2>
+      <h2>New Squad</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="team-name">Team Name:</label>
-        <input id="team-name" type="text" value={name}
+        <label htmlFor="squad-name">Squad Name:</label>
+        <input id="squad-name" type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
         <label className="setup-checkbox">
-          <input type="checkbox" checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />
-          Also create a project
+          <input type="checkbox" checked={addArchive} onChange={(e) => setAddArchive(e.target.checked)} />
+          Also create a archive
         </label>
-        {addProject && (
+        {addArchive && (
           <input
-            type="text" value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
+            type="text" value={archiveName}
+            onChange={(e) => setArchiveName(e.target.value)}
             placeholder="e.g. Documentation"
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           />
@@ -185,30 +185,30 @@ function NewTeamModal({ orgId, onCreated }) {
   );
 }
 
-function RenameTeamModal({ team, onRenamed }) {
-  const [name, setName] = useState(team.name);
+function RenameSquadModal({ squad, onRenamed }) {
+  const [name, setName] = useState(squad.name);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
     if (!name.trim()) { setError('Name is required.'); return; }
     try {
-      await updateTeam(team.id, name);
+      await updateSquad(squad.id, name);
       destroyModal();
       onRenamed?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error renaming team.');
+      setError(e.body?.message ?? 'Error renaming squad.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>Rename Team</h2>
+      <h2>Rename Squad</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="rename-team">Name:</label>
-        <input id="rename-team" type="text" value={name}
+        <label htmlFor="rename-squad">Name:</label>
+        <input id="rename-squad" type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Save</button>
@@ -219,12 +219,12 @@ function RenameTeamModal({ team, onRenamed }) {
 
 // --- Invite Member Modal ---
 
-function InviteMemberModal({ teamId, onInvited }) {
+function InviteMemberModal({ squadId, onInvited }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null);
   const [role, setRole] = useState('member');
-  const [perms, setPerms] = useState({ can_read: true, can_write: false, can_create_page: false, can_create_project: false, can_manage_members: false, can_delete_version: false });
+  const [perms, setPerms] = useState({ can_read: true, can_write: false, can_create_log: false, can_create_archive: false, can_manage_members: false, can_delete_version: false });
   const [error, setError] = useState(null);
   const [searching, setSearching] = useState(false);
 
@@ -243,7 +243,7 @@ function InviteMemberModal({ teamId, onInvited }) {
     setError(null);
     if (!selected) { setError('Please select a user.'); return; }
     try {
-      await inviteTeamMember(teamId, { userId: selected.id, role, ...perms });
+      await inviteSquadMember(squadId, { userId: selected.id, role, ...perms });
       destroyModal();
       onInvited?.();
     } catch (e) {
@@ -293,11 +293,11 @@ function InviteMemberModal({ teamId, onInvited }) {
         <label style={{ marginTop: 12 }}>Permissions:</label>
         <div className="invite-perms-grid">
           {[
-            ['can_read', 'Read', 'View projects and pages'],
-            ['can_write', 'Write', 'Edit pages and documents'],
-            ['can_create_page', 'Create Pages', 'Create new pages in projects'],
-            ['can_create_project', 'Create Projects', 'Create new projects in the team'],
-            ['can_manage_members', 'Manage Members', 'Invite/remove team members'],
+            ['can_read', 'Read', 'View archives and logs'],
+            ['can_write', 'Write', 'Edit logs and documents'],
+            ['can_create_log', 'Create Logs', 'Create new logs in archives'],
+            ['can_create_archive', 'Create Archives', 'Create new archives in the squad'],
+            ['can_manage_members', 'Manage Members', 'Invite/remove squad members'],
             ['can_delete_version', 'Delete Versions', 'Delete version history entries'],
           ].map(([key, label, desc]) => (
             <label key={key} className="invite-perm-toggle">
@@ -316,18 +316,18 @@ function InviteMemberModal({ teamId, onInvited }) {
   );
 }
 
-// --- Team Members Panel (inline in team row) ---
+// --- Squad Members Panel (inline in squad row) ---
 
 const PERM_LABELS = {
   can_read: 'Read',
   can_write: 'Write',
-  can_create_page: 'Create Pages',
-  can_create_project: 'Create Projects',
+  can_create_log: 'Create Logs',
+  can_create_archive: 'Create Archives',
   can_manage_members: 'Manage Members',
   can_delete_version: 'Delete Versions',
 };
 
-function TeamMembersPanel({ teamId }) {
+function SquadMembersPanel({ squadId }) {
   const [members, setMembers] = useState([]);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -336,27 +336,27 @@ function TeamMembersPanel({ teamId }) {
     setLoading(true);
     try {
       const [mRes, iRes] = await Promise.all([
-        fetchTeamMembers(teamId),
-        fetchTeamInvitations(teamId),
+        fetchSquadMembers(squadId),
+        fetchSquadInvitations(squadId),
       ]);
       setMembers(mRes.members || []);
       setPending(iRes.invitations || []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [teamId]);
+  }, [squadId]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleTogglePerm = async (member, key) => {
     try {
-      await updateTeamMember(teamId, member.user_id, { [key]: !member[key] });
+      await updateSquadMember(squadId, member.user_id, { [key]: !member[key] });
       setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, [key]: !m[key] } : m));
     } catch (e) { toastError(e); }
   };
 
   const handleRoleChange = async (member, newRole) => {
     try {
-      await updateTeamMember(teamId, member.user_id, { role: newRole });
+      await updateSquadMember(squadId, member.user_id, { role: newRole });
       setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, role: newRole } : m));
     } catch (e) { toastError(e); }
   };
@@ -365,9 +365,9 @@ function TeamMembersPanel({ teamId }) {
     showModal(
       <ConfirmDialog
         title="Remove Member"
-        message={`Remove ${member.name} from this team?`}
+        message={`Remove ${member.name} from this squad?`}
         onConfirm={async () => {
-          await removeTeamMember(teamId, member.user_id);
+          await removeSquadMember(squadId, member.user_id);
           destroyModal();
           load();
         }}
@@ -387,12 +387,12 @@ function TeamMembersPanel({ teamId }) {
   if (loading) return <p className="text-muted text-sm" style={{ padding: '4px 0' }}>Loading members...</p>;
 
   return (
-    <div className="team-members-panel">
-      <div className="team-members-panel__header">
+    <div className="squad-members-panel">
+      <div className="squad-members-panel__header">
         <span className="text-muted text-sm">{members.length} member{members.length !== 1 ? 's' : ''}</span>
         <button
           className="btn btn-primary btn-sm"
-          onClick={() => showModal(<InviteMemberModal teamId={teamId} onInvited={load} />, 'modal-lg')}
+          onClick={() => showModal(<InviteMemberModal squadId={squadId} onInvited={load} />, 'modal-lg')}
         >
           + Invite
         </button>
@@ -460,34 +460,34 @@ function TeamMembersPanel({ teamId }) {
   );
 }
 
-// --- Inline Teams for an Organization ---
+// --- Inline Squads for a Workspace ---
 
-function OrgTeams({ orgId }) {
+function OrgSquads({ workspaceId }) {
   const navigate = useNavigate();
-  const [teams, setTeams] = useState([]);
+  const [squads, setSquads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expandedTeam, setExpandedTeam] = useState(null);
+  const [expandedSquad, setExpandedSquad] = useState(null);
 
-  const loadTeams = useCallback(async () => {
+  const loadSquads = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchTeams(orgId);
-      setTeams(res.teams || []);
+      const res = await fetchSquads(workspaceId);
+      setSquads(res.squads || []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [orgId]);
+  }, [workspaceId]);
 
-  useEffect(() => { loadTeams(); }, [loadTeams]);
+  useEffect(() => { loadSquads(); }, [loadSquads]);
 
-  const handleDeleteTeam = (team) => {
+  const handleDeleteSquad = (squad) => {
     showModal(
       <ConfirmDialog
-        title="Delete Team"
-        message={`Are you sure you want to delete "${team.name}"? All projects in this team will lose their team association.`}
+        title="Delete Squad"
+        message={`Are you sure you want to delete "${squad.name}"? All archives in this squad will lose their squad association.`}
         onConfirm={async () => {
-          await deleteTeam(team.id);
+          await deleteSquad(squad.id);
           destroyModal();
-          loadTeams();
+          loadSquads();
         }}
         onCancel={destroyModal}
       />,
@@ -496,50 +496,50 @@ function OrgTeams({ orgId }) {
   };
 
   return (
-    <div className="org-teams">
-      <div className="org-teams__header">
-        <h4>Teams</h4>
+    <div className="workspace-squads">
+      <div className="workspace-squads__header">
+        <h4>Squads</h4>
         <button
           className="btn btn-primary btn-sm"
-          onClick={() => showModal(<NewTeamModal orgId={orgId} onCreated={loadTeams} />, 'modal-md')}
+          onClick={() => showModal(<NewSquadModal workspaceId={workspaceId} onCreated={loadSquads} />, 'modal-md')}
         >
-          + New Team
+          + New Squad
         </button>
       </div>
-      {loading && <p className="text-muted text-sm">Loading teams...</p>}
-      {!loading && teams.length === 0 && (
-        <p className="text-muted text-sm">No teams yet.</p>
+      {loading && <p className="text-muted text-sm">Loading squads...</p>}
+      {!loading && squads.length === 0 && (
+        <p className="text-muted text-sm">No squads yet.</p>
       )}
-      {!loading && teams.length > 0 && (
+      {!loading && squads.length > 0 && (
         <ul className="settings-item-list compact">
-          {teams.map(team => (
-            <li key={team.id} className="settings-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          {squads.map(squad => (
+            <li key={squad.id} className="settings-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandedTeam(prev => prev === team.id ? null : team.id)}>
-                  <span style={{ fontSize: '0.8em', marginRight: 6 }}>{expandedTeam === team.id ? '▾' : '▸'}</span>
-                  <span>{team.name}</span>
+                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandedSquad(prev => prev === squad.id ? null : squad.id)}>
+                  <span style={{ fontSize: '0.8em', marginRight: 6 }}>{expandedSquad === squad.id ? '▾' : '▸'}</span>
+                  <span>{squad.name}</span>
                   <span className="text-muted text-sm" style={{ marginLeft: 8 }}>
-                    Created: {new Date(team.created_at).toLocaleDateString()}
+                    Created: {new Date(squad.created_at).toLocaleDateString()}
                   </span>
                 </div>
                 <div className="card__actions" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => navigate(`/projects?team=${team.id}`)}
+                    onClick={() => navigate(`/archives?squad=${squad.id}`)}
                   >
-                    Projects
+                    Archives
                   </button>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => showModal(<RenameTeamModal team={team} onRenamed={loadTeams} />, 'modal-md')}
+                    onClick={() => showModal(<RenameSquadModal squad={squad} onRenamed={loadSquads} />, 'modal-md')}
                   >
                     Rename
                   </button>
-                  <button className="btn btn-danger btn-sm" onClick={() => handleDeleteTeam(team)}>Delete</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleDeleteSquad(squad)}>Delete</button>
                 </div>
               </div>
-              {expandedTeam === team.id && (
-                <TeamMembersPanel teamId={team.id} />
+              {expandedSquad === squad.id && (
+                <SquadMembersPanel squadId={squad.id} />
               )}
             </li>
           ))}
@@ -549,10 +549,10 @@ function OrgTeams({ orgId }) {
   );
 }
 
-export default function OrganizationsPage() {
-  const { orgId } = useParams();
-  const [orgs, setOrgs] = useState([]);
-  const [expandedOrg, setExpandedOrg] = useState(orgId ? Number(orgId) : null);
+export default function WorkspacesPage() {
+  const { workspaceId } = useParams();
+  const [workspaces, setWorkspaces] = useState([]);
+  const [expandedOrg, setExpandedOrg] = useState(workspaceId ? Number(workspaceId) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -561,14 +561,14 @@ export default function OrganizationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [orgRes, adminRes] = await Promise.all([
-        fetchOrganizations(),
+      const [workspaceRes, adminRes] = await Promise.all([
+        fetchWorkspaces(),
         fetchAdminStatus().catch(() => ({ isAdmin: false })),
       ]);
-      setOrgs(orgRes.organizations || []);
+      setWorkspaces(workspaceRes.workspaces || []);
       setIsAdmin(adminRes.isAdmin === true);
     } catch (e) {
-      setError(e.body?.message ?? 'Error loading organizations.');
+      setError(e.body?.message ?? 'Error loading workspaces.');
     }
     setLoading(false);
   }, []);
@@ -576,18 +576,18 @@ export default function OrganizationsPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (orgId) setExpandedOrg(Number(orgId));
-  }, [orgId]);
+    if (workspaceId) setExpandedOrg(Number(workspaceId));
+  }, [workspaceId]);
 
-  const handleDelete = (org) => {
+  const handleDelete = (workspace) => {
     showModal(
       <ConfirmDialog
-        title="Delete Organization"
-        message={`Are you sure you want to delete "${org.name}"? This will delete all teams, projects, and pages within it.`}
+        title="Delete Workspace"
+        message={`Are you sure you want to delete "${workspace.name}"? This will delete all squads, archives, and logs within it.`}
         onConfirm={async () => {
-          await deleteOrganization(org.id);
+          await deleteWorkspace(workspace.id);
           destroyModal();
-          if (expandedOrg === org.id) setExpandedOrg(null);
+          if (expandedOrg === workspace.id) setExpandedOrg(null);
           load();
         }}
         onCancel={destroyModal}
@@ -596,57 +596,57 @@ export default function OrganizationsPage() {
     );
   };
 
-  const toggleOrg = (orgId) => {
-    setExpandedOrg(prev => prev === orgId ? null : orgId);
+  const toggleOrg = (workspaceId) => {
+    setExpandedOrg(prev => prev === workspaceId ? null : workspaceId);
   };
 
   return (
     <StdLayout>
-      <div className="page-header">
-        <h1>Organizations</h1>
+      <div className="log-header">
+        <h1>Workspaces</h1>
         {isAdmin && (
           <button
             className="btn btn-primary"
             onClick={() => showModal(<NewOrgModal onCreated={load} />, 'modal-md')}
           >
-            + New Organization
+            + New Workspace
           </button>
         )}
       </div>
 
-      {loading && <p className="text-muted">Loading organizations...</p>}
+      {loading && <p className="text-muted">Loading workspaces...</p>}
       {error && <p className="form-error">{error}</p>}
 
-      {!loading && orgs.length === 0 && (
+      {!loading && workspaces.length === 0 && (
         <div className="empty-state">
-          <p>No organizations yet. Create one to get started.</p>
+          <p>No workspaces yet. Create one to get started.</p>
         </div>
       )}
 
-      <div className="org-list">
-        {orgs.map(org => (
-          <div key={org.id} className={`card ${expandedOrg === org.id ? 'card--expanded' : ''}`}>
-            <div className="card__body" onClick={() => toggleOrg(org.id)} style={{ cursor: 'pointer' }}>
+      <div className="workspace-list">
+        {workspaces.map(workspace => (
+          <div key={workspace.id} className={`card ${expandedOrg === workspace.id ? 'card--expanded' : ''}`}>
+            <div className="card__body" onClick={() => toggleOrg(workspace.id)} style={{ cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '0.8em' }}>{expandedOrg === org.id ? '▾' : '▸'}</span>
-                <h3 className="card__title" style={{ margin: 0 }}>{org.name}</h3>
+                <span style={{ fontSize: '0.8em' }}>{expandedOrg === workspace.id ? '▾' : '▸'}</span>
+                <h3 className="card__title" style={{ margin: 0 }}>{workspace.name}</h3>
               </div>
-              <p className="card__meta">Owner: {org.owner} &middot; Created: {new Date(org.created_at).toLocaleDateString()}</p>
+              <p className="card__meta">Owner: {workspace.owner} &middot; Created: {new Date(workspace.created_at).toLocaleDateString()}</p>
             </div>
             <div className="card__actions" onClick={(e) => e.stopPropagation()}>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => showModal(<RenameOrgModal org={org} onRenamed={load} />, 'modal-md')}
+                onClick={() => showModal(<RenameOrgModal workspace={workspace} onRenamed={load} />, 'modal-md')}
               >
                 Rename
               </button>
-              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(org)}>
+              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(workspace)}>
                 Delete
               </button>
             </div>
-            {expandedOrg === org.id && (
+            {expandedOrg === workspace.id && (
               <div className="card__expanded-content" style={{ padding: '0 16px 16px' }}>
-                <OrgTeams orgId={org.id} />
+                <OrgSquads workspaceId={workspace.id} />
               </div>
             )}
           </div>

@@ -55,7 +55,7 @@ export async function ensureAdminUser() {
 
   // Create default permissions row
   await c2_query(
-    `INSERT INTO permissions (user_id, create_team, create_project, create_page) VALUES (?, TRUE, TRUE, TRUE)`,
+    `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`,
     [result.insertId]
   );
 
@@ -72,34 +72,34 @@ router.get('/admin/status', requireAuth, asyncHandler(async (req, res) => {
   res.json({ success: true, isAdmin: Boolean(req.user.is_admin) });
 }));
 
-// ─── Organization management (admin only) ───────────────────
+// ─── Workspace management (admin only) ───────────────────
 
 /**
- * GET /api/admin/organizations
- * List all organizations (admin only).
+ * GET /api/admin/workspaces
+ * List all workspaces (admin only).
  */
-router.get('/admin/organizations', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const orgs = await c2_query(
+router.get('/admin/workspaces', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const workspaces = await c2_query(
     `SELECT o.id, o.name, o.owner, o.created_at,
-            (SELECT COUNT(*) FROM teams t WHERE t.organization_id = o.id) AS team_count,
-            (SELECT COUNT(DISTINCT tm.user_id) FROM teams t2 JOIN team_members tm ON tm.team_id = t2.id WHERE t2.organization_id = o.id) AS member_count
-     FROM organizations o
+            (SELECT COUNT(*) FROM squads t WHERE t.workspace_id = o.id) AS squad_count,
+            (SELECT COUNT(DISTINCT tm.user_id) FROM squads t2 JOIN squad_members tm ON tm.squad_id = t2.id WHERE t2.workspace_id = o.id) AS member_count
+     FROM workspaces o
      ORDER BY o.created_at DESC`
   );
-  res.json({ success: true, organizations: orgs });
+  res.json({ success: true, workspaces: workspaces });
 }));
 
 /**
- * POST /api/admin/organizations
- * Create an organization (admin only).
+ * POST /api/admin/workspaces
+ * Create a workspace (admin only).
  */
-router.post('/admin/organizations', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const { name, ownerEmail, teamName, projectName } = req.body;
+router.post('/admin/workspaces', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { name, ownerEmail, squadName, archiveName } = req.body;
   if (!name?.trim()) {
-    return res.status(400).json({ success: false, message: 'Organization name is required' });
+    return res.status(400).json({ success: false, message: 'Workspace name is required' });
   }
   if (name.trim().length > 255) {
-    return res.status(400).json({ success: false, message: 'Organization name must be 255 characters or less' });
+    return res.status(400).json({ success: false, message: 'Workspace name must be 255 characters or less' });
   }
   if (!ownerEmail?.trim() || !isValidEmail(ownerEmail.trim())) {
     return res.status(400).json({ success: false, message: 'A valid owner email is required' });
@@ -114,57 +114,57 @@ router.post('/admin/organizations', requireAuth, requireAdmin, asyncHandler(asyn
     return res.status(400).json({ success: false, message: 'No user found with that email' });
   }
 
-  const orgResult = await c2_query(
-    `INSERT INTO organizations (name, owner) VALUES (?, ?)`,
+  const workspaceResult = await c2_query(
+    `INSERT INTO workspaces (name, owner) VALUES (?, ?)`,
     [name.trim(), ownerEmail.trim()]
   );
-  const organizationId = orgResult.insertId;
+  const workspaceId = workspaceResult.insertId;
 
-  let teamId = null;
-  let projectId = null;
+  let squadId = null;
+  let archiveId = null;
 
-  if (teamName?.trim()) {
-    const teamResult = await c2_query(
-      `INSERT INTO teams (organization_id, name, created_by) VALUES (?, ?, ?)`,
-      [organizationId, teamName.trim(), owner.id]
+  if (squadName?.trim()) {
+    const squadResult = await c2_query(
+      `INSERT INTO squads (workspace_id, name, created_by) VALUES (?, ?, ?)`,
+      [workspaceId, squadName.trim(), owner.id]
     );
-    teamId = teamResult.insertId;
+    squadId = squadResult.insertId;
 
     await c2_query(
-      `INSERT INTO team_members (team_id, user_id, role, can_read, can_write, can_create_page, can_create_project, can_manage_members, can_delete_version, can_publish)
+      `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
        VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
-      [teamId, owner.id]
+      [squadId, owner.id]
     );
 
-    if (projectName?.trim()) {
+    if (archiveName?.trim()) {
       const projResult = await c2_query(
-        `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
+        `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
          VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
-        [projectName.trim(), teamId, owner.id, owner.id, owner.id]
+        [archiveName.trim(), squadId, owner.id, owner.id, owner.id]
       );
-      projectId = projResult.insertId;
+      archiveId = projResult.insertId;
     }
   }
 
-  res.status(201).json({ success: true, organizationId, teamId, projectId });
+  res.status(201).json({ success: true, workspaceId, squadId, archiveId });
 }));
 
 /**
- * DELETE /api/admin/organizations/:id
- * Delete an organization (admin only).
+ * DELETE /api/admin/workspaces/:id
+ * Delete a workspace (admin only).
  */
-router.delete('/admin/organizations/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/admin/workspaces/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!isValidId(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid organization ID' });
+    return res.status(400).json({ success: false, message: 'Invalid workspace ID' });
   }
 
-  const [org] = await c2_query(`SELECT id FROM organizations WHERE id = ? LIMIT 1`, [Number(id)]);
-  if (!org) {
-    return res.status(404).json({ success: false, message: 'Organization not found' });
+  const [workspace] = await c2_query(`SELECT id FROM workspaces WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (!workspace) {
+    return res.status(404).json({ success: false, message: 'Workspace not found' });
   }
 
-  await c2_query(`DELETE FROM organizations WHERE id = ?`, [Number(id)]);
+  await c2_query(`DELETE FROM workspaces WHERE id = ?`, [Number(id)]);
   res.json({ success: true });
 }));
 
@@ -177,7 +177,7 @@ router.delete('/admin/organizations/:id', requireAuth, requireAdmin, asyncHandle
 router.get('/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const users = await c2_query(
     `SELECT u.id, u.name, u.email, u.avatar_url, u.is_admin, u.created_at,
-            (SELECT COUNT(*) FROM team_members tm WHERE tm.user_id = u.id) AS team_count
+            (SELECT COUNT(*) FROM squad_members tm WHERE tm.user_id = u.id) AS squad_count
      FROM users u
      ORDER BY u.created_at DESC`
   );
@@ -329,17 +329,17 @@ router.get('/admin/stats', requireAuth, requireAdmin, asyncHandler(async (req, r
   const [[{ userCount }]] = await Promise.all([
     c2_query(`SELECT COUNT(*) AS userCount FROM users`),
   ]);
-  const [[{ orgCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS orgCount FROM organizations`),
+  const [[{ workspaceCount }]] = await Promise.all([
+    c2_query(`SELECT COUNT(*) AS workspaceCount FROM workspaces`),
   ]);
-  const [[{ teamCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS teamCount FROM teams`),
+  const [[{ squadCount }]] = await Promise.all([
+    c2_query(`SELECT COUNT(*) AS squadCount FROM squads`),
   ]);
-  const [[{ projectCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS projectCount FROM projects`),
+  const [[{ archiveCount }]] = await Promise.all([
+    c2_query(`SELECT COUNT(*) AS archiveCount FROM archives`),
   ]);
-  const [[{ pageCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS pageCount FROM pages`),
+  const [[{ logCount }]] = await Promise.all([
+    c2_query(`SELECT COUNT(*) AS logCount FROM logs`),
   ]);
   const [[{ pendingInviteCount }]] = await Promise.all([
     c2_query(`SELECT COUNT(*) AS pendingInviteCount FROM user_invitations WHERE accepted = FALSE AND expires_at > NOW()`),
@@ -347,7 +347,7 @@ router.get('/admin/stats', requireAuth, requireAdmin, asyncHandler(async (req, r
 
   res.json({
     success: true,
-    stats: { userCount, orgCount, teamCount, projectCount, pageCount, pendingInviteCount },
+    stats: { userCount, workspaceCount, squadCount, archiveCount, logCount, pendingInviteCount },
   });
 }));
 

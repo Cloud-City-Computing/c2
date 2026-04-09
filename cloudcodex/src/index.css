@@ -313,7 +313,7 @@ body {
    Footer
 ========================= */
 
-.page-footer {
+.log-footer {
   grid-area: footer;
   position: relative;
   display: flex;
@@ -326,11 +326,11 @@ body {
   font-size: 12px;
 }
 
-.page-footer p {
+.log-footer p {
   margin: 0;
 }
 
-.page-footer::before {
+.log-footer::before {
   content: "";
   position: absolute;
   left: 0; top: 0;
@@ -339,13 +339,13 @@ body {
   opacity: 0.3;
 }
 
-.page-footer a {
+.log-footer a {
   color: var(--text-secondary);
   text-decoration: none;
   font-weight: 600;
   transition: color 0.2s;
 }
-.page-footer a:hover { color: var(--brand-blue); }
+.log-footer a:hover { color: var(--brand-blue); }
 
 /* =========================
    Buttons
@@ -464,10 +464,10 @@ body {
 }
 
 /* =========================
-   Page Headers
+   Log Headers
 ========================= */
 
-.page-header {
+.log-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -476,7 +476,7 @@ body {
   margin-bottom: 28px;
 }
 
-.page-header h1 {
+.log-header h1 {
   margin: 0;
   font-size: 26px;
   font-weight: 700;
@@ -616,7 +616,7 @@ body {
 .search-dropdown-item h4 { margin: 0; font-size: 14px; font-weight: 600; }
 .search-dropdown-item p { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
 
-/* Full-page search (SearchBox default mode) */
+/* Full-log search (SearchBox default mode) */
 .search-section { width: 100%; }
 
 .search-card {
@@ -687,7 +687,7 @@ body {
 }
 .search-result-item:hover .result-title { color: var(--brand-blue); }
 
-.result-project {
+.result-archive {
   font-size: 12px;
   color: var(--text-muted);
   margin-left: 8px;
@@ -841,7 +841,7 @@ body {
   font-size: 18px;
 }
 
-.reset-password-page {
+.reset-password-log {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1059,27 +1059,27 @@ body {
 }
 
 /* =========================
-   Account Page (standalone)
+   Account Log (standalone)
 ========================= */
 
-.account-page {
+.account-log {
   max-width: 640px;
 }
 
-.account-page .page-heading {
+.account-log .log-heading {
   font-size: 22px;
   font-weight: 600;
   margin: 0 0 24px;
 }
 
-.account-page__panels {
+.account-log__panels {
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
 /* =========================
-   Settings Layout (project/org/team settings)
+   Settings Layout (archive/workspace/squad settings)
 ========================= */
 
 .settings-layout {
@@ -1565,67 +1565,67 @@ body {
 }
 
 /* =========================
-   Projects Management
+   Archives Management
 ========================= */
 
-.project-management {
+.archive-management {
   width: 100%;
 }
 
-.project-list-cards {
+.archive-list-cards {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.project-list-cards .card {
+.archive-list-cards .card {
   padding: 0;
   gap: 0;
 }
 
-.project-list-cards .card:hover {
+.archive-list-cards .card:hover {
   transform: none;
 }
 
-.project-list-cards .card__body {
+.archive-list-cards .card__body {
   padding: 16px;
 }
 
-.project-list-cards .card__actions {
+.archive-list-cards .card__actions {
   padding: 10px 16px;
 }
 
-.project-card__expanded {
+.archive-card__expanded {
   padding-top: 12px;
 }
 
 /* =========================
-   Page Tree
+   Log Tree
 ========================= */
 
-.page-tree-header {
+.log-tree-header {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
 }
 
-.page-tree-list {
+.log-tree-list {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.page-tree-children {
+.log-tree-children {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.page-tree-item {
+.log-tree-item {
   border-radius: var(--radius-sm);
 }
 
-.page-tree-row {
+.log-tree-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1633,9 +1633,9 @@ body {
   border-radius: var(--radius-sm);
   transition: background 0.15s;
 }
-.page-tree-row:hover { background: var(--bg-hover); }
+.log-tree-row:hover { background: var(--bg-hover); }
 
-.page-tree-toggle {
+.log-tree-toggle {
   background: none;
   border: none;
   color: var(--text-muted);
@@ -1644,25 +1644,25 @@ body {
   font-size: 12px;
 }
 
-.page-tree-title {
+.log-tree-title {
   flex: 1;
   cursor: pointer;
   font-size: 14px;
   color: var(--text-primary);
   transition: color 0.15s;
 }
-.page-tree-title:hover { color: var(--brand-blue); }
+.log-tree-title:hover { color: var(--brand-blue); }
 
-.page-tree-actions {
+.log-tree-actions {
   display: flex;
   gap: 4px;
   opacity: 0;
   transition: opacity 0.15s;
 }
-.page-tree-row:hover .page-tree-actions { opacity: 1; }
+.log-tree-row:hover .log-tree-actions { opacity: 1; }
 
-.page-tree-add,
-.page-tree-delete {
+.log-tree-add,
+.log-tree-delete {
   background: none;
   border: none;
   cursor: pointer;
@@ -1671,12 +1671,12 @@ body {
   border-radius: var(--radius-sm);
   transition: var(--transition);
 }
-.page-tree-add { color: var(--brand-blue); }
-.page-tree-add:hover { background: rgba(44, 167, 219, 0.12); }
-.page-tree-delete { color: var(--color-danger); }
-.page-tree-delete:hover { background: rgba(229, 69, 69, 0.12); }
+.log-tree-add { color: var(--brand-blue); }
+.log-tree-add:hover { background: rgba(44, 167, 219, 0.12); }
+.log-tree-delete { color: var(--color-danger); }
+.log-tree-delete:hover { background: rgba(229, 69, 69, 0.12); }
 
-.page-tree-export {
+.log-tree-export {
   background: none;
   border: none;
   cursor: pointer;
@@ -1686,9 +1686,9 @@ body {
   color: var(--text-muted);
   transition: var(--transition);
 }
-.page-tree-export:hover { background: var(--bg-hover); color: var(--brand-blue); }
+.log-tree-export:hover { background: var(--bg-hover); color: var(--brand-blue); }
 
-.page-tree-actions .export-dropdown__menu--up {
+.log-tree-actions .export-dropdown__menu--up {
   top: auto;
   bottom: 100%;
   margin-top: 0;
@@ -1698,10 +1698,10 @@ body {
 }
 
 /* =========================
-   Editor Page
+   Editor Log
 ========================= */
 
-.editor-page {
+.editor-log {
   max-width: 1000px;
   margin: 0 auto;
 }
@@ -2444,10 +2444,10 @@ body {
 }
 
 /* =========================
-   Home Page
+   Home Log
 ========================= */
 
-.home-page {
+.home-log {
   max-width: 1000px;
   margin: 0 auto;
 }
@@ -2503,7 +2503,7 @@ body {
 }
 
 /* =========================
-   Not Found Page
+   Not Found Log
 ========================= */
 
 .not-found-page {
@@ -2548,7 +2548,7 @@ body {
 
   .topbar__center { display: none; }
 
-  .project-list-cards .card__actions {
+  .archive-list-cards .card__actions {
     flex-wrap: wrap;
   }
 
@@ -2596,16 +2596,16 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 4px; }
 
 /* =========================
-   Team Members Panel
+   Squad Members Panel
 ========================= */
 
-.team-members-panel {
+.squad-members-panel {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border-color);
 }
 
-.team-members-panel__header {
+.squad-members-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3310,7 +3310,7 @@ body {
   color: var(--text-muted);
 }
 
-.explore-card__project {
+.explore-card__archive {
   font-weight: 600;
   color: var(--brand-blue-light);
 }
@@ -3610,8 +3610,8 @@ body {
   flex-shrink: 0;
 }
 
-/* Presence in page tree rows — inline with title */
-.page-tree-row .presence-avatars {
+/* Presence in log tree rows — inline with title */
+.log-tree-row .presence-avatars {
   margin-left: 4px;
   margin-right: auto;
 }
@@ -4113,8 +4113,8 @@ body {
   margin-top: 4px;
 }
 
-/* --- Comment count badge in project browser --- */
-.page-tree-comments {
+/* --- Comment count badge in archive browser --- */
+.log-tree-comments {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -4126,7 +4126,7 @@ body {
   border-radius: 4px;
   transition: background 0.15s;
 }
-.page-tree-comments:hover {
+.log-tree-comments:hover {
   background: var(--surface-alt, #2a2a2a);
 }
 .comment-count-badge {
@@ -4229,17 +4229,17 @@ body {
    Admin Console
 ========================= */
 
-.admin-page {
+.admin-log {
   max-width: 1100px;
   margin: 0 auto;
   padding: 24px 16px;
 }
 
-.admin-page__header {
+.admin-log__header {
   margin-bottom: 8px;
 }
 
-.admin-page__header h1 {
+.admin-log__header h1 {
   margin: 0 0 4px;
 }
 

@@ -12,7 +12,7 @@ import {
 import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs } from '../userPrefs';
 
 // ===========================
-//  Account Panels (used by AccountSettings page)
+//  Account Panels (used by AccountSettings log)
 // ===========================
 
 export function AvatarUploadPanel() {
@@ -505,7 +505,7 @@ export function UserPreferencesPanel() {
 
       <div className="pref-section">
         <h3 className="pref-section__title">Preferred Editor</h3>
-        <p className="text-muted text-sm">Choose which editor opens by default when you load a page.</p>
+        <p className="text-muted text-sm">Choose which editor opens by default when you load a log.</p>
         <div className="pref-toggle-group">
           {EDITOR_MODE_OPTIONS.map(mode => (
             <button

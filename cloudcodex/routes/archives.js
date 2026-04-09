@@ -1,0 +1,327 @@
+/**
+ * API routes for archive and log navigation in Cloud Codex
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
+import express from 'express';
+import { c2_query } from '../mysql_connect.js';
+import { requireAuth } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/permissions.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner } from './helpers/ownership.js';
+import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
+
+const router = express.Router();
+
+// --- Routes ---
+
+/**
+ * GET /api/archives
+ * Returns all archives the authenticated user has read access to
+ */
+router.get('/archives', requireAuth, asyncHandler(async (req, res) => {
+  const archives = await c2_query(
+    `SELECT p.id,
+            p.name,
+            p.created_at,
+            u.name AS created_by,
+            p.created_by AS created_by_id,
+            t.name AS squad_name,
+            t.id AS squad_id
+     FROM archives p
+     LEFT JOIN users u  ON p.created_by  = u.id
+     LEFT JOIN squads t  ON p.squad_id     = t.id
+     WHERE ${readAccessWhere('p')}
+     ORDER BY p.created_at DESC`,
+    [...readAccessParams(req.user)]
+  );
+
+  res.json({ success: true, archives });
+}));
+
+/**
+ * GET /api/archives/:archiveId/logs
+ * Returns the log tree for a archive the user has access to
+ */
+router.get('/archives/:archiveId/logs', requireAuth, asyncHandler(async (req, res) => {
+  const { archiveId } = req.params;
+  if (!isValidId(archiveId)) {
+    return res.status(400).json({ success: false, message: 'Invalid archiveId' });
+  }
+
+  // Verify user has read access to the archive
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p
+     WHERE p.id = ?
+       AND ${readAccessWhere('p')}
+     LIMIT 1`,
+    [Number(archiveId), ...readAccessParams(req.user)]
+  );
+
+  if (!archive) return res.status(403).json({ success: false, message: 'Access denied' });
+
+  const logs = await c2_query(
+    `SELECT p.id,
+            p.title,
+            p.parent_id,
+            p.version,
+            p.created_at,
+            p.updated_at,
+            u.name AS created_by,
+            p.archive_id
+     FROM logs p
+     LEFT JOIN users u ON p.created_by = u.id
+     WHERE p.archive_id = ?
+     ORDER BY p.parent_id ASC, p.created_at ASC`,
+    [Number(archiveId)]
+  );
+
+  // Build a nested tree from the flat list
+  const map = {};
+  const roots = [];
+  logs.forEach(log => { map[log.id] = { ...log, children: [] }; });
+  logs.forEach(log => {
+    if (log.parent_id && map[log.parent_id]) {
+      map[log.parent_id].children.push(map[log.id]);
+    } else {
+      roots.push(map[log.id]);
+    }
+  });
+
+  res.json({ success: true, logs: roots });
+}));
+
+/**
+ * POST /api/archives
+ * Creates a new archive (requires create_archive permission)
+ */
+router.post('/archives', requireAuth, requirePermission('create_archive'), asyncHandler(async (req, res) => {
+  const { name, squad_id } = req.body;
+  if (!name?.trim()) {
+    return res.status(400).json({ success: false, message: 'Archive name is required' });
+  }
+  if (name.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Archive name must be 255 characters or less' });
+  }
+  if (squad_id !== undefined && squad_id !== null && !isValidId(squad_id)) {
+    return res.status(400).json({ success: false, message: 'Invalid squad_id' });
+  }
+
+  const result = await c2_query(
+    `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
+     VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+    [name.trim(), squad_id ?? null, req.user.id, req.user.id, req.user.id]
+  );
+
+  res.status(201).json({ success: true, archiveId: result.insertId });
+}));
+
+/**
+ * PUT /api/archives/:id
+ * Rename a archive (write_access required)
+ */
+router.put('/archives/:id', requireAuth, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid archiveId' });
+  }
+
+  const { name } = req.body;
+  if (!name?.trim()) {
+    return res.status(400).json({ success: false, message: 'Archive name is required' });
+  }
+  if (name.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Archive name must be 255 characters or less' });
+  }
+
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
+     LIMIT 1`,
+    [Number(id), ...writeAccessParams(req.user)]
+  );
+  if (!archive) return res.status(403).json({ success: false, message: 'Write access denied' });
+
+  await c2_query(`UPDATE archives SET name = ? WHERE id = ?`, [name.trim(), Number(id)]);
+  res.json({ success: true });
+}));
+
+/**
+ * DELETE /api/archives/:id
+ * Delete a archive (creator only, cascades)
+ */
+router.delete('/archives/:id', requireAuth, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid archiveId' });
+  }
+
+  const allowed = await isArchiveOwner(req.user, id);
+  if (!allowed) return res.status(403).json({ success: false, message: 'Only a archive or squad owner can delete this archive' });
+
+  await c2_query(`DELETE FROM archives WHERE id = ?`, [Number(id)]);
+  res.json({ success: true });
+}));
+
+/**
+ * POST /api/archives/:id/access
+ * Add/remove user from read_access or write_access
+ * Body: { userId, accessType: 'read'|'write', action: 'add'|'remove' }
+ */
+router.post('/archives/:id/access', requireAuth, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid archiveId' });
+  }
+
+  const { userId, accessType, action } = req.body;
+  if (!isValidId(userId) || !['read', 'write'].includes(accessType) || !['add', 'remove'].includes(action)) {
+    return res.status(400).json({ success: false, message: 'Invalid parameters' });
+  }
+
+  // Only archive/squad/workspace owners can manage access
+  const allowed = await isArchiveOwner(req.user, id);
+  if (!allowed) return res.status(403).json({ success: false, message: 'Only a archive or squad owner can manage access' });
+
+  const column = accessType === 'read' ? 'read_access' : 'write_access';
+
+  // Read current access array, modify in JS, write back (avoids JSON_SEARCH int/string mismatch)
+  const [proj] = await c2_query(`SELECT ${column} AS acl FROM archives WHERE id = ?`, [Number(id)]);
+  const arr = JSON.parse(proj.acl || '[]');
+  const targetUid = Number(userId);
+
+  if (action === 'add') {
+    if (!arr.includes(targetUid)) {
+      arr.push(targetUid);
+      await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(arr), Number(id)]);
+    }
+  } else {
+    const filtered = arr.filter(uid => uid !== targetUid);
+    if (filtered.length !== arr.length) {
+      await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(filtered), Number(id)]);
+    }
+  }
+
+  res.json({ success: true });
+}));
+
+/**
+ * POST /api/archives/:archiveId/logs
+ * Creates a new log inside a archive (requires create_log permission)
+ */
+router.post('/archives/:archiveId/logs', requireAuth, requirePermission('create_log'), asyncHandler(async (req, res) => {
+  const { archiveId } = req.params;
+  if (!isValidId(archiveId)) {
+    return res.status(400).json({ success: false, message: 'Invalid archiveId' });
+  }
+
+  const { title, parent_id } = req.body;
+  if (!title?.trim()) {
+    return res.status(400).json({ success: false, message: 'Log title is required' });
+  }
+
+  const parentId = parent_id ? Number(parent_id) : null;
+  if (parentId !== null && !isValidId(parentId)) {
+    return res.status(400).json({ success: false, message: 'Invalid parent_id' });
+  }
+
+  // Verify write access
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
+     LIMIT 1`,
+    [Number(archiveId), ...writeAccessParams(req.user)]
+  );
+
+  if (!archive) return res.status(403).json({ success: false, message: 'Write access denied' });
+
+  const result = await c2_query(
+    `INSERT INTO logs (archive_id, title, html_content, parent_id, created_by, updated_by)
+     VALUES (?, ?, '', ?, ?, ?)`,
+    [Number(archiveId), title.trim(), parentId, req.user.id, req.user.id]
+  );
+
+  res.status(201).json({ success: true, logId: result.insertId });
+}));
+
+/**
+ * PUT /api/archives/:archiveId/logs/:logId
+ * Rename or move a log (write_access required)
+ */
+router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (req, res) => {
+  const { archiveId, logId } = req.params;
+  if (!isValidId(archiveId) || !isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid IDs' });
+  }
+
+  const { title, parent_id } = req.body;
+
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
+     LIMIT 1`,
+    [Number(archiveId), ...writeAccessParams(req.user)]
+  );
+  if (!archive) return res.status(403).json({ success: false, message: 'Write access denied' });
+
+  const fields = [];
+  const params = [];
+  if (title !== undefined) { fields.push('title = ?'); params.push(title.trim()); }
+  if (parent_id !== undefined) {
+    const pid = parent_id === null ? null : Number(parent_id);
+    if (pid !== null && !isValidId(pid)) {
+      return res.status(400).json({ success: false, message: 'Invalid parent_id' });
+    }
+    fields.push('parent_id = ?');
+    params.push(pid);
+  }
+
+  if (!fields.length) {
+    return res.status(400).json({ success: false, message: 'No fields to update' });
+  }
+
+  params.push(Number(logId), Number(archiveId));
+  await c2_query(
+    `UPDATE logs SET ${fields.join(', ')} WHERE id = ? AND archive_id = ?`,
+    params
+  );
+
+  res.json({ success: true });
+}));
+
+/**
+ * DELETE /api/archives/:archiveId/logs/:logId
+ * Delete a log (write_access required, cascades children)
+ */
+router.delete('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (req, res) => {
+  const { archiveId, logId } = req.params;
+  if (!isValidId(archiveId) || !isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid IDs' });
+  }
+
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
+     LIMIT 1`,
+    [Number(archiveId), ...writeAccessParams(req.user)]
+  );
+  if (!archive) return res.status(403).json({ success: false, message: 'Write access denied' });
+
+  await c2_query(
+    `DELETE FROM logs WHERE id = ? AND archive_id = ?`,
+    [Number(logId), Number(archiveId)]
+  );
+
+  res.json({ success: true });
+}));
+
+// --- Centralized error handler ---
+
+router.use(errorHandler);
+
+export default router;

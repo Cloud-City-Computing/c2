@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Project Browser Component
+ * Cloud Codex - Archive Browser Component
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -8,9 +8,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  fetchProjects, createProject, updateProject, deleteProject,
-  fetchPages, createPage, deletePage,
-  manageProjectAccess, searchUsers,
+  fetchArchives, createArchive, updateArchive, deleteArchive,
+  fetchLogs, createLog, deleteLog,
+  manageArchiveAccess, searchUsers,
   uploadDocument, exportDocument, fetchDocument,
   showModal, destroyModal,
   fetchCommentCount,
@@ -21,65 +21,65 @@ import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
 import CommentManager from './CommentManager';
 
-// --- New Project Form ---
+// --- New Archive Form ---
 
-function NewProjectModal({ onCreated, teamId }) {
+function NewArchiveModal({ onCreated, squadId }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
-    if (!name.trim()) { setError('Project name is required.'); return; }
+    if (!name.trim()) { setError('Archive name is required.'); return; }
     try {
-      await createProject(name, teamId || undefined);
+      await createArchive(name, squadId || undefined);
       destroyModal();
       onCreated?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error creating project.');
+      setError(e.body?.message ?? 'Error creating archive.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>New Project</h2>
+      <h2>New Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="project-name">Project Name:</label>
-        <input id="project-name" type="text" value={name}
+        <label htmlFor="archive-name">Archive Name:</label>
+        <input id="archive-name" type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
-        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create Project</button>
+        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create Archive</button>
       </div>
     </div>
   );
 }
 
-function RenameProjectModal({ project, onRenamed }) {
-  const [name, setName] = useState(project.name);
+function RenameArchiveModal({ archive, onRenamed }) {
+  const [name, setName] = useState(archive.name);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
-    if (!name.trim()) { setError('Project name is required.'); return; }
+    if (!name.trim()) { setError('Archive name is required.'); return; }
     try {
-      await updateProject(project.id, name.trim());
+      await updateArchive(archive.id, name.trim());
       destroyModal();
       onRenamed?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error renaming project.');
+      setError(e.body?.message ?? 'Error renaming archive.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>Rename Project</h2>
+      <h2>Rename Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="rename-project-name">Project Name:</label>
+        <label htmlFor="rename-archive-name">Archive Name:</label>
         <input
-          id="rename-project-name"
+          id="rename-archive-name"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -91,7 +91,7 @@ function RenameProjectModal({ project, onRenamed }) {
   );
 }
 
-function ManageProjectAccessModal({ project, onAccessUpdated, onAccessSaved }) {
+function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -137,7 +137,7 @@ function ManageProjectAccessModal({ project, onAccessUpdated, onAccessSaved }) {
     try {
       setSubmitting(true);
       await Promise.all(
-        selectedPerms.map((perm) => manageProjectAccess(project.id, selected.id, perm, action))
+        selectedPerms.map((perm) => manageArchiveAccess(archive.id, selected.id, perm, action))
       );
       const verb = action === 'add' ? 'granted' : 'revoked';
       const labels = selectedPerms.join(' + ');
@@ -148,7 +148,7 @@ function ManageProjectAccessModal({ project, onAccessUpdated, onAccessSaved }) {
       destroyModal();
       onAccessUpdated?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error updating project access.');
+      setError(e.body?.message ?? 'Error updating archive access.');
     } finally {
       setSubmitting(false);
     }
@@ -157,9 +157,9 @@ function ManageProjectAccessModal({ project, onAccessUpdated, onAccessSaved }) {
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>Manage Project Access</h2>
+      <h2>Manage Archive Access</h2>
       <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
-        Project: <strong>{project.name}</strong>
+        Archive: <strong>{archive.name}</strong>
       </p>
       {error && <p className="form-error">{error}</p>}
       {status && <p className="form-success">{status}</p>}
@@ -207,8 +207,8 @@ function ManageProjectAccessModal({ project, onAccessUpdated, onAccessSaved }) {
         <label style={{ marginTop: 12 }}>Permissions:</label>
         <div className="invite-perms-grid">
           {[
-            ['read', 'Read', 'Can view project pages and documents'],
-            ['write', 'Write', 'Can edit pages and project content'],
+            ['read', 'Read', 'Can view archive logs and documents'],
+            ['write', 'Write', 'Can edit logs and archive content'],
           ].map(([key, label, desc]) => (
             <label key={key} className="invite-perm-toggle">
               <input
@@ -245,35 +245,35 @@ function ManageProjectAccessModal({ project, onAccessUpdated, onAccessSaved }) {
   );
 }
 
-// --- New Page Form ---
+// --- New Log Form ---
 
-function NewPageModal({ projectId, parentId, onCreated }) {
+function NewLogModal({ archiveId, parentId, onCreated }) {
   const [title, setTitle] = useState('');
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
-    if (!title.trim()) { setError('Page title is required.'); return; }
+    if (!title.trim()) { setError('Log title is required.'); return; }
     try {
-      const res = await createPage(projectId, title, parentId);
+      const res = await createLog(archiveId, title, parentId);
       destroyModal();
-      onCreated?.(res.pageId);
+      onCreated?.(res.logId);
     } catch (e) {
-      setError(e.body?.message ?? 'Error creating page.');
+      setError(e.body?.message ?? 'Error creating log.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>New Page</h2>
+      <h2>New Log</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="page-title">Page Title:</label>
-        <input id="page-title" type="text" value={title}
+        <label htmlFor="log-title">Log Title:</label>
+        <input id="log-title" type="text" value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
-        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create Page</button>
+        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create Log</button>
       </div>
     </div>
   );
@@ -281,7 +281,7 @@ function NewPageModal({ projectId, parentId, onCreated }) {
 
 // --- Upload Document Modal ---
 
-function UploadDocumentModal({ projectId, parentId, onUploaded }) {
+function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -291,9 +291,9 @@ function UploadDocumentModal({ projectId, parentId, onUploaded }) {
     if (!file) { setError('Please select a file.'); return; }
     setUploading(true);
     try {
-      const res = await uploadDocument(projectId, file, parentId);
+      const res = await uploadDocument(archiveId, file, parentId);
       destroyModal();
-      onUploaded?.(res.pageId);
+      onUploaded?.(res.logId);
     } catch (e) {
       setError(e.body?.message ?? 'Error uploading document.');
     }
@@ -329,20 +329,20 @@ function UploadDocumentModal({ projectId, parentId, onUploaded }) {
   );
 }
 
-// --- Page Tree ---
+// --- Log Tree ---
 
-function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted, getPageUsers }) {
+function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, getLogUsers }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [showExport, setShowExport] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const exportRef = useRef(null);
   const navigate = useNavigate();
-  const activeUsers = getPageUsers(page.id);
+  const activeUsers = getLogUsers(log.id);
 
   // Load open comment count
   useEffect(() => {
-    fetchCommentCount(page.id).then(r => setCommentCount(r.count || 0)).catch(() => {});
-  }, [page.id]);
+    fetchCommentCount(log.id).then(r => setCommentCount(r.count || 0)).catch(() => {});
+  }, [log.id]);
 
   useEffect(() => {
     if (!showExport) return undefined;
@@ -359,19 +359,19 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
     setShowExport(false);
     try {
       if (format === 'pdf') {
-        const res = await fetchDocument(page.id);
-        await exportDocument(page.id, format, page.title, res.document.html_content);
+        const res = await fetchDocument(log.id);
+        await exportDocument(log.id, format, log.title, res.document.html_content);
       } else {
-        await exportDocument(page.id, format, page.title, null);
+        await exportDocument(log.id, format, log.title, null);
       }
     } catch (e) {
       toastError(e);
     }
   };
 
-  const handleNewSubpage = () => {
+  const handleNewSublog = () => {
     showModal(
-      <NewPageModal projectId={projectId} parentId={page.id} onCreated={onPageCreated} />,
+      <NewLogModal archiveId={archiveId} parentId={log.id} onCreated={onLogCreated} />,
       'modal-md'
     );
   };
@@ -379,12 +379,12 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
   const handleDelete = () => {
     showModal(
       <ConfirmDialog
-        title="Delete Page"
-        message={`Delete "${page.title}"? This cannot be undone.`}
+        title="Delete Log"
+        message={`Delete "${log.title}"? This cannot be undone.`}
         onConfirm={async () => {
-          await deletePage(projectId, page.id);
+          await deleteLog(archiveId, log.id);
           destroyModal();
-          onPageDeleted?.();
+          onLogDeleted?.();
         }}
         onCancel={destroyModal}
       />,
@@ -393,21 +393,21 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
   };
 
   return (
-    <li className="page-tree-item" style={{ paddingLeft: `${depth * 16}px` }}>
-      <div className="page-tree-row">
-        {page.children?.length > 0 && (
-          <button className="page-tree-toggle" onClick={() => setExpanded(e => !e)}
+    <li className="log-tree-item" style={{ paddingLeft: `${depth * 16}px` }}>
+      <div className="log-tree-row">
+        {log.children?.length > 0 && (
+          <button className="log-tree-toggle" onClick={() => setExpanded(e => !e)}
             aria-label={expanded ? 'Collapse' : 'Expand'}>
             {expanded ? '▾' : '▸'}
           </button>
         )}
-        <span className="page-tree-title" onClick={() => navigate(`/editor/${page.id}`)}>
-          {page.title}
+        <span className="log-tree-title" onClick={() => navigate(`/editor/${log.id}`)}>
+          {log.title}
         </span>
         <PresenceAvatars users={activeUsers} />
-        <div className="page-tree-actions">
+        <div className="log-tree-actions">
           <div className="export-dropdown" ref={exportRef}>
-            <button className="page-tree-export" onClick={() => setShowExport(v => !v)} title="Export page">⤓</button>
+            <button className="log-tree-export" onClick={() => setShowExport(v => !v)} title="Export log">⤓</button>
             {showExport && (
               <div className="export-dropdown__menu export-dropdown__menu--up">
                 <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
@@ -418,23 +418,23 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
               </div>
             )}
           </div>
-          <button className="page-tree-add" onClick={handleNewSubpage} title="Add subpage">+</button>
-          <button className="page-tree-comments" onClick={() => {
+          <button className="log-tree-add" onClick={handleNewSublog} title="Add sublog">+</button>
+          <button className="log-tree-comments" onClick={() => {
             showModal(
-              <CommentManager pageId={page.id} pageTitle={page.title} onClose={destroyModal} onNavigate={(_c) => { destroyModal(); navigate(`/editor/${page.id}`); }} />,
+              <CommentManager logId={log.id} logTitle={log.title} onClose={destroyModal} onNavigate={(_c) => { destroyModal(); navigate(`/editor/${log.id}`); }} />,
               'modal-lg'
             );
           }} title="Manage comments">
             💬{commentCount > 0 && <span className="comment-count-badge">{commentCount}</span>}
           </button>
-          <button className="page-tree-delete" onClick={handleDelete} title="Delete page">&times;</button>
+          <button className="log-tree-delete" onClick={handleDelete} title="Delete log">&times;</button>
         </div>
       </div>
-      {expanded && page.children?.length > 0 && (
-        <ul className="page-tree-children">
-          {page.children.map(child => (
-            <PageTreeItem key={child.id} page={child} projectId={projectId}
-              depth={depth + 1} onPageCreated={onPageCreated} onPageDeleted={onPageDeleted} getPageUsers={getPageUsers} />
+      {expanded && log.children?.length > 0 && (
+        <ul className="log-tree-children">
+          {log.children.map(child => (
+            <LogTreeItem key={child.id} log={child} archiveId={archiveId}
+              depth={depth + 1} onLogCreated={onLogCreated} onLogDeleted={onLogDeleted} getLogUsers={getLogUsers} />
           ))}
         </ul>
       )}
@@ -442,60 +442,60 @@ function PageTreeItem({ page, projectId, depth = 0, onPageCreated, onPageDeleted
   );
 }
 
-function PageTree({ projectId, onPageCreated, getPageUsers }) {
-  const [pages, setPages] = useState([]);
+function LogTree({ archiveId, onLogCreated, getLogUsers }) {
+  const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const loadPages = useCallback(async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchPages(projectId);
-      setPages(res.pages || []);
+      const res = await fetchLogs(archiveId);
+      setLogs(res.logs || []);
     } catch (e) {
-      setError(e.body?.message ?? 'Error loading pages.');
+      setError(e.body?.message ?? 'Error loading logs.');
     }
     setLoading(false);
-  }, [projectId]);
+  }, [archiveId]);
 
-  useEffect(() => { loadPages(); }, [loadPages]);
+  useEffect(() => { loadLogs(); }, [loadLogs]);
 
-  const handlePageCreated = useCallback((newPageId) => {
-    loadPages();
-    onPageCreated?.(newPageId);
-  }, [loadPages, onPageCreated]);
+  const handleLogCreated = useCallback((newLogId) => {
+    loadLogs();
+    onLogCreated?.(newLogId);
+  }, [loadLogs, onLogCreated]);
 
-  const handleNewRootPage = () => {
+  const handleNewRootLog = () => {
     showModal(
-      <NewPageModal projectId={projectId} parentId={null} onCreated={handlePageCreated} />,
+      <NewLogModal archiveId={archiveId} parentId={null} onCreated={handleLogCreated} />,
       'modal-md'
     );
   };
 
   const handleUpload = () => {
     showModal(
-      <UploadDocumentModal projectId={projectId} parentId={null} onUploaded={handlePageCreated} />,
+      <UploadDocumentModal archiveId={archiveId} parentId={null} onUploaded={handleLogCreated} />,
       'modal-md'
     );
   };
 
-  if (loading) return <p className="text-muted">Loading pages...</p>;
+  if (loading) return <p className="text-muted">Loading logs...</p>;
   if (error) return <p className="form-error">{error}</p>;
 
   return (
-    <div className="page-tree">
-      <div className="page-tree-header">
-        <button className="btn btn-primary btn-sm" onClick={handleNewRootPage}>+ New Page</button>
+    <div className="log-tree">
+      <div className="log-tree-header">
+        <button className="btn btn-primary btn-sm" onClick={handleNewRootLog}>+ New Log</button>
         <button className="btn btn-ghost btn-sm" onClick={handleUpload}>Upload Document</button>
       </div>
-      {pages.length === 0
-        ? <p className="text-muted">No pages yet. Create one to get started.</p>
+      {logs.length === 0
+        ? <p className="text-muted">No logs yet. Create one to get started.</p>
         : (
-          <ul className="page-tree-list">
-            {pages.map(page => (
-              <PageTreeItem key={page.id} page={page} projectId={projectId}
-                onPageCreated={handlePageCreated} onPageDeleted={loadPages} getPageUsers={getPageUsers} />
+          <ul className="log-tree-list">
+            {logs.map(log => (
+              <LogTreeItem key={log.id} log={log} archiveId={archiveId}
+                onLogCreated={handleLogCreated} onLogDeleted={loadLogs} getLogUsers={getLogUsers} />
             ))}
           </ul>
         )
@@ -504,54 +504,54 @@ function PageTree({ projectId, onPageCreated, getPageUsers }) {
   );
 }
 
-// --- Project Browser ---
+// --- Archive Browser ---
 
-export default function ProjectBrowser() {
-  const { projectId } = useParams();
+export default function ArchiveBrowser() {
+  const { archiveId } = useParams();
   const [searchParams] = useSearchParams();
-  const [projects, setProjects] = useState([]);
-  const [expandedProject, setExpandedProject] = useState(projectId ? Number(projectId) : null);
+  const [archives, setArchives] = useState([]);
+  const [expandedArchive, setExpandedArchive] = useState(archiveId ? Number(archiveId) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [accessNotice, setAccessNotice] = useState(null);
   const hasAutoExpanded = useRef(false);
-  const { getPageUsers } = usePresence();
+  const { getLogUsers } = usePresence();
 
-  const teamFilter = searchParams.get('team');
+  const squadFilter = searchParams.get('squad');
 
-  const visibleProjects = useMemo(() => {
-    if (!teamFilter) return projects;
-    return projects.filter((project) => {
-      const idCandidates = [project.team_id, project.teamId, project.team?.id];
-      return idCandidates.some((id) => id !== null && id !== undefined && String(id) === String(teamFilter));
+  const visibleArchives = useMemo(() => {
+    if (!squadFilter) return archives;
+    return archives.filter((archive) => {
+      const idCandidates = [archive.squad_id, archive.squadId, archive.squad?.id];
+      return idCandidates.some((id) => id !== null && id !== undefined && String(id) === String(squadFilter));
     });
-  }, [projects, teamFilter]);
+  }, [archives, squadFilter]);
 
-  const loadProjects = useCallback(async () => {
+  const loadArchives = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchProjects();
-      setProjects(res.projects || []);
+      const res = await fetchArchives();
+      setArchives(res.archives || []);
     } catch (e) {
-      setError(e.body?.message ?? 'Error loading projects.');
+      setError(e.body?.message ?? 'Error loading archives.');
     }
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadProjects(); }, [loadProjects]);
+  useEffect(() => { loadArchives(); }, [loadArchives]);
 
   useEffect(() => {
-    if (projectId) setExpandedProject(Number(projectId));
-  }, [projectId]);
+    if (archiveId) setExpandedArchive(Number(archiveId));
+  }, [archiveId]);
 
   useEffect(() => {
-    if (projectId || hasAutoExpanded.current) return;
-    if (projects.length > 0 && expandedProject === null) {
-      setExpandedProject(projects[0].id);
+    if (archiveId || hasAutoExpanded.current) return;
+    if (archives.length > 0 && expandedArchive === null) {
+      setExpandedArchive(archives[0].id);
       hasAutoExpanded.current = true;
     }
-  }, [projects, expandedProject, projectId]);
+  }, [archives, expandedArchive, archiveId]);
 
   useEffect(() => {
     if (!accessNotice) return undefined;
@@ -559,20 +559,20 @@ export default function ProjectBrowser() {
     return () => clearTimeout(timer);
   }, [accessNotice]);
 
-  const handleNewProject = () => {
-    showModal(<NewProjectModal onCreated={loadProjects} teamId={teamFilter} />, 'modal-md');
+  const handleNewArchive = () => {
+    showModal(<NewArchiveModal onCreated={loadArchives} squadId={squadFilter} />, 'modal-md');
   };
 
-  const handleDeleteProject = (project) => {
+  const handleDeleteArchive = (archive) => {
     showModal(
       <ConfirmDialog
-        title="Delete Project"
-        message={`Delete "${project.name}" and all its pages? This cannot be undone.`}
+        title="Delete Archive"
+        message={`Delete "${archive.name}" and all its logs? This cannot be undone.`}
         onConfirm={async () => {
-          await deleteProject(project.id);
+          await deleteArchive(archive.id);
           destroyModal();
-          if (expandedProject === project.id) setExpandedProject(null);
-          loadProjects();
+          if (expandedArchive === archive.id) setExpandedArchive(null);
+          loadArchives();
         }}
         onCancel={destroyModal}
       />,
@@ -580,57 +580,57 @@ export default function ProjectBrowser() {
     );
   };
 
-  const toggleProject = (id) => {
-    setExpandedProject((prev) => (prev === id ? null : id));
+  const toggleArchive = (id) => {
+    setExpandedArchive((prev) => (prev === id ? null : id));
   };
 
-  if (loading) return <p className="text-muted">Loading projects...</p>;
+  if (loading) return <p className="text-muted">Loading archives...</p>;
   if (error) return <p className="form-error">{error}</p>;
 
   return (
-    <div className="project-management">
-      <div className="page-header">
-        <h1>Projects</h1>
-        <button className="btn btn-primary" onClick={handleNewProject}>+ New Project</button>
+    <div className="archive-management">
+      <div className="log-header">
+        <h1>Archives</h1>
+        <button className="btn btn-primary" onClick={handleNewArchive}>+ New Archive</button>
       </div>
 
       {accessNotice && <p className="panel-status success">{accessNotice}</p>}
 
-      {teamFilter && (
+      {squadFilter && (
         <p className="text-muted" style={{ marginBottom: 14 }}>
-          Showing projects for the selected team.
+          Showing archives for the selected squad.
         </p>
       )}
 
-      {!loading && visibleProjects.length > 0 && (
+      {!loading && visibleArchives.length > 0 && (
         <p className="text-muted" style={{ marginBottom: 14 }}>
-          {visibleProjects.length} project{visibleProjects.length !== 1 ? 's' : ''}
+          {visibleArchives.length} archive{visibleArchives.length !== 1 ? 's' : ''}
         </p>
       )}
 
-      {!loading && projects.length === 0 && (
+      {!loading && archives.length === 0 && (
         <div className="empty-state">
-          <p>No projects yet. Create one to get started.</p>
+          <p>No archives yet. Create one to get started.</p>
         </div>
       )}
 
-      {!loading && projects.length > 0 && visibleProjects.length === 0 && (
+      {!loading && archives.length > 0 && visibleArchives.length === 0 && (
         <div className="empty-state">
-          <p>No projects matched the selected team.</p>
+          <p>No archives matched the selected squad.</p>
         </div>
       )}
 
-      <div className="project-list-cards">
-        {visibleProjects.map((project) => (
-          <div key={project.id} className={`card ${expandedProject === project.id ? 'card--expanded' : ''}`}>
-            <div className="card__body" onClick={() => toggleProject(project.id)} style={{ cursor: 'pointer' }}>
+      <div className="archive-list-cards">
+        {visibleArchives.map((archive) => (
+          <div key={archive.id} className={`card ${expandedArchive === archive.id ? 'card--expanded' : ''}`}>
+            <div className="card__body" onClick={() => toggleArchive(archive.id)} style={{ cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '0.8em' }}>{expandedProject === project.id ? '▾' : '▸'}</span>
-                <h3 className="card__title" style={{ margin: 0 }}>{project.name}</h3>
+                <span style={{ fontSize: '0.8em' }}>{expandedArchive === archive.id ? '▾' : '▸'}</span>
+                <h3 className="card__title" style={{ margin: 0 }}>{archive.name}</h3>
               </div>
               <p className="card__meta">
-                {project.team_name ? `Team: ${project.team_name} · ` : ''}
-                Owner: {project.created_by} · Created: {new Date(project.created_at).toLocaleDateString()}
+                {archive.squad_name ? `Squad: ${archive.squad_name} · ` : ''}
+                Owner: {archive.created_by} · Created: {new Date(archive.created_at).toLocaleDateString()}
               </p>
             </div>
 
@@ -638,7 +638,7 @@ export default function ProjectBrowser() {
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={() => showModal(
-                  <RenameProjectModal project={project} onRenamed={loadProjects} />,
+                  <RenameArchiveModal archive={archive} onRenamed={loadArchives} />,
                   'modal-md'
                 )}
               >
@@ -647,9 +647,9 @@ export default function ProjectBrowser() {
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={() => showModal(
-                  <ManageProjectAccessModal
-                    project={project}
-                    onAccessUpdated={loadProjects}
+                  <ManageArchiveAccessModal
+                    archive={archive}
+                    onAccessUpdated={loadArchives}
                     onAccessSaved={setAccessNotice}
                   />,
                   'modal-lg'
@@ -657,14 +657,14 @@ export default function ProjectBrowser() {
               >
                 Manage Access
               </button>
-              <button className="btn btn-danger btn-sm" onClick={() => handleDeleteProject(project)}>
+              <button className="btn btn-danger btn-sm" onClick={() => handleDeleteArchive(archive)}>
                 Delete
               </button>
             </div>
 
-            {expandedProject === project.id && (
-              <div className="card__expanded-content project-card__expanded">
-                <PageTree key={project.id} projectId={project.id} getPageUsers={getPageUsers} />
+            {expandedArchive === archive.id && (
+              <div className="card__expanded-content archive-card__expanded">
+                <LogTree key={archive.id} archiveId={archive.id} getLogUsers={getLogUsers} />
               </div>
             )}
           </div>

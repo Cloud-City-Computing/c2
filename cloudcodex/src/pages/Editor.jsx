@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Editor Page
+ * Cloud Codex - Editor Log
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -27,7 +27,7 @@ import { RichTextHighlights, MarkdownHighlights } from '../components/CommentHig
 import {
   fetchDocument,
   saveDocument,
-  updatePageTitle,
+  updateLogTitle,
   publishVersion,
   fetchVersions,
   fetchVersion,
@@ -550,7 +550,7 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString();
 }
 
-function VersionHistory({ pageId, onRestore, versionKey }) {
+function VersionHistory({ logId, onRestore, versionKey }) {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState(null);
@@ -558,11 +558,11 @@ function VersionHistory({ pageId, onRestore, versionKey }) {
 
   const loadVersions = useCallback(async () => {
     try {
-      const res = await fetchVersions(pageId);
+      const res = await fetchVersions(logId);
       setVersions(res.versions || []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [pageId, versionKey]);
+  }, [logId, versionKey]);
 
   useEffect(() => { loadVersions(); }, [loadVersions]);
 
@@ -573,7 +573,7 @@ function VersionHistory({ pageId, onRestore, versionKey }) {
       return;
     }
     try {
-      const res = await fetchVersion(pageId, v.id);
+      const res = await fetchVersion(logId, v.id);
       setPreview(res.version);
       setPreviewId(v.id);
     } catch { /* ignore */ }
@@ -581,7 +581,7 @@ function VersionHistory({ pageId, onRestore, versionKey }) {
 
   const handleRestore = async (v) => {
     try {
-      await restoreVersion(pageId, v.id);
+      await restoreVersion(logId, v.id);
       onRestore?.();
       setPreview(null);
       setPreviewId(null);
@@ -590,7 +590,7 @@ function VersionHistory({ pageId, onRestore, versionKey }) {
 
   const handleDelete = async (v) => {
     try {
-      await deleteVersion(pageId, v.id);
+      await deleteVersion(logId, v.id);
       setVersions(prev => prev.filter(ver => ver.id !== v.id));
       if (previewId === v.id) { setPreview(null); setPreviewId(null); }
     } catch (e) { toastError(e); }
@@ -646,10 +646,10 @@ function VersionHistory({ pageId, onRestore, versionKey }) {
   );
 }
 
-// --- Editor Page ---
+// --- Editor Log ---
 
 export default function Editor() {
-  const { pageId } = useParams();
+  const { logId } = useParams();
   const navigate = useNavigate();
   const [content, setContent] = useState('');
   const contentRef = useRef('');
@@ -711,7 +711,7 @@ export default function Editor() {
 
   // Collaborative editing hook
   const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendTitle, sendCommentEvent } = useCollab(
-    pageId,
+    logId,
     // onRemoteUpdate — called when a peer changes the document
     useCallback((html) => {
       remoteUpdateRef.current = true;
@@ -769,9 +769,9 @@ export default function Editor() {
   }, [sendCursor]);
 
   const loadDocument = useCallback(async () => {
-    if (!pageId) return;
+    if (!logId) return;
     try {
-      const res = await fetchDocument(pageId);
+      const res = await fetchDocument(logId);
       const doc = res?.document ?? null;
       setDocumentData(doc);
       setContent(doc?.html_content ?? '');
@@ -779,25 +779,25 @@ export default function Editor() {
     } catch (e) {
       setStatus({ type: 'error', message: e.body?.message ?? 'Error loading document.' });
     }
-  }, [pageId]);
+  }, [logId]);
 
   useEffect(() => { loadDocument(); }, [loadDocument]);
 
-  // Load comments for this page
+  // Load comments for this log
   const loadComments = useCallback(async () => {
-    if (!pageId) return;
+    if (!logId) return;
     try {
-      const res = await fetchComments(pageId);
+      const res = await fetchComments(logId);
       setComments(res.comments || []);
     } catch { /* ignore */ }
-  }, [pageId]);
+  }, [logId]);
 
   useEffect(() => { loadComments(); }, [loadComments]);
 
   // --- Comment action handlers ---
   const handleAddComment = useCallback(async ({ content: text, tag }) => {
     try {
-      const res = await createComment(pageId, {
+      const res = await createComment(logId, {
         content: text,
         tag,
         selection_start: commentSelection?.start ?? null,
@@ -809,7 +809,7 @@ export default function Editor() {
       setShowCommentForm(false);
       setCommentSelection(null);
     } catch (e) { toastError(e); }
-  }, [pageId, commentSelection, sendCommentEvent]);
+  }, [logId, commentSelection, sendCommentEvent]);
 
   const handleResolveComment = useCallback(async (id) => {
     try {
@@ -865,11 +865,11 @@ export default function Editor() {
 
   const handleClearAllComments = useCallback(async () => {
     try {
-      await clearAllComments(pageId);
+      await clearAllComments(logId);
       setComments([]);
       sendCommentEvent({ action: 'clear' });
     } catch (e) { toastError(e); }
-  }, [pageId, sendCommentEvent]);
+  }, [logId, sendCommentEvent]);
 
   // Get selected text for comment creation
   const handleStartComment = useCallback(() => {
@@ -893,8 +893,8 @@ export default function Editor() {
   const openCommentManager = useCallback(() => {
     showModal(
       <CommentManager
-        pageId={pageId}
-        pageTitle={documentData?.title}
+        logId={logId}
+        logTitle={documentData?.title}
         onClose={destroyModal}
         onNavigate={(c) => {
           destroyModal();
@@ -905,7 +905,7 @@ export default function Editor() {
       />,
       'modal-lg'
     );
-  }, [pageId, documentData?.title]);
+  }, [logId, documentData?.title]);
 
   const handleSave = useCallback(async (silent = false) => {
     if (savingRef.current) return;
@@ -931,7 +931,7 @@ export default function Editor() {
 
     // Fallback to REST save when collab is disconnected
     try {
-      await saveDocument(Number(pageId), latestContent);
+      await saveDocument(Number(logId), latestContent);
       setContent(latestContent);
       dirtyRef.current = false;
       lastSavedRef.current = Date.now();
@@ -941,7 +941,7 @@ export default function Editor() {
     }
     savingRef.current = false;
     setSaving(false);
-  }, [pageId, collabConnected, sendUpdate, sendSave]);
+  }, [logId, collabConnected, sendUpdate, sendSave]);
 
   // --- Auto-save every 30 seconds when there are unsaved changes ---
   const AUTO_SAVE_INTERVAL = 30_000;
@@ -989,8 +989,8 @@ export default function Editor() {
     // REST fallback: save content first, then publish
     try {
       const latestContent = contentRef.current;
-      await saveDocument(Number(pageId), latestContent);
-      const result = await publishVersion(pageId, { title, notes });
+      await saveDocument(Number(logId), latestContent);
+      const result = await publishVersion(logId, { title, notes });
       if (result?.version) {
         setDocumentData(d => d ? { ...d, version: result.version } : d);
       }
@@ -1000,7 +1000,7 @@ export default function Editor() {
       setStatus({ type: 'error', message: `Error publishing: ${e.body?.message ?? e.message}` });
     }
     setPublishing(false);
-  }, [pageId, publishing, collabConnected, sendPublish]);
+  }, [logId, publishing, collabConnected, sendPublish]);
 
   const openPublishModal = useCallback(() => {
     showModal(
@@ -1023,7 +1023,7 @@ export default function Editor() {
         sendTitle(title);
       } else {
         // Fallback to REST when collab is disconnected
-        await updatePageTitle(pageId, title);
+        await updateLogTitle(logId, title);
       }
       setDocumentData(d => ({ ...d, title }));
     } catch { /* ignore */ }
@@ -1034,19 +1034,19 @@ export default function Editor() {
     setShowExport(false);
     setStatus(null);
     try {
-      await exportDocument(Number(pageId), format, documentData?.title, contentRef.current);
+      await exportDocument(Number(logId), format, documentData?.title, contentRef.current);
     } catch (e) {
       setStatus({ type: 'error', message: `Export failed: ${e.body?.message ?? e.message}` });
     }
-  }, [pageId, documentData?.title]);
+  }, [logId, documentData?.title]);
 
   return (
     <StdLayout>
-      <div className="editor-page">
+      <div className="editor-log">
         <div className="editor-header">
           <div className="editor-breadcrumb">
-            {documentData?.project_name && (
-              <span className="breadcrumb-item">{documentData.project_name}</span>
+            {documentData?.archive_name && (
+              <span className="breadcrumb-item">{documentData.archive_name}</span>
             )}
           </div>
           {editingTitle ? (
@@ -1148,7 +1148,7 @@ export default function Editor() {
           <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>
         </div>
 
-        {showVersions && <VersionHistory pageId={pageId} onRestore={loadDocument} versionKey={versionKey} />}
+        {showVersions && <VersionHistory logId={logId} onRestore={loadDocument} versionKey={versionKey} />}
 
         <div className="editor-with-comments">
           <div className="editor-container">

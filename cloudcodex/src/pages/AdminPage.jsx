@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Admin Console Page
+ * Cloud Codex - Admin Console Log
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -10,9 +10,9 @@ import StdLayout from '../page_layouts/Std_Layout';
 import {
   fetchAdminStatus,
   fetchAdminStats,
-  fetchAdminOrganizations,
-  createAdminOrganization,
-  deleteAdminOrganization,
+  fetchAdminWorkspaces,
+  createAdminWorkspace,
+  deleteAdminWorkspace,
   fetchAdminUsers,
   deleteAdminUser,
   fetchAdminInvitations,
@@ -37,10 +37,10 @@ function StatsOverview() {
 
   const items = [
     { label: 'Users', value: stats.userCount },
-    { label: 'Organizations', value: stats.orgCount },
-    { label: 'Teams', value: stats.teamCount },
-    { label: 'Projects', value: stats.projectCount },
-    { label: 'Pages', value: stats.pageCount },
+    { label: 'Workspaces', value: stats.workspaceCount },
+    { label: 'Squads', value: stats.squadCount },
+    { label: 'Archives', value: stats.archiveCount },
+    { label: 'Logs', value: stats.logCount },
     { label: 'Pending Invites', value: stats.pendingInviteCount },
   ];
 
@@ -56,70 +56,70 @@ function StatsOverview() {
   );
 }
 
-// ─── New Org Modal ──────────────────────────────────────────
+// ─── New Workspace Modal ──────────────────────────────────────────
 
 function NewOrgModal({ onCreated }) {
   const [name, setName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
-  const [teamName, setTeamName] = useState('');
-  const [projectName, setProjectName] = useState('');
-  const [addTeam, setAddTeam] = useState(false);
-  const [addProject, setAddProject] = useState(false);
+  const [squadName, setSquadName] = useState('');
+  const [archiveName, setArchiveName] = useState('');
+  const [addSquad, setAddSquad] = useState(false);
+  const [addArchive, setAddArchive] = useState(false);
   const [error, setError] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
-    if (!name.trim()) { setError('Organization name is required.'); return; }
+    if (!name.trim()) { setError('Workspace name is required.'); return; }
     if (!ownerEmail.trim()) { setError('Owner email is required.'); return; }
     try {
-      await createAdminOrganization(name, ownerEmail, {
-        teamName: addTeam ? teamName.trim() || undefined : undefined,
-        projectName: addTeam && addProject ? projectName.trim() || undefined : undefined,
+      await createAdminWorkspace(name, ownerEmail, {
+        squadName: addSquad ? squadName.trim() || undefined : undefined,
+        archiveName: addSquad && addArchive ? archiveName.trim() || undefined : undefined,
       });
       destroyModal();
       onCreated?.();
     } catch (e) {
-      setError(e.body?.message ?? 'Error creating organization.');
+      setError(e.body?.message ?? 'Error creating workspace.');
     }
   };
 
   return (
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>New Organization</h2>
+      <h2>New Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
-        <label htmlFor="admin-org-name">Organization Name:</label>
-        <input id="admin-org-name" type="text" value={name}
+        <label htmlFor="admin-workspace-name">Workspace Name:</label>
+        <input id="admin-workspace-name" type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
 
-        <label htmlFor="admin-org-owner">Owner Email:</label>
-        <input id="admin-org-owner" type="email" value={ownerEmail}
+        <label htmlFor="admin-workspace-owner">Owner Email:</label>
+        <input id="admin-workspace-owner" type="email" value={ownerEmail}
           onChange={(e) => setOwnerEmail(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="user@example.com" />
 
         <label className="setup-checkbox">
-          <input type="checkbox" checked={addTeam} onChange={(e) => {
-            setAddTeam(e.target.checked);
-            if (!e.target.checked) setAddProject(false);
+          <input type="checkbox" checked={addSquad} onChange={(e) => {
+            setAddSquad(e.target.checked);
+            if (!e.target.checked) setAddArchive(false);
           }} />
-          Also create a team
+          Also create a squad
         </label>
-        {addTeam && (
+        {addSquad && (
           <>
-            <input type="text" value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
+            <input type="text" value={squadName}
+              onChange={(e) => setSquadName(e.target.value)}
               placeholder="e.g. Engineering"
               onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
             <label className="setup-checkbox">
-              <input type="checkbox" checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />
-              Also create a project
+              <input type="checkbox" checked={addArchive} onChange={(e) => setAddArchive(e.target.checked)} />
+              Also create a archive
             </label>
-            {addProject && (
-              <input type="text" value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+            {addArchive && (
+              <input type="text" value={archiveName}
+                onChange={(e) => setArchiveName(e.target.value)}
                 placeholder="e.g. Documentation"
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
             )}
@@ -171,31 +171,31 @@ function InviteUserModal({ onInvited }) {
   );
 }
 
-// ─── Organizations Section ──────────────────────────────────
+// ─── Workspaces Section ──────────────────────────────────
 
-function OrganizationsSection() {
-  const [orgs, setOrgs] = useState([]);
+function WorkspacesSection() {
+  const [workspaces, setWorkspaces] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetchAdminOrganizations();
-      setOrgs(res.organizations || []);
+      const res = await fetchAdminWorkspaces();
+      setWorkspaces(res.workspaces || []);
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleDelete = (org) => {
+  const handleDelete = (workspace) => {
     showModal(
       <ConfirmDialog
-        title={`Delete "${org.name}"?`}
-        message="This will permanently delete the organization and all its teams, projects, and pages."
+        title={`Delete "${workspace.name}"?`}
+        message="This will permanently delete the workspace and all its squads, archives, and logs."
         confirmLabel="Delete"
         danger
         onConfirm={async () => {
-          await deleteAdminOrganization(org.id);
+          await deleteAdminWorkspace(workspace.id);
           destroyModal();
           load();
         }}
@@ -206,15 +206,15 @@ function OrganizationsSection() {
   return (
     <section className="admin-section">
       <div className="admin-section__header">
-        <h2>Organizations</h2>
+        <h2>Workspaces</h2>
         <button className="btn btn-primary btn-sm" onClick={() => showModal(<NewOrgModal onCreated={load} />, 'modal-md')}>
-          + New Organization
+          + New Workspace
         </button>
       </div>
       {loading ? (
         <p className="text-muted">Loading…</p>
-      ) : orgs.length === 0 ? (
-        <p className="text-muted">No organizations yet.</p>
+      ) : workspaces.length === 0 ? (
+        <p className="text-muted">No workspaces yet.</p>
       ) : (
         <div className="admin-table-wrap">
           <table className="admin-table">
@@ -222,22 +222,22 @@ function OrganizationsSection() {
               <tr>
                 <th>Name</th>
                 <th>Owner</th>
-                <th>Teams</th>
+                <th>Squads</th>
                 <th>Members</th>
                 <th>Created</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {orgs.map(org => (
-                <tr key={org.id}>
-                  <td>{org.name}</td>
-                  <td>{org.owner}</td>
-                  <td>{org.team_count}</td>
-                  <td>{org.member_count}</td>
-                  <td>{new Date(org.created_at).toLocaleDateString()}</td>
+              {workspaces.map(workspace => (
+                <tr key={workspace.id}>
+                  <td>{workspace.name}</td>
+                  <td>{workspace.owner}</td>
+                  <td>{workspace.squad_count}</td>
+                  <td>{workspace.member_count}</td>
+                  <td>{new Date(workspace.created_at).toLocaleDateString()}</td>
                   <td>
-                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(org)}>Delete</button>
+                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(workspace)}>Delete</button>
                   </td>
                 </tr>
               ))}
@@ -295,7 +295,7 @@ function UsersSection() {
               <tr>
                 <th>Username</th>
                 <th>Email</th>
-                <th>Teams</th>
+                <th>Squads</th>
                 <th>Admin</th>
                 <th>Created</th>
                 <th></th>
@@ -309,7 +309,7 @@ function UsersSection() {
                     {u.name}
                   </td>
                   <td>{u.email}</td>
-                  <td>{u.team_count}</td>
+                  <td>{u.squad_count}</td>
                   <td>{u.is_admin ? '✓' : ''}</td>
                   <td>{new Date(u.created_at).toLocaleDateString()}</td>
                   <td>
@@ -406,7 +406,7 @@ function InvitationsSection() {
   );
 }
 
-// ─── Admin Console Page ─────────────────────────────────────
+// ─── Admin Console Log ─────────────────────────────────────
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -419,23 +419,23 @@ export default function AdminPage() {
   }, []);
 
   if (authorized === null) {
-    return <StdLayout><div className="admin-page"><p className="text-muted">Loading…</p></div></StdLayout>;
+    return <StdLayout><div className="admin-log"><p className="text-muted">Loading…</p></div></StdLayout>;
   }
   if (!authorized) {
-    return <StdLayout><div className="admin-page"><h1>Access Denied</h1><p>You do not have admin privileges.</p></div></StdLayout>;
+    return <StdLayout><div className="admin-log"><h1>Access Denied</h1><p>You do not have admin privileges.</p></div></StdLayout>;
   }
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
-    { key: 'organizations', label: 'Organizations' },
+    { key: 'workspaces', label: 'Workspaces' },
     { key: 'users', label: 'Users' },
     { key: 'invitations', label: 'Invitations' },
   ];
 
   return (
     <StdLayout>
-      <div className="admin-page">
-        <div className="admin-page__header">
+      <div className="admin-log">
+        <div className="admin-log__header">
           <h1>Admin Console</h1>
         </div>
 
@@ -451,9 +451,9 @@ export default function AdminPage() {
           ))}
         </div>
 
-        <div className="admin-page__body">
+        <div className="admin-log__body">
           {activeTab === 'overview' && <StatsOverview />}
-          {activeTab === 'organizations' && <OrganizationsSection />}
+          {activeTab === 'workspaces' && <WorkspacesSection />}
           {activeTab === 'users' && <UsersSection />}
           {activeTab === 'invitations' && <InvitationsSection />}
         </div>

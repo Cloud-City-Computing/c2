@@ -12,11 +12,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSessionTokenFromCookie } from '../util';
 
 /**
- * @param {number|string} pageId  — The document/page ID to collaborate on
+ * @param {number|string} logId  — The document/log ID to collaborate on
  * @param {function} onRemoteUpdate — Called with new HTML when a remote peer makes a change
  * @returns {{ collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendUpdate: function, sendCursor: function, sendSave: function, sendPublish: function, sendTitle: function, canWrite: boolean }}
  */
-export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPublished, onRemoteTitle) {
+export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPublished, onRemoteTitle) {
   const [collabUsers, setCollabUsers] = useState([]);
   const [collabConnected, setCollabConnected] = useState(false);
   const [canWrite, setCanWrite] = useState(true);
@@ -46,7 +46,7 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
   }, [onRemoteTitle]);
 
   useEffect(() => {
-    if (!pageId) return;
+    if (!logId) return;
 
     let disposed = false;
 
@@ -55,7 +55,7 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
       if (!token) return;
 
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${proto}//${window.location.host}/collab?pageId=${pageId}`;
+      const url = `${proto}//${window.location.host}/collab?logId=${logId}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
@@ -152,7 +152,7 @@ export default function useCollab(pageId, onRemoteUpdate, onRemoteComment, onPub
       setCollabUsers([]);
       setRemoteCursors({});
     };
-  }, [pageId]);
+  }, [logId]);
 
   /**
    * Send a local content update to the server for broadcast to peers.

@@ -4,79 +4,79 @@ import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
-describe('Organization Routes', () => {
+describe('Workspace Routes', () => {
   beforeEach(() => {
     resetMocks();
   });
 
-  // ── GET /api/organizations ────────────────────────────────
+  // ── GET /api/workspaces ────────────────────────────────
 
-  describe('GET /api/organizations', () => {
-    it('returns organizations for authenticated user', async () => {
+  describe('GET /api/workspaces', () => {
+    it('returns workspaces for authenticated user', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([
-        { id: 1, name: 'My Org', owner: 'test@example.com', created_at: '2026-01-01' },
+        { id: 1, name: 'My Workspace', owner: 'test@example.com', created_at: '2026-01-01' },
       ]);
 
       const res = await request(app)
-        .get('/api/organizations')
+        .get('/api/workspaces')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.organizations).toHaveLength(1);
-      expect(res.body.organizations[0].name).toBe('My Org');
+      expect(res.body.workspaces).toHaveLength(1);
+      expect(res.body.workspaces[0].name).toBe('My Workspace');
     });
 
-    it('returns empty list when no orgs', async () => {
+    it('returns empty list when no workspaces', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .get('/api/organizations')
+        .get('/api/workspaces')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
-      expect(res.body.organizations).toEqual([]);
+      expect(res.body.workspaces).toEqual([]);
     });
 
     it('requires authentication', async () => {
       mockUnauthenticated();
 
       const res = await request(app)
-        .get('/api/organizations')
+        .get('/api/workspaces')
         .set('Authorization', 'Bearer bad');
 
       expect(res.status).toBe(401);
     });
   });
 
-  // ── POST /api/organizations ───────────────────────────────
+  // ── POST /api/workspaces ───────────────────────────────
 
-  describe('POST /api/organizations', () => {
+  describe('POST /api/workspaces', () => {
     const ADMIN_USER = { ...TEST_USER, is_admin: true };
 
-    it('creates organization', async () => {
+    it('creates workspace', async () => {
       mockAuthenticated(ADMIN_USER);
       c2_query.mockResolvedValueOnce({ insertId: 5 });
 
       const res = await request(app)
-        .post('/api/organizations')
+        .post('/api/workspaces')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'New Org' });
+        .send({ name: 'New Workspace' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.organizationId).toBe(5);
+      expect(res.body.workspaceId).toBe(5);
     });
 
     it('rejects non-admin user', async () => {
       mockAuthenticated(); // default TEST_USER, not admin
 
       const res = await request(app)
-        .post('/api/organizations')
+        .post('/api/workspaces')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'New Org' });
+        .send({ name: 'New Workspace' });
 
       expect(res.status).toBe(403);
     });
@@ -85,7 +85,7 @@ describe('Organization Routes', () => {
       mockAuthenticated(ADMIN_USER);
 
       const res = await request(app)
-        .post('/api/organizations')
+        .post('/api/workspaces')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: '' });
 
@@ -96,7 +96,7 @@ describe('Organization Routes', () => {
       mockAuthenticated(ADMIN_USER);
 
       const res = await request(app)
-        .post('/api/organizations')
+        .post('/api/workspaces')
         .set('Authorization', 'Bearer valid-token')
         .send({});
 
@@ -104,19 +104,19 @@ describe('Organization Routes', () => {
     });
   });
 
-  // ── PUT /api/organizations/:id ────────────────────────────
+  // ── PUT /api/workspaces/:id ────────────────────────────
 
-  describe('PUT /api/organizations/:id', () => {
-    it('renames org for owner', async () => {
+  describe('PUT /api/workspaces/:id', () => {
+    it('renames workspace for owner', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1 }])  // owner check
         .mockResolvedValueOnce([]);            // UPDATE
 
       const res = await request(app)
-        .put('/api/organizations/1')
+        .put('/api/workspaces/1')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'Renamed Org' });
+        .send({ name: 'Renamed Workspace' });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -127,9 +127,9 @@ describe('Organization Routes', () => {
       c2_query.mockResolvedValueOnce([]); // not owner
 
       const res = await request(app)
-        .put('/api/organizations/1')
+        .put('/api/workspaces/1')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'Renamed Org' });
+        .send({ name: 'Renamed Workspace' });
 
       expect(res.status).toBe(403);
     });
@@ -138,7 +138,7 @@ describe('Organization Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .put('/api/organizations/abc')
+        .put('/api/workspaces/abc')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: 'Test' });
 
@@ -149,7 +149,7 @@ describe('Organization Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .put('/api/organizations/1')
+        .put('/api/workspaces/1')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: '' });
 
@@ -157,17 +157,17 @@ describe('Organization Routes', () => {
     });
   });
 
-  // ── DELETE /api/organizations/:id ─────────────────────────
+  // ── DELETE /api/workspaces/:id ─────────────────────────
 
-  describe('DELETE /api/organizations/:id', () => {
-    it('deletes org for owner', async () => {
+  describe('DELETE /api/workspaces/:id', () => {
+    it('deletes workspace for owner', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1 }]) // owner check
         .mockResolvedValueOnce([]);           // DELETE
 
       const res = await request(app)
-        .delete('/api/organizations/1')
+        .delete('/api/workspaces/1')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -179,7 +179,7 @@ describe('Organization Routes', () => {
       c2_query.mockResolvedValueOnce([]); // not owner
 
       const res = await request(app)
-        .delete('/api/organizations/1')
+        .delete('/api/workspaces/1')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
@@ -189,7 +189,7 @@ describe('Organization Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .delete('/api/organizations/abc')
+        .delete('/api/workspaces/abc')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);

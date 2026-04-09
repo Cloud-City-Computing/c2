@@ -4,27 +4,27 @@
 -- https://cloudcitycomputing.com
 
 -- SQL script to initialize the database schema.
--- This script creates the schema for organizations, teams, users, projects, pages, versions, and permissions.
+-- This script creates the schema for workspaces, squads, users, archives, logs, versions, and permissions.
 -- It defines the necessary tables and their relationships.
 
 DROP TABLE IF EXISTS comment_replies;
 DROP TABLE IF EXISTS comments;
-DROP TABLE IF EXISTS team_invitations;
-DROP TABLE IF EXISTS team_members;
+DROP TABLE IF EXISTS squad_invitations;
+DROP TABLE IF EXISTS squad_members;
 DROP TABLE IF EXISTS versions;
-DROP TABLE IF EXISTS pages;
-DROP TABLE IF EXISTS projects;
-DROP TABLE IF EXISTS team_permissions;
+DROP TABLE IF EXISTS logs;
+DROP TABLE IF EXISTS archives;
+DROP TABLE IF EXISTS squad_permissions;
 DROP TABLE IF EXISTS permissions;
-DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS squads;
 DROP TABLE IF EXISTS two_factor_codes;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS user_invitations;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS sessions;
-DROP TABLE IF EXISTS organizations;
+DROP TABLE IF EXISTS workspaces;
 
-CREATE TABLE organizations (
+CREATE TABLE workspaces (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name TEXT NOT NULL,
   owner TEXT NOT NULL,
@@ -94,89 +94,89 @@ CREATE TABLE user_invitations (
   INDEX (expires_at)
 ) ENGINE=InnoDB;
 
-CREATE TABLE teams (
+CREATE TABLE squads (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  organization_id INT,
+  workspace_id INT,
   name TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_by INT,
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE permissions (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT,
-  create_team BOOLEAN DEFAULT FALSE,
-  create_project BOOLEAN DEFAULT FALSE,
-  create_page BOOLEAN DEFAULT TRUE,
+  create_squad BOOLEAN DEFAULT FALSE,
+  create_archive BOOLEAN DEFAULT FALSE,
+  create_log BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE team_permissions (
+CREATE TABLE squad_permissions (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  team_id INT NOT NULL,
-  create_project BOOLEAN DEFAULT FALSE,
-  create_page BOOLEAN DEFAULT TRUE,
-  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
-  UNIQUE KEY (team_id)
+  squad_id INT NOT NULL,
+  create_archive BOOLEAN DEFAULT FALSE,
+  create_log BOOLEAN DEFAULT TRUE,
+  FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE CASCADE,
+  UNIQUE KEY (squad_id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE team_members (
+CREATE TABLE squad_members (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  team_id INT NOT NULL,
+  squad_id INT NOT NULL,
   user_id INT NOT NULL,
   role ENUM('member', 'admin', 'owner') DEFAULT 'member',
   can_read BOOLEAN DEFAULT TRUE,
   can_write BOOLEAN DEFAULT FALSE,
-  can_create_page BOOLEAN DEFAULT FALSE,
-  can_create_project BOOLEAN DEFAULT FALSE,
+  can_create_log BOOLEAN DEFAULT FALSE,
+  can_create_archive BOOLEAN DEFAULT FALSE,
   can_manage_members BOOLEAN DEFAULT FALSE,
   can_delete_version BOOLEAN DEFAULT FALSE,
   can_publish BOOLEAN DEFAULT FALSE,
   joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+  FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_team_user (team_id, user_id)
+  UNIQUE KEY uq_squad_user (squad_id, user_id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE team_invitations (
+CREATE TABLE squad_invitations (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  team_id INT NOT NULL,
+  squad_id INT NOT NULL,
   invited_by INT NOT NULL,
   invited_user_id INT NOT NULL,
   role ENUM('member', 'admin', 'owner') DEFAULT 'member',
   can_read BOOLEAN DEFAULT TRUE,
   can_write BOOLEAN DEFAULT FALSE,
-  can_create_page BOOLEAN DEFAULT FALSE,
-  can_create_project BOOLEAN DEFAULT FALSE,
+  can_create_log BOOLEAN DEFAULT FALSE,
+  can_create_archive BOOLEAN DEFAULT FALSE,
   can_manage_members BOOLEAN DEFAULT FALSE,
   can_delete_version BOOLEAN DEFAULT FALSE,
   can_publish BOOLEAN DEFAULT FALSE,
   status ENUM('pending', 'accepted', 'declined') DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   responded_at TIMESTAMP NULL,
-  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+  FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE CASCADE,
   FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (invited_user_id) REFERENCES users(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_invitation (team_id, invited_user_id, status)
+  UNIQUE KEY uq_invitation (squad_id, invited_user_id, status)
 ) ENGINE=InnoDB;
 
-CREATE TABLE projects (
+CREATE TABLE archives (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  team_id INT,
+  squad_id INT,
   name TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_by INT,
   read_access JSON DEFAULT (JSON_ARRAY()),
   write_access JSON DEFAULT (JSON_ARRAY()),
-  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL,
+  FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE pages (
+CREATE TABLE logs (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  project_id INT,
+  archive_id INT,
   title TEXT NOT NULL,
   html_content TEXT,
   plain_content TEXT GENERATED ALWAYS AS (REGEXP_REPLACE(html_content, '<[^>]+>', '')) STORED,
@@ -188,16 +188,16 @@ CREATE TABLE pages (
   version INT DEFAULT 0,
   read_access JSON DEFAULT (JSON_ARRAY()),
   write_access JSON DEFAULT (JSON_ARRAY()),
-  FULLTEXT INDEX ft_pages_search (title, plain_content),
-  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-  FOREIGN KEY (parent_id) REFERENCES pages(id) ON DELETE SET NULL,
+  FULLTEXT INDEX ft_logs_search (title, plain_content),
+  FOREIGN KEY (archive_id) REFERENCES archives(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES logs(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE versions (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  page_id INT,
+  log_id INT,
   version INT NOT NULL,
   title VARCHAR(255) DEFAULT NULL,
   notes TEXT DEFAULT NULL,
@@ -205,13 +205,13 @@ CREATE TABLE versions (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_by INT,
   read_access JSON DEFAULT (JSON_ARRAY()),
-  FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
+  FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE comments (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  page_id INT NOT NULL,
+  log_id INT NOT NULL,
   user_id INT NOT NULL,
   content TEXT NOT NULL,
   tag ENUM('comment', 'suggestion', 'question', 'issue', 'note') DEFAULT 'comment',
@@ -223,11 +223,11 @@ CREATE TABLE comments (
   resolved_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
+  FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL,
-  INDEX idx_comments_page (page_id),
-  INDEX idx_comments_status (page_id, status)
+  INDEX idx_comments_log (log_id),
+  INDEX idx_comments_status (log_id, status)
 ) ENGINE=InnoDB;
 
 CREATE TABLE comment_replies (

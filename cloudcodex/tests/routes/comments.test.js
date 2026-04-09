@@ -5,7 +5,7 @@ import { c2_query } from '../../mysql_connect.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER, TEST_USER_2 } from '../helpers.js';
 
 const COMMENT_ROW = {
-  id: 10, page_id: 1, user_id: TEST_USER.id, content: 'Looks good',
+  id: 10, log_id: 1, user_id: TEST_USER.id, content: 'Looks good',
   tag: 'comment', status: 'open', selection_start: 0, selection_end: 10,
   selected_text: 'Hello World', resolved_by: null, resolved_at: null,
   created_at: '2026-01-01', updated_at: '2026-01-01',
@@ -24,18 +24,18 @@ describe('Comment Routes', () => {
     resetMocks();
   });
 
-  // ── GET /api/pages/:pageId/comments ─────────────────────────
+  // ── GET /api/logs/:logId/comments ─────────────────────────
 
-  describe('GET /api/pages/:pageId/comments', () => {
+  describe('GET /api/logs/:logId/comments', () => {
     it('returns comments with replies', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])          // checkPageReadAccess
+        .mockResolvedValueOnce([{ id: 1 }])          // checkLogReadAccess
         .mockResolvedValueOnce([COMMENT_ROW])         // SELECT comments
         .mockResolvedValueOnce([REPLY_ROW]);          // SELECT replies
 
       const res = await request(app)
-        .get('/api/pages/1/comments')
+        .get('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -48,11 +48,11 @@ describe('Comment Routes', () => {
     it('returns empty list when no comments', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])   // checkPageReadAccess
+        .mockResolvedValueOnce([{ id: 1 }])   // checkLogReadAccess
         .mockResolvedValueOnce([]);            // no comments
 
       const res = await request(app)
-        .get('/api/pages/1/comments')
+        .get('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -67,7 +67,7 @@ describe('Comment Routes', () => {
         .mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .get('/api/pages/1/comments?status=resolved')
+        .get('/api/logs/1/comments?status=resolved')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -84,7 +84,7 @@ describe('Comment Routes', () => {
         .mockResolvedValueOnce([])
 
       const res = await request(app)
-        .get('/api/pages/1/comments?status=bogus')
+        .get('/api/logs/1/comments?status=bogus')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -95,20 +95,20 @@ describe('Comment Routes', () => {
 
     it('rejects without read access', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]);  // checkPageReadAccess → denied
+      c2_query.mockResolvedValueOnce([]);  // checkLogReadAccess → denied
 
       const res = await request(app)
-        .get('/api/pages/1/comments')
+        .get('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .get('/api/pages/abc/comments')
+        .get('/api/logs/abc/comments')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
@@ -118,24 +118,24 @@ describe('Comment Routes', () => {
       mockUnauthenticated();
 
       const res = await request(app)
-        .get('/api/pages/1/comments')
+        .get('/api/logs/1/comments')
         .set('Authorization', 'Bearer bad-token');
 
       expect(res.status).toBe(401);
     });
   });
 
-  // ── GET /api/pages/:pageId/comments/count ───────────────────
+  // ── GET /api/logs/:logId/comments/count ───────────────────
 
-  describe('GET /api/pages/:pageId/comments/count', () => {
+  describe('GET /api/logs/:logId/comments/count', () => {
     it('returns open comment count', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])     // checkPageReadAccess
+        .mockResolvedValueOnce([{ id: 1 }])     // checkLogReadAccess
         .mockResolvedValueOnce([{ count: 5 }]);  // COUNT(*)
 
       const res = await request(app)
-        .get('/api/pages/1/comments/count')
+        .get('/api/logs/1/comments/count')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -149,7 +149,7 @@ describe('Comment Routes', () => {
         .mockResolvedValueOnce([{ count: 0 }]);
 
       const res = await request(app)
-        .get('/api/pages/1/comments/count')
+        .get('/api/logs/1/comments/count')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -161,36 +161,36 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .get('/api/pages/1/comments/count')
+        .get('/api/logs/1/comments/count')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .get('/api/pages/0/comments/count')
+        .get('/api/logs/0/comments/count')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
     });
   });
 
-  // ── POST /api/pages/:pageId/comments ────────────────────────
+  // ── POST /api/logs/:logId/comments ────────────────────────
 
-  describe('POST /api/pages/:pageId/comments', () => {
+  describe('POST /api/logs/:logId/comments', () => {
     it('creates a comment', async () => {
       mockAuthenticated();
       const created = { ...COMMENT_ROW, id: 11, content: 'New comment' };
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])              // checkPageReadAccess
+        .mockResolvedValueOnce([{ id: 1 }])              // checkLogReadAccess
         .mockResolvedValueOnce({ insertId: 11 })          // INSERT
         .mockResolvedValueOnce([created]);                 // SELECT back
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'New comment', tag: 'suggestion' });
 
@@ -208,7 +208,7 @@ describe('Comment Routes', () => {
         .mockResolvedValueOnce([created]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({
           content: 'About this text',
@@ -232,7 +232,7 @@ describe('Comment Routes', () => {
         .mockResolvedValueOnce([COMMENT_ROW]);
 
       await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'No tag specified' });
 
@@ -245,7 +245,7 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: '' });
 
@@ -258,7 +258,7 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ tag: 'question' });
 
@@ -270,7 +270,7 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'x'.repeat(10001) });
 
@@ -283,7 +283,7 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'Test', tag: 'invalid' });
 
@@ -296,7 +296,7 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'Test', selection_start: -1 });
 
@@ -309,7 +309,7 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'Test', selection_end: 1.5 });
 
@@ -322,18 +322,18 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .post('/api/pages/1/comments')
+        .post('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'Blocked' });
 
       expect(res.status).toBe(403);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .post('/api/pages/abc/comments')
+        .post('/api/logs/abc/comments')
         .set('Authorization', 'Bearer valid-token')
         .send({ content: 'Test' });
 
@@ -460,7 +460,7 @@ describe('Comment Routes', () => {
       const resolved = { ...COMMENT_ROW, status: 'resolved', resolved_by: TEST_USER.id, resolved_by_name: TEST_USER.name };
       c2_query
         .mockResolvedValueOnce([COMMENT_ROW])   // SELECT comment
-        .mockResolvedValueOnce([{ id: 1 }])     // checkPageReadAccess
+        .mockResolvedValueOnce([{ id: 1 }])     // checkLogReadAccess
         .mockResolvedValueOnce([])               // UPDATE
         .mockResolvedValueOnce([resolved]);      // SELECT updated
 
@@ -527,11 +527,11 @@ describe('Comment Routes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('rejects without page access', async () => {
+    it('rejects without log access', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([COMMENT_ROW])  // comment found
-        .mockResolvedValueOnce([]);             // checkPageReadAccess → denied
+        .mockResolvedValueOnce([]);             // checkLogReadAccess → denied
 
       const res = await request(app)
         .post('/api/comments/10/resolve')
@@ -561,7 +561,7 @@ describe('Comment Routes', () => {
       const resolvedComment = { ...COMMENT_ROW, status: 'resolved' };
       c2_query
         .mockResolvedValueOnce([resolvedComment])  // SELECT comment
-        .mockResolvedValueOnce([{ id: 1 }])        // checkPageReadAccess
+        .mockResolvedValueOnce([{ id: 1 }])        // checkLogReadAccess
         .mockResolvedValueOnce([]);                 // UPDATE
 
       const res = await request(app)
@@ -583,7 +583,7 @@ describe('Comment Routes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('rejects without page access', async () => {
+    it('rejects without log access', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([COMMENT_ROW])
@@ -658,17 +658,17 @@ describe('Comment Routes', () => {
     });
   });
 
-  // ── DELETE /api/pages/:pageId/comments ──────────────────────
+  // ── DELETE /api/logs/:logId/comments ──────────────────────
 
-  describe('DELETE /api/pages/:pageId/comments', () => {
+  describe('DELETE /api/logs/:logId/comments', () => {
     it('clears all comments with write access', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])    // checkPageWriteAccess
+        .mockResolvedValueOnce([{ id: 1 }])    // checkLogWriteAccess
         .mockResolvedValueOnce([]);             // DELETE
 
       const res = await request(app)
-        .delete('/api/pages/1/comments')
+        .delete('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -680,18 +680,18 @@ describe('Comment Routes', () => {
       c2_query.mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .delete('/api/pages/1/comments')
+        .delete('/api/logs/1/comments')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
       expect(res.body.message).toMatch(/write access/i);
     });
 
-    it('rejects invalid page ID', async () => {
+    it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .delete('/api/pages/-1/comments')
+        .delete('/api/logs/-1/comments')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
@@ -706,7 +706,7 @@ describe('Comment Routes', () => {
       const newReply = { ...REPLY_ROW, id: 21, content: 'Good point' };
       c2_query
         .mockResolvedValueOnce([COMMENT_ROW])     // SELECT comment
-        .mockResolvedValueOnce([{ id: 1 }])       // checkPageReadAccess
+        .mockResolvedValueOnce([{ id: 1 }])       // checkLogReadAccess
         .mockResolvedValueOnce({ insertId: 21 })   // INSERT reply
         .mockResolvedValueOnce([newReply]);         // SELECT reply back
 
@@ -761,7 +761,7 @@ describe('Comment Routes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('rejects without page access', async () => {
+    it('rejects without log access', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([COMMENT_ROW])
