@@ -18,8 +18,10 @@ import { c2_query } from '../../mysql_connect.js';
  *   3. User is the archive creator
  *   4. User is the workspace owner (via squad → workspace)
  *   5. User is a squad member with owner role OR can_read permission
+ *   6. User is a member of a squad listed in read_access_squads
+ *   7. read_access_workspace is TRUE and user is in any squad of the same workspace
  *
- * Use with readAccessParams(user) — always 5 params.
+ * Use with readAccessParams(user) — always 7 params.
  */
 export function readAccessWhere(alias = 'p') {
   return `(
@@ -27,17 +29,25 @@ export function readAccessWhere(alias = 'p') {
     OR JSON_CONTAINS(${alias}.read_access, ?) OR ${alias}.created_by = ?
     OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner = ?)
     OR EXISTS (SELECT 1 FROM squad_members _om WHERE _om.squad_id = ${alias}.squad_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_read = TRUE))
+    OR EXISTS (SELECT 1 FROM squad_members _sm WHERE _sm.user_id = ? AND JSON_CONTAINS(${alias}.read_access_squads, CAST(_sm.squad_id AS JSON)))
+    OR (${alias}.read_access_workspace = TRUE AND EXISTS (
+      SELECT 1 FROM squads _ws
+      JOIN squad_members _wsm ON _wsm.squad_id = _ws.id
+      WHERE _ws.workspace_id = (SELECT workspace_id FROM squads WHERE id = ${alias}.squad_id)
+        AND _wsm.user_id = ?
+    ))
   )`;
 }
 
 export function readAccessParams(user) {
-  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id];
+  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id, user.id, user.id];
 }
 
 /**
  * SQL WHERE fragment for write access, including owner cascade.
- * Same logic as readAccessWhere but checks write_access column.
- * Use with writeAccessParams(user) — always 5 params.
+ * Same logic as readAccessWhere but checks write_access / write_access_squads /
+ * write_access_workspace columns.
+ * Use with writeAccessParams(user) — always 7 params.
  */
 export function writeAccessWhere(alias = 'p') {
   return `(
@@ -45,11 +55,18 @@ export function writeAccessWhere(alias = 'p') {
     OR JSON_CONTAINS(${alias}.write_access, ?) OR ${alias}.created_by = ?
     OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner = ?)
     OR EXISTS (SELECT 1 FROM squad_members _om WHERE _om.squad_id = ${alias}.squad_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_write = TRUE))
+    OR EXISTS (SELECT 1 FROM squad_members _sm WHERE _sm.user_id = ? AND JSON_CONTAINS(${alias}.write_access_squads, CAST(_sm.squad_id AS JSON)))
+    OR (${alias}.write_access_workspace = TRUE AND EXISTS (
+      SELECT 1 FROM squads _ws
+      JOIN squad_members _wsm ON _wsm.squad_id = _ws.id
+      WHERE _ws.workspace_id = (SELECT workspace_id FROM squads WHERE id = ${alias}.squad_id)
+        AND _wsm.user_id = ?
+    ))
   )`;
 }
 
 export function writeAccessParams(user) {
-  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id];
+  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id, user.id, user.id];
 }
 
 /**

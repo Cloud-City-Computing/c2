@@ -177,6 +177,11 @@ export const updateArchive = (id, name) => apiFetch('PUT', `/api/archives/${id}`
 export const deleteArchive = (id) => apiFetch('DELETE', `/api/archives/${id}`);
 export const manageArchiveAccess = (id, userId, accessType, action) =>
   apiFetch('POST', `/api/archives/${id}/access`, { userId, accessType, action });
+export const manageArchiveSquadAccess = (id, squadId, accessType, action) =>
+  apiFetch('POST', `/api/archives/${id}/access`, { squadId, accessType, action });
+export const manageArchiveWorkspaceAccess = (id, accessType, action) =>
+  apiFetch('POST', `/api/archives/${id}/access`, { workspace: true, accessType, action });
+export const fetchArchiveAccess = (id) => apiFetch('GET', `/api/archives/${id}/access`);
 
 // --- Log APIs ---
 

@@ -14,6 +14,13 @@ import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
 
 const router = express.Router();
 
+/** Safely parse a value that may already be a JS array (mysql2 JSON columns) or a JSON string. */
+function parseJsonArray(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { return JSON.parse(val); } catch { return []; } }
+  return [];
+}
+
 // --- Routes ---
 
 /**
@@ -167,8 +174,10 @@ router.delete('/archives/:id', requireAuth, asyncHandler(async (req, res) => {
 
 /**
  * POST /api/archives/:id/access
- * Add/remove user from read_access or write_access
- * Body: { userId, accessType: 'read'|'write', action: 'add'|'remove' }
+ * Add/remove user, squad, or workspace-level access.
+ * Body (user):      { userId, accessType: 'read'|'write', action: 'add'|'remove' }
+ * Body (squad):     { squadId, accessType: 'read'|'write', action: 'add'|'remove' }
+ * Body (workspace): { workspace: true, accessType: 'read'|'write', action: 'add'|'remove' }
  */
 router.post('/archives/:id/access', requireAuth, asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -176,35 +185,201 @@ router.post('/archives/:id/access', requireAuth, asyncHandler(async (req, res) =
     return res.status(400).json({ success: false, message: 'Invalid archiveId' });
   }
 
-  const { userId, accessType, action } = req.body;
-  if (!isValidId(userId) || !['read', 'write'].includes(accessType) || !['add', 'remove'].includes(action)) {
+  const { userId, squadId, workspace, accessType, action } = req.body;
+  if (!['read', 'write'].includes(accessType) || !['add', 'remove'].includes(action)) {
     return res.status(400).json({ success: false, message: 'Invalid parameters' });
+  }
+
+  // Determine target type
+  const hasUser = userId !== undefined && userId !== null;
+  const hasSquad = squadId !== undefined && squadId !== null;
+  const hasWorkspace = workspace === true;
+
+  // Exactly one target type must be provided
+  const targetCount = [hasUser, hasSquad, hasWorkspace].filter(Boolean).length;
+  if (targetCount !== 1) {
+    return res.status(400).json({ success: false, message: 'Provide exactly one of userId, squadId, or workspace' });
+  }
+
+  if (hasUser && !isValidId(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid userId' });
+  }
+  if (hasSquad && !isValidId(squadId)) {
+    return res.status(400).json({ success: false, message: 'Invalid squadId' });
   }
 
   // Only archive/squad/workspace owners can manage access
   const allowed = await isArchiveOwner(req.user, id);
   if (!allowed) return res.status(403).json({ success: false, message: 'Only a archive or squad owner can manage access' });
 
-  const column = accessType === 'read' ? 'read_access' : 'write_access';
+  if (hasWorkspace) {
+    // Toggle the workspace-level boolean
+    const column = accessType === 'read' ? 'read_access_workspace' : 'write_access_workspace';
+    const value = action === 'add';
+    await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [value, Number(id)]);
+  } else if (hasSquad) {
+    // Modify the squad access JSON array
+    const column = accessType === 'read' ? 'read_access_squads' : 'write_access_squads';
+    const [proj] = await c2_query(`SELECT ${column} AS acl FROM archives WHERE id = ?`, [Number(id)]);
+    const arr = parseJsonArray(proj.acl);
+    const targetSid = Number(squadId);
 
-  // Read current access array, modify in JS, write back (avoids JSON_SEARCH int/string mismatch)
-  const [proj] = await c2_query(`SELECT ${column} AS acl FROM archives WHERE id = ?`, [Number(id)]);
-  const arr = JSON.parse(proj.acl || '[]');
-  const targetUid = Number(userId);
-
-  if (action === 'add') {
-    if (!arr.includes(targetUid)) {
-      arr.push(targetUid);
-      await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(arr), Number(id)]);
+    if (action === 'add') {
+      if (!arr.includes(targetSid)) {
+        arr.push(targetSid);
+        await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(arr), Number(id)]);
+      }
+    } else {
+      const filtered = arr.filter(sid => sid !== targetSid);
+      if (filtered.length !== arr.length) {
+        await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(filtered), Number(id)]);
+      }
     }
   } else {
-    const filtered = arr.filter(uid => uid !== targetUid);
-    if (filtered.length !== arr.length) {
-      await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(filtered), Number(id)]);
+    // User-level access (original behaviour)
+    const column = accessType === 'read' ? 'read_access' : 'write_access';
+    const [proj] = await c2_query(`SELECT ${column} AS acl FROM archives WHERE id = ?`, [Number(id)]);
+    const arr = parseJsonArray(proj.acl);
+    const targetUid = Number(userId);
+
+    if (action === 'add') {
+      if (!arr.includes(targetUid)) {
+        arr.push(targetUid);
+        await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(arr), Number(id)]);
+      }
+    } else {
+      const filtered = arr.filter(uid => uid !== targetUid);
+      if (filtered.length !== arr.length) {
+        await c2_query(`UPDATE archives SET ${column} = ? WHERE id = ?`, [JSON.stringify(filtered), Number(id)]);
+      }
     }
   }
 
   res.json({ success: true });
+}));
+
+/**
+ * GET /api/archives/:id/access
+ * Returns the current access configuration for an archive (read access required).
+ * Includes owner squad members (inherited access) and explicit grants.
+ */
+router.get('/archives/:id/access', requireAuth, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid archiveId' });
+  }
+
+  const [hasAccess] = await c2_query(
+    `SELECT p.id FROM archives p WHERE p.id = ? AND ${readAccessWhere('p')} LIMIT 1`,
+    [Number(id), ...readAccessParams(req.user)]
+  );
+  if (!hasAccess) return res.status(403).json({ success: false, message: 'Access denied' });
+
+  const [archive] = await c2_query(
+    `SELECT a.read_access, a.write_access,
+            a.read_access_squads, a.write_access_squads,
+            a.read_access_workspace, a.write_access_workspace,
+            a.squad_id, a.created_by,
+            u.name AS created_by_name
+     FROM archives a
+     LEFT JOIN users u ON a.created_by = u.id
+     WHERE a.id = ?`,
+    [Number(id)]
+  );
+  if (!archive) return res.status(404).json({ success: false, message: 'Archive not found' });
+
+  const readUserIds = parseJsonArray(archive.read_access);
+  const writeUserIds = parseJsonArray(archive.write_access);
+  const readSquadIds = parseJsonArray(archive.read_access_squads);
+  const writeSquadIds = parseJsonArray(archive.write_access_squads);
+
+  // Resolve user names
+  let readUsers = [];
+  let writeUsers = [];
+  const allUserIds = [...new Set([...readUserIds, ...writeUserIds])];
+  if (allUserIds.length > 0) {
+    const users = await c2_query(
+      `SELECT id, name, email FROM users WHERE id IN (${allUserIds.map(() => '?').join(',')})`,
+      allUserIds
+    );
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+    readUsers = readUserIds.map(uid => userMap[uid]).filter(Boolean);
+    writeUsers = writeUserIds.map(uid => userMap[uid]).filter(Boolean);
+  }
+
+  // Resolve squad names
+  let readSquads = [];
+  let writeSquads = [];
+  const allSquadIds = [...new Set([...readSquadIds, ...writeSquadIds])];
+  if (allSquadIds.length > 0) {
+    const squads = await c2_query(
+      `SELECT id, name FROM squads WHERE id IN (${allSquadIds.map(() => '?').join(',')})`,
+      allSquadIds
+    );
+    const squadMap = Object.fromEntries(squads.map(s => [s.id, s]));
+    readSquads = readSquadIds.map(sid => squadMap[sid]).filter(Boolean);
+    writeSquads = writeSquadIds.map(sid => squadMap[sid]).filter(Boolean);
+  }
+
+  // Get available squads in the same workspace (for the UI picker)
+  let workspaceSquads = [];
+  if (archive.squad_id) {
+    workspaceSquads = await c2_query(
+      `SELECT s.id, s.name FROM squads s
+       WHERE s.workspace_id = (SELECT workspace_id FROM squads WHERE id = ?)
+       ORDER BY s.name`,
+      [archive.squad_id]
+    );
+  }
+
+  // Collect user IDs covered by granted squad membership (read or write squads)
+  let grantedSquadUserIds = [];
+  const grantedSquadIds = [...new Set([...readSquadIds, ...writeSquadIds])];
+  if (grantedSquadIds.length > 0) {
+    const members = await c2_query(
+      `SELECT DISTINCT sm.user_id FROM squad_members sm
+       WHERE sm.squad_id IN (${grantedSquadIds.map(() => '?').join(',')})`,
+      grantedSquadIds
+    );
+    grantedSquadUserIds = members.map(m => m.user_id);
+  }
+
+  // Also include owner squad member IDs as covered
+  let ownerSquadMembers = [];
+  let ownerSquadName = null;
+  if (archive.squad_id) {
+    const [squad] = await c2_query(`SELECT name FROM squads WHERE id = ?`, [archive.squad_id]);
+    ownerSquadName = squad?.name || null;
+    ownerSquadMembers = await c2_query(
+      `SELECT sm.user_id, u.name, u.email, sm.role, sm.can_read, sm.can_write
+       FROM squad_members sm
+       JOIN users u ON sm.user_id = u.id
+       WHERE sm.squad_id = ?
+       ORDER BY sm.role DESC, u.name ASC`,
+      [archive.squad_id]
+    );
+    const ownerMemberIds = ownerSquadMembers.map(m => m.user_id);
+    grantedSquadUserIds = [...new Set([...grantedSquadUserIds, ...ownerMemberIds])];
+  }
+
+  res.json({
+    success: true,
+    access: {
+      read_users: readUsers,
+      write_users: writeUsers,
+      read_squads: readSquads,
+      write_squads: writeSquads,
+      read_workspace: Boolean(archive.read_access_workspace),
+      write_workspace: Boolean(archive.write_access_workspace),
+      squad_id: archive.squad_id,
+      workspace_squads: workspaceSquads,
+      owner_squad_name: ownerSquadName,
+      owner_squad_members: ownerSquadMembers,
+      granted_squad_user_ids: grantedSquadUserIds,
+      created_by: archive.created_by,
+      created_by_name: archive.created_by_name,
+    },
+  });
 }));
 
 /**
