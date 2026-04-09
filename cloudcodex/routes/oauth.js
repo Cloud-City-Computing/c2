@@ -1,9 +1,9 @@
 /**
  * OAuth / SSO routes for Cloud Codex
  *
- * Supports Google Workspace SSO. If GOOGLE_OAUTH_DOMAIN is set,
- * users from that domain can sign in / auto-create accounts
- * without a traditional invitation.
+ * Supports Google Workspace SSO and GitHub OAuth.
+ * Google: If GOOGLE_OAUTH_DOMAIN is set, users from that domain can sign in / auto-create accounts.
+ * GitHub: Links GitHub accounts for repo browsing and markdown editing. Stores access tokens encrypted.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -32,6 +32,53 @@ function isGoogleOAuthConfigured() {
 
 function getGoogleClient() {
   return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+}
+
+// --- GitHub OAuth configuration ---
+
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+const GITHUB_REDIRECT_URI = `${APP_URL}/api/oauth/github/callback`;
+
+function isGitHubOAuthConfigured() {
+  return Boolean(GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET);
+}
+
+// --- Token encryption (AES-256-GCM) for storing GitHub access tokens ---
+
+const TOKEN_CIPHER = 'aes-256-gcm';
+const TOKEN_KEY_LENGTH = 32;
+const TOKEN_IV_LENGTH = 12;
+const TOKEN_TAG_LENGTH = 16;
+
+function getTokenEncryptionKey() {
+  // Derive a 256-bit key from GITHUB_CLIENT_SECRET using scrypt
+  if (!GITHUB_CLIENT_SECRET) return null;
+  return crypto.scryptSync(GITHUB_CLIENT_SECRET, 'cloudcodex-oauth-token', TOKEN_KEY_LENGTH);
+}
+
+export function encryptToken(plaintext) {
+  const key = getTokenEncryptionKey();
+  if (!key) return null;
+  const iv = crypto.randomBytes(TOKEN_IV_LENGTH);
+  const cipher = crypto.createCipheriv(TOKEN_CIPHER, key, iv, { authTagLength: TOKEN_TAG_LENGTH });
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // Store as iv:tag:ciphertext in hex
+  return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+export function decryptToken(stored) {
+  const key = getTokenEncryptionKey();
+  if (!key || !stored) return null;
+  const [ivHex, tagHex, encHex] = stored.split(':');
+  if (!ivHex || !tagHex || !encHex) return null;
+  const iv = Buffer.from(ivHex, 'hex');
+  const tag = Buffer.from(tagHex, 'hex');
+  const encrypted = Buffer.from(encHex, 'hex');
+  const decipher = crypto.createDecipheriv(TOKEN_CIPHER, key, iv, { authTagLength: TOKEN_TAG_LENGTH });
+  decipher.setAuthTag(tag);
+  return decipher.update(encrypted) + decipher.final('utf8');
 }
 
 // In-memory store for OAuth state tokens (short-lived, 10 minutes)
@@ -99,6 +146,7 @@ router.get('/oauth/providers', (_req, res) => {
     success: true,
     providers: {
       google: isGoogleOAuthConfigured(),
+      github: isGitHubOAuthConfigured(),
     },
   });
 });
@@ -309,6 +357,193 @@ router.post('/oauth/google/unlink', requireAuth, asyncHandler(async (req, res) =
   );
 
   res.json({ success: true, message: 'Google account has been unlinked.' });
+}));
+
+// ────────────────────────────────────────────────────────
+//  GitHub OAuth
+// ────────────────────────────────────────────────────────
+
+/**
+ * GET /api/oauth/github
+ * Redirects the user to GitHub's OAuth authorization page.
+ * Requires the user to be logged in (links GitHub to their existing account).
+ */
+router.get('/oauth/github', requireAuth, (req, res) => {
+  if (!isGitHubOAuthConfigured()) {
+    return res.status(404).json({ success: false, message: 'GitHub OAuth is not configured' });
+  }
+
+  const state = createOAuthState();
+  // Stash user ID in the state so the callback knows who to link
+  oauthStates.set(`gh_uid_${state}`, req.user.id);
+
+  const params = new URLSearchParams({
+    client_id: GITHUB_CLIENT_ID,
+    redirect_uri: GITHUB_REDIRECT_URI,
+    scope: 'repo user:email',
+    state,
+  });
+
+  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+});
+
+/**
+ * GET /api/oauth/github/callback
+ * Handles the redirect back from GitHub.
+ * Links the GitHub account to the authenticated user and stores the encrypted access token.
+ */
+router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
+  const { code, state, error: oauthError } = req.query;
+
+  if (oauthError) {
+    return res.redirect('/account?github_error=access_denied');
+  }
+
+  if (!code || !state) {
+    return res.redirect('/account?github_error=missing_params');
+  }
+
+  if (!validateOAuthState(state)) {
+    return res.redirect('/account?github_error=invalid_state');
+  }
+
+  const userId = oauthStates.get(`gh_uid_${state}`);
+  oauthStates.delete(`gh_uid_${state}`);
+  if (!userId) {
+    return res.redirect('/account?github_error=session_expired');
+  }
+
+  // Exchange code for access token
+  let accessToken;
+  try {
+    const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: GITHUB_CLIENT_ID,
+        client_secret: GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: GITHUB_REDIRECT_URI,
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    accessToken = tokenData.access_token;
+    if (!accessToken) {
+      return res.redirect('/account?github_error=token_exchange_failed');
+    }
+  } catch {
+    return res.redirect('/account?github_error=token_exchange_failed');
+  }
+
+  // Get GitHub user info
+  let ghUser;
+  try {
+    const userRes = await fetch('https://api.github.com/user', {
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/vnd.github+json' },
+    });
+    ghUser = await userRes.json();
+  } catch {
+    return res.redirect('/account?github_error=user_fetch_failed');
+  }
+
+  // Get primary email
+  let ghEmail = ghUser.email;
+  if (!ghEmail) {
+    try {
+      const emailRes = await fetch('https://api.github.com/user/emails', {
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/vnd.github+json' },
+      });
+      const emails = await emailRes.json();
+      const primary = emails.find(e => e.primary && e.verified);
+      ghEmail = primary?.email || emails.find(e => e.verified)?.email || '';
+    } catch {
+      ghEmail = '';
+    }
+  }
+
+  const githubUserId = String(ghUser.id);
+  const encToken = encryptToken(accessToken);
+
+  // Check if already linked to this user
+  const [existingLink] = await c2_query(
+    `SELECT id FROM oauth_accounts WHERE provider = 'github' AND user_id = ? LIMIT 1`,
+    [userId]
+  );
+
+  if (existingLink) {
+    // Update the token and provider info
+    await c2_query(
+      `UPDATE oauth_accounts SET provider_user_id = ?, provider_email = ?, encrypted_token = ? WHERE id = ?`,
+      [githubUserId, ghEmail, encToken, existingLink.id]
+    );
+  } else {
+    // Check if this GitHub account is linked to another user
+    const [otherLink] = await c2_query(
+      `SELECT user_id FROM oauth_accounts WHERE provider = 'github' AND provider_user_id = ? LIMIT 1`,
+      [githubUserId]
+    );
+    if (otherLink) {
+      return res.redirect('/account?github_error=already_linked_other');
+    }
+
+    await c2_query(
+      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email, encrypted_token)
+       VALUES (?, 'github', ?, ?, ?)`,
+      [userId, githubUserId, ghEmail, encToken]
+    );
+  }
+
+  res.redirect('/account?github_linked=1');
+}));
+
+/**
+ * POST /api/oauth/github/unlink
+ * Unlinks the user's GitHub account.
+ */
+router.post('/oauth/github/unlink', requireAuth, asyncHandler(async (req, res) => {
+  // If GitHub is the user's only auth method (no password, no other OAuth), block
+  const [userRow] = await c2_query(
+    `SELECT password_hash FROM users WHERE id = ? LIMIT 1`,
+    [req.user.id]
+  );
+  const otherProviders = await c2_query(
+    `SELECT id FROM oauth_accounts WHERE user_id = ? AND provider != 'github' LIMIT 1`,
+    [req.user.id]
+  );
+  if (!userRow?.password_hash && otherProviders.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'You must set a password or have another login method before unlinking GitHub'
+    });
+  }
+
+  await c2_query(
+    `DELETE FROM oauth_accounts WHERE user_id = ? AND provider = 'github'`,
+    [req.user.id]
+  );
+
+  res.json({ success: true, message: 'GitHub account has been unlinked.' });
+}));
+
+/**
+ * GET /api/github/status
+ * Returns whether the authenticated user has GitHub connected and basic info.
+ */
+router.get('/github/status', requireAuth, asyncHandler(async (req, res) => {
+  const [account] = await c2_query(
+    `SELECT provider_email, provider_user_id FROM oauth_accounts WHERE user_id = ? AND provider = 'github' LIMIT 1`,
+    [req.user.id]
+  );
+
+  res.json({
+    success: true,
+    connected: Boolean(account),
+    username: account?.provider_email || null,
+    githubId: account?.provider_user_id || null,
+  });
 }));
 
 router.use(errorHandler);

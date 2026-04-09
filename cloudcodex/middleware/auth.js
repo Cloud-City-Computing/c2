@@ -13,9 +13,16 @@ import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
  * req.user, and refreshes session activity tracking.
  */
 export function requireAuth(req, res, next) {
-  const token =
-    req.headers['authorization']?.replace('Bearer ', '') ||
-    null;
+  // Read token from Authorization header (API calls) or sessionToken cookie (browser redirects)
+  let token = req.headers['authorization']?.replace('Bearer ', '') || null;
+
+  if (!token) {
+    const cookieHeader = req.headers['cookie'];
+    if (cookieHeader) {
+      const match = cookieHeader.split('; ').find(c => c.startsWith('sessionToken='));
+      if (match) token = match.split('=')[1];
+    }
+  }
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Authentication required' });
