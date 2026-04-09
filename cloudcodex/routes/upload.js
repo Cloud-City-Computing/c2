@@ -2,7 +2,7 @@
  * API routes for document file uploads in Cloud Codex
  *
  * Accepts file uploads (HTML, Markdown, Plain Text, PDF, DOCX) and converts
- * them to HTML content to create new pages within a project.
+ * them to HTML content to create new logs within a archive.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -85,35 +85,35 @@ async function convertToHtml(buffer, originalname) {
 const router = express.Router();
 
 /**
- * POST /api/projects/:projectId/pages/upload
+ * POST /api/archives/:archiveId/logs/upload
  * Multipart form: file (required), parent_id (optional)
- * Converts the uploaded file to HTML and creates a new page.
+ * Converts the uploaded file to HTML and creates a new log.
  */
 router.post(
-  '/projects/:projectId/pages/upload',
+  '/archives/:archiveId/logs/upload',
   requireAuth,
-  requirePermission('create_page'),
+  requirePermission('create_log'),
   upload.single('file'),
   asyncHandler(async (req, res) => {
-    const { projectId } = req.params;
-    if (!isValidId(projectId)) {
-      return res.status(400).json({ success: false, message: 'Invalid projectId' });
+    const { archiveId } = req.params;
+    if (!isValidId(archiveId)) {
+      return res.status(400).json({ success: false, message: 'Invalid archiveId' });
     }
 
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
-    // Verify write access to the project
-    const [project] = await c2_query(
-      `SELECT p.id FROM projects p
+    // Verify write access to the archive
+    const [archive] = await c2_query(
+      `SELECT p.id FROM archives p
        WHERE p.id = ?
          AND ${writeAccessWhere('p')}
        LIMIT 1`,
-      [Number(projectId), ...writeAccessParams(req.user)]
+      [Number(archiveId), ...writeAccessParams(req.user)]
     );
 
-    if (!project) {
+    if (!archive) {
       return res.status(403).json({ success: false, message: 'Write access denied' });
     }
 
@@ -124,7 +124,7 @@ router.post(
     // Extract embedded base64 images from imported content
     const storedHtml = await extractImagesFromHtml(cleanHtml);
 
-    // Derive page title from filename (strip extension)
+    // Derive log title from filename (strip extension)
     const title = req.file.originalname.replace(/\.[^.]+$/, '').trim() || 'Uploaded Document';
 
     const parentId = req.body.parent_id ? Number(req.body.parent_id) : null;
@@ -133,12 +133,12 @@ router.post(
     }
 
     const result = await c2_query(
-      `INSERT INTO pages (project_id, title, html_content, parent_id, created_by, updated_by)
+      `INSERT INTO logs (archive_id, title, html_content, parent_id, created_by, updated_by)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [Number(projectId), title, storedHtml, parentId, req.user.id, req.user.id]
+      [Number(archiveId), title, storedHtml, parentId, req.user.id, req.user.id]
     );
 
-    res.status(201).json({ success: true, pageId: result.insertId, title });
+    res.status(201).json({ success: true, logId: result.insertId, title });
   })
 );
 

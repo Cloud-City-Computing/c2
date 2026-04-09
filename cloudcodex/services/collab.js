@@ -1,7 +1,7 @@
 /**
  * Collaborative Editing Service for Cloud Codex
  *
- * Manages Yjs documents over WebSocket connections. Each document (page)
+ * Manages Yjs documents over WebSocket connections. Each document (log)
  * gets a shared Yjs Doc that multiple users can edit simultaneously.
  * The CRDT handles merge/conflict resolution automatically.
  *
@@ -16,10 +16,10 @@ import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
-import { sanitizeHtml, canPublish, checkPageReadAccess, checkPageWriteAccess } from '../routes/helpers/shared.js';
+import { sanitizeHtml, canPublish, checkLogReadAccess, checkLogWriteAccess } from '../routes/helpers/shared.js';
 import { extractImagesFromHtml } from '../routes/helpers/images.js';
 
-// In-memory store: pageId → { doc, conns, saveTimer, lastSavedHtml }
+// In-memory store: logId → { doc, conns, saveTimer, lastSavedHtml }
 const docs = new Map();
 
 // Track per-user connection count across all documents
@@ -34,11 +34,11 @@ const RATE_LIMIT_WINDOW_MS = 1000;           // 1 second window
 const RATE_LIMIT_MAX_MESSAGES = 60;          // Max messages per window
 
 /**
- * Get or create a Yjs document for a page.
+ * Get or create a Yjs document for a log.
  * On first access, loads html_content from the database.
  */
-async function getOrCreateDoc(pageId) {
-  if (docs.has(pageId)) return docs.get(pageId);
+async function getOrCreateDoc(logId) {
+  if (docs.has(logId)) return docs.get(logId);
 
   const ydoc = new Y.Doc();
   const entry = {
@@ -47,26 +47,26 @@ async function getOrCreateDoc(pageId) {
     saveTimer: null,
     cleanupTimer: null,
     lastSavedHtml: null,
-    pageId,
+    logId,
   };
 
   // Load current content from DB
-  const [page] = await c2_query(
-    `SELECT html_content, version FROM pages WHERE id = ? LIMIT 1`,
-    [pageId]
+  const [log] = await c2_query(
+    `SELECT html_content, version FROM logs WHERE id = ? LIMIT 1`,
+    [logId]
   );
 
-  if (page?.html_content) {
+  if (log?.html_content) {
     const xmlFragment = ydoc.getXmlFragment('document');
     // Initialize with existing HTML by inserting it as a single XmlText node.
     // This gives us a starting point; subsequent edits are CRDT-tracked.
     const textNode = new Y.XmlText();
-    textNode.insert(0, page.html_content);
+    textNode.insert(0, log.html_content);
     xmlFragment.insert(0, [textNode]);
-    entry.lastSavedHtml = page.html_content;
+    entry.lastSavedHtml = log.html_content;
   }
 
-  docs.set(pageId, entry);
+  docs.set(logId, entry);
   return entry;
 }
 
@@ -107,8 +107,8 @@ function scheduleSave(entry, userId) {
       if (storedHtml === entry.lastSavedHtml) return;
 
       await c2_query(
-        `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-        [storedHtml, userId, entry.pageId]
+        `UPDATE logs SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+        [storedHtml, userId, entry.logId]
       );
 
       // If images were extracted, broadcast the cleaned HTML back to all clients
@@ -129,7 +129,7 @@ function scheduleSave(entry, userId) {
 
       entry.lastSavedHtml = storedHtml;
     } catch (err) {
-      console.error(`[collab] Save failed for page ${entry.pageId}:`, err);
+      console.error(`[collab] Save failed for log ${entry.logId}:`, err);
     }
   }, SAVE_DEBOUNCE_MS);
 }
@@ -143,7 +143,7 @@ function scheduleCleanup(entry) {
     if (entry.conns.size === 0) {
       if (entry.saveTimer) clearTimeout(entry.saveTimer);
       entry.doc.destroy();
-      docs.delete(entry.pageId);
+      docs.delete(entry.logId);
     }
   }, CLEANUP_DELAY_MS);
 }
@@ -198,8 +198,8 @@ function nextColor() {
  * Attach the collaborative WebSocket server to an existing HTTP server.
  *
  * Protocol:
- * - Client connects to ws://host/collab?pageId=<id>&token=<sessionToken>
- * - Server authenticates the token, checks page read/write access
+ * - Client connects to ws://host/collab?logId=<id>&token=<sessionToken>
+ * - Server authenticates the token, checks log read/write access
  * - Server sends: { type: 'sync', html, canWrite, user: { id, name } } on connect
  * - Client sends: { type: 'update', html } when content changes
  * - Client sends: { type: 'cursor', position: { index, line?, length? } } for cursor position
@@ -249,9 +249,9 @@ export function setupCollabServer(server) {
       }
     }
 
-    const pageId = Number(url.searchParams.get('pageId'));
+    const logId = Number(url.searchParams.get('logId'));
 
-    if (!pageId || !Number.isInteger(pageId) || pageId <= 0) {
+    if (!logId || !Number.isInteger(logId) || logId <= 0) {
       socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
       socket.destroy();
       return;
@@ -259,11 +259,11 @@ export function setupCollabServer(server) {
 
     // Upgrade the connection first — auth happens in the first message
     wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, { pageId });
+      wss.emit('connection', ws, { logId });
     });
   });
 
-  wss.on('connection', async (ws, { pageId }) => {
+  wss.on('connection', async (ws, { logId }) => {
     // Wait for the first message to be an auth message with the session token.
     // The client must send { type: 'auth', token: '...' } within 5 seconds.
     const AUTH_TIMEOUT_MS = 5000;
@@ -308,16 +308,16 @@ export function setupCollabServer(server) {
       }
 
       // Check read access at minimum
-      const hasAccess = await checkPageReadAccess(pageId, user);
+      const hasAccess = await checkLogReadAccess(logId, user);
       if (!hasAccess) {
         ws.close(4003, 'Access denied');
         return;
       }
 
-      const canWrite = Boolean(await checkPageWriteAccess(pageId, user));
+      const canWrite = Boolean(await checkLogWriteAccess(logId, user));
 
       // Auth succeeded — set up the document session
-      setupDocSession(ws, user, pageId, canWrite);
+      setupDocSession(ws, user, logId, canWrite);
     });
   });
 }
@@ -325,12 +325,12 @@ export function setupCollabServer(server) {
 /**
  * Set up a fully authenticated document editing session.
  */
-async function setupDocSession(ws, user, pageId, canWrite) {
+async function setupDocSession(ws, user, logId, canWrite) {
     let entry;
     try {
-      entry = await getOrCreateDoc(pageId);
+      entry = await getOrCreateDoc(logId);
     } catch (err) {
-      console.error(`[collab] Failed to load doc ${pageId}:`, err);
+      console.error(`[collab] Failed to load doc ${logId}:`, err);
       ws.close(1011, 'Failed to load document');
       return;
     }
@@ -452,8 +452,8 @@ async function setupDocSession(ws, user, pageId, canWrite) {
             const storedHtml = await extractImagesFromHtml(currentHtml);
             if (storedHtml !== entry.lastSavedHtml) {
               await c2_query(
-                `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-                [storedHtml, user.id, entry.pageId]
+                `UPDATE logs SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+                [storedHtml, user.id, entry.logId]
               );
               entry.lastSavedHtml = storedHtml;
 
@@ -478,7 +478,7 @@ async function setupDocSession(ws, user, pageId, canWrite) {
               ws.send(JSON.stringify({ type: 'saved' }));
             }
           } catch (err) {
-            console.error(`[collab] Immediate save failed for page ${entry.pageId}:`, err);
+            console.error(`[collab] Immediate save failed for log ${entry.logId}:`, err);
           }
         })();
       }
@@ -490,13 +490,13 @@ async function setupDocSession(ws, user, pageId, canWrite) {
         (async () => {
           try {
             await c2_query(
-              `UPDATE pages SET title = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-              [safeTitle, user.id, entry.pageId]
+              `UPDATE logs SET title = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+              [safeTitle, user.id, entry.logId]
             );
             // Broadcast to all other clients
             broadcastExcept(entry, ws, { type: 'title', title: safeTitle, userId: user.id });
           } catch (err) {
-            console.error(`[collab] Title update failed for page ${entry.pageId}:`, err);
+            console.error(`[collab] Title update failed for log ${entry.logId}:`, err);
           }
         })();
       }
@@ -509,15 +509,15 @@ async function setupDocSession(ws, user, pageId, canWrite) {
         // Check can_publish permission
         (async () => {
           try {
-            // Get team context for the page
-            const [pageInfo] = await c2_query(
-              `SELECT p.team_id, p.created_by AS project_creator FROM pages pg
-               INNER JOIN projects p ON pg.project_id = p.id
+            // Get squad context for the log
+            const [logInfo] = await c2_query(
+              `SELECT p.squad_id, p.created_by AS archive_creator FROM logs pg
+               INNER JOIN archives p ON pg.archive_id = p.id
                WHERE pg.id = ? LIMIT 1`,
-              [entry.pageId]
+              [entry.logId]
             );
 
-            const publishAllowed = await canPublish(pageInfo?.team_id, pageInfo?.project_creator, user);
+            const publishAllowed = await canPublish(logInfo?.squad_id, logInfo?.archive_creator, user);
             if (!publishAllowed) {
               ws.send(JSON.stringify({ type: 'error', message: 'You do not have permission to publish versions' }));
               return;
@@ -528,19 +528,19 @@ async function setupDocSession(ws, user, pageId, canWrite) {
             const xmlFragment = entry.doc.getXmlFragment('document');
             const currentHtml = await extractImagesFromHtml(sanitizeHtml(xmlFragmentToHtml(xmlFragment)));
 
-            const [page] = await c2_query(
-              `SELECT version FROM pages WHERE id = ? LIMIT 1`,
-              [entry.pageId]
+            const [log] = await c2_query(
+              `SELECT version FROM logs WHERE id = ? LIMIT 1`,
+              [entry.logId]
             );
-            if (!page) return;
-            const newVersion = page.version + 1;
+            if (!log) return;
+            const newVersion = log.version + 1;
             await c2_query(
-              `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-              [currentHtml, newVersion, user.id, entry.pageId]
+              `UPDATE logs SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+              [currentHtml, newVersion, user.id, entry.logId]
             );
             await c2_query(
-              `INSERT INTO versions (page_id, version, title, notes, html_content, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-              [entry.pageId, newVersion, pubTitle || null, pubNotes || null, currentHtml, user.id]
+              `INSERT INTO versions (log_id, version, title, notes, html_content, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
+              [entry.logId, newVersion, pubTitle || null, pubNotes || null, currentHtml, user.id]
             );
             entry.lastSavedHtml = currentHtml;
 
@@ -550,13 +550,13 @@ async function setupDocSession(ws, user, pageId, canWrite) {
               if (client.readyState === 1) client.send(versionMsg);
             }
           } catch (err) {
-            console.error(`[collab] Publish failed for page ${entry.pageId}:`, err);
+            console.error(`[collab] Publish failed for log ${entry.logId}:`, err);
           }
         })();
       }
 
       // --- Comment broadcast ---
-      // Relays comment events (add, update, resolve, delete) to all other clients on the same page.
+      // Relays comment events (add, update, resolve, delete) to all other clients on the same log.
       // The actual CRUD is handled by the REST API; this just broadcasts for real-time sync.
       if (msg.type === 'comment' && canWrite) {
         const validActions = ['add', 'update', 'resolve', 'reopen', 'delete', 'reply', 'clear'];
@@ -612,10 +612,10 @@ export function getActiveDocCount() {
 }
 
 /**
- * Returns active users for a specific page (for the REST API).
+ * Returns active users for a specific log (for the REST API).
  */
-export function getActiveUsers(pageId) {
-  const entry = docs.get(pageId);
+export function getActiveUsers(logId) {
+  const entry = docs.get(logId);
   if (!entry) return [];
   const users = [];
   for (const [, meta] of entry.conns) {
@@ -625,17 +625,17 @@ export function getActiveUsers(pageId) {
 }
 
 /**
- * Returns a map of all pages with active users: { [pageId]: [{ id, name, color }] }
+ * Returns a map of all logs with active users: { [logId]: [{ id, name, color }] }
  */
 export function getAllPresence() {
   const presence = {};
-  for (const [pageId, entry] of docs) {
+  for (const [logId, entry] of docs) {
     if (entry.conns.size === 0) continue;
     const users = [];
     for (const [, meta] of entry.conns) {
       users.push({ id: meta.user.id, name: meta.user.name, avatar_url: meta.user.avatar_url || null, color: meta.color });
     }
-    presence[pageId] = users;
+    presence[logId] = users;
   }
   return presence;
 }

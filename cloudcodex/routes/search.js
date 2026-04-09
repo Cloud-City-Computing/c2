@@ -56,7 +56,7 @@ function buildSnippet(text, query) {
 
 /**
  * GET /api/search?query=<string>&page=<number>&limit=<number>
- * Filtered to pages in projects where the user has read_access.
+ * Filtered to logs in archives where the user has read_access.
  * Uses MySQL FULLTEXT index for fast, relevance-ranked search.
  * Returns paginated results with contextual match snippets.
  */
@@ -108,8 +108,8 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
   // Count total matches
   const [countRow] = await c2_query(
     `SELECT COUNT(*) AS total
-     FROM pages p
-     INNER JOIN projects pr ON p.project_id = pr.id
+     FROM logs p
+     INNER JOIN archives pr ON p.archive_id = pr.id
      WHERE ${matchExpr}
        AND ${accessWhere}`,
     [...searchParams, ...accessParams]
@@ -127,14 +127,14 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
     `SELECT p.id,
             p.title,
             p.created_at,
-            p.project_id,
+            p.archive_id,
             u.name AS author,
-            pr.name AS project_name,
+            pr.name AS archive_name,
             CHAR_LENGTH(p.plain_content) AS char_count,
             p.html_content
-    FROM pages p
+    FROM logs p
     LEFT JOIN users u ON p.created_by = u.id
-    INNER JOIN projects pr ON p.project_id = pr.id
+    INNER JOIN archives pr ON p.archive_id = pr.id
     WHERE ${matchExpr}
       AND ${accessWhere}
     ORDER BY ${orderBy}
@@ -167,7 +167,7 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
 
 /**
  * GET /api/browse?page=<number>&limit=<number>&sort=<string>
- * Paginated listing of all accessible pages (no search query required).
+ * Paginated listing of all accessible logs (no search query required).
  */
 router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
   const { page: rawPage, limit: rawLimit, sort } = req.query;
@@ -180,7 +180,7 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
     newest: 'p.created_at DESC',
     oldest: 'p.created_at ASC',
     title: 'p.title ASC',
-    project: 'pr.name ASC, p.title ASC',
+    archive: 'pr.name ASC, p.title ASC',
   };
   const orderBy = allowedSorts[sort] || allowedSorts.newest;
 
@@ -189,8 +189,8 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
 
   const [countRow] = await c2_query(
     `SELECT COUNT(*) AS total
-     FROM pages p
-     INNER JOIN projects pr ON p.project_id = pr.id
+     FROM logs p
+     INNER JOIN archives pr ON p.archive_id = pr.id
      WHERE ${accessWhere}`,
     [...accessParams]
   );
@@ -200,14 +200,14 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
     `SELECT p.id,
             p.title,
             p.created_at,
-            p.project_id,
+            p.archive_id,
             u.name AS author,
-            pr.name AS project_name,
+            pr.name AS archive_name,
             LEFT(p.plain_content, 200) AS excerpt,
             CHAR_LENGTH(p.plain_content) AS char_count
-    FROM pages p
+    FROM logs p
     LEFT JOIN users u ON p.created_by = u.id
-    INNER JOIN projects pr ON p.project_id = pr.id
+    INNER JOIN archives pr ON p.archive_id = pr.id
     WHERE ${accessWhere}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?`,
@@ -224,33 +224,33 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
 
 /**
  * GET /api/presence
- * Returns a map of page IDs to active users currently editing.
- * Filtered to only include pages the requesting user has read access to.
- * { presence: { [pageId]: [{ id, name, color }] } }
+ * Returns a map of log IDs to active users currently editing.
+ * Filtered to only include logs the requesting user has read access to.
+ * { presence: { [logId]: [{ id, name, color }] } }
  */
 router.get('/presence', requireAuth, asyncHandler(async (req, res) => {
   const allPresence = getAllPresence();
-  const pageIds = Object.keys(allPresence).map(Number).filter(id => id > 0);
-  if (pageIds.length === 0) {
+  const logIds = Object.keys(allPresence).map(Number).filter(id => id > 0);
+  if (logIds.length === 0) {
     return res.json({ success: true, presence: {} });
   }
 
-  // Check which of these pages the user can read
-  const placeholders = pageIds.map(() => '?').join(',');
-  const accessiblePages = await c2_query(
+  // Check which of these logs the user can read
+  const placeholders = logIds.map(() => '?').join(',');
+  const accessibleLogs = await c2_query(
     `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id IN (${placeholders})
         AND ${readAccessWhere('p')}`,
-    [...pageIds, ...readAccessParams(req.user)]
+    [...logIds, ...readAccessParams(req.user)]
   );
-  const accessibleIds = new Set(accessiblePages.map(r => r.id));
+  const accessibleIds = new Set(accessibleLogs.map(r => r.id));
 
   const filtered = {};
-  for (const [pageId, users] of Object.entries(allPresence)) {
-    if (accessibleIds.has(Number(pageId))) {
-      filtered[pageId] = users;
+  for (const [logId, users] of Object.entries(allPresence)) {
+    if (accessibleIds.has(Number(logId))) {
+      filtered[logId] = users;
     }
   }
 

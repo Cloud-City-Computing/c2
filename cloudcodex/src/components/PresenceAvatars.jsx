@@ -1,8 +1,8 @@
 /**
- * PresenceAvatars — Compact presence indicator showing active users on a page.
+ * PresenceAvatars — Compact presence indicator showing active users on a log.
  *
  * Shows colored avatar circles (like CollabPresence) that can be embedded
- * in cards, page tree items, and other compact layouts.
+ * in cards, log tree items, and other compact layouts.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com

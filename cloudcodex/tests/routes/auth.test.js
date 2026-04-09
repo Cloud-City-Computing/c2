@@ -209,7 +209,7 @@ describe('Auth Routes', () => {
     it('returns user and permissions', async () => {
       validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
       c2_query.mockResolvedValueOnce([{ id: 1, name: 'testuser', email: 'test@example.com' }]); // SELECT user
-      c2_query.mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]); // SELECT perms
+      c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]); // SELECT perms
 
       const res = await request(app)
         .post('/api/get-user')
@@ -357,14 +357,14 @@ describe('Auth Routes', () => {
   describe('GET /api/permissions', () => {
     it('returns user permissions', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
+      c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]);
 
       const res = await request(app)
         .get('/api/permissions')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
-      expect(res.body.permissions.create_team).toBe(true);
+      expect(res.body.permissions.create_squad).toBe(true);
     });
 
     it('returns defaults when no permissions row exists', async () => {
@@ -634,22 +634,22 @@ describe('Auth Routes', () => {
   describe('GET /api/permissions/:userId', () => {
     it('returns own permissions', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ create_team: true, create_project: false, create_page: true }]);
+      c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: false, create_log: true }]);
 
       const res = await request(app)
         .get(`/api/permissions/${TEST_USER.id}`)
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
-      expect(res.body.permissions.create_team).toBe(true);
-      expect(res.body.permissions.create_project).toBe(false);
+      expect(res.body.permissions.create_squad).toBe(true);
+      expect(res.body.permissions.create_archive).toBe(false);
     });
 
-    it('allows org owner to view other user permissions', async () => {
+    it('allows workspace owner to view other user permissions', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ 1: 1 }])  // org ownership link exists
-        .mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
+        .mockResolvedValueOnce([{ 1: 1 }])  // workspace ownership link exists
+        .mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]);
 
       const res = await request(app)
         .get('/api/permissions/99')
@@ -661,7 +661,7 @@ describe('Auth Routes', () => {
 
     it('rejects non-owner viewing other user permissions', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]);  // no org link
+      c2_query.mockResolvedValueOnce([]);  // no workspace link
 
       const res = await request(app)
         .get('/api/permissions/99')
@@ -684,17 +684,17 @@ describe('Auth Routes', () => {
   // ── PUT /api/permissions/:userId ──────────────────────────
 
   describe('PUT /api/permissions/:userId', () => {
-    it('updates existing permissions as org owner', async () => {
+    it('updates existing permissions as workspace owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ 1: 1 }])  // org link exists
+        .mockResolvedValueOnce([{ 1: 1 }])  // workspace link exists
         .mockResolvedValueOnce([{ id: 10 }]) // existing perms row
         .mockResolvedValueOnce([]);           // UPDATE
 
       const res = await request(app)
         .put('/api/permissions/99')
         .set('Authorization', 'Bearer valid-token')
-        .send({ create_team: true });
+        .send({ create_squad: true });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -703,34 +703,34 @@ describe('Auth Routes', () => {
     it('inserts permissions when none exist', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ 1: 1 }])  // org link
+        .mockResolvedValueOnce([{ 1: 1 }])  // workspace link
         .mockResolvedValueOnce([])           // no existing row
         .mockResolvedValueOnce([]);          // INSERT
 
       const res = await request(app)
         .put('/api/permissions/99')
         .set('Authorization', 'Bearer valid-token')
-        .send({ create_project: false });
+        .send({ create_archive: false });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
     });
 
-    it('rejects non-org-owner', async () => {
+    it('rejects non-workspace-owner', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]);  // no org link
+      c2_query.mockResolvedValueOnce([]);  // no workspace link
 
       const res = await request(app)
         .put('/api/permissions/99')
         .set('Authorization', 'Bearer valid-token')
-        .send({ create_team: true });
+        .send({ create_squad: true });
 
       expect(res.status).toBe(403);
     });
 
     it('rejects with no permission fields', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ 1: 1 }]);  // org link
+      c2_query.mockResolvedValueOnce([{ 1: 1 }]);  // workspace link
 
       const res = await request(app)
         .put('/api/permissions/99')
@@ -1039,22 +1039,22 @@ describe('Auth Routes', () => {
   // ── POST /api/setup ───────────────────────────────────────
 
   describe('POST /api/setup', () => {
-    it('creates a standalone project', async () => {
+    it('creates a standalone archive', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce({ insertId: 30 }); // INSERT project
+      c2_query.mockResolvedValueOnce({ insertId: 30 }); // INSERT archive
 
       const res = await request(app)
         .post('/api/setup')
         .set('Authorization', 'Bearer valid-token')
-        .send({ projectName: 'Solo Project' });
+        .send({ archiveName: 'Solo Archive' });
 
       expect(res.status).toBe(201);
-      expect(res.body.organizationId).toBeNull();
-      expect(res.body.teamId).toBeNull();
-      expect(res.body.projectId).toBe(30);
+      expect(res.body.workspaceId).toBeNull();
+      expect(res.body.squadId).toBeNull();
+      expect(res.body.archiveId).toBe(30);
     });
 
-    it('rejects when no project name provided', async () => {
+    it('rejects when no archive name provided', async () => {
       mockAuthenticated();
 
       const res = await request(app)
@@ -1071,7 +1071,7 @@ describe('Auth Routes', () => {
       const res = await request(app)
         .post('/api/setup')
         .set('Authorization', 'Bearer bad-token')
-        .send({ projectName: 'My Project' });
+        .send({ archiveName: 'My Archive' });
 
       expect(res.status).toBe(401);
     });

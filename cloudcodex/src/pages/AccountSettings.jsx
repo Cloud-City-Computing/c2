@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Account Settings Page
+ * Cloud Codex - Account Settings Log
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -11,9 +11,9 @@ import { AvatarUploadPanel, AccountInfoUpdatePanel, AccountPreferencesPanel, Use
 function AccountSettings() {
   return (
     <StdLayout>
-      <div className="account-page">
-        <h1 className="page-heading">Account</h1>
-        <div className="account-page__panels">
+      <div className="account-log">
+        <h1 className="log-heading">Account</h1>
+        <div className="account-log__panels">
           <AvatarUploadPanel />
           <AccountInfoUpdatePanel />
           <UserPreferencesPanel />

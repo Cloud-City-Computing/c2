@@ -45,78 +45,78 @@ export function sanitizeHtml(html) {
 // --- Default permissions fallback ---
 
 /** Default permission values for users without a row in the permissions table. */
-export const DEFAULT_PERMISSIONS = { create_team: false, create_project: false, create_page: true };
+export const DEFAULT_PERMISSIONS = { create_squad: false, create_archive: false, create_log: true };
 
-// --- Page-level access checks ---
+// --- Log-level access checks ---
 
 /**
- * Check if a user has read access to a page's parent project.
- * Returns the matched page row, or undefined if no access.
+ * Check if a user has read access to a log's parent archive.
+ * Returns the matched log row, or undefined if no access.
  */
-export async function checkPageReadAccess(pageId, user) {
-  const [page] = await c2_query(
+export async function checkLogReadAccess(logId, user) {
+  const [log] = await c2_query(
     `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${readAccessWhere('p')}
       LIMIT 1`,
-    [pageId, ...readAccessParams(user)]
+    [logId, ...readAccessParams(user)]
   );
-  return page;
+  return log;
 }
 
 /**
- * Check if a user has write access to a page's parent project.
- * Returns the matched page row, or undefined if no access.
+ * Check if a user has write access to a log's parent archive.
+ * Returns the matched log row, or undefined if no access.
  */
-export async function checkPageWriteAccess(pageId, user) {
-  const [page] = await c2_query(
+export async function checkLogWriteAccess(logId, user) {
+  const [log] = await c2_query(
     `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${writeAccessWhere('p')}
       LIMIT 1`,
-    [pageId, ...writeAccessParams(user)]
+    [logId, ...writeAccessParams(user)]
   );
-  return page;
+  return log;
 }
 
 // --- Publish permission check ---
 
 /**
- * Check whether a user is allowed to publish versions for a page.
- * Allowed when: no team context, user is org owner, team owner,
- * project creator, or has can_publish permission.
+ * Check whether a user is allowed to publish versions for a log.
+ * Allowed when: no squad context, user is workspace owner, squad owner,
+ * archive creator, or has can_publish permission.
  *
- * @param {number} teamId - The team_id from the page's project (may be null)
- * @param {number} projectCreatorId - The created_by of the project
+ * @param {number} squadId - The squad_id from the log's archive (may be null)
+ * @param {number} archiveCreatorId - The created_by of the archive
  * @param {{id: number, email: string}} user
  * @returns {Promise<boolean>}
  */
-export async function canPublish(teamId, projectCreatorId, user) {
-  if (!teamId) return true;
+export async function canPublish(squadId, archiveCreatorId, user) {
+  if (!squadId) return true;
 
-  // Org owner bypass
+  // Workspace owner bypass
   const [orgOwner] = await c2_query(
-    `SELECT 1 FROM teams t
-     JOIN organizations o ON t.organization_id = o.id
+    `SELECT 1 FROM squads t
+     JOIN workspaces o ON t.workspace_id = o.id
      WHERE t.id = ? AND o.owner = ?
      LIMIT 1`,
-    [teamId, user.email]
+    [squadId, user.email]
   );
   if (orgOwner) return true;
 
-  // Team member check
+  // Squad member check
   const [member] = await c2_query(
-    `SELECT can_publish, role FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
-    [teamId, user.id]
+    `SELECT can_publish, role FROM squad_members WHERE squad_id = ? AND user_id = ? LIMIT 1`,
+    [squadId, user.id]
   );
   if (member?.can_publish || member?.role === 'owner') return true;
 
-  // Project creator bypass
-  if (projectCreatorId === user.id) return true;
+  // Archive creator bypass
+  if (archiveCreatorId === user.id) return true;
 
   return false;
 }

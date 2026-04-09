@@ -2,7 +2,7 @@
  * Ownership-aware access helpers for Cloud Codex
  *
  * Provides SQL WHERE fragments and helpers that cascade access through
- * org ownership and team ownership, ensuring that org owners and team
+ * workspace ownership and squad ownership, ensuring that workspace owners and squad
  * owners always have full access to resources within their scope.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
@@ -14,10 +14,10 @@ import { c2_query } from '../../mysql_connect.js';
 /**
  * SQL WHERE fragment for read access, including owner cascade:
  *   1. User is an admin (full access)
- *   2. User is in the project's read_access JSON array
- *   3. User is the project creator
- *   4. User is the org owner (via team → organization)
- *   5. User is a team member with owner role OR can_read permission
+ *   2. User is in the archive's read_access JSON array
+ *   3. User is the archive creator
+ *   4. User is the workspace owner (via squad → workspace)
+ *   5. User is a squad member with owner role OR can_read permission
  *
  * Use with readAccessParams(user) — always 5 params.
  */
@@ -25,8 +25,8 @@ export function readAccessWhere(alias = 'p') {
   return `(
     ? = TRUE
     OR JSON_CONTAINS(${alias}.read_access, ?) OR ${alias}.created_by = ?
-    OR EXISTS (SELECT 1 FROM teams _ot JOIN organizations _oo ON _ot.organization_id = _oo.id WHERE _ot.id = ${alias}.team_id AND _oo.owner = ?)
-    OR EXISTS (SELECT 1 FROM team_members _om WHERE _om.team_id = ${alias}.team_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_read = TRUE))
+    OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner = ?)
+    OR EXISTS (SELECT 1 FROM squad_members _om WHERE _om.squad_id = ${alias}.squad_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_read = TRUE))
   )`;
 }
 
@@ -43,8 +43,8 @@ export function writeAccessWhere(alias = 'p') {
   return `(
     ? = TRUE
     OR JSON_CONTAINS(${alias}.write_access, ?) OR ${alias}.created_by = ?
-    OR EXISTS (SELECT 1 FROM teams _ot JOIN organizations _oo ON _ot.organization_id = _oo.id WHERE _ot.id = ${alias}.team_id AND _oo.owner = ?)
-    OR EXISTS (SELECT 1 FROM team_members _om WHERE _om.team_id = ${alias}.team_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_write = TRUE))
+    OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner = ?)
+    OR EXISTS (SELECT 1 FROM squad_members _om WHERE _om.squad_id = ${alias}.squad_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_write = TRUE))
   )`;
 }
 
@@ -53,22 +53,22 @@ export function writeAccessParams(user) {
 }
 
 /**
- * Check if a user is an owner of a project (creator, org owner, or team owner).
- * Used for destructive/management operations (delete project, manage access).
+ * Check if a user is an owner of a archive (creator, workspace owner, or squad owner).
+ * Used for destructive/management operations (delete archive, manage access).
  */
-export async function isProjectOwner(user, projectId) {
+export async function isArchiveOwner(user, archiveId) {
   if (user.is_admin) return true;
 
   const [result] = await c2_query(
-    `SELECT 1 FROM projects p
+    `SELECT 1 FROM archives p
      WHERE p.id = ?
        AND (
          p.created_by = ?
-         OR EXISTS (SELECT 1 FROM teams t JOIN organizations o ON t.organization_id = o.id WHERE t.id = p.team_id AND o.owner = ?)
-         OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = p.team_id AND tm.user_id = ? AND tm.role = 'owner')
+         OR EXISTS (SELECT 1 FROM squads t JOIN workspaces o ON t.workspace_id = o.id WHERE t.id = p.squad_id AND o.owner = ?)
+         OR EXISTS (SELECT 1 FROM squad_members tm WHERE tm.squad_id = p.squad_id AND tm.user_id = ? AND tm.role = 'owner')
        )
      LIMIT 1`,
-    [Number(projectId), user.id, user.email, user.id]
+    [Number(archiveId), user.id, user.email, user.id]
   );
   return Boolean(result);
 }

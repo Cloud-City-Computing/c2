@@ -8,7 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isValidId, asyncHandler, checkPageReadAccess, checkPageWriteAccess } from './helpers/shared.js';
+import { isValidId, asyncHandler, checkLogReadAccess, checkLogWriteAccess } from './helpers/shared.js';
 
 const VALID_TAGS = ['comment', 'suggestion', 'question', 'issue', 'note'];
 const VALID_STATUSES = ['open', 'resolved', 'dismissed'];
@@ -17,31 +17,31 @@ const MAX_COMMENT_LENGTH = 10000;
 const router = express.Router();
 
 /**
- * GET /api/pages/:pageId/comments
- * List all comments for a page (with replies and user info).
+ * GET /api/logs/:logId/comments
+ * List all comments for a log (with replies and user info).
  * Optional query: ?status=open|resolved|dismissed
  */
-router.get('/pages/:pageId/comments', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ message: 'Invalid page ID' });
+router.get('/logs/:logId/comments', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+  if (!isValidId(logId)) {
+    return res.status(400).json({ message: 'Invalid log ID' });
   }
 
-  const page = await checkPageReadAccess(Number(pageId), req.user);
-  if (!page) {
+  const log = await checkLogReadAccess(Number(logId), req.user);
+  if (!log) {
     return res.status(403).json({ message: 'Access denied' });
   }
 
   const { status } = req.query;
-  let where = 'c.page_id = ?';
-  const params = [Number(pageId)];
+  let where = 'c.log_id = ?';
+  const params = [Number(logId)];
   if (status && VALID_STATUSES.includes(status)) {
     where += ' AND c.status = ?';
     params.push(status);
   }
 
   const comments = await c2_query(
-    `SELECT c.id, c.page_id, c.user_id, c.content, c.tag, c.status,
+    `SELECT c.id, c.log_id, c.user_id, c.content, c.tag, c.status,
             c.selection_start, c.selection_end, c.selected_text,
             c.resolved_by, c.resolved_at, c.created_at, c.updated_at,
             u.name AS user_name, u.email AS user_email,
@@ -83,41 +83,41 @@ router.get('/pages/:pageId/comments', requireAuth, asyncHandler(async (req, res)
 }));
 
 /**
- * GET /api/pages/:pageId/comments/count
- * Return open comment count for a page (lightweight for badges).
+ * GET /api/logs/:logId/comments/count
+ * Return open comment count for a log (lightweight for badges).
  */
-router.get('/pages/:pageId/comments/count', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ message: 'Invalid page ID' });
+router.get('/logs/:logId/comments/count', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+  if (!isValidId(logId)) {
+    return res.status(400).json({ message: 'Invalid log ID' });
   }
 
-  const page = await checkPageReadAccess(Number(pageId), req.user);
-  if (!page) {
+  const log = await checkLogReadAccess(Number(logId), req.user);
+  if (!log) {
     return res.status(403).json({ message: 'Access denied' });
   }
 
   const [row] = await c2_query(
-    `SELECT COUNT(*) AS count FROM comments WHERE page_id = ? AND status = 'open'`,
-    [Number(pageId)]
+    `SELECT COUNT(*) AS count FROM comments WHERE log_id = ? AND status = 'open'`,
+    [Number(logId)]
   );
 
   res.json({ count: row?.count ?? 0 });
 }));
 
 /**
- * POST /api/pages/:pageId/comments
- * Create a new comment on a page.
+ * POST /api/logs/:logId/comments
+ * Create a new comment on a log.
  * Body: { content, tag?, selection_start?, selection_end?, selected_text? }
  */
-router.post('/pages/:pageId/comments', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ message: 'Invalid page ID' });
+router.post('/logs/:logId/comments', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+  if (!isValidId(logId)) {
+    return res.status(400).json({ message: 'Invalid log ID' });
   }
 
-  const page = await checkPageReadAccess(Number(pageId), req.user);
-  if (!page) {
+  const log = await checkLogReadAccess(Number(logId), req.user);
+  if (!log) {
     return res.status(403).json({ message: 'Access denied' });
   }
 
@@ -146,10 +146,10 @@ router.post('/pages/:pageId/comments', requireAuth, asyncHandler(async (req, res
   }
 
   const result = await c2_query(
-    `INSERT INTO comments (page_id, user_id, content, tag, selection_start, selection_end, selected_text)
+    `INSERT INTO comments (log_id, user_id, content, tag, selection_start, selection_end, selected_text)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
-      Number(pageId),
+      Number(logId),
       req.user.id,
       content.trim(),
       tag || 'comment',
@@ -251,9 +251,9 @@ router.post('/comments/:commentId/resolve', requireAuth, asyncHandler(async (req
     return res.status(404).json({ message: 'Comment not found' });
   }
 
-  // Verify the user has at least read access to the page
-  const page = await checkPageReadAccess(comment.page_id, req.user);
-  if (!page) {
+  // Verify the user has at least read access to the log
+  const log = await checkLogReadAccess(comment.log_id, req.user);
+  if (!log) {
     return res.status(403).json({ message: 'Access denied' });
   }
 
@@ -289,8 +289,8 @@ router.post('/comments/:commentId/reopen', requireAuth, asyncHandler(async (req,
     return res.status(404).json({ message: 'Comment not found' });
   }
 
-  const page = await checkPageReadAccess(comment.page_id, req.user);
-  if (!page) {
+  const log = await checkLogReadAccess(comment.log_id, req.user);
+  if (!log) {
     return res.status(403).json({ message: 'Access denied' });
   }
 
@@ -325,21 +325,21 @@ router.delete('/comments/:commentId', requireAuth, asyncHandler(async (req, res)
 }));
 
 /**
- * DELETE /api/pages/:pageId/comments
- * Clear all comments on a page. Requires write access.
+ * DELETE /api/logs/:logId/comments
+ * Clear all comments on a log. Requires write access.
  */
-router.delete('/pages/:pageId/comments', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ message: 'Invalid page ID' });
+router.delete('/logs/:logId/comments', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+  if (!isValidId(logId)) {
+    return res.status(400).json({ message: 'Invalid log ID' });
   }
 
-  const page = await checkPageWriteAccess(Number(pageId), req.user);
-  if (!page) {
+  const log = await checkLogWriteAccess(Number(logId), req.user);
+  if (!log) {
     return res.status(403).json({ message: 'Write access required to clear all comments' });
   }
 
-  await c2_query(`DELETE FROM comments WHERE page_id = ?`, [Number(pageId)]);
+  await c2_query(`DELETE FROM comments WHERE log_id = ?`, [Number(logId)]);
   res.json({ success: true });
 }));
 
@@ -359,8 +359,8 @@ router.post('/comments/:commentId/replies', requireAuth, asyncHandler(async (req
     return res.status(404).json({ message: 'Comment not found' });
   }
 
-  const page = await checkPageReadAccess(comment.page_id, req.user);
-  if (!page) {
+  const log = await checkLogReadAccess(comment.log_id, req.user);
+  if (!log) {
     return res.status(403).json({ message: 'Access denied' });
   }
 

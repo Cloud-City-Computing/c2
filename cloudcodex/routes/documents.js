@@ -22,7 +22,7 @@ const router = express.Router();
 
 /**
  * GET /api/document?doc_id=<id>
- * Requires auth; checks user read_access on parent project
+ * Requires auth; checks user read_access on parent archive
  */
 router.get('/document', requireAuth, asyncHandler(async (req, res) => {
   const { doc_id } = req.query;
@@ -38,13 +38,13 @@ router.get('/document', requireAuth, asyncHandler(async (req, res) => {
             pg.updated_at,
             pg.title,
             pg.version,
-            pg.project_id,
+            pg.archive_id,
             u.name,
             u.email,
-            p.name AS project_name
-       FROM pages pg
+            p.name AS archive_name
+       FROM logs pg
  INNER JOIN users u ON pg.created_by = u.id
- INNER JOIN projects p ON pg.project_id = p.id
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${readAccessWhere('p')}
       LIMIT 1`,
@@ -61,9 +61,9 @@ router.get('/document', requireAuth, asyncHandler(async (req, res) => {
 /**
  * POST /api/save-document
  * Body: { doc_id: number, html_content: string }
- * Requires auth; checks user write_access on parent project.
+ * Requires auth; checks user write_access on parent archive.
  * Saves content only — does not create a version snapshot.
- * Use POST /api/document/:pageId/publish to create a formal published version.
+ * Use POST /api/document/:logId/publish to create a formal published version.
  */
 router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   const { doc_id, html_content } = req.body;
@@ -86,24 +86,24 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   // Extract embedded base64 images to disk, replace with served URLs
   const storedHtml = await extractImagesFromHtml(cleanHtml);
 
-  // Fetch existing page and verify write access
-  const [page] = await c2_query(
-    `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.project_id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+  // Fetch existing log and verify write access
+  const [log] = await c2_query(
+    `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.archive_id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${writeAccessWhere('p')}
       LIMIT 1`,
     [Number(doc_id), ...writeAccessParams(req.user)]
   );
 
-  if (!page) {
+  if (!log) {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
 
   // Save content without creating a version snapshot
   await c2_query(
-    `UPDATE pages SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+    `UPDATE logs SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [storedHtml, req.user.id, Number(doc_id)]
   );
 
@@ -111,15 +111,15 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 /**
- * POST /api/document/:pageId/publish
+ * POST /api/document/:logId/publish
  * Body (optional): { title?: string, notes?: string }
  * Creates a formal published version snapshot of the current document content.
- * Requires auth, write_access on parent project, and can_publish team permission.
+ * Requires auth, write_access on parent archive, and can_publish squad permission.
  */
-router.post('/document/:pageId/publish', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ success: false, message: 'Invalid page ID' });
+router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+  if (!isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid log ID' });
   }
 
   const { title, notes } = req.body || {};
@@ -132,52 +132,52 @@ router.post('/document/:pageId/publish', requireAuth, asyncHandler(async (req, r
     return res.status(400).json({ success: false, message: 'Notes must be a string of 5000 characters or fewer' });
   }
 
-  // Verify write access and get current content + team context
-  const [page] = await c2_query(
-    `SELECT pg.id, pg.html_content, pg.version, p.team_id, p.created_by AS project_creator
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+  // Verify write access and get current content + squad context
+  const [log] = await c2_query(
+    `SELECT pg.id, pg.html_content, pg.version, p.squad_id, p.created_by AS archive_creator
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${writeAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), ...writeAccessParams(req.user)]
+    [Number(logId), ...writeAccessParams(req.user)]
   );
-  if (!page) {
+  if (!log) {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
 
-  // Check can_publish permission: org owner, team owner, project creator, or team member with can_publish
-  const publishAllowed = await canPublish(page.team_id, page.project_creator, req.user);
+  // Check can_publish permission: workspace owner, squad owner, archive creator, or squad member with can_publish
+  const publishAllowed = await canPublish(log.squad_id, log.archive_creator, req.user);
   if (!publishAllowed) {
     return res.status(403).json({ success: false, message: 'You do not have permission to publish versions' });
   }
 
   // Bump version and create snapshot
-  const newVersion = page.version + 1;
+  const newVersion = log.version + 1;
   // Extract embedded base64 images before persisting
-  const publishHtml = await extractImagesFromHtml(sanitizeHtml(page.html_content));
+  const publishHtml = await extractImagesFromHtml(sanitizeHtml(log.html_content));
   await c2_query(
-    `UPDATE pages SET version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-    [newVersion, req.user.id, Number(pageId)]
+    `UPDATE logs SET version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+    [newVersion, req.user.id, Number(logId)]
   );
   await c2_query(
-    `INSERT INTO versions (page_id, version, title, notes, html_content, created_by)
+    `INSERT INTO versions (log_id, version, title, notes, html_content, created_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [page.id, newVersion, title?.trim() || null, notes?.trim() || null, publishHtml, req.user.id]
+    [log.id, newVersion, title?.trim() || null, notes?.trim() || null, publishHtml, req.user.id]
   );
 
   res.json({ success: true, version: newVersion });
 }));
 
 /**
- * PUT /api/document/:pageId/title
+ * PUT /api/document/:logId/title
  * Body: { title: string }
- * Update page title (requires write access)
+ * Update log title (requires write access)
  */
-router.put('/document/:pageId/title', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ success: false, message: 'Invalid page ID' });
+router.put('/document/:logId/title', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+  if (!isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid log ID' });
   }
 
   const { title } = req.body;
@@ -188,45 +188,45 @@ router.put('/document/:pageId/title', requireAuth, asyncHandler(async (req, res)
     return res.status(400).json({ success: false, message: 'Title must be 255 characters or fewer' });
   }
 
-  const [page] = await c2_query(
+  const [log] = await c2_query(
     `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${writeAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), ...writeAccessParams(req.user)]
+    [Number(logId), ...writeAccessParams(req.user)]
   );
 
-  if (!page) {
-    return res.status(403).json({ success: false, message: 'Page not found or write access denied' });
+  if (!log) {
+    return res.status(403).json({ success: false, message: 'Log not found or write access denied' });
   }
 
-  await c2_query(`UPDATE pages SET title = ? WHERE id = ?`, [title.trim(), Number(pageId)]);
+  await c2_query(`UPDATE logs SET title = ? WHERE id = ?`, [title.trim(), Number(logId)]);
   res.json({ success: true });
 }));
 
 /**
- * GET /api/document/:pageId/versions
- * List all versions for a page
+ * GET /api/document/:logId/versions
+ * List all versions for a log
  */
-router.get('/document/:pageId/versions', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ success: false, message: 'Invalid page ID' });
+router.get('/document/:logId/versions', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
+  if (!isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid log ID' });
   }
 
   // Verify read access
-  const [page] = await c2_query(
+  const [log] = await c2_query(
     `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${readAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), ...readAccessParams(req.user)]
+    [Number(logId), ...readAccessParams(req.user)]
   );
-  if (!page) {
+  if (!log) {
     return res.status(403).json({ success: false, message: 'Access denied' });
   }
 
@@ -234,35 +234,35 @@ router.get('/document/:pageId/versions', requireAuth, asyncHandler(async (req, r
     `SELECT v.id, v.version AS version_number, v.title, v.notes, v.created_at AS saved_at, v.created_by AS created_by_id, u.name AS created_by
        FROM versions v
   LEFT JOIN users u ON v.created_by = u.id
-      WHERE v.page_id = ?
+      WHERE v.log_id = ?
    ORDER BY v.version DESC`,
-    [Number(pageId)]
+    [Number(logId)]
   );
 
   res.json({ success: true, versions });
 }));
 
 /**
- * GET /api/document/:pageId/versions/:versionId
+ * GET /api/document/:logId/versions/:versionId
  * Get a specific version's content
  */
-router.get('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId, versionId } = req.params;
-  if (!isValidId(pageId) || !isValidId(versionId)) {
+router.get('/document/:logId/versions/:versionId', requireAuth, asyncHandler(async (req, res) => {
+  const { logId, versionId } = req.params;
+  if (!isValidId(logId) || !isValidId(versionId)) {
     return res.status(400).json({ success: false, message: 'Invalid IDs' });
   }
 
   // Verify read access
-  const [page] = await c2_query(
+  const [log] = await c2_query(
     `SELECT pg.id
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${readAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), ...readAccessParams(req.user)]
+    [Number(logId), ...readAccessParams(req.user)]
   );
-  if (!page) {
+  if (!log) {
     return res.status(403).json({ success: false, message: 'Access denied' });
   }
 
@@ -270,9 +270,9 @@ router.get('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(as
     `SELECT v.id, v.version AS version_number, v.title, v.notes, v.html_content, v.created_at AS saved_at, u.name AS created_by
        FROM versions v
   LEFT JOIN users u ON v.created_by = u.id
-      WHERE v.id = ? AND v.page_id = ?
+      WHERE v.id = ? AND v.log_id = ?
       LIMIT 1`,
-    [Number(versionId), Number(pageId)]
+    [Number(versionId), Number(logId)]
   );
 
   if (!version) {
@@ -283,74 +283,74 @@ router.get('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(as
 }));
 
 /**
- * POST /api/document/:pageId/versions/:versionId/restore
- * Restore a page to a previous version (creates new version snapshot of current)
+ * POST /api/document/:logId/versions/:versionId/restore
+ * Restore a log to a previous version (creates new version snapshot of current)
  */
-router.post('/document/:pageId/versions/:versionId/restore', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId, versionId } = req.params;
-  if (!isValidId(pageId) || !isValidId(versionId)) {
+router.post('/document/:logId/versions/:versionId/restore', requireAuth, asyncHandler(async (req, res) => {
+  const { logId, versionId } = req.params;
+  if (!isValidId(logId) || !isValidId(versionId)) {
     return res.status(400).json({ success: false, message: 'Invalid IDs' });
   }
 
   // Verify write access and get current content
-  const [currentPage] = await c2_query(
+  const [currentLog] = await c2_query(
     `SELECT pg.id, pg.html_content, pg.version
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${writeAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), ...writeAccessParams(req.user)]
+    [Number(logId), ...writeAccessParams(req.user)]
   );
-  if (!currentPage) {
+  if (!currentLog) {
     return res.status(403).json({ success: false, message: 'Write access denied' });
   }
 
   // Fetch the version to restore
   const [targetVersion] = await c2_query(
-    `SELECT html_content FROM versions WHERE id = ? AND page_id = ? LIMIT 1`,
-    [Number(versionId), Number(pageId)]
+    `SELECT html_content FROM versions WHERE id = ? AND log_id = ? LIMIT 1`,
+    [Number(versionId), Number(logId)]
   );
   if (!targetVersion) {
     return res.status(404).json({ success: false, message: 'Version not found' });
   }
 
   // Bump version and restore content
-  const newVersion = currentPage.version + 1;
+  const newVersion = currentLog.version + 1;
   const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content));
   await c2_query(
-    `UPDATE pages SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-    [restoredHtml, newVersion, req.user.id, Number(pageId)]
+    `UPDATE logs SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+    [restoredHtml, newVersion, req.user.id, Number(logId)]
   );
 
   // Snapshot the restored content into version history
   await c2_query(
-    `INSERT INTO versions (page_id, version, html_content, created_by)
+    `INSERT INTO versions (log_id, version, html_content, created_by)
      VALUES (?, ?, ?, ?)`,
-    [currentPage.id, newVersion, restoredHtml, req.user.id]
+    [currentLog.id, newVersion, restoredHtml, req.user.id]
   );
 
   res.json({ success: true, version: newVersion });
 }));
 
 /**
- * DELETE /api/document/:pageId/versions/:versionId
- * Delete a version. Allowed if the user is the version author, or has can_delete_version permission via team membership.
+ * DELETE /api/document/:logId/versions/:versionId
+ * Delete a version. Allowed if the user is the version author, or has can_delete_version permission via squad membership.
  */
-router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId, versionId } = req.params;
-  if (!isValidId(pageId) || !isValidId(versionId)) {
+router.delete('/document/:logId/versions/:versionId', requireAuth, asyncHandler(async (req, res) => {
+  const { logId, versionId } = req.params;
+  if (!isValidId(logId) || !isValidId(versionId)) {
     return res.status(400).json({ success: false, message: 'Invalid IDs' });
   }
 
-  // Verify the version exists and belongs to this page
+  // Verify the version exists and belongs to this log
   const [version] = await c2_query(
-    `SELECT v.id, v.created_by, pg.project_id
+    `SELECT v.id, v.created_by, pg.archive_id
        FROM versions v
- INNER JOIN pages pg ON v.page_id = pg.id
-      WHERE v.id = ? AND v.page_id = ?
+ INNER JOIN logs pg ON v.log_id = pg.id
+      WHERE v.id = ? AND v.log_id = ?
       LIMIT 1`,
-    [Number(versionId), Number(pageId)]
+    [Number(versionId), Number(logId)]
   );
   if (!version) {
     return res.status(404).json({ success: false, message: 'Version not found' });
@@ -362,14 +362,14 @@ router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler
     return res.json({ success: true });
   }
 
-  // Otherwise check can_delete_version via team membership, or org/team owner bypass
+  // Otherwise check can_delete_version via squad membership, or workspace/squad owner bypass
   const [perm] = await c2_query(
     `SELECT tm.can_delete_version, tm.role
-       FROM projects p
- INNER JOIN team_members tm ON tm.team_id = p.team_id AND tm.user_id = ?
+       FROM archives p
+ INNER JOIN squad_members tm ON tm.squad_id = p.squad_id AND tm.user_id = ?
       WHERE p.id = ?
       LIMIT 1`,
-    [req.user.id, version.project_id]
+    [req.user.id, version.archive_id]
   );
 
   if (!perm?.can_delete_version && perm?.role !== 'owner') {
@@ -381,16 +381,16 @@ router.delete('/document/:pageId/versions/:versionId', requireAuth, asyncHandler
 }));
 
 /**
- * GET /api/document/:pageId/export?format=html|md|txt|docx
+ * GET /api/document/:logId/export?format=html|md|txt|docx
  * Export a document in the requested format as a downloadable file.
- * Requires auth and read access on the parent project.
+ * Requires auth and read access on the parent archive.
  */
-router.get('/document/:pageId/export', requireAuth, asyncHandler(async (req, res) => {
-  const { pageId } = req.params;
+router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res) => {
+  const { logId } = req.params;
   const { format } = req.query;
 
-  if (!isValidId(pageId)) {
-    return res.status(400).json({ success: false, message: 'Invalid page ID' });
+  if (!isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid log ID' });
   }
 
   const validFormats = ['html', 'md', 'txt', 'docx'];
@@ -401,12 +401,12 @@ router.get('/document/:pageId/export', requireAuth, asyncHandler(async (req, res
   // Fetch document with read access check
   const [doc] = await c2_query(
     `SELECT pg.id, pg.title, pg.html_content
-       FROM pages pg
- INNER JOIN projects p ON pg.project_id = p.id
+       FROM logs pg
+ INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
         AND ${readAccessWhere('p')}
       LIMIT 1`,
-    [Number(pageId), ...readAccessParams(req.user)]
+    [Number(logId), ...readAccessParams(req.user)]
   );
 
   if (!doc) {

@@ -144,7 +144,7 @@ router.post('/create-account', asyncHandler(async (req, res) => {
 
   // Create default permissions row for new user
   await c2_query(
-    `INSERT INTO permissions (user_id, create_team, create_project, create_page) VALUES (?, TRUE, TRUE, TRUE)`,
+    `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`,
     [result.insertId]
   );
 
@@ -179,24 +179,24 @@ router.get('/check-username/:username', asyncHandler(async (req, res) => {
 /**
  * POST /api/setup
  * Quick-start workspace setup for new users.
- * Creates a standalone personal project. Organization creation
+ * Creates a standalone personal archive. Workspace creation
  * is admin-only and handled via the admin console.
- * Body: { projectName }
+ * Body: { archiveName }
  */
 router.post('/setup', requireAuth, asyncHandler(async (req, res) => {
-  const { projectName } = req.body;
+  const { archiveName } = req.body;
 
-  if (!projectName?.trim()) {
-    return res.status(400).json({ success: false, message: 'Provide a project name' });
+  if (!archiveName?.trim()) {
+    return res.status(400).json({ success: false, message: 'Provide a archive name' });
   }
 
   const projResult = await c2_query(
-    `INSERT INTO projects (name, team_id, created_by, read_access, write_access)
+    `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
      VALUES (?, NULL, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
-    [projectName.trim(), req.user.id, req.user.id, req.user.id]
+    [archiveName.trim(), req.user.id, req.user.id, req.user.id]
   );
 
-  res.status(201).json({ success: true, organizationId: null, teamId: null, projectId: projResult.insertId });
+  res.status(201).json({ success: true, workspaceId: null, squadId: null, archiveId: projResult.insertId });
 }));
 
 /**
@@ -424,7 +424,7 @@ router.post('/get-user', asyncHandler(async (req, res) => {
 
   // Include permissions
   const [perms] = await c2_query(
-    `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+    `SELECT create_squad, create_archive, create_log FROM permissions WHERE user_id = ? LIMIT 1`,
     [Number(userId)]
   );
 
@@ -460,7 +460,7 @@ router.get('/users/search', requireAuth, asyncHandler(async (req, res) => {
  */
 router.get('/permissions', requireAuth, asyncHandler(async (req, res) => {
   const [perms] = await c2_query(
-    `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+    `SELECT create_squad, create_archive, create_log FROM permissions WHERE user_id = ? LIMIT 1`,
     [req.user.id]
   );
 
@@ -472,7 +472,7 @@ router.get('/permissions', requireAuth, asyncHandler(async (req, res) => {
 
 /**
  * GET /api/permissions/:userId
- * Returns a specific user's permissions (org owners only, or self)
+ * Returns a specific user's permissions (workspace owners only, or self)
  */
 router.get('/permissions/:userId', requireAuth, asyncHandler(async (req, res) => {
   const { userId } = req.params;
@@ -482,23 +482,23 @@ router.get('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
 
   const targetId = Number(userId);
 
-  // Allow self; org owners may view permissions of users in their org
+  // Allow self; workspace owners may view permissions of users in their workspace
   if (req.user.id !== targetId) {
     const [link] = await c2_query(
-      `SELECT 1 FROM team_members tm
-       JOIN teams t ON tm.team_id = t.id
-       JOIN organizations o ON t.organization_id = o.id
+      `SELECT 1 FROM squad_members tm
+       JOIN squads t ON tm.squad_id = t.id
+       JOIN workspaces o ON t.workspace_id = o.id
        WHERE tm.user_id = ? AND o.owner = ?
        LIMIT 1`,
       [targetId, req.user.email]
     );
     if (!link) {
-      return res.status(403).json({ success: false, message: 'You can only view permissions for users in your organization' });
+      return res.status(403).json({ success: false, message: 'You can only view permissions for users in your workspace' });
     }
   }
 
   const [perms] = await c2_query(
-    `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+    `SELECT create_squad, create_archive, create_log FROM permissions WHERE user_id = ? LIMIT 1`,
     [targetId]
   );
 
@@ -510,8 +510,8 @@ router.get('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
 
 /**
  * PUT /api/permissions/:userId
- * Update a user's permissions (only org owners can update permissions for users in their orgs)
- * Body: { create_team?, create_project?, create_page? }
+ * Update a user's permissions (only workspace owners can update permissions for users in their workspaces)
+ * Body: { create_squad?, create_archive?, create_log? }
  */
 router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) => {
   const { userId } = req.params;
@@ -521,26 +521,26 @@ router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
 
   const targetId = Number(userId);
 
-  // Only org owners can update permissions for users in their organization
+  // Only workspace owners can update permissions for users in their workspace
   const [link] = await c2_query(
-    `SELECT 1 FROM team_members tm
-     JOIN teams t ON tm.team_id = t.id
-     JOIN organizations o ON t.organization_id = o.id
+    `SELECT 1 FROM squad_members tm
+     JOIN squads t ON tm.squad_id = t.id
+     JOIN workspaces o ON t.workspace_id = o.id
      WHERE tm.user_id = ? AND o.owner = ?
      LIMIT 1`,
     [targetId, req.user.email]
   );
   if (!link) {
-    return res.status(403).json({ success: false, message: 'Only organization owners can update permissions for users in their organization' });
+    return res.status(403).json({ success: false, message: 'Only workspace owners can update permissions for users in their workspace' });
   }
 
-  const { create_team, create_project, create_page } = req.body;
+  const { create_squad, create_archive, create_log } = req.body;
   const fields = [];
   const params = [];
 
-  if (create_team !== undefined)    { fields.push('create_team = ?');    params.push(Boolean(create_team));    }
-  if (create_project !== undefined) { fields.push('create_project = ?'); params.push(Boolean(create_project)); }
-  if (create_page !== undefined)    { fields.push('create_page = ?');    params.push(Boolean(create_page));    }
+  if (create_squad !== undefined)    { fields.push('create_squad = ?');    params.push(Boolean(create_squad));    }
+  if (create_archive !== undefined) { fields.push('create_archive = ?'); params.push(Boolean(create_archive)); }
+  if (create_log !== undefined)    { fields.push('create_log = ?');    params.push(Boolean(create_log));    }
 
   if (!fields.length) {
     return res.status(400).json({ success: false, message: 'No permission fields provided' });
@@ -558,8 +558,8 @@ router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
     await c2_query(`UPDATE permissions SET ${fields.join(', ')} WHERE user_id = ?`, params);
   } else {
     await c2_query(
-      `INSERT INTO permissions (user_id, create_team, create_project, create_page) VALUES (?, ?, ?, ?)`,
-      [targetId, Boolean(create_team), Boolean(create_project), create_page !== false]
+      `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, ?, ?, ?)`,
+      [targetId, Boolean(create_squad), Boolean(create_archive), create_log !== false]
     );
   }
 

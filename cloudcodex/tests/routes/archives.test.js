@@ -4,60 +4,60 @@ import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
-describe('Project Routes', () => {
+describe('Archive Routes', () => {
   beforeEach(() => {
     resetMocks();
   });
 
-  // ── GET /api/projects ─────────────────────────────────────
+  // ── GET /api/archives ─────────────────────────────────────
 
-  describe('GET /api/projects', () => {
-    it('returns projects the user can access', async () => {
+  describe('GET /api/archives', () => {
+    it('returns archives the user can access', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([
-        { id: 1, name: 'Project A', created_at: '2026-01-01', created_by: 'user', created_by_id: 1, team_name: null, team_id: null },
+        { id: 1, name: 'Archive A', created_at: '2026-01-01', created_by: 'user', created_by_id: 1, squad_name: null, squad_id: null },
       ]);
 
       const res = await request(app)
-        .get('/api/projects')
+        .get('/api/archives')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.projects).toHaveLength(1);
-      expect(res.body.projects[0].name).toBe('Project A');
+      expect(res.body.archives).toHaveLength(1);
+      expect(res.body.archives[0].name).toBe('Archive A');
     });
 
     it('requires authentication', async () => {
       mockUnauthenticated();
 
       const res = await request(app)
-        .get('/api/projects')
+        .get('/api/archives')
         .set('Authorization', 'Bearer bad-token');
 
       expect(res.status).toBe(401);
     });
   });
 
-  // ── GET /api/projects/:projectId/pages ────────────────────
+  // ── GET /api/archives/:archiveId/logs ────────────────────
 
-  describe('GET /api/projects/:projectId/pages', () => {
-    it('returns page tree', async () => {
+  describe('GET /api/archives/:archiveId/logs', () => {
+    it('returns log tree', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }]) // project access check
+        .mockResolvedValueOnce([{ id: 1 }]) // archive access check
         .mockResolvedValueOnce([
-          { id: 1, title: 'Root', parent_id: null, version: 1, created_at: '2026-01-01', updated_at: null, created_by: 'user', project_id: 1 },
-          { id: 2, title: 'Child', parent_id: 1, version: 1, created_at: '2026-01-02', updated_at: null, created_by: 'user', project_id: 1 },
+          { id: 1, title: 'Root', parent_id: null, version: 1, created_at: '2026-01-01', updated_at: null, created_by: 'user', archive_id: 1 },
+          { id: 2, title: 'Child', parent_id: 1, version: 1, created_at: '2026-01-02', updated_at: null, created_by: 'user', archive_id: 1 },
         ]);
 
       const res = await request(app)
-        .get('/api/projects/1/pages')
+        .get('/api/archives/1/logs')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
-      expect(res.body.pages).toHaveLength(1); // 1 root
-      expect(res.body.pages[0].children).toHaveLength(1); // 1 child nested
+      expect(res.body.logs).toHaveLength(1); // 1 root
+      expect(res.body.logs[0].children).toHaveLength(1); // 1 child nested
     });
 
     it('returns 403 without access', async () => {
@@ -65,62 +65,62 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([]); // no access
 
       const res = await request(app)
-        .get('/api/projects/1/pages')
+        .get('/api/archives/1/logs')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
 
-    it('rejects invalid projectId', async () => {
+    it('rejects invalid archiveId', async () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .get('/api/projects/abc/pages')
+        .get('/api/archives/abc/logs')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
     });
   });
 
-  // ── POST /api/projects ────────────────────────────────────
+  // ── POST /api/archives ────────────────────────────────────
 
-  describe('POST /api/projects', () => {
-    it('creates a project with permission', async () => {
+  describe('POST /api/archives', () => {
+    it('creates a archive with permission', async () => {
       mockAuthenticated();
       // requirePermission loads permissions
-      c2_query.mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
-      // INSERT project
+      c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]);
+      // INSERT archive
       c2_query.mockResolvedValueOnce({ insertId: 5 });
 
       const res = await request(app)
-        .post('/api/projects')
+        .post('/api/archives')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'New Project' });
+        .send({ name: 'New Archive' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.projectId).toBe(5);
+      expect(res.body.archiveId).toBe(5);
     });
 
-    it('rejects without create_project permission', async () => {
+    it('rejects without create_archive permission', async () => {
       mockAuthenticated();
-      // requirePermission loads permissions — no create_project
-      c2_query.mockResolvedValueOnce([{ create_team: false, create_project: false, create_page: true }]);
+      // requirePermission loads permissions — no create_archive
+      c2_query.mockResolvedValueOnce([{ create_squad: false, create_archive: false, create_log: true }]);
 
       const res = await request(app)
-        .post('/api/projects')
+        .post('/api/archives')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'New Project' });
+        .send({ name: 'New Archive' });
 
       expect(res.status).toBe(403);
     });
 
     it('rejects empty name', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
+      c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]);
 
       const res = await request(app)
-        .post('/api/projects')
+        .post('/api/archives')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: '' });
 
@@ -128,17 +128,17 @@ describe('Project Routes', () => {
     });
   });
 
-  // ── PUT /api/projects/:id ─────────────────────────────────
+  // ── PUT /api/archives/:id ─────────────────────────────────
 
-  describe('PUT /api/projects/:id', () => {
-    it('renames project with write access', async () => {
+  describe('PUT /api/archives/:id', () => {
+    it('renames archive with write access', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1 }]) // write access check
         .mockResolvedValueOnce([]);           // UPDATE
 
       const res = await request(app)
-        .put('/api/projects/1')
+        .put('/api/archives/1')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: 'Renamed' });
 
@@ -151,7 +151,7 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([]); // no access
 
       const res = await request(app)
-        .put('/api/projects/1')
+        .put('/api/archives/1')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: 'Renamed' });
 
@@ -162,7 +162,7 @@ describe('Project Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .put('/api/projects/1')
+        .put('/api/archives/1')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: '' });
 
@@ -170,17 +170,17 @@ describe('Project Routes', () => {
     });
   });
 
-  // ── DELETE /api/projects/:id ──────────────────────────────
+  // ── DELETE /api/archives/:id ──────────────────────────────
 
-  describe('DELETE /api/projects/:id', () => {
-    it('deletes project for owner', async () => {
+  describe('DELETE /api/archives/:id', () => {
+    it('deletes archive for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ '1': 1 }]) // isProjectOwner check
+        .mockResolvedValueOnce([{ '1': 1 }]) // isArchiveOwner check
         .mockResolvedValueOnce([]);            // DELETE
 
       const res = await request(app)
-        .delete('/api/projects/1')
+        .delete('/api/archives/1')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -192,7 +192,7 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([]); // not owner
 
       const res = await request(app)
-        .delete('/api/projects/1')
+        .delete('/api/archives/1')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
@@ -202,25 +202,25 @@ describe('Project Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .delete('/api/projects/abc')
+        .delete('/api/archives/abc')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
     });
   });
 
-  // ── POST /api/projects/:id/access ─────────────────────────
+  // ── POST /api/archives/:id/access ─────────────────────────
 
-  describe('POST /api/projects/:id/access', () => {
+  describe('POST /api/archives/:id/access', () => {
     it('adds read access for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ '1': 1 }])        // isProjectOwner
+        .mockResolvedValueOnce([{ '1': 1 }])        // isArchiveOwner
         .mockResolvedValueOnce([{ acl: '[1]' }])     // SELECT current acl
         .mockResolvedValueOnce([]);                    // UPDATE
 
       const res = await request(app)
-        .post('/api/projects/1/access')
+        .post('/api/archives/1/access')
         .set('Authorization', 'Bearer valid-token')
         .send({ userId: 2, accessType: 'read', action: 'add' });
 
@@ -232,7 +232,7 @@ describe('Project Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .post('/api/projects/1/access')
+        .post('/api/archives/1/access')
         .set('Authorization', 'Bearer valid-token')
         .send({ userId: 2, accessType: 'invalid', action: 'add' });
 
@@ -244,7 +244,7 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([]); // not owner
 
       const res = await request(app)
-        .post('/api/projects/1/access')
+        .post('/api/archives/1/access')
         .set('Authorization', 'Bearer valid-token')
         .send({ userId: 2, accessType: 'read', action: 'add' });
 
@@ -252,22 +252,22 @@ describe('Project Routes', () => {
     });
   });
 
-  // ── POST /api/projects/:projectId/pages ───────────────────
+  // ── POST /api/archives/:archiveId/logs ───────────────────
 
-  describe('POST /api/projects/:projectId/pages', () => {
-    it('creates page with permission', async () => {
+  describe('POST /api/archives/:archiveId/logs', () => {
+    it('creates log with permission', async () => {
       mockAuthenticated();
-      // requirePermission('create_page') -> load permissions
-      c2_query.mockResolvedValueOnce([{ create_team: true, create_project: true, create_page: true }]);
+      // requirePermission('create_log') -> load permissions
+      c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }]);
       // write access check
       c2_query.mockResolvedValueOnce([{ id: 1 }]);
-      // INSERT page
+      // INSERT log
       c2_query.mockResolvedValueOnce({ insertId: 10 });
 
       const res = await request(app)
-        .post('/api/projects/1/pages')
+        .post('/api/archives/1/logs')
         .set('Authorization', 'Bearer valid-token')
-        .send({ title: 'New Page' });
+        .send({ title: 'New Log' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
@@ -277,25 +277,25 @@ describe('Project Routes', () => {
       mockUnauthenticated();
 
       const res = await request(app)
-        .post('/api/projects/1/pages')
+        .post('/api/archives/1/logs')
         .set('Authorization', 'Bearer bad')
-        .send({ title: 'New Page' });
+        .send({ title: 'New Log' });
 
       expect(res.status).toBe(401);
     });
   });
 
-  // ── PUT /api/projects/:projectId/pages/:pageId ────────────
+  // ── PUT /api/archives/:archiveId/logs/:logId ────────────
 
-  describe('PUT /api/projects/:projectId/pages/:pageId', () => {
-    it('renames a page with write access', async () => {
+  describe('PUT /api/archives/:archiveId/logs/:logId', () => {
+    it('renames a log with write access', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1 }])  // write access
-        .mockResolvedValueOnce([]);           // UPDATE pages
+        .mockResolvedValueOnce([]);           // UPDATE logs
 
       const res = await request(app)
-        .put('/api/projects/1/pages/10')
+        .put('/api/archives/1/logs/10')
         .set('Authorization', 'Bearer valid-token')
         .send({ title: 'New Title' });
 
@@ -303,14 +303,14 @@ describe('Project Routes', () => {
       expect(res.body.success).toBe(true);
     });
 
-    it('moves a page to a new parent', async () => {
+    it('moves a log to a new parent', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1 }])  // write access
-        .mockResolvedValueOnce([]);           // UPDATE pages
+        .mockResolvedValueOnce([]);           // UPDATE logs
 
       const res = await request(app)
-        .put('/api/projects/1/pages/10')
+        .put('/api/archives/1/logs/10')
         .set('Authorization', 'Bearer valid-token')
         .send({ parent_id: 5 });
 
@@ -323,7 +323,7 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);  // write access
 
       const res = await request(app)
-        .put('/api/projects/1/pages/10')
+        .put('/api/archives/1/logs/10')
         .set('Authorization', 'Bearer valid-token')
         .send({});
 
@@ -335,7 +335,7 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([]);  // no access
 
       const res = await request(app)
-        .put('/api/projects/1/pages/10')
+        .put('/api/archives/1/logs/10')
         .set('Authorization', 'Bearer valid-token')
         .send({ title: 'New Title' });
 
@@ -346,7 +346,7 @@ describe('Project Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .put('/api/projects/abc/pages/xyz')
+        .put('/api/archives/abc/logs/xyz')
         .set('Authorization', 'Bearer valid-token')
         .send({ title: 'New Title' });
 
@@ -358,7 +358,7 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1 }]);  // write access
 
       const res = await request(app)
-        .put('/api/projects/1/pages/10')
+        .put('/api/archives/1/logs/10')
         .set('Authorization', 'Bearer valid-token')
         .send({ parent_id: 'malicious' });
 
@@ -367,17 +367,17 @@ describe('Project Routes', () => {
     });
   });
 
-  // ── DELETE /api/projects/:projectId/pages/:pageId ─────────
+  // ── DELETE /api/archives/:archiveId/logs/:logId ─────────
 
-  describe('DELETE /api/projects/:projectId/pages/:pageId', () => {
-    it('deletes a page with write access', async () => {
+  describe('DELETE /api/archives/:archiveId/logs/:logId', () => {
+    it('deletes a log with write access', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1 }])  // write access
         .mockResolvedValueOnce([]);           // DELETE
 
       const res = await request(app)
-        .delete('/api/projects/1/pages/10')
+        .delete('/api/archives/1/logs/10')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -389,7 +389,7 @@ describe('Project Routes', () => {
       c2_query.mockResolvedValueOnce([]);  // no access
 
       const res = await request(app)
-        .delete('/api/projects/1/pages/10')
+        .delete('/api/archives/1/logs/10')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
@@ -399,7 +399,7 @@ describe('Project Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .delete('/api/projects/abc/pages/xyz')
+        .delete('/api/archives/abc/logs/xyz')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);

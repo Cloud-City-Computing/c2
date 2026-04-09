@@ -2,7 +2,7 @@
  * Cloud Codex - Welcome Setup Component
  *
  * Shown after a new user creates an account.
- * Optionally creates a default organization, team, and project.
+ * Optionally creates a default workspace, squad, and archive.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -20,7 +20,7 @@ export default function WelcomeSetup({ onComplete }) {
     <div className="modal-content welcome-setup">
       <h2>Welcome to Cloud Codex!</h2>
       <p className="welcome-subtitle">
-        Your account has been created. Your administrator will assign you to organizations and teams.
+        Your account has been created. Your administrator will assign you to workspaces and squads.
       </p>
       <div className="welcome-actions">
         <button className="btn btn-primary" onClick={handleContinue}>

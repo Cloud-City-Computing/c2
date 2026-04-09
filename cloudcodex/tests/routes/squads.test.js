@@ -4,15 +4,15 @@ import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { mockAuthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
-describe('Team Routes', () => {
+describe('Squad Routes', () => {
   beforeEach(() => {
     resetMocks();
   });
 
-  // ── GET /api/organizations/:orgId/teams ───────────────────
+  // ── GET /api/workspaces/:workspaceId/squads ───────────────────
 
-  describe('GET /api/organizations/:orgId/teams', () => {
-    it('lists teams for org member', async () => {
+  describe('GET /api/workspaces/:workspaceId/squads', () => {
+    it('lists squads for workspace member', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ '1': 1 }]) // access check
@@ -21,11 +21,11 @@ describe('Team Routes', () => {
         ]);
 
       const res = await request(app)
-        .get('/api/organizations/1/teams')
+        .get('/api/workspaces/1/squads')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
-      expect(res.body.teams).toHaveLength(1);
+      expect(res.body.squads).toHaveLength(1);
     });
 
     it('rejects non-member', async () => {
@@ -33,78 +33,78 @@ describe('Team Routes', () => {
       c2_query.mockResolvedValueOnce([]); // no access
 
       const res = await request(app)
-        .get('/api/organizations/1/teams')
+        .get('/api/workspaces/1/squads')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
 
-    it('rejects invalid org ID', async () => {
+    it('rejects invalid workspace ID', async () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .get('/api/organizations/abc/teams')
+        .get('/api/workspaces/abc/squads')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
     });
   });
 
-  // ── POST /api/organizations/:orgId/teams ──────────────────
+  // ── POST /api/workspaces/:workspaceId/squads ──────────────────
 
-  describe('POST /api/organizations/:orgId/teams', () => {
-    it('creates team as org owner', async () => {
+  describe('POST /api/workspaces/:workspaceId/squads', () => {
+    it('creates squad as workspace owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }]) // org check
-        .mockResolvedValueOnce({ insertId: 10 })                     // INSERT team
-        .mockResolvedValueOnce([]);                                   // INSERT team_members (creator)
+        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }]) // workspace check
+        .mockResolvedValueOnce({ insertId: 10 })                     // INSERT squad
+        .mockResolvedValueOnce([]);                                   // INSERT squad_members (creator)
 
       const res = await request(app)
-        .post('/api/organizations/1/teams')
+        .post('/api/workspaces/1/squads')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'New Team' });
+        .send({ name: 'New Squad' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.teamId).toBe(10);
+      expect(res.body.squadId).toBe(10);
     });
 
     it('rejects empty name', async () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .post('/api/organizations/1/teams')
+        .post('/api/workspaces/1/squads')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: '' });
 
       expect(res.status).toBe(400);
     });
 
-    it('rejects when org not found', async () => {
+    it('rejects when workspace not found', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]); // no org
+      c2_query.mockResolvedValueOnce([]); // no workspace
 
       const res = await request(app)
-        .post('/api/organizations/1/teams')
+        .post('/api/workspaces/1/squads')
         .set('Authorization', 'Bearer valid-token')
-        .send({ name: 'Team' });
+        .send({ name: 'Squad' });
 
       expect(res.status).toBe(404);
     });
   });
 
-  // ── PUT /api/teams/:id ────────────────────────────────────
+  // ── PUT /api/squads/:id ────────────────────────────────────
 
-  describe('PUT /api/teams/:id', () => {
-    it('renames team for creator', async () => {
+  describe('PUT /api/squads/:id', () => {
+    it('renames squad for creator', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: 'other@test.com' }]) // team check
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: 'other@test.com' }]) // squad check
         .mockResolvedValueOnce([]); // UPDATE
 
       const res = await request(app)
-        .put('/api/teams/1')
+        .put('/api/squads/1')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: 'Renamed' });
 
@@ -117,19 +117,19 @@ describe('Team Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1, created_by: 999, owner: 'other@test.com' }]);
 
       const res = await request(app)
-        .put('/api/teams/1')
+        .put('/api/squads/1')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: 'Renamed' });
 
       expect(res.status).toBe(403);
     });
 
-    it('returns 404 for missing team', async () => {
+    it('returns 404 for missing squad', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]); // no team
+      c2_query.mockResolvedValueOnce([]); // no squad
 
       const res = await request(app)
-        .put('/api/teams/999')
+        .put('/api/squads/999')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: 'Test' });
 
@@ -140,7 +140,7 @@ describe('Team Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .put('/api/teams/1')
+        .put('/api/squads/1')
         .set('Authorization', 'Bearer valid-token')
         .send({ name: '' });
 
@@ -148,17 +148,17 @@ describe('Team Routes', () => {
     });
   });
 
-  // ── DELETE /api/teams/:id ─────────────────────────────────
+  // ── DELETE /api/squads/:id ─────────────────────────────────
 
-  describe('DELETE /api/teams/:id', () => {
-    it('deletes team for creator', async () => {
+  describe('DELETE /api/squads/:id', () => {
+    it('deletes squad for creator', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: 'other@test.com' }])
         .mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .delete('/api/teams/1')
+        .delete('/api/squads/1')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -170,26 +170,26 @@ describe('Team Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1, created_by: 999, owner: 'other@test.com' }]);
 
       const res = await request(app)
-        .delete('/api/teams/1')
+        .delete('/api/squads/1')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
   });
 
-  // ── GET /api/teams/:id/members ────────────────────────────
+  // ── GET /api/squads/:id/members ────────────────────────────
 
-  describe('GET /api/teams/:id/members', () => {
-    it('returns members for team creator', async () => {
+  describe('GET /api/squads/:id/members', () => {
+    it('returns members for squad creator', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: null }]) // team check
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: null }]) // squad check
         .mockResolvedValueOnce([
-          { id: 1, user_id: 1, name: 'testuser', email: 'test@example.com', role: 'owner', can_read: true, can_write: true, can_create_page: true, can_create_project: true, can_manage_members: true, can_delete_version: true, joined_at: '2026-01-01' },
+          { id: 1, user_id: 1, name: 'testuser', email: 'test@example.com', role: 'owner', can_read: true, can_write: true, can_create_log: true, can_create_archive: true, can_manage_members: true, can_delete_version: true, joined_at: '2026-01-01' },
         ]);
 
       const res = await request(app)
-        .get('/api/teams/1/members')
+        .get('/api/squads/1/members')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -199,25 +199,25 @@ describe('Team Routes', () => {
     it('rejects non-member', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: 999, owner: 'other@test.com' }]) // team found, not creator/owner
+        .mockResolvedValueOnce([{ id: 1, created_by: 999, owner: 'other@test.com' }]) // squad found, not creator/owner
         .mockResolvedValueOnce([]); // not a member
 
       const res = await request(app)
-        .get('/api/teams/1/members')
+        .get('/api/squads/1/members')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
   });
 
-  // ── POST /api/teams/:id/members/invite ────────────────────
+  // ── POST /api/squads/:id/members/invite ────────────────────
 
-  describe('POST /api/teams/:id/members/invite', () => {
+  describe('POST /api/squads/:id/members/invite', () => {
     it('invites user when manager', async () => {
       mockAuthenticated();
-      // canManageTeam queries
+      // canManageSquad queries
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: null }]) // team check
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: null }]) // squad check
         // target user exists
         .mockResolvedValueOnce([{ id: 2 }])
         // not already a member
@@ -228,7 +228,7 @@ describe('Team Routes', () => {
         .mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .post('/api/teams/1/members/invite')
+        .post('/api/squads/1/members/invite')
         .set('Authorization', 'Bearer valid-token')
         .send({ userId: 2 });
 
@@ -244,7 +244,7 @@ describe('Team Routes', () => {
         .mockResolvedValueOnce([{ id: 1 }]); // already member
 
       const res = await request(app)
-        .post('/api/teams/1/members/invite')
+        .post('/api/squads/1/members/invite')
         .set('Authorization', 'Bearer valid-token')
         .send({ userId: 2 });
 
@@ -255,7 +255,7 @@ describe('Team Routes', () => {
       mockAuthenticated();
 
       const res = await request(app)
-        .post('/api/teams/1/members/invite')
+        .post('/api/squads/1/members/invite')
         .set('Authorization', 'Bearer valid-token')
         .send({ userId: 'abc' });
 
@@ -269,7 +269,7 @@ describe('Team Routes', () => {
     it('returns pending invitations for user', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([
-        { id: 1, team_id: 1, team_name: 'Alpha', org_name: 'Org', invited_by_name: 'admin', role: 'member', created_at: '2026-01-01' },
+        { id: 1, squad_id: 1, squad_name: 'Alpha', workspace_name: 'Workspace', invited_by_name: 'admin', role: 'member', created_at: '2026-01-01' },
       ]);
 
       const res = await request(app)
@@ -286,11 +286,11 @@ describe('Team Routes', () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{
-          id: 1, team_id: 1, invited_user_id: TEST_USER.id, invited_by: 2, role: 'member',
-          can_read: true, can_write: false, can_create_page: false, can_create_project: false,
+          id: 1, squad_id: 1, invited_user_id: TEST_USER.id, invited_by: 2, role: 'member',
+          can_read: true, can_write: false, can_create_log: false, can_create_archive: false,
           can_manage_members: false, can_delete_version: false, status: 'pending',
         }])
-        .mockResolvedValueOnce([])  // INSERT team_members
+        .mockResolvedValueOnce([])  // INSERT squad_members
         .mockResolvedValueOnce([]); // UPDATE invitation
 
       const res = await request(app)
@@ -304,7 +304,7 @@ describe('Team Routes', () => {
     it('rejects invitation for another user', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([{
-        id: 1, team_id: 1, invited_user_id: 999, invited_by: 2, role: 'member', status: 'pending',
+        id: 1, squad_id: 1, invited_user_id: 999, invited_by: 2, role: 'member', status: 'pending',
       }]);
 
       const res = await request(app)
@@ -342,22 +342,22 @@ describe('Team Routes', () => {
     });
   });
 
-  // ── GET /api/teams/:id/permissions ────────────────────────
+  // ── GET /api/squads/:id/permissions ────────────────────────
 
-  describe('GET /api/teams/:id/permissions', () => {
-    it('returns permissions for org owner', async () => {
+  describe('GET /api/squads/:id/permissions', () => {
+    it('returns permissions for workspace owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // team found, user is owner
-        .mockResolvedValueOnce([{ create_project: true, create_page: true }]);  // perms
+        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // squad found, user is owner
+        .mockResolvedValueOnce([{ create_archive: true, create_log: true }]);  // perms
 
       const res = await request(app)
-        .get('/api/teams/1/permissions')
+        .get('/api/squads/1/permissions')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.permissions.create_project).toBe(true);
+      expect(res.body.permissions.create_archive).toBe(true);
     });
 
     it('returns defaults when no permissions row exists', async () => {
@@ -367,12 +367,12 @@ describe('Team Routes', () => {
         .mockResolvedValueOnce([]);  // no perms row
 
       const res = await request(app)
-        .get('/api/teams/1/permissions')
+        .get('/api/squads/1/permissions')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
-      expect(res.body.permissions.create_project).toBe(false);
-      expect(res.body.permissions.create_page).toBe(true);
+      expect(res.body.permissions.create_archive).toBe(false);
+      expect(res.body.permissions.create_log).toBe(true);
     });
 
     it('rejects non-owner', async () => {
@@ -380,38 +380,38 @@ describe('Team Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1, owner: 'other@example.com' }]);
 
       const res = await request(app)
-        .get('/api/teams/1/permissions')
+        .get('/api/squads/1/permissions')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
 
-    it('returns 404 for unknown team', async () => {
+    it('returns 404 for unknown squad', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([]);
 
       const res = await request(app)
-        .get('/api/teams/999/permissions')
+        .get('/api/squads/999/permissions')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(404);
     });
   });
 
-  // ── PUT /api/teams/:id/permissions ────────────────────────
+  // ── PUT /api/squads/:id/permissions ────────────────────────
 
-  describe('PUT /api/teams/:id/permissions', () => {
-    it('updates existing permissions for org owner', async () => {
+  describe('PUT /api/squads/:id/permissions', () => {
+    it('updates existing permissions for workspace owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // team found, user is owner
+        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // squad found, user is owner
         .mockResolvedValueOnce([{ id: 10 }])  // existing row
         .mockResolvedValueOnce([]);            // UPDATE
 
       const res = await request(app)
-        .put('/api/teams/1/permissions')
+        .put('/api/squads/1/permissions')
         .set('Authorization', 'Bearer valid-token')
-        .send({ create_project: true });
+        .send({ create_archive: true });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -425,9 +425,9 @@ describe('Team Routes', () => {
         .mockResolvedValueOnce([]);  // INSERT
 
       const res = await request(app)
-        .put('/api/teams/1/permissions')
+        .put('/api/squads/1/permissions')
         .set('Authorization', 'Bearer valid-token')
-        .send({ create_project: true, create_page: false });
+        .send({ create_archive: true, create_log: false });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -438,26 +438,26 @@ describe('Team Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1, owner: 'other@example.com' }]);
 
       const res = await request(app)
-        .put('/api/teams/1/permissions')
+        .put('/api/squads/1/permissions')
         .set('Authorization', 'Bearer valid-token')
-        .send({ create_project: true });
+        .send({ create_archive: true });
 
       expect(res.status).toBe(403);
     });
   });
 
-  // ── PUT /api/teams/:id/members/:userId ────────────────────
+  // ── PUT /api/squads/:id/members/:userId ────────────────────
 
-  describe('PUT /api/teams/:id/members/:userId', () => {
+  describe('PUT /api/squads/:id/members/:userId', () => {
     it('updates member role with manage permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam: team found
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad: squad found
         .mockResolvedValueOnce([{ id: 50, role: 'member' }])  // member found
         .mockResolvedValueOnce([]);  // UPDATE
 
       const res = await request(app)
-        .put('/api/teams/1/members/2')
+        .put('/api/squads/1/members/2')
         .set('Authorization', 'Bearer valid-token')
         .send({ can_write: true });
 
@@ -470,7 +470,7 @@ describe('Team Routes', () => {
       c2_query.mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }]);
 
       const res = await request(app)
-        .put(`/api/teams/1/members/${TEST_USER.id}`)
+        .put(`/api/squads/1/members/${TEST_USER.id}`)
         .set('Authorization', 'Bearer valid-token')
         .send({ can_write: true });
 
@@ -478,14 +478,14 @@ describe('Team Routes', () => {
       expect(res.body.message).toContain('your own');
     });
 
-    it('prevents modifying a team owner', async () => {
+    it('prevents modifying a squad owner', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])
         .mockResolvedValueOnce([{ id: 50, role: 'owner' }]);  // target is owner
 
       const res = await request(app)
-        .put('/api/teams/1/members/2')
+        .put('/api/squads/1/members/2')
         .set('Authorization', 'Bearer valid-token')
         .send({ can_write: false });
 
@@ -495,19 +495,19 @@ describe('Team Routes', () => {
 
     it('prevents privilege escalation by non-creator', async () => {
       mockAuthenticated();
-      // canManageTeam: user is not owner/creator but has can_manage_members
+      // canManageSquad: user is not owner/creator but has can_manage_members
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // team (not owner/creator)
-        .mockResolvedValueOnce([{ can_manage_members: true }])  // membership check in canManageTeam
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // squad (not owner/creator)
+        .mockResolvedValueOnce([{ can_manage_members: true }])  // membership check in canManageSquad
         .mockResolvedValueOnce([{ id: 50, role: 'member' }]);   // target member
 
       const res = await request(app)
-        .put('/api/teams/1/members/2')
+        .put('/api/squads/1/members/2')
         .set('Authorization', 'Bearer valid-token')
         .send({ can_manage_members: true });
 
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('org owners');
+      expect(res.body.message).toContain('workspace owners');
     });
 
     it('rejects without management permission', async () => {
@@ -517,7 +517,7 @@ describe('Team Routes', () => {
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)
-        .put('/api/teams/1/members/2')
+        .put('/api/squads/1/members/2')
         .set('Authorization', 'Bearer valid-token')
         .send({ can_read: true });
 
@@ -525,32 +525,32 @@ describe('Team Routes', () => {
     });
   });
 
-  // ── DELETE /api/teams/:id/members/:userId ─────────────────
+  // ── DELETE /api/squads/:id/members/:userId ─────────────────
 
-  describe('DELETE /api/teams/:id/members/:userId', () => {
+  describe('DELETE /api/squads/:id/members/:userId', () => {
     it('removes a member', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad
         .mockResolvedValueOnce([{ role: 'member' }])  // member found, not owner
         .mockResolvedValueOnce([]);                    // DELETE
 
       const res = await request(app)
-        .delete('/api/teams/1/members/2')
+        .delete('/api/squads/1/members/2')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
     });
 
-    it('prevents removing a team owner', async () => {
+    it('prevents removing a squad owner', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])
         .mockResolvedValueOnce([{ role: 'owner' }]);  // target is owner
 
       const res = await request(app)
-        .delete('/api/teams/1/members/2')
+        .delete('/api/squads/1/members/2')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
@@ -564,24 +564,24 @@ describe('Team Routes', () => {
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)
-        .delete('/api/teams/1/members/2')
+        .delete('/api/squads/1/members/2')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
   });
 
-  // ── GET /api/teams/:id/invitations ────────────────────────
+  // ── GET /api/squads/:id/invitations ────────────────────────
 
-  describe('GET /api/teams/:id/invitations', () => {
-    it('returns pending invitations for team manager', async () => {
+  describe('GET /api/squads/:id/invitations', () => {
+    it('returns pending invitations for squad manager', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad
         .mockResolvedValueOnce([{ id: 10, name: 'Invited User', email: 'inv@example.com' }]);   // invitations
 
       const res = await request(app)
-        .get('/api/teams/1/invitations')
+        .get('/api/squads/1/invitations')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(200);
@@ -596,18 +596,18 @@ describe('Team Routes', () => {
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)
-        .get('/api/teams/1/invitations')
+        .get('/api/squads/1/invitations')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(403);
     });
 
-    it('returns 404 for unknown team', async () => {
+    it('returns 404 for unknown squad', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]);  // team not found (canManageTeam returns null)
+      c2_query.mockResolvedValueOnce([]);  // squad not found (canManageSquad returns null)
 
       const res = await request(app)
-        .get('/api/teams/999/invitations')
+        .get('/api/squads/999/invitations')
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(404);
@@ -620,8 +620,8 @@ describe('Team Routes', () => {
     it('cancels a pending invitation', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 10, team_id: 1 }])  // invitation found
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageTeam
+        .mockResolvedValueOnce([{ id: 10, squad_id: 1 }])  // invitation found
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad
         .mockResolvedValueOnce([]);  // DELETE
 
       const res = await request(app)
@@ -646,8 +646,8 @@ describe('Team Routes', () => {
     it('rejects without management permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 10, team_id: 1 }])  // invitation found
-        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // team (not owner)
+        .mockResolvedValueOnce([{ id: 10, squad_id: 1 }])  // invitation found
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // squad (not owner)
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)

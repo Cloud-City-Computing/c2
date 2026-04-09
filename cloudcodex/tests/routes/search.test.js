@@ -20,7 +20,7 @@ describe('Search Routes', () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([{ total: 1 }]);
       c2_query.mockResolvedValueOnce([
-        { id: 1, title: 'Getting Started', created_at: '2026-01-01', author: 'user', project_name: 'Proj', html_content: '<p>Welcome to getting started</p>', char_count: 30 },
+        { id: 1, title: 'Getting Started', created_at: '2026-01-01', author: 'user', archive_name: 'Proj', html_content: '<p>Welcome to getting started</p>', char_count: 30 },
       ]);
 
       const res = await request(app)
@@ -102,8 +102,8 @@ describe('Search Routes', () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([{ total: 2 }]);
       c2_query.mockResolvedValueOnce([
-        { id: 1, title: 'Page One', created_at: '2026-01-01', author: 'user', project_name: 'Proj', excerpt: 'Hello', char_count: 100 },
-        { id: 2, title: 'Page Two', created_at: '2026-01-02', author: 'user', project_name: 'Proj', excerpt: 'World', char_count: 200 },
+        { id: 1, title: 'Log One', created_at: '2026-01-01', author: 'user', archive_name: 'Proj', excerpt: 'Hello', char_count: 100 },
+        { id: 2, title: 'Log Two', created_at: '2026-01-02', author: 'user', archive_name: 'Proj', excerpt: 'World', char_count: 200 },
       ]);
 
       const res = await request(app)
@@ -174,7 +174,7 @@ describe('Search Routes', () => {
         '10': [{ id: 2, name: 'other', color: '#ff0000' }],
         '20': [{ id: 3, name: 'hidden', color: '#00ff00' }],
       });
-      // Accessible pages query returns only page 10
+      // Accessible logs query returns only log 10
       c2_query.mockResolvedValueOnce([{ id: 10 }]);
 
       const res = await request(app)

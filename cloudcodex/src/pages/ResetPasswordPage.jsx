@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Reset Password Page
+ * Cloud Codex - Reset Password Log
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -35,7 +35,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="reset-password-page">
+      <div className="reset-password-log">
         <div className="reset-password-card">
           <h1>Invalid Link</h1>
           <p className="text-muted">This password reset link is invalid or missing a token.</p>
@@ -47,7 +47,7 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="reset-password-page">
+      <div className="reset-password-log">
         <div className="reset-password-card">
           <h1>Password Reset</h1>
           <p className="form-success">Your password has been reset successfully. You can now log in with your new password.</p>
@@ -58,7 +58,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="reset-password-page">
+    <div className="reset-password-log">
       <div className="reset-password-card">
         <h1>Set New Password</h1>
         {error && <p className="form-error">{error}</p>}

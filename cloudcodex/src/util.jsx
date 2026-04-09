@@ -79,40 +79,40 @@ export async function serverReq(reqType, url, data, headers = {}) {
   return response.json();
 }
 
-// --- Organization APIs ---
+// --- Workspace APIs ---
 
-export const fetchOrganizations = () => apiFetch('GET', '/api/organizations');
-export const createOrganization = (name, { teamName, projectName } = {}) => apiFetch('POST', '/api/organizations', { name, teamName, projectName });
-export const updateOrganization = (id, name) => apiFetch('PUT', `/api/organizations/${id}`, { name });
-export const deleteOrganization = (id) => apiFetch('DELETE', `/api/organizations/${id}`);
+export const fetchWorkspaces = () => apiFetch('GET', '/api/workspaces');
+export const createWorkspace = (name, { squadName, archiveName } = {}) => apiFetch('POST', '/api/workspaces', { name, squadName, archiveName });
+export const updateWorkspace = (id, name) => apiFetch('PUT', `/api/workspaces/${id}`, { name });
+export const deleteWorkspace = (id) => apiFetch('DELETE', `/api/workspaces/${id}`);
 
-// --- Team APIs ---
+// --- Squad APIs ---
 
-export const fetchTeams = (orgId) => apiFetch('GET', `/api/organizations/${orgId}/teams`);
-export const createTeam = (orgId, name, { projectName } = {}) => apiFetch('POST', `/api/organizations/${orgId}/teams`, { name, projectName });
+export const fetchSquads = (workspaceId) => apiFetch('GET', `/api/workspaces/${workspaceId}/squads`);
+export const createSquad = (workspaceId, name, { archiveName } = {}) => apiFetch('POST', `/api/workspaces/${workspaceId}/squads`, { name, archiveName });
 export const setupWorkspace = (opts) => apiFetch('POST', '/api/setup', opts);
-export const updateTeam = (id, name) => apiFetch('PUT', `/api/teams/${id}`, { name });
-export const deleteTeam = (id) => apiFetch('DELETE', `/api/teams/${id}`);
+export const updateSquad = (id, name) => apiFetch('PUT', `/api/squads/${id}`, { name });
+export const deleteSquad = (id) => apiFetch('DELETE', `/api/squads/${id}`);
 
 // --- Permission APIs ---
 
 export const fetchPermissions = () => apiFetch('GET', '/api/permissions');
 export const fetchUserPermissions = (userId) => apiFetch('GET', `/api/permissions/${userId}`);
 export const updatePermissions = (userId, perms) => apiFetch('PUT', `/api/permissions/${userId}`, perms);
-export const fetchTeamPermissions = (teamId) => apiFetch('GET', `/api/teams/${teamId}/permissions`);
-export const updateTeamPermissions = (teamId, perms) => apiFetch('PUT', `/api/teams/${teamId}/permissions`, perms);
+export const fetchSquadPermissions = (squadId) => apiFetch('GET', `/api/squads/${squadId}/permissions`);
+export const updateSquadPermissions = (squadId, perms) => apiFetch('PUT', `/api/squads/${squadId}/permissions`, perms);
 
-// --- Team Member APIs ---
+// --- Squad Member APIs ---
 
-export const fetchTeamMembers = (teamId) => apiFetch('GET', `/api/teams/${teamId}/members`);
-export const inviteTeamMember = (teamId, data) => apiFetch('POST', `/api/teams/${teamId}/members/invite`, data);
-export const updateTeamMember = (teamId, userId, data) => apiFetch('PUT', `/api/teams/${teamId}/members/${userId}`, data);
-export const removeTeamMember = (teamId, userId) => apiFetch('DELETE', `/api/teams/${teamId}/members/${userId}`);
+export const fetchSquadMembers = (squadId) => apiFetch('GET', `/api/squads/${squadId}/members`);
+export const inviteSquadMember = (squadId, data) => apiFetch('POST', `/api/squads/${squadId}/members/invite`, data);
+export const updateSquadMember = (squadId, userId, data) => apiFetch('PUT', `/api/squads/${squadId}/members/${userId}`, data);
+export const removeSquadMember = (squadId, userId) => apiFetch('DELETE', `/api/squads/${squadId}/members/${userId}`);
 
 // --- Invitation APIs ---
 
 export const fetchMyInvitations = () => apiFetch('GET', '/api/invitations');
-export const fetchTeamInvitations = (teamId) => apiFetch('GET', `/api/teams/${teamId}/invitations`);
+export const fetchSquadInvitations = (squadId) => apiFetch('GET', `/api/squads/${squadId}/invitations`);
 export const acceptInvitation = (invId) => apiFetch('POST', `/api/invitations/${invId}/accept`);
 export const declineInvitation = (invId) => apiFetch('POST', `/api/invitations/${invId}/decline`);
 export const cancelInvitation = (invId) => apiFetch('DELETE', `/api/invitations/${invId}`);
@@ -125,10 +125,10 @@ export const searchUsers = (q) => apiFetch('GET', `/api/users/search?q=${encodeU
 
 export const fetchAdminStatus = () => apiFetch('GET', '/api/admin/status');
 export const fetchAdminStats = () => apiFetch('GET', '/api/admin/stats');
-export const fetchAdminOrganizations = () => apiFetch('GET', '/api/admin/organizations');
-export const createAdminOrganization = (name, ownerEmail, { teamName, projectName } = {}) =>
-  apiFetch('POST', '/api/admin/organizations', { name, ownerEmail, teamName, projectName });
-export const deleteAdminOrganization = (id) => apiFetch('DELETE', `/api/admin/organizations/${id}`);
+export const fetchAdminWorkspaces = () => apiFetch('GET', '/api/admin/workspaces');
+export const createAdminWorkspace = (name, ownerEmail, { squadName, archiveName } = {}) =>
+  apiFetch('POST', '/api/admin/workspaces', { name, ownerEmail, squadName, archiveName });
+export const deleteAdminWorkspace = (id) => apiFetch('DELETE', `/api/admin/workspaces/${id}`);
 export const fetchAdminUsers = () => apiFetch('GET', '/api/admin/users');
 export const deleteAdminUser = (id) => apiFetch('DELETE', `/api/admin/users/${id}`);
 export const fetchAdminInvitations = () => apiFetch('GET', '/api/admin/invitations');
@@ -138,77 +138,77 @@ export const validateInviteToken = (token) => apiFetch('GET', `/api/invite/valid
 
 // --- Browse / Search APIs ---
 
-export const browsePages = ({ page = 1, limit = 12, sort = 'newest' } = {}) =>
+export const browseLogs = ({ page = 1, limit = 12, sort = 'newest' } = {}) =>
   apiFetch('GET', `/api/browse?page=${page}&limit=${limit}&sort=${encodeURIComponent(sort)}`);
 
-export const searchPages = ({ query, page = 1, limit = 12 } = {}) =>
+export const searchLogs = ({ query, page = 1, limit = 12 } = {}) =>
   apiFetch('GET', `/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
 
 export const fetchPresence = () => apiFetch('GET', '/api/presence');
 
 // --- Comment APIs ---
 
-export const fetchComments = (pageId, status) => {
-  let url = `/api/pages/${pageId}/comments`;
+export const fetchComments = (logId, status) => {
+  let url = `/api/logs/${logId}/comments`;
   if (status) url += `?status=${encodeURIComponent(status)}`;
   return apiFetch('GET', url);
 };
-export const fetchCommentCount = (pageId) => apiFetch('GET', `/api/pages/${pageId}/comments/count`);
-export const createComment = (pageId, data) => apiFetch('POST', `/api/pages/${pageId}/comments`, data);
+export const fetchCommentCount = (logId) => apiFetch('GET', `/api/logs/${logId}/comments/count`);
+export const createComment = (logId, data) => apiFetch('POST', `/api/logs/${logId}/comments`, data);
 export const updateComment = (commentId, data) => apiFetch('PUT', `/api/comments/${commentId}`, data);
 export const resolveComment = (commentId, status) => apiFetch('POST', `/api/comments/${commentId}/resolve`, { status });
 export const reopenComment = (commentId) => apiFetch('POST', `/api/comments/${commentId}/reopen`);
 export const deleteComment = (commentId) => apiFetch('DELETE', `/api/comments/${commentId}`);
-export const clearAllComments = (pageId) => apiFetch('DELETE', `/api/pages/${pageId}/comments`);
+export const clearAllComments = (logId) => apiFetch('DELETE', `/api/logs/${logId}/comments`);
 export const addCommentReply = (commentId, content) => apiFetch('POST', `/api/comments/${commentId}/replies`, { content });
 export const deleteCommentReply = (replyId) => apiFetch('DELETE', `/api/replies/${replyId}`);
 
-// --- Project APIs ---
+// --- Archive APIs ---
 
-export const fetchProjects = () => apiFetch('GET', '/api/projects');
-export const createProject = (name, team_id) => apiFetch('POST', '/api/projects', { name, team_id });
-export const updateProject = (id, name) => apiFetch('PUT', `/api/projects/${id}`, { name });
-export const deleteProject = (id) => apiFetch('DELETE', `/api/projects/${id}`);
-export const manageProjectAccess = (id, userId, accessType, action) =>
-  apiFetch('POST', `/api/projects/${id}/access`, { userId, accessType, action });
+export const fetchArchives = () => apiFetch('GET', '/api/archives');
+export const createArchive = (name, squad_id) => apiFetch('POST', '/api/archives', { name, squad_id });
+export const updateArchive = (id, name) => apiFetch('PUT', `/api/archives/${id}`, { name });
+export const deleteArchive = (id) => apiFetch('DELETE', `/api/archives/${id}`);
+export const manageArchiveAccess = (id, userId, accessType, action) =>
+  apiFetch('POST', `/api/archives/${id}/access`, { userId, accessType, action });
 
-// --- Page APIs ---
+// --- Log APIs ---
 
-export const fetchPages = (projectId) => apiFetch('GET', `/api/projects/${projectId}/pages`);
-export const createPage = (projectId, title, parent_id) =>
-  apiFetch('POST', `/api/projects/${projectId}/pages`, { title, parent_id });
-export const updatePage = (projectId, pageId, data) =>
-  apiFetch('PUT', `/api/projects/${projectId}/pages/${pageId}`, data);
-export const deletePage = (projectId, pageId) =>
-  apiFetch('DELETE', `/api/projects/${projectId}/pages/${pageId}`);
+export const fetchLogs = (archiveId) => apiFetch('GET', `/api/archives/${archiveId}/logs`);
+export const createLog = (archiveId, title, parent_id) =>
+  apiFetch('POST', `/api/archives/${archiveId}/logs`, { title, parent_id });
+export const updateLog = (archiveId, logId, data) =>
+  apiFetch('PUT', `/api/archives/${archiveId}/logs/${logId}`, data);
+export const deleteLog = (archiveId, logId) =>
+  apiFetch('DELETE', `/api/archives/${archiveId}/logs/${logId}`);
 
 // --- Document APIs ---
 
 export const fetchDocument = (docId) => apiFetch('GET', `/api/document?doc_id=${docId}`);
 export const saveDocument = (docId, htmlContent) =>
   apiFetch('POST', '/api/save-document', { doc_id: docId, html_content: htmlContent });
-export const updatePageTitle = (pageId, title) =>
-  apiFetch('PUT', `/api/document/${pageId}/title`, { title });
+export const updateLogTitle = (logId, title) =>
+  apiFetch('PUT', `/api/document/${logId}/title`, { title });
 
 // --- Version APIs ---
 
-export const fetchVersions = (pageId) => apiFetch('GET', `/api/document/${pageId}/versions`);
-export const fetchVersion = (pageId, versionId) =>
-  apiFetch('GET', `/api/document/${pageId}/versions/${versionId}`);
-export const restoreVersion = (pageId, versionId) =>
-  apiFetch('POST', `/api/document/${pageId}/versions/${versionId}/restore`);
-export const deleteVersion = (pageId, versionId) =>
-  apiFetch('DELETE', `/api/document/${pageId}/versions/${versionId}`);
-export const publishVersion = (pageId, { title, notes } = {}) =>
-  apiFetch('POST', `/api/document/${pageId}/publish`, { title, notes });
+export const fetchVersions = (logId) => apiFetch('GET', `/api/document/${logId}/versions`);
+export const fetchVersion = (logId, versionId) =>
+  apiFetch('GET', `/api/document/${logId}/versions/${versionId}`);
+export const restoreVersion = (logId, versionId) =>
+  apiFetch('POST', `/api/document/${logId}/versions/${versionId}/restore`);
+export const deleteVersion = (logId, versionId) =>
+  apiFetch('DELETE', `/api/document/${logId}/versions/${versionId}`);
+export const publishVersion = (logId, { title, notes } = {}) =>
+  apiFetch('POST', `/api/document/${logId}/publish`, { title, notes });
 
 // --- Upload API ---
 
 /**
- * Upload a document file to create a new page in a project.
+ * Upload a document file to create a new log in a archive.
  * Uses FormData (multipart) instead of JSON.
  */
-export async function uploadDocument(projectId, file, parentId) {
+export async function uploadDocument(archiveId, file, parentId) {
   const token = getSessionTokenFromCookie();
   const formData = new FormData();
   formData.append('file', file);
@@ -217,7 +217,7 @@ export async function uploadDocument(projectId, file, parentId) {
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const response = await fetch(`/api/projects/${projectId}/pages/upload`, {
+  const response = await fetch(`/api/archives/${archiveId}/logs/upload`, {
     method: 'POST',
     headers,
     body: formData,
@@ -239,12 +239,12 @@ export async function uploadDocument(projectId, file, parentId) {
 /**
  * Export/download a document in the specified format.
  * Triggers a browser download of the resulting file.
- * @param {number} pageId
+ * @param {number} logId
  * @param {'html'|'md'|'txt'|'docx'|'pdf'} format
  * @param {string} [title] - Document title for PDF filename
  * @param {string} [htmlContent] - HTML content for client-side PDF generation
  */
-export async function exportDocument(pageId, format, title, htmlContent) {
+export async function exportDocument(logId, format, title, htmlContent) {
   // PDF uses the browser's native print-to-PDF via a print window.
   // This gives perfect text selection, formatting, and pagination.
   if (format === 'pdf') {
@@ -297,7 +297,7 @@ export async function exportDocument(pageId, format, title, htmlContent) {
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const response = await fetch(`/api/document/${pageId}/export?format=${format}`, {
+  const response = await fetch(`/api/document/${logId}/export?format=${format}`, {
     method: 'GET',
     headers,
   });

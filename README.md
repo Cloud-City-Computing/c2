@@ -12,9 +12,9 @@
 
 ## About
 
-Cloud Codex is a self-hosted documentation platform that lets teams write, organize, and collaborate on documents in real time. Multiple users can edit the same page simultaneously with conflict-free merging, leave inline comments and annotations, manage access through organizations and teams, and track change history with publishable versions — all from a modern browser-based interface.
+Cloud Codex is a self-hosted documentation platform that lets squads write, organize, and collaborate on documents in real time. Multiple users can edit the same log simultaneously with conflict-free merging, leave inline comments and annotations, manage access through workspaces and squads, and track change history with publishable versions — all from a modern browser-based interface.
 
-The project is designed for organizations that want full control over their documentation infrastructure without relying on third-party SaaS platforms. It runs entirely on your own hardware or cloud with a single Docker container for the database and a Node.js application server.
+The archive is designed for workspaces that want full control over their documentation infrastructure without relying on third-party SaaS platforms. It runs entirely on your own hardware or cloud with a single Docker container for the database and a Node.js application server.
 
 ## Features
 
@@ -22,28 +22,28 @@ The project is designed for organizations that want full control over their docu
 Multiple users can edit the same document simultaneously. Changes are merged automatically using Yjs CRDTs (Conflict-free Replicated Data Types), ensuring every user sees a consistent view without manual conflict resolution. Remote cursors and text selections are displayed in real time so collaborators can see exactly where others are working.
 
 ### Presence Awareness
-Live presence indicators show which users are currently viewing or editing each page. Avatar badges appear throughout the interface — in the page tree sidebar, the editor toolbar, and the top navigation bar — giving teams immediate visibility into who is active.
+Live presence indicators show which users are currently viewing or editing each log. Avatar badges appear throughout the interface — in the log tree sidebar, the editor toolbar, and the top navigation bar — giving squads immediate visibility into who is active.
 
 ### Rich Text & Markdown Editing
 Documents can be authored in either a full WYSIWYG rich text editor (powered by Tiptap) or a Markdown source editor with a live rendered preview. Users can switch between modes at any time, and their preference is saved across sessions.
 
 ### Inline Comments & Annotations
-Team members can highlight text and attach comments anchored to specific passages. Comments support a tag system (comment, suggestion, question, issue, note) and a status workflow (open → resolved / dismissed). Threaded replies enable focused discussions, and all comment activity is broadcast in real time via WebSocket.
+Squad members can highlight text and attach comments anchored to specific passages. Comments support a tag system (comment, suggestion, question, issue, note) and a status workflow (open → resolved / dismissed). Threaded replies enable focused discussions, and all comment activity is broadcast in real time via WebSocket.
 
-### Organizations & Teams
-Content is organized under organizations, each managed by a single owner. Within an organization, teams group users with role-based membership (member, admin, owner). Team invitations track pending, accepted, and declined states. Granular per-member permissions control read, write, page creation, project creation, member management, version deletion, and publishing rights.
+### Workspaces & Squads
+Content is organized under workspaces, each managed by a single owner. Within a workspace, squads group users with role-based membership (member, admin, owner). Squad invitations track pending, accepted, and declined states. Granular per-member permissions control read, write, log creation, archive creation, member management, version deletion, and publishing rights.
 
-### Projects & Nested Page Trees
-Projects serve as top-level containers for related pages and can optionally be scoped to a specific team. Pages are arranged in a hierarchical parent-child tree structure with breadcrumb navigation. Access control lists (JSON ACLs) can be set at both the project and individual page level.
+### Archives & Nested Log Trees
+Archives serve as top-level containers for related logs and can optionally be scoped to a specific squad. Logs are arranged in a hierarchical parent-child tree structure with breadcrumb navigation. Access control lists (JSON ACLs) can be set at both the archive and individual log level.
 
 ### Version History
 Any authorized user can publish a named version snapshot with release notes. The version browser lets users browse, preview, and compare historical snapshots. Previous versions can be restored at any time, with all content re-sanitized on restoration.
 
 ### Document Import & Export
-Pages can be created by uploading HTML, Markdown, plain text, PDF, or Word DOCX files. All imported formats are automatically converted to sanitized HTML. Pages can also be exported as DOCX documents.
+Logs can be created by uploading HTML, Markdown, plain text, PDF, or Word DOCX files. All imported formats are automatically converted to sanitized HTML. Logs can also be exported as DOCX documents.
 
 ### Full-Text Search
-Search is powered by a MySQL FULLTEXT index across page titles and plain-text content. Results are scoped to pages the current user has permission to access and are returned with paginated snippet previews.
+Search is powered by a MySQL FULLTEXT index across log titles and plain-text content. Results are scoped to logs the current user has permission to access and are returned with paginated snippet previews.
 
 ### User Profiles & Preferences
 Users can upload a profile picture (automatically resized to 256×256 WebP), update their name, email, and password, and customize appearance preferences including accent color, font size, UI density, sidebar behavior, and default editor mode.
@@ -52,7 +52,7 @@ Users can upload a profile picture (automatically resized to 256×256 WebP), upd
 Authentication uses 64-character cryptographically random session tokens with a 7-day expiry. Password reset is handled via email-based token flow. Two-factor authentication supports both email OTP codes and TOTP authenticator apps (with QR code setup).
 
 ### Guided Onboarding
-A post-signup welcome wizard walks new users through creating their first organization, team, and project in a single guided flow.
+A post-signup welcome wizard walks new users through creating their first workspace, squad, and archive in a single guided flow.
 
 ---
 
@@ -66,7 +66,7 @@ A post-signup welcome wizard walks new users through creating their first organi
 | [React Router](https://reactrouter.com) 7 | Client-side routing |
 | [Vite](https://vite.dev) 7 | Build tool and dev server |
 | [Tiptap](https://tiptap.dev) | Headless rich text editor (ProseMirror-based) |
-| [Marked](https://marked.js.org) | Markdown → HTML parsing |
+| [Marked](https://marked.js.workspace) | Markdown → HTML parsing |
 | [Turndown](https://github.com/mixmark-io/turndown) | HTML → Markdown conversion |
 | [Yjs](https://yjs.dev) | CRDT framework for real-time sync |
 
@@ -197,7 +197,7 @@ The application will be available at **http://localhost:3000**.
 
 ### 4. Load sample data (optional)
 
-A seed script populates the database with an organization, three teams, eight projects, and ~60 pages of realistic content for testing search, pagination, and collaboration features.
+A seed script populates the database with a workspace, three squads, eight archives, and ~60 logs of realistic content for testing search, pagination, and collaboration features.
 
 ```bash
 mysql -u $DB_USER -p -h 127.0.0.1 c2 < seed.sql
@@ -207,15 +207,15 @@ All seed accounts use the password **`password`**.
 
 | Account | Email | Role / Notes |
 | --- | --- | --- |
-| `alice` | alice@acme.com | Organization owner. Engineering team owner. Full permissions (create teams, projects, pages). |
-| `bob` | bob@acme.com | Engineering and Operations member. Can create projects and pages. |
-| `carol` | carol@acme.com | Design team owner. Can create projects and pages. |
-| `dave` | dave@acme.com | Operations team owner. Can create projects and pages. |
-| `eve` | eve@acme.com | Engineering member and Data Pipeline lead. Can create pages only. |
+| `alice` | alice@acme.com | Workspace owner. Engineering squad owner. Full permissions (create squads, archives, logs). |
+| `bob` | bob@acme.com | Engineering and Operations member. Can create archives and logs. |
+| `carol` | carol@acme.com | Design squad owner. Can create archives and logs. |
+| `dave` | dave@acme.com | Operations squad owner. Can create archives and logs. |
+| `eve` | eve@acme.com | Engineering member and Data Pipeline lead. Can create logs only. |
 
-**Teams and projects:**
+**Squads and archives:**
 
-| Team | Owner | Projects |
+| Squad | Owner | Archives |
 | --- | --- | --- |
 | Engineering | alice | Platform API, Cloud Infrastructure, Mobile App, Data Pipeline |
 | Design | carol | Brand Guidelines, Website Redesign |
@@ -264,18 +264,18 @@ The MySQL database consists of 15 tables:
 
 | Table | Description |
 | --- | --- |
-| `organizations` | Top-level organizational units |
+| `workspaces` | Top-level workspace units |
 | `users` | User accounts, credentials, avatar URLs, and 2FA configuration |
 | `sessions` | Active login sessions with IP address and user-agent tracking |
 | `password_reset_tokens` | Time-limited tokens for password reset and 2FA setup flows |
 | `two_factor_codes` | Email-based one-time password codes |
-| `teams` | Team groups within organizations |
-| `team_members` | Membership records with role and granular permission flags |
-| `team_invitations` | Pending, accepted, and declined team invitations |
+| `squads` | Squad groups within workspaces |
+| `squad_members` | Membership records with role and granular permission flags |
+| `squad_invitations` | Pending, accepted, and declined squad invitations |
 | `permissions` | Global user-level permission flags |
-| `team_permissions` | Team-level default permission settings |
-| `projects` | Document projects with JSON-based access control lists |
-| `pages` | Document pages with FULLTEXT-indexed content |
+| `squad_permissions` | Squad-level default permission settings |
+| `archives` | Document archives with JSON-based access control lists |
+| `logs` | Document logs with FULLTEXT-indexed content |
 | `versions` | Published version snapshots with release notes |
 | `comments` | Inline comments anchored to text ranges |
 | `comment_replies` | Threaded replies on comments |
@@ -284,13 +284,13 @@ The schema is automatically created on first startup via `init.sql` mounted into
 
 ---
 
-## Project Structure
+## Archive Structure
 
 ```
 c2/
 ├── docker-compose.yaml       # MySQL 8 container definition
 ├── init.sql                  # Database schema (runs on first startup)
-├── seed.sql                  # Optional sample data (~60 pages, 5 users)
+├── seed.sql                  # Optional sample data (~60 logs, 5 users)
 ├── start.sh                  # One-command startup script
 ├── .env.example              # Environment variable template
 │
@@ -307,11 +307,11 @@ c2/
     │   ├── auth.js           # Authentication, 2FA, password reset
     │   ├── avatars.js        # Profile picture upload and removal
     │   ├── comments.js       # Comments and replies CRUD
-    │   ├── documents.js      # Page content, versions, export
-    │   ├── organizations.js  # Organization management
-    │   ├── projects.js       # Projects and page tree operations
+    │   ├── documents.js      # Log content, versions, export
+    │   ├── workspaces.js  # Workspace management
+    │   ├── archives.js       # Archives and log tree operations
     │   ├── search.js         # Full-text search and presence
-    │   ├── teams.js          # Teams, members, invitations
+    │   ├── squads.js          # Squads, members, invitations
     │   ├── upload.js         # Document file import
     │   └── helpers/          # Shared validators and access control
     │
@@ -324,7 +324,7 @@ c2/
     │   ├── main.jsx          # Entry point
     │   ├── index.css         # Global styles
     │   ├── components/       # Reusable UI components
-    │   ├── pages/            # Top-level page views
+    │   ├── logs/            # Top-level log views
     │   ├── page_layouts/     # Layout shells (sidebar, topbar, footer)
     │   └── hooks/            # Custom React hooks
     │
@@ -352,10 +352,10 @@ npm test
 | --- | --- | --- |
 | `auth.test.js` | 65 | Account creation, login, 2FA, password reset, sessions |
 | `comments.test.js` | 58 | Comments, replies, tags, status workflow, access control |
-| `documents.test.js` | 44 | Page save, publish, versions, restore, export |
-| `teams.test.js` | 43 | Team CRUD, invitations, member roles, permissions |
-| `projects.test.js` | 28 | Project and page tree, access control, page operations |
-| `organizations.test.js` | 13 | Organization CRUD, ownership transfer |
+| `documents.test.js` | 44 | Log save, publish, versions, restore, export |
+| `squads.test.js` | 43 | Squad CRUD, invitations, member roles, permissions |
+| `archives.test.js` | 28 | Archive and log tree, access control, log operations |
+| `workspaces.test.js` | 13 | Workspace CRUD, ownership transfer |
 | `avatars.test.js` | 12 | Upload, replace, remove, validation, authorization |
 | `upload.test.js` | 9 | File import, format conversion, error handling |
 | `permissions.test.js` | 8 | Permission middleware, role fallbacks |

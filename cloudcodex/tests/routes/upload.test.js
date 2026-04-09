@@ -9,36 +9,36 @@ describe('Upload Routes', () => {
     resetMocks();
   });
 
-  // ── POST /api/projects/:projectId/pages/upload ────────────
+  // ── POST /api/archives/:archiveId/logs/upload ────────────
 
-  describe('POST /api/projects/:projectId/pages/upload', () => {
-    it('uploads an HTML file and creates a page', async () => {
+  describe('POST /api/archives/:archiveId/logs/upload', () => {
+    it('uploads an HTML file and creates a log', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ create_page: true }])  // requirePermission loads permissions
-        .mockResolvedValueOnce([{ id: 1 }])               // project write access check
-        .mockResolvedValueOnce({ insertId: 42 });          // INSERT page
+        .mockResolvedValueOnce([{ create_log: true }])  // requirePermission loads permissions
+        .mockResolvedValueOnce([{ id: 1 }])               // archive write access check
+        .mockResolvedValueOnce({ insertId: 42 });          // INSERT log
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .attach('file', Buffer.from('<h1>Hello</h1>'), 'test.html');
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.pageId).toBe(42);
+      expect(res.body.logId).toBe(42);
       expect(res.body.title).toBe('test');
     });
 
     it('uploads a Markdown file and converts to HTML', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ create_page: true }])  // permissions
-        .mockResolvedValueOnce([{ id: 1 }])               // project write access
+        .mockResolvedValueOnce([{ create_log: true }])  // permissions
+        .mockResolvedValueOnce([{ id: 1 }])               // archive write access
         .mockResolvedValueOnce({ insertId: 43 });          // INSERT
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .attach('file', Buffer.from('# Title\n\nSome text'), 'readme.md');
 
@@ -50,12 +50,12 @@ describe('Upload Routes', () => {
     it('uploads a plain text file', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ create_page: true }])  // permissions
-        .mockResolvedValueOnce([{ id: 1 }])               // project write access
+        .mockResolvedValueOnce([{ create_log: true }])  // permissions
+        .mockResolvedValueOnce([{ id: 1 }])               // archive write access
         .mockResolvedValueOnce({ insertId: 44 });          // INSERT
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .attach('file', Buffer.from('Line 1\nLine 2'), 'notes.txt');
 
@@ -66,10 +66,10 @@ describe('Upload Routes', () => {
 
     it('rejects unsupported file types', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ create_page: true }]);  // permissions (multer rejects before route handler)
+      c2_query.mockResolvedValueOnce([{ create_log: true }]);  // permissions (multer rejects before route handler)
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .attach('file', Buffer.from('data'), 'image.png');
 
@@ -79,10 +79,10 @@ describe('Upload Routes', () => {
 
     it('rejects when no file is uploaded', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ create_page: true }]);  // permissions
+      c2_query.mockResolvedValueOnce([{ create_log: true }]);  // permissions
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .field('placeholder', 'value');
 
@@ -90,26 +90,26 @@ describe('Upload Routes', () => {
       expect(res.body.message).toContain('No file uploaded');
     });
 
-    it('rejects invalid projectId', async () => {
+    it('rejects invalid archiveId', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ create_page: true }]);  // permissions
+      c2_query.mockResolvedValueOnce([{ create_log: true }]);  // permissions
 
       const res = await request(app)
-        .post('/api/projects/abc/pages/upload')
+        .post('/api/archives/abc/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .attach('file', Buffer.from('<p>hi</p>'), 'test.html');
 
       expect(res.status).toBe(400);
     });
 
-    it('rejects without write access to project', async () => {
+    it('rejects without write access to archive', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ create_page: true }])  // permissions
-        .mockResolvedValueOnce([]);                        // project not found / no access
+        .mockResolvedValueOnce([{ create_log: true }])  // permissions
+        .mockResolvedValueOnce([]);                        // archive not found / no access
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .attach('file', Buffer.from('<p>hi</p>'), 'test.html');
 
@@ -120,7 +120,7 @@ describe('Upload Routes', () => {
       mockUnauthenticated();
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer bad-token')
         .attach('file', Buffer.from('<p>hi</p>'), 'test.html');
 
@@ -130,11 +130,11 @@ describe('Upload Routes', () => {
     it('rejects non-numeric parent_id', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ create_page: true }])  // permissions
-        .mockResolvedValueOnce([{ id: 1 }]);              // project write access
+        .mockResolvedValueOnce([{ create_log: true }])  // permissions
+        .mockResolvedValueOnce([{ id: 1 }]);              // archive write access
 
       const res = await request(app)
-        .post('/api/projects/1/pages/upload')
+        .post('/api/archives/1/logs/upload')
         .set('Authorization', 'Bearer valid-token')
         .attach('file', Buffer.from('<p>hi</p>'), 'test.html')
         .field('parent_id', 'abc');

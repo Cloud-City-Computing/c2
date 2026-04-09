@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { browsePages, searchPages } from '../util';
+import { browseLogs, searchLogs } from '../util';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
 
@@ -47,7 +47,7 @@ function ExploreCard({ item, isSearch, onClick, activeUsers }) {
         </div>
       </div>
       <div className="explore-card__meta">
-        {item.project_name && <span className="explore-card__project">{item.project_name}</span>}
+        {item.archive_name && <span className="explore-card__archive">{item.archive_name}</span>}
         {item.author && <span className="explore-card__author">{item.author}</span>}
         {date && <span className="explore-card__date">{date}</span>}
         {words !== null && <span className="explore-card__words">~{words.toLocaleString()} words</span>}
@@ -66,13 +66,13 @@ function ExploreCard({ item, isSearch, onClick, activeUsers }) {
 function Pagination({ page, totalPages, onPageChange }) {
   if (totalPages <= 1) return null;
 
-  const pages = [];
+  const logs = [];
   const maxVisible = 5;
   let start = Math.max(1, page - Math.floor(maxVisible / 2));
   const end = Math.min(totalPages, start + maxVisible - 1);
   if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1);
 
-  for (let i = start; i <= end; i++) pages.push(i);
+  for (let i = start; i <= end; i++) logs.push(i);
 
   return (
     <div className="explore-pagination">
@@ -89,7 +89,7 @@ function Pagination({ page, totalPages, onPageChange }) {
           {start > 2 && <span className="explore-pagination__dots">&hellip;</span>}
         </>
       )}
-      {pages.map(p => (
+      {logs.map(p => (
         <button
           key={p}
           className={`explore-pagination__num${p === page ? ' explore-pagination__num--active' : ''}`}
@@ -119,7 +119,7 @@ export default function ExploreBrowser() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
-  const { getPageUsers } = usePresence();
+  const { getLogUsers } = usePresence();
 
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('newest');
@@ -135,8 +135,8 @@ export default function ExploreBrowser() {
     setLoading(true);
     try {
       const res = q.trim()
-        ? await searchPages({ query: q.trim(), page: pg, limit: ITEMS_PER_PAGE })
-        : await browsePages({ page: pg, limit: ITEMS_PER_PAGE, sort: s });
+        ? await searchLogs({ query: q.trim(), page: pg, limit: ITEMS_PER_PAGE })
+        : await browseLogs({ page: pg, limit: ITEMS_PER_PAGE, sort: s });
       setResults(res.results || []);
       setTotal(res.total || 0);
       setTotalPages(res.totalPages || 0);
@@ -186,7 +186,7 @@ export default function ExploreBrowser() {
     <section className="explore-browser">
       <div className="explore-controls">
         <div className="explore-search-bar">
-          <svg className="explore-search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+          <svg className="explore-search-icon" xmlns="http://www.w3.workspace/2000/svg" width="18" height="18"
             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -210,7 +210,7 @@ export default function ExploreBrowser() {
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="title">By title</option>
-            <option value="project">By project</option>
+            <option value="archive">By archive</option>
           </select>
         </div>
       </div>
@@ -225,7 +225,7 @@ export default function ExploreBrowser() {
         <div className="explore-empty">
           {isSearch
             ? <p>No documents match &ldquo;{query.trim()}&rdquo;. Try a different search term.</p>
-            : <p>No documents yet. Head to Projects to create your first document.</p>}
+            : <p>No documents yet. Head to Archives to create your first document.</p>}
         </div>
       )}
 
@@ -235,7 +235,7 @@ export default function ExploreBrowser() {
             key={item.id}
             item={item}
             isSearch={isSearch}
-            activeUsers={getPageUsers(item.id)}
+            activeUsers={getLogUsers(item.id)}
             onClick={() => navigate(`/editor/${item.id}`)}
           />
         ))}

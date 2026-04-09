@@ -8,8 +8,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import HomePage from './pages/HomePage'
 import Editor from './pages/Editor'
 import AccountSettings from './pages/AccountSettings'
-import ProjectsPage from './pages/ProjectsPage'
-import OrganizationsPage from './pages/OrganizationsPage'
+import ArchivesPage from './pages/ArchivesPage'
+import WorkspacesPage from './pages/WorkspacesPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import AdminPage from './pages/AdminPage'
 
@@ -28,13 +28,13 @@ function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/editor/:pageId" element={<Editor />} />
+      <Route path="/editor/:logId" element={<Editor />} />
       <Route path="/account" element={<AccountSettings />} />
       <Route path="/settings" element={<Navigate to="/account" replace />} />
-      <Route path="/projects" element={<ProjectsPage />} />
-      <Route path="/projects/:projectId" element={<ProjectsPage />} />
-      <Route path="/organizations" element={<OrganizationsPage />} />
-      <Route path="/organizations/:orgId" element={<OrganizationsPage />} />
+      <Route path="/archives" element={<ArchivesPage />} />
+      <Route path="/archives/:archiveId" element={<ArchivesPage />} />
+      <Route path="/workspaces" element={<WorkspacesPage />} />
+      <Route path="/workspaces/:workspaceId" element={<WorkspacesPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/404" replace />} />

@@ -12,7 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-// Load .env from the project root (one level up from cloudcodex/)
+// Load .env from the archive root (one level up from cloudcodex/)
 dotenv.config({ path: path.resolve(dirname, '..', '.env') });
 
 const pool = mysql.createPool({

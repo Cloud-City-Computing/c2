@@ -14,7 +14,7 @@ function DocumentPreviewModal({ doc, onOpen }) {
     <div className="modal-content">
       <span className="close-button" onClick={destroyModal}>&times;</span>
       <h2>{doc.title}</h2>
-      {doc.project_name && <p className="text-muted">Project: {doc.project_name}</p>}
+      {doc.archive_name && <p className="text-muted">Archive: {doc.archive_name}</p>}
       <p>Created by: {doc.author} on {new Date(doc.created_at).toLocaleDateString()}</p>
       {doc.excerpt && <div className="preview-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.excerpt) }} />}
       <button className="btn btn-primary stretched-button" onClick={() => { destroyModal(); onOpen(); }}>Open in Editor</button>
@@ -29,7 +29,7 @@ function SearchResultItem({ doc }) {
   return (
     <div className="search-result-item" onClick={() => showModal(<DocumentPreviewModal doc={doc} onOpen={openDoc} />, 'modal-md')}>
       <h3 className="result-title">{doc.title}</h3>
-      {doc.project_name && <span className="result-project">{doc.project_name}</span>}
+      {doc.archive_name && <span className="result-archive">{doc.archive_name}</span>}
     </div>
   );
 }

@@ -19,7 +19,7 @@ export async function loadPermissions(req, res, next) {
 
   try {
     const [perms] = await c2_query(
-      `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+      `SELECT create_squad, create_archive, create_log FROM permissions WHERE user_id = ? LIMIT 1`,
       [req.user.id]
     );
 
@@ -32,10 +32,10 @@ export async function loadPermissions(req, res, next) {
 
 /**
  * Returns middleware that checks whether the user has a specific permission.
- * Checks global permissions first, then falls back to team-level permissions
- * and org/team ownership when team context is available.
+ * Checks global permissions first, then falls back to squad-level permissions
+ * and workspace/squad ownership when squad context is available.
  *
- * @param {'create_team'|'create_project'|'create_page'} permission
+ * @param {'create_squad'|'create_archive'|'create_log'} permission
  */
 export function requirePermission(permission) {
   return async (req, res, next) => {
@@ -47,7 +47,7 @@ export function requirePermission(permission) {
     if (!req.permissions) {
       try {
         const [perms] = await c2_query(
-          `SELECT create_team, create_project, create_page FROM permissions WHERE user_id = ? LIMIT 1`,
+          `SELECT create_squad, create_archive, create_log FROM permissions WHERE user_id = ? LIMIT 1`,
           [req.user.id]
         );
         req.permissions = perms || DEFAULT_PERMISSIONS;
@@ -61,38 +61,38 @@ export function requirePermission(permission) {
       return next();
     }
 
-    // Fallback: check team-level permissions when team context is available
+    // Fallback: check squad-level permissions when squad context is available
     try {
-      let teamId = req.body?.team_id && isValidId(req.body.team_id) ? Number(req.body.team_id) : null;
+      let squadId = req.body?.squad_id && isValidId(req.body.squad_id) ? Number(req.body.squad_id) : null;
 
-      // For page creation, derive team_id from the project
-      if (!teamId && req.params?.projectId && isValidId(req.params.projectId)) {
+      // For log creation, derive squad_id from the archive
+      if (!squadId && req.params?.archiveId && isValidId(req.params.archiveId)) {
         const [proj] = await c2_query(
-          'SELECT team_id FROM projects WHERE id = ? LIMIT 1',
-          [Number(req.params.projectId)]
+          'SELECT squad_id FROM archives WHERE id = ? LIMIT 1',
+          [Number(req.params.archiveId)]
         );
-        teamId = proj?.team_id ?? null;
+        squadId = proj?.squad_id ?? null;
       }
 
-      if (teamId) {
-        // Org owner always has full access within their org
+      if (squadId) {
+        // Workspace owner always has full access within their workspace
         const [orgOwner] = await c2_query(
-          `SELECT 1 FROM teams t JOIN organizations o ON t.organization_id = o.id
+          `SELECT 1 FROM squads t JOIN workspaces o ON t.workspace_id = o.id
            WHERE t.id = ? AND o.owner = ? LIMIT 1`,
-          [teamId, req.user.email]
+          [squadId, req.user.email]
         );
         if (orgOwner) return next();
 
-        // Check team member permission
+        // Check squad member permission
         const columnMap = {
-          create_project: 'can_create_project',
-          create_page: 'can_create_page',
+          create_archive: 'can_create_archive',
+          create_log: 'can_create_log',
         };
         const column = columnMap[permission];
         if (column) {
           const [tm] = await c2_query(
-            `SELECT \`${column}\` AS allowed FROM team_members WHERE team_id = ? AND user_id = ? LIMIT 1`,
-            [teamId, req.user.id]
+            `SELECT \`${column}\` AS allowed FROM squad_members WHERE squad_id = ? AND user_id = ? LIMIT 1`,
+            [squadId, req.user.id]
           );
           if (tm?.allowed) return next();
         }
