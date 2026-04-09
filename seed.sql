@@ -19,6 +19,7 @@ DELETE FROM squads;
 DELETE FROM sessions;
 DELETE FROM password_reset_tokens;
 DELETE FROM two_factor_codes;
+DELETE FROM oauth_accounts;
 DELETE FROM users;
 DELETE FROM workspaces;
 

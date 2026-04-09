@@ -298,11 +298,10 @@ router.post('/login', asyncHandler(async (req, res) => {
   // The dummy hash is a real pre-computed bcrypt hash so that bcrypt.compare
   // takes the same amount of time whether or not the user exists.
   const DUMMY_HASH = '$2b$12$ECTURXTU8jI1L8AA/8m.iOiowQDH1nAW3raB55X5cPKzEjL9xDsSe';
-  const validPassword = users.length
-    ? await bcrypt.compare(password, users[0].password_hash)
-    : await bcrypt.compare(password, DUMMY_HASH);
+  const hashToCompare = (users.length && users[0].password_hash) ? users[0].password_hash : DUMMY_HASH;
+  const validPassword = await bcrypt.compare(password, hashToCompare);
 
-  if (!validPassword || !users.length) {
+  if (!validPassword || !users.length || !users[0].password_hash) {
     // Intentionally vague — don't reveal whether the username exists
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }

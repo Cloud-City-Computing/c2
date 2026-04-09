@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS squads;
 DROP TABLE IF EXISTS two_factor_codes;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS user_invitations;
+DROP TABLE IF EXISTS oauth_accounts;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS workspaces;
@@ -35,12 +36,24 @@ CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(32) NOT NULL UNIQUE,
   email VARCHAR(255) NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   avatar_url VARCHAR(512) DEFAULT NULL,
   two_factor_method ENUM('none', 'email', 'totp') DEFAULT 'none',
   totp_secret VARCHAR(64) DEFAULT NULL,
   is_admin BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE oauth_accounts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  provider ENUM('google') NOT NULL,
+  provider_user_id VARCHAR(255) NOT NULL,
+  provider_email VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_provider_user (provider, provider_user_id),
+  INDEX (user_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE sessions (
