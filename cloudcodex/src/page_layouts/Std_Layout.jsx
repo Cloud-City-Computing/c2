@@ -43,6 +43,15 @@ function HomeIcon() {
   );
 }
 
+function FavoritesIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+
 function WorkspaceIcon() {
   return (
     <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -112,6 +121,7 @@ function ExpandIcon() {
 
 const NAV_ITEMS = [
   { to: '/', label: 'Home', Icon: HomeIcon },
+  { to: '/favorites', label: 'Favorites', Icon: FavoritesIcon },
   { to: '/workspaces', label: 'Workspaces', Icon: WorkspaceIcon },
   { to: '/archives', label: 'Archives', Icon: ArchiveIcon },
   { to: '/github', label: 'GitHub', Icon: GitHubNavIcon },

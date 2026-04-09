@@ -9,6 +9,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS favorites;
 DROP TABLE IF EXISTS comment_replies;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS squad_invitations;
@@ -277,5 +278,16 @@ CREATE TABLE comment_replies (
   FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_replies_comment (comment_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE favorites (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  log_id INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_favorites_user_log (user_id, log_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
+  INDEX idx_favorites_user (user_id)
 ) ENGINE=InnoDB;
 
