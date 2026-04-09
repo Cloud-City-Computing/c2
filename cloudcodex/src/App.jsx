@@ -9,6 +9,7 @@ import HomePage from './pages/HomePage'
 import Editor from './pages/Editor'
 import AccountSettings from './pages/AccountSettings'
 import ArchivesPage from './pages/ArchivesPage'
+import ArchiveView from './pages/ArchiveView'
 import WorkspacesPage from './pages/WorkspacesPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import AdminPage from './pages/AdminPage'
@@ -34,6 +35,8 @@ function App() {
       <Route path="/settings" element={<Navigate to="/account" replace />} />
       <Route path="/archives" element={<ArchivesPage />} />
       <Route path="/archives/:archiveId" element={<ArchivesPage />} />
+      <Route path="/archives/:archiveId/doc/:logId" element={<ArchiveView />} />
+      <Route path="/archives/:archiveId/doc" element={<ArchiveView />} />
       <Route path="/workspaces" element={<WorkspacesPage />} />
       <Route path="/workspaces/:workspaceId" element={<WorkspacesPage />} />
       <Route path="/github" element={<GitHubPage />} />

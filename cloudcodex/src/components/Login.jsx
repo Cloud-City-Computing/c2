@@ -97,7 +97,18 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
 
   const handleLogin = async () => {
     setError(null);
-    const res = await serverReq('POST', '/api/login', { username: fields.username, password: fields.password });
+    let res;
+    try {
+      const resp = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: fields.username, password: fields.password })
+      });
+      res = await resp.json();
+    } catch {
+      setError('Network error. Please try again.');
+      return;
+    }
     if (res.success && res.requires_2fa) {
       setTwoFactorToken(res.twoFactorToken);
       setTwoFactorMethod(res.method);
@@ -189,7 +200,18 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
     setError(null);
     setInfo(null);
     if (!fields.email) { setError('Please enter your email address.'); return; }
-    const res = await serverReq('POST', '/api/forgot-password', { email: fields.email });
+    let res;
+    try {
+      const resp = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: fields.email })
+      });
+      res = await resp.json();
+    } catch {
+      setError('Network error. Please try again.');
+      return;
+    }
     if (res.success) {
       setInfo(res.message);
     } else {

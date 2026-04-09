@@ -34,7 +34,7 @@ export default function SearchBox({ inline = false, onResults }) {
   const handleResultClick = (doc) => {
     setShowDropdown(false);
     if (inputRef.current) inputRef.current.value = '';
-    navigate(`/editor/${doc.id}`);
+    navigate(doc.archive_id ? `/archives/${doc.archive_id}/doc/${doc.id}` : `/editor/${doc.id}`);
   };
 
   if (inline) {

@@ -1,0 +1,8 @@
+# Linux / SELinux override – adds :Z to bind-mount volumes
+# Merged automatically by start.sh on Linux hosts.
+
+services:
+  database:
+    volumes:
+      - ./db-data/:/var/lib/mysql/:Z
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:Z

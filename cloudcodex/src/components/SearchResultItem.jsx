@@ -24,7 +24,7 @@ function DocumentPreviewModal({ doc, onOpen }) {
 
 function SearchResultItem({ doc }) {
   const navigate = useNavigate();
-  const openDoc = () => navigate(`/editor/${doc.id}`);
+  const openDoc = () => navigate(doc.archive_id ? `/archives/${doc.archive_id}/doc/${doc.id}` : `/editor/${doc.id}`);
 
   return (
     <div className="search-result-item" onClick={() => showModal(<DocumentPreviewModal doc={doc} onOpen={openDoc} />, 'modal-md')}>

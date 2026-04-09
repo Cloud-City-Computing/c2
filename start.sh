@@ -163,9 +163,19 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 set -a; source "$ENV_FILE"; set +a
 
-COMPOSE_CMD="$DOCKER_SUDO docker compose"
-if ! $COMPOSE_CMD version &>/dev/null 2>&1; then
-  COMPOSE_CMD="$DOCKER_SUDO docker-compose"
+# On native Linux (not WSL), use the SELinux-aware override for bind mounts
+COMPOSE_FILES="-f $COMPOSE_FILE"
+if [[ "$(uname -s)" == "Linux" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
+  LINUX_OVERRIDE="$SCRIPT_DIR/docker-compose.linux.yml"
+  if [ -f "$LINUX_OVERRIDE" ]; then
+    COMPOSE_FILES="$COMPOSE_FILES -f $LINUX_OVERRIDE"
+    info "Linux detected – using SELinux volume overrides"
+  fi
+fi
+
+COMPOSE_CMD="$DOCKER_SUDO docker compose $COMPOSE_FILES"
+if ! $DOCKER_SUDO docker compose version &>/dev/null 2>&1; then
+  COMPOSE_CMD="$DOCKER_SUDO docker-compose $COMPOSE_FILES"
 fi
 
 cd "$SCRIPT_DIR"

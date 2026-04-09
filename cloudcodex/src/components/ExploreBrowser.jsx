@@ -236,7 +236,7 @@ export default function ExploreBrowser() {
             item={item}
             isSearch={isSearch}
             activeUsers={getLogUsers(item.id)}
-            onClick={() => navigate(`/editor/${item.id}`)}
+            onClick={() => navigate(item.archive_id ? `/archives/${item.archive_id}/doc/${item.id}` : `/editor/${item.id}`)}
           />
         ))}
       </div>
