@@ -19,7 +19,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import CodeBlockWithLanguage from '../components/CodeBlockWithLanguage';
 import DrawioBlock from '../components/DrawioBlock';
 import { createLowlight, common } from 'lowlight';
-import { hastToHtml, encodeBase64, decodeBase64 } from '../editorUtils';
+import { hastToHtml, decodeBase64 } from '../editorUtils';
 
 const readonlyLowlight = createLowlight(common);
 import { marked } from 'marked';
@@ -722,7 +722,7 @@ function VersionHistory({ logId, onRestore, versionKey }) {
 
 // --- Editor Log ---
 
-export default function Editor({ embedded = false, archiveId: propArchiveId } = {}) {
+export default function Editor({ embedded = false } = {}) {
   const params = useParams();
   const logId = params.logId;
   const navigate = useNavigate();

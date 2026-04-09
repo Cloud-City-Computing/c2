@@ -225,7 +225,7 @@ function WorkspacesSection() {
                 <th>Squads</th>
                 <th>Members</th>
                 <th>Created</th>
-                <th></th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -298,7 +298,7 @@ function UsersSection() {
                 <th>Squads</th>
                 <th>Admin</th>
                 <th>Created</th>
-                <th></th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -374,7 +374,7 @@ function InvitationsSection() {
                 <th>Invited By</th>
                 <th>Sent</th>
                 <th>Expires</th>
-                <th></th>
+                <th />
               </tr>
             </thead>
             <tbody>

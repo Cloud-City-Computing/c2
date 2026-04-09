@@ -12,7 +12,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { asyncHandler, errorHandler } from './helpers/shared.js';
+import { asyncHandler } from './helpers/shared.js';
 import { decryptToken } from './oauth.js';
 
 const router = express.Router();

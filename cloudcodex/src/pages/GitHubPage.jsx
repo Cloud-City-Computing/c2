@@ -333,7 +333,7 @@ function MarkdownEditorPane({ content, onChange }) {
 
 // ─── Commit Modal ─────────────────────────────────────
 
-function CommitPanel({ owner, repo, filePath, fileSha, content, branch, branches, defaultBranch, onCommitted, onClose }) {
+function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommitted, onClose }) {
   const [mode, setMode] = useState('direct'); // 'direct' | 'branch'
   const [message, setMessage] = useState('');
   const [newBranchName, setNewBranchName] = useState('');
@@ -608,8 +608,7 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
       </div>
 
       {editing ? (
-        <>
-          {isMarkdown ? (
+          isMarkdown ? (
             <MarkdownEditorPane content={editContent} onChange={setEditContent} />
           ) : (
             <textarea
@@ -618,8 +617,7 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
               onChange={(e) => setEditContent(e.target.value)}
               spellCheck={false}
             />
-          )}
-        </>
+          )
       ) : (
         <div className="gh-file-content">
           {isMarkdown ? (
