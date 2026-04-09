@@ -244,6 +244,45 @@ function StdLayout({ children }) {
       .catch(() => {});
   }, [user, authChecked]);
 
+  // Handle OAuth errors from redirect
+  useEffect(() => {
+    if (!authChecked) return;
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('oauth_error');
+    if (!oauthError) return;
+
+    // Clean the URL
+    const url = new URL(window.location);
+    url.searchParams.delete('oauth_error');
+    window.history.replaceState({}, '', url.pathname + url.search);
+
+    const messages = {
+      domain_not_allowed: 'Your Google account domain is not allowed. Contact your administrator.',
+      no_account: 'No account found for this Google email. Ask your administrator for an invitation.',
+      email_not_verified: 'Your Google email is not verified.',
+      token_exchange_failed: 'Google sign-in failed. Please try again.',
+      token_verification_failed: 'Google sign-in verification failed. Please try again.',
+      invalid_state: 'Sign-in session expired. Please try again.',
+      access_denied: 'Google sign-in was cancelled.',
+    };
+
+    const message = messages[oauthError] || 'Google sign-in failed. Please try again.';
+    showModal(<Login />, 'modal-md');
+    // Brief delay so the modal mounts before we could show a message
+    setTimeout(() => {
+      const errEl = document.querySelector('.modal-content .form-error');
+      if (!errEl) {
+        const form = document.querySelector('.modal-form');
+        if (form) {
+          const p = document.createElement('p');
+          p.className = 'form-error';
+          p.textContent = message;
+          form.parentElement.insertBefore(p, form);
+        }
+      }
+    }, 100);
+  }, [authChecked]);
+
   return (
     <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
       <TopBar user={user} />

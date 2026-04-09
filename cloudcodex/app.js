@@ -26,6 +26,7 @@ import commentsRouter from './routes/comments.js';
 import avatarsRouter from './routes/avatars.js';
 import docImagesRouter from './routes/doc-images.js';
 import adminRouter from './routes/admin.js';
+import oauthRouter from './routes/oauth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -88,6 +89,7 @@ app.use('/api/reset-password', authLimiter);
 app.use('/api/2fa/verify', authLimiter);
 app.use('/api/2fa/totp/confirm', authLimiter);
 app.use('/api/2fa/disable/confirm', authLimiter);
+app.use('/api/oauth/google/callback', authLimiter);
 
 // Rate limiting for user search (prevents user enumeration)
 const searchLimiter = rateLimit({
@@ -124,5 +126,6 @@ app.use('/api', commentsRouter);
 app.use('/api', avatarsRouter);
 app.use('/api', docImagesRouter);
 app.use('/api', adminRouter);
+app.use('/api', oauthRouter);
 
 export default app;
