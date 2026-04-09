@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { destroyModal, serverReq, showModal, validateInviteToken } from '../util';
+import { destroyModal, serverReq, showModal } from '../util';
 import WelcomeSetup from './WelcomeSetup';
 
 /* ─── Password rules (mirrored from server) ─── */
@@ -289,7 +289,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
                 <label htmlFor="email">Email:</label>
                 <input type="email" id="email" name="email" value={fields.email} onChange={handleChange}
                   onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                  readOnly={!!inviteToken}
+                  readOnly={Boolean(inviteToken)}
                   className={fields.email && !isValidEmail(fields.email) ? 'input--invalid' : fields.email ? 'input--available' : ''} />
                 {fields.email && !isValidEmail(fields.email) && (
                   <span className="input-hint input-hint--invalid">Please enter a valid email</span>

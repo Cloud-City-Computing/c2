@@ -2,7 +2,7 @@
  * CodeBlockWithLanguage — Tiptap CodeBlockLowlight with a language selector dropdown.
  * Renders a <select> above the code block so users can pick syntax highlighting.
  */
-import { useState, useEffect } from 'react';
+import 'react';
 import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer } from '@tiptap/react';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
@@ -39,7 +39,7 @@ const LANGUAGES = [
   { value: 'plaintext', label: 'Plain Text' },
 ];
 
-function CodeBlockView({ node, updateAttributes, extension, editor }) {
+function CodeBlockView({ node, updateAttributes, editor }) {
   const language = node.attrs.language || '';
 
   return (
