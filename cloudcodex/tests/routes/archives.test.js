@@ -250,6 +250,189 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(403);
     });
+
+    it('rejects when no target type provided', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Provide exactly one');
+    });
+
+    it('rejects when multiple target types provided', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 2, squadId: 3, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Provide exactly one');
+    });
+
+    // -- Squad access --
+
+    it('adds squad read access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])        // isArchiveOwner
+        .mockResolvedValueOnce([{ acl: '[]' }])      // SELECT current squad acl
+        .mockResolvedValueOnce([]);                    // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ squadId: 5, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('removes squad write access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])        // isArchiveOwner
+        .mockResolvedValueOnce([{ acl: '[5,6]' }])   // SELECT current squad acl
+        .mockResolvedValueOnce([]);                    // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ squadId: 5, accessType: 'write', action: 'remove' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects invalid squadId', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ squadId: 'abc', accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid squadId');
+    });
+
+    // -- Workspace access --
+
+    it('grants workspace read access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])        // isArchiveOwner
+        .mockResolvedValueOnce([]);                    // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ workspace: true, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('revokes workspace write access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])        // isArchiveOwner
+        .mockResolvedValueOnce([]);                    // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ workspace: true, accessType: 'write', action: 'remove' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+  });
+
+  // ── GET /api/archives/:id/access ──────────────────────────
+
+  describe('GET /api/archives/:id/access', () => {
+    it('returns access configuration including owner squad members', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])   // readAccessWhere check
+        .mockResolvedValueOnce([{              // SELECT archive access columns
+          read_access: '[1,2]',
+          write_access: '[1]',
+          read_access_squads: '[3]',
+          write_access_squads: '[]',
+          read_access_workspace: false,
+          write_access_workspace: false,
+          squad_id: 10,
+          created_by: 1,
+          created_by_name: 'alice',
+        }])
+        .mockResolvedValueOnce([               // resolve users
+          { id: 1, name: 'alice', email: 'alice@test.com' },
+          { id: 2, name: 'bob', email: 'bob@test.com' },
+        ])
+        .mockResolvedValueOnce([               // resolve squads
+          { id: 3, name: 'Backend Team' },
+        ])
+        .mockResolvedValueOnce([               // workspace squads
+          { id: 3, name: 'Backend Team' },
+          { id: 10, name: 'Frontend Team' },
+        ])
+        .mockResolvedValueOnce([               // granted squad members (squad 3)
+          { user_id: 2 },
+        ])
+        .mockResolvedValueOnce([{ name: 'Frontend Team' }])  // owner squad name
+        .mockResolvedValueOnce([               // owner squad members
+          { user_id: 1, name: 'alice', email: 'alice@test.com', role: 'owner', can_read: true, can_write: true },
+          { user_id: 3, name: 'carol', email: 'carol@test.com', role: 'member', can_read: true, can_write: false },
+        ]);
+
+      const res = await request(app)
+        .get('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.access.read_users).toHaveLength(2);
+      expect(res.body.access.write_users).toHaveLength(1);
+      expect(res.body.access.read_squads).toHaveLength(1);
+      expect(res.body.access.read_squads[0].name).toBe('Backend Team');
+      expect(res.body.access.read_workspace).toBe(false);
+      expect(res.body.access.workspace_squads).toHaveLength(2);
+      expect(res.body.access.owner_squad_name).toBe('Frontend Team');
+      expect(res.body.access.owner_squad_members).toHaveLength(2);
+      expect(res.body.access.owner_squad_members[0].role).toBe('owner');
+      expect(res.body.access.created_by_name).toBe('alice');
+      // granted squad user IDs = squad 3 members (user 2) + owner squad members (users 1, 3)
+      expect(res.body.access.granted_squad_user_ids).toEqual(expect.arrayContaining([2, 1, 3]));
+      expect(res.body.access.granted_squad_user_ids).toHaveLength(3);
+    });
+
+    it('rejects user without read access', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]); // no read access
+
+      const res = await request(app)
+        .get('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid archiveId', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .get('/api/archives/abc/access')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
   });
 
   // ── POST /api/archives/:archiveId/logs ───────────────────

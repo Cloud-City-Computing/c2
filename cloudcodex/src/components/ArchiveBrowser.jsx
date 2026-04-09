@@ -10,7 +10,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchArchives, createArchive, updateArchive, deleteArchive,
   fetchLogs, createLog, deleteLog,
-  manageArchiveAccess, searchUsers,
+  manageArchiveAccess, manageArchiveSquadAccess, manageArchiveWorkspaceAccess,
+  fetchArchiveAccess, searchUsers,
   uploadDocument, exportDocument, fetchDocument,
   showModal, destroyModal,
   fetchCommentCount,
@@ -94,6 +95,11 @@ function RenameArchiveModal({ archive, onRenamed }) {
 }
 
 function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
+  const [tab, setTab] = useState('users');
+  const [accessData, setAccessData] = useState(null);
+  const [loadingAccess, setLoadingAccess] = useState(true);
+
+  // User tab state
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -103,6 +109,22 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
   const [status, setStatus] = useState(null);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Squad tab state
+  const [squadPerms, setSquadPerms] = useState({ read: true, write: false });
+  const [selectedSquad, setSelectedSquad] = useState('');
+  const [squadMode, setSquadMode] = useState('add');
+
+  const loadAccess = useCallback(async () => {
+    setLoadingAccess(true);
+    try {
+      const res = await fetchArchiveAccess(archive.id);
+      setAccessData(res.access);
+    } catch { /* ignore */ }
+    setLoadingAccess(false);
+  }, [archive.id]);
+
+  useEffect(() => { loadAccess(); }, [loadAccess]);
 
   const handleSearch = useCallback(async (q) => {
     setQuery(q);
@@ -118,6 +140,7 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
   }, []);
 
   const togglePerm = (key) => setPerms((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleSquadPerm = (key) => setSquadPerms((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const handleAccessUpdate = async (action) => {
     setError(null);
@@ -145,12 +168,69 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
       const labels = selectedPerms.join(' + ');
       const successMessage = `Successfully ${verb} ${labels} access for ${selected.name}.`;
       setStatus(successMessage);
+      loadAccess();
       await new Promise((resolve) => setTimeout(resolve, 900));
       onAccessSaved?.(successMessage);
       destroyModal();
       onAccessUpdated?.();
     } catch (e) {
       setError(e.body?.message ?? 'Error updating archive access.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSquadAccessUpdate = async () => {
+    setError(null);
+    setStatus(null);
+    if (!selectedSquad) {
+      setError('Please select a squad.');
+      return;
+    }
+
+    const selectedPerms = Object.entries(squadPerms)
+      .filter(([, enabled]) => enabled)
+      .map(([perm]) => perm);
+
+    if (selectedPerms.length === 0) {
+      setError('Select at least one permission to update.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await Promise.all(
+        selectedPerms.map((perm) => manageArchiveSquadAccess(archive.id, Number(selectedSquad), perm, squadMode))
+      );
+      const squadName = accessData?.workspace_squads?.find(s => s.id === Number(selectedSquad))?.name || `Squad #${selectedSquad}`;
+      const verb = squadMode === 'add' ? 'granted' : 'revoked';
+      const labels = selectedPerms.join(' + ');
+      const successMessage = `Successfully ${verb} ${labels} access for squad "${squadName}".`;
+      setStatus(successMessage);
+      loadAccess();
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      onAccessSaved?.(successMessage);
+      destroyModal();
+      onAccessUpdated?.();
+    } catch (e) {
+      setError(e.body?.message ?? 'Error updating squad access.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleWorkspaceToggle = async (accessType, currentValue) => {
+    setError(null);
+    setStatus(null);
+    try {
+      setSubmitting(true);
+      const action = currentValue ? 'remove' : 'add';
+      await manageArchiveWorkspaceAccess(archive.id, accessType, action);
+      const verb = currentValue ? 'Revoked' : 'Granted';
+      setStatus(`${verb} workspace ${accessType} access.`);
+      loadAccess();
+    } catch (e) {
+      setError(e.body?.message ?? 'Error updating workspace access.');
     } finally {
       setSubmitting(false);
     }
@@ -166,83 +246,154 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
       {error && <p className="form-error">{error}</p>}
       {status && <p className="form-success">{status}</p>}
 
-      <div className="modal-form">
-        <label>Search Users:</label>
-        <div className="user-search">
-          <input
-            className="user-search__input"
-            type="text"
-            value={query}
-            placeholder="Search by name or email..."
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-          {searching && <p className="text-muted text-sm">Searching...</p>}
-          {results.length > 0 && !selected && (
-            <ul className="user-search__results">
-              {results.map((user) => (
-                <li
-                  key={user.id}
-                  className="user-search__item"
-                  onClick={() => {
-                    setSelected(user);
-                    setResults([]);
-                    setQuery(user.email);
-                  }}
-                >
-                  <span className="user-search__name">{user.name}</span>
-                  <span className="user-search__email">{user.email}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      {/* Tabs */}
+      <div className="access-tabs" style={{ display: 'flex', gap: 0, marginBottom: 14, borderBottom: '1px solid var(--border-color)' }}>
+        {['users', ...(archive.squad_id ? ['squads', 'workspace'] : [])].map((t) => (
+          <button key={t} className={`btn btn-ghost btn-sm ${tab === t ? 'active' : ''}`}
+            style={{ borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', borderRadius: 0 }}
+            onClick={() => { setTab(t); setError(null); setStatus(null); }}>
+            {t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+      </div>
 
-        {selected && (
-          <div className="invite-selected">
-            <span>Selected: <strong>{selected.name}</strong> ({selected.email})</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setSelected(null); setQuery(''); }}>
-              Change
+      {/* User tab */}
+      {tab === 'users' && (
+        <div className="modal-form">
+          <label>Search Users:</label>
+          <div className="user-search">
+            <input
+              className="user-search__input"
+              type="text"
+              value={query}
+              placeholder="Search by name or email..."
+              onChange={(e) => handleSearch(e.target.value)}
+            />
+            {searching && <p className="text-muted text-sm">Searching...</p>}
+            {results.length > 0 && !selected && (
+              <ul className="user-search__results">
+                {results.map((user) => (
+                  <li key={user.id} className="user-search__item"
+                    onClick={() => { setSelected(user); setResults([]); setQuery(user.email); }}>
+                    <span className="user-search__name">{user.name}</span>
+                    <span className="user-search__email">{user.email}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {selected && (
+            <div className="invite-selected">
+              <span>Selected: <strong>{selected.name}</strong> ({selected.email})</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setSelected(null); setQuery(''); }}>Change</button>
+            </div>
+          )}
+
+          <label style={{ marginTop: 12 }}>Permissions:</label>
+          <div className="invite-perms-grid">
+            {[
+              ['read', 'Read', 'Can view archive logs and documents'],
+              ['write', 'Write', 'Can edit logs and archive content'],
+            ].map(([key, label, desc]) => (
+              <label key={key} className="invite-perm-toggle">
+                <input type="checkbox" checked={perms[key]} onChange={() => togglePerm(key)} />
+                <div><strong>{label}</strong><p className="text-muted text-sm">{desc}</p></div>
+              </label>
+            ))}
+          </div>
+
+          <label style={{ marginTop: 12 }}>Action:</label>
+          <select value={mode} onChange={(e) => setMode(e.target.value)} className="form-select" disabled={submitting}>
+            <option value="add">Grant selected permissions</option>
+            <option value="remove">Revoke selected permissions</option>
+          </select>
+
+          <div className="inline-form" style={{ marginTop: 12 }}>
+            <button className="btn btn-primary stretched-button" onClick={() => handleAccessUpdate(mode)} disabled={submitting}>
+              {submitting ? 'Applying Changes...' : (mode === 'add' ? 'Grant Permissions' : 'Revoke Permissions')}
             </button>
           </div>
-        )}
+        </div>
+      )}
 
-        <label style={{ marginTop: 12 }}>Permissions:</label>
-        <div className="invite-perms-grid">
-          {[
-            ['read', 'Read', 'Can view archive logs and documents'],
-            ['write', 'Write', 'Can edit logs and archive content'],
-          ].map(([key, label, desc]) => (
-            <label key={key} className="invite-perm-toggle">
+      {/* Squad tab */}
+      {tab === 'squads' && (
+        <div className="modal-form">
+          <label>Select Squad:</label>
+          <select
+            value={selectedSquad}
+            onChange={(e) => setSelectedSquad(e.target.value)}
+            className="form-select"
+            disabled={submitting || loadingAccess}
+          >
+            <option value="">-- Choose a squad --</option>
+            {(accessData?.workspace_squads || []).map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+
+          <label style={{ marginTop: 12 }}>Permissions:</label>
+          <div className="invite-perms-grid">
+            {[
+              ['read', 'Read', 'All squad members can view this archive'],
+              ['write', 'Write', 'All squad members can edit this archive'],
+            ].map(([key, label, desc]) => (
+              <label key={key} className="invite-perm-toggle">
+                <input type="checkbox" checked={squadPerms[key]} onChange={() => toggleSquadPerm(key)} />
+                <div><strong>{label}</strong><p className="text-muted text-sm">{desc}</p></div>
+              </label>
+            ))}
+          </div>
+
+          <label style={{ marginTop: 12 }}>Action:</label>
+          <select value={squadMode} onChange={(e) => setSquadMode(e.target.value)} className="form-select" disabled={submitting}>
+            <option value="add">Grant selected permissions</option>
+            <option value="remove">Revoke selected permissions</option>
+          </select>
+
+          <div className="inline-form" style={{ marginTop: 12 }}>
+            <button className="btn btn-primary stretched-button" onClick={handleSquadAccessUpdate} disabled={submitting}>
+              {submitting ? 'Applying Changes...' : (squadMode === 'add' ? 'Grant Squad Permissions' : 'Revoke Squad Permissions')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Workspace tab */}
+      {tab === 'workspace' && accessData && (
+        <div className="modal-form">
+          <p className="text-muted text-sm" style={{ marginBottom: 12 }}>
+            Grant access to all users who are members of any squad in this workspace.
+          </p>
+          <div className="invite-perms-grid">
+            <label className="invite-perm-toggle">
               <input
                 type="checkbox"
-                checked={perms[key]}
-                onChange={() => togglePerm(key)}
+                checked={accessData.read_workspace}
+                onChange={() => handleWorkspaceToggle('read', accessData.read_workspace)}
+                disabled={submitting}
               />
               <div>
-                <strong>{label}</strong>
-                <p className="text-muted text-sm">{desc}</p>
+                <strong>Read</strong>
+                <p className="text-muted text-sm">All workspace members can view this archive</p>
               </div>
             </label>
-          ))}
+            <label className="invite-perm-toggle">
+              <input
+                type="checkbox"
+                checked={accessData.write_workspace}
+                onChange={() => handleWorkspaceToggle('write', accessData.write_workspace)}
+                disabled={submitting}
+              />
+              <div>
+                <strong>Write</strong>
+                <p className="text-muted text-sm">All workspace members can edit this archive</p>
+              </div>
+            </label>
+          </div>
         </div>
-
-        <label style={{ marginTop: 12 }}>Action:</label>
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value)}
-          className="form-select"
-          disabled={submitting}
-        >
-          <option value="add">Grant selected permissions</option>
-          <option value="remove">Revoke selected permissions</option>
-        </select>
-
-        <div className="inline-form" style={{ marginTop: 12 }}>
-          <button className="btn btn-primary stretched-button" onClick={() => handleAccessUpdate(mode)} disabled={submitting}>
-            {submitting ? 'Applying Changes...' : (mode === 'add' ? 'Grant Permissions' : 'Revoke Permissions')}
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -653,6 +804,172 @@ function LinkedRepos({ archiveId }) {
   );
 }
 
+// --- Archive Access Panel (inline in archive card) ---
+
+function ArchiveAccess({ archiveId }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchArchiveAccess(archiveId);
+      setData(res.access);
+    } catch { /* read-only view, ignore errors gracefully */ }
+    setLoading(false);
+  }, [archiveId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const coveredBySquads = new Set(
+    (data?.granted_squad_user_ids || []).map(Number)
+  );
+  const hasExplicitGrants = data && (
+    data.read_users.some(u => !coveredBySquads.has(u.id)) ||
+    data.write_users.some(u => !coveredBySquads.has(u.id)) ||
+    data.read_squads.length > 0 || data.write_squads.length > 0 ||
+    data.read_workspace || data.write_workspace
+  );
+
+  return (
+    <div className="archive-access">
+      <div className="archive-access__header">
+        <h4 onClick={() => setCollapsed(c => !c)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+          <span style={{ fontSize: '0.8em', marginRight: 4 }}>{collapsed ? '▸' : '▾'}</span>
+          Access
+        </h4>
+      </div>
+
+      {!collapsed && (
+        <div className="archive-access__body">
+          {loading && <p className="text-muted text-sm">Loading access info...</p>}
+
+          {!loading && !data && <p className="text-muted text-sm">Unable to load access info.</p>}
+
+          {!loading && data && (
+            <>
+              {/* Owner */}
+              {data.created_by_name && (
+                <div className="access-section">
+                  <span className="access-section__label">Owner</span>
+                  <span className="access-section__value">{data.created_by_name}</span>
+                </div>
+              )}
+
+              {/* Owner Squad (inherited) */}
+              {data.owner_squad_name && data.owner_squad_members.length > 0 && (
+                <div className="access-section">
+                  <span className="access-section__label">
+                    Squad: {data.owner_squad_name}
+                    <span className="text-muted text-xs" style={{ marginLeft: 4 }}>(inherited)</span>
+                  </span>
+                  <ul className="access-member-list">
+                    {data.owner_squad_members.map(m => (
+                      <li key={m.user_id} className="access-member">
+                        <span className="access-member__name">{m.name}</span>
+                        <span className="access-member__badges">
+                          {m.role === 'owner' ? (
+                            <span className="badge badge-accent">owner</span>
+                          ) : (
+                            <>
+                              {m.can_read && <span className="badge badge-info">read</span>}
+                              {m.can_write && <span className="badge badge-warning">write</span>}
+                              {!m.can_read && !m.can_write && <span className="badge badge-muted">none</span>}
+                            </>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Workspace-level access */}
+              {(data.read_workspace || data.write_workspace) && (
+                <div className="access-section">
+                  <span className="access-section__label">Workspace</span>
+                  <span className="access-section__value">
+                    {data.read_workspace && <span className="badge badge-info">read</span>}
+                    {data.write_workspace && <span className="badge badge-warning">write</span>}
+                    <span className="text-muted text-xs" style={{ marginLeft: 4 }}>all workspace members</span>
+                  </span>
+                </div>
+              )}
+
+              {/* Granted squads — merge read + write for same squad */}
+              {(data.read_squads.length > 0 || data.write_squads.length > 0) && (() => {
+                const map = new Map();
+                data.read_squads.forEach(s => map.set(s.id, { ...s, read: true, write: false }));
+                data.write_squads.forEach(s => {
+                  const existing = map.get(s.id);
+                  if (existing) existing.write = true;
+                  else map.set(s.id, { ...s, read: false, write: true });
+                });
+                const merged = [...map.values()];
+                return (
+                  <div className="access-section">
+                    <span className="access-section__label">Granted Squads</span>
+                    <ul className="access-member-list">
+                      {merged.map(s => (
+                        <li key={`sq-${s.id}`} className="access-member">
+                          <span className="access-member__name">{s.name}</span>
+                          <span className="access-member__badges">
+                            {s.read && <span className="badge badge-info">read</span>}
+                            {s.write && <span className="badge badge-warning">write</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* Granted users — only those with extra perms beyond squad membership */}
+              {(() => {
+                const coveredIds = new Set(
+                  (data.granted_squad_user_ids || []).map(Number)
+                );
+                const readExtra = data.read_users.filter(u => !coveredIds.has(u.id));
+                const writeExtra = data.write_users.filter(u => !coveredIds.has(u.id));
+                if (readExtra.length === 0 && writeExtra.length === 0) return null;
+                const map = new Map();
+                readExtra.forEach(u => map.set(u.id, { ...u, read: true, write: false }));
+                writeExtra.forEach(u => {
+                  const existing = map.get(u.id);
+                  if (existing) existing.write = true;
+                  else map.set(u.id, { ...u, read: false, write: true });
+                });
+                const merged = [...map.values()];
+                return (
+                  <div className="access-section">
+                    <span className="access-section__label">Granted Users</span>
+                    <ul className="access-member-list">
+                      {merged.map(u => (
+                        <li key={`u-${u.id}`} className="access-member">
+                          <span className="access-member__name">{u.name}</span>
+                          <span className="access-member__badges">
+                            {u.read && <span className="badge badge-info">read</span>}
+                            {u.write && <span className="badge badge-warning">write</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {!data.owner_squad_name && !hasExplicitGrants && (
+                <p className="text-muted text-sm">Only the owner has access.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Archive Browser ---
 
 export default function ArchiveBrowser() {
@@ -813,6 +1130,7 @@ export default function ArchiveBrowser() {
 
             {expandedArchive === archive.id && (
               <div className="card__expanded-content archive-card__expanded">
+                <ArchiveAccess archiveId={archive.id} />
                 <LinkedRepos archiveId={archive.id} />
                 <LogTree key={archive.id} archiveId={archive.id} getLogUsers={getLogUsers} />
               </div>

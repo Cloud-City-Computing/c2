@@ -7,6 +7,8 @@
 -- This script creates the schema for workspaces, squads, users, archives, logs, versions, and permissions.
 -- It defines the necessary tables and their relationships.
 
+SET FOREIGN_KEY_CHECKS = 0;
+
 DROP TABLE IF EXISTS comment_replies;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS squad_invitations;
@@ -22,9 +24,11 @@ DROP TABLE IF EXISTS two_factor_codes;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS user_invitations;
 DROP TABLE IF EXISTS oauth_accounts;
-DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS workspaces;
+
+SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE workspaces (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -185,6 +189,10 @@ CREATE TABLE archives (
   created_by INT,
   read_access JSON DEFAULT (JSON_ARRAY()),
   write_access JSON DEFAULT (JSON_ARRAY()),
+  read_access_squads JSON DEFAULT (JSON_ARRAY()),
+  write_access_squads JSON DEFAULT (JSON_ARRAY()),
+  read_access_workspace BOOLEAN DEFAULT FALSE,
+  write_access_workspace BOOLEAN DEFAULT FALSE,
   FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
