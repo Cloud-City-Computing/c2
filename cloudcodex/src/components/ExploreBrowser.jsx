@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { browseLogs, searchLogs } from '../util';
+import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite } from '../util';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
 
@@ -29,15 +29,29 @@ function HighlightedSnippet({ snippet, matchStart, matchEnd }) {
   );
 }
 
-function ExploreCard({ item, isSearch, onClick, activeUsers }) {
+function ExploreCard({ item, isSearch, onClick, activeUsers, isFavorited, onToggleFavorite }) {
   const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : null;
   const words = item.char_count ? Math.round(item.char_count / 5) : null;
+
+  const handleStar = (e) => {
+    e.stopPropagation();
+    if (onToggleFavorite) onToggleFavorite(item.id);
+  };
 
   return (
     <div className="explore-card" onClick={onClick}>
       <div className="explore-card__header">
         <h3 className="explore-card__title">{item.title}</h3>
         <div className="explore-card__indicators">
+          {onToggleFavorite && (
+            <button
+              className={`btn-favorite btn-favorite--card${isFavorited ? ' btn-favorite--active' : ''}`}
+              onClick={handleStar}
+              title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              {isFavorited ? '★' : '☆'}
+            </button>
+          )}
           <PresenceAvatars users={activeUsers} />
           {item.matchedOn && (
             <span className={`explore-badge explore-badge--${item.matchedOn}`}>
@@ -115,6 +129,8 @@ function Pagination({ page, totalPages, onPageChange }) {
   );
 }
 
+export { ExploreCard, Pagination };
+
 export default function ExploreBrowser() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
@@ -128,8 +144,39 @@ export default function ExploreBrowser() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [favIds, setFavIds] = useState(new Set());
 
   const isSearch = query.trim().length > 0;
+
+  // Load all favorite IDs for the current user
+  useEffect(() => {
+    fetchFavorites({ page: 1, limit: 200 })
+      .then(res => setFavIds(new Set((res.results || []).map(r => r.id))))
+      .catch(() => {});
+  }, []);
+
+  const handleToggleFavorite = useCallback(async (logId) => {
+    const wasFav = favIds.has(logId);
+    // Optimistic update
+    setFavIds(prev => {
+      const next = new Set(prev);
+      if (wasFav) next.delete(logId);
+      else next.add(logId);
+      return next;
+    });
+    try {
+      if (wasFav) await removeFavorite(logId);
+      else await addFavorite(logId);
+    } catch {
+      // Revert on failure
+      setFavIds(prev => {
+        const next = new Set(prev);
+        if (wasFav) next.add(logId);
+        else next.delete(logId);
+        return next;
+      });
+    }
+  }, [favIds]);
 
   const load = useCallback(async (q, pg, s) => {
     setLoading(true);
@@ -236,6 +283,8 @@ export default function ExploreBrowser() {
             item={item}
             isSearch={isSearch}
             activeUsers={getLogUsers(item.id)}
+            isFavorited={favIds.has(item.id)}
+            onToggleFavorite={handleToggleFavorite}
             onClick={() => navigate(item.archive_id ? `/archives/${item.archive_id}/doc/${item.id}` : `/editor/${item.id}`)}
           />
         ))}

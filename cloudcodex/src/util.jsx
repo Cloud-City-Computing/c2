@@ -152,6 +152,14 @@ export const searchLogs = ({ query, page = 1, limit = 12 } = {}) =>
 
 export const fetchPresence = () => apiFetch('GET', '/api/presence');
 
+// --- Favorites APIs ---
+
+export const fetchFavorites = ({ page = 1, limit = 12 } = {}) =>
+  apiFetch('GET', `/api/favorites?page=${page}&limit=${limit}`);
+export const checkFavorite = (logId) => apiFetch('GET', `/api/favorites/check?logId=${logId}`);
+export const addFavorite = (logId) => apiFetch('POST', '/api/favorites', { logId });
+export const removeFavorite = (logId) => apiFetch('DELETE', `/api/favorites/${logId}`);
+
 // --- Comment APIs ---
 
 export const fetchComments = (logId, status) => {

@@ -52,6 +52,9 @@ import {
   deleteCommentReply,
   getSessStorage,
   getSessionTokenFromCookie,
+  checkFavorite,
+  addFavorite,
+  removeFavorite,
 } from '../util';
 import PublishModal from '../components/PublishModal';
 import { toastError } from '../components/Toast';
@@ -755,6 +758,10 @@ export default function Editor({ embedded = false, archiveId: propArchiveId } = 
   // Get current user ID from session storage
   const currentUserId = getSessStorage('currentUser')?.id;
 
+  // --- Favorite state ---
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favLoading, setFavLoading] = useState(false);
+
   // Handle remote comment events from WebSocket
   const handleRemoteComment = useCallback((msg) => {
     switch (msg.action) {
@@ -855,6 +862,29 @@ export default function Editor({ embedded = false, archiveId: propArchiveId } = 
   }, [logId]);
 
   useEffect(() => { loadDocument(); }, [loadDocument]);
+
+  // Load favorite status
+  useEffect(() => {
+    if (!logId) return;
+    checkFavorite(Number(logId))
+      .then(res => setIsFavorited(res.favorited))
+      .catch(() => {});
+  }, [logId]);
+
+  const toggleFavorite = useCallback(async () => {
+    if (favLoading || !logId) return;
+    setFavLoading(true);
+    try {
+      if (isFavorited) {
+        await removeFavorite(Number(logId));
+        setIsFavorited(false);
+      } else {
+        await addFavorite(Number(logId));
+        setIsFavorited(true);
+      }
+    } catch { /* ignore */ }
+    setFavLoading(false);
+  }, [logId, isFavorited, favLoading]);
 
   // Load comments for this log
   const loadComments = useCallback(async () => {
@@ -1153,6 +1183,16 @@ export default function Editor({ embedded = false, archiveId: propArchiveId } = 
               </>
             )}
             {viewMode === 'edit' && <CollabPresence users={collabUsers} connected={collabConnected} />}
+            {documentData && (
+              <button
+                className={`btn-favorite${isFavorited ? ' btn-favorite--active' : ''}`}
+                onClick={toggleFavorite}
+                disabled={favLoading}
+                title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                {isFavorited ? '★' : '☆'}
+              </button>
+            )}
           </div>
         </div>
 
