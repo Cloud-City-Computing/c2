@@ -12,6 +12,7 @@ import ArchivesPage from './pages/ArchivesPage'
 import WorkspacesPage from './pages/WorkspacesPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import AdminPage from './pages/AdminPage'
+import GitHubPage from './pages/GitHubPage'
 
 function NotFound() {
   return (
@@ -35,6 +36,8 @@ function App() {
       <Route path="/archives/:archiveId" element={<ArchivesPage />} />
       <Route path="/workspaces" element={<WorkspacesPage />} />
       <Route path="/workspaces/:workspaceId" element={<WorkspacesPage />} />
+      <Route path="/github" element={<GitHubPage />} />
+      <Route path="/github/:owner/:repo" element={<GitHubPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/404" replace />} />

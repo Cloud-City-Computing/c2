@@ -27,6 +27,7 @@ import avatarsRouter from './routes/avatars.js';
 import docImagesRouter from './routes/doc-images.js';
 import adminRouter from './routes/admin.js';
 import oauthRouter from './routes/oauth.js';
+import githubRouter from './routes/github.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -127,5 +128,6 @@ app.use('/api', avatarsRouter);
 app.use('/api', docImagesRouter);
 app.use('/api', adminRouter);
 app.use('/api', oauthRouter);
+app.use('/api', githubRouter);
 
 export default app;

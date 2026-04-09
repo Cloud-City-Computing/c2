@@ -320,6 +320,106 @@ router.delete('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(asyn
   res.json({ success: true });
 }));
 
+// ─── Archive ↔ GitHub Repo linking ──────────────────────────────
+
+/**
+ * GET /api/archives/:archiveId/repos
+ * List linked GitHub repos for an archive.
+ * Anyone with read access can view.
+ */
+router.get('/archives/:archiveId/repos', requireAuth, asyncHandler(async (req, res) => {
+  const { archiveId } = req.params;
+  if (!isValidId(archiveId)) {
+    return res.status(400).json({ success: false, message: 'Invalid archive ID' });
+  }
+
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p WHERE p.id = ? AND ${readAccessWhere('p')}`,
+    [Number(archiveId), ...readAccessParams(req.user)]
+  );
+  if (!archive) {
+    return res.status(403).json({ success: false, message: 'Access denied' });
+  }
+
+  const repos = await c2_query(
+    `SELECT ar.id, ar.repo_full_name, ar.repo_owner, ar.repo_name, ar.linked_at,
+            u.name AS linked_by_name
+     FROM archive_repos ar
+     LEFT JOIN users u ON ar.linked_by = u.id
+     WHERE ar.archive_id = ?
+     ORDER BY ar.linked_at DESC`,
+    [Number(archiveId)]
+  );
+
+  res.json({ success: true, repos });
+}));
+
+/**
+ * POST /api/archives/:archiveId/repos
+ * Link a GitHub repo to an archive.
+ * Only archive owner (creator, workspace owner, squad owner, or admin) can link.
+ */
+router.post('/archives/:archiveId/repos', requireAuth, asyncHandler(async (req, res) => {
+  const { archiveId } = req.params;
+  if (!isValidId(archiveId)) {
+    return res.status(400).json({ success: false, message: 'Invalid archive ID' });
+  }
+
+  const owner = await isArchiveOwner(req.user, archiveId);
+  if (!owner) {
+    return res.status(403).json({ success: false, message: 'Only archive owners can link repos' });
+  }
+
+  const { repoFullName, repoOwner, repoName } = req.body;
+  if (!repoFullName || !repoOwner || !repoName) {
+    return res.status(400).json({ success: false, message: 'repoFullName, repoOwner, and repoName are required' });
+  }
+  if (repoFullName.length > 255 || repoOwner.length > 255 || repoName.length > 255) {
+    return res.status(400).json({ success: false, message: 'Repo name fields must be 255 characters or less' });
+  }
+
+  try {
+    const result = await c2_query(
+      `INSERT INTO archive_repos (archive_id, repo_full_name, repo_owner, repo_name, linked_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [Number(archiveId), repoFullName.trim(), repoOwner.trim(), repoName.trim(), req.user.id]
+    );
+    res.status(201).json({ success: true, repoLinkId: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ success: false, message: 'This repo is already linked to this archive' });
+    }
+    throw err;
+  }
+}));
+
+/**
+ * DELETE /api/archives/:archiveId/repos/:repoId
+ * Unlink a GitHub repo from an archive.
+ * Only archive owner (creator, workspace owner, squad owner, or admin) can unlink.
+ */
+router.delete('/archives/:archiveId/repos/:repoId', requireAuth, asyncHandler(async (req, res) => {
+  const { archiveId, repoId } = req.params;
+  if (!isValidId(archiveId) || !isValidId(repoId)) {
+    return res.status(400).json({ success: false, message: 'Invalid ID' });
+  }
+
+  const owner = await isArchiveOwner(req.user, archiveId);
+  if (!owner) {
+    return res.status(403).json({ success: false, message: 'Only archive owners can unlink repos' });
+  }
+
+  const result = await c2_query(
+    `DELETE FROM archive_repos WHERE id = ? AND archive_id = ?`,
+    [Number(repoId), Number(archiveId)]
+  );
+  if (result.affectedRows === 0) {
+    return res.status(404).json({ success: false, message: 'Linked repo not found' });
+  }
+
+  res.json({ success: true });
+}));
+
 // --- Centralized error handler ---
 
 router.use(errorHandler);

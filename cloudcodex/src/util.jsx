@@ -86,6 +86,12 @@ export const createWorkspace = (name, { squadName, archiveName } = {}) => apiFet
 export const updateWorkspace = (id, name) => apiFetch('PUT', `/api/workspaces/${id}`, { name });
 export const deleteWorkspace = (id) => apiFetch('DELETE', `/api/workspaces/${id}`);
 
+// --- Archive Repo APIs ---
+
+export const fetchArchiveRepos = (archiveId) => apiFetch('GET', `/api/archives/${archiveId}/repos`);
+export const linkArchiveRepo = (archiveId, repo) => apiFetch('POST', `/api/archives/${archiveId}/repos`, repo);
+export const unlinkArchiveRepo = (archiveId, repoId) => apiFetch('DELETE', `/api/archives/${archiveId}/repos/${repoId}`);
+
 // --- Squad APIs ---
 
 export const fetchSquads = (workspaceId) => apiFetch('GET', `/api/workspaces/${workspaceId}/squads`);
