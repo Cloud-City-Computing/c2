@@ -403,7 +403,7 @@ function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, ge
             {expanded ? '▾' : '▸'}
           </button>
         )}
-        <span className="log-tree-title" onClick={() => navigate(`/editor/${log.id}`)}>
+        <span className="log-tree-title" onClick={() => navigate(`/archives/${archiveId}/doc/${log.id}`)}>
           {log.title}
         </span>
         <PresenceAvatars users={activeUsers} />
@@ -423,7 +423,7 @@ function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, ge
           <button className="log-tree-add" onClick={handleNewSublog} title="Add sublog">+</button>
           <button className="log-tree-comments" onClick={() => {
             showModal(
-              <CommentManager logId={log.id} logTitle={log.title} onClose={destroyModal} onNavigate={(_c) => { destroyModal(); navigate(`/editor/${log.id}`); }} />,
+              <CommentManager logId={log.id} logTitle={log.title} onClose={destroyModal} onNavigate={(_c) => { destroyModal(); navigate(`/archives/${archiveId}/doc/${log.id}`); }} />,
               'modal-lg'
             );
           }} title="Manage comments">

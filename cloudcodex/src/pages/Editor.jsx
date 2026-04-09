@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
@@ -16,6 +16,12 @@ import ImageCropModal from '../components/ImageCropModal';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
+import CodeBlockWithLanguage from '../components/CodeBlockWithLanguage';
+import DrawioBlock from '../components/DrawioBlock';
+import { createLowlight, common } from 'lowlight';
+import { hastToHtml, encodeBase64, decodeBase64 } from '../editorUtils';
+
+const readonlyLowlight = createLowlight(common);
 import { marked } from 'marked';
 import TurndownService from 'turndown';
 import DOMPurify from 'dompurify';
@@ -146,6 +152,66 @@ function markdownToHtml(md) {
   return sanitizeHtml(marked.parse(md));
 }
 
+/** Read-only content renderer — pre-processes HTML with syntax highlighting and draw.io SVGs */
+function ReadOnlyContent({ html }) {
+  const processedHtml = useMemo(() => {
+    if (!html) return '';
+    const sanitized = sanitizeHtml(html);
+    // Parse into a DOM so we can process code blocks and diagrams
+    const parser = new DOMParser();
+    const doc = parser.parseFromString('<div>' + sanitized + '</div>', 'text/html');
+    const container = doc.body.firstChild;
+
+    // Highlight code blocks with lowlight
+    const codeBlocks = container.querySelectorAll('pre code');
+    for (const codeEl of codeBlocks) {
+      const pre = codeEl.parentElement;
+      const langClass = [...codeEl.classList].find(c => c.startsWith('language-'));
+      const lang = langClass ? langClass.replace('language-', '') : '';
+      const text = codeEl.textContent || '';
+      try {
+        const result = lang && lang !== 'plaintext'
+          ? readonlyLowlight.highlight(lang, text)
+          : readonlyLowlight.highlightAuto(text);
+        codeEl.innerHTML = hastToHtml(result);
+        codeEl.classList.add('hljs');
+        const detectedLang = lang || result.data?.language || '';
+        if (detectedLang && pre) {
+          const badge = doc.createElement('span');
+          badge.className = 'code-lang-badge';
+          badge.textContent = detectedLang;
+          pre.appendChild(badge);
+        }
+      } catch { /* leave unhighlighted */ }
+    }
+
+    // Decode draw.io diagram SVGs from base64 data attributes
+    const drawioBlocks = container.querySelectorAll('div[data-drawio-svg]');
+    for (const div of drawioBlocks) {
+      const b64 = div.getAttribute('data-drawio-svg');
+      if (!b64) continue;
+      try {
+        const svgStr = decodeBase64(b64);
+        const clean = DOMPurify.sanitize(svgStr, { USE_PROFILES: { svg: true, svgFilters: true } });
+        const wrapper = doc.createElement('div');
+        wrapper.className = 'drawio-diagram__svg';
+        wrapper.innerHTML = clean;
+        div.innerHTML = '';
+        div.appendChild(wrapper);
+      } catch { /* leave empty */ }
+    }
+
+    return container.innerHTML;
+  }, [html]);
+
+  return (
+    <div
+      className="document-readonly"
+      dangerouslySetInnerHTML={{ __html: processedHtml }}
+    />
+  );
+}
+
 // --- Tiptap Formatting Toolbar ---
 
 function TiptapToolbar({ editor, onImageSelect }) {
@@ -220,6 +286,9 @@ function TiptapToolbar({ editor, onImageSelect }) {
         <button className={btnClass(editor.isActive('codeBlock'))} onClick={() => editor.chain().focus().toggleCodeBlock().run()} title="Code Block">
           {'{ }'}
         </button>
+        <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().insertDrawioBlock().run()} title="Diagram (draw.io)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><line x1="10" y1="6.5" x2="14" y2="6.5" /><line x1="6.5" y1="10" x2="6.5" y2="14" /><line x1="14" y1="17.5" x2="10" y2="17.5" /></svg>
+        </button>
       </div>
 
       <span className="tiptap-toolbar__divider" />
@@ -279,7 +348,9 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ codeBlock: false }),
+      CodeBlockWithLanguage,
+      DrawioBlock,
       ResizableImage.configure({ inline: false, allowBase64: false }),
       Placeholder.configure({ placeholder: 'Start typing...' }),
       Underline,
@@ -648,8 +719,9 @@ function VersionHistory({ logId, onRestore, versionKey }) {
 
 // --- Editor Log ---
 
-export default function Editor() {
-  const { logId } = useParams();
+export default function Editor({ embedded = false, archiveId: propArchiveId } = {}) {
+  const params = useParams();
+  const logId = params.logId;
   const navigate = useNavigate();
   const [content, setContent] = useState('');
   const contentRef = useRef('');
@@ -665,6 +737,7 @@ export default function Editor() {
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
   const remoteUpdateRef = useRef(false);
   const [versionKey, setVersionKey] = useState(0);
+  const [viewMode, setViewMode] = useState(embedded ? 'read' : 'edit'); // 'read' | 'edit'
 
   // --- Auto-save state ---
   const dirtyRef = useRef(false);          // true when local edits haven't been saved yet
@@ -1040,16 +1113,20 @@ export default function Editor() {
     }
   }, [logId, documentData?.title]);
 
-  return (
-    <StdLayout>
+  const editorContent = (
       <div className="editor-log">
         <div className="editor-header">
           <div className="editor-breadcrumb">
             {documentData?.archive_name && (
-              <span className="breadcrumb-item">{documentData.archive_name}</span>
+              <span
+                className="breadcrumb-item breadcrumb-item--link"
+                onClick={() => navigate(`/archives/${documentData.archive_id}/doc/${logId}`)}
+              >
+                {documentData.archive_name}
+              </span>
             )}
           </div>
-          {editingTitle ? (
+          {viewMode === 'edit' && editingTitle ? (
             <div className="editor-title-edit">
               <input
                 type="text" value={title}
@@ -1060,7 +1137,11 @@ export default function Editor() {
               />
             </div>
           ) : (
-            <h2 className="editor-title" onClick={() => setEditingTitle(true)} title="Click to rename">
+            <h2
+              className={`editor-title${viewMode === 'edit' ? '' : ' editor-title--readonly'}`}
+              onClick={viewMode === 'edit' ? () => setEditingTitle(true) : undefined}
+              title={viewMode === 'edit' ? 'Click to rename' : undefined}
+            >
               {documentData?.title ?? 'Loading Document...'}
             </h2>
           )}
@@ -1071,7 +1152,7 @@ export default function Editor() {
                 <span>v{documentData.version ?? 1} &middot; {new Date(documentData.created_at).toLocaleString()}</span>
               </>
             )}
-            <CollabPresence users={collabUsers} connected={collabConnected} />
+            {viewMode === 'edit' && <CollabPresence users={collabUsers} connected={collabConnected} />}
           </div>
         </div>
 
@@ -1079,8 +1160,49 @@ export default function Editor() {
           <p className={`editor-status ${status.type}`}>{status.message}</p>
         )}
 
+        {viewMode === 'read' ? (
+          <>
+            <div className="editor-toolbar">
+              <div className="toolbar-group">
+                <button className="btn btn-primary btn-sm" onClick={() => setViewMode('edit')}>
+                  ✏️ Edit
+                </button>
+              </div>
+
+              <span className="toolbar-divider" />
+
+              <div className="toolbar-group">
+                <div className="export-dropdown" ref={exportRef}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowExport(v => !v)}>
+                    📥 Export ▾
+                  </button>
+                  {showExport && (
+                    <div className="export-dropdown__menu">
+                      <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
+                      <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
+                      <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
+                      <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
+                      <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="toolbar-spacer" />
+
+              {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>}
+            </div>
+            <ReadOnlyContent html={content} />
+          </>
+        ) : (
+          <>
         <div className="editor-toolbar">
           <div className="toolbar-group">
+            {embedded && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setViewMode('read')}>
+                👁 Read
+              </button>
+            )}
             <button className="btn btn-primary btn-sm" onClick={() => handleSave()} disabled={saving}>
               {saving ? 'Saving...' : '💾 Save'}
             </button>
@@ -1145,7 +1267,7 @@ export default function Editor() {
 
           <div className="toolbar-spacer" />
 
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>
+          {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>}
         </div>
 
         {showVersions && <VersionHistory logId={logId} onRestore={loadDocument} versionKey={versionKey} />}
@@ -1190,7 +1312,11 @@ export default function Editor() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
-    </StdLayout>
   );
+
+  if (embedded) return editorContent;
+  return <StdLayout>{editorContent}</StdLayout>;
 }
