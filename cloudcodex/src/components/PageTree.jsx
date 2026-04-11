@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchLogs, createLog, showModal, destroyModal } from '../util';
 
 function NewLogModal({ archiveId, parentId, onCreated }) {
@@ -90,6 +91,7 @@ function TreeItem({ log, depth = 0, activeLogId, onSelect, archiveId, onLogCreat
 }
 
 export default function PageTree({ archiveId, archiveName, activeLogId, onSelect, onCollapse }) {
+  const navigate = useNavigate();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -120,6 +122,13 @@ export default function PageTree({ archiveId, archiveName, activeLogId, onSelect
   return (
     <div className="page-tree">
       <div className="page-tree-header">
+        <button
+          className="page-tree-back-btn"
+          onClick={() => navigate(`/archives/${archiveId}`)}
+          title="Back to archives"
+        >
+          ←
+        </button>
         <h3 className="page-tree-title">{archiveName || 'Pages'}</h3>
         <div className="page-tree-header-actions">
           <button className="page-tree-add-btn" onClick={handleNewPage} title="New page">+</button>
