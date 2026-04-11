@@ -14,7 +14,7 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { c2_query, generateSessionToken } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS } from './helpers/shared.js';
+import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL, createDefaultPermissions } from './helpers/shared.js';
 
 const router = express.Router();
 
@@ -23,7 +23,6 @@ const router = express.Router();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_OAUTH_DOMAIN = process.env.GOOGLE_OAUTH_DOMAIN; // e.g. 'yourcompany.com'
-const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
 const GOOGLE_REDIRECT_URI = `${APP_URL}/api/oauth/google/callback`;
 
 function isGoogleOAuthConfigured() {
@@ -271,10 +270,7 @@ router.get('/oauth/google/callback', asyncHandler(async (req, res) => {
       userId = result.insertId;
 
       // Create default permissions
-      await c2_query(
-        `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`,
-        [userId]
-      );
+      await createDefaultPermissions(userId);
 
       // Link the OAuth account
       await c2_query(

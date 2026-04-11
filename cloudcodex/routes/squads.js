@@ -9,7 +9,7 @@ import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendEmail } from '../services/email.js';
-import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
+import { isValidId, asyncHandler, errorHandler, APP_URL, addSquadOwnerMember } from './helpers/shared.js';
 
 const router = express.Router();
 
@@ -100,11 +100,7 @@ router.post(
     const newSquadId = result.insertId;
 
     // Auto-add the creator as a squad owner with full permissions
-    await c2_query(
-      `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
-       VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
-      [newSquadId, req.user.id]
-    );
+    await addSquadOwnerMember(newSquadId, req.user.id);
 
     // If the workspace owner is someone else, also add them as a squad owner
     if (!isOwner) {
@@ -113,11 +109,7 @@ router.post(
         [workspace.owner]
       );
       if (ownerUser) {
-        await c2_query(
-          `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
-           VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
-          [newSquadId, ownerUser.id]
-        );
+        await addSquadOwnerMember(newSquadId, ownerUser.id);
       }
     }
 
@@ -401,7 +393,6 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
   // Send email notification to the invited user
   const [invitedUser] = await c2_query(`SELECT email, name FROM users WHERE id = ? LIMIT 1`, [Number(userId)]);
   if (invitedUser?.email) {
-    const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
     try {
       await sendEmail({
         to: invitedUser.email,

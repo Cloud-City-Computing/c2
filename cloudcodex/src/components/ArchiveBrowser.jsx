@@ -22,6 +22,8 @@ import ConfirmDialog from './ConfirmDialog';
 import { toastError } from './Toast';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
+import ExportMenu from './ExportMenu';
+import NewLogModal from './NewLogModal';
 import CommentManager from './CommentManager';
 
 // --- New Archive Form ---
@@ -398,40 +400,6 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
   );
 }
 
-// --- New Log Form ---
-
-function NewLogModal({ archiveId, parentId, onCreated }) {
-  const [title, setTitle] = useState('');
-  const [error, setError] = useState(null);
-
-  const handleSubmit = async () => {
-    setError(null);
-    if (!title.trim()) { setError('Log title is required.'); return; }
-    try {
-      const res = await createLog(archiveId, title, parentId);
-      destroyModal();
-      onCreated?.(res.logId);
-    } catch (e) {
-      setError(e.body?.message ?? 'Error creating log.');
-    }
-  };
-
-  return (
-    <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>New Log</h2>
-      {error && <p className="form-error">{error}</p>}
-      <div className="modal-form">
-        <label htmlFor="log-title">Log Title:</label>
-        <input id="log-title" type="text" value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
-        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create Log</button>
-      </div>
-    </div>
-  );
-}
-
 // --- Upload Document Modal ---
 
 function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
@@ -486,9 +454,7 @@ function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
 
 function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, getLogUsers }) {
   const [expanded, setExpanded] = useState(depth === 0);
-  const [showExport, setShowExport] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
-  const exportRef = useRef(null);
   const navigate = useNavigate();
   const activeUsers = getLogUsers(log.id);
 
@@ -497,19 +463,7 @@ function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, ge
     fetchCommentCount(log.id).then(r => setCommentCount(r.count || 0)).catch(() => {});
   }, [log.id]);
 
-  useEffect(() => {
-    if (!showExport) return undefined;
-    const handleClickOutside = (e) => {
-      if (exportRef.current && !exportRef.current.contains(e.target)) {
-        setShowExport(false);
-      }
-    };
-    document.addEventListener('pointerdown', handleClickOutside);
-    return () => document.removeEventListener('pointerdown', handleClickOutside);
-  }, [showExport]);
-
   const handleExport = async (format) => {
-    setShowExport(false);
     try {
       if (format === 'pdf') {
         const res = await fetchDocument(log.id);
@@ -559,18 +513,7 @@ function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, ge
         </span>
         <PresenceAvatars users={activeUsers} />
         <div className="log-tree-actions">
-          <div className="export-dropdown" ref={exportRef}>
-            <button className="log-tree-export" onClick={() => setShowExport(v => !v)} title="Export log">⤓</button>
-            {showExport && (
-              <div className="export-dropdown__menu export-dropdown__menu--up">
-                <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
-                <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
-              </div>
-            )}
-          </div>
+          <ExportMenu onExport={handleExport} btnClass="log-tree-export" btnLabel="⤓" menuClass="export-dropdown__menu--up" />
           <button className="log-tree-add" onClick={handleNewSublog} title="Add sublog">+</button>
           <button className="log-tree-comments" onClick={() => {
             showModal(

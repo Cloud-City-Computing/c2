@@ -6,14 +6,9 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import { TAG_LABELS } from '../util';
 
-const TAG_OPTIONS = [
-  ['comment', 'Comment'],
-  ['suggestion', 'Suggestion'],
-  ['question', 'Question'],
-  ['issue', 'Issue'],
-  ['note', 'Note'],
-];
+const TAG_OPTIONS = Object.entries(TAG_LABELS);
 
 export default function CommentForm({ selectedText, onSubmit, onCancel }) {
   const [content, setContent] = useState('');

@@ -79,6 +79,39 @@ export async function serverReq(reqType, url, data, headers = {}) {
   return response.json();
 }
 
+// --- Shared helpers ---
+
+/** Human-readable relative time string (e.g. "3m ago", "2d ago"). */
+export function timeAgo(dateStr) {
+  const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+/** Build a URL to open a document, accounting for archive context. */
+export const docUrl = (doc) =>
+  doc.archive_id ? `/archives/${doc.archive_id}/doc/${doc.id}` : `/editor/${doc.id}`;
+
+/** Extract a user-friendly message from an API error object. */
+export function getErrorMessage(err) {
+  return err?.body?.message || err?.message || 'An unexpected error occurred.';
+}
+
+/** Comment tag label map — single source of truth for tag display names. */
+export const TAG_LABELS = {
+  comment: 'Comment',
+  suggestion: 'Suggestion',
+  question: 'Question',
+  issue: 'Issue',
+  note: 'Note',
+};
+
 // --- Workspace APIs ---
 
 export const fetchWorkspaces = () => apiFetch('GET', '/api/workspaces');

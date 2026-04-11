@@ -10,39 +10,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchLogs, createLog, showModal, destroyModal } from '../util';
-
-function NewLogModal({ archiveId, parentId, onCreated }) {
-  const [title, setTitle] = useState('');
-  const [error, setError] = useState(null);
-
-  const handleSubmit = async () => {
-    setError(null);
-    if (!title.trim()) { setError('Log title is required.'); return; }
-    try {
-      const res = await createLog(archiveId, title, parentId);
-      destroyModal();
-      onCreated?.(res.logId);
-    } catch (e) {
-      setError(e.body?.message ?? 'Error creating log.');
-    }
-  };
-
-  return (
-    <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
-      <h2>New Page</h2>
-      {error && <p className="form-error">{error}</p>}
-      <div className="modal-form">
-        <label htmlFor="log-title">Page Title:</label>
-        <input id="log-title" type="text" value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()} />
-        <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Create</button>
-      </div>
-    </div>
-  );
-}
+import { fetchLogs, showModal, destroyModal } from '../util';
+import NewLogModal from './NewLogModal';
 
 function TreeItem({ log, depth = 0, activeLogId, onSelect, archiveId, onLogCreated }) {
   const [expanded, setExpanded] = useState(true);
@@ -52,7 +21,7 @@ function TreeItem({ log, depth = 0, activeLogId, onSelect, archiveId, onLogCreat
   const handleAddSublog = (e) => {
     e.stopPropagation();
     showModal(
-      <NewLogModal archiveId={archiveId} parentId={log.id} onCreated={onLogCreated} />,
+      <NewLogModal archiveId={archiveId} parentId={log.id} onCreated={onLogCreated} heading="New Page" label="Page Title:" />,
       'modal-md'
     );
   };
