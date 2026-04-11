@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite } from '../util';
+import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, docUrl } from '../util';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
 
@@ -285,7 +285,7 @@ export default function ExploreBrowser() {
             activeUsers={getLogUsers(item.id)}
             isFavorited={favIds.has(item.id)}
             onToggleFavorite={handleToggleFavorite}
-            onClick={() => navigate(item.archive_id ? `/archives/${item.archive_id}/doc/${item.id}` : `/editor/${item.id}`)}
+            onClick={() => navigate(docUrl(item))}
           />
         ))}
       </div>

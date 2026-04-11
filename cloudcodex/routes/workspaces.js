@@ -8,7 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
+import { isValidId, asyncHandler, errorHandler, addSquadOwnerMember } from './helpers/shared.js';
 
 const router = express.Router();
 
@@ -80,11 +80,7 @@ router.post('/workspaces', requireAuth, asyncHandler(async (req, res) => {
     );
     squadId = squadResult.insertId;
 
-    await c2_query(
-      `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
-       VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
-      [squadId, req.user.id]
-    );
+    await addSquadOwnerMember(squadId, req.user.id);
 
     // Optionally create a archive alongside the squad
     if (archiveName?.trim()) {

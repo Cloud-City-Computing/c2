@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import { ExploreCard, Pagination } from '../components/ExploreBrowser';
-import { fetchFavorites, removeFavorite } from '../util';
+import { fetchFavorites, removeFavorite, docUrl } from '../util';
 import usePresence from '../hooks/usePresence';
 
 const ITEMS_PER_PAGE = 12;
@@ -81,7 +81,7 @@ export default function FavoritesPage() {
               activeUsers={getLogUsers(item.id)}
               isFavorited={favIds.has(item.id)}
               onToggleFavorite={handleToggleFavorite}
-              onClick={() => navigate(item.archive_id ? `/archives/${item.archive_id}/doc/${item.id}` : `/editor/${item.id}`)}
+              onClick={() => navigate(docUrl(item))}
             />
           ))}
         </div>

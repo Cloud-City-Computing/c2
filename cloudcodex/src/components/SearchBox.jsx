@@ -7,7 +7,7 @@
 
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../util';
+import { apiFetch, docUrl } from '../util';
 
 export default function SearchBox({ inline = false, onResults }) {
   const inputRef = useRef(null);
@@ -34,7 +34,7 @@ export default function SearchBox({ inline = false, onResults }) {
   const handleResultClick = (doc) => {
     setShowDropdown(false);
     if (inputRef.current) inputRef.current.value = '';
-    navigate(doc.archive_id ? `/archives/${doc.archive_id}/doc/${doc.id}` : `/editor/${doc.id}`);
+    navigate(docUrl(doc));
   };
 
   if (inline) {

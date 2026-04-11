@@ -55,8 +55,10 @@ import {
   checkFavorite,
   addFavorite,
   removeFavorite,
+  timeAgo,
 } from '../util';
 import PublishModal from '../components/PublishModal';
+import ExportMenu from '../components/ExportMenu';
 import { toastError } from '../components/Toast';
 import CommentSidebar from '../components/CommentSidebar';
 import CommentForm from '../components/CommentForm';
@@ -613,18 +615,6 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
 
 // --- Version History Panel ---
 
-function timeAgo(dateStr) {
-  const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (s < 60) return 'just now';
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(dateStr).toLocaleDateString();
-}
-
 function VersionHistory({ logId, onRestore, versionKey }) {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -736,8 +726,6 @@ export default function Editor({ embedded = false } = {}) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
-  const [showExport, setShowExport] = useState(false);
-  const exportRef = useRef(null);
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
   const remoteUpdateRef = useRef(false);
   const [versionKey, setVersionKey] = useState(0);
@@ -812,18 +800,6 @@ export default function Editor({ embedded = false } = {}) {
 
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
   useEffect(() => { contentRef.current = content; }, [content]);
-
-  // Close export dropdown when clicking outside
-  useEffect(() => {
-    if (!showExport) return;
-    const handleClickOutside = (e) => {
-      if (exportRef.current && !exportRef.current.contains(e.target)) {
-        setShowExport(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showExport]);
 
   // Debounced send to collab peers on local change
   const sendTimerRef = useRef(null);
@@ -1135,7 +1111,6 @@ export default function Editor({ embedded = false } = {}) {
   };
 
   const handleExport = useCallback(async (format) => {
-    setShowExport(false);
     setStatus(null);
     try {
       await exportDocument(Number(logId), format, documentData?.title, contentRef.current);
@@ -1213,20 +1188,7 @@ export default function Editor({ embedded = false } = {}) {
               <span className="toolbar-divider" />
 
               <div className="toolbar-group">
-                <div className="export-dropdown" ref={exportRef}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setShowExport(v => !v)}>
-                    📥 Export ▾
-                  </button>
-                  {showExport && (
-                    <div className="export-dropdown__menu">
-                      <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
-                      <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
-                      <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
-                      <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
-                      <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
-                    </div>
-                  )}
-                </div>
+                <ExportMenu onExport={handleExport} />
               </div>
 
               <div className="toolbar-spacer" />
@@ -1290,20 +1252,7 @@ export default function Editor({ embedded = false } = {}) {
             <button className="btn btn-ghost btn-sm" onClick={() => setShowVersions(v => !v)}>
               {showVersions ? '🕓 Hide History' : '🕓 History'}
             </button>
-            <div className="export-dropdown" ref={exportRef}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowExport(v => !v)}>
-                📥 Export ▾
-              </button>
-              {showExport && (
-                <div className="export-dropdown__menu">
-                  <button className="export-dropdown__item" onClick={() => handleExport('html')}>HTML (.html)</button>
-                  <button className="export-dropdown__item" onClick={() => handleExport('md')}>Markdown (.md)</button>
-                  <button className="export-dropdown__item" onClick={() => handleExport('txt')}>Plain Text (.txt)</button>
-                  <button className="export-dropdown__item" onClick={() => handleExport('pdf')}>PDF (.pdf)</button>
-                  <button className="export-dropdown__item" onClick={() => handleExport('docx')}>Word (.docx)</button>
-                </div>
-              )}
-            </div>
+            <ExportMenu onExport={handleExport} />
           </div>
 
           <div className="toolbar-spacer" />

@@ -18,27 +18,9 @@ import {
   clearAllComments,
   addCommentReply,
   deleteCommentReply,
+  timeAgo,
+  TAG_LABELS,
 } from '../util';
-
-const TAG_LABELS = {
-  comment: 'Comment',
-  suggestion: 'Suggestion',
-  question: 'Question',
-  issue: 'Issue',
-  note: 'Note',
-};
-
-function timeAgo(dateStr) {
-  const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (s < 60) return 'just now';
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(dateStr).toLocaleDateString();
-}
 
 export default function CommentManager({ logId, logTitle, onClose, onNavigate }) {
   const [comments, setComments] = useState([]);

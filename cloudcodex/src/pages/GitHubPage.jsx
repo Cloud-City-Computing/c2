@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
-import { apiFetch } from '../util';
+import { apiFetch, timeAgo } from '../util';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -80,20 +80,6 @@ function PullRequestIcon() {
 
 function ChevronRight() {
   return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>;
-}
-
-// ─── Utility ──────────────────────────────────────────
-
-function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
 }
 
 // ─── File Tree Helpers ────────────────────────────────

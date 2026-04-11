@@ -121,6 +121,65 @@ export async function canPublish(squadId, archiveCreatorId, user) {
   return false;
 }
 
+// --- Shared constants ---
+
+export const BCRYPT_ROUNDS = 12;
+export const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
+export const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+// --- Shared DB operations ---
+
+/**
+ * Check if a user has write access to an archive.
+ * Returns the archive row { id } or undefined if no access.
+ */
+export async function checkArchiveWriteAccess(archiveId, user) {
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
+     LIMIT 1`,
+    [Number(archiveId), ...writeAccessParams(user)]
+  );
+  return archive;
+}
+
+/**
+ * Check if a user has read access to an archive.
+ * Returns the archive row { id } or undefined if no access.
+ */
+export async function checkArchiveReadAccess(archiveId, user) {
+  const [archive] = await c2_query(
+    `SELECT p.id FROM archives p
+     WHERE p.id = ?
+       AND ${readAccessWhere('p')}
+     LIMIT 1`,
+    [Number(archiveId), ...readAccessParams(user)]
+  );
+  return archive;
+}
+
+/**
+ * Insert default permissions for a new user.
+ */
+export async function createDefaultPermissions(userId) {
+  await c2_query(
+    `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`,
+    [userId]
+  );
+}
+
+/**
+ * Insert a squad owner member with full permissions.
+ */
+export async function addSquadOwnerMember(squadId, userId) {
+  await c2_query(
+    `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
+     VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
+    [squadId, userId]
+  );
+}
+
 // --- Centralized error handler ---
 
 /**

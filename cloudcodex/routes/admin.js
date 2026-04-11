@@ -11,14 +11,9 @@ import crypto from 'crypto';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { sendEmail } from '../services/email.js';
-import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
+import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
 
 const router = express.Router();
-
-const BCRYPT_ROUNDS = 12;
-const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
-
-const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 /**
  * Ensures the admin super user exists in the database.
@@ -54,10 +49,7 @@ export async function ensureAdminUser() {
   );
 
   // Create default permissions row
-  await c2_query(
-    `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`,
-    [result.insertId]
-  );
+  await createDefaultPermissions(result.insertId);
 
   console.log('✔ Admin super user created');
 }
@@ -130,11 +122,7 @@ router.post('/admin/workspaces', requireAuth, requireAdmin, asyncHandler(async (
     );
     squadId = squadResult.insertId;
 
-    await c2_query(
-      `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
-       VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
-      [squadId, owner.id]
-    );
+    await addSquadOwnerMember(squadId, owner.id);
 
     if (archiveName?.trim()) {
       const projResult = await c2_query(

@@ -7,7 +7,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
-import { destroyModal, showModal } from '../util';
+import { destroyModal, showModal, docUrl } from '../util';
 
 function DocumentPreviewModal({ doc, onOpen }) {
   return (
@@ -24,7 +24,7 @@ function DocumentPreviewModal({ doc, onOpen }) {
 
 function SearchResultItem({ doc }) {
   const navigate = useNavigate();
-  const openDoc = () => navigate(doc.archive_id ? `/archives/${doc.archive_id}/doc/${doc.id}` : `/editor/${doc.id}`);
+  const openDoc = () => navigate(docUrl(doc));
 
   return (
     <div className="search-result-item" onClick={() => showModal(<DocumentPreviewModal doc={doc} onOpen={openDoc} />, 'modal-md')}>

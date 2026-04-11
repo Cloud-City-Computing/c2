@@ -13,15 +13,12 @@ import QRCode from 'qrcode';
 import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
 import { sendEmail } from '../services/email.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS } from './helpers/shared.js';
+import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions } from './helpers/shared.js';
 
 const router = express.Router();
 
-const BCRYPT_ROUNDS = 12;
-
 // --- Helpers ---
 
-const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isValidUsername = (name) => /^[a-zA-Z0-9_]{3,32}$/.test(name);
 
 const PASSWORD_MIN_LENGTH = 8;
@@ -143,10 +140,7 @@ router.post('/create-account', asyncHandler(async (req, res) => {
   const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
 
   // Create default permissions row for new user
-  await c2_query(
-    `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`,
-    [result.insertId]
-  );
+  await createDefaultPermissions(result.insertId);
 
   // Mark invitation as accepted
   await c2_query(
@@ -573,8 +567,6 @@ router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
 function generateResetToken() {
   return crypto.randomBytes(32).toString('hex');
 }
-
-const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
 
 /**
  * POST /api/forgot-password

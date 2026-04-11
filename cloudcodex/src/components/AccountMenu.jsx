@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   getSessStorage, apiFetch, getSessionTokenFromCookie,
 } from '../util';
-import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs } from '../userPrefs';
+import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES, DENSITIES } from '../userPrefs';
 
 // ===========================
 //  Account Panels (used by AccountSettings log)
@@ -378,28 +378,19 @@ export function AccountPreferencesPanel() {
 //  User Preferences Panel
 // ===========================
 
-const ACCENT_COLORS = [
-  { id: 'blue',    label: 'Ocean Blue',     value: '#2ca7db', light: '#5ac0e8', dark: '#1e7a9c', hover: '#21779c' },
-  { id: 'violet',  label: 'Soft Violet',    value: '#8b5cf6', light: '#a78bfa', dark: '#6d3ad4', hover: '#7c3aed' },
-  { id: 'emerald', label: 'Emerald',        value: '#10b981', light: '#34d399', dark: '#059669', hover: '#047857' },
-  { id: 'rose',    label: 'Rose',           value: '#f43f5e', light: '#fb7185', dark: '#e11d48', hover: '#be123c' },
-  { id: 'amber',   label: 'Amber',          value: '#f59e0b', light: '#fbbf24', dark: '#d97706', hover: '#b45309' },
-  { id: 'cyan',    label: 'Cyan',           value: '#06b6d4', light: '#22d3ee', dark: '#0891b2', hover: '#0e7490' },
-  { id: 'pink',    label: 'Fuchsia',        value: '#d946ef', light: '#e879f9', dark: '#c026d3', hover: '#a21caf' },
-  { id: 'lime',    label: 'Lime',           value: '#84cc16', light: '#a3e635', dark: '#65a30d', hover: '#4d7c0f' },
-];
+const COLOR_LABELS = {
+  blue: 'Ocean Blue', violet: 'Soft Violet', emerald: 'Emerald', rose: 'Rose',
+  amber: 'Amber', cyan: 'Cyan', pink: 'Fuchsia', lime: 'Lime',
+};
+const ACCENT_COLOR_LIST = Object.entries(ACCENT_COLORS).map(([id, c]) => ({ id, label: COLOR_LABELS[id], ...c }));
 
-const FONT_SIZE_OPTIONS = [
-  { id: 'sm', label: 'Small', value: '13px' },
-  { id: 'md', label: 'Medium', value: '15px' },
-  { id: 'lg', label: 'Large', value: '17px' },
-];
+const FONT_SIZE_OPTIONS = Object.entries(FONT_SIZES).map(([id, value]) => ({
+  id, value, label: id === 'sm' ? 'Small' : id === 'md' ? 'Medium' : 'Large',
+}));
 
-const DENSITY_OPTIONS = [
-  { id: 'compact',     label: 'Compact',     padScale: 0.7 },
-  { id: 'comfortable', label: 'Comfortable', padScale: 1.0 },
-  { id: 'spacious',    label: 'Spacious',    padScale: 1.3 },
-];
+const DENSITY_OPTIONS = Object.entries(DENSITIES).map(([id, padScale]) => ({
+  id, padScale, label: id === 'compact' ? 'Compact' : id === 'comfortable' ? 'Comfortable' : 'Spacious',
+}));
 
 const EDITOR_MODE_OPTIONS = [
   { id: 'richtext', label: 'Rich Text' },
@@ -434,7 +425,7 @@ export function UserPreferencesPanel() {
         <h3 className="pref-section__title">Accent Color</h3>
         <p className="text-muted text-sm">Personalize the interface with your favorite color.</p>
         <div className="color-swatch-row">
-          {ACCENT_COLORS.map(c => (
+          {ACCENT_COLOR_LIST.map(c => (
             <button
               key={c.id}
               className={`color-swatch${prefs.accentColor === c.id ? ' active' : ''}`}
