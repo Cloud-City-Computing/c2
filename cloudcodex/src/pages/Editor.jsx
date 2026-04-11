@@ -188,20 +188,21 @@ function ReadOnlyContent({ html }) {
       } catch { /* leave unhighlighted */ }
     }
 
-    // Decode draw.io diagram SVGs from base64 data attributes
-    const drawioBlocks = container.querySelectorAll('div[data-drawio-svg]');
+    // Process draw.io diagram blocks — handle both legacy (base64 data attr)
+    // and current (inline SVG) formats
+    const drawioBlocks = container.querySelectorAll('div[data-type="drawioBlock"], div[data-drawio-svg]');
     for (const div of drawioBlocks) {
+      // Legacy format: decode base64 from data-drawio-svg attribute
       const b64 = div.getAttribute('data-drawio-svg');
-      if (!b64) continue;
-      try {
-        const svgStr = decodeBase64(b64);
-        const clean = DOMPurify.sanitize(svgStr, { USE_PROFILES: { svg: true, svgFilters: true } });
-        const wrapper = doc.createElement('div');
-        wrapper.className = 'drawio-diagram__svg';
-        wrapper.innerHTML = clean;
-        div.innerHTML = '';
-        div.appendChild(wrapper);
-      } catch { /* leave empty */ }
+      if (b64) {
+        try {
+          const svgStr = decodeBase64(b64);
+          const clean = DOMPurify.sanitize(svgStr, { USE_PROFILES: { svg: true, svgFilters: true } });
+          div.innerHTML = clean;
+        } catch { /* leave empty */ }
+      }
+      // Current format: SVG is already inline, just ensure it's sanitized
+      // (sanitizeHtml at the top of this function already handled it)
     }
 
     return container.innerHTML;
