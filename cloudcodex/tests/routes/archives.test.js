@@ -588,4 +588,168 @@ describe('Archive Routes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // ── GET /api/archives/:archiveId/repos ────────────────────
+
+  describe('GET /api/archives/:archiveId/repos', () => {
+    it('returns linked repos', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }]) // read access check
+        .mockResolvedValueOnce([
+          { id: 10, repo_full_name: 'user/repo', repo_owner: 'user', repo_name: 'repo', linked_at: '2026-01-01', linked_by_name: 'Test' },
+        ]);
+
+      const res = await request(app)
+        .get('/api/archives/1/repos')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.repos).toHaveLength(1);
+      expect(res.body.repos[0].repo_full_name).toBe('user/repo');
+    });
+
+    it('rejects when no read access', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]); // no access
+
+      const res = await request(app)
+        .get('/api/archives/1/repos')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects invalid archive ID', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .get('/api/archives/abc/repos')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── POST /api/archives/:archiveId/repos ────────────────────
+
+  describe('POST /api/archives/:archiveId/repos', () => {
+    it('links a repo to an archive', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ 1: 1 }]) // isArchiveOwner
+        .mockResolvedValueOnce({ insertId: 50 }); // INSERT
+
+      const res = await request(app)
+        .post('/api/archives/1/repos')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ repoFullName: 'user/repo', repoOwner: 'user', repoName: 'repo' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.repoLinkId).toBe(50);
+    });
+
+    it('rejects when not archive owner', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]); // not owner
+
+      const res = await request(app)
+        .post('/api/archives/1/repos')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ repoFullName: 'user/repo', repoOwner: 'user', repoName: 'repo' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects missing fields', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{ 1: 1 }]); // isArchiveOwner
+
+      const res = await request(app)
+        .post('/api/archives/1/repos')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ repoFullName: 'user/repo' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('handles duplicate link', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ 1: 1 }]) // isArchiveOwner
+        .mockRejectedValueOnce({ code: 'ER_DUP_ENTRY' }); // duplicate
+
+      const res = await request(app)
+        .post('/api/archives/1/repos')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ repoFullName: 'user/repo', repoOwner: 'user', repoName: 'repo' });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('rejects invalid archive ID', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/archives/abc/repos')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ repoFullName: 'user/repo', repoOwner: 'user', repoName: 'repo' });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── DELETE /api/archives/:archiveId/repos/:repoId ──────────
+
+  describe('DELETE /api/archives/:archiveId/repos/:repoId', () => {
+    it('unlinks a repo', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ 1: 1 }]) // isArchiveOwner
+        .mockResolvedValueOnce({ affectedRows: 1 }); // DELETE
+
+      const res = await request(app)
+        .delete('/api/archives/1/repos/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('rejects when not owner', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]); // not owner
+
+      const res = await request(app)
+        .delete('/api/archives/1/repos/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 for non-existent link', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ 1: 1 }]) // isArchiveOwner
+        .mockResolvedValueOnce({ affectedRows: 0 }); // not found
+
+      const res = await request(app)
+        .delete('/api/archives/1/repos/99')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .delete('/api/archives/abc/repos/xyz')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+  });
 });
