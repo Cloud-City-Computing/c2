@@ -90,10 +90,15 @@ function TreeItem({ log, depth = 0, activeLogId, onSelect, archiveId, onLogCreat
   );
 }
 
-export default function PageTree({ archiveId, archiveName, activeLogId, onSelect, onCollapse }) {
+export default function PageTree({ archiveId, archiveName, archiveMeta, activeLogId, onSelect, onCollapse }) {
   const navigate = useNavigate();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Build the back URL: preserve squad/workspace context if the archive belongs to a squad
+  const backUrl = archiveMeta?.squadId
+    ? `/archives/${archiveId}?squad=${archiveMeta.squadId}${archiveMeta.workspaceId ? `&workspace=${archiveMeta.workspaceId}` : ''}`
+    : `/archives/${archiveId}`;
 
   const loadLogs = useCallback(async () => {
     if (!archiveId) return;
@@ -124,7 +129,7 @@ export default function PageTree({ archiveId, archiveName, activeLogId, onSelect
       <div className="page-tree-header">
         <button
           className="page-tree-back-btn"
-          onClick={() => navigate(`/archives/${archiveId}`)}
+          onClick={() => navigate(backUrl)}
           title="Back to archives"
         >
           ←

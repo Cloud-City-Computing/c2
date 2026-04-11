@@ -20,15 +20,24 @@ export default function ArchiveView() {
   const { archiveId, logId } = useParams();
   const navigate = useNavigate();
   const [archiveName, setArchiveName] = useState('');
+  const [archiveMeta, setArchiveMeta] = useState({});
   const [collapsed, setCollapsed] = useState(false);
 
-  // Fetch archive name
+  // Fetch archive name and context (squad, workspace)
   useEffect(() => {
     if (!archiveId) return;
     apiFetch('GET', '/api/archives')
       .then(res => {
         const archive = (res.archives || []).find(a => a.id === Number(archiveId));
-        if (archive) setArchiveName(archive.name);
+        if (archive) {
+          setArchiveName(archive.name);
+          setArchiveMeta({
+            squadId: archive.squad_id,
+            squadName: archive.squad_name,
+            workspaceId: archive.workspace_id,
+            workspaceName: archive.workspace_name,
+          });
+        }
       })
       .catch(() => {});
   }, [archiveId]);
@@ -53,6 +62,7 @@ export default function ArchiveView() {
             <PageTree
               archiveId={Number(archiveId)}
               archiveName={archiveName}
+              archiveMeta={archiveMeta}
               activeLogId={logId}
               onSelect={handleSelectLog}
               onCollapse={() => setCollapsed(true)}

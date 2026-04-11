@@ -35,10 +35,13 @@ router.get('/archives', requireAuth, asyncHandler(async (req, res) => {
             u.name AS created_by,
             p.created_by AS created_by_id,
             t.name AS squad_name,
-            t.id AS squad_id
+            t.id AS squad_id,
+            o.id AS workspace_id,
+            o.name AS workspace_name
      FROM archives p
      LEFT JOIN users u  ON p.created_by  = u.id
      LEFT JOIN squads t  ON p.squad_id     = t.id
+     LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE ${readAccessWhere('p')}
      ORDER BY p.created_at DESC`,
     [...readAccessParams(req.user)]

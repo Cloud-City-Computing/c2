@@ -501,7 +501,8 @@ router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
 
 /**
  * POST /api/oauth/github/unlink
- * Unlinks the user's GitHub account.
+ * Unlinks the user's GitHub account and revokes the OAuth grant on GitHub's side
+ * so that re-linking prompts the user to re-select repository access.
  */
 router.post('/oauth/github/unlink', requireAuth, asyncHandler(async (req, res) => {
   // If GitHub is the user's only auth method (no password, no other OAuth), block
@@ -518,6 +519,30 @@ router.post('/oauth/github/unlink', requireAuth, asyncHandler(async (req, res) =
       success: false,
       message: 'You must set a password or have another login method before unlinking GitHub'
     });
+  }
+
+  // Revoke the OAuth grant on GitHub's side so re-linking shows the repo selection screen
+  const [account] = await c2_query(
+    `SELECT encrypted_token FROM oauth_accounts WHERE user_id = ? AND provider = 'github' LIMIT 1`,
+    [req.user.id]
+  );
+  if (account?.encrypted_token) {
+    const token = decryptToken(account.encrypted_token);
+    if (token && GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET) {
+      try {
+        await fetch(`https://api.github.com/applications/${GITHUB_CLIENT_ID}/grant`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': 'Basic ' + Buffer.from(`${GITHUB_CLIENT_ID}:${GITHUB_CLIENT_SECRET}`).toString('base64'),
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+          body: JSON.stringify({ access_token: token }),
+        });
+      } catch {
+        // Non-fatal: even if the GitHub revocation fails, still unlink locally
+      }
+    }
   }
 
   await c2_query(

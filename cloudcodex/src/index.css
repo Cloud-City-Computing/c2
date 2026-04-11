@@ -482,6 +482,23 @@ body {
   font-weight: 700;
 }
 
+.archive-back-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.archive-back-btn:hover {
+  color: var(--brand-blue);
+  background: rgba(44, 167, 219, 0.12);
+}
+
 /* =========================
    Cards + Grid
 ========================= */
@@ -1082,9 +1099,19 @@ body {
   border-bottom: 1px solid var(--border-color, #333);
 }
 
-.gh-back-btn {
+.gh-back-btns {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
   margin-bottom: 6px;
+}
+
+.gh-back-btn {
   font-size: 13px;
+}
+
+.gh-back-btns .gh-back-btn {
+  margin-bottom: 0;
 }
 
 .gh-repo-title {

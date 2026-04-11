@@ -648,7 +648,8 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
 
 // ─── Repo Browser (tree + file viewer) ───────────────
 
-function RepoBrowser({ owner, repo: repoName, onBack }) {
+function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [repoInfo, setRepoInfo] = useState(null);
   const [tree, setTree] = useState([]);
@@ -657,7 +658,7 @@ function RepoBrowser({ owner, repo: repoName, onBack }) {
   const [selectedFile, setSelectedFile] = useState(searchParams.get('path') || null);
   const [loading, setLoading] = useState(true);
   const [treeFilter, setTreeFilter] = useState('');
-  const [mdOnly, setMdOnly] = useState(false);
+  const [mdOnly, setMdOnly] = useState(true);
 
   // Load repo info + branches
   useEffect(() => {
@@ -692,8 +693,9 @@ function RepoBrowser({ owner, repo: repoName, onBack }) {
     const params = {};
     if (branch && repoInfo && branch !== repoInfo.default_branch) params.ref = branch;
     if (selectedFile) params.path = selectedFile;
+    if (fromArchiveId) params.from_archive = fromArchiveId;
     setSearchParams(params, { replace: true });
-  }, [branch, selectedFile, repoInfo, setSearchParams]);
+  }, [branch, selectedFile, repoInfo, fromArchiveId, setSearchParams]);
 
   const treeNodes = useMemo(() => {
     let items = tree;
@@ -721,7 +723,12 @@ function RepoBrowser({ owner, repo: repoName, onBack }) {
       {/* Sidebar: tree */}
       <aside className="gh-browser__sidebar">
         <div className="gh-browser__sidebar-header">
-          <button className="btn btn-ghost btn-sm gh-back-btn" onClick={onBack}>&larr; Repos</button>
+          <div className="gh-back-btns">
+            <button className="btn btn-ghost btn-sm gh-back-btn" onClick={onBack}>&larr; Repos</button>
+            {fromArchiveId && (
+              <button className="btn btn-ghost btn-sm gh-back-btn" onClick={() => navigate(`/archives/${fromArchiveId}`)}>&larr; Archive</button>
+            )}
+          </div>
           <h3 className="gh-repo-title">
             <RepoIcon /> {repoInfo?.name || repoName}
             {repoInfo?.private && <LockIcon />}
@@ -831,6 +838,8 @@ function GitHubNotConnected() {
 export default function GitHubPage() {
   const params = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromArchiveId = searchParams.get('from_archive');
   const [connected, setConnected] = useState(null); // null = loading
   const [view, setView] = useState(params.owner ? 'repo' : 'list');
   const [selectedRepo, setSelectedRepo] = useState(
@@ -875,6 +884,7 @@ export default function GitHubPage() {
             owner={selectedRepo.owner.login}
             repo={selectedRepo.name}
             onBack={handleBackToList}
+            fromArchiveId={fromArchiveId}
           />
         ) : (
           <RepoList onSelect={handleSelectRepo} />

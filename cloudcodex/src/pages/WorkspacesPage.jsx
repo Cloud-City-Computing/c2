@@ -5,8 +5,8 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import {
   fetchWorkspaces,
@@ -462,11 +462,12 @@ function SquadMembersPanel({ squadId }) {
 
 // --- Inline Squads for a Workspace ---
 
-function OrgSquads({ workspaceId }) {
+function OrgSquads({ workspaceId, highlightSquadId }) {
   const navigate = useNavigate();
   const [squads, setSquads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expandedSquad, setExpandedSquad] = useState(null);
+  const [expandedSquad, setExpandedSquad] = useState(highlightSquadId ? Number(highlightSquadId) : null);
+  const scrolledSquadRef = useRef(false);
 
   const loadSquads = useCallback(async () => {
     setLoading(true);
@@ -513,7 +514,13 @@ function OrgSquads({ workspaceId }) {
       {!loading && squads.length > 0 && (
         <ul className="settings-item-list compact">
           {squads.map(squad => (
-            <li key={squad.id} className="settings-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+            <li key={squad.id} className="settings-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}
+              ref={highlightSquadId && squad.id === Number(highlightSquadId) ? (el) => {
+                if (el && !scrolledSquadRef.current) {
+                  scrolledSquadRef.current = true;
+                  requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                }
+              } : undefined}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandedSquad(prev => prev === squad.id ? null : squad.id)}>
                   <span style={{ fontSize: '0.8em', marginRight: 6 }}>{expandedSquad === squad.id ? '▾' : '▸'}</span>
@@ -525,7 +532,7 @@ function OrgSquads({ workspaceId }) {
                 <div className="card__actions" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => navigate(`/archives?squad=${squad.id}`)}
+                    onClick={() => navigate(`/archives?squad=${squad.id}&workspace=${workspaceId}`)}
                   >
                     Archives
                   </button>
@@ -551,11 +558,14 @@ function OrgSquads({ workspaceId }) {
 
 export default function WorkspacesPage() {
   const { workspaceId } = useParams();
+  const [searchParams] = useSearchParams();
+  const squadParam = searchParams.get('squad');
   const [workspaces, setWorkspaces] = useState([]);
   const [expandedOrg, setExpandedOrg] = useState(workspaceId ? Number(workspaceId) : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const scrolledWorkspaceRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -625,7 +635,13 @@ export default function WorkspacesPage() {
 
       <div className="workspace-list">
         {workspaces.map(workspace => (
-          <div key={workspace.id} className={`card ${expandedOrg === workspace.id ? 'card--expanded' : ''}`}>
+          <div key={workspace.id} className={`card ${expandedOrg === workspace.id ? 'card--expanded' : ''}`}
+            ref={workspaceId && workspace.id === Number(workspaceId) ? (el) => {
+              if (el && !scrolledWorkspaceRef.current) {
+                scrolledWorkspaceRef.current = true;
+                requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+              }
+            } : undefined}>
             <div className="card__body" onClick={() => toggleOrg(workspace.id)} style={{ cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: '0.8em' }}>{expandedOrg === workspace.id ? '▾' : '▸'}</span>
@@ -646,7 +662,7 @@ export default function WorkspacesPage() {
             </div>
             {expandedOrg === workspace.id && (
               <div className="card__expanded-content" style={{ padding: '0 16px 16px' }}>
-                <OrgSquads workspaceId={workspace.id} />
+                <OrgSquads workspaceId={workspace.id} highlightSquadId={expandedOrg === workspace.id ? squadParam : null} />
               </div>
             )}
           </div>
