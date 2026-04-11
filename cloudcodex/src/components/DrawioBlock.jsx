@@ -152,19 +152,16 @@ const DrawioBlock = Node.create({
       },
       svg: {
         default: '',
-        renderHTML: (attrs) => {
-          if (!attrs.svg) return {};
-          try {
-            return { 'data-drawio-svg': encodeBase64(attrs.svg) };
-          } catch {
-            return {};
-          }
-        },
+        // No renderHTML — SVG is embedded inline in the node's renderHTML
+        // so diagram text labels are searchable via the FULLTEXT index.
+        rendered: false,
         parseHTML: (el) => {
+          // Backward compat: existing documents store SVG as base64 data attribute
           const b64 = el.getAttribute('data-drawio-svg');
           if (b64) {
             try { return decodeBase64(b64); } catch { /* fall through */ }
           }
+          // New format: SVG embedded directly as child content
           const svgEl = el.querySelector('svg');
           return svgEl ? svgEl.outerHTML : '';
         },
@@ -179,11 +176,26 @@ const DrawioBlock = Node.create({
     ];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, {
+  renderHTML({ node, HTMLAttributes }) {
+    const attrs = mergeAttributes(HTMLAttributes, {
       'data-type': 'drawioBlock',
       class: 'drawio-diagram',
-    })];
+    });
+
+    // Embed SVG inline so diagram text labels survive REGEXP_REPLACE tag
+    // stripping and become searchable in the FULLTEXT index.
+    if (node.attrs.svg && typeof document !== 'undefined') {
+      const div = document.createElement('div');
+      for (const [key, value] of Object.entries(attrs)) {
+        if (value != null && value !== false) div.setAttribute(key, String(value));
+      }
+      div.innerHTML = DOMPurify.sanitize(node.attrs.svg, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+      });
+      return div;
+    }
+
+    return ['div', attrs];
   },
 
   addNodeView() {
