@@ -5534,6 +5534,23 @@ body {
   gap: 6px;
 }
 
+.page-tree-back-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.page-tree-back-btn:hover {
+  color: var(--brand-blue);
+  background: rgba(44, 167, 219, 0.12);
+}
+
 .page-tree-header h3 {
   font-size: 13px;
   font-weight: 600;

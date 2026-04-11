@@ -981,6 +981,7 @@ export default function ArchiveBrowser() {
   const [error, setError] = useState(null);
   const [accessNotice, setAccessNotice] = useState(null);
   const hasAutoExpanded = useRef(false);
+  const scrolledRef = useRef(false);
   const { getLogUsers } = usePresence();
 
   const squadFilter = searchParams.get('squad');
@@ -1088,7 +1089,13 @@ export default function ArchiveBrowser() {
 
       <div className="archive-list-cards">
         {visibleArchives.map((archive) => (
-          <div key={archive.id} className={`card ${expandedArchive === archive.id ? 'card--expanded' : ''}`}>
+          <div key={archive.id} className={`card ${expandedArchive === archive.id ? 'card--expanded' : ''}`}
+            ref={archiveId && archive.id === Number(archiveId) ? (el) => {
+              if (el && !scrolledRef.current) {
+                scrolledRef.current = true;
+                requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+              }
+            } : undefined}>
             <div className="card__body" onClick={() => toggleArchive(archive.id)} style={{ cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: '0.8em' }}>{expandedArchive === archive.id ? '▾' : '▸'}</span>
