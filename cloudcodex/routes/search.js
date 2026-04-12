@@ -55,7 +55,44 @@ function buildSnippet(text, query) {
 }
 
 /**
+ * Build optional filter SQL fragments.
+ * Supports: favorites, workspaceId, squadId, archiveId.
+ * Returns { filterWhere, filterJoins, filterParams }.
+ */
+function buildFilters(query, user) {
+  const { favorites, workspaceId, squadId, archiveId } = query;
+  const parts = [];
+  const joins = [];
+  const params = [];
+
+  if (favorites === 'true' || favorites === '1') {
+    joins.push('INNER JOIN favorites fav ON fav.log_id = p.id AND fav.user_id = ?');
+    params.push(user.id);
+  }
+  if (workspaceId && !isNaN(Number(workspaceId))) {
+    joins.push('INNER JOIN squads _fs ON _fs.id = pr.squad_id AND _fs.workspace_id = ?');
+    params.push(Number(workspaceId));
+  } else if (squadId && !isNaN(Number(squadId))) {
+    parts.push('pr.squad_id = ?');
+    params.push(Number(squadId));
+  }
+  if (archiveId && !isNaN(Number(archiveId))) {
+    parts.push('p.archive_id = ?');
+    params.push(Number(archiveId));
+  }
+
+  return {
+    filterJoins: joins.length ? joins.join('\n    ') : '',
+    filterWhere: parts.length ? parts.join(' AND ') : '',
+    filterParams: params,
+    joinParams: params.slice(0, joins.length), // params consumed by JOINs
+    whereParams: params.slice(joins.length),   // params consumed by WHERE
+  };
+}
+
+/**
  * GET /api/search?query=<string>&page=<number>&limit=<number>
+ *                 &favorites=true&workspaceId=<id>&squadId=<id>&archiveId=<id>
  * Filtered to logs in archives where the user has read_access.
  * Uses MySQL FULLTEXT index for fast, relevance-ranked search.
  * Returns paginated results with contextual match snippets.
@@ -81,6 +118,9 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
 
   const accessWhere = readAccessWhere('pr');
   const accessParams = readAccessParams(req.user);
+
+  const { filterJoins, filterWhere, joinParams, whereParams } = buildFilters(req.query, req.user);
+  const extraWhere = filterWhere ? `AND ${filterWhere}` : '';
 
   // Build the FULLTEXT search term.
   // Words are prefixed with + for required match and * for prefix matching,
@@ -110,9 +150,11 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
     `SELECT COUNT(*) AS total
      FROM logs p
      INNER JOIN archives pr ON p.archive_id = pr.id
+     ${filterJoins}
      WHERE ${matchExpr}
-       AND ${accessWhere}`,
-    [...searchParams, ...accessParams]
+       AND ${accessWhere}
+       ${extraWhere}`,
+    [...joinParams, ...searchParams, ...accessParams, ...whereParams]
   );
   const total = countRow?.total || 0;
 
@@ -135,11 +177,13 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
     FROM logs p
     LEFT JOIN users u ON p.created_by = u.id
     INNER JOIN archives pr ON p.archive_id = pr.id
+    ${filterJoins}
     WHERE ${matchExpr}
       AND ${accessWhere}
+      ${extraWhere}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?`,
-    [...searchParams, ...accessParams, ...orderParams, String(limit), String(offset)]
+    [...joinParams, ...searchParams, ...accessParams, ...whereParams, ...orderParams, String(limit), String(offset)]
   );
 
   // Build contextual snippets and remove raw html_content from response
@@ -167,6 +211,7 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
 
 /**
  * GET /api/browse?page=<number>&limit=<number>&sort=<string>
+ *                 &favorites=true&workspaceId=<id>&squadId=<id>&archiveId=<id>
  * Paginated listing of all accessible logs (no search query required).
  */
 router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
@@ -187,12 +232,17 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
   const accessWhere = readAccessWhere('pr');
   const accessParams = readAccessParams(req.user);
 
+  const { filterJoins, filterWhere, joinParams, whereParams } = buildFilters(req.query, req.user);
+  const extraWhere = filterWhere ? `AND ${filterWhere}` : '';
+
   const [countRow] = await c2_query(
     `SELECT COUNT(*) AS total
      FROM logs p
      INNER JOIN archives pr ON p.archive_id = pr.id
-     WHERE ${accessWhere}`,
-    [...accessParams]
+     ${filterJoins}
+     WHERE ${accessWhere}
+       ${extraWhere}`,
+    [...joinParams, ...accessParams, ...whereParams]
   );
   const total = countRow?.total || 0;
 
@@ -208,10 +258,12 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
     FROM logs p
     LEFT JOIN users u ON p.created_by = u.id
     INNER JOIN archives pr ON p.archive_id = pr.id
+    ${filterJoins}
     WHERE ${accessWhere}
+      ${extraWhere}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?`,
-    [...accessParams, String(limit), String(offset)]
+    [...joinParams, ...accessParams, ...whereParams, String(limit), String(offset)]
   );
 
   res.json({
@@ -219,6 +271,52 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
     total,
     page,
     totalPages: Math.ceil(total / limit),
+  });
+}));
+
+/**
+ * GET /api/search/filters
+ * Returns the available filter options for the current user:
+ * workspaces, squads (grouped by workspace), and archives (grouped by squad).
+ */
+router.get('/search/filters', requireAuth, asyncHandler(async (req, res) => {
+  const accessWhere = readAccessWhere('pr');
+  const accessParams = readAccessParams(req.user);
+
+  // Get all accessible archives with their squad/workspace context
+  const rows = await c2_query(
+    `SELECT DISTINCT
+            pr.id AS archive_id,
+            pr.name AS archive_name,
+            pr.squad_id,
+            t.name AS squad_name,
+            o.id AS workspace_id,
+            o.name AS workspace_name
+     FROM archives pr
+     INNER JOIN squads t ON t.id = pr.squad_id
+     INNER JOIN workspaces o ON o.id = t.workspace_id
+     WHERE ${accessWhere}
+     ORDER BY o.name, t.name, pr.name`,
+    [...accessParams]
+  );
+
+  const workspaceMap = new Map();
+  const squadMap = new Map();
+
+  for (const row of rows) {
+    if (!workspaceMap.has(row.workspace_id)) {
+      workspaceMap.set(row.workspace_id, { id: row.workspace_id, name: row.workspace_name });
+    }
+    if (!squadMap.has(row.squad_id)) {
+      squadMap.set(row.squad_id, { id: row.squad_id, name: row.squad_name, workspaceId: row.workspace_id });
+    }
+  }
+
+  res.json({
+    success: true,
+    workspaces: [...workspaceMap.values()],
+    squads: [...squadMap.values()],
+    archives: rows.map(r => ({ id: r.archive_id, name: r.archive_name, squadId: r.squad_id, workspaceId: r.workspace_id })),
   });
 }));
 

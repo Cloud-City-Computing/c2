@@ -14,7 +14,6 @@ import WorkspacesPage from './pages/WorkspacesPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import AdminPage from './pages/AdminPage'
 import GitHubPage from './pages/GitHubPage'
-import FavoritesPage from './pages/FavoritesPage'
 
 function NotFound() {
   return (
@@ -42,7 +41,6 @@ function App() {
       <Route path="/workspaces/:workspaceId" element={<WorkspacesPage />} />
       <Route path="/github" element={<GitHubPage />} />
       <Route path="/github/:owner/:repo" element={<GitHubPage />} />
-      <Route path="/favorites" element={<FavoritesPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/404" replace />} />

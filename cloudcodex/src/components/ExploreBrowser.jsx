@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, docUrl } from '../util';
+import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, fetchSearchFilters, docUrl } from '../util';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
 
@@ -146,7 +146,40 @@ export default function ExploreBrowser() {
   const [loading, setLoading] = useState(true);
   const [favIds, setFavIds] = useState(new Set());
 
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [squadId, setSquadId] = useState('');
+  const [archiveId, setArchiveId] = useState('');
+
+  // Filter options loaded from server
+  const [filterOptions, setFilterOptions] = useState({ workspaces: [], squads: [], archives: [] });
+
   const isSearch = query.trim().length > 0;
+  const hasActiveFilters = favoritesOnly || workspaceId || squadId || archiveId;
+  const filterMountRef = useRef(true);
+
+  // Derive visible squads and archives based on selected workspace/squad
+  const visibleSquads = workspaceId
+    ? filterOptions.squads.filter(s => String(s.workspaceId) === String(workspaceId))
+    : filterOptions.squads;
+  const visibleArchives = squadId
+    ? filterOptions.archives.filter(a => String(a.squadId) === String(squadId))
+    : workspaceId
+      ? filterOptions.archives.filter(a => String(a.workspaceId) === String(workspaceId))
+      : filterOptions.archives;
+
+  // Load filter options on mount
+  useEffect(() => {
+    fetchSearchFilters()
+      .then(res => setFilterOptions({
+        workspaces: res.workspaces || [],
+        squads: res.squads || [],
+        archives: res.archives || [],
+      }))
+      .catch(() => {});
+  }, []);
 
   // Load all favorite IDs for the current user
   useEffect(() => {
@@ -178,12 +211,21 @@ export default function ExploreBrowser() {
     }
   }, [favIds]);
 
-  const load = useCallback(async (q, pg, s) => {
+  const buildFilterParams = useCallback(() => {
+    const params = {};
+    if (favoritesOnly) params.favorites = true;
+    if (workspaceId) params.workspaceId = workspaceId;
+    if (squadId) params.squadId = squadId;
+    if (archiveId) params.archiveId = archiveId;
+    return params;
+  }, [favoritesOnly, workspaceId, squadId, archiveId]);
+
+  const load = useCallback(async (q, pg, s, filters) => {
     setLoading(true);
     try {
       const res = q.trim()
-        ? await searchLogs({ query: q.trim(), page: pg, limit: ITEMS_PER_PAGE })
-        : await browseLogs({ page: pg, limit: ITEMS_PER_PAGE, sort: s });
+        ? await searchLogs({ query: q.trim(), page: pg, limit: ITEMS_PER_PAGE, ...filters })
+        : await browseLogs({ page: pg, limit: ITEMS_PER_PAGE, sort: s, ...filters });
       setResults(res.results || []);
       setTotal(res.total || 0);
       setTotalPages(res.totalPages || 0);
@@ -195,10 +237,10 @@ export default function ExploreBrowser() {
     setLoading(false);
   }, []);
 
-  // Load on mount and when page/sort changes (non-search)
+  // Load on mount and when page/sort/filters change (non-search)
   useEffect(() => {
-    if (!isSearch) load('', page, sort);
-  }, [page, sort, isSearch, load]);
+    if (!isSearch) load('', page, sort, buildFilterParams());
+  }, [page, sort, isSearch, load, buildFilterParams]);
 
   // Debounced search as user types
   useEffect(() => {
@@ -206,14 +248,22 @@ export default function ExploreBrowser() {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setPage(1);
-      load(query, 1, sort);
+      load(query, 1, sort, buildFilterParams());
     }, 300);
     return () => clearTimeout(debounceRef.current);
-  }, [query, load, isSearch, sort]);
+  }, [query, load, isSearch, sort, buildFilterParams]);
+
+  // Reset page and reload when filters change (skip initial mount)
+  useEffect(() => {
+    if (filterMountRef.current) { filterMountRef.current = false; return; }
+    setPage(1);
+    load(query, 1, sort, buildFilterParams());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [favoritesOnly, workspaceId, squadId, archiveId]);
 
   const handlePageChange = (pg) => {
     setPage(pg);
-    if (isSearch) load(query, pg, sort);
+    if (isSearch) load(query, pg, sort, buildFilterParams());
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -222,11 +272,29 @@ export default function ExploreBrowser() {
     setPage(1);
   };
 
+  const handleWorkspaceChange = (e) => {
+    setWorkspaceId(e.target.value);
+    setSquadId('');
+    setArchiveId('');
+  };
+
+  const handleSquadChange = (e) => {
+    setSquadId(e.target.value);
+    setArchiveId('');
+  };
+
+  const clearFilters = () => {
+    setFavoritesOnly(false);
+    setWorkspaceId('');
+    setSquadId('');
+    setArchiveId('');
+  };
+
   const clearSearch = () => {
     setQuery('');
     setPage(1);
     if (inputRef.current) inputRef.current.value = '';
-    load('', 1, sort);
+    load('', 1, sort, buildFilterParams());
   };
 
   return (
@@ -253,6 +321,18 @@ export default function ExploreBrowser() {
           )}
         </div>
         <div className="explore-filters">
+          <button
+            className={`btn-filter-toggle${showFilters || hasActiveFilters ? ' btn-filter-toggle--active' : ''}`}
+            onClick={() => setShowFilters(v => !v)}
+            title="Toggle filters"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+            Filters
+            {hasActiveFilters && <span className="filter-active-dot" />}
+          </button>
           <select className="explore-sort" value={sort} onChange={handleSortChange}>
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
@@ -262,17 +342,71 @@ export default function ExploreBrowser() {
         </div>
       </div>
 
+      {showFilters && (
+        <div className="explore-filter-bar">
+          <button
+            className={`btn-fav-filter${favoritesOnly ? ' btn-fav-filter--active' : ''}`}
+            onClick={() => setFavoritesOnly(v => !v)}
+            title={favoritesOnly ? 'Show all documents' : 'Show favorites only'}
+          >
+            {favoritesOnly ? '★' : '☆'} Favorites
+          </button>
+          <select
+            className="explore-filter-select"
+            value={workspaceId}
+            onChange={handleWorkspaceChange}
+          >
+            <option value="">All workspaces</option>
+            {filterOptions.workspaces.map(w => (
+              <option key={w.id} value={w.id}>{w.name}</option>
+            ))}
+          </select>
+          <select
+            className="explore-filter-select"
+            value={squadId}
+            onChange={handleSquadChange}
+          >
+            <option value="">All squads</option>
+            {visibleSquads.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <select
+            className="explore-filter-select"
+            value={archiveId}
+            onChange={(e) => setArchiveId(e.target.value)}
+          >
+            <option value="">All archives</option>
+            {visibleArchives.map(a => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+          {hasActiveFilters && (
+            <button className="btn-clear-filters" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="explore-status-bar">
         <span className="explore-count">
-          {loading ? 'Loading...' : `${total} document${total !== 1 ? 's' : ''}${isSearch ? ' found' : ''}`}
+          {loading ? 'Loading...' : (
+            <>
+              {total} document{total !== 1 ? 's' : ''}{isSearch ? ' found' : ''}
+              {favoritesOnly && ' in favorites'}
+            </>
+          )}
         </span>
       </div>
 
       {!loading && results.length === 0 && (
         <div className="explore-empty">
           {isSearch
-            ? <p>No documents match &ldquo;{query.trim()}&rdquo;. Try a different search term.</p>
-            : <p>No documents yet. Head to Archives to create your first document.</p>}
+            ? <p>No documents match &ldquo;{query.trim()}&rdquo;{hasActiveFilters ? ' with the selected filters' : ''}. Try a different search term{hasActiveFilters ? ' or clear filters' : ''}.</p>
+            : hasActiveFilters
+              ? <p>No documents match the selected filters. Try adjusting your filters.</p>
+              : <p>No documents yet. Head to Archives to create your first document.</p>}
         </div>
       )}
 
