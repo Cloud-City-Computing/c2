@@ -435,7 +435,7 @@ cd cloudcodex
 npm test
 ```
 
-**460 tests** across 17 test files:
+**495 tests** across 17 test files:
 
 | Test File | Tests | Scope |
 | --- | --- | --- |

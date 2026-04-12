@@ -12,6 +12,7 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { sendEmail } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
+import { getAllPresence, getActiveDocCount } from '../services/collab.js';
 
 const router = express.Router();
 
@@ -307,6 +308,249 @@ router.get('/invite/validate/:token', asyncHandler(async (req, res) => {
   res.json({ valid: true, email: invitation.email });
 }));
 
+// ─── User permissions management (admin only) ──────────────
+
+/**
+ * GET /api/admin/users/:id/permissions
+ * Get a user's global permissions.
+ */
+router.get('/admin/users/:id/permissions', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
+
+  const [user] = await c2_query(`SELECT id FROM users WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  const [perms] = await c2_query(
+    `SELECT create_squad, create_archive, create_log FROM permissions WHERE user_id = ? LIMIT 1`,
+    [Number(id)]
+  );
+
+  res.json({
+    success: true,
+    permissions: perms || { create_squad: false, create_archive: false, create_log: true },
+  });
+}));
+
+/**
+ * PUT /api/admin/users/:id/permissions
+ * Update a user's global permissions.
+ */
+router.put('/admin/users/:id/permissions', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
+
+  const [user] = await c2_query(`SELECT id FROM users WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  const { create_squad, create_archive, create_log } = req.body;
+
+  // Upsert the permissions row
+  await c2_query(
+    `INSERT INTO permissions (user_id, create_squad, create_archive, create_log)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE create_squad = VALUES(create_squad), create_archive = VALUES(create_archive), create_log = VALUES(create_log)`,
+    [Number(id), Boolean(create_squad), Boolean(create_archive), Boolean(create_log)]
+  );
+
+  res.json({ success: true });
+}));
+
+/**
+ * PUT /api/admin/users/:id/admin
+ * Toggle a user's admin status.
+ */
+router.put('/admin/users/:id/admin', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
+  if (Number(id) === req.user.id) {
+    return res.status(400).json({ success: false, message: 'Cannot change your own admin status' });
+  }
+
+  const [user] = await c2_query(`SELECT id, is_admin FROM users WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  const { is_admin } = req.body;
+  await c2_query(`UPDATE users SET is_admin = ? WHERE id = ?`, [Boolean(is_admin), Number(id)]);
+
+  res.json({ success: true });
+}));
+
+// ─── Squad management (admin only) ─────────────────────────
+
+/**
+ * GET /api/admin/squads
+ * List all squads with member counts and workspace info.
+ */
+router.get('/admin/squads', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const squads = await c2_query(
+    `SELECT t.id, t.name, t.created_at, o.name AS workspace_name, o.id AS workspace_id,
+            u.name AS created_by_name,
+            (SELECT COUNT(*) FROM squad_members tm WHERE tm.squad_id = t.id) AS member_count,
+            (SELECT COUNT(*) FROM archives p WHERE p.squad_id = t.id) AS archive_count
+     FROM squads t
+     LEFT JOIN workspaces o ON t.workspace_id = o.id
+     LEFT JOIN users u ON t.created_by = u.id
+     ORDER BY t.created_at DESC`
+  );
+  res.json({ success: true, squads });
+}));
+
+/**
+ * GET /api/admin/squads/:id/members
+ * List all members of a squad with their roles and permissions.
+ */
+router.get('/admin/squads/:id/members', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid squad ID' });
+  }
+
+  const [squad] = await c2_query(`SELECT id, name FROM squads WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (!squad) {
+    return res.status(404).json({ success: false, message: 'Squad not found' });
+  }
+
+  const members = await c2_query(
+    `SELECT tm.id, tm.user_id, tm.role, tm.can_read, tm.can_write, tm.can_create_log,
+            tm.can_create_archive, tm.can_manage_members, tm.can_delete_version, tm.can_publish,
+            u.name, u.email, u.avatar_url
+     FROM squad_members tm
+     JOIN users u ON u.id = tm.user_id
+     WHERE tm.squad_id = ?
+     ORDER BY tm.role = 'owner' DESC, u.name ASC`,
+    [Number(id)]
+  );
+
+  res.json({ success: true, squad: squad.name, members });
+}));
+
+/**
+ * PUT /api/admin/squads/:id/members/:userId
+ * Update a squad member's role and permissions.
+ */
+router.put('/admin/squads/:id/members/:userId', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id, userId } = req.params;
+  if (!isValidId(id) || !isValidId(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid IDs' });
+  }
+
+  const [member] = await c2_query(
+    `SELECT id FROM squad_members WHERE squad_id = ? AND user_id = ? LIMIT 1`,
+    [Number(id), Number(userId)]
+  );
+  if (!member) {
+    return res.status(404).json({ success: false, message: 'Member not found' });
+  }
+
+  const { role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish } = req.body;
+
+  const validRoles = ['member', 'admin', 'owner'];
+  if (role && !validRoles.includes(role)) {
+    return res.status(400).json({ success: false, message: 'Invalid role' });
+  }
+
+  await c2_query(
+    `UPDATE squad_members
+     SET role = COALESCE(?, role),
+         can_read = COALESCE(?, can_read),
+         can_write = COALESCE(?, can_write),
+         can_create_log = COALESCE(?, can_create_log),
+         can_create_archive = COALESCE(?, can_create_archive),
+         can_manage_members = COALESCE(?, can_manage_members),
+         can_delete_version = COALESCE(?, can_delete_version),
+         can_publish = COALESCE(?, can_publish)
+     WHERE squad_id = ? AND user_id = ?`,
+    [role || null, can_read ?? null, can_write ?? null, can_create_log ?? null, can_create_archive ?? null,
+     can_manage_members ?? null, can_delete_version ?? null, can_publish ?? null,
+     Number(id), Number(userId)]
+  );
+
+  res.json({ success: true });
+}));
+
+/**
+ * DELETE /api/admin/squads/:id/members/:userId
+ * Remove a member from a squad.
+ */
+router.delete('/admin/squads/:id/members/:userId', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id, userId } = req.params;
+  if (!isValidId(id) || !isValidId(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid IDs' });
+  }
+
+  const result = await c2_query(
+    `DELETE FROM squad_members WHERE squad_id = ? AND user_id = ?`,
+    [Number(id), Number(userId)]
+  );
+
+  if (result.affectedRows === 0) {
+    return res.status(404).json({ success: false, message: 'Member not found' });
+  }
+
+  res.json({ success: true });
+}));
+
+// ─── Live presence (admin only) ────────────────────────────
+
+/**
+ * GET /api/admin/presence
+ * Returns all online users and what they are editing (admin-only, unfiltered).
+ */
+router.get('/admin/presence', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const allPresence = getAllPresence();
+  const logIds = Object.keys(allPresence).map(Number).filter(id => id > 0);
+
+  let logInfo = {};
+  if (logIds.length > 0) {
+    const placeholders = logIds.map(() => '?').join(',');
+    const logs = await c2_query(
+      `SELECT pg.id, pg.title, p.name AS archive_name, p.id AS archive_id
+       FROM logs pg
+       JOIN archives p ON pg.archive_id = p.id
+       WHERE pg.id IN (${placeholders})`,
+      logIds
+    );
+    for (const log of logs) {
+      logInfo[log.id] = { title: log.title, archive_name: log.archive_name, archive_id: log.archive_id };
+    }
+  }
+
+  // Build a flat list of unique online users + an enriched presence map
+  const onlineUsersMap = new Map();
+  const sessions = {};
+
+  for (const [logId, users] of Object.entries(allPresence)) {
+    const info = logInfo[logId] || { title: 'Unknown', archive_name: 'Unknown', archive_id: null };
+    sessions[logId] = { ...info, users };
+    for (const u of users) {
+      if (!onlineUsersMap.has(u.id)) {
+        onlineUsersMap.set(u.id, { id: u.id, name: u.name, avatar_url: u.avatar_url, editing: [] });
+      }
+      onlineUsersMap.get(u.id).editing.push({ logId: Number(logId), title: info.title, archive_name: info.archive_name });
+    }
+  }
+
+  res.json({
+    success: true,
+    activeDocCount: getActiveDocCount(),
+    onlineUsers: Array.from(onlineUsersMap.values()),
+    sessions,
+  });
+}));
+
 // ─── Admin overview stats ───────────────────────────────────
 
 /**
@@ -314,28 +558,21 @@ router.get('/invite/validate/:token', asyncHandler(async (req, res) => {
  * Overview statistics for the admin console.
  */
 router.get('/admin/stats', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const [[{ userCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS userCount FROM users`),
-  ]);
-  const [[{ workspaceCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS workspaceCount FROM workspaces`),
-  ]);
-  const [[{ squadCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS squadCount FROM squads`),
-  ]);
-  const [[{ archiveCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS archiveCount FROM archives`),
-  ]);
-  const [[{ logCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS logCount FROM logs`),
-  ]);
-  const [[{ pendingInviteCount }]] = await Promise.all([
-    c2_query(`SELECT COUNT(*) AS pendingInviteCount FROM user_invitations WHERE accepted = FALSE AND expires_at > NOW()`),
+  const [[counts]] = await Promise.all([
+    c2_query(
+      `SELECT
+         (SELECT COUNT(*) FROM users) AS userCount,
+         (SELECT COUNT(*) FROM workspaces) AS workspaceCount,
+         (SELECT COUNT(*) FROM squads) AS squadCount,
+         (SELECT COUNT(*) FROM archives) AS archiveCount,
+         (SELECT COUNT(*) FROM logs) AS logCount,
+         (SELECT COUNT(*) FROM user_invitations WHERE accepted = FALSE AND expires_at > NOW()) AS pendingInviteCount`
+    ),
   ]);
 
   res.json({
     success: true,
-    stats: { userCount, workspaceCount, squadCount, archiveCount, logCount, pendingInviteCount },
+    stats: { ...counts, onlineUserCount: getAllPresence() ? Object.values(getAllPresence()).reduce((s, u) => { u.forEach(x => s.add(x.id)); return s; }, new Set()).size : 0, activeDocCount: getActiveDocCount() },
   });
 }));
 

@@ -1,15 +1,23 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { sendEmail } from '../../services/email.js';
+import { getAllPresence, getActiveDocCount } from '../../services/collab.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+
+vi.mock('../../services/collab.js', () => ({
+  getAllPresence: vi.fn(() => ({})),
+  getActiveDocCount: vi.fn(() => 0),
+}));
 
 const ADMIN_USER = { ...TEST_USER, is_admin: true };
 
 describe('Admin Routes', () => {
   beforeEach(() => {
     resetMocks();
+    getAllPresence.mockReset().mockReturnValue({});
+    getActiveDocCount.mockReset().mockReturnValue(0);
   });
 
   // --- GET /api/admin/status ---
@@ -516,12 +524,10 @@ describe('Admin Routes', () => {
   describe('GET /api/admin/stats', () => {
     it('returns system statistics', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([{ userCount: 10 }]);
-      c2_query.mockResolvedValueOnce([{ workspaceCount: 3 }]);
-      c2_query.mockResolvedValueOnce([{ squadCount: 5 }]);
-      c2_query.mockResolvedValueOnce([{ archiveCount: 8 }]);
-      c2_query.mockResolvedValueOnce([{ logCount: 42 }]);
-      c2_query.mockResolvedValueOnce([{ pendingInviteCount: 2 }]);
+      c2_query.mockResolvedValueOnce([{
+        userCount: 10, workspaceCount: 3, squadCount: 5,
+        archiveCount: 8, logCount: 42, pendingInviteCount: 2,
+      }]);
 
       const res = await request(app)
         .get('/api/admin/stats')
@@ -537,6 +543,27 @@ describe('Admin Routes', () => {
       expect(res.body.stats.pendingInviteCount).toBe(2);
     });
 
+    it('includes online user and active doc counts', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{
+        userCount: 1, workspaceCount: 1, squadCount: 1,
+        archiveCount: 1, logCount: 1, pendingInviteCount: 0,
+      }]);
+      getAllPresence.mockReturnValue({
+        1: [{ id: 10, name: 'Alice' }],
+        2: [{ id: 10, name: 'Alice' }, { id: 11, name: 'Bob' }],
+      });
+      getActiveDocCount.mockReturnValue(2);
+
+      const res = await request(app)
+        .get('/api/admin/stats')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.stats.onlineUserCount).toBe(2);
+      expect(res.body.stats.activeDocCount).toBe(2);
+    });
+
     it('rejects non-admin user', async () => {
       mockAuthenticated(TEST_USER);
       const res = await request(app)
@@ -549,6 +576,440 @@ describe('Admin Routes', () => {
     it('requires authentication', async () => {
       mockUnauthenticated();
       const res = await request(app).get('/api/admin/stats');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // --- GET /api/admin/users/:id/permissions ---
+
+  describe('GET /api/admin/users/:id/permissions', () => {
+    it('returns user permissions', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 5 }]); // user exists
+      c2_query.mockResolvedValueOnce([{ create_squad: true, create_archive: false, create_log: true }]);
+
+      const res = await request(app)
+        .get('/api/admin/users/5/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.permissions.create_squad).toBe(true);
+      expect(res.body.permissions.create_archive).toBe(false);
+    });
+
+    it('returns defaults when no permissions row', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 5 }]); // user exists
+      c2_query.mockResolvedValueOnce([]); // no perms row
+
+      const res = await request(app)
+        .get('/api/admin/users/5/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.permissions).toEqual({ create_squad: false, create_archive: false, create_log: true });
+    });
+
+    it('returns 404 for missing user', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]); // user not found
+
+      const res = await request(app)
+        .get('/api/admin/users/999/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid user ID', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .get('/api/admin/users/abc/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .get('/api/admin/users/5/permissions')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // --- PUT /api/admin/users/:id/permissions ---
+
+  describe('PUT /api/admin/users/:id/permissions', () => {
+    it('updates user permissions', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 5 }]); // user exists
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 }); // upsert
+
+      const res = await request(app)
+        .put('/api/admin/users/5/permissions')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_squad: true, create_archive: true, create_log: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('returns 404 for missing user', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]); // user not found
+
+      const res = await request(app)
+        .put('/api/admin/users/999/permissions')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_squad: true, create_archive: false, create_log: true });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid user ID', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .put('/api/admin/users/abc/permissions')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_squad: true });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .put('/api/admin/users/5/permissions')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_squad: true });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // --- PUT /api/admin/users/:id/admin ---
+
+  describe('PUT /api/admin/users/:id/admin', () => {
+    it('grants admin status', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 5, is_admin: false }]); // user exists
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 }); // update
+
+      const res = await request(app)
+        .put('/api/admin/users/5/admin')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ is_admin: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('revokes admin status', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 5, is_admin: true }]); // user exists
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 }); // update
+
+      const res = await request(app)
+        .put('/api/admin/users/5/admin')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ is_admin: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('prevents changing own admin status', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .put(`/api/admin/users/${ADMIN_USER.id}/admin`)
+        .set('Authorization', 'Bearer valid-token')
+        .send({ is_admin: false });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/Cannot change your own/);
+    });
+
+    it('returns 404 for missing user', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]); // user not found
+
+      const res = await request(app)
+        .put('/api/admin/users/999/admin')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ is_admin: true });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid user ID', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .put('/api/admin/users/abc/admin')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ is_admin: true });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .put('/api/admin/users/5/admin')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ is_admin: true });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // --- GET /api/admin/squads ---
+
+  describe('GET /api/admin/squads', () => {
+    it('returns all squads', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([
+        { id: 1, name: 'Engineering', workspace_name: 'Acme', member_count: 3, archive_count: 2 },
+        { id: 2, name: 'Design', workspace_name: 'Acme', member_count: 1, archive_count: 0 },
+      ]);
+
+      const res = await request(app)
+        .get('/api/admin/squads')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.squads).toHaveLength(2);
+      expect(res.body.squads[0].name).toBe('Engineering');
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .get('/api/admin/squads')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // --- GET /api/admin/squads/:id/members ---
+
+  describe('GET /api/admin/squads/:id/members', () => {
+    it('returns squad members with permissions', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Engineering' }]); // squad exists
+      c2_query.mockResolvedValueOnce([
+        { user_id: 10, name: 'Alice', role: 'owner', can_read: true, can_write: true },
+        { user_id: 11, name: 'Bob', role: 'member', can_read: true, can_write: false },
+      ]);
+
+      const res = await request(app)
+        .get('/api/admin/squads/1/members')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.squad).toBe('Engineering');
+      expect(res.body.members).toHaveLength(2);
+    });
+
+    it('returns 404 for missing squad', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]); // squad not found
+
+      const res = await request(app)
+        .get('/api/admin/squads/999/members')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid squad ID', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .get('/api/admin/squads/abc/members')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .get('/api/admin/squads/1/members')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // --- PUT /api/admin/squads/:id/members/:userId ---
+
+  describe('PUT /api/admin/squads/:id/members/:userId', () => {
+    it('updates member role and permissions', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // member exists
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 }); // update
+
+      const res = await request(app)
+        .put('/api/admin/squads/1/members/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ role: 'admin', can_write: true, can_publish: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('returns 404 for missing member', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]); // no member
+
+      const res = await request(app)
+        .put('/api/admin/squads/1/members/999')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ role: 'admin' });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid role', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // member exists
+
+      const res = await request(app)
+        .put('/api/admin/squads/1/members/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ role: 'superadmin' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/Invalid role/);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .put('/api/admin/squads/abc/members/xyz')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ role: 'admin' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .put('/api/admin/squads/1/members/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ role: 'admin' });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // --- DELETE /api/admin/squads/:id/members/:userId ---
+
+  describe('DELETE /api/admin/squads/:id/members/:userId', () => {
+    it('removes a member', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 }); // delete
+
+      const res = await request(app)
+        .delete('/api/admin/squads/1/members/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('returns 404 when member not found', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce({ affectedRows: 0 }); // nothing deleted
+
+      const res = await request(app)
+        .delete('/api/admin/squads/1/members/999')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects invalid IDs', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .delete('/api/admin/squads/abc/members/xyz')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .delete('/api/admin/squads/1/members/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // --- GET /api/admin/presence ---
+
+  describe('GET /api/admin/presence', () => {
+    it('returns empty presence when no users online', async () => {
+      mockAuthenticated(ADMIN_USER);
+
+      const res = await request(app)
+        .get('/api/admin/presence')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.onlineUsers).toEqual([]);
+      expect(res.body.activeDocCount).toBe(0);
+    });
+
+    it('returns online users with editing info', async () => {
+      mockAuthenticated(ADMIN_USER);
+      getAllPresence.mockReturnValue({
+        5: [{ id: 10, name: 'Alice', avatar_url: '/a.png' }],
+        8: [{ id: 10, name: 'Alice', avatar_url: '/a.png' }, { id: 11, name: 'Bob', avatar_url: null }],
+      });
+      getActiveDocCount.mockReturnValue(2);
+      // log info query
+      c2_query.mockResolvedValueOnce([
+        { id: 5, title: 'Getting Started', archive_name: 'Docs', archive_id: 1 },
+        { id: 8, title: 'API Reference', archive_name: 'Docs', archive_id: 1 },
+      ]);
+
+      const res = await request(app)
+        .get('/api/admin/presence')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.activeDocCount).toBe(2);
+      expect(res.body.onlineUsers).toHaveLength(2);
+
+      const alice = res.body.onlineUsers.find(u => u.name === 'Alice');
+      expect(alice.editing).toHaveLength(2);
+      const bob = res.body.onlineUsers.find(u => u.name === 'Bob');
+      expect(bob.editing).toHaveLength(1);
+    });
+
+    it('rejects non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .get('/api/admin/presence')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+      const res = await request(app).get('/api/admin/presence');
       expect(res.status).toBe(401);
     });
   });
