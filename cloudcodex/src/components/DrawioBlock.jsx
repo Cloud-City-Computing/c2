@@ -6,12 +6,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
+import { NodeSelection } from '@tiptap/pm/state';
 import DOMPurify from 'dompurify';
 import { encodeBase64, decodeBase64, extractSvgFromDataUri } from '../editorUtils';
 
 const DRAWIO_URL = 'https://embed.diagrams.net/?embed=1&proto=json&spin=1&ui=dark&libraries=1';
 
-function DrawioBlockView({ node, updateAttributes, editor }) {
+function DrawioBlockView({ node, updateAttributes, editor, deleteNode }) {
   const { xml, svg } = node.attrs;
   const popupRef = useRef(null);
   const [loading, setLoading] = useState(false);
@@ -97,15 +98,26 @@ function DrawioBlockView({ node, updateAttributes, editor }) {
       <div className="drawio-block__header">
         <span className="drawio-block__label">▣ Diagram</span>
         {isEditable && (
-          <button
-            className="drawio-block__edit-btn"
-            onClick={openEditor}
-            contentEditable={false}
-            type="button"
-            disabled={loading}
-          >
-            {loading ? '⏳ Opening…' : '✏ Edit in draw.io'}
-          </button>
+          <div className="drawio-block__actions">
+            <button
+              className="drawio-block__edit-btn"
+              onClick={openEditor}
+              contentEditable={false}
+              type="button"
+              disabled={loading}
+            >
+              {loading ? '⏳ Opening…' : '✏ Edit in draw.io'}
+            </button>
+            <button
+              className="drawio-block__delete-btn"
+              onClick={deleteNode}
+              contentEditable={false}
+              type="button"
+              title="Remove diagram"
+            >
+              ✕
+            </button>
+          </div>
         )}
       </div>
 
@@ -128,6 +140,7 @@ const DrawioBlock = Node.create({
   name: 'drawioBlock',
   group: 'block',
   atom: true,
+  selectable: true,
   draggable: true,
 
   addAttributes() {
@@ -209,6 +222,27 @@ const DrawioBlock = Node.create({
           type: this.name,
           attrs: { xml: '', svg: '' },
         });
+      },
+    };
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      Backspace: ({ editor }) => {
+        const { selection } = editor.state;
+        if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
+          editor.commands.deleteSelection();
+          return true;
+        }
+        return false;
+      },
+      Delete: ({ editor }) => {
+        const { selection } = editor.state;
+        if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
+          editor.commands.deleteSelection();
+          return true;
+        }
+        return false;
       },
     };
   },

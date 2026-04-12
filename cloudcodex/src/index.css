@@ -5990,6 +5990,12 @@ body {
   letter-spacing: 0.02em;
 }
 
+.drawio-block__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .drawio-block__edit-btn {
   background: var(--bg-panel);
   color: var(--text-secondary);
@@ -6010,6 +6016,24 @@ body {
 .drawio-block__edit-btn:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+.drawio-block__delete-btn {
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.drawio-block__delete-btn:hover {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
 }
 
 .drawio-block__preview {
