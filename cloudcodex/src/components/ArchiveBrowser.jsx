@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchArchives, createArchive, updateArchive, deleteArchive,
-  fetchLogs, createLog, deleteLog,
+  fetchLogs, deleteLog,
   manageArchiveAccess, manageArchiveSquadAccess, manageArchiveWorkspaceAccess,
   fetchArchiveAccess, searchUsers,
   uploadDocument, exportDocument, fetchDocument,
