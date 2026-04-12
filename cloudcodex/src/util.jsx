@@ -185,11 +185,25 @@ export const validateInviteToken = (token) => apiFetch('GET', `/api/invite/valid
 
 // --- Browse / Search APIs ---
 
-export const browseLogs = ({ page = 1, limit = 12, sort = 'newest' } = {}) =>
-  apiFetch('GET', `/api/browse?page=${page}&limit=${limit}&sort=${encodeURIComponent(sort)}`);
+export const browseLogs = ({ page = 1, limit = 12, sort = 'newest', favorites, workspaceId, squadId, archiveId } = {}) => {
+  const params = new URLSearchParams({ page, limit, sort });
+  if (favorites) params.set('favorites', '1');
+  if (workspaceId) params.set('workspaceId', workspaceId);
+  if (squadId) params.set('squadId', squadId);
+  if (archiveId) params.set('archiveId', archiveId);
+  return apiFetch('GET', `/api/browse?${params}`);
+};
 
-export const searchLogs = ({ query, page = 1, limit = 12 } = {}) =>
-  apiFetch('GET', `/api/search?query=${encodeURIComponent(query)}&page=${page}&limit=${limit}`);
+export const searchLogs = ({ query, page = 1, limit = 12, favorites, workspaceId, squadId, archiveId } = {}) => {
+  const params = new URLSearchParams({ query, page, limit });
+  if (favorites) params.set('favorites', '1');
+  if (workspaceId) params.set('workspaceId', workspaceId);
+  if (squadId) params.set('squadId', squadId);
+  if (archiveId) params.set('archiveId', archiveId);
+  return apiFetch('GET', `/api/search?${params}`);
+};
+
+export const fetchSearchFilters = () => apiFetch('GET', '/api/search/filters');
 
 export const fetchPresence = () => apiFetch('GET', '/api/presence');
 
