@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchLogs, showModal, destroyModal } from '../util';
+import { fetchLogs, showModal } from '../util';
 import NewLogModal from './NewLogModal';
 
 function TreeItem({ log, depth = 0, activeLogId, onSelect, archiveId, onLogCreated }) {

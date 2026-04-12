@@ -200,7 +200,7 @@ const DrawioBlock = Node.create({
     if (node.attrs.svg && typeof document !== 'undefined') {
       const div = document.createElement('div');
       for (const [key, value] of Object.entries(attrs)) {
-        if (value != null && value !== false) div.setAttribute(key, String(value));
+        if (value !== null && value !== undefined && value !== false) div.setAttribute(key, String(value));
       }
       div.innerHTML = DOMPurify.sanitize(node.attrs.svg, {
         USE_PROFILES: { svg: true, svgFilters: true },

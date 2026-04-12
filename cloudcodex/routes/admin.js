@@ -513,7 +513,7 @@ router.get('/admin/presence', requireAuth, requireAdmin, asyncHandler(async (req
   const allPresence = getAllPresence();
   const logIds = Object.keys(allPresence).map(Number).filter(id => id > 0);
 
-  let logInfo = {};
+  const logInfo = {};
   if (logIds.length > 0) {
     const placeholders = logIds.map(() => '?').join(',');
     const logs = await c2_query(
