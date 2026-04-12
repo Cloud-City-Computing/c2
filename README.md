@@ -31,7 +31,7 @@ Documents can be authored in either a full WYSIWYG rich text editor (powered by 
 Fenced code blocks support syntax highlighting for 25 languages (JavaScript, TypeScript, Python, Java, C, C++, Go, Rust, Ruby, PHP, SQL, HTML, CSS, JSON, YAML, Bash, and more). A language selector dropdown is built into each code block, with auto-detection as a fallback. Highlighting is rendered in both the editor and read-only views.
 
 ### Draw.io Diagram Integration
-Users can embed draw.io (diagrams.net) diagrams directly into documents. Clicking the toolbar button opens the draw.io editor in a popup. Diagram XML and a rendered SVG preview are stored inline in the document, and the diagram can be re-opened and edited at any time via the embed API.
+Users can embed draw.io (diagrams.net) diagrams directly into documents. Clicking the toolbar button opens the draw.io editor in a popup. Diagram XML and a rendered SVG preview are stored inline in the document, and the diagram can be re-opened, edited, or removed at any time via the embed API.
 
 ### Resizable Images
 Images inserted into documents can be interactively resized using drag handles. The width is persisted in the document HTML so the layout is preserved for all viewers. An image crop modal with an eight-handle crop rectangle, rule-of-thirds grid overlay, and canvas-based output is available when inserting images.
@@ -399,7 +399,7 @@ c2/
     │   ├── search.js         # Full-text search, browse, and presence
     │   ├── squads.js         # Squads, members, invitations
     │   ├── upload.js         # Document file import
-    │   └── helpers/          # Shared validators, access control, image processing
+    │   └── helpers/          # Shared validators, access control, image processing, DB helpers
     │
     ├── services/
     │   ├── collab.js         # WebSocket collaboration server (Yjs)
@@ -409,12 +409,13 @@ c2/
     │   ├── App.jsx           # Router configuration
     │   ├── main.jsx          # Entry point
     │   ├── index.css         # Global styles
-    │   ├── util.jsx          # API helpers and editor utilities
-    │   ├── userPrefs.js      # User preference management
+    │   ├── util.jsx          # API helpers, shared utilities (timeAgo, docUrl, TAG_LABELS)
+    │   ├── userPrefs.js      # User preference management and shared constants
+    │   ├── editorUtils.js    # Editor utility functions (base64, SVG extraction)
     │   ├── components/       # Reusable UI components
     │   ├── pages/            # Top-level page views
     │   ├── page_layouts/     # Layout shells (sidebar, topbar, footer)
-    │   └── hooks/            # Custom React hooks
+    │   └── hooks/            # Custom React hooks (useCollab, usePresence, useClickOutside)
     │
     └── tests/                # Test suite
         ├── setup.js          # Global mocks (DB, email, sharp, fs)
@@ -434,19 +435,22 @@ cd cloudcodex
 npm test
 ```
 
-**372 tests** across 15 test files:
+**460 tests** across 17 test files:
 
 | Test File | Tests | Scope |
 | --- | --- | --- |
 | `auth.test.js` | 77 | Account creation, login, 2FA, password reset, sessions |
 | `comments.test.js` | 58 | Comments, replies, tags, status workflow, access control |
 | `documents.test.js` | 45 | Log save, publish, versions, restore, export |
+| `archives.test.js` | 50 | Archive and log tree, three-tier access control, repo linking |
 | `squads.test.js` | 43 | Squad CRUD, invitations, member roles, permissions |
-| `archives.test.js` | 38 | Archive and log tree, three-tier access control, repo linking |
+| `admin.test.js` | 43 | Admin console, stats, user/workspace management, invitations |
 | `editorUtils.test.js` | 28 | Editor utility functions and helpers |
+| `github.test.js` | 20 | GitHub API proxy, repos, files, branches, PRs |
 | `favorites.test.js` | 16 | Favorite add, remove, check, list, access control |
 | `workspaces.test.js` | 14 | Workspace CRUD, ownership transfer |
 | `search.test.js` | 13 | Full-text search, browse, presence, pagination |
+| `oauth.test.js` | 13 | Google SSO, GitHub OAuth, account linking |
 | `avatars.test.js` | 12 | Upload, replace, remove, validation, authorization |
 | `upload.test.js` | 9 | File import, format conversion, error handling |
 | `permissions.test.js` | 8 | Permission middleware, role fallbacks |
