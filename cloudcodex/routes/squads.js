@@ -81,7 +81,7 @@ router.post(
     }
 
     // Workspace owners bypass the create_squad permission check
-    const isOwner = workspace.owner === req.user.email;
+    const isOwner = req.user.is_admin || workspace.owner === req.user.email;
     if (!isOwner) {
       const [perms] = await c2_query(
         `SELECT create_squad FROM permissions WHERE user_id = ? LIMIT 1`,
@@ -154,7 +154,7 @@ router.put('/squads/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!squad) {
     return res.status(404).json({ success: false, message: 'Squad not found' });
   }
-  if (squad.created_by !== req.user.id && squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.created_by !== req.user.id && squad.owner !== req.user.email) {
     return res.status(403).json({ success: false, message: 'Only the squad creator or workspace owner can rename this squad' });
   }
 
@@ -182,7 +182,7 @@ router.delete('/squads/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!squad) {
     return res.status(404).json({ success: false, message: 'Squad not found' });
   }
-  if (squad.created_by !== req.user.id && squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.created_by !== req.user.id && squad.owner !== req.user.email) {
     return res.status(403).json({ success: false, message: 'Only the squad creator or workspace owner can delete this squad' });
   }
 
@@ -208,7 +208,7 @@ router.get('/squads/:id/permissions', requireAuth, asyncHandler(async (req, res)
     [Number(id)]
   );
   if (!squad) return res.status(404).json({ success: false, message: 'Squad not found' });
-  if (squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.owner !== req.user.email) {
     return res.status(403).json({ success: false, message: 'Only the workspace owner can view squad permissions' });
   }
 
@@ -242,7 +242,7 @@ router.put('/squads/:id/permissions', requireAuth, asyncHandler(async (req, res)
     [Number(id)]
   );
   if (!squad) return res.status(404).json({ success: false, message: 'Squad not found' });
-  if (squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.owner !== req.user.email) {
     return res.status(403).json({ success: false, message: 'Only the workspace owner can update squad permissions' });
   }
 

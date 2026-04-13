@@ -115,10 +115,13 @@ router.put('/workspaces/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const [workspace] = await c2_query(
-    `SELECT id FROM workspaces WHERE id = ? AND owner = ? LIMIT 1`,
-    [Number(id), req.user.email]
+    `SELECT id, owner FROM workspaces WHERE id = ? LIMIT 1`,
+    [Number(id)]
   );
   if (!workspace) {
+    return res.status(404).json({ success: false, message: 'Workspace not found' });
+  }
+  if (!req.user.is_admin && workspace.owner !== req.user.email) {
     return res.status(403).json({ success: false, message: 'Only the owner can update this workspace' });
   }
 
@@ -137,10 +140,13 @@ router.delete('/workspaces/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const [workspace] = await c2_query(
-    `SELECT id FROM workspaces WHERE id = ? AND owner = ? LIMIT 1`,
-    [Number(id), req.user.email]
+    `SELECT id, owner FROM workspaces WHERE id = ? LIMIT 1`,
+    [Number(id)]
   );
   if (!workspace) {
+    return res.status(404).json({ success: false, message: 'Workspace not found' });
+  }
+  if (!req.user.is_admin && workspace.owner !== req.user.email) {
     return res.status(403).json({ success: false, message: 'Only the owner can delete this workspace' });
   }
 

@@ -475,8 +475,8 @@ router.get('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
 
   const targetId = Number(userId);
 
-  // Allow self; workspace owners may view permissions of users in their workspace
-  if (req.user.id !== targetId) {
+  // Allow self, admins, or workspace owners
+  if (req.user.id !== targetId && !req.user.is_admin) {
     const [link] = await c2_query(
       `SELECT 1 FROM squad_members tm
        JOIN squads t ON tm.squad_id = t.id
@@ -514,17 +514,19 @@ router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
 
   const targetId = Number(userId);
 
-  // Only workspace owners can update permissions for users in their workspace
-  const [link] = await c2_query(
-    `SELECT 1 FROM squad_members tm
-     JOIN squads t ON tm.squad_id = t.id
-     JOIN workspaces o ON t.workspace_id = o.id
-     WHERE tm.user_id = ? AND o.owner = ?
-     LIMIT 1`,
-    [targetId, req.user.email]
-  );
-  if (!link) {
-    return res.status(403).json({ success: false, message: 'Only workspace owners can update permissions for users in their workspace' });
+  // Admins and workspace owners can update permissions
+  if (!req.user.is_admin) {
+    const [link] = await c2_query(
+      `SELECT 1 FROM squad_members tm
+       JOIN squads t ON tm.squad_id = t.id
+       JOIN workspaces o ON t.workspace_id = o.id
+       WHERE tm.user_id = ? AND o.owner = ?
+       LIMIT 1`,
+      [targetId, req.user.email]
+    );
+    if (!link) {
+      return res.status(403).json({ success: false, message: 'Only workspace owners can update permissions for users in their workspace' });
+    }
   }
 
   const { create_squad, create_archive, create_log } = req.body;
