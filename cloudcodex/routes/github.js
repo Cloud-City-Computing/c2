@@ -319,6 +319,144 @@ router.put('/github/repos/:owner/:repo/contents/{*filePath}', asyncHandler(async
   });
 }));
 
+// --- Delete File ---
+
+/**
+ * DELETE /api/github/repos/:owner/:repo/contents/*
+ * Delete a file (commit the deletion).
+ * Body: { message, branch, sha }
+ */
+router.delete('/github/repos/:owner/:repo/contents/{*filePath}', asyncHandler(async (req, res) => {
+  const { owner, repo } = req.params;
+  const raw = req.params.filePath;
+  const filePath = (Array.isArray(raw) ? raw.join('/') : String(raw || '')).replace(/^\//, '');
+  const { message, branch, sha } = req.body;
+
+  if (!filePath) {
+    return res.status(400).json({ success: false, message: 'File path is required' });
+  }
+  if (!sha) {
+    return res.status(400).json({ success: false, message: 'File SHA is required to prevent accidental deletions' });
+  }
+
+  const commitMsg = message || `Delete ${filePath}`;
+
+  const data = await githubFetch(req.ghToken,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${filePath}`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: commitMsg, sha, branch: branch || undefined }),
+    }
+  );
+
+  res.json({
+    success: true,
+    message: 'File deleted successfully',
+    commit: {
+      sha: data.commit.sha,
+      message: data.commit.message,
+      html_url: data.commit.html_url,
+    },
+  });
+}));
+
+// --- Rename / Move File ---
+
+/**
+ * POST /api/github/repos/:owner/:repo/rename
+ * Rename or move a file by creating it at the new path and deleting the old one.
+ * Body: { oldPath, newPath, message, branch }
+ * Uses the Git Trees API for an atomic single-commit rename.
+ */
+router.post('/github/repos/:owner/:repo/rename', asyncHandler(async (req, res) => {
+  const { owner, repo } = req.params;
+  const { oldPath, newPath, message, branch } = req.body;
+
+  if (!oldPath || !newPath) {
+    return res.status(400).json({ success: false, message: 'Both oldPath and newPath are required' });
+  }
+  if (oldPath === newPath) {
+    return res.status(400).json({ success: false, message: 'Old and new paths must differ' });
+  }
+
+  const ownerEnc = encodeURIComponent(owner);
+  const repoEnc = encodeURIComponent(repo);
+  const targetBranch = branch || 'HEAD';
+
+  // 1. Get the branch ref to find the current commit SHA
+  const refData = await githubFetch(req.ghToken,
+    `/repos/${ownerEnc}/${repoEnc}/git/ref/heads/${encodeURIComponent(targetBranch)}`
+  );
+  const latestCommitSha = refData.object.sha;
+
+  // 2. Get the current commit to find its tree SHA
+  const commitData = await githubFetch(req.ghToken,
+    `/repos/${ownerEnc}/${repoEnc}/git/commits/${latestCommitSha}`
+  );
+  const baseTreeSha = commitData.tree.sha;
+
+  // 3. Get the old file's blob SHA
+  const oldFileData = await githubFetch(req.ghToken,
+    `/repos/${ownerEnc}/${repoEnc}/contents/${oldPath}?ref=${encodeURIComponent(targetBranch)}`
+  );
+  const blobSha = oldFileData.sha;
+
+  // 4. Create a new tree that adds the file at the new path and removes it from the old path
+  const newTree = await githubFetch(req.ghToken,
+    `/repos/${ownerEnc}/${repoEnc}/git/trees`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        base_tree: baseTreeSha,
+        tree: [
+          // Remove old path (mode '160000' trick: set sha to null isn't supported, so we use a deletion entry)
+          { path: oldPath, mode: '100644', type: 'blob', sha: null },
+          // Add at new path with same blob content
+          { path: newPath, mode: '100644', type: 'blob', sha: blobSha },
+        ],
+      }),
+    }
+  );
+
+  // 5. Create a new commit pointing to this tree
+  const commitMsg = message || `Rename ${oldPath} → ${newPath}`;
+  const newCommit = await githubFetch(req.ghToken,
+    `/repos/${ownerEnc}/${repoEnc}/git/commits`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: commitMsg,
+        tree: newTree.sha,
+        parents: [latestCommitSha],
+      }),
+    }
+  );
+
+  // 6. Update the branch ref to the new commit
+  await githubFetch(req.ghToken,
+    `/repos/${ownerEnc}/${repoEnc}/git/refs/heads/${encodeURIComponent(targetBranch)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sha: newCommit.sha }),
+    }
+  );
+
+  res.json({
+    success: true,
+    message: `File renamed from ${oldPath} to ${newPath}`,
+    commit: {
+      sha: newCommit.sha,
+      message: commitMsg,
+      html_url: `https://github.com/${owner}/${repo}/commit/${newCommit.sha}`,
+    },
+    newPath,
+  });
+}));
+
 // --- Pull Requests ---
 
 /**

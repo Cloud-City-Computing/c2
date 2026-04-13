@@ -82,6 +82,30 @@ function ChevronRight() {
   return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>;
 }
 
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.15l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+    </svg>
+  );
+}
+
+function RenameIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758ZM11.189 3a.25.25 0 0 0-.354 0L2.226 11.608l-.529 1.852 1.852-.529 8.61-8.61a.25.25 0 0 0 0-.353Z" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+    </svg>
+  );
+}
+
 // ─── File Tree Helpers ────────────────────────────────
 
 /**
@@ -504,14 +528,285 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
   );
 }
 
+// ─── New File Modal ───────────────────────────────────
+
+function NewFileModal({ owner, repo, branch, onCreated, onClose }) {
+  const [filePath, setFilePath] = useState('');
+  const [content, setContent] = useState('');
+  const [message, setMessage] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape' && !creating) onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [creating, onClose]);
+
+  const isMarkdown = /\.(md|mdx|markdown)$/i.test(filePath);
+
+  const handleCreate = async () => {
+    const trimmed = filePath.trim().replace(/^\//, '');
+    if (!trimmed) {
+      setError('File path is required');
+      return;
+    }
+    setError(null);
+    setCreating(true);
+    try {
+      const commitMsg = message.trim() || `Create ${trimmed}`;
+      await apiFetch('PUT', `/api/github/repos/${owner}/${repo}/contents/${trimmed}`, {
+        content,
+        message: commitMsg,
+        branch,
+        // no sha — signals a new file creation
+      });
+      onCreated(trimmed);
+    } catch (e) {
+      setError(e.body?.message || 'Failed to create file');
+    }
+    setCreating(false);
+  };
+
+  return (
+    <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !creating) onClose(); }}>
+      <div className="gh-modal gh-modal--wide">
+        <div className="gh-modal__header">
+          <h3>Create new file</h3>
+          <button className="gh-modal__close" onClick={onClose} disabled={creating} aria-label="Close">&times;</button>
+        </div>
+
+        <div className="gh-modal__body">
+          {error && <p className="form-error">{error}</p>}
+
+          <div className="gh-field">
+            <label className="gh-field__label">File path</label>
+            <input
+              type="text"
+              placeholder="e.g. docs/guide.md"
+              value={filePath}
+              onChange={(e) => setFilePath(e.target.value)}
+              className="gh-input"
+              autoFocus
+            />
+            <span className="gh-field__hint">Use forward slashes to create files in subdirectories</span>
+          </div>
+
+          <div className="gh-field">
+            <label className="gh-field__label">Content {isMarkdown && <span className="text-muted text-sm">(Markdown)</span>}</label>
+            {isMarkdown ? (
+              <MarkdownEditorPane content={content} onChange={setContent} />
+            ) : (
+              <textarea
+                className="gh-editor-textarea gh-editor-textarea--plain gh-newfile-textarea"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="File content (can be empty)"
+                spellCheck={false}
+              />
+            )}
+          </div>
+
+          <div className="gh-field">
+            <label className="gh-field__label">Commit message</label>
+            <input
+              type="text"
+              placeholder={`Create ${filePath.trim() || 'new file'}`}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="gh-input"
+              onKeyDown={(e) => e.key === 'Enter' && !creating && handleCreate()}
+            />
+          </div>
+
+          <p className="text-muted text-sm">Committing to <strong>{branch}</strong></p>
+        </div>
+
+        <div className="gh-modal__footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={creating}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleCreate} disabled={creating || !filePath.trim()}>
+            {creating ? 'Creating...' : 'Create file'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Delete File Modal ────────────────────────────────
+
+function DeleteFileModal({ owner, repo, filePath, fileSha, branch, onDeleted, onClose }) {
+  const [message, setMessage] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape' && !deleting) onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [deleting, onClose]);
+
+  const handleDelete = async () => {
+    setError(null);
+    setDeleting(true);
+    try {
+      const commitMsg = message.trim() || `Delete ${filePath}`;
+      await apiFetch('DELETE', `/api/github/repos/${owner}/${repo}/contents/${filePath}`, {
+        message: commitMsg,
+        branch,
+        sha: fileSha,
+      });
+      onDeleted();
+    } catch (e) {
+      setError(e.body?.message || 'Failed to delete file');
+    }
+    setDeleting(false);
+  };
+
+  return (
+    <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !deleting) onClose(); }}>
+      <div className="gh-modal">
+        <div className="gh-modal__header">
+          <h3>Delete file</h3>
+          <button className="gh-modal__close" onClick={onClose} disabled={deleting} aria-label="Close">&times;</button>
+        </div>
+
+        <div className="gh-modal__body">
+          {error && <p className="form-error">{error}</p>}
+
+          <p>Are you sure you want to delete <strong>{filePath}</strong>?</p>
+          <p className="text-muted text-sm">This will create a commit on <strong>{branch}</strong> removing this file.</p>
+
+          <div className="gh-field" style={{ marginTop: 16 }}>
+            <label className="gh-field__label">Commit message</label>
+            <input
+              type="text"
+              placeholder={`Delete ${filePath}`}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="gh-input"
+              onKeyDown={(e) => e.key === 'Enter' && !deleting && handleDelete()}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        <div className="gh-modal__footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={deleting}>Cancel</button>
+          <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+            {deleting ? 'Deleting...' : 'Delete file'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Rename/Move File Modal ──────────────────────────
+
+function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onClose }) {
+  const [newPath, setNewPath] = useState(filePath);
+  const [message, setMessage] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape' && !renaming) onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [renaming, onClose]);
+
+  const handleRename = async () => {
+    const trimmed = newPath.trim().replace(/^\//, '');
+    if (!trimmed) {
+      setError('New path is required');
+      return;
+    }
+    if (trimmed === filePath) {
+      setError('New path must differ from the current path');
+      return;
+    }
+    setError(null);
+    setRenaming(true);
+    try {
+      const commitMsg = message.trim() || `Rename ${filePath} → ${trimmed}`;
+      await apiFetch('POST', `/api/github/repos/${owner}/${repo}/rename`, {
+        oldPath: filePath,
+        newPath: trimmed,
+        message: commitMsg,
+        branch,
+      });
+      onRenamed(trimmed);
+    } catch (e) {
+      setError(e.body?.message || 'Failed to rename file');
+    }
+    setRenaming(false);
+  };
+
+  return (
+    <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !renaming) onClose(); }}>
+      <div className="gh-modal">
+        <div className="gh-modal__header">
+          <h3>Rename / Move file</h3>
+          <button className="gh-modal__close" onClick={onClose} disabled={renaming} aria-label="Close">&times;</button>
+        </div>
+
+        <div className="gh-modal__body">
+          {error && <p className="form-error">{error}</p>}
+
+          <div className="gh-field">
+            <label className="gh-field__label">Current path</label>
+            <input type="text" value={filePath} className="gh-input" disabled />
+          </div>
+
+          <div className="gh-field">
+            <label className="gh-field__label">New path</label>
+            <input
+              type="text"
+              placeholder="e.g. docs/new-name.md"
+              value={newPath}
+              onChange={(e) => setNewPath(e.target.value)}
+              className="gh-input"
+              autoFocus
+            />
+            <span className="gh-field__hint">Change the directory to move, or change the filename to rename</span>
+          </div>
+
+          <div className="gh-field">
+            <label className="gh-field__label">Commit message</label>
+            <input
+              type="text"
+              placeholder={`Rename ${filePath}`}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="gh-input"
+              onKeyDown={(e) => e.key === 'Enter' && !renaming && handleRename()}
+            />
+          </div>
+
+          <p className="text-muted text-sm">Committing to <strong>{branch}</strong></p>
+        </div>
+
+        <div className="gh-modal__footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={renaming}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleRename} disabled={renaming || newPath.trim() === filePath || !newPath.trim()}>
+            {renaming ? 'Renaming...' : 'Rename file'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── File Viewer/Editor ──────────────────────────────
 
-function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNavigateBack, onBranchCreated }) {
+function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNavigateBack, onBranchCreated, onFileDeleted, onFileRenamed }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [showCommit, setShowCommit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [showRename, setShowRename] = useState(false);
   const [currentSha, setCurrentSha] = useState(null);
   const [currentBranch, setCurrentBranch] = useState(branch);
 
@@ -576,6 +871,16 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
               View on GitHub
             </a>
           )}
+          {!editing && (
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowRename(true)} title="Rename / Move">
+                <RenameIcon /> Rename
+              </button>
+              <button className="btn btn-ghost btn-sm gh-btn-danger-ghost" onClick={() => setShowDelete(true)} title="Delete file">
+                <TrashIcon /> Delete
+              </button>
+            </>
+          )}
           {!editing ? (
             <button className="btn btn-primary btn-sm" onClick={handleStartEdit}>Edit</button>
           ) : (
@@ -628,6 +933,35 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
           onClose={() => setShowCommit(false)}
         />
       )}
+
+      {showDelete && (
+        <DeleteFileModal
+          owner={owner}
+          repo={repo}
+          filePath={filePath}
+          fileSha={currentSha}
+          branch={currentBranch}
+          onDeleted={() => {
+            setShowDelete(false);
+            if (onFileDeleted) onFileDeleted(filePath);
+          }}
+          onClose={() => setShowDelete(false)}
+        />
+      )}
+
+      {showRename && (
+        <RenameFileModal
+          owner={owner}
+          repo={repo}
+          filePath={filePath}
+          branch={currentBranch}
+          onRenamed={(newPath) => {
+            setShowRename(false);
+            if (onFileRenamed) onFileRenamed(filePath, newPath);
+          }}
+          onClose={() => setShowRename(false)}
+        />
+      )}
     </div>
   );
 }
@@ -645,6 +979,7 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
   const [loading, setLoading] = useState(true);
   const [treeFilter, setTreeFilter] = useState('');
   const [mdOnly, setMdOnly] = useState(true);
+  const [showNewFile, setShowNewFile] = useState(false);
 
   // Load repo info + branches
   useEffect(() => {
@@ -662,17 +997,17 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
   }, [owner, repoName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load tree when branch changes
-  useEffect(() => {
+  const refreshTree = useCallback(async () => {
     if (!branch) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await apiFetch('GET', `/api/github/repos/${owner}/${repoName}/tree?ref=${encodeURIComponent(branch)}`);
-        setTree(res.tree);
-      } catch { /* ignore */ }
-      setLoading(false);
-    })();
+    setLoading(true);
+    try {
+      const res = await apiFetch('GET', `/api/github/repos/${owner}/${repoName}/tree?ref=${encodeURIComponent(branch)}`);
+      setTree(res.tree);
+    } catch { /* ignore */ }
+    setLoading(false);
   }, [owner, repoName, branch]);
+
+  useEffect(() => { refreshTree(); }, [refreshTree]);
 
   // Sync URL params
   useEffect(() => {
@@ -740,10 +1075,15 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
             onChange={(e) => setTreeFilter(e.target.value)}
             className="gh-search-input gh-search-input--sm"
           />
-          <label className="gh-md-toggle">
-            <input type="checkbox" checked={mdOnly} onChange={(e) => setMdOnly(e.target.checked)} />
-            <span className="text-sm">Docs only</span>
-          </label>
+          <div className="gh-tree-filter__row">
+            <label className="gh-md-toggle">
+              <input type="checkbox" checked={mdOnly} onChange={(e) => setMdOnly(e.target.checked)} />
+              <span className="text-sm">Docs only</span>
+            </label>
+            <button className="btn btn-ghost btn-sm gh-new-file-btn" onClick={() => setShowNewFile(true)} title="Create new file">
+              <PlusIcon /> New file
+            </button>
+          </div>
         </div>
 
         {/* Tree */}
@@ -785,6 +1125,14 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
                 })
                 .catch(() => {});
             }}
+            onFileDeleted={() => {
+              setSelectedFile(null);
+              refreshTree();
+            }}
+            onFileRenamed={(oldPath, newPath) => {
+              setSelectedFile(newPath);
+              refreshTree();
+            }}
           />
         ) : (
           <div className="gh-welcome">
@@ -792,14 +1140,33 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
             <h2>{repoInfo?.full_name || `${owner}/${repoName}`}</h2>
             {repoInfo?.description && <p className="text-muted">{repoInfo.description}</p>}
             <p className="text-muted text-sm">Select a file from the tree to view or edit it.</p>
-            {repoInfo?.html_url && (
-              <a href={repoInfo.html_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}>
-                Open on GitHub
-              </a>
-            )}
+            <div className="gh-welcome__actions">
+              <button className="btn btn-primary btn-sm" onClick={() => setShowNewFile(true)}>
+                <PlusIcon /> New file
+              </button>
+              {repoInfo?.html_url && (
+                <a href={repoInfo.html_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+                  Open on GitHub
+                </a>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {showNewFile && (
+        <NewFileModal
+          owner={owner}
+          repo={repoName}
+          branch={branch}
+          onCreated={(newPath) => {
+            setShowNewFile(false);
+            refreshTree();
+            setSelectedFile(newPath);
+          }}
+          onClose={() => setShowNewFile(false)}
+        />
+      )}
     </div>
   );
 }
