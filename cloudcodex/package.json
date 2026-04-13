@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "^3.22.3",
+    "@tiptap/extension-collaboration": "^3.22.3",
     "@tiptap/extension-image": "^3.22.2",
     "@tiptap/extension-placeholder": "^3.22.2",
     "@tiptap/extension-text-align": "^3.22.2",
