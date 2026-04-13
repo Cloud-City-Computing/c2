@@ -1607,6 +1607,77 @@ body {
 
 .gh-commit-result p { margin: 0; }
 
+/* ── New/Delete/Rename File ── */
+
+.gh-modal--wide {
+  max-width: 760px;
+}
+
+.gh-modal--wide .gh-editor-split {
+  min-height: 280px;
+  max-height: 400px;
+}
+
+.gh-newfile-textarea {
+  min-height: 200px;
+  max-height: 400px;
+  resize: vertical;
+}
+
+.gh-field__hint {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  margin-top: 2px;
+}
+
+.gh-btn-danger-ghost {
+  color: var(--text-muted, #888);
+}
+
+.gh-btn-danger-ghost:hover {
+  color: #f44336 !important;
+  background: rgba(244, 67, 54, 0.1) !important;
+}
+
+.gh-file-actions .btn svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+.gh-tree-filter__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gh-new-file-btn {
+  font-size: 12px;
+  padding: 2px 8px;
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.gh-new-file-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.gh-welcome__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.gh-welcome__actions .btn svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {
