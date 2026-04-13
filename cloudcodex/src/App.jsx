@@ -4,16 +4,24 @@
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import HomePage from './pages/HomePage'
-import Editor from './pages/Editor'
-import AccountSettings from './pages/AccountSettings'
-import ArchivesPage from './pages/ArchivesPage'
-import ArchiveView from './pages/ArchiveView'
-import WorkspacesPage from './pages/WorkspacesPage'
-import ResetPasswordPage from './pages/ResetPasswordPage'
-import AdminPage from './pages/AdminPage'
-import GitHubPage from './pages/GitHubPage'
+
+// Heavy pages are lazy-loaded so the initial bundle stays small.
+// Editor alone pulls in Tiptap, Yjs, lowlight, marked, turndown, etc.
+const Editor = lazy(() => import('./pages/Editor'));
+const ArchiveView = lazy(() => import('./pages/ArchiveView'));
+const GitHubPage = lazy(() => import('./pages/GitHubPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const WorkspacesPage = lazy(() => import('./pages/WorkspacesPage'));
+const AccountSettings = lazy(() => import('./pages/AccountSettings'));
+const ArchivesPage = lazy(() => import('./pages/ArchivesPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+
+function PageLoader() {
+  return <div className="page-loader"><div className="spinner" /></div>;
+}
 
 function NotFound() {
   return (
@@ -27,6 +35,7 @@ function NotFound() {
 
 function App() {
   return (
+    <Suspense fallback={<PageLoader />}>
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -45,6 +54,7 @@ function App() {
       <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/404" replace />} />
     </Routes>
+    </Suspense>
   )
 }
 
