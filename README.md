@@ -2,7 +2,7 @@
   <img src="cloudcodex/src/assets/ccc_brand/ccc_no_txt_transparent.png" alt="Cloud Codex" width="120" />
 </p>
 
-<h1 align="center">Cloud Codex</h1>
+<h1 align="center">Cloud Codex ( C2 )</h1>
 
 <p align="center">
   A real-time collaborative documentation platform by <a href="https://cloudcitycomputing.com">Cloud City Computing, LLC</a>
