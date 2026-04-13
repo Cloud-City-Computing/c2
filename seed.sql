@@ -8,14 +8,19 @@
 -- All Rights Reserved to Cloud City Computing, LLC 2026
 -- https://cloudcitycomputing.com
 
+DELETE FROM favorites;
+DELETE FROM comment_replies;
+DELETE FROM comments;
 DELETE FROM versions;
 DELETE FROM logs;
 DELETE FROM archives;
-DELETE FROM squad_members;
+DELETE FROM archive_repos;
 DELETE FROM squad_invitations;
+DELETE FROM squad_members;
 DELETE FROM squad_permissions;
 DELETE FROM permissions;
 DELETE FROM squads;
+DELETE FROM user_invitations;
 DELETE FROM sessions;
 DELETE FROM password_reset_tokens;
 DELETE FROM two_factor_codes;
@@ -32,8 +37,9 @@ SET @workspace_id = LAST_INSERT_ID();
 -- =========================
 -- Users (password = "password" for all)
 -- =========================
+INSERT INTO users (name, email, password_hash, is_admin) VALUES
+  ('alice',  'alice@acme.com',  '$2b$10$Sd3GKFmu8.CRz86c3jQI5u3f.Lju4H3Ez5SSjTJjRAqMW9w0OLg5u', TRUE);
 INSERT INTO users (name, email, password_hash) VALUES
-  ('alice',  'alice@acme.com',  '$2b$10$Sd3GKFmu8.CRz86c3jQI5u3f.Lju4H3Ez5SSjTJjRAqMW9w0OLg5u'),
   ('bob',    'bob@acme.com',    '$2b$10$Sd3GKFmu8.CRz86c3jQI5u3f.Lju4H3Ez5SSjTJjRAqMW9w0OLg5u'),
   ('carol',  'carol@acme.com',  '$2b$10$Sd3GKFmu8.CRz86c3jQI5u3f.Lju4H3Ez5SSjTJjRAqMW9w0OLg5u'),
   ('dave',   'dave@acme.com',   '$2b$10$Sd3GKFmu8.CRz86c3jQI5u3f.Lju4H3Ez5SSjTJjRAqMW9w0OLg5u'),
@@ -337,3 +343,257 @@ INSERT INTO logs (archive_id, title, html_content, created_by, created_at) VALUE
 (@arch_data, 'Cost Optimization Report',
  '<h1>Data Pipeline Cost Optimization</h1><p>Monthly Snowflake spend has grown 40% quarter-over-quarter. This document outlines optimization opportunities.</p><h2>Findings</h2><ul><li>3 dbt models run hourly but are only queried daily — reduce frequency</li><li>Large table scans in 12 dashboard queries — add clustering keys</li><li>Unused staging tables consuming 2 TB storage — archive or drop</li><li>XL warehouse used for simple queries — right-size warehouse</li></ul><h2>Archiveed Savings</h2><p>Implementing all recommendations: estimated 35% reduction in monthly compute costs and 20% reduction in storage costs. Total annual savings: ~$48,000.</p>',
  @eve_id, '2026-01-20 14:00:00');
+
+-- =========================
+-- Capture log IDs for comments, versions, favorites
+-- =========================
+SELECT @log_api_overview  := id FROM logs WHERE title = 'API Overview';
+SELECT @log_auth_guide    := id FROM logs WHERE title = 'Authentication Guide';
+SELECT @log_error_handling := id FROM logs WHERE title = 'Error Handling';
+SELECT @log_pagination    := id FROM logs WHERE title = 'Pagination Patterns';
+SELECT @log_webhooks      := id FROM logs WHERE title = 'Webhooks Configuration';
+SELECT @log_batch_ops     := id FROM logs WHERE title = 'Batch Operations';
+SELECT @log_arch_overview := id FROM logs WHERE title = 'Architecture Overview';
+SELECT @log_k8s_setup     := id FROM logs WHERE title = 'Kubernetes Cluster Setup';
+SELECT @log_cicd          := id FROM logs WHERE title = 'CI/CD Pipeline';
+SELECT @log_monitoring    := id FROM logs WHERE title = 'Monitoring & Alerting';
+SELECT @log_dr_plan       := id FROM logs WHERE title = 'Disaster Recovery Plan';
+SELECT @log_app_arch      := id FROM logs WHERE title = 'App Architecture';
+SELECT @log_push_notif    := id FROM logs WHERE title = 'Push Notifications';
+SELECT @log_color_palette := id FROM logs WHERE title = 'Color Palette';
+SELECT @log_typography    := id FROM logs WHERE title = 'Typography';
+SELECT @log_perf_budget   := id FROM logs WHERE title = 'Performance Budget';
+SELECT @log_component_lib := id FROM logs WHERE title = 'Component Library Spec';
+SELECT @log_db_failover   := id FROM logs WHERE title = 'Database Failover';
+SELECT @log_high_cpu      := id FROM logs WHERE title = 'High CPU Alert';
+SELECT @log_welcome       := id FROM logs WHERE title = 'Welcome to Acme';
+SELECT @log_dev_setup     := id FROM logs WHERE title = 'Development Environment Setup';
+SELECT @log_code_review   := id FROM logs WHERE title = 'Code Review Guidelines';
+SELECT @log_pipeline_arch := id FROM logs WHERE title = 'Pipeline Architecture';
+SELECT @log_dbt_guide     := id FROM logs WHERE title = 'dbt Model Guide';
+SELECT @log_data_quality  := id FROM logs WHERE title = 'Data Quality Framework';
+SELECT @log_rate_limit    := id FROM logs WHERE title = 'Rate Limiting Deep Dive';
+SELECT @log_secrets_mgmt  := id FROM logs WHERE title = 'Secrets Management';
+SELECT @log_seo_migration := id FROM logs WHERE title = 'SEO Migration Plan';
+
+-- =========================
+-- Squad Invitations (pending, accepted, declined)
+-- =========================
+-- Dave invited carol to Ops — pending
+INSERT INTO squad_invitations (squad_id, invited_by, invited_user_id, role, can_read, can_write, can_create_log, status, created_at) VALUES
+  (@ops_squad, @dave_id, @carol_id, 'member', TRUE, TRUE, TRUE, 'pending', '2026-04-10 09:00:00');
+
+-- Alice invited dave to Engineering — pending
+INSERT INTO squad_invitations (squad_id, invited_by, invited_user_id, role, can_read, can_write, can_create_log, can_create_archive, status, created_at) VALUES
+  (@eng_squad, @alice_id, @dave_id, 'member', TRUE, TRUE, TRUE, FALSE, 'pending', '2026-04-08 14:30:00');
+
+-- Carol invited bob to Design — accepted
+INSERT INTO squad_invitations (squad_id, invited_by, invited_user_id, role, can_read, can_write, status, created_at, responded_at) VALUES
+  (@des_squad, @carol_id, @bob_id, 'member', TRUE, TRUE, 'accepted', '2026-03-15 10:00:00', '2026-03-15 12:30:00');
+
+-- Alice invited carol to Engineering — declined
+INSERT INTO squad_invitations (squad_id, invited_by, invited_user_id, role, can_read, can_write, status, created_at, responded_at) VALUES
+  (@eng_squad, @alice_id, @carol_id, 'member', TRUE, FALSE, 'declined', '2026-02-20 11:00:00', '2026-02-21 09:15:00');
+
+-- =========================
+-- User Invitations (pending platform invites)
+-- =========================
+INSERT INTO user_invitations (email, token, invited_by, expires_at, accepted, created_at) VALUES
+  ('frank@acme.com',  'aabbccdd11223344556677889900aabb11223344556677889900aabbccdd1122', @alice_id, '2026-04-20 00:00:00', FALSE, '2026-04-06 10:00:00'),
+  ('grace@acme.com',  'ffeeddcc11223344556677889900aabb11223344556677889900aabbccddeeff', @alice_id, '2026-04-25 00:00:00', FALSE, '2026-04-10 14:00:00'),
+  ('henry@acme.com',  '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff', @dave_id,  '2026-04-22 00:00:00', FALSE, '2026-04-08 09:00:00'),
+  ('iris@partner.com','aabb00112233445566778899ccddeeff00112233445566778899aabbccddeeff', @carol_id, '2026-03-01 00:00:00', TRUE,  '2026-02-15 11:00:00');
+
+-- =========================
+-- Versions — version history for select documents
+-- =========================
+-- API Overview: 3 published versions showing evolution
+UPDATE logs SET version = 3 WHERE id = @log_api_overview;
+INSERT INTO versions (log_id, version, title, notes, html_content, created_by, created_at) VALUES
+(@log_api_overview, 1, 'Initial draft', 'First version of the API overview document.',
+ '<h1>Platform API Overview</h1><p>The Platform API provides RESTful endpoints for managing resources.</p><h2>Base URL</h2><p><code>https://api.acme.com/v1</code></p>',
+ @alice_id, '2025-11-01 09:00:00'),
+(@log_api_overview, 2, 'Added rate limiting section', 'Added rate limiting details and batch operations reference.',
+ '<h1>Platform API Overview</h1><p>The Platform API provides RESTful endpoints for managing resources across the Acme ecosystem. All requests require authentication via Bearer tokens.</p><h2>Base URL</h2><p><code>https://api.acme.com/v2</code></p><h2>Rate Limiting</h2><p>All endpoints enforce a rate limit of 500 requests per minute per API key.</p>',
+ @alice_id, '2025-12-15 10:30:00'),
+(@log_api_overview, 3, 'Increased rate limit to 1000/min', 'Updated rate limit from 500 to 1000 requests per minute after capacity upgrade.',
+ '<h1>Platform API Overview</h1><p>The Platform API provides RESTful endpoints for managing resources across the Acme ecosystem. All requests require authentication via Bearer tokens.</p><h2>Base URL</h2><p><code>https://api.acme.com/v2</code></p><h2>Rate Limiting</h2><p>All endpoints enforce a rate limit of 1,000 requests per minute per API key. Exceeding this limit returns HTTP 429. Use exponential backoff for retries.</p><p>For batch operations, prefer the bulk endpoints documented in the Batch Operations section.</p>',
+ @bob_id, '2026-02-01 14:00:00');
+
+-- Architecture Overview: 2 versions
+UPDATE logs SET version = 2 WHERE id = @log_arch_overview;
+INSERT INTO versions (log_id, version, title, notes, html_content, created_by, created_at) VALUES
+(@log_arch_overview, 1, 'Initial architecture doc', NULL,
+ '<h1>Cloud Architecture</h1><p>Our infrastructure runs on a Kubernetes cluster. The architecture follows a microservices pattern.</p><h2>Key Components</h2><ul><li>API Gateway</li><li>Message queue (RabbitMQ)</li><li>Object storage</li><li>Relational database (MySQL)</li></ul>',
+ @bob_id, '2025-10-15 10:00:00'),
+(@log_arch_overview, 2, 'Upgraded to multi-region + Kafka', 'Reflected migration from RabbitMQ to Kafka and multi-region expansion.',
+ '<h1>Cloud Architecture</h1><p>Our infrastructure runs on a multi-region Kubernetes cluster deployed across three availability zones. The architecture follows a microservices pattern with service mesh for inter-service communication.</p><h2>Key Components</h2><ul><li>API Gateway (Envoy-based)</li><li>Service mesh (Istio)</li><li>Message queue (Kafka)</li><li>Object storage (S3-compatible)</li><li>Relational database (Aurora MySQL)</li></ul><p>All services are containerized and deployed via Helm charts managed in the infrastructure monorepo.</p>',
+ @bob_id, '2026-01-20 11:00:00');
+
+-- CI/CD Pipeline: 2 versions
+UPDATE logs SET version = 2 WHERE id = @log_cicd;
+INSERT INTO versions (log_id, version, title, notes, html_content, created_by, created_at) VALUES
+(@log_cicd, 1, 'Original CI/CD docs', NULL,
+ '<h1>CI/CD Pipeline</h1><p>We use GitHub Actions for CI and manual deployments to Kubernetes.</p><h2>Pipeline Stages</h2><ol><li>Lint & type check</li><li>Unit tests</li><li>Container image build & push</li></ol><p>Production deploys require SSH access to the cluster.</p>',
+ @alice_id, '2025-11-03 14:20:00'),
+(@log_cicd, 2, 'Added ArgoCD and canary deploys', 'Migrated from manual deploys to ArgoCD with canary strategy.',
+ '<h1>CI/CD Pipeline</h1><p>We use GitHub Actions for CI and ArgoCD for continuous deployment to Kubernetes. Every pull request triggers a full test suite, linting, security scan, and container build.</p><h2>Pipeline Stages</h2><ol><li>Lint & type check</li><li>Unit tests</li><li>Integration tests (with test database)</li><li>Container image build & push</li><li>Security scan (Trivy)</li><li>ArgoCD sync to staging</li></ol><p>Production deploys require manual approval after staging validation passes. Canary deployments roll out to 10% of traffic before full promotion.</p>',
+ @alice_id, '2026-01-10 09:00:00');
+
+-- Database Failover Runbook: 2 versions
+UPDATE logs SET version = 2 WHERE id = @log_db_failover;
+INSERT INTO versions (log_id, version, title, notes, html_content, created_by, created_at) VALUES
+(@log_db_failover, 1, 'Initial runbook', 'First version of the database failover runbook.',
+ '<h1>Runbook: Database Failover</h1><p><strong>Severity:</strong> Critical.</p><h2>Steps</h2><ol><li>Check CloudWatch</li><li>Initiate manual failover if needed</li><li>Verify connectivity</li></ol>',
+ @dave_id, '2025-10-18 08:00:00'),
+(@log_db_failover, 2, 'Added post-incident process', 'Expanded with detailed symptoms, monitoring checks, and post-incident procedures.',
+ '<h1>Runbook: Database Failover</h1><p><strong>Severity:</strong> Critical. <strong>On-call:</strong> Infrastructure squad.</p><h2>Symptoms</h2><ul><li>API responses return 500 with database connection errors</li><li>Aurora cluster primary instance unreachable</li><li>Monitoring shows replication lag &gt; 30 seconds</li></ul><h2>Steps</h2><ol><li>Verify the issue via CloudWatch RDS metrics</li><li>Check Aurora event logs for failover initiation</li><li>If automatic failover hasn''t triggered, initiate manual failover via AWS Console</li><li>Verify application connectivity to new primary</li><li>Monitor replication catch-up on new replica</li></ol><h2>Post-Incident</h2><p>File incident report within 24 hours. Schedule root cause analysis meeting.</p>',
+ @dave_id, '2026-03-05 10:00:00');
+
+-- Component Library Spec: 2 versions
+UPDATE logs SET version = 2 WHERE id = @log_component_lib;
+INSERT INTO versions (log_id, version, title, notes, html_content, created_by, created_at) VALUES
+(@log_component_lib, 1, 'Initial component list', NULL,
+ '<h1>Component Library</h1><p>Shared React components for the website redesign.</p><h2>Components</h2><ul><li><code>Button</code></li><li><code>Card</code></li><li><code>Input</code></li></ul>',
+ @carol_id, '2025-11-20 15:00:00'),
+(@log_component_lib, 2, 'Added Modal, Table, and design tokens', 'Expanded component list and added design token documentation.',
+ '<h1>Component Library</h1><p>The redesign introduces a shared component library built on React with Tailwind CSS. Components are documented in Storybook.</p><h2>Core Components</h2><ul><li><code>Button</code> — primary, secondary, ghost, danger variants</li><li><code>Card</code> — standard, interactive, feature highlight</li><li><code>Modal</code> — centered overlay with backdrop blur</li><li><code>Input</code> — text, email, password, search with validation states</li><li><code>Table</code> — sortable columns, pagination, row selection</li></ul><h2>Design Tokens</h2><p>Colors, spacing, radii, and shadows are defined as CSS custom properties generated from a shared token config.</p>',
+ @carol_id, '2026-02-14 11:00:00');
+
+-- =========================
+-- Comments — across various documents
+-- =========================
+
+-- API Overview: active discussion
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_api_overview, @bob_id, 'Should we mention the new v3 beta endpoints here? Some enterprise customers are already testing them.', 'question', 'open', 45, 110, 'RESTful endpoints for managing resources across the Acme ecosystem', '2026-03-20 10:15:00'),
+(@log_api_overview, @eve_id, 'The 1000 req/min limit feels low for our largest customers. Can we add a note about enterprise tier limits?', 'suggestion', 'open', 280, 340, 'rate limit of 1,000 requests per minute', '2026-03-22 14:30:00'),
+(@log_api_overview, @carol_id, 'Typo: "Per API key" should clarify whether this is per key or per account.', 'comment', 'resolved', 340, 360, 'per API key', '2026-02-10 09:00:00');
+SELECT @comment_api_v3     := id FROM comments WHERE log_id = @log_api_overview AND user_id = @bob_id AND tag = 'question';
+SELECT @comment_api_rate   := id FROM comments WHERE log_id = @log_api_overview AND user_id = @eve_id AND tag = 'suggestion';
+SELECT @comment_api_typo   := id FROM comments WHERE log_id = @log_api_overview AND user_id = @carol_id AND status = 'resolved';
+UPDATE comments SET resolved_by = @alice_id, resolved_at = '2026-02-10 11:30:00' WHERE id = @comment_api_typo;
+
+-- Authentication Guide: security review
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_auth_guide, @dave_id, 'We should add a note about token rotation best practices. Customers keep using expired tokens and filing support tickets.', 'suggestion', 'open', 200, 270, 'Token expiry is 3600 seconds', '2026-03-25 11:00:00'),
+(@log_auth_guide, @alice_id, 'Consider adding PKCE flow documentation for mobile/SPA clients — authorization code flow alone is insecure for public clients.', 'issue', 'open', 150, 200, 'authorization code flow', '2026-04-01 09:30:00');
+
+-- Architecture Overview: review comments
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_arch_overview, @eve_id, 'We should update this to mention the new edge caching layer we deployed in Q1.', 'suggestion', 'open', NULL, NULL, NULL, '2026-04-02 10:00:00'),
+(@log_arch_overview, @dave_id, 'The Istio version should be pinned here — we''re on 1.20 and it matters for NetworkPolicy behavior.', 'note', 'open', 120, 155, 'Service mesh (Istio)', '2026-03-18 14:00:00');
+
+-- CI/CD Pipeline: process discussion
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_cicd, @bob_id, 'The canary percentage should be configurable per service. Some services handle 10% fine, others need 1%.', 'suggestion', 'open', 350, 420, 'Canary deployments roll out to 10% of traffic', '2026-03-28 16:00:00'),
+(@log_cicd, @alice_id, 'Integration tests are flaky ~5% of the time — we should note the retry policy.', 'issue', 'resolved', 180, 230, 'Integration tests (with test database)', '2026-01-15 10:00:00');
+SELECT @comment_cicd_flaky := id FROM comments WHERE log_id = @log_cicd AND user_id = @alice_id AND status = 'resolved';
+UPDATE comments SET resolved_by = @bob_id, resolved_at = '2026-01-20 11:00:00' WHERE id = @comment_cicd_flaky;
+
+-- Monitoring dashboard comments
+INSERT INTO comments (log_id, user_id, content, tag, status, created_at) VALUES
+(@log_monitoring, @alice_id, 'Can we add an SLO dashboard section? We track SLOs but they are not documented here.', 'suggestion', 'open', '2026-04-05 09:00:00'),
+(@log_monitoring, @bob_id, 'LogrDuty → PagerDuty? Is this a typo or do we actually use LogrDuty?', 'question', 'open', '2026-04-08 11:30:00');
+
+-- Database Failover runbook comments
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_db_failover, @bob_id, 'We should add the specific AWS CLI commands for manual failover so on-call doesn''t have to look them up under pressure.', 'suggestion', 'open', 250, 320, 'initiate manual failover via AWS Console', '2026-03-10 08:45:00'),
+(@log_db_failover, @alice_id, 'After the March 3 incident, we discovered the health check interval was too long. Note the updated 10s interval.', 'note', 'resolved', NULL, NULL, NULL, '2026-03-06 09:00:00');
+SELECT @comment_db_healthcheck := id FROM comments WHERE log_id = @log_db_failover AND user_id = @alice_id AND tag = 'note';
+UPDATE comments SET resolved_by = @dave_id, resolved_at = '2026-03-07 14:00:00' WHERE id = @comment_db_healthcheck;
+
+-- Performance Budget discussion
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_perf_budget, @bob_id, 'Initial JS budget of 150 KB gzipped might be tight with the new analytics SDK. Can we get an exemption or find a lighter alternative?', 'issue', 'open', 200, 250, 'Initial JS: < 150 KB gzipped', '2026-04-01 15:00:00'),
+(@log_perf_budget, @carol_id, 'Font budget is fine — we''re at 82 KB with the current subset. Confirmed with latest build.', 'note', 'resolved', 270, 310, 'Fonts: < 100 KB', '2026-03-15 10:00:00');
+SELECT @comment_perf_font := id FROM comments WHERE log_id = @log_perf_budget AND user_id = @carol_id AND tag = 'note';
+UPDATE comments SET resolved_by = @carol_id, resolved_at = '2026-03-15 10:05:00' WHERE id = @comment_perf_font;
+
+-- Color Palette feedback
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_color_palette, @alice_id, 'The contrast ratio between Acme Blue and white background is 3.8:1 which barely passes AA for large text. Should we darken it slightly?', 'issue', 'open', 80, 130, 'Acme Blue — #2CA7DB', '2026-03-30 11:00:00'),
+(@log_color_palette, @eve_id, 'Love the palette! Can we add a dark mode variant column?', 'suggestion', 'open', NULL, NULL, NULL, '2026-04-03 09:30:00');
+
+-- Code Review Guidelines
+INSERT INTO comments (log_id, user_id, content, tag, status, created_at) VALUES
+(@log_code_review, @eve_id, 'Should we add a section about reviewing AI-generated code? Becoming more common on our PRs.', 'suggestion', 'open', '2026-04-09 10:00:00'),
+(@log_code_review, @dave_id, '"Review within one business day" — should this be shorter for critical bugfix PRs?', 'question', 'open', '2026-04-10 14:00:00');
+
+-- Data Quality Framework
+INSERT INTO comments (log_id, user_id, content, tag, status, selection_start, selection_end, selected_text, created_at) VALUES
+(@log_data_quality, @eve_id, 'Great Expectations is being deprecated in favor of GX Cloud. We should plan the migration.', 'issue', 'open', 250, 300, 'Great Expectations runs nightly validation suites', '2026-04-07 09:00:00');
+
+-- dbt Model Guide
+INSERT INTO comments (log_id, user_id, content, tag, status, created_at) VALUES
+(@log_dbt_guide, @bob_id, 'We also need conventions for snapshot models. Several teams have started using them inconsistently.', 'suggestion', 'open', '2026-03-25 16:00:00');
+
+-- =========================
+-- Comment Replies
+-- =========================
+
+-- Reply thread on API v3 question
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+(@comment_api_v3, @alice_id, 'Good point. Let''s add a "Beta Endpoints" callout box at the top. I''ll draft something this week.', '2026-03-20 11:00:00'),
+(@comment_api_v3, @eve_id, 'The v3 beta is currently opt-in only. We should note that endpoints may change without notice.', '2026-03-20 14:30:00'),
+(@comment_api_v3, @bob_id, 'Agreed. I''ll also add the beta header requirement: X-API-Version: 3-beta', '2026-03-21 09:00:00');
+
+-- Reply thread on API rate limit
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+(@comment_api_rate, @alice_id, 'Enterprise customers can already request custom limits. We should document the process here.', '2026-03-22 15:00:00'),
+(@comment_api_rate, @bob_id, 'I can add the enterprise rate limit tiers: 5K, 10K, and 25K per minute.', '2026-03-23 10:00:00');
+
+-- Reply on resolved API typo
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+(@comment_api_typo, @alice_id, 'Fixed — clarified it''s per API key, not per account. Each key has its own counter.', '2026-02-10 11:30:00');
+
+-- Reply on CI/CD canary
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+((SELECT id FROM comments WHERE log_id = @log_cicd AND user_id = @bob_id AND tag = 'suggestion'), @alice_id, 'Makes sense. Let''s add a canary_percentage field to our ArgoCD app configs.', '2026-03-29 09:00:00'),
+((SELECT id FROM comments WHERE log_id = @log_cicd AND user_id = @bob_id AND tag = 'suggestion'), @dave_id, '+1, the payment service definitely needs a smaller canary window.', '2026-03-29 10:30:00');
+
+-- Reply on architecture edge caching
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+((SELECT id FROM comments WHERE log_id = @log_arch_overview AND user_id = @eve_id), @bob_id, 'I can add that section. The Cloudflare Workers cache layer handles about 60% of read traffic now.', '2026-04-02 11:00:00');
+
+-- Reply on DB failover CLI commands
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+((SELECT id FROM comments WHERE log_id = @log_db_failover AND user_id = @bob_id AND tag = 'suggestion'), @dave_id, 'Great idea. I''ll add the full aws rds failover-db-cluster command with our cluster-id.', '2026-03-10 10:00:00'),
+((SELECT id FROM comments WHERE log_id = @log_db_failover AND user_id = @bob_id AND tag = 'suggestion'), @alice_id, 'Also add the verification command to check the new primary''s endpoint.', '2026-03-10 11:30:00');
+
+-- Reply on code review AI
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+((SELECT id FROM comments WHERE log_id = @log_code_review AND user_id = @eve_id), @alice_id, 'Yes! Key concern: reviewers need to treat AI code with extra scrutiny for security and correctness.', '2026-04-09 11:30:00'),
+((SELECT id FROM comments WHERE log_id = @log_code_review AND user_id = @eve_id), @bob_id, 'We should require authors to label which parts were AI-assisted in the PR description.', '2026-04-09 14:00:00');
+
+-- Reply on performance budget JS size
+INSERT INTO comment_replies (comment_id, user_id, content, created_at) VALUES
+((SELECT id FROM comments WHERE log_id = @log_perf_budget AND user_id = @bob_id AND tag = 'issue'), @carol_id, 'Let''s evaluate Plausible''s lightweight script vs the current SDK. It''s under 1 KB.', '2026-04-01 16:00:00'),
+((SELECT id FROM comments WHERE log_id = @log_perf_budget AND user_id = @bob_id AND tag = 'issue'), @alice_id, 'We could also defer the analytics SDK to after first paint — won''t affect LCP.', '2026-04-02 09:00:00');
+
+-- =========================
+-- Favorites
+-- =========================
+INSERT INTO favorites (user_id, log_id, created_at) VALUES
+  (@alice_id, @log_api_overview,  '2026-01-05 10:00:00'),
+  (@alice_id, @log_cicd,          '2026-01-12 14:00:00'),
+  (@alice_id, @log_component_lib, '2026-02-20 09:00:00'),
+  (@alice_id, @log_code_review,   '2025-10-20 15:00:00'),
+  (@bob_id,   @log_arch_overview, '2025-11-01 10:00:00'),
+  (@bob_id,   @log_k8s_setup,     '2025-11-05 11:00:00'),
+  (@bob_id,   @log_rate_limit,    '2025-12-22 09:00:00'),
+  (@bob_id,   @log_dbt_guide,     '2026-01-15 10:00:00'),
+  (@carol_id, @log_color_palette, '2025-10-30 09:00:00'),
+  (@carol_id, @log_typography,    '2025-11-05 10:00:00'),
+  (@carol_id, @log_perf_budget,   '2025-11-15 14:00:00'),
+  (@carol_id, @log_component_lib, '2025-11-25 09:00:00'),
+  (@dave_id,  @log_db_failover,   '2025-10-20 08:00:00'),
+  (@dave_id,  @log_high_cpu,      '2025-10-28 14:00:00'),
+  (@dave_id,  @log_secrets_mgmt,  '2025-12-23 15:00:00'),
+  (@dave_id,  @log_monitoring,    '2025-11-12 10:00:00'),
+  (@dave_id,  @log_welcome,       '2025-10-12 09:00:00'),
+  (@eve_id,   @log_pipeline_arch, '2025-11-05 08:00:00'),
+  (@eve_id,   @log_data_quality,  '2025-12-05 14:00:00'),
+  (@eve_id,   @log_push_notif,    '2025-11-18 13:00:00'),
+  (@eve_id,   @log_webhooks,      '2025-11-15 17:00:00'),
+  (@eve_id,   @log_batch_ops,     '2025-12-01 09:00:00');
