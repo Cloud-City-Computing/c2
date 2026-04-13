@@ -1,49 +1,60 @@
 /**
  * useCollab — React hook for real-time collaborative editing via WebSocket.
  *
- * Manages the WebSocket lifecycle, syncs HTML content with the server,
- * tracks connected users for awareness/presence UI.
+ * Creates a Yjs Y.Doc and syncs it with the server using the y-protocols
+ * binary sync protocol. The Y.Doc is bound to the Tiptap editor via the
+ * @tiptap/extension-collaboration extension, giving true CRDT merge for
+ * concurrent edits (no more last-writer-wins).
+ *
+ * Non-document messages (cursors, save, publish, comments, title, awareness)
+ * continue to use JSON text frames.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import * as Y from 'yjs';
+import * as syncProtocol from 'y-protocols/sync';
+import * as encoding from 'lib0/encoding';
+import * as decoding from 'lib0/decoding';
 import { getSessionTokenFromCookie } from '../util';
 
 /**
  * @param {number|string} logId  — The document/log ID to collaborate on
- * @param {function} onRemoteUpdate — Called with new HTML when a remote peer makes a change
- * @returns {{ collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendUpdate: function, sendCursor: function, sendSave: function, sendPublish: function, sendTitle: function, canWrite: boolean }}
+ * @param {function} onRemoteComment — Called when a peer performs a comment action
+ * @param {function} onPublished — Called when the server confirms a version was published
+ * @param {function} onRemoteTitle — Called when a peer changes the title
+ * @returns {{ ydoc: Y.Doc, synced: boolean, collabUsers: Array, collabConnected: boolean, remoteCursors: Object, sendCursor: function, sendSave: function, sendPublish: function, sendTitle: function, sendCommentEvent: function, canWrite: boolean }}
  */
 export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPublished, onRemoteTitle) {
   const [collabUsers, setCollabUsers] = useState([]);
   const [collabConnected, setCollabConnected] = useState(false);
   const [canWrite, setCanWrite] = useState(true);
+  const [synced, setSynced] = useState(false);
   const [remoteCursors, setRemoteCursors] = useState({});
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
-  const onRemoteUpdateRef = useRef(onRemoteUpdate);
+  // Keep callback refs up to date without re-creating the WebSocket
   const onRemoteCommentRef = useRef(onRemoteComment);
   const onPublishedRef = useRef(onPublished);
   const onRemoteTitleRef = useRef(onRemoteTitle);
 
-  // Keep ref up to date so we don't re-create the WebSocket on every render
-  useEffect(() => {
-    onRemoteUpdateRef.current = onRemoteUpdate;
-  }, [onRemoteUpdate]);
+  useEffect(() => { onRemoteCommentRef.current = onRemoteComment; }, [onRemoteComment]);
+  useEffect(() => { onPublishedRef.current = onPublished; }, [onPublished]);
+  useEffect(() => { onRemoteTitleRef.current = onRemoteTitle; }, [onRemoteTitle]);
 
-  useEffect(() => {
-    onRemoteCommentRef.current = onRemoteComment;
-  }, [onRemoteComment]);
+  // One Y.Doc per logId — recreated when the logId changes.
+  const ydoc = useMemo(() => {
+    const doc = new Y.Doc();
+    return doc;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logId]);
 
+  // Destroy previous Y.Doc when logId changes or component unmounts
   useEffect(() => {
-    onPublishedRef.current = onPublished;
-  }, [onPublished]);
-
-  useEffect(() => {
-    onRemoteTitleRef.current = onRemoteTitle;
-  }, [onRemoteTitle]);
+    return () => { ydoc.destroy(); };
+  }, [ydoc]);
 
   useEffect(() => {
     if (!logId) return;
@@ -54,19 +65,77 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
       const token = getSessionTokenFromCookie();
       if (!token) return;
 
+      setSynced(false);
+
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${proto}//${window.location.host}/collab?logId=${logId}`;
       const ws = new WebSocket(url);
+      ws.binaryType = 'arraybuffer'; // receive binary frames as ArrayBuffer
       wsRef.current = ws;
 
+      // --- Y.Doc ↔ WebSocket bridge ---
+      // Local Y.Doc changes are forwarded to the server as binary sync messages.
+      // We gate on `syncComplete` so we don't send the Tiptap Collaboration
+      // extension's initial-content write before the server sync finishes,
+      // which would duplicate content if the server already has state.
+      let syncComplete = false;
+      const pendingUpdates = [];
+
+      const docUpdateHandler = (update, origin) => {
+        if (origin === ws) return; // don't echo server-originated updates back
+        if (ws.readyState !== WebSocket.OPEN) return;
+
+        if (!syncComplete) {
+          pendingUpdates.push(update);
+          return;
+        }
+
+        const encoder = encoding.createEncoder();
+        syncProtocol.writeUpdate(encoder, update);
+        ws.send(encoding.toUint8Array(encoder));
+      };
+
+      ydoc.on('update', docUpdateHandler);
+
       ws.onopen = () => {
-        // Send auth token as first message instead of in URL (avoids log/history exposure)
+        // Auth must be the first message
         ws.send(JSON.stringify({ type: 'auth', token }));
         if (!disposed) setCollabConnected(true);
       };
 
       ws.onmessage = (event) => {
         if (disposed) return;
+
+        // --- Binary frame: Yjs sync/update ---
+        if (event.data instanceof ArrayBuffer) {
+          try {
+            const data = new Uint8Array(event.data);
+            const decoder = decoding.createDecoder(data);
+            const encoder = encoding.createEncoder();
+            const msgType = syncProtocol.readSyncMessage(decoder, encoder, ydoc, ws);
+            // If the sync protocol generated a response, send it
+            if (encoding.length(encoder) > 1) {
+              ws.send(encoding.toUint8Array(encoder));
+            }
+            // After receiving sync step 2 (the server's full state), we know
+            // the Y.Doc is up to date and can start forwarding local edits.
+            if (!syncComplete && msgType === syncProtocol.messageYjsSyncStep2) {
+              syncComplete = true;
+              // Flush any updates that were queued during the sync handshake
+              for (const u of pendingUpdates) {
+                const enc = encoding.createEncoder();
+                syncProtocol.writeUpdate(enc, u);
+                ws.send(encoding.toUint8Array(enc));
+              }
+              pendingUpdates.length = 0;
+            }
+          } catch (err) {
+            console.error('[useCollab] binary message error', err);
+          }
+          return;
+        }
+
+        // --- Text frame: JSON ---
         let msg;
         try {
           msg = JSON.parse(event.data);
@@ -76,16 +145,9 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
 
         switch (msg.type) {
           case 'sync':
+            // Server confirmed auth, sent permissions. Mark synced for UI.
             setCanWrite(msg.canWrite);
-            // Initial sync — push server HTML to the editor
-            if (msg.html !== undefined && msg.html !== null) {
-              onRemoteUpdateRef.current?.(msg.html);
-            }
-            break;
-
-          case 'update':
-            // Remote user changed the document
-            onRemoteUpdateRef.current?.(msg.html);
+            setSynced(true);
             break;
 
           case 'awareness':
@@ -114,20 +176,20 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
             break;
 
           case 'comment':
-            // Remote user performed a comment action
             onRemoteCommentRef.current?.(msg);
             break;
 
           case 'title':
-            // Remote user changed the document title
             onRemoteTitleRef.current?.(msg.title);
             break;
         }
       };
 
       ws.onclose = () => {
+        ydoc.off('update', docUpdateHandler);
         if (!disposed) {
           setCollabConnected(false);
+          setSynced(false);
           // Reconnect after a delay
           reconnectTimer.current = setTimeout(connect, 2000);
         }
@@ -151,17 +213,9 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
       setCollabConnected(false);
       setCollabUsers([]);
       setRemoteCursors({});
+      setSynced(false);
     };
-  }, [logId]);
-
-  /**
-   * Send a local content update to the server for broadcast to peers.
-   */
-  const sendUpdate = useCallback((html) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'update', html }));
-    }
-  }, []);
+  }, [logId, ydoc]);
 
   /**
    * Send local cursor/selection position to peers.
@@ -175,20 +229,23 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
 
   /**
    * Request an immediate content save (no version snapshot).
+   * Client sends its current HTML so the server can persist a display-ready copy.
+   * @param {{ html?: string }} [opts]
    */
-  const sendSave = useCallback(() => {
+  const sendSave = useCallback((opts = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'save' }));
+      wsRef.current.send(JSON.stringify({ type: 'save', html: opts.html }));
     }
   }, []);
 
   /**
    * Publish a formal version snapshot of the current document.
-   * @param {{ title?: string, notes?: string }} [opts]
+   * Client sends its current HTML alongside version metadata.
+   * @param {{ title?: string, notes?: string, html?: string }} [opts]
    */
   const sendPublish = useCallback((opts = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'publish', title: opts.title, notes: opts.notes }));
+      wsRef.current.send(JSON.stringify({ type: 'publish', title: opts.title, notes: opts.notes, html: opts.html }));
     }
   }, []);
 
@@ -212,5 +269,5 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
     }
   }, []);
 
-  return { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendTitle, sendCommentEvent, canWrite };
+  return { ydoc, synced, collabUsers, collabConnected, remoteCursors, sendCursor, sendSave, sendPublish, sendTitle, sendCommentEvent, canWrite };
 }

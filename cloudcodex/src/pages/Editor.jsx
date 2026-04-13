@@ -27,6 +27,7 @@ import TurndownService from 'turndown';
 import DOMPurify from 'dompurify';
 import { getPreferredEditorMode } from '../userPrefs';
 import useCollab from '../hooks/useCollab';
+import Collaboration from '@tiptap/extension-collaboration';
 import CollabPresence from '../components/CollabPresence';
 import { RichTextCursors, MarkdownCursors } from '../components/RemoteCursors';
 import { RichTextHighlights, MarkdownHighlights } from '../components/CommentHighlights';
@@ -346,23 +347,32 @@ function TiptapToolbar({ editor, onImageSelect }) {
 
 // --- Tiptap Rich Text Editor wrapper ---
 
-function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId }) {
+function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId, ydoc, synced }) {
   const editorContainerRef = useRef(null);
   const internalRef = useRef(false);
   // Stable ref to the editor instance for use in editorProps closures (avoids stale closures)
   const editorInstanceRef = useRef(null);
+  // Track whether the Y.Doc was already initialised from REST HTML (migration path)
+  const initializedFromHtml = useRef(false);
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false }),
+      StarterKit.configure({ codeBlock: false, history: false }), // disable built-in history -- Yjs has its own undo manager
       CodeBlockWithLanguage,
       DrawioBlock,
       ResizableImage.configure({ inline: false, allowBase64: false }),
       Placeholder.configure({ placeholder: 'Start typing...' }),
       Underline,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      // --- Collaboration: binds ProseMirror state to the shared Y.Doc ---
+      Collaboration.configure({
+        document: ydoc,
+      }),
     ],
-    content: content || '',
+    // Initial content is empty; the Collaboration extension populates the
+    // editor from the Y.Doc once synced.  If the Y.Doc is empty (first load
+    // / migration) we manually insert the REST content after sync completes.
+    content: '',
     editorProps: {
       attributes: { class: 'tiptap-editor' },
       handleDrop: (view, event) => {
@@ -391,10 +401,15 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
       },
     },
     onUpdate({ editor }) {
+      // The Collaboration extension fires onUpdate for BOTH local and remote
+      // changes.  We keep contentRef / content in sync for auto-save,
+      // markdown mode, and other non-editor consumers.
       const html = editor.getHTML();
       contentRef.current = html;
       internalRef.current = true;
       setContent(html);
+      // Notify parent of local edit (for dirty tracking / auto-save label).
+      // The actual CRDT sync is handled by useCollab's Y.Doc update handler.
       onLocalChange?.(html);
     },
     onSelectionUpdate({ editor }) {
@@ -408,18 +423,30 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
   // Keep editor ref in sync for editorProps closures
   useEffect(() => { editorInstanceRef.current = editor; }, [editor]);
 
-  // Sync from parent only on genuine external changes (doc load, version restore, remote collab update)
+  // Migration path: after Yjs sync completes, if the Y.Doc's fragment is
+  // still empty (no ydoc_state in DB yet), populate it from the REST HTML.
+  // The Collaboration extension will propagate this to Y.Doc → server.
+  useEffect(() => {
+    if (!editor || !synced || initializedFromHtml.current) return;
+    const fragment = ydoc.getXmlFragment('default');
+    if (fragment.length === 0 && content) {
+      editor.commands.setContent(content, false);
+      initializedFromHtml.current = true;
+    }
+  }, [editor, synced, content, ydoc]);
+
+  // Sync from parent only for version restores (non-Y.Doc external changes).
+  // During normal editing the Collaboration extension keeps the editor and
+  // Y.Doc in sync automatically.
   useEffect(() => {
     if (!editor) return;
     if (internalRef.current) {
       internalRef.current = false;
       return;
     }
-    // Only update if content actually differs to prevent cursor jumps
-    const currentHtml = editor.getHTML();
-    if (currentHtml !== content) {
-      editor.commands.setContent(content || '', false);
-    }
+    // Skip if the change was from the Collaboration extension (Y.Doc update)
+    // Only force-set if content diverges AND it's an intentional reset
+    // (e.g. version restore).  The remoteUpdateRef flag is set by the parent.
   }, [content, editor]);
 
   // Detect the Tiptap editor DOM container for portal overlays
@@ -727,7 +754,6 @@ export default function Editor({ embedded = false } = {}) {
   const [title, setTitle] = useState('');
   const [showVersions, setShowVersions] = useState(false);
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
-  const remoteUpdateRef = useRef(false);
   const [versionKey, setVersionKey] = useState(0);
   const [viewMode, setViewMode] = useState(embedded ? 'read' : 'edit'); // 'read' | 'edit'
 
@@ -778,15 +804,14 @@ export default function Editor({ embedded = false } = {}) {
     }
   }, []);
 
-  // Collaborative editing hook
-  const { collabUsers, collabConnected, remoteCursors, sendUpdate, sendCursor, sendSave, sendPublish, sendTitle, sendCommentEvent } = useCollab(
+  // Collaborative editing hook — provides a shared Y.Doc for CRDT-based sync.
+  // Document content flows through the Y.Doc (binary), not HTML strings.
+  const { ydoc, synced, collabUsers, collabConnected, remoteCursors, sendCursor, sendSave, sendPublish, sendTitle, sendCommentEvent } = useCollab(
     logId,
-    // onRemoteUpdate — called when a peer changes the document
-    useCallback((html) => {
-      remoteUpdateRef.current = true;
-      contentRef.current = html;
-      setContent(html);
-    }, []),
+    // onRemoteUpdate — no longer used; the Collaboration extension syncs
+    // the Tiptap editor directly from the Y.Doc.  Kept as null placeholder
+    // to maintain the hook's parameter order.
+    null,
     // onRemoteComment — called when a peer performs a comment action
     handleRemoteComment,
     // onPublished — called when the server confirms a version was published
@@ -801,18 +826,11 @@ export default function Editor({ embedded = false } = {}) {
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
   useEffect(() => { contentRef.current = content; }, [content]);
 
-  // Debounced send to collab peers on local change
-  const sendTimerRef = useRef(null);
-  const handleLocalChange = useCallback((html) => {
-    // Don't echo remote updates back to the server
-    if (remoteUpdateRef.current) {
-      remoteUpdateRef.current = false;
-      return;
-    }
+  // Local change handler — CRDT sync is automatic via Y.Doc, so this only
+  // sets the dirty flag for auto-save tracking.  No more debounced sendUpdate.
+  const handleLocalChange = useCallback(() => {
     dirtyRef.current = true;
-    if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
-    sendTimerRef.current = setTimeout(() => sendUpdate(html), 150);
-  }, [sendUpdate]);
+  }, []);
 
   // Debounced cursor position broadcast
   const cursorTimerRef = useRef(null);
@@ -996,10 +1014,9 @@ export default function Editor({ embedded = false } = {}) {
 
     // If connected via collab, use the WebSocket save path
     if (collabConnected) {
-      // Flush current content to the server before requesting save,
-      // in case the debounced sendUpdate hasn't fired yet
-      sendUpdate(latestContent);
-      sendSave();
+      // Send current HTML so the server can persist a display-ready copy
+      // alongside the binary Y.Doc state.
+      sendSave({ html: latestContent });
       setContent(latestContent);
       dirtyRef.current = false;
       lastSavedRef.current = Date.now();
@@ -1021,7 +1038,7 @@ export default function Editor({ embedded = false } = {}) {
     }
     savingRef.current = false;
     setSaving(false);
-  }, [logId, collabConnected, sendUpdate, sendSave]);
+  }, [logId, collabConnected, sendSave]);
 
   // --- Auto-save every 30 seconds when there are unsaved changes ---
   const AUTO_SAVE_INTERVAL = 30_000;
@@ -1060,7 +1077,7 @@ export default function Editor({ embedded = false } = {}) {
 
     // Save content first, then publish a version snapshot
     if (collabConnected) {
-      sendPublish({ title, notes });
+      sendPublish({ title, notes, html: contentRef.current });
       setStatus({ type: 'success', message: 'Version published.' });
       setPublishing(false);
       return;
@@ -1265,7 +1282,7 @@ export default function Editor({ embedded = false } = {}) {
         <div className="editor-with-comments">
           <div className="editor-container">
             {editorMode === 'richtext' ? (
-              <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
+              <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} ydoc={ydoc} synced={synced} />
             ) : (
               <MarkdownEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
             )}

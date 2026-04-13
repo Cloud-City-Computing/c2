@@ -14,6 +14,9 @@
 
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
+import * as syncProtocol from 'y-protocols/sync';
+import * as encoding from 'lib0/encoding';
+import * as decoding from 'lib0/decoding';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
 import { sanitizeHtml, canPublish, checkLogReadAccess, checkLogWriteAccess } from '../routes/helpers/shared.js';
@@ -35,7 +38,9 @@ const RATE_LIMIT_MAX_MESSAGES = 60;          // Max messages per window
 
 /**
  * Get or create a Yjs document for a log.
- * On first access, loads html_content from the database.
+ * Restores from binary CRDT state if available; otherwise the Y.Doc starts
+ * empty and the first connecting client will initialise it via the Tiptap
+ * Collaboration extension (which writes a proper ProseMirror structure).
  */
 async function getOrCreateDoc(logId) {
   if (docs.has(logId)) return docs.get(logId);
@@ -43,91 +48,64 @@ async function getOrCreateDoc(logId) {
   const ydoc = new Y.Doc();
   const entry = {
     doc: ydoc,
-    conns: new Map(),   // ws → { user, awareness }
+    conns: new Map(),   // ws → { user, canWrite, color }
     saveTimer: null,
     cleanupTimer: null,
     lastSavedHtml: null,
     logId,
   };
 
-  // Load current content from DB
+  // Load binary CRDT state from DB (preferred) or fall back to empty doc
   const [log] = await c2_query(
-    `SELECT html_content, version FROM logs WHERE id = ? LIMIT 1`,
+    `SELECT ydoc_state, html_content FROM logs WHERE id = ? LIMIT 1`,
     [logId]
   );
 
+  if (log?.ydoc_state) {
+    Y.applyUpdate(ydoc, new Uint8Array(log.ydoc_state));
+  }
+  // If no ydoc_state, the Y.Doc stays empty. The first client's Tiptap
+  // Collaboration extension will initialise it from the REST-loaded HTML,
+  // creating a proper ProseMirror Y.Xml structure that syncs back here.
+
   if (log?.html_content) {
-    const xmlFragment = ydoc.getXmlFragment('document');
-    // Initialize with existing HTML by inserting it as a single XmlText node.
-    // This gives us a starting point; subsequent edits are CRDT-tracked.
-    const textNode = new Y.XmlText();
-    textNode.insert(0, log.html_content);
-    xmlFragment.insert(0, [textNode]);
     entry.lastSavedHtml = log.html_content;
   }
+
+  // Broadcast every Y.Doc mutation to connected peers (except the origin).
+  // The origin is set to the sender's WebSocket in readSyncMessage, so we
+  // can skip echoing the update back to the author.
+  ydoc.on('update', (update, origin) => {
+    const encoder = encoding.createEncoder();
+    syncProtocol.writeUpdate(encoder, update);
+    const msg = encoding.toUint8Array(encoder);
+    for (const [client] of entry.conns) {
+      if (client !== origin && client.readyState === 1) {
+        client.send(msg);
+      }
+    }
+    // Any mutation should trigger a debounced save
+    scheduleSave(entry);
+  });
 
   docs.set(logId, entry);
   return entry;
 }
 
 /**
- * Serialize the Yjs XmlFragment back to an HTML string.
+ * Debounced save: writes the current Yjs binary CRDT state back to MySQL.
+ * HTML is NOT updated here — clients send HTML during explicit save/publish.
+ * Binary state is saved frequently so the CRDT can be restored on restart.
  */
-function xmlFragmentToHtml(xmlFragment) {
-  let html = '';
-  for (let i = 0; i < xmlFragment.length; i++) {
-    const item = xmlFragment.get(i);
-    if (item instanceof Y.XmlText) {
-      html += item.toString();
-    } else if (item instanceof Y.XmlElement) {
-      html += item.toString();
-    } else {
-      html += String(item);
-    }
-  }
-  return html;
-}
-
-/**
- * Debounced save: writes the current Yjs document content back to MySQL.
- * Saves content only — does not create a version snapshot.
- */
-function scheduleSave(entry, userId) {
+function scheduleSave(entry) {
   if (entry.saveTimer) clearTimeout(entry.saveTimer);
   entry.saveTimer = setTimeout(async () => {
     try {
-      const xmlFragment = entry.doc.getXmlFragment('document');
-      const rawHtml = xmlFragmentToHtml(xmlFragment);
-      const html = sanitizeHtml(rawHtml);
-
-      // Extract embedded base64 images to disk, replace with served URLs
-      const storedHtml = await extractImagesFromHtml(html);
-
-      // Skip if content hasn't changed
-      if (storedHtml === entry.lastSavedHtml) return;
-
+      const state = Y.encodeStateAsUpdate(entry.doc);
       await c2_query(
-        `UPDATE logs SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-        [storedHtml, userId, entry.logId]
+        `UPDATE logs SET ydoc_state = ?, updated_at = NOW() WHERE id = ?`,
+        [Buffer.from(state), entry.logId]
       );
-
-      // If images were extracted, broadcast the cleaned HTML back to all clients
-      // so they use served URLs instead of inline base64 blobs
-      if (storedHtml !== html) {
-        const xmlFrag = entry.doc.getXmlFragment('document');
-        entry.doc.transact(() => {
-          while (xmlFrag.length > 0) xmlFrag.delete(0);
-          const textNode = new Y.XmlText();
-          textNode.insert(0, storedHtml);
-          xmlFrag.insert(0, [textNode]);
-        });
-        const updateMsg = JSON.stringify({ type: 'update', html: storedHtml, userId: 0 });
-        for (const [ws] of entry.conns) {
-          if (ws.readyState === 1) ws.send(updateMsg);
-        }
-      }
-
-      entry.lastSavedHtml = storedHtml;
     } catch (err) {
       console.error(`[collab] Save failed for log ${entry.logId}:`, err);
     }
@@ -351,12 +329,23 @@ async function setupDocSession(ws, user, logId, canWrite) {
     let messageCount = 0;
     let rateLimitWindowStart = Date.now();
 
-    // Send initial sync: current HTML content
-    const xmlFragment = entry.doc.getXmlFragment('document');
-    const html = xmlFragmentToHtml(xmlFragment);
+    // --- Binary Yjs sync: send server state to new client ---
+    // Step 1: send our state vector so the client knows what we have
+    {
+      const encoder = encoding.createEncoder();
+      syncProtocol.writeSyncStep1(encoder, entry.doc);
+      ws.send(encoding.toUint8Array(encoder));
+    }
+    // Step 2: send the full document state (proactive, so client gets content immediately)
+    {
+      const encoder = encoding.createEncoder();
+      syncProtocol.writeSyncStep2(encoder, entry.doc);
+      ws.send(encoding.toUint8Array(encoder));
+    }
+
+    // JSON metadata sync (permissions, identity — no HTML)
     ws.send(JSON.stringify({
       type: 'sync',
-      html,
       canWrite,
       user: { id: user.id, name: user.name },
     }));
@@ -364,8 +353,9 @@ async function setupDocSession(ws, user, logId, canWrite) {
     // Broadcast updated awareness to all
     broadcastAwareness(entry);
 
-    // Handle incoming messages
-    ws.on('message', (data) => {
+    // Handle incoming messages — binary frames are Yjs CRDT ops,
+    // text frames are JSON for cursors / save / publish / comments / title.
+    ws.on('message', (data, isBinary) => {
       // Rate limit: max RATE_LIMIT_MAX_MESSAGES per RATE_LIMIT_WINDOW_MS
       const now = Date.now();
       if (now - rateLimitWindowStart > RATE_LIMIT_WINDOW_MS) {
@@ -378,6 +368,25 @@ async function setupDocSession(ws, user, logId, canWrite) {
         return;
       }
 
+      // --- Binary: Yjs sync/update ---
+      if (isBinary) {
+        if (!canWrite) return; // read-only clients cannot mutate the doc
+        try {
+          const decoder = decoding.createDecoder(new Uint8Array(data));
+          const encoder = encoding.createEncoder();
+          // Pass `ws` as transactionOrigin so the doc 'update' handler
+          // knows which client sent it and won't echo it back.
+          syncProtocol.readSyncMessage(decoder, encoder, entry.doc, ws);
+          if (encoding.length(encoder) > 1) {
+            ws.send(encoding.toUint8Array(encoder));
+          }
+        } catch (err) {
+          console.error(`[collab] Binary sync error for log ${entry.logId}:`, err);
+        }
+        return;
+      }
+
+      // --- Text: JSON messages ---
       let msg;
       try {
         msg = JSON.parse(data.toString());
@@ -386,35 +395,8 @@ async function setupDocSession(ws, user, logId, canWrite) {
       }
 
       // Validate message type is a known string
-      if (typeof msg.type !== 'string' || !['update', 'cursor', 'save', 'publish', 'comment', 'title'].includes(msg.type)) {
+      if (typeof msg.type !== 'string' || !['cursor', 'save', 'publish', 'comment', 'title'].includes(msg.type)) {
         return;
-      }
-
-      if (msg.type === 'update' && canWrite && typeof msg.html === 'string') {
-        // Enforce HTML content size limit
-        if (msg.html.length > MAX_HTML_SIZE) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Document content exceeds maximum size' }));
-          return;
-        }
-
-        // Sanitize before broadcast to prevent XSS to other clients
-        const safeHtml = sanitizeHtml(msg.html);
-
-        // Apply the update to the Yjs doc
-        const xmlFragment = entry.doc.getXmlFragment('document');
-        entry.doc.transact(() => {
-          // Clear and replace — for HTML-based sync this is the straightforward approach
-          while (xmlFragment.length > 0) xmlFragment.delete(0);
-          const textNode = new Y.XmlText();
-          textNode.insert(0, safeHtml);
-          xmlFragment.insert(0, [textNode]);
-        });
-
-        // Broadcast sanitized content to other clients
-        broadcastExcept(entry, ws, { type: 'update', html: safeHtml, userId: user.id });
-
-        // Schedule debounced save
-        scheduleSave(entry, user.id);
       }
 
       if (msg.type === 'cursor' && canWrite) {
@@ -443,40 +425,32 @@ async function setupDocSession(ws, user, logId, canWrite) {
       }
 
       if (msg.type === 'save' && canWrite) {
-        // Immediate content save (no version snapshot)
+        // Immediate save — client sends current HTML for DB storage alongside
+        // the binary CRDT state that the server already has.
         if (entry.saveTimer) clearTimeout(entry.saveTimer);
-        const xmlFragment = entry.doc.getXmlFragment('document');
-        const currentHtml = sanitizeHtml(xmlFragmentToHtml(xmlFragment));
         (async () => {
           try {
-            const storedHtml = await extractImagesFromHtml(currentHtml);
-            if (storedHtml !== entry.lastSavedHtml) {
+            const state = Y.encodeStateAsUpdate(entry.doc);
+            let storedHtml = entry.lastSavedHtml;
+
+            if (typeof msg.html === 'string' && msg.html.length <= MAX_HTML_SIZE) {
+              const safeHtml = sanitizeHtml(msg.html);
+              storedHtml = await extractImagesFromHtml(safeHtml);
+            }
+
+            if (storedHtml && storedHtml !== entry.lastSavedHtml) {
               await c2_query(
-                `UPDATE logs SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-                [storedHtml, user.id, entry.logId]
+                `UPDATE logs SET html_content = ?, ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+                [storedHtml, Buffer.from(state), user.id, entry.logId]
               );
               entry.lastSavedHtml = storedHtml;
-
-              // If images were extracted, update the Yjs doc and broadcast
-              if (storedHtml !== currentHtml) {
-                const xmlFrag = entry.doc.getXmlFragment('document');
-                entry.doc.transact(() => {
-                  while (xmlFrag.length > 0) xmlFrag.delete(0);
-                  const textNode = new Y.XmlText();
-                  textNode.insert(0, storedHtml);
-                  xmlFrag.insert(0, [textNode]);
-                });
-                const updateMsg = JSON.stringify({ type: 'update', html: storedHtml, userId: 0 });
-                for (const [client] of entry.conns) {
-                  if (client.readyState === 1) client.send(updateMsg);
-                }
-              }
-
-              // Notify sender that save completed
-              ws.send(JSON.stringify({ type: 'saved' }));
             } else {
-              ws.send(JSON.stringify({ type: 'saved' }));
+              await c2_query(
+                `UPDATE logs SET ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+                [Buffer.from(state), user.id, entry.logId]
+              );
             }
+            ws.send(JSON.stringify({ type: 'saved' }));
           } catch (err) {
             console.error(`[collab] Immediate save failed for log ${entry.logId}:`, err);
           }
@@ -502,11 +476,11 @@ async function setupDocSession(ws, user, logId, canWrite) {
       }
 
       if (msg.type === 'publish' && canWrite) {
-        // Validate optional title and notes
+        // Validate optional title, notes, and HTML from client
         const pubTitle = typeof msg.title === 'string' ? msg.title.trim().slice(0, 255) : null;
         const pubNotes = typeof msg.notes === 'string' ? msg.notes.trim().slice(0, 5000) : null;
+        const pubHtml = typeof msg.html === 'string' ? msg.html : null;
 
-        // Check can_publish permission
         (async () => {
           try {
             // Get squad context for the log
@@ -525,8 +499,13 @@ async function setupDocSession(ws, user, logId, canWrite) {
 
             // Publish: save content AND create a formal version snapshot
             if (entry.saveTimer) clearTimeout(entry.saveTimer);
-            const xmlFragment = entry.doc.getXmlFragment('document');
-            const currentHtml = await extractImagesFromHtml(sanitizeHtml(xmlFragmentToHtml(xmlFragment)));
+            const state = Y.encodeStateAsUpdate(entry.doc);
+
+            // Use client-provided HTML (preferred) or fall back to last saved HTML
+            let currentHtml = entry.lastSavedHtml || '';
+            if (pubHtml && pubHtml.length <= MAX_HTML_SIZE) {
+              currentHtml = await extractImagesFromHtml(sanitizeHtml(pubHtml));
+            }
 
             const [log] = await c2_query(
               `SELECT version FROM logs WHERE id = ? LIMIT 1`,
@@ -535,8 +514,8 @@ async function setupDocSession(ws, user, logId, canWrite) {
             if (!log) return;
             const newVersion = log.version + 1;
             await c2_query(
-              `UPDATE logs SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-              [currentHtml, newVersion, user.id, entry.logId]
+              `UPDATE logs SET html_content = ?, ydoc_state = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+              [currentHtml, Buffer.from(state), newVersion, user.id, entry.logId]
             );
             await c2_query(
               `INSERT INTO versions (log_id, version, title, notes, html_content, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -587,7 +566,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
 
       if (entry.conns.size === 0) {
         // Final save then schedule cleanup
-        scheduleSave(entry, user.id);
+        scheduleSave(entry);
         scheduleCleanup(entry);
       }
     });
