@@ -315,11 +315,12 @@ router.post('/document/:logId/versions/:versionId/restore', requireAuth, asyncHa
     return res.status(404).json({ success: false, message: 'Version not found' });
   }
 
-  // Bump version and restore content
+  // Bump version and restore content; clear ydoc_state so the CRDT doc
+  // re-initialises from the restored HTML on next load.
   const newVersion = currentLog.version + 1;
   const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content));
   await c2_query(
-    `UPDATE logs SET html_content = ?, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+    `UPDATE logs SET html_content = ?, ydoc_state = NULL, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [restoredHtml, newVersion, req.user.id, Number(logId)]
   );
 
@@ -356,8 +357,8 @@ router.delete('/document/:logId/versions/:versionId', requireAuth, asyncHandler(
     return res.status(404).json({ success: false, message: 'Version not found' });
   }
 
-  // Allow if user is the version author
-  if (version.created_by === req.user.id) {
+  // Allow if user is admin or the version author
+  if (req.user.is_admin || version.created_by === req.user.id) {
     await c2_query(`DELETE FROM versions WHERE id = ?`, [Number(versionId)]);
     return res.json({ success: true });
   }

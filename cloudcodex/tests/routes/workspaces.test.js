@@ -110,7 +110,7 @@ describe('Workspace Routes', () => {
     it('renames workspace for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }])  // owner check
+        .mockResolvedValueOnce([{ id: 1, owner: 'test@example.com' }])  // owner check
         .mockResolvedValueOnce([]);            // UPDATE
 
       const res = await request(app)
@@ -124,7 +124,7 @@ describe('Workspace Routes', () => {
 
     it('rejects non-owner', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]); // not owner
+      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'someone-else@example.com' }]); // workspace exists but different owner
 
       const res = await request(app)
         .put('/api/workspaces/1')
@@ -163,7 +163,7 @@ describe('Workspace Routes', () => {
     it('deletes workspace for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1 }]) // owner check
+        .mockResolvedValueOnce([{ id: 1, owner: 'test@example.com' }]) // owner check
         .mockResolvedValueOnce([]);           // DELETE
 
       const res = await request(app)
@@ -176,7 +176,7 @@ describe('Workspace Routes', () => {
 
     it('rejects non-owner', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]); // not owner
+      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'someone-else@example.com' }]); // workspace exists but different owner
 
       const res = await request(app)
         .delete('/api/workspaces/1')

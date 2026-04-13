@@ -230,23 +230,52 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
   /**
    * Request an immediate content save (no version snapshot).
    * Client sends its current HTML so the server can persist a display-ready copy.
+   * Returns true if the message was sent, false if the WS wasn't open.
    * @param {{ html?: string }} [opts]
+   * @returns {boolean}
    */
   const sendSave = useCallback((opts = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'save', html: opts.html }));
+      return true;
     }
+    return false;
   }, []);
 
   /**
    * Publish a formal version snapshot of the current document.
-   * Client sends its current HTML alongside version metadata.
+   * Returns a Promise that resolves with { version, title } on server
+   * confirmation, or rejects if the send fails or times out.
    * @param {{ title?: string, notes?: string, html?: string }} [opts]
+   * @returns {Promise<{ version: number, title?: string }>}
    */
   const sendPublish = useCallback((opts = {}) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    return new Promise((resolve, reject) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        return reject(new Error('WebSocket not connected'));
+      }
+      const PUBLISH_TIMEOUT_MS = 10000;
+      const handler = (event) => {
+        if (event.data instanceof ArrayBuffer) return;
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+        if (msg.type === 'published') {
+          clearTimeout(timer);
+          wsRef.current?.removeEventListener('message', handler);
+          resolve(msg);
+        } else if (msg.type === 'error') {
+          clearTimeout(timer);
+          wsRef.current?.removeEventListener('message', handler);
+          reject(new Error(msg.message || 'Publish failed'));
+        }
+      };
+      const timer = setTimeout(() => {
+        wsRef.current?.removeEventListener('message', handler);
+        reject(new Error('Publish timed out'));
+      }, PUBLISH_TIMEOUT_MS);
+      wsRef.current.addEventListener('message', handler);
       wsRef.current.send(JSON.stringify({ type: 'publish', title: opts.title, notes: opts.notes, html: opts.html }));
-    }
+    });
   }, []);
 
   /**

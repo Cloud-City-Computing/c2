@@ -347,9 +347,8 @@ function TiptapToolbar({ editor, onImageSelect }) {
 
 // --- Tiptap Rich Text Editor wrapper ---
 
-function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId, ydoc, synced }) {
+function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId, ydoc, synced, restoreKey }) {
   const editorContainerRef = useRef(null);
-  const internalRef = useRef(false);
   // Stable ref to the editor instance for use in editorProps closures (avoids stale closures)
   const editorInstanceRef = useRef(null);
   // Track whether the Y.Doc was already initialised from REST HTML (migration path)
@@ -357,7 +356,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false, history: false }), // disable built-in history -- Yjs has its own undo manager
+      StarterKit.configure({ codeBlock: false, underline: false, undoRedo: false }), // disable undo-redo — Collaboration provides its own; disable underline — we configure it separately below
       CodeBlockWithLanguage,
       DrawioBlock,
       ResizableImage.configure({ inline: false, allowBase64: false }),
@@ -406,11 +405,14 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
       // markdown mode, and other non-editor consumers.
       const html = editor.getHTML();
       contentRef.current = html;
-      internalRef.current = true;
-      setContent(html);
-      // Notify parent of local edit (for dirty tracking / auto-save label).
-      // The actual CRDT sync is handled by useCollab's Y.Doc update handler.
-      onLocalChange?.(html);
+      // Defer state updates: the Collaboration extension can fire onUpdate
+      // during the initial render (via _forceRerender), and calling
+      // setContent / onLocalChange synchronously would update the parent
+      // Editor component while RichTextEditor is still rendering.
+      queueMicrotask(() => {
+        setContent(html);
+        onLocalChange?.(html);
+      });
     },
     onSelectionUpdate({ editor }) {
       if (!onCursorChange) return;
@@ -435,19 +437,18 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
     }
   }, [editor, synced, content, ydoc]);
 
-  // Sync from parent only for version restores (non-Y.Doc external changes).
+  // Sync from parent only for version restores.  Triggered when `restoreKey`
+  // changes, meaning the parent explicitly loaded new content after a restore.
   // During normal editing the Collaboration extension keeps the editor and
-  // Y.Doc in sync automatically.
+  // Y.Doc in sync automatically via the shared Y.Doc.
+  const prevRestoreKey = useRef(restoreKey);
   useEffect(() => {
     if (!editor) return;
-    if (internalRef.current) {
-      internalRef.current = false;
-      return;
-    }
-    // Skip if the change was from the Collaboration extension (Y.Doc update)
-    // Only force-set if content diverges AND it's an intentional reset
-    // (e.g. version restore).  The remoteUpdateRef flag is set by the parent.
-  }, [content, editor]);
+    if (prevRestoreKey.current === restoreKey) return;
+    prevRestoreKey.current = restoreKey;
+    // Force the restored content into the editor (and therefore the Y.Doc)
+    editor.commands.setContent(content || '', false);
+  }, [restoreKey, content, editor]);
 
   // Detect the Tiptap editor DOM container for portal overlays
   const [overlayContainer, setOverlayContainer] = useState(null);
@@ -755,6 +756,7 @@ export default function Editor({ embedded = false } = {}) {
   const [showVersions, setShowVersions] = useState(false);
   const [editorMode, setEditorMode] = useState(() => getPreferredEditorMode()); // 'richtext' | 'markdown'
   const [versionKey, setVersionKey] = useState(0);
+  const [restoreKey, setRestoreKey] = useState(0);
   const [viewMode, setViewMode] = useState(embedded ? 'read' : 'edit'); // 'read' | 'edit'
 
   // --- Auto-save state ---
@@ -1012,21 +1014,22 @@ export default function Editor({ embedded = false } = {}) {
     savingRef.current = true;
     setSaving(true);
 
-    // If connected via collab, use the WebSocket save path
+    // If connected via collab, try the WebSocket save path
     if (collabConnected) {
-      // Send current HTML so the server can persist a display-ready copy
-      // alongside the binary Y.Doc state.
-      sendSave({ html: latestContent });
-      setContent(latestContent);
-      dirtyRef.current = false;
-      lastSavedRef.current = Date.now();
-      if (!silent) setStatus({ type: 'success', message: 'Document saved.' });
-      savingRef.current = false;
-      setSaving(false);
-      return;
+      const sent = sendSave({ html: latestContent });
+      if (sent) {
+        setContent(latestContent);
+        dirtyRef.current = false;
+        lastSavedRef.current = Date.now();
+        if (!silent) setStatus({ type: 'success', message: 'Document saved.' });
+        savingRef.current = false;
+        setSaving(false);
+        return;
+      }
+      // WS send failed — fall through to REST
     }
 
-    // Fallback to REST save when collab is disconnected
+    // Fallback to REST save when collab is disconnected or WS send failed
     try {
       await saveDocument(Number(logId), latestContent);
       setContent(latestContent);
@@ -1075,12 +1078,20 @@ export default function Editor({ embedded = false } = {}) {
     setStatus(null);
     setPublishing(true);
 
-    // Save content first, then publish a version snapshot
+    // Try WebSocket publish first if collab is connected
     if (collabConnected) {
-      sendPublish({ title, notes, html: contentRef.current });
-      setStatus({ type: 'success', message: 'Version published.' });
-      setPublishing(false);
-      return;
+      try {
+        const result = await sendPublish({ title, notes, html: contentRef.current });
+        if (result?.version) {
+          setDocumentData(d => d ? { ...d, version: result.version } : d);
+        }
+        setVersionKey(k => k + 1);
+        setStatus({ type: 'success', message: `Version ${result?.version ?? ''} published.` });
+        setPublishing(false);
+        return;
+      } catch {
+        // WS publish failed — fall through to REST
+      }
     }
 
     // REST fallback: save content first, then publish
@@ -1277,12 +1288,12 @@ export default function Editor({ embedded = false } = {}) {
           {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>}
         </div>
 
-        {showVersions && <VersionHistory logId={logId} onRestore={loadDocument} versionKey={versionKey} />}
+        {showVersions && <VersionHistory logId={logId} onRestore={async () => { await loadDocument(); setRestoreKey(k => k + 1); }} versionKey={versionKey} />}
 
         <div className="editor-with-comments">
           <div className="editor-container">
             {editorMode === 'richtext' ? (
-              <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} ydoc={ydoc} synced={synced} />
+              <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} ydoc={ydoc} synced={synced} restoreKey={restoreKey} />
             ) : (
               <MarkdownEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
             )}

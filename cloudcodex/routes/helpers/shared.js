@@ -98,6 +98,9 @@ export async function checkLogWriteAccess(logId, user) {
 export async function canPublish(squadId, archiveCreatorId, user) {
   if (!squadId) return true;
 
+  // Admin bypass — admins can always publish
+  if (user.is_admin) return true;
+
   // Workspace owner bypass
   const [orgOwner] = await c2_query(
     `SELECT 1 FROM squads t

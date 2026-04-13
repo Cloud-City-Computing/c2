@@ -43,6 +43,9 @@ export function requirePermission(permission) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
+    // Admins bypass all permission checks
+    if (req.user.is_admin) return next();
+
     // Auto-load permissions if not yet loaded
     if (!req.permissions) {
       try {
