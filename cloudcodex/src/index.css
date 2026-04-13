@@ -6465,4 +6465,21 @@ body {
   height: auto;
 }
 
+/* --- Page loader (shown while lazy chunks load) --- */
+.page-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+.page-loader .spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--accent, #2ca7db);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }
