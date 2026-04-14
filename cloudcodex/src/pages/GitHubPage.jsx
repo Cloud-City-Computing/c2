@@ -8,7 +8,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import { apiFetch, timeAgo } from '../util';
@@ -143,6 +143,22 @@ function DiffRemoveIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: '#f85149' }}>
       <path d="M2.75 9.25a.75.75 0 0 1 0-1.5h10.5a.75.75 0 0 1 0 1.5Z" />
+    </svg>
+  );
+}
+
+function ImportIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14ZM11.78 4.72a.749.749 0 1 1-1.06 1.06L8.75 3.811V9.5a.75.75 0 0 1-1.5 0V3.811L5.28 5.78a.749.749 0 1 1-1.06-1.06l3.25-3.25a.749.749 0 0 1 1.06 0Z" />
+    </svg>
+  );
+}
+
+function ExportIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14ZM3.22 4.53a.749.749 0 0 1 0-1.06l4.25-4.25a.749.749 0 0 1 1.06 0l4.25 4.25a.749.749 0 1 1-1.06 1.06L8.75 1.561V9.5a.75.75 0 0 1-1.5 0V1.561L4.28 4.53a.749.749 0 0 1-1.06 0Z" />
     </svg>
   );
 }
@@ -348,9 +364,16 @@ function MarkdownViewer({ content }) {
 
 // ─── Markdown Editor ──────────────────────────────────
 
-function MarkdownEditorPane({ content, onChange }) {
-  const previewHtml = useMemo(() => {
-    return DOMPurify.sanitize(marked.parse(content || ''));
+const MarkdownEditorPane = React.memo(function MarkdownEditorPane({ content, onChange }) {
+  const [previewHtml, setPreviewHtml] = useState(() =>
+    DOMPurify.sanitize(marked.parse(content || ''))
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPreviewHtml(DOMPurify.sanitize(marked.parse(content || '')));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [content]);
 
   return (
@@ -380,7 +403,7 @@ function MarkdownEditorPane({ content, onChange }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── Commit Modal ─────────────────────────────────────
 
@@ -393,6 +416,11 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const modalBodyRef = useRef(null);
+
+  useEffect(() => {
+    if (result || error) modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [result, error]);
 
   // Close on Escape
   useEffect(() => {
@@ -482,7 +510,7 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
           <button className="gh-modal__close" onClick={onClose} disabled={committing} aria-label="Close">&times;</button>
         </div>
 
-        <div className="gh-modal__body">
+        <div className="gh-modal__body" ref={modalBodyRef}>
           {error && <p className="form-error">{error}</p>}
           {result && (
             <div className={`gh-commit-result ${result.type}`}>
@@ -571,20 +599,50 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
 
 // ─── New File Modal ───────────────────────────────────
 
-function NewFileModal({ owner, repo, branch, onCreated, onClose }) {
-  const [filePath, setFilePath] = useState('');
-  const [content, setContent] = useState('');
+function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initialContent, initialPath, githubLink, exportLogId, repoTree }) {
+  const isLinked = !!githubLink;
+  const [filePath, setFilePath] = useState(initialPath || '');
+  const [content, setContent] = useState(initialContent || '');
   const [message, setMessage] = useState('');
+  const [mode, setMode] = useState('direct'); // 'direct' | 'switch' | 'branch'
+  const [targetBranch, setTargetBranch] = useState(branch);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [createPR, setCreatePR] = useState(true);
+  const [prTitle, setPrTitle] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const modalBodyRef = useRef(null);
+
+  // File picker state: 'new' = type a new path, 'existing' = pick from tree
+  const [fileMode, setFileMode] = useState(isLinked ? 'existing' : 'new');
+  const [selectedSha, setSelectedSha] = useState(isLinked ? githubLink.file_sha : null);
+  const [pickerFilter, setPickerFilter] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const hasWork = filePath.trim() || content.trim() || message.trim() || newBranchName.trim();
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !creating) onClose(); };
+    if (result || error) modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [result, error]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape' && !creating) {
+        if (hasWork && !result) {
+          if (!window.confirm('You have unsaved work. Discard and close?')) return;
+        }
+        onClose();
+      }
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [creating, onClose]);
+  }, [creating, onClose, hasWork, result]);
 
   const isMarkdown = /\.(md|mdx|markdown)$/i.test(filePath);
+
+  const isUpdate = fileMode === 'existing' && !!selectedSha;
+  const defaultMsg = isUpdate ? `Update ${filePath.trim() || 'file'}` : `Create ${filePath.trim() || 'new file'}`;
 
   const handleCreate = async () => {
     const trimmed = filePath.trim().replace(/^\//, '');
@@ -593,44 +651,214 @@ function NewFileModal({ owner, repo, branch, onCreated, onClose }) {
       return;
     }
     setError(null);
+    setResult(null);
+
+    let commitBranch = branch;
+
+    if (mode === 'switch') {
+      commitBranch = targetBranch;
+    } else if (mode === 'branch') {
+      if (!newBranchName.trim()) {
+        setError('Branch name is required');
+        return;
+      }
+      // Create branch first
+      try {
+        await apiFetch('POST', `/api/github/repos/${owner}/${repo}/branches`, {
+          name: newBranchName.trim(),
+          from_ref: branch,
+        });
+        commitBranch = newBranchName.trim();
+      } catch (e) {
+        setError(e.body?.message || 'Failed to create branch');
+        return;
+      }
+    }
+
     setCreating(true);
     try {
-      const commitMsg = message.trim() || `Create ${trimmed}`;
-      await apiFetch('PUT', `/api/github/repos/${owner}/${repo}/contents/${trimmed}`, {
+      const commitMsg = message.trim() || defaultMsg;
+      const payload = {
         content,
         message: commitMsg,
-        branch,
-        // no sha — signals a new file creation
-      });
-      onCreated(trimmed);
+        branch: commitBranch,
+      };
+
+      // Include sha for updates to existing files
+      if (isUpdate && selectedSha) {
+        payload.sha = selectedSha;
+      }
+
+      const commitRes = await apiFetch('PUT', `/api/github/repos/${owner}/${repo}/contents/${trimmed}`, payload);
+
+      // Save/update the github link for this document
+      if (exportLogId) {
+        apiFetch('PUT', `/api/github/link/${exportLogId}`, {
+          repo_owner: owner,
+          repo_name: repo,
+          file_path: trimmed,
+          branch: commitBranch,
+          file_sha: commitRes.content.sha,
+        }).catch(() => {}); // fire-and-forget
+      }
+
+      // Optionally create PR when using a new branch
+      if (mode === 'branch' && createPR) {
+        const title = prTitle.trim() || commitMsg;
+        try {
+          const prRes = await apiFetch('POST', `/api/github/repos/${owner}/${repo}/pulls`, {
+            title,
+            body: `${isUpdate ? 'Updated' : 'Created'} \`${trimmed}\` via Cloud Codex`,
+            head: commitBranch,
+            base: branch,
+          });
+          setResult({
+            type: 'pr',
+            message: `File ${isUpdate ? 'updated' : 'created'} & PR #${prRes.pull.number} opened`,
+            url: prRes.pull.html_url,
+            commitUrl: commitRes.commit.html_url,
+          });
+        } catch (e) {
+          setResult({
+            type: 'commit',
+            message: `${isUpdate ? 'Updated' : 'Created'} on ${commitBranch} (PR failed: ${e.body?.message || e.message})`,
+            url: commitRes.commit.html_url,
+          });
+        }
+        setCreating(false);
+        return; // Keep modal open to show result
+      }
+
+      onCreated(trimmed, commitBranch);
     } catch (e) {
-      setError(e.body?.message || 'Failed to create file');
+      setError(e.body?.message || `Failed to ${isUpdate ? 'update' : 'create'} file`);
     }
     setCreating(false);
   };
 
+  const handleBackdropClick = (e) => {
+    if (e.target !== e.currentTarget || creating) return;
+    if (hasWork && !result) {
+      if (!window.confirm('You have unsaved work. Discard and close?')) return;
+    }
+    onClose();
+  };
+
+  const actionLabel = isUpdate
+    ? (creating ? 'Updating...' : mode === 'branch' && createPR ? 'Update file & Open PR' : 'Update file')
+    : (creating ? 'Creating...' : mode === 'branch' && createPR ? 'Create file & Open PR' : 'Create file');
+
+  // Filter repo tree to files only for the picker
+  const treeFiles = (repoTree || []).filter(f => f.type === 'blob');
+  const filteredFiles = pickerFilter
+    ? treeFiles.filter(f => f.path.toLowerCase().includes(pickerFilter.toLowerCase()))
+    : treeFiles;
+
+  const handlePickFile = (file) => {
+    setFilePath(file.path);
+    setSelectedSha(file.sha);
+    setPickerOpen(false);
+    setPickerFilter('');
+  };
+
+  const handleSwitchToNew = () => {
+    setFileMode('new');
+    setSelectedSha(null);
+    setFilePath(initialPath || '');
+    setPickerOpen(false);
+    setPickerFilter('');
+  };
+
+  const handleSwitchToExisting = () => {
+    setFileMode('existing');
+    if (!selectedSha) setPickerOpen(true);
+  };
+
   return (
-    <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !creating) onClose(); }}>
+    <div className="gh-modal-backdrop" onClick={handleBackdropClick}>
       <div className="gh-modal gh-modal--wide">
         <div className="gh-modal__header">
-          <h3>Create new file</h3>
-          <button className="gh-modal__close" onClick={onClose} disabled={creating} aria-label="Close">&times;</button>
+          <h3>{isUpdate ? 'Update on GitHub' : initialContent ? 'Push to GitHub' : 'Create new file'}</h3>
+          <button className="gh-modal__close" onClick={handleBackdropClick} disabled={creating} aria-label="Close">&times;</button>
         </div>
 
-        <div className="gh-modal__body">
+        <div className="gh-modal__body" ref={modalBodyRef}>
           {error && <p className="form-error">{error}</p>}
+          {result && (
+            <div className={`gh-commit-result ${result.type}`}>
+              <p>{result.message}</p>
+              <a href={result.url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+                View on GitHub
+              </a>
+              {result.commitUrl && (
+                <a href={result.commitUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+                  View commit
+                </a>
+              )}
+            </div>
+          )}
 
           <div className="gh-field">
             <label className="gh-field__label">File path</label>
-            <input
-              type="text"
-              placeholder="e.g. docs/guide.md"
-              value={filePath}
-              onChange={(e) => setFilePath(e.target.value)}
-              className="gh-input"
-              autoFocus
-            />
-            <span className="gh-field__hint">Use forward slashes to create files in subdirectories</span>
+            {repoTree && repoTree.length > 0 && (
+              <div className="gh-file-mode-tabs">
+                <button className={`gh-file-mode-tab${fileMode === 'new' ? ' active' : ''}`} onClick={handleSwitchToNew} type="button">New file</button>
+                <button className={`gh-file-mode-tab${fileMode === 'existing' ? ' active' : ''}`} onClick={handleSwitchToExisting} type="button">Update existing</button>
+              </div>
+            )}
+
+            {fileMode === 'existing' && selectedSha ? (
+              <div className="gh-linked-path">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M3.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0112.25 16h-8.5A1.75 1.75 0 012 14.25V1.75z" /></svg>
+                <code>{filePath}</code>
+                <button className="gh-linked-path__change" onClick={() => { setPickerOpen(true); setPickerFilter(''); }} type="button">Change</button>
+              </div>
+            ) : fileMode === 'existing' ? (
+              <div className="gh-file-picker-placeholder" onClick={() => setPickerOpen(true)}>
+                Click to select a file from the repository...
+              </div>
+            ) : (
+              <input
+                type="text"
+                placeholder="e.g. docs/guide.md"
+                value={filePath}
+                onChange={(e) => { setFilePath(e.target.value); setSelectedSha(null); }}
+                className="gh-input"
+                autoFocus
+              />
+            )}
+
+            {fileMode === 'existing' && pickerOpen && (
+              <div className="gh-file-picker">
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={pickerFilter}
+                  onChange={(e) => setPickerFilter(e.target.value)}
+                  className="gh-input gh-file-picker__search"
+                  autoFocus
+                />
+                <ul className="gh-file-picker__list">
+                  {filteredFiles.length === 0 ? (
+                    <li className="gh-file-picker__empty">No files match</li>
+                  ) : filteredFiles.slice(0, 100).map(f => (
+                    <li
+                      key={f.path}
+                      className={`gh-file-picker__item${f.path === filePath ? ' selected' : ''}`}
+                      onClick={() => handlePickFile(f)}
+                    >
+                      {f.path}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <span className="gh-field__hint">
+              {fileMode === 'existing' && selectedSha
+                ? 'This will overwrite the existing file with the new content'
+                : fileMode === 'new' ? 'Use forward slashes to create files in subdirectories' : ''}
+            </span>
           </div>
 
           <div className="gh-field">
@@ -648,25 +876,86 @@ function NewFileModal({ owner, repo, branch, onCreated, onClose }) {
             )}
           </div>
 
+          {/* Branch / PR options */}
+          <div className="gh-commit-mode">
+            <label className={`gh-commit-option${mode === 'direct' ? ' active' : ''}`}>
+              <input type="radio" name="newfile-mode" checked={mode === 'direct'} onChange={() => setMode('direct')} />
+              <span>Commit directly to <strong>{branch}</strong></span>
+            </label>
+            {branches && branches.length > 1 && (
+              <label className={`gh-commit-option${mode === 'switch' ? ' active' : ''}`}>
+                <input type="radio" name="newfile-mode" checked={mode === 'switch'} onChange={() => setMode('switch')} />
+                <span>Commit to a different branch</span>
+              </label>
+            )}
+            <label className={`gh-commit-option${mode === 'branch' ? ' active' : ''}`}>
+              <input type="radio" name="newfile-mode" checked={mode === 'branch'} onChange={() => setMode('branch')} />
+              <span>Create a new branch and commit</span>
+            </label>
+          </div>
+
+          {mode === 'switch' && branches && (
+            <div className="gh-commit-branch-fields">
+              <div className="gh-field">
+                <label className="gh-field__label">Target branch</label>
+                <select value={targetBranch} onChange={(e) => setTargetBranch(e.target.value)} className="gh-branch-select">
+                  {branches.map(b => (
+                    <option key={b.name} value={b.name}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {mode === 'branch' && (
+            <div className="gh-commit-branch-fields">
+              <div className="gh-field">
+                <label className="gh-field__label">Branch name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. docs/add-guide"
+                  value={newBranchName}
+                  onChange={(e) => setNewBranchName(e.target.value.replace(/\s/g, '-'))}
+                  className="gh-input"
+                />
+                <span className="gh-field__hint">Will branch from <strong>{branch}</strong></span>
+              </div>
+              <label className="gh-commit-pr-check">
+                <input type="checkbox" checked={createPR} onChange={(e) => setCreatePR(e.target.checked)} />
+                <span>Create a pull request</span>
+              </label>
+              {createPR && (
+                <div className="gh-field">
+                  <label className="gh-field__label">PR title</label>
+                  <input
+                    type="text"
+                    placeholder="Optional — defaults to commit message"
+                    value={prTitle}
+                    onChange={(e) => setPrTitle(e.target.value)}
+                    className="gh-input"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="gh-field">
             <label className="gh-field__label">Commit message</label>
             <input
               type="text"
-              placeholder={`Create ${filePath.trim() || 'new file'}`}
+              placeholder={defaultMsg}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               className="gh-input"
               onKeyDown={(e) => e.key === 'Enter' && !creating && handleCreate()}
             />
           </div>
-
-          <p className="text-muted text-sm">Committing to <strong>{branch}</strong></p>
         </div>
 
         <div className="gh-modal__footer">
           <button className="btn btn-ghost" onClick={onClose} disabled={creating}>Cancel</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={creating || !filePath.trim()}>
-            {creating ? 'Creating...' : 'Create file'}
+            {actionLabel}
           </button>
         </div>
       </div>
@@ -1305,6 +1594,130 @@ function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullW
   );
 }
 
+// ─── Import to Codex Modal ────────────────────────────
+
+function ImportToCodexModal({ owner, repo, filePath, branch, onClose, onImported }) {
+  const navigate = useNavigate();
+  const [archives, setArchives] = useState([]);
+  const [archiveId, setArchiveId] = useState('');
+  const [title, setTitle] = useState(filePath.split('/').pop().replace(/\.[^.]+$/, ''));
+  const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape' && !importing) onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [importing, onClose]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('GET', '/api/archives');
+        setArchives(res.archives);
+        if (res.archives.length > 0) setArchiveId(String(res.archives[0].id));
+      } catch { /* ignore */ }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleImport = async () => {
+    if (!archiveId) {
+      setError('Please select an archive');
+      return;
+    }
+    setError(null);
+    setImporting(true);
+    try {
+      const res = await apiFetch('POST', '/api/github/import-to-codex', {
+        owner,
+        repo,
+        path: filePath,
+        ref: branch,
+        archive_id: Number(archiveId),
+        title: title.trim() || undefined,
+      });
+      if (onImported) onImported(res);
+      // Navigate to the new document
+      navigate(`/editor/${res.logId}`);
+    } catch (e) {
+      setError(e.body?.message || 'Failed to import file');
+    }
+    setImporting(false);
+  };
+
+  return (
+    <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !importing) onClose(); }}>
+      <div className="gh-modal">
+        <div className="gh-modal__header">
+          <h3>Import to Cloud Codex</h3>
+          <button className="gh-modal__close" onClick={onClose} disabled={importing} aria-label="Close">&times;</button>
+        </div>
+
+        <div className="gh-modal__body">
+          {error && <p className="form-error">{error}</p>}
+
+          <div className="gh-import-source">
+            <span className="text-muted text-sm">From GitHub:</span>
+            <code className="gh-import-source__path">{owner}/{repo}/{filePath}</code>
+            <span className="text-muted text-sm">({branch})</span>
+          </div>
+
+          <div className="gh-field">
+            <label className="gh-field__label">Document title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="gh-input"
+              autoFocus
+            />
+          </div>
+
+          <div className="gh-field">
+            <label className="gh-field__label">Import into archive</label>
+            {loading ? (
+              <p className="text-muted text-sm">Loading archives...</p>
+            ) : archives.length === 0 ? (
+              <p className="form-error">No archives available. Create an archive first.</p>
+            ) : (
+              <select
+                value={archiveId}
+                onChange={(e) => setArchiveId(e.target.value)}
+                className="gh-branch-select"
+              >
+                {archives.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}{a.workspace_name ? ` (${a.workspace_name})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <p className="text-muted text-sm">
+            {/\.(md|mdx|markdown)$/i.test(filePath)
+              ? 'Markdown will be converted to rich text in your Codex document.'
+              : 'File content will be imported as a code block.'}
+          </p>
+        </div>
+
+        <div className="gh-modal__footer">
+          <button className="btn btn-ghost" onClick={onClose} disabled={importing}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleImport}
+            disabled={importing || !archiveId || loading}
+          >
+            {importing ? 'Importing...' : 'Import to Codex'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── File Viewer/Editor ──────────────────────────────
 
 function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNavigateBack, onBranchCreated, onFileDeleted, onFileRenamed }) {
@@ -1316,6 +1729,7 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
   const [showDelete, setShowDelete] = useState(false);
   const [showRename, setShowRename] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [currentSha, setCurrentSha] = useState(null);
   const [currentBranch, setCurrentBranch] = useState(branch);
 
@@ -1382,6 +1796,13 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
           )}
           {!editing && (
             <>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowImport(true)}
+                title="Import to Cloud Codex"
+              >
+                <ImportIcon /> Import to Codex
+              </button>
               <button
                 className={`btn btn-ghost btn-sm${showHistory ? ' active' : ''}`}
                 onClick={() => setShowHistory(h => !h)}
@@ -1491,6 +1912,16 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
             if (onFileRenamed) onFileRenamed(filePath, newPath);
           }}
           onClose={() => setShowRename(false)}
+        />
+      )}
+
+      {showImport && (
+        <ImportToCodexModal
+          owner={owner}
+          repo={repo}
+          filePath={filePath}
+          branch={currentBranch}
+          onClose={() => setShowImport(false)}
         />
       )}
     </div>
@@ -1710,7 +2141,7 @@ function RepoActivityView({ owner, repo, repoInfo, branch, branches, onNewFile, 
 
 // ─── Repo Browser (tree + file viewer) ───────────────
 
-function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
+function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId, exportData, exportLogId, onExportDone }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [repoInfo, setRepoInfo] = useState(null);
@@ -1722,6 +2153,13 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
   const [treeFilter, setTreeFilter] = useState('');
   const [mdOnly, setMdOnly] = useState(true);
   const [showNewFile, setShowNewFile] = useState(false);
+
+  // Auto-open new file modal when in export mode
+  useEffect(() => {
+    if (exportData && !showNewFile) {
+      setShowNewFile(true);
+    }
+  }, [exportData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load repo info + branches
   useEffect(() => {
@@ -1894,12 +2332,26 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
           owner={owner}
           repo={repoName}
           branch={branch}
-          onCreated={(newPath) => {
+          branches={branches}
+          initialContent={exportData?.content || ''}
+          initialPath={exportData?.link && exportData.link.repo_owner === owner && exportData.link.repo_name === repoName
+            ? exportData.link.file_path
+            : exportData ? `${exportData.title.replace(/[^a-zA-Z0-9_\- ]/g, '_')}.md` : ''}
+          githubLink={exportData?.link && exportData.link.repo_owner === owner && exportData.link.repo_name === repoName
+            ? exportData.link : null}
+          exportLogId={exportLogId}
+          repoTree={tree}
+          onCreated={(newPath, newBranch) => {
             setShowNewFile(false);
+            if (newBranch && newBranch !== branch) setBranch(newBranch);
             refreshTree();
             setSelectedFile(newPath);
+            if (exportData && onExportDone) onExportDone();
           }}
-          onClose={() => setShowNewFile(false)}
+          onClose={() => {
+            setShowNewFile(false);
+            if (exportData && onExportDone) onExportDone();
+          }}
         />
       )}
     </div>
@@ -1926,13 +2378,16 @@ function GitHubNotConnected() {
 export default function GitHubPage() {
   const params = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const fromArchiveId = searchParams.get('from_archive');
+  const exportLogId = searchParams.get('export_logId');
+  const exportTitle = searchParams.get('export_title');
   const [connected, setConnected] = useState(null); // null = loading
   const [view, setView] = useState(params.owner ? 'repo' : 'list');
   const [selectedRepo, setSelectedRepo] = useState(
     params.owner ? { owner: { login: params.owner }, name: params.repo } : null
   );
+  const [exportData, setExportData] = useState(null); // { content, title, link? }
 
   useEffect(() => {
     apiFetch('GET', '/api/github/status')
@@ -1940,16 +2395,70 @@ export default function GitHubPage() {
       .catch(() => setConnected(false));
   }, []);
 
+  // Fetch markdown + github link when in export mode
+  useEffect(() => {
+    if (!exportLogId) {
+      setExportData(null);
+      return;
+    }
+    (async () => {
+      try {
+        const token = document.cookie.split('; ').find(c => c.startsWith('session_token='))?.split('=')[1];
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const [mdRes, linkRes] = await Promise.all([
+          fetch(`/api/document/${exportLogId}/export?format=md`, { headers }),
+          apiFetch('GET', `/api/github/link/${exportLogId}`).catch(() => ({ link: null })),
+        ]);
+
+        if (!mdRes.ok) throw new Error('Failed to fetch document');
+        const text = await mdRes.text();
+        const link = linkRes.link || null;
+
+        setExportData({
+          content: text,
+          title: exportTitle ? decodeURIComponent(exportTitle) : 'document',
+          link,
+        });
+
+        // Auto-navigate to linked repo if we're on the repo list
+        if (link && !params.owner) {
+          navigate(`/github/${link.repo_owner}/${link.repo_name}?export_logId=${exportLogId}${exportTitle ? `&export_title=${exportTitle}` : ''}`, { replace: true });
+        }
+      } catch {
+        setExportData(null);
+      }
+    })();
+  }, [exportLogId, exportTitle]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSelectRepo = (repo) => {
     setSelectedRepo(repo);
     setView('repo');
-    navigate(`/github/${repo.owner.login}/${repo.name}`);
+    if (exportLogId) {
+      // In export mode, navigate to repo keeping export params
+      navigate(`/github/${repo.owner.login}/${repo.name}?export_logId=${exportLogId}${exportTitle ? `&export_title=${exportTitle}` : ''}`);
+    } else {
+      navigate(`/github/${repo.owner.login}/${repo.name}`);
+    }
   };
 
   const handleBackToList = () => {
     setSelectedRepo(null);
     setView('list');
-    navigate('/github');
+    if (exportLogId) {
+      navigate(`/github?export_logId=${exportLogId}${exportTitle ? `&export_title=${exportTitle}` : ''}`);
+    } else {
+      navigate('/github');
+    }
+  };
+
+  const handleCancelExport = () => {
+    setExportData(null);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('export_logId');
+    newParams.delete('export_title');
+    setSearchParams(newParams);
   };
 
   // Sync from URL params if navigated directly
@@ -1963,6 +2472,16 @@ export default function GitHubPage() {
   return (
     <StdLayout>
       <div className="gh-page">
+        {exportData && (
+          <div className="gh-export-banner">
+            <ExportIcon />
+            <span>
+              {exportData.link ? 'Updating' : 'Pushing'} <strong>{exportData.title}</strong> {exportData.link ? `on ${exportData.link.repo_owner}/${exportData.link.repo_name}` : 'to GitHub'}
+              {!exportData.link && view === 'list' ? ' — select a repository' : ''}
+            </span>
+            <button className="btn btn-ghost btn-sm" onClick={handleCancelExport}>Cancel</button>
+          </div>
+        )}
         {connected === null ? (
           <p className="text-muted gh-loading">Loading...</p>
         ) : !connected ? (
@@ -1973,6 +2492,9 @@ export default function GitHubPage() {
             repo={selectedRepo.name}
             onBack={handleBackToList}
             fromArchiveId={fromArchiveId}
+            exportData={exportData}
+            exportLogId={exportLogId}
+            onExportDone={handleCancelExport}
           />
         ) : (
           <RepoList onSelect={handleSelectRepo} />

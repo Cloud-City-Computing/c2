@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, Fragment } from 'react';
 import useClickOutside from '../hooks/useClickOutside';
 
 const FORMATS = [
@@ -7,6 +7,7 @@ const FORMATS = [
   ['txt', 'Plain Text (.txt)'],
   ['pdf', 'PDF (.pdf)'],
   ['docx', 'Word (.docx)'],
+  ['github', 'Push to GitHub'],
 ];
 
 /**
@@ -30,7 +31,10 @@ export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm'
       {open && (
         <div className={`export-dropdown__menu ${menuClass}`}>
           {FORMATS.map(([fmt, label]) => (
-            <button key={fmt} className="export-dropdown__item" onClick={() => handleClick(fmt)}>{label}</button>
+            <Fragment key={fmt}>
+              {fmt === 'github' && <hr className="export-dropdown__separator" />}
+              <button className={`export-dropdown__item${fmt === 'github' ? ' export-dropdown__item--github' : ''}`} onClick={() => handleClick(fmt)}>{label}</button>
+            </Fragment>
           ))}
         </div>
       )}

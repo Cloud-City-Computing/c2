@@ -936,6 +936,52 @@ body {
   overflow: hidden;
 }
 
+/* ── Export Banner ── */
+
+.gh-export-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(44, 167, 219, 0.1);
+  border-bottom: 1px solid rgba(44, 167, 219, 0.25);
+  font-size: 13px;
+  color: var(--text-primary, #e0e0e0);
+  flex-shrink: 0;
+}
+
+.gh-export-banner svg {
+  color: var(--color-accent, #2ca7db);
+  flex-shrink: 0;
+}
+
+.gh-export-banner strong {
+  color: var(--color-accent, #2ca7db);
+}
+
+/* ── Import Source ── */
+
+.gh-import-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.gh-import-source__path {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--color-accent, #2ca7db);
+  background: rgba(44, 167, 219, 0.08);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
 .gh-loading {
   padding: 32px;
   text-align: center;
@@ -1454,7 +1500,9 @@ body {
   width: 100%;
   max-width: 520px;
   max-height: 90vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
@@ -1490,6 +1538,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  flex: 1 1 auto;
 }
 
 .gh-modal__footer {
@@ -1628,6 +1678,150 @@ body {
   font-size: 12px;
   color: var(--text-muted, #888);
   margin-top: 2px;
+}
+
+.gh-linked-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text, #e0e0e0);
+}
+
+.gh-linked-path svg {
+  flex-shrink: 0;
+  color: var(--accent, #7c3aed);
+}
+
+.gh-linked-path code {
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.gh-linked-path__branch {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--bg-tertiary, #2a2a3e);
+  color: var(--text-muted, #888);
+}
+
+.gh-linked-path__change {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 12px;
+  background: none;
+  border: none;
+  color: var(--accent, #7c3aed);
+  cursor: pointer;
+  padding: 0;
+}
+.gh-linked-path__change:hover {
+  text-decoration: underline;
+}
+
+/* File mode tabs (New file / Update existing) */
+.gh-file-mode-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.gh-file-mode-tab {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #888);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.gh-file-mode-tab:not(:last-child) {
+  border-right: 1px solid var(--border, #333);
+}
+.gh-file-mode-tab.active {
+  background: var(--bg-tertiary, #2a2a3e);
+  color: var(--text-primary, #e0e0e0);
+  font-weight: 500;
+}
+.gh-file-mode-tab:hover:not(.active) {
+  background: var(--bg-secondary, #1e1e2e);
+}
+
+/* File picker */
+.gh-file-picker-placeholder {
+  padding: 10px 12px;
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px dashed var(--border, #333);
+  border-radius: 6px;
+  color: var(--text-muted, #888);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+}
+.gh-file-picker-placeholder:hover {
+  border-color: var(--accent, #7c3aed);
+  color: var(--text-primary, #e0e0e0);
+}
+
+.gh-file-picker {
+  margin-top: 6px;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  background: var(--bg-secondary, #1e1e2e);
+  overflow: hidden;
+}
+
+.gh-file-picker__search {
+  border: none !important;
+  border-bottom: 1px solid var(--border, #333) !important;
+  border-radius: 0 !important;
+  font-size: 13px;
+}
+
+.gh-file-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.gh-file-picker__item {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  color: var(--text-primary, #e0e0e0);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+}
+.gh-file-picker__item:last-child {
+  border-bottom: none;
+}
+.gh-file-picker__item:hover {
+  background: var(--bg-tertiary, #2a2a3e);
+}
+.gh-file-picker__item.selected {
+  background: var(--accent, #7c3aed);
+  color: #fff;
+}
+
+.gh-file-picker__empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted, #888);
 }
 
 .gh-btn-danger-ghost {
@@ -3462,6 +3656,41 @@ body {
 }
 .log-tree-title:hover { color: var(--brand-blue); }
 
+/* GitHub linked-document badge (tree item) */
+.gh-doc-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-muted, #888);
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+.gh-doc-badge:hover {
+  opacity: 1;
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* GitHub "View on GitHub" link (editor header) */
+.gh-doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  text-decoration: none;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--bg-tertiary, #2a2a3e);
+  transition: color 0.15s, background 0.15s;
+}
+.gh-doc-link:hover {
+  color: var(--text-primary, #e0e0e0);
+  background: var(--bg-secondary, #1e1e2e);
+}
+.gh-doc-link svg {
+  flex-shrink: 0;
+}
+
 .log-tree-actions {
   display: flex;
   gap: 4px;
@@ -5207,6 +5436,16 @@ body {
 .export-dropdown__item:hover {
   background: var(--bg-hover);
   color: var(--brand-blue-light);
+}
+
+.export-dropdown__separator {
+  border: none;
+  border-top: 1px solid var(--border-color, #333);
+  margin: 4px 0;
+}
+
+.export-dropdown__item--github {
+  font-weight: 600;
 }
 
 /* =========================

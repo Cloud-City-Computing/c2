@@ -79,9 +79,14 @@ router.get('/archives/:archiveId/logs', requireAuth, asyncHandler(async (req, re
             p.created_at,
             p.updated_at,
             u.name AS created_by,
-            p.archive_id
+            p.archive_id,
+            gl.repo_owner AS gh_owner,
+            gl.repo_name AS gh_repo,
+            gl.file_path AS gh_path,
+            gl.branch AS gh_branch
      FROM logs p
      LEFT JOIN users u ON p.created_by = u.id
+     LEFT JOIN github_links gl ON p.id = gl.log_id
      WHERE p.archive_id = ?
      ORDER BY p.parent_id ASC, p.created_at ASC`,
     [Number(archiveId)]
