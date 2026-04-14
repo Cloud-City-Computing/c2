@@ -217,6 +217,7 @@ CREATE TABLE logs (
   archive_id INT,
   title TEXT NOT NULL,
   html_content TEXT,
+  markdown_content MEDIUMTEXT DEFAULT NULL,
   ydoc_state LONGBLOB DEFAULT NULL,
   plain_content TEXT GENERATED ALWAYS AS (REGEXP_REPLACE(html_content, '<[^>]+>', '')) STORED,
   parent_id INT,

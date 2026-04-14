@@ -259,8 +259,8 @@ export const deleteLog = (archiveId, logId) =>
 // --- Document APIs ---
 
 export const fetchDocument = (docId) => apiFetch('GET', `/api/document?doc_id=${docId}`);
-export const saveDocument = (docId, htmlContent) =>
-  apiFetch('POST', '/api/save-document', { doc_id: docId, html_content: htmlContent });
+export const saveDocument = (docId, htmlContent, markdownContent) =>
+  apiFetch('POST', '/api/save-document', { doc_id: docId, html_content: htmlContent, ...(markdownContent !== undefined ? { markdown_content: markdownContent } : {}) });
 export const updateLogTitle = (logId, title) =>
   apiFetch('PUT', `/api/document/${logId}/title`, { title });
 

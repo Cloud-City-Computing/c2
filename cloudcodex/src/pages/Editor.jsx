@@ -16,6 +16,8 @@ import ImageCropModal from '../components/ImageCropModal';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
+import Link from '@tiptap/extension-link';
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import CodeBlockWithLanguage from '../components/CodeBlockWithLanguage';
 import DrawioBlock from '../components/DrawioBlock';
 import { createLowlight, common } from 'lowlight';
@@ -262,6 +264,20 @@ function TiptapToolbar({ editor, onImageSelect }) {
         <button className={btnClass(editor.isActive('code'))} onClick={() => editor.chain().focus().toggleCode().run()} title="Inline Code">
           <code>&lt;/&gt;</code>
         </button>
+        <button
+          className={btnClass(editor.isActive('link'))}
+          onClick={() => {
+            if (editor.isActive('link')) {
+              editor.chain().focus().unsetLink().run();
+            } else {
+              const url = window.prompt('URL:');
+              if (url) editor.chain().focus().setLink({ href: url }).run();
+            }
+          }}
+          title="Link"
+        >
+          🔗
+        </button>
       </div>
 
       <span className="tiptap-toolbar__divider" />
@@ -295,6 +311,9 @@ function TiptapToolbar({ editor, onImageSelect }) {
         </button>
         <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().insertDrawioBlock().run()} title="Diagram (draw.io)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><line x1="10" y1="6.5" x2="14" y2="6.5" /><line x1="6.5" y1="10" x2="6.5" y2="14" /><line x1="14" y1="17.5" x2="10" y2="17.5" /></svg>
+        </button>
+        <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" /></svg>
         </button>
       </div>
 
@@ -362,6 +381,11 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
       ResizableImage.configure({ inline: false, allowBase64: false }),
       Placeholder.configure({ placeholder: 'Start typing...' }),
       Underline,
+      Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       // --- Collaboration: binds ProseMirror state to the shared Y.Doc ---
       Collaboration.configure({
@@ -499,9 +523,10 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
 
 // --- Markdown Editor with live preview ---
 
-function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId }) {
-  const [md, setMd] = useState(() => htmlToMarkdown(content));
-  const [preview, setPreview] = useState(() => sanitizeHtml(content || ''));
+function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId, markdownContent, onMarkdownChange }) {
+  // Use stored raw markdown if available; fall back to HTML→markdown conversion
+  const [md, setMd] = useState(() => markdownContent ?? htmlToMarkdown(content));
+  const [preview, setPreview] = useState(() => markdownContent ? sanitizeHtml(marked.parse(markdownContent)) : sanitizeHtml(content || ''));
   const textareaRef = useRef(null);
   const previewRef = useRef(null);
   const initializedRef = useRef(false);
@@ -541,9 +566,10 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
     selfUpdateRef.current = true;
     if (contentRef) contentRef.current = html;
     setContent(html);
+    onMarkdownChange?.(val);
     onLocalChange?.(html);
     trackCursor();
-  }, [setContent, contentRef, onLocalChange, trackCursor]);
+  }, [setContent, contentRef, onLocalChange, onMarkdownChange, trackCursor]);
 
   // Tab key inserts spaces instead of changing focus
   const handleKeyDown = useCallback((e) => {
@@ -560,12 +586,13 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
       selfUpdateRef.current = true;
       if (contentRef) contentRef.current = tabHtml;
       setContent(tabHtml);
+      onMarkdownChange?.(newVal);
       onLocalChange?.(tabHtml);
       requestAnimationFrame(() => {
         ta.selectionStart = ta.selectionEnd = start + 2;
       });
     }
-  }, [setContent, contentRef, onLocalChange]);
+  }, [setContent, contentRef, onLocalChange, onMarkdownChange]);
 
   // Handle image paste in markdown editor — intercepts clipboard images,
   // uploads them to the server, and inserts a markdown image reference.
@@ -598,6 +625,7 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
           selfUpdateRef.current = true;
           if (contentRef) contentRef.current = html;
           setContent(html);
+          onMarkdownChange?.(newVal);
           onLocalChange?.(html);
         } else {
           // Upload failed — remove placeholder
@@ -606,7 +634,7 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
         return; // Only handle the first image
       }
     }
-  }, [setContent, contentRef, onLocalChange]);
+  }, [setContent, contentRef, onLocalChange, onMarkdownChange]);
 
   return (
     <div className="markdown-editor">
@@ -747,6 +775,8 @@ export default function Editor({ embedded = false } = {}) {
   const navigate = useNavigate();
   const [content, setContent] = useState('');
   const contentRef = useRef('');
+  const [markdownContent, setMarkdownContent] = useState(null); // raw markdown from server, null if not a markdown-sourced doc
+  const markdownContentRef = useRef(null);
   const [documentData, setDocumentData] = useState(null);
   const [status, setStatus] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -828,6 +858,12 @@ export default function Editor({ embedded = false } = {}) {
   // Keep contentRef in sync whenever content state changes (load, blur, markdown edits)
   useEffect(() => { contentRef.current = content; }, [content]);
 
+  // Markdown content change handler — keeps the ref in sync for auto-save
+  const handleMarkdownChange = useCallback((md) => {
+    markdownContentRef.current = md;
+    setMarkdownContent(md);
+  }, []);
+
   // Local change handler — CRDT sync is automatic via Y.Doc, so this only
   // sets the dirty flag for auto-save tracking.  No more debounced sendUpdate.
   const handleLocalChange = useCallback(() => {
@@ -852,7 +888,12 @@ export default function Editor({ embedded = false } = {}) {
       const doc = res?.document ?? null;
       setDocumentData(doc);
       setContent(doc?.html_content ?? '');
+      const md = doc?.markdown_content ?? null;
+      setMarkdownContent(md);
+      markdownContentRef.current = md;
       setTitle(doc?.title ?? '');
+      // If document has stored markdown, default to markdown editor mode
+      if (md) setEditorMode('markdown');
     } catch (e) {
       setStatus({ type: 'error', message: e.body?.message ?? 'Error loading document.' });
     }
@@ -1016,7 +1057,7 @@ export default function Editor({ embedded = false } = {}) {
 
     // If connected via collab, try the WebSocket save path
     if (collabConnected) {
-      const sent = sendSave({ html: latestContent });
+      const sent = sendSave({ html: latestContent, markdown: markdownContentRef.current });
       if (sent) {
         setContent(latestContent);
         dirtyRef.current = false;
@@ -1031,7 +1072,7 @@ export default function Editor({ embedded = false } = {}) {
 
     // Fallback to REST save when collab is disconnected or WS send failed
     try {
-      await saveDocument(Number(logId), latestContent);
+      await saveDocument(Number(logId), latestContent, markdownContentRef.current);
       setContent(latestContent);
       dirtyRef.current = false;
       lastSavedRef.current = Date.now();
@@ -1097,7 +1138,7 @@ export default function Editor({ embedded = false } = {}) {
     // REST fallback: save content first, then publish
     try {
       const latestContent = contentRef.current;
-      await saveDocument(Number(logId), latestContent);
+      await saveDocument(Number(logId), latestContent, markdownContentRef.current);
       const result = await publishVersion(logId, { title, notes });
       if (result?.version) {
         setDocumentData(d => d ? { ...d, version: result.version } : d);
@@ -1266,7 +1307,7 @@ export default function Editor({ embedded = false } = {}) {
           <div className="toolbar-group editor-mode-toggle">
             <button
               className={`btn btn-sm ${editorMode === 'richtext' ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setEditorMode('richtext')}
+              onClick={() => { setEditorMode('richtext'); markdownContentRef.current = null; setMarkdownContent(null); }}
             >
               Rich Text
             </button>
@@ -1313,7 +1354,7 @@ export default function Editor({ embedded = false } = {}) {
             {editorMode === 'richtext' ? (
               <RichTextEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} ydoc={ydoc} synced={synced} restoreKey={restoreKey} />
             ) : (
-              <MarkdownEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} />
+              <MarkdownEditor content={content} setContent={setContent} contentRef={contentRef} onLocalChange={handleLocalChange} onCursorChange={handleCursorChange} remoteCursors={remoteCursors} comments={comments} activeCommentId={highlightedCommentId} markdownContent={markdownContent} onMarkdownChange={handleMarkdownChange} />
             )}
           </div>
 

@@ -438,11 +438,21 @@ async function setupDocSession(ws, user, logId, canWrite) {
               storedHtml = await extractImagesFromHtml(safeHtml);
             }
 
+            // Determine markdown_content: explicit string keeps it, explicit null clears it, undefined leaves it unchanged
+            const mdVal = msg.markdown !== undefined ? (typeof msg.markdown === 'string' ? msg.markdown : null) : undefined;
+
             if (storedHtml && storedHtml !== entry.lastSavedHtml) {
-              await c2_query(
-                `UPDATE logs SET html_content = ?, ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-                [storedHtml, Buffer.from(state), user.id, entry.logId]
-              );
+              if (mdVal !== undefined) {
+                await c2_query(
+                  `UPDATE logs SET html_content = ?, markdown_content = ?, ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+                  [storedHtml, mdVal, Buffer.from(state), user.id, entry.logId]
+                );
+              } else {
+                await c2_query(
+                  `UPDATE logs SET html_content = ?, ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+                  [storedHtml, Buffer.from(state), user.id, entry.logId]
+                );
+              }
               entry.lastSavedHtml = storedHtml;
             } else {
               await c2_query(
