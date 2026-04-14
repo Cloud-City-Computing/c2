@@ -41,10 +41,15 @@ router.get('/document', requireAuth, asyncHandler(async (req, res) => {
             pg.archive_id,
             u.name,
             u.email,
-            p.name AS archive_name
+            p.name AS archive_name,
+            gl.repo_owner AS gh_owner,
+            gl.repo_name AS gh_repo,
+            gl.file_path AS gh_path,
+            gl.branch AS gh_branch
        FROM logs pg
  INNER JOIN users u ON pg.created_by = u.id
  INNER JOIN archives p ON pg.archive_id = p.id
+  LEFT JOIN github_links gl ON pg.id = gl.log_id
       WHERE pg.id = ?
         AND ${readAccessWhere('p')}
       LIMIT 1`,

@@ -10,9 +10,13 @@
  */
 
 import express from 'express';
+import { marked } from 'marked';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from './helpers/shared.js';
+import { isValidId } from './helpers/shared.js';
+import { writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+import { sanitizeHtml } from './helpers/shared.js';
 import { decryptToken } from './oauth.js';
 
 const router = express.Router();
@@ -747,6 +751,153 @@ router.get('/github/repos/:owner/:repo/search', asyncHandler(async (req, res) =>
   }));
 
   res.json({ success: true, files });
+}));
+
+// --- Import GitHub file to Cloud Codex ---
+
+/**
+ * POST /api/github/import-to-codex
+ * Fetch a file from GitHub and create a new Codex document with its content.
+ * Body: { owner, repo, path, ref, archive_id, title? }
+ */
+router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
+  const { owner, repo, path, ref, archive_id, title } = req.body;
+
+  if (!owner || !repo || !path) {
+    return res.status(400).json({ success: false, message: 'owner, repo, and path are required' });
+  }
+  if (!archive_id || !isValidId(archive_id)) {
+    return res.status(400).json({ success: false, message: 'Valid archive_id is required' });
+  }
+
+  // Verify write access to archive
+  const [archive] = await c2_query(
+    `SELECT p.id, p.name FROM archives p
+     WHERE p.id = ?
+       AND ${writeAccessWhere('p')}
+     LIMIT 1`,
+    [Number(archive_id), ...writeAccessParams(req.user)]
+  );
+
+  if (!archive) {
+    return res.status(403).json({ success: false, message: 'Archive not found or write access denied' });
+  }
+
+  // Fetch file content from GitHub
+  const params = ref ? `?ref=${encodeURIComponent(ref)}` : '';
+  const ghFile = await githubFetch(req.ghToken,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}${params}`
+  );
+
+  if (ghFile.type !== 'file') {
+    return res.status(400).json({ success: false, message: 'Path does not point to a file' });
+  }
+
+  const rawContent = Buffer.from(ghFile.content, 'base64').toString('utf-8');
+  const fileName = path.split('/').pop();
+  const isMarkdown = /\.(md|mdx|markdown)$/i.test(fileName);
+
+  // Convert content to HTML for Codex document storage
+  let htmlContent;
+  if (isMarkdown) {
+    htmlContent = sanitizeHtml(await marked.parse(rawContent));
+  } else {
+    // Wrap plain text in a code block
+    const escaped = rawContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    htmlContent = `<pre><code>${escaped}</code></pre>`;
+  }
+
+  const docTitle = (title || fileName.replace(/\.[^.]+$/, '')).trim();
+
+  // Create the log
+  const result = await c2_query(
+    `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by)
+     VALUES (?, ?, ?, ?, ?)`,
+    [Number(archive_id), docTitle, htmlContent, req.user.id, req.user.id]
+  );
+
+  res.status(201).json({
+    success: true,
+    logId: result.insertId,
+    title: docTitle,
+    archive_id: Number(archive_id),
+    archive_name: archive.name,
+  });
+
+  // Save the github link (fire-and-forget, don't block the response)
+  c2_query(
+    `INSERT INTO github_links (log_id, repo_owner, repo_name, file_path, branch, file_sha, linked_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE repo_owner=VALUES(repo_owner), repo_name=VALUES(repo_name),
+       file_path=VALUES(file_path), branch=VALUES(branch), file_sha=VALUES(file_sha)`,
+    [result.insertId, owner, repo, path, ref || 'main', ghFile.sha, req.user.id]
+  ).catch(() => {});
+}));
+
+// --- GitHub Link for Documents ---
+
+/**
+ * GET /api/github/link/:logId
+ * Get the GitHub link for a Codex document (if any).
+ */
+router.get('/github/link/:logId', asyncHandler(async (req, res) => {
+  const logId = Number(req.params.logId);
+  if (!isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid logId' });
+  }
+
+  const [link] = await c2_query(
+    `SELECT gl.repo_owner, gl.repo_name, gl.file_path, gl.branch, gl.file_sha
+     FROM github_links gl
+     JOIN logs l ON l.id = gl.log_id
+     WHERE gl.log_id = ?
+     LIMIT 1`,
+    [logId]
+  );
+
+  res.json({ success: true, link: link || null });
+}));
+
+/**
+ * PUT /api/github/link/:logId
+ * Create or update the GitHub link for a Codex document.
+ * Body: { repo_owner, repo_name, file_path, branch, file_sha }
+ */
+router.put('/github/link/:logId', asyncHandler(async (req, res) => {
+  const logId = Number(req.params.logId);
+  if (!isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid logId' });
+  }
+
+  const { repo_owner, repo_name, file_path, branch, file_sha } = req.body;
+  if (!repo_owner || !repo_name || !file_path || !branch) {
+    return res.status(400).json({ success: false, message: 'repo_owner, repo_name, file_path, and branch are required' });
+  }
+
+  await c2_query(
+    `INSERT INTO github_links (log_id, repo_owner, repo_name, file_path, branch, file_sha, linked_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE repo_owner=VALUES(repo_owner), repo_name=VALUES(repo_name),
+       file_path=VALUES(file_path), branch=VALUES(branch), file_sha=VALUES(file_sha)`,
+    [logId, repo_owner, repo_name, file_path, branch, file_sha || null, req.user.id]
+  );
+
+  res.json({ success: true });
+}));
+
+/**
+ * DELETE /api/github/link/:logId
+ * Remove the GitHub link for a Codex document.
+ */
+router.delete('/github/link/:logId', asyncHandler(async (req, res) => {
+  const logId = Number(req.params.logId);
+  if (!isValidId(logId)) {
+    return res.status(400).json({ success: false, message: 'Invalid logId' });
+  }
+
+  await c2_query('DELETE FROM github_links WHERE log_id = ?', [logId]);
+
+  res.json({ success: true });
 }));
 
 router.use((err, req, res, _next) => {
