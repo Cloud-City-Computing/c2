@@ -600,7 +600,7 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
 // ─── New File Modal ───────────────────────────────────
 
 function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initialContent, initialPath, githubLink, exportLogId, repoTree }) {
-  const isLinked = !!githubLink;
+  const isLinked = Boolean(githubLink);
   const [filePath, setFilePath] = useState(initialPath || '');
   const [content, setContent] = useState(initialContent || '');
   const [message, setMessage] = useState('');
@@ -630,6 +630,7 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
     const handler = (e) => {
       if (e.key === 'Escape' && !creating) {
         if (hasWork && !result) {
+          // eslint-disable-next-line no-alert
           if (!window.confirm('You have unsaved work. Discard and close?')) return;
         }
         onClose();
@@ -641,7 +642,7 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
 
   const isMarkdown = /\.(md|mdx|markdown)$/i.test(filePath);
 
-  const isUpdate = fileMode === 'existing' && !!selectedSha;
+  const isUpdate = fileMode === 'existing' && Boolean(selectedSha);
   const defaultMsg = isUpdate ? `Update ${filePath.trim() || 'file'}` : `Create ${filePath.trim() || 'new file'}`;
 
   const handleCreate = async () => {
@@ -739,6 +740,7 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
   const handleBackdropClick = (e) => {
     if (e.target !== e.currentTarget || creating) return;
     if (hasWork && !result) {
+      // eslint-disable-next-line no-alert
       if (!window.confirm('You have unsaved work. Discard and close?')) return;
     }
     onClose();
@@ -1243,7 +1245,7 @@ function DiffViewer({ patch, filename, status, additions, deletions }) {
   );
 }
 
-function DiffPanel({ files, onClose, commitSha, title }) {
+function DiffPanel({ files, onClose, commitSha: _commitSha, title }) {
   const [search, setSearch] = useState('');
 
   const filtered = search.trim()
@@ -1396,13 +1398,6 @@ function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullW
                c.sha.startsWith(q);
       })
     : commits;
-
-  const formatDate = (dateStr) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) +
-      ' at ' +
-      d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  };
 
   // Group commits by date
   const grouped = useMemo(() => {
