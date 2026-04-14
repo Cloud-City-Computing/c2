@@ -34,6 +34,7 @@ router.get('/document', requireAuth, asyncHandler(async (req, res) => {
   const docs = await c2_query(
     `SELECT pg.id,
             pg.html_content,
+            pg.markdown_content,
             pg.created_at,
             pg.updated_at,
             pg.title,
@@ -65,13 +66,13 @@ router.get('/document', requireAuth, asyncHandler(async (req, res) => {
 
 /**
  * POST /api/save-document
- * Body: { doc_id: number, html_content: string }
+ * Body: { doc_id: number, html_content: string, markdown_content?: string|null }
  * Requires auth; checks user write_access on parent archive.
  * Saves content only — does not create a version snapshot.
  * Use POST /api/document/:logId/publish to create a formal published version.
  */
 router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
-  const { doc_id, html_content } = req.body;
+  const { doc_id, html_content, markdown_content } = req.body;
 
   if (!doc_id || !isValidId(doc_id)) {
     return res.status(400).json({ success: false, message: 'Invalid or missing doc_id' });
@@ -107,10 +108,21 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   }
 
   // Save content without creating a version snapshot
-  await c2_query(
-    `UPDATE logs SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
-    [storedHtml, req.user.id, Number(doc_id)]
-  );
+  // If markdown_content is provided (string or null), update it alongside HTML.
+  // When editing in rich text mode, markdown_content is set to null to indicate
+  // the canonical source is now HTML.
+  const mdVal = markdown_content !== undefined ? markdown_content : undefined;
+  if (mdVal !== undefined) {
+    await c2_query(
+      `UPDATE logs SET html_content = ?, markdown_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+      [storedHtml, typeof mdVal === 'string' ? mdVal : null, req.user.id, Number(doc_id)]
+    );
+  } else {
+    await c2_query(
+      `UPDATE logs SET html_content = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+      [storedHtml, req.user.id, Number(doc_id)]
+    );
+  }
 
   res.json({ success: true });
 }));

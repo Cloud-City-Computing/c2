@@ -10,8 +10,10 @@
  */
 
 import express from 'express';
-import { marked } from 'marked';
+import { marked, Renderer } from 'marked';
 import { c2_query } from '../mysql_connect.js';
+
+// --- Helpers ---
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from './helpers/shared.js';
 import { isValidId } from './helpers/shared.js';
@@ -22,6 +24,23 @@ import { decryptToken } from './oauth.js';
 const router = express.Router();
 
 const GITHUB_API = 'https://api.github.com';
+
+// --- Import renderer ---
+
+/**
+ * Minimal marked Renderer that converts HTML align attributes to
+ * style="text-align: ..." so TipTap's TextAlign extension can read them.
+ */
+function createImportRenderer() {
+  const renderer = new Renderer();
+  renderer.html = function ({ text }) {
+    return text.replace(
+      /(<(?:p|h[1-6]|div))\s+align="(left|center|right)"/gi,
+      '$1 style="text-align: $2"'
+    );
+  };
+  return renderer;
+}
 
 // --- Helpers ---
 
@@ -800,7 +819,7 @@ router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
   // Convert content to HTML for Codex document storage
   let htmlContent;
   if (isMarkdown) {
-    htmlContent = sanitizeHtml(await marked.parse(rawContent));
+    htmlContent = sanitizeHtml(await marked.parse(rawContent, { renderer: createImportRenderer() }));
   } else {
     // Wrap plain text in a code block
     const escaped = rawContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -809,11 +828,11 @@ router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
 
   const docTitle = (title || fileName.replace(/\.[^.]+$/, '')).trim();
 
-  // Create the log
+  // Create the log — store raw markdown alongside HTML for lossless round-tripping
   const result = await c2_query(
-    `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by)
-     VALUES (?, ?, ?, ?, ?)`,
-    [Number(archive_id), docTitle, htmlContent, req.user.id, req.user.id]
+    `INSERT INTO logs (archive_id, title, html_content, markdown_content, created_by, updated_by)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [Number(archive_id), docTitle, htmlContent, isMarkdown ? rawContent : null, req.user.id, req.user.id]
   );
 
   res.status(201).json({

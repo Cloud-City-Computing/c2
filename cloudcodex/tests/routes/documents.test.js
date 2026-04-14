@@ -67,6 +67,30 @@ describe('Document Routes', () => {
       expect(res.status).toBe(400);
     });
 
+    it('returns markdown_content when present', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{
+        id: 1,
+        html_content: '<h1>Hello</h1>',
+        markdown_content: '# Hello',
+        created_at: '2026-01-01',
+        updated_at: '2026-01-02',
+        title: 'MD Doc',
+        version: 1,
+        archive_id: 1,
+        name: 'author',
+        email: 'author@test.com',
+        archive_name: 'Archive',
+      }]);
+
+      const res = await request(app)
+        .get('/api/document?doc_id=1')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.document.markdown_content).toBe('# Hello');
+    });
+
     it('requires authentication', async () => {
       mockUnauthenticated();
 
@@ -142,6 +166,40 @@ describe('Document Routes', () => {
         .send({ doc_id: 1, html_content: hugeContent });
 
       expect(res.status).toBe(413);
+    });
+
+    it('saves markdown_content alongside html_content', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, old_content: '<p>old</p>', version: 2, archive_id: 1 }])
+        .mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .post('/api/save-document')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ doc_id: 1, html_content: '<h1>Hello</h1>', markdown_content: '# Hello' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      // Verify the UPDATE query includes markdown_content
+      const updateCall = c2_query.mock.calls.find(c => c[0].includes('UPDATE'));
+      expect(updateCall).toBeTruthy();
+    });
+
+    it('saves with null markdown_content (rich text mode)', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, old_content: '<p>old</p>', version: 2, archive_id: 1 }])
+        .mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .post('/api/save-document')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ doc_id: 1, html_content: '<p>rich text</p>', markdown_content: null });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
     });
   });
 
