@@ -2296,6 +2296,267 @@ body {
   color: var(--color-accent, #2ca7db);
 }
 
+/* ── Diff Viewer ── */
+
+.gh-diff-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.gh-diff-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px 6px 0 0;
+  flex-wrap: wrap;
+}
+
+.gh-diff-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.gh-diff-panel__title h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.gh-diff-panel__subtitle {
+  font-size: 12px;
+  color: var(--text-secondary, #ccc);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.gh-diff-panel__summary {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+  color: var(--text-secondary, #ccc);
+}
+
+.gh-diff-panel__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid var(--border-color, #333);
+  border-top: none;
+}
+
+.gh-diff-panel__files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Individual diff file */
+.gh-diff {
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-primary, #121212);
+}
+
+.gh-diff__file-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary, #1e1e1e);
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-size: 13px;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.gh-diff__file-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gh-diff__collapse-icon {
+  font-size: 10px;
+  width: 12px;
+  color: var(--text-secondary, #ccc);
+  flex-shrink: 0;
+}
+
+.gh-diff__filename {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.gh-diff__file-stats {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.gh-diff__no-preview {
+  font-size: 12px;
+  color: var(--text-secondary, #ccc);
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* Diff body / hunks */
+.gh-diff__body {
+  overflow-x: auto;
+}
+
+.gh-diff__hunk {
+  border-top: 1px solid var(--border-color, #333);
+}
+
+.gh-diff__hunk-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(44, 167, 219, 0.06);
+  color: rgba(44, 167, 219, 0.7);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-color, #333);
+  user-select: none;
+}
+
+.gh-diff__hunk-ctx {
+  color: var(--text-secondary, #ccc);
+  opacity: 0.6;
+}
+
+/* Diff table */
+.gh-diff__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 20px;
+  table-layout: fixed;
+}
+
+.gh-diff__line {
+  border: none;
+}
+
+.gh-diff__line--add {
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.gh-diff__line--del {
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.gh-diff__line--ctx {
+  background: transparent;
+}
+
+.gh-diff__line-num {
+  width: 50px;
+  min-width: 50px;
+  padding: 0 8px;
+  text-align: right;
+  color: var(--text-secondary, #ccc);
+  opacity: 0.4;
+  user-select: none;
+  font-size: 11px;
+  vertical-align: top;
+  border-right: 1px solid var(--border-color, #333);
+}
+
+.gh-diff__line--add .gh-diff__line-num--new {
+  color: #3fb950;
+  opacity: 0.7;
+}
+
+.gh-diff__line--del .gh-diff__line-num--old {
+  color: #f85149;
+  opacity: 0.7;
+}
+
+.gh-diff__line-marker {
+  width: 20px;
+  min-width: 20px;
+  padding: 0 4px;
+  text-align: center;
+  user-select: none;
+  font-weight: 700;
+  vertical-align: top;
+}
+
+.gh-diff__line--add .gh-diff__line-marker {
+  color: #3fb950;
+}
+
+.gh-diff__line--del .gh-diff__line-marker {
+  color: #f85149;
+}
+
+.gh-diff__line--ctx .gh-diff__line-marker {
+  color: transparent;
+}
+
+.gh-diff__line-content {
+  padding: 0 12px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: break-word;
+  vertical-align: top;
+}
+
+.gh-diff__line-content pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+.gh-diff__line--add .gh-diff__line-content {
+  color: #aaffaa;
+}
+
+.gh-diff__line--del .gh-diff__line-content {
+  color: #ffaaaa;
+}
+
+.gh-diff__line--ctx .gh-diff__line-content {
+  color: var(--text-secondary, #ccc);
+  opacity: 0.8;
+}
+
+/* Active diff toggle button */
+.gh-history__detail-actions .btn.active {
+  background: rgba(44, 167, 219, 0.15);
+  color: var(--color-accent, #2ca7db);
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {
@@ -2361,6 +2622,26 @@ body {
   .gh-tab {
     padding: 6px 10px;
     font-size: 12px;
+  }
+
+  .gh-diff__line-num {
+    width: 35px;
+    min-width: 35px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
+  .gh-diff__line-marker {
+    width: 16px;
+    min-width: 16px;
+  }
+
+  .gh-diff__filename {
+    font-size: 11px;
+  }
+
+  .gh-diff-panel__header {
+    padding: 8px 10px;
   }
 }
 
