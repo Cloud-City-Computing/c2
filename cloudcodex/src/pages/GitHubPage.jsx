@@ -839,6 +839,179 @@ function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onClose }) 
   );
 }
 
+// ─── Diff Viewer ──────────────────────────────────────
+
+/**
+ * Parse a unified diff patch string into structured hunks.
+ * Each hunk: { header, oldStart, oldLines, newStart, newLines, lines[] }
+ * Each line: { type: 'add'|'del'|'ctx', oldNum, newNum, content }
+ */
+function parsePatch(patch) {
+  if (!patch) return [];
+  const rawLines = patch.split('\n');
+  const hunks = [];
+  let current = null;
+  let oldLine = 0;
+  let newLine = 0;
+
+  for (const raw of rawLines) {
+    const hunkMatch = raw.match(/^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@(.*)/);
+    if (hunkMatch) {
+      current = {
+        header: raw,
+        oldStart: parseInt(hunkMatch[1], 10),
+        oldLines: hunkMatch[2] ? parseInt(hunkMatch[2], 10) : 1,
+        newStart: parseInt(hunkMatch[3], 10),
+        newLines: hunkMatch[4] ? parseInt(hunkMatch[4], 10) : 1,
+        context: hunkMatch[5] || '',
+        lines: [],
+      };
+      hunks.push(current);
+      oldLine = current.oldStart;
+      newLine = current.newStart;
+      continue;
+    }
+    if (!current) continue;
+    if (raw.startsWith('+')) {
+      current.lines.push({ type: 'add', oldNum: null, newNum: newLine, content: raw.slice(1) });
+      newLine++;
+    } else if (raw.startsWith('-')) {
+      current.lines.push({ type: 'del', oldNum: oldLine, newNum: null, content: raw.slice(1) });
+      oldLine++;
+    } else if (raw.startsWith('\\')) {
+      // "\ No newline at end of file" — skip
+      continue;
+    } else {
+      current.lines.push({ type: 'ctx', oldNum: oldLine, newNum: newLine, content: raw.startsWith(' ') ? raw.slice(1) : raw });
+      oldLine++;
+      newLine++;
+    }
+  }
+  return hunks;
+}
+
+function DiffViewer({ patch, filename, status, additions, deletions }) {
+  const hunks = useMemo(() => parsePatch(patch), [patch]);
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (!patch) {
+    return (
+      <div className="gh-diff">
+        <div className="gh-diff__file-header">
+          <span className={`gh-history__file-status gh-history__file-status--${status}`}>
+            {status === 'added' ? 'A' : status === 'removed' ? 'D' : status === 'renamed' ? 'R' : 'M'}
+          </span>
+          <span className="gh-diff__filename">{filename}</span>
+          <span className="gh-diff__no-preview">Binary file or no diff available</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="gh-diff">
+      <button className="gh-diff__file-header" onClick={() => setCollapsed(c => !c)}>
+        <span className="gh-diff__collapse-icon">{collapsed ? '▸' : '▾'}</span>
+        <span className={`gh-history__file-status gh-history__file-status--${status}`}>
+          {status === 'added' ? 'A' : status === 'removed' ? 'D' : status === 'renamed' ? 'R' : 'M'}
+        </span>
+        <span className="gh-diff__filename">{filename}</span>
+        <span className="gh-diff__file-stats">
+          {additions > 0 && <span className="gh-history__stat-add">+{additions}</span>}
+          {deletions > 0 && <span className="gh-history__stat-del">-{deletions}</span>}
+        </span>
+      </button>
+
+      {!collapsed && (
+        <div className="gh-diff__body">
+          {hunks.map((hunk, hi) => (
+            <div key={hi} className="gh-diff__hunk">
+              <div className="gh-diff__hunk-header">
+                <span>{hunk.header.split('@@').slice(0, 2).join('@@')} @@</span>
+                {hunk.context && <span className="gh-diff__hunk-ctx">{hunk.context}</span>}
+              </div>
+              <table className="gh-diff__table">
+                <tbody>
+                  {hunk.lines.map((line, li) => (
+                    <tr key={li} className={`gh-diff__line gh-diff__line--${line.type}`}>
+                      <td className="gh-diff__line-num gh-diff__line-num--old">{line.oldNum ?? ''}</td>
+                      <td className="gh-diff__line-num gh-diff__line-num--new">{line.newNum ?? ''}</td>
+                      <td className="gh-diff__line-marker">
+                        {line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' '}
+                      </td>
+                      <td className="gh-diff__line-content">
+                        <pre>{line.content}</pre>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiffPanel({ files, onClose, commitSha, title }) {
+  const [search, setSearch] = useState('');
+
+  const filtered = search.trim()
+    ? files.filter(f => f.filename.toLowerCase().includes(search.toLowerCase()))
+    : files;
+
+  const totalAdd = files.reduce((s, f) => s + (f.additions || 0), 0);
+  const totalDel = files.reduce((s, f) => s + (f.deletions || 0), 0);
+
+  return (
+    <div className="gh-diff-panel">
+      <div className="gh-diff-panel__header">
+        <div className="gh-diff-panel__title">
+          <DiffAddIcon />
+          <h3>Files changed</h3>
+          {title && <span className="gh-diff-panel__subtitle">{title}</span>}
+        </div>
+        <div className="gh-diff-panel__summary">
+          <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
+          <span className="gh-history__stat-add">+{totalAdd}</span>
+          <span className="gh-history__stat-del">-{totalDel}</span>
+        </div>
+        {onClose && <button className="gh-modal__close" onClick={onClose} aria-label="Close">&times;</button>}
+      </div>
+
+      {files.length > 3 && (
+        <div className="gh-diff-panel__search">
+          <SearchIcon />
+          <input
+            type="text"
+            placeholder="Filter files..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="gh-input gh-input--sm"
+          />
+        </div>
+      )}
+
+      <div className="gh-diff-panel__files">
+        {filtered.map(f => (
+          <DiffViewer
+            key={f.filename}
+            patch={f.patch}
+            filename={f.filename}
+            status={f.status}
+            additions={f.additions}
+            deletions={f.deletions}
+          />
+        ))}
+        {filtered.length === 0 && search && (
+          <p className="text-muted gh-loading">No files matching "{search}"</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Commit History Panel ─────────────────────────────
 
 function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullWidth, onFileClick, pr }) {
@@ -852,6 +1025,7 @@ function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullW
   const [expandedSha, setExpandedSha] = useState(null);
   const [commitDetail, setCommitDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [showDiffSha, setShowDiffSha] = useState(null);
   const searchTimer = useRef(null);
   const PER_PAGE = 30;
 
@@ -1056,8 +1230,8 @@ function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullW
                             </div>
                           )}
 
-                          {/* Changed files */}
-                          {commitDetail.files && commitDetail.files.length > 0 && (
+                          {/* Changed files (compact list) */}
+                          {commitDetail.files && commitDetail.files.length > 0 && showDiffSha !== c.sha && (
                             <div className="gh-history__files">
                               {commitDetail.files.map(f => (
                                 <div
@@ -1080,6 +1254,14 @@ function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullW
                           )}
 
                           <div className="gh-history__detail-actions">
+                            {commitDetail.files && commitDetail.files.some(f => f.patch) && (
+                              <button
+                                className={`btn btn-ghost btn-sm${showDiffSha === c.sha ? ' active' : ''}`}
+                                onClick={() => setShowDiffSha(showDiffSha === c.sha ? null : c.sha)}
+                              >
+                                <DiffAddIcon /> {showDiffSha === c.sha ? 'Hide Diff' : 'View Diff'}
+                              </button>
+                            )}
                             <a href={commitDetail.html_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
                               View on GitHub
                             </a>
@@ -1091,6 +1273,16 @@ function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullW
                               Copy SHA
                             </button>
                           </div>
+
+                          {/* Full diff view */}
+                          {showDiffSha === c.sha && commitDetail.files && (
+                            <DiffPanel
+                              files={commitDetail.files}
+                              commitSha={commitDetail.sha}
+                              title={c.message.split('\n')[0]}
+                              onClose={() => setShowDiffSha(null)}
+                            />
+                          )}
                         </>
                       ) : null}
                     </div>
@@ -1386,28 +1578,10 @@ function PRDetailView({ owner, repo, pr, branches, onBack, onFileClick }) {
           {files.length === 0 ? (
             <p className="text-muted gh-loading">No files changed</p>
           ) : (
-            <div className="gh-history__files gh-pr-files__list">
-              {files.map(f => (
-                <div
-                  key={f.filename}
-                  className={`gh-history__file-row${onFileClick ? ' clickable' : ''}`}
-                  onClick={onFileClick && f.status !== 'removed' ? () => onFileClick(f.filename) : undefined}
-                  role={onFileClick ? 'button' : undefined}
-                >
-                  <span className={`gh-history__file-status gh-history__file-status--${f.status}`}>
-                    {f.status === 'added' ? 'A' : f.status === 'removed' ? 'D' : f.status === 'renamed' ? 'R' : 'M'}
-                  </span>
-                  <span className="gh-history__file-name">
-                    {f.filename}
-                    {f.previous_filename && <span className="text-muted"> ← {f.previous_filename}</span>}
-                  </span>
-                  <span className="gh-history__file-diff">
-                    {f.additions > 0 && <span className="gh-history__stat-add">+{f.additions}</span>}
-                    {f.deletions > 0 && <span className="gh-history__stat-del">-{f.deletions}</span>}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <DiffPanel
+              files={files}
+              title={`PR #${pr.number}: ${detail?.title || pr.title}`}
+            />
           )}
         </div>
       )}

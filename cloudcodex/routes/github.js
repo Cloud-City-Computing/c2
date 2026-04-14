@@ -604,6 +604,7 @@ router.get('/github/repos/:owner/:repo/pulls/:number/files', asyncHandler(async 
     additions: f.additions,
     deletions: f.deletions,
     changes: f.changes,
+    patch: f.patch || null,
     previous_filename: f.previous_filename || null,
   }));
 
