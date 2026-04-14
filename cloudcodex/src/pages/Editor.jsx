@@ -270,6 +270,7 @@ function TiptapToolbar({ editor, onImageSelect }) {
             if (editor.isActive('link')) {
               editor.chain().focus().unsetLink().run();
             } else {
+              // eslint-disable-next-line no-alert
               const url = window.prompt('URL:');
               if (url) editor.chain().focus().setLink({ href: url }).run();
             }
