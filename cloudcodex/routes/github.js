@@ -519,6 +519,97 @@ router.post('/github/repos/:owner/:repo/pulls', asyncHandler(async (req, res) =>
   });
 }));
 
+/**
+ * GET /api/github/repos/:owner/:repo/pulls/:number
+ * Get details of a single pull request.
+ */
+router.get('/github/repos/:owner/:repo/pulls/:number', asyncHandler(async (req, res) => {
+  const { owner, repo, number } = req.params;
+
+  const data = await githubFetch(req.ghToken,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${encodeURIComponent(number)}`
+  );
+
+  res.json({
+    success: true,
+    pull: {
+      number: data.number,
+      title: data.title,
+      body: data.body,
+      state: data.state,
+      merged: data.merged,
+      html_url: data.html_url,
+      head: { ref: data.head.ref, sha: data.head.sha, label: data.head.label },
+      base: { ref: data.base.ref, sha: data.base.sha, label: data.base.label },
+      user: { login: data.user.login, avatar_url: data.user.avatar_url },
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      merged_at: data.merged_at,
+      commits: data.commits,
+      additions: data.additions,
+      deletions: data.deletions,
+      changed_files: data.changed_files,
+    },
+  });
+}));
+
+/**
+ * GET /api/github/repos/:owner/:repo/pulls/:number/commits
+ * List commits in a pull request.
+ * Query: ?per_page=30&page=1
+ */
+router.get('/github/repos/:owner/:repo/pulls/:number/commits', asyncHandler(async (req, res) => {
+  const { owner, repo, number } = req.params;
+  const { per_page = 30, page = 1 } = req.query;
+
+  const data = await githubFetch(req.ghToken,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${encodeURIComponent(number)}/commits?per_page=${Math.min(Number(per_page), 100)}&page=${page}`
+  );
+
+  const commits = data.map(c => ({
+    sha: c.sha,
+    message: c.commit.message,
+    date: c.commit.author.date,
+    author: {
+      name: c.commit.author.name,
+      login: c.author?.login || null,
+      avatar_url: c.author?.avatar_url || null,
+    },
+    committer: {
+      name: c.commit.committer.name,
+      login: c.committer?.login || null,
+    },
+    html_url: c.html_url,
+  }));
+
+  res.json({ success: true, commits });
+}));
+
+/**
+ * GET /api/github/repos/:owner/:repo/pulls/:number/files
+ * List files changed in a pull request.
+ * Query: ?per_page=30&page=1
+ */
+router.get('/github/repos/:owner/:repo/pulls/:number/files', asyncHandler(async (req, res) => {
+  const { owner, repo, number } = req.params;
+  const { per_page = 30, page = 1 } = req.query;
+
+  const data = await githubFetch(req.ghToken,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${encodeURIComponent(number)}/files?per_page=${Math.min(Number(per_page), 100)}&page=${page}`
+  );
+
+  const files = data.map(f => ({
+    filename: f.filename,
+    status: f.status,
+    additions: f.additions,
+    deletions: f.deletions,
+    changes: f.changes,
+    previous_filename: f.previous_filename || null,
+  }));
+
+  res.json({ success: true, files });
+}));
+
 // --- Repo Info ---
 
 /**
@@ -545,6 +636,86 @@ router.get('/github/repos/:owner/:repo', asyncHandler(async (req, res) => {
       html_url: data.html_url,
       permissions: data.permissions,
       owner: { login: data.owner.login, avatar_url: data.owner.avatar_url },
+    },
+  });
+}));
+
+// --- Commit History ---
+
+/**
+ * GET /api/github/repos/:owner/:repo/commits
+ * List commits for a repo, optionally filtered by file path, branch, or author.
+ * Query: ?path=docs/readme.md&sha=main&author=username&per_page=30&page=1&since=&until=
+ */
+router.get('/github/repos/:owner/:repo/commits', asyncHandler(async (req, res) => {
+  const { owner, repo } = req.params;
+  const { path, sha, author, per_page = 30, page = 1, since, until } = req.query;
+
+  const params = new URLSearchParams();
+  if (path) params.set('path', path);
+  if (sha) params.set('sha', sha);
+  if (author) params.set('author', author);
+  if (since) params.set('since', since);
+  if (until) params.set('until', until);
+  params.set('per_page', String(Math.min(Number(per_page), 100)));
+  params.set('page', String(page));
+
+  const data = await githubFetch(req.ghToken,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?${params}`
+  );
+
+  const commits = data.map(c => ({
+    sha: c.sha,
+    message: c.commit.message,
+    date: c.commit.author.date,
+    author: {
+      name: c.commit.author.name,
+      login: c.author?.login || null,
+      avatar_url: c.author?.avatar_url || null,
+    },
+    committer: {
+      name: c.commit.committer.name,
+      login: c.committer?.login || null,
+    },
+    html_url: c.html_url,
+    stats: c.stats || null,
+  }));
+
+  res.json({ success: true, commits });
+}));
+
+/**
+ * GET /api/github/repos/:owner/:repo/commits/:sha
+ * Get a single commit's details including file diff stats.
+ */
+router.get('/github/repos/:owner/:repo/commits/:sha', asyncHandler(async (req, res) => {
+  const { owner, repo, sha } = req.params;
+
+  const data = await githubFetch(req.ghToken,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(sha)}`
+  );
+
+  res.json({
+    success: true,
+    commit: {
+      sha: data.sha,
+      message: data.commit.message,
+      date: data.commit.author.date,
+      author: {
+        name: data.commit.author.name,
+        login: data.author?.login || null,
+        avatar_url: data.author?.avatar_url || null,
+      },
+      html_url: data.html_url,
+      stats: data.stats,
+      files: (data.files || []).map(f => ({
+        filename: f.filename,
+        status: f.status,
+        additions: f.additions,
+        deletions: f.deletions,
+        changes: f.changes,
+        patch: f.patch || null,
+      })),
     },
   });
 }));

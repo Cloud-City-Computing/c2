@@ -106,6 +106,47 @@ function PlusIcon() {
   );
 }
 
+function HistoryIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.07-1.07A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.07 1.07A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z" />
+    </svg>
+  );
+}
+
+function CommitIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.5" />
+      <line x1="10.5" y1="10.5" x2="14" y2="14" />
+    </svg>
+  );
+}
+
+function DiffAddIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: '#3fb950' }}>
+      <path d="M2.75 9.25a.75.75 0 0 1 0-1.5h4.5v-4.5a.75.75 0 0 1 1.5 0v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5Z" />
+    </svg>
+  );
+}
+
+function DiffRemoveIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: '#f85149' }}>
+      <path d="M2.75 9.25a.75.75 0 0 1 0-1.5h10.5a.75.75 0 0 1 0 1.5Z" />
+    </svg>
+  );
+}
+
 // ─── File Tree Helpers ────────────────────────────────
 
 /**
@@ -797,6 +838,281 @@ function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onClose }) 
     </div>
   );
 }
+
+// ─── Commit History Panel ─────────────────────────────
+
+function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullWidth, onFileClick, pr }) {
+  const [commits, setCommits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [search, setSearch] = useState('');
+  const [authorFilter, setAuthorFilter] = useState('');
+  const [targetRef, setTargetRef] = useState(branch);
+  const [expandedSha, setExpandedSha] = useState(null);
+  const [commitDetail, setCommitDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const searchTimer = useRef(null);
+  const PER_PAGE = 30;
+
+  const loadCommits = useCallback(async (ref, authorQ, p = 1, append = false) => {
+    setLoading(true);
+    try {
+      let res;
+      if (pr) {
+        // Load commits from a PR
+        res = await apiFetch('GET', `/api/github/repos/${owner}/${repo}/pulls/${pr.number}/commits?per_page=${PER_PAGE}&page=${p}`);
+      } else {
+        const params = new URLSearchParams({ sha: ref, per_page: PER_PAGE, page: p });
+        if (filePath) params.set('path', filePath);
+        if (authorQ) params.set('author', authorQ);
+        res = await apiFetch('GET', `/api/github/repos/${owner}/${repo}/commits?${params}`);
+      }
+      if (append) {
+        setCommits(prev => [...prev, ...res.commits]);
+      } else {
+        setCommits(res.commits);
+      }
+      setHasMore(res.commits.length >= PER_PAGE);
+    } catch {
+      if (!append) setCommits([]);
+      setHasMore(false);
+    }
+    setLoading(false);
+  }, [owner, repo, filePath, pr]);
+
+  // Initial load & reload on filters
+  useEffect(() => {
+    setPage(1);
+    setExpandedSha(null);
+    setCommitDetail(null);
+    loadCommits(targetRef, authorFilter, 1);
+  }, [targetRef, authorFilter, loadCommits]);
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    loadCommits(targetRef, authorFilter, nextPage, true);
+  };
+
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value);
+  };
+
+  const handleAuthorChange = (e) => {
+    const val = e.target.value;
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setAuthorFilter(val.trim());
+    }, 400);
+  };
+
+  const handleToggleDetail = async (sha) => {
+    if (expandedSha === sha) {
+      setExpandedSha(null);
+      setCommitDetail(null);
+      return;
+    }
+    setExpandedSha(sha);
+    setCommitDetail(null);
+    setDetailLoading(true);
+    try {
+      const res = await apiFetch('GET', `/api/github/repos/${owner}/${repo}/commits/${sha}`);
+      setCommitDetail(res.commit);
+    } catch { /* ignore */ }
+    setDetailLoading(false);
+  };
+
+  // Client-side search filter on message/author
+  const filtered = search.trim()
+    ? commits.filter(c => {
+        const q = search.toLowerCase();
+        return c.message.toLowerCase().includes(q) ||
+               c.author.name.toLowerCase().includes(q) ||
+               (c.author.login || '').toLowerCase().includes(q) ||
+               c.sha.startsWith(q);
+      })
+    : commits;
+
+  const formatDate = (dateStr) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) +
+      ' at ' +
+      d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Group commits by date
+  const grouped = useMemo(() => {
+    const groups = [];
+    let currentDate = null;
+    for (const c of filtered) {
+      const date = new Date(c.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      if (date !== currentDate) {
+        currentDate = date;
+        groups.push({ date, commits: [c] });
+      } else {
+        groups[groups.length - 1].commits.push(c);
+      }
+    }
+    return groups;
+  }, [filtered]);
+
+  return (
+    <div className={`gh-history${fullWidth ? ' gh-history--full' : ''}`}>
+      <div className="gh-history__header">
+        <div className="gh-history__title">
+          <HistoryIcon />
+          <h3>{pr ? `PR #${pr.number}` : 'Commit History'}</h3>
+          {filePath && <span className="gh-history__filepath">{filePath}</span>}
+          {pr && <span className="gh-history__filepath">{pr.title}</span>}
+        </div>
+        {onClose && <button className="gh-modal__close" onClick={onClose} aria-label="Close">&times;</button>}
+      </div>
+
+      {/* Filters */}
+      <div className="gh-history__filters">
+        <div className="gh-history__search">
+          <SearchIcon />
+          <input
+            type="text"
+            placeholder="Search commits..."
+            value={search}
+            onChange={handleSearchChange}
+            className="gh-input gh-input--sm"
+          />
+        </div>
+        {!pr && (
+          <div className="gh-history__filter-row">
+            <div className="gh-history__filter">
+              <BranchIcon />
+              <select value={targetRef} onChange={(e) => setTargetRef(e.target.value)} className="gh-branch-select gh-branch-select--sm">
+                {branches.map(b => (
+                  <option key={b.name} value={b.name}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+            <input
+              type="text"
+              placeholder="Filter by author..."
+              onChange={handleAuthorChange}
+              className="gh-input gh-input--sm gh-history__author-input"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Commit list */}
+      <div className="gh-history__list">
+        {loading && commits.length === 0 ? (
+          <p className="text-muted gh-loading">Loading commits...</p>
+        ) : grouped.length === 0 ? (
+          <p className="text-muted gh-loading">{search ? 'No matching commits' : 'No commits found'}</p>
+        ) : (
+          grouped.map(group => (
+            <div key={group.date} className="gh-history__group">
+              <div className="gh-history__date-header">
+                <CommitIcon />
+                <span>{group.date}</span>
+              </div>
+              {group.commits.map(c => (
+                <div key={c.sha} className={`gh-history__commit${expandedSha === c.sha ? ' expanded' : ''}`}>
+                  <button className="gh-history__commit-row" onClick={() => handleToggleDetail(c.sha)}>
+                    <div className="gh-history__commit-main">
+                      {c.author.avatar_url && (
+                        <img src={c.author.avatar_url} alt="" className="gh-history__avatar" />
+                      )}
+                      <div className="gh-history__commit-info">
+                        <span className="gh-history__commit-msg">{c.message.split('\n')[0]}</span>
+                        <span className="gh-history__commit-meta">
+                          <strong>{c.author.login || c.author.name}</strong>
+                          {' · '}
+                          {timeAgo(c.date)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="gh-history__commit-sha">
+                      <code>{c.sha.slice(0, 7)}</code>
+                    </div>
+                  </button>
+
+                  {/* Expanded detail */}
+                  {expandedSha === c.sha && (
+                    <div className="gh-history__detail">
+                      {detailLoading ? (
+                        <p className="text-muted gh-loading">Loading details...</p>
+                      ) : commitDetail ? (
+                        <>
+                          {/* Full commit message */}
+                          {commitDetail.message.includes('\n') && (
+                            <pre className="gh-history__full-msg">{commitDetail.message}</pre>
+                          )}
+
+                          {/* Stats summary */}
+                          {commitDetail.stats && (
+                            <div className="gh-history__stats">
+                              <span className="gh-history__stat-files">{commitDetail.files.length} file{commitDetail.files.length !== 1 ? 's' : ''} changed</span>
+                              <span className="gh-history__stat-add">+{commitDetail.stats.additions}</span>
+                              <span className="gh-history__stat-del">-{commitDetail.stats.deletions}</span>
+                            </div>
+                          )}
+
+                          {/* Changed files */}
+                          {commitDetail.files && commitDetail.files.length > 0 && (
+                            <div className="gh-history__files">
+                              {commitDetail.files.map(f => (
+                                <div
+                                  key={f.filename}
+                                  className={`gh-history__file-row${onFileClick ? ' clickable' : ''}`}
+                                  onClick={onFileClick ? () => onFileClick(f.filename) : undefined}
+                                  role={onFileClick ? 'button' : undefined}
+                                >
+                                  <span className={`gh-history__file-status gh-history__file-status--${f.status}`}>
+                                    {f.status === 'added' ? 'A' : f.status === 'removed' ? 'D' : f.status === 'renamed' ? 'R' : 'M'}
+                                  </span>
+                                  <span className="gh-history__file-name">{f.filename}</span>
+                                  <span className="gh-history__file-diff">
+                                    {f.additions > 0 && <span className="gh-history__stat-add">+{f.additions}</span>}
+                                    {f.deletions > 0 && <span className="gh-history__stat-del">-{f.deletions}</span>}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="gh-history__detail-actions">
+                            <a href={commitDetail.html_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+                              View on GitHub
+                            </a>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => navigator.clipboard.writeText(commitDetail.sha)}
+                              title="Copy full SHA"
+                            >
+                              Copy SHA
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+        {hasMore && !loading && filtered.length === commits.length && (
+          <button className="btn btn-ghost btn-sm gh-load-more" onClick={handleLoadMore}>
+            Load older commits
+          </button>
+        )}
+        {loading && commits.length > 0 && (
+          <p className="text-muted gh-loading">Loading more...</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── File Viewer/Editor ──────────────────────────────
 
 function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNavigateBack, onBranchCreated, onFileDeleted, onFileRenamed }) {
@@ -807,6 +1123,7 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
   const [showCommit, setShowCommit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showRename, setShowRename] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [currentSha, setCurrentSha] = useState(null);
   const [currentBranch, setCurrentBranch] = useState(branch);
 
@@ -873,6 +1190,13 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
           )}
           {!editing && (
             <>
+              <button
+                className={`btn btn-ghost btn-sm${showHistory ? ' active' : ''}`}
+                onClick={() => setShowHistory(h => !h)}
+                title="Commit history"
+              >
+                <HistoryIcon /> History
+              </button>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowRename(true)} title="Rename / Move">
                 <RenameIcon /> Rename
               </button>
@@ -898,26 +1222,41 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
         </div>
       </div>
 
-      {editing ? (
-          isMarkdown ? (
-            <MarkdownEditorPane content={editContent} onChange={setEditContent} />
+      <div className={`gh-file-body${showHistory ? ' gh-file-body--with-history' : ''}`}>
+        <div className="gh-file-body__content">
+          {editing ? (
+              isMarkdown ? (
+                <MarkdownEditorPane content={editContent} onChange={setEditContent} />
+              ) : (
+                <textarea
+                  className="gh-editor-textarea gh-editor-textarea--plain"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  spellCheck={false}
+                />
+              )
           ) : (
-            <textarea
-              className="gh-editor-textarea gh-editor-textarea--plain"
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              spellCheck={false}
-            />
-          )
-      ) : (
-        <div className="gh-file-content">
-          {isMarkdown ? (
-            <MarkdownViewer content={file.content} />
-          ) : (
-            <pre className="gh-file-raw"><code>{file.content}</code></pre>
+            <div className="gh-file-content">
+              {isMarkdown ? (
+                <MarkdownViewer content={file.content} />
+              ) : (
+                <pre className="gh-file-raw"><code>{file.content}</code></pre>
+              )}
+            </div>
           )}
         </div>
-      )}
+
+        {showHistory && (
+          <CommitHistory
+            owner={owner}
+            repo={repo}
+            filePath={filePath}
+            branch={currentBranch}
+            branches={branches}
+            onClose={() => setShowHistory(false)}
+          />
+        )}
+      </div>
 
       {showCommit && (
         <CommitPanel
@@ -961,6 +1300,235 @@ function FileView({ owner, repo, filePath, branch, branches, defaultBranch, onNa
           }}
           onClose={() => setShowRename(false)}
         />
+      )}
+    </div>
+  );
+}
+
+// ─── PR Detail View ──────────────────────────────────
+
+function PRDetailView({ owner, repo, pr, branches, onBack, onFileClick }) {
+  const [detail, setDetail] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('commits'); // 'commits' | 'files'
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const [detailRes, filesRes] = await Promise.all([
+          apiFetch('GET', `/api/github/repos/${owner}/${repo}/pulls/${pr.number}`),
+          apiFetch('GET', `/api/github/repos/${owner}/${repo}/pulls/${pr.number}/files?per_page=100`),
+        ]);
+        setDetail(detailRes.pull);
+        setFiles(filesRes.files);
+      } catch { /* ignore */ }
+      setLoading(false);
+    })();
+  }, [owner, repo, pr.number]);
+
+  if (loading) return <p className="text-muted gh-loading">Loading PR details...</p>;
+
+  return (
+    <div className="gh-pr-detail">
+      <div className="gh-pr-detail__header">
+        <button className="btn btn-ghost btn-sm" onClick={onBack}>&larr; Pull Requests</button>
+        <div className="gh-pr-detail__title-row">
+          <PullRequestIcon />
+          <h3>{detail?.title || pr.title}</h3>
+          <span className={`gh-pr-badge gh-pr-badge--${detail?.merged ? 'merged' : detail?.state || pr.state}`}>
+            {detail?.merged ? 'Merged' : (detail?.state || pr.state)}
+          </span>
+        </div>
+        {detail && (
+          <div className="gh-pr-detail__meta">
+            <span>#{detail.number}</span>
+            <span>·</span>
+            <span>{detail.head.ref} → {detail.base.ref}</span>
+            <span>·</span>
+            <span>{detail.commits} commit{detail.commits !== 1 ? 's' : ''}</span>
+            <span>·</span>
+            <span className="gh-history__stat-add">+{detail.additions}</span>
+            <span className="gh-history__stat-del">-{detail.deletions}</span>
+            <span>·</span>
+            <span>{detail.changed_files} file{detail.changed_files !== 1 ? 's' : ''}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="gh-pr-detail__tabs">
+        <button className={`gh-tab${tab === 'commits' ? ' active' : ''}`} onClick={() => setTab('commits')}>
+          <CommitIcon /> Commits
+        </button>
+        <button className={`gh-tab${tab === 'files' ? ' active' : ''}`} onClick={() => setTab('files')}>
+          <FileIcon isMarkdown={false} /> Changed Files
+        </button>
+        {detail?.html_url && (
+          <a href={detail.html_url} target="_blank" rel="noopener noreferrer" className="gh-tab gh-tab--link">
+            View on GitHub ↗
+          </a>
+        )}
+      </div>
+
+      {tab === 'commits' ? (
+        <CommitHistory
+          owner={owner}
+          repo={repo}
+          branch={pr.head.ref}
+          branches={branches}
+          fullWidth
+          pr={pr}
+          onFileClick={onFileClick}
+        />
+      ) : (
+        <div className="gh-pr-files">
+          {files.length === 0 ? (
+            <p className="text-muted gh-loading">No files changed</p>
+          ) : (
+            <div className="gh-history__files gh-pr-files__list">
+              {files.map(f => (
+                <div
+                  key={f.filename}
+                  className={`gh-history__file-row${onFileClick ? ' clickable' : ''}`}
+                  onClick={onFileClick && f.status !== 'removed' ? () => onFileClick(f.filename) : undefined}
+                  role={onFileClick ? 'button' : undefined}
+                >
+                  <span className={`gh-history__file-status gh-history__file-status--${f.status}`}>
+                    {f.status === 'added' ? 'A' : f.status === 'removed' ? 'D' : f.status === 'renamed' ? 'R' : 'M'}
+                  </span>
+                  <span className="gh-history__file-name">
+                    {f.filename}
+                    {f.previous_filename && <span className="text-muted"> ← {f.previous_filename}</span>}
+                  </span>
+                  <span className="gh-history__file-diff">
+                    {f.additions > 0 && <span className="gh-history__stat-add">+{f.additions}</span>}
+                    {f.deletions > 0 && <span className="gh-history__stat-del">-{f.deletions}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Repo Activity View (replaces welcome when no file selected) ──
+
+function RepoActivityView({ owner, repo, repoInfo, branch, branches, onNewFile, onFileClick }) {
+  const [tab, setTab] = useState('activity'); // 'activity' | 'prs'
+  const [pulls, setPulls] = useState([]);
+  const [pullsLoading, setPullsLoading] = useState(false);
+  const [pullsState, setPullsState] = useState('open');
+  const [selectedPR, setSelectedPR] = useState(null);
+
+  // Load PRs when switching to that tab
+  useEffect(() => {
+    if (tab !== 'prs') return;
+    (async () => {
+      setPullsLoading(true);
+      try {
+        const res = await apiFetch('GET', `/api/github/repos/${owner}/${repo}/pulls?state=${pullsState}&per_page=30`);
+        setPulls(res.pulls);
+      } catch { /* ignore */ }
+      setPullsLoading(false);
+    })();
+  }, [owner, repo, tab, pullsState]);
+
+  if (selectedPR) {
+    return (
+      <PRDetailView
+        owner={owner}
+        repo={repo}
+        pr={selectedPR}
+        branches={branches}
+        onBack={() => setSelectedPR(null)}
+        onFileClick={onFileClick}
+      />
+    );
+  }
+
+  return (
+    <div className="gh-activity">
+      {/* Header */}
+      <div className="gh-activity__header">
+        <div className="gh-activity__repo-info">
+          <RepoIcon />
+          <h2>{repoInfo?.full_name || `${owner}/${repo}`}</h2>
+          {repoInfo?.private && <LockIcon />}
+        </div>
+        {repoInfo?.description && <p className="text-muted">{repoInfo.description}</p>}
+        <div className="gh-activity__actions">
+          <button className="btn btn-primary btn-sm" onClick={onNewFile}>
+            <PlusIcon /> New file
+          </button>
+          {repoInfo?.html_url && (
+            <a href={repoInfo.html_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+              Open on GitHub
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="gh-activity__tabs">
+        <button className={`gh-tab${tab === 'activity' ? ' active' : ''}`} onClick={() => setTab('activity')}>
+          <HistoryIcon /> Branch History
+        </button>
+        <button className={`gh-tab${tab === 'prs' ? ' active' : ''}`} onClick={() => setTab('prs')}>
+          <PullRequestIcon /> Pull Requests
+        </button>
+      </div>
+
+      {/* Content */}
+      {tab === 'activity' ? (
+        <CommitHistory
+          owner={owner}
+          repo={repo}
+          branch={branch}
+          branches={branches}
+          fullWidth
+          onFileClick={onFileClick}
+        />
+      ) : (
+        <div className="gh-pr-list">
+          <div className="gh-pr-list__filter">
+            <select value={pullsState} onChange={(e) => setPullsState(e.target.value)} className="gh-branch-select gh-branch-select--sm">
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          {pullsLoading ? (
+            <p className="text-muted gh-loading">Loading pull requests...</p>
+          ) : pulls.length === 0 ? (
+            <p className="text-muted gh-loading">No {pullsState === 'all' ? '' : pullsState} pull requests</p>
+          ) : (
+            <div className="gh-pr-list__items">
+              {pulls.map(pr => (
+                <button key={pr.number} className="gh-pr-card" onClick={() => setSelectedPR(pr)}>
+                  <div className="gh-pr-card__header">
+                    <PullRequestIcon />
+                    <span className="gh-pr-card__title">{pr.title}</span>
+                    <span className={`gh-pr-badge gh-pr-badge--${pr.state}`}>{pr.state}</span>
+                  </div>
+                  <div className="gh-pr-card__meta">
+                    <span>#{pr.number}</span>
+                    <span>·</span>
+                    <span>{pr.head.ref} → {pr.base.ref}</span>
+                    <span>·</span>
+                    {pr.user.avatar_url && <img src={pr.user.avatar_url} alt="" className="gh-history__avatar" style={{ width: 16, height: 16 }} />}
+                    <span>{pr.user.login}</span>
+                    <span>·</span>
+                    <span className="text-muted">{timeAgo(pr.updated_at)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1135,22 +1703,15 @@ function RepoBrowser({ owner, repo: repoName, onBack, fromArchiveId }) {
             }}
           />
         ) : (
-          <div className="gh-welcome">
-            <RepoIcon />
-            <h2>{repoInfo?.full_name || `${owner}/${repoName}`}</h2>
-            {repoInfo?.description && <p className="text-muted">{repoInfo.description}</p>}
-            <p className="text-muted text-sm">Select a file from the tree to view or edit it.</p>
-            <div className="gh-welcome__actions">
-              <button className="btn btn-primary btn-sm" onClick={() => setShowNewFile(true)}>
-                <PlusIcon /> New file
-              </button>
-              {repoInfo?.html_url && (
-                <a href={repoInfo.html_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
-                  Open on GitHub
-                </a>
-              )}
-            </div>
-          </div>
+          <RepoActivityView
+            owner={owner}
+            repo={repoName}
+            repoInfo={repoInfo}
+            branch={branch}
+            branches={branches}
+            onNewFile={() => setShowNewFile(true)}
+            onFileClick={(path) => setSelectedFile(path)}
+          />
         )}
       </div>
 
