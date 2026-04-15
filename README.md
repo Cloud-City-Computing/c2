@@ -188,7 +188,7 @@ cd c2
 cp .env.example .env
 ```
 
-Open `.env` and set your database credentials. SMTP settings are optional but required for password reset and email-based two-factor authentication.
+Open `.env` and set your database credentials, SMTP credentials, and admin super-user credentials. SMTP is required — the server will not start without valid credentials. It is used for password reset, email-based two-factor authentication, and user invitations.
 
 ```dotenv
 # ─── Database ────────────────────────────────────────────────
@@ -203,10 +203,11 @@ APP_URL=http://localhost:3000
 CORS_ORIGIN=
 
 # ─── Admin ───────────────────────────────────────────────────
+ADMIN_USERNAME=admin
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
 
-# ─── SMTP (optional — required for password reset & email 2FA)
+# ─── SMTP (required — server will not start without valid credentials)
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USER=
@@ -216,7 +217,7 @@ SMTP_FROM=
 # ─── OAuth (optional — enables SSO and GitHub integration) ───
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_ALLOWED_DOMAIN=
+GOOGLE_OAUTH_DOMAIN=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 ```
@@ -294,16 +295,17 @@ All seed accounts use the password **`password`**.
 | `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
 | `APP_URL` | Base URL used in outbound email links | `http://localhost:3000` |
 | `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
-| `SMTP_HOST` | SMTP server hostname | — |
+| `SMTP_HOST` | SMTP server hostname | — (required) |
 | `SMTP_PORT` | SMTP server port | `587` |
-| `SMTP_USER` | SMTP username | — |
-| `SMTP_PASS` | SMTP password | — |
+| `SMTP_USER` | SMTP username | — (required) |
+| `SMTP_PASS` | SMTP password | — (required) |
 | `SMTP_FROM` | Sender address for outbound email | — |
-| `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — |
-| `ADMIN_PASSWORD` | Password for the admin super-user | — |
+| `ADMIN_USERNAME` | Username for the auto-created admin super-user | `admin` |
+| `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — (required) |
+| `ADMIN_PASSWORD` | Password for the admin super-user | — (required) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (enables Google SSO) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | — |
-| `GOOGLE_ALLOWED_DOMAIN` | Restrict Google SSO to a specific email domain | — |
+| `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |
 
