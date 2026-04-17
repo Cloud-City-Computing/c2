@@ -33,6 +33,10 @@ import favoritesRouter from './routes/favorites.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Trust the first proxy in a request (required for correct client IP behind Docker/reverse proxies)
+// Needed for rate limiting, sessions, and req.ip to work properly
+app.set('trust proxy', 1);
+
 // CORS: restrict API to same-origin requests only
 app.use('/api', cors({
   origin: (origin, cb) => {
