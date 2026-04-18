@@ -183,6 +183,32 @@ function TopBar({ user }) {
   );
 }
 
+// --- Mobile Bottom Navigation ---
+
+function MobileNav({ isAdmin }) {
+  const location = useLocation();
+  const items = isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+
+  return (
+    <nav className="mobile-nav" aria-label="Mobile navigation">
+      {items.map(({ to, label, Icon }) => (
+        <Link
+          key={to}
+          to={to}
+          className={`mobile-nav__item${
+            location.pathname === to ||
+            (to !== '/' && location.pathname.startsWith(to))
+              ? ' active' : ''
+          }`}
+        >
+          <Icon />
+          <span>{label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 // --- No Login ---
 
 function NoLoginMessage() {
@@ -306,6 +332,7 @@ function StdLayout({ children }) {
       <main className="main-content">
         {authChecked && (user ? children : <NoLoginMessage />)}
       </main>
+      {user && <MobileNav isAdmin={isAdmin} />}
       <footer className="log-footer">
         <p>&copy; {new Date().getFullYear()} <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
       </footer>

@@ -7789,4 +7789,158 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* =========================
+   Mobile Bottom Navigation
+========================= */
+
+/* Hidden by default — shown only in the mobile media query below */
+.mobile-nav {
+  display: none;
+}
+
+.mobile-nav__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 500;
+  transition: color 0.2s;
+  padding: 8px 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.mobile-nav__item.active {
+  color: var(--brand-blue);
+}
+
+.mobile-nav__item svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.mobile-nav__item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* =========================
+   Mobile Layout Overrides
+========================= */
+
+@media (max-width: 768px) {
+
+  /* Show bottom nav */
+  .mobile-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border-color);
+    z-index: 90;
+    align-items: stretch;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Push content above the fixed bottom nav */
+  .main-content {
+    padding-bottom: calc(16px + 56px);
+  }
+
+  /* Archive view: tree panel stacks on top of document */
+  .archive-view {
+    flex-direction: column;
+    margin: -16px; /* undo the 16px mobile padding from .main-content */
+    min-height: 0;
+  }
+
+  .archive-view__sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-height: 220px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    overflow-y: auto;
+  }
+
+  .archive-view--collapsed .archive-view__sidebar {
+    width: 100% !important;
+    max-height: 36px;
+    overflow: hidden;
+  }
+
+  .archive-view__main {
+    padding: 16px;
+    overflow-y: visible;
+  }
+
+  /* Tighten editor within archive on mobile */
+  .editor-log {
+    max-width: 100%;
+  }
+
+  /* Make read-only tables horizontally scrollable */
+  .document-readonly table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Wrap document meta on mobile */
+  .document-meta {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  /* Tighten home hero */
+  .home-hero {
+    padding: 20px 0 12px;
+  }
+
+  .home-hero h1 {
+    font-size: 22px;
+  }
+
+  /* Toolbar: tighter on small screens */
+  .editor-toolbar {
+    gap: 4px;
+    padding: 6px 8px;
+  }
+
+  /* Version preview: stack actions vertically */
+  .version-preview__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* Settings panels already go column at 768px;
+     make item-list full-width */
+  .settings-item-list {
+    width: 100%;
+  }
+
+  /* Card actions wrap on small screens */
+  .card__actions {
+    flex-wrap: wrap;
+  }
+
+  /* Topbar: hide brand text to gain space */
+  .topbar__brand-title {
+    display: none;
+  }
+}
+
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }
