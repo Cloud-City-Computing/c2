@@ -33,13 +33,23 @@ function NotFound() {
   );
 }
 
+/**
+ * Redirects mobile visitors away from the standalone editor route.
+ * On mobile, documents are view-only via the archive view.
+ */
+function MobileEditorGuard({ children }) {
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (isMobile) return <Navigate to="/" replace />;
+  return children;
+}
+
 function App() {
   return (
     <Suspense fallback={<PageLoader />}>
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/editor/:logId" element={<Editor />} />
+      <Route path="/editor/:logId" element={<MobileEditorGuard><Editor /></MobileEditorGuard>} />
       <Route path="/account" element={<AccountSettings />} />
       <Route path="/settings" element={<Navigate to="/account" replace />} />
       <Route path="/archives" element={<ArchivesPage />} />

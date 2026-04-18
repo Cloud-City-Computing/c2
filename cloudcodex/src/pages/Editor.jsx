@@ -770,6 +770,8 @@ function VersionHistory({ logId, onRestore, versionKey }) {
 
 // --- Editor Log ---
 
+const isMobileDevice = () => window.matchMedia('(max-width: 768px)').matches;
+
 export default function Editor({ embedded = false } = {}) {
   const params = useParams();
   const logId = params.logId;
@@ -1268,9 +1270,11 @@ export default function Editor({ embedded = false } = {}) {
           <>
             <div className="editor-toolbar">
               <div className="toolbar-group">
-                <button className="btn btn-primary btn-sm" onClick={() => setViewMode('edit')}>
-                  ✏️ Edit
-                </button>
+                {!isMobileDevice() && (
+                  <button className="btn btn-primary btn-sm" onClick={() => setViewMode('edit')}>
+                    ✏️ Edit
+                  </button>
+                )}
               </div>
 
               <span className="toolbar-divider" />
