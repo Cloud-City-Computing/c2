@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, Fragment } from 'react';
 import useClickOutside from '../hooks/useClickOutside';
+import useGitHubStatus from '../hooks/useGitHubStatus';
 
 const FORMATS = [
   ['html', 'HTML (.html)'],
@@ -17,6 +18,8 @@ const FORMATS = [
 export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm', btnLabel = '📥 Export ▾', menuClass = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const { connected: githubConnected } = useGitHubStatus();
+  const formats = githubConnected === false ? FORMATS.filter(([fmt]) => fmt !== 'github') : FORMATS;
 
   useClickOutside(ref, open, useCallback(() => setOpen(false), []));
 
@@ -30,7 +33,7 @@ export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm'
       <button className={btnClass} onClick={() => setOpen(v => !v)}>{btnLabel}</button>
       {open && (
         <div className={`export-dropdown__menu ${menuClass}`}>
-          {FORMATS.map(([fmt, label]) => (
+          {formats.map(([fmt, label]) => (
             <Fragment key={fmt}>
               {fmt === 'github' && <hr className="export-dropdown__separator" />}
               <button className={`export-dropdown__item${fmt === 'github' ? ' export-dropdown__item--github' : ''}`} onClick={() => handleClick(fmt)}>{label}</button>
