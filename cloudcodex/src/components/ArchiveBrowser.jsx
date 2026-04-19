@@ -21,6 +21,7 @@ import {
 import ConfirmDialog from './ConfirmDialog';
 import { toastError } from './Toast';
 import usePresence from '../hooks/usePresence';
+import useGitHubStatus from '../hooks/useGitHubStatus';
 import PresenceAvatars from './PresenceAvatars';
 import ExportMenu from './ExportMenu';
 import NewLogModal from './NewLogModal';
@@ -944,6 +945,7 @@ export default function ArchiveBrowser() {
   const hasAutoExpanded = useRef(false);
   const scrolledRef = useRef(false);
   const { getLogUsers } = usePresence();
+  const { connected: githubConnected } = useGitHubStatus();
 
   const squadFilter = searchParams.get('squad');
 
@@ -1110,7 +1112,7 @@ export default function ArchiveBrowser() {
             {expandedArchive === archive.id && (
               <div className="card__expanded-content archive-card__expanded">
                 <ArchiveAccess archiveId={archive.id} />
-                <LinkedRepos archiveId={archive.id} />
+                {githubConnected && <LinkedRepos archiveId={archive.id} />}
                 <LogTree key={archive.id} archiveId={archive.id} getLogUsers={getLogUsers} />
               </div>
             )}

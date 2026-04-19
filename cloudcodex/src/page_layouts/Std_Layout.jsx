@@ -19,6 +19,7 @@ import {
   fetchAdminStatus,
   validateInviteToken,
 } from '../util';
+import useGitHubStatus, { GitHubStatusProvider } from '../hooks/useGitHubStatus';
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
 // --- Icons ---
@@ -120,9 +121,10 @@ const NAV_ITEMS = [
 
 const ADMIN_NAV_ITEM = { to: '/admin', label: 'Admin', Icon: AdminIcon };
 
-function Sidebar({ collapsed, onToggle, isAdmin }) {
+function Sidebar({ collapsed, onToggle, isAdmin, githubConnected }) {
   const location = useLocation();
-  const items = isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const base = githubConnected === false ? NAV_ITEMS.filter(i => i.to !== '/github') : NAV_ITEMS;
+  const items = isAdmin ? [...base, ADMIN_NAV_ITEM] : base;
 
   return (
     <aside className="sidebar">
@@ -185,9 +187,10 @@ function TopBar({ user }) {
 
 // --- Mobile Bottom Navigation ---
 
-function MobileNav({ isAdmin }) {
+function MobileNav({ isAdmin, githubConnected }) {
   const location = useLocation();
-  const items = isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const base = githubConnected === false ? NAV_ITEMS.filter(i => i.to !== '/github') : NAV_ITEMS;
+  const items = isAdmin ? [...base, ADMIN_NAV_ITEM] : base;
 
   return (
     <nav className="mobile-nav" aria-label="Mobile navigation">
@@ -229,6 +232,7 @@ function StdLayout({ children }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const { connected: githubConnected } = useGitHubStatus();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('c2-user-prefs'));
@@ -327,12 +331,13 @@ function StdLayout({ children }) {
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(c => !c)}
           isAdmin={isAdmin}
+          githubConnected={githubConnected}
         />
       )}
       <main className="main-content">
         {authChecked && (user ? children : <NoLoginMessage />)}
       </main>
-      {user && <MobileNav isAdmin={isAdmin} />}
+      {user && <MobileNav isAdmin={isAdmin} githubConnected={githubConnected} />}
       <footer className="log-footer">
         <p>&copy; {new Date().getFullYear()} <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
       </footer>
@@ -340,4 +345,10 @@ function StdLayout({ children }) {
   );
 }
 
-export default StdLayout;
+export default function StdLayoutWrapper(props) {
+  return (
+    <GitHubStatusProvider enabled={true}>
+      <StdLayout {...props} />
+    </GitHubStatusProvider>
+  );
+}
