@@ -1,0 +1,40 @@
+services:
+  database:
+    image: mysql:8
+    container_name: cloudcodex-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    env_file:
+      - .env
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-u${DB_USER}", "-p${DB_PASS}"]
+      interval: 7s
+      timeout: 8s
+      retries: 15
+
+  app:
+    build:
+      context: ./cloudcodex
+      dockerfile: Dockerfile
+    container_name: cloudcodex-app
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    working_dir: /app
+
+volumes:
+  db_data:
