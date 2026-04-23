@@ -407,6 +407,7 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
       });
     } catch (err) {
       console.error('Failed to send squad invitation email:', err);
+      return res.status(500).json({ success: false, message: 'Failed to send squad invitation email' });
     }
   }
 

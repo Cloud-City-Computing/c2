@@ -339,6 +339,7 @@ router.post('/login', asyncHandler(async (req, res) => {
         });
       } catch (err) {
         console.error('Failed to send 2FA code email:', err);
+        return res.status(500).json({ success: false, message: 'Failed to send 2FA code email.' });
       }
     }
 
@@ -619,6 +620,7 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
       });
     } catch (err) {
       console.error('Failed to send password reset email:', err);
+      return res.status(500).json({ success: false, message: 'Failed to send password reset email.' });
     }
   }
 
@@ -809,6 +811,7 @@ router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
       });
     } catch (err) {
       console.error('Failed to send TOTP setup email:', err);
+      return res.status(500).json({ success: false, message: 'Failed to send TOTP setup email.' });
     }
 
     return res.json({
@@ -915,6 +918,7 @@ router.post('/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
     });
   } catch (err) {
     console.error('Failed to send 2FA disable confirmation email:', err);
+    return res.status(500).json({ success: false, message: 'Failed to send 2FA disable confirmation email.' });
   }
 
   res.json({ success: true, confirmToken, message: 'A verification code has been sent to your email.' });
