@@ -307,11 +307,14 @@ router.get('/oauth/google/callback', asyncHandler(async (req, res) => {
 
 /**
  * GET /api/oauth/status
- * Returns the authenticated user's linked OAuth providers.
+ * Returns the authenticated user's linked OAuth providers along with the
+ * provider username/avatar and current token status (for revocation UX).
  */
 router.get('/oauth/status', requireAuth, asyncHandler(async (req, res) => {
   const accounts = await c2_query(
-    `SELECT provider, provider_email, created_at FROM oauth_accounts WHERE user_id = ?`,
+    `SELECT provider, provider_email, provider_username, provider_avatar_url,
+            token_status, created_at
+       FROM oauth_accounts WHERE user_id = ?`,
     [req.user.id]
   );
 
@@ -461,6 +464,8 @@ router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
   }
 
   const githubUserId = String(ghUser.id);
+  const ghLogin = typeof ghUser.login === 'string' ? ghUser.login : null;
+  const ghAvatar = typeof ghUser.avatar_url === 'string' ? ghUser.avatar_url : null;
   const encToken = encryptToken(accessToken);
 
   // Check if already linked to this user
@@ -470,10 +475,13 @@ router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
   );
 
   if (existingLink) {
-    // Update the token and provider info
+    // Update the token and provider info; clear any prior 'revoked' state.
     await c2_query(
-      `UPDATE oauth_accounts SET provider_user_id = ?, provider_email = ?, encrypted_token = ? WHERE id = ?`,
-      [githubUserId, ghEmail, encToken, existingLink.id]
+      `UPDATE oauth_accounts
+         SET provider_user_id = ?, provider_email = ?, provider_username = ?,
+             provider_avatar_url = ?, encrypted_token = ?, token_status = 'active'
+       WHERE id = ?`,
+      [githubUserId, ghEmail, ghLogin, ghAvatar, encToken, existingLink.id]
     );
   } else {
     // Check if this GitHub account is linked to another user
@@ -486,9 +494,10 @@ router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
     }
 
     await c2_query(
-      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email, encrypted_token)
-       VALUES (?, 'github', ?, ?, ?)`,
-      [userId, githubUserId, ghEmail, encToken]
+      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email,
+        provider_username, provider_avatar_url, encrypted_token, token_status)
+       VALUES (?, 'github', ?, ?, ?, ?, ?, 'active')`,
+      [userId, githubUserId, ghEmail, ghLogin, ghAvatar, encToken]
     );
   }
 
@@ -551,19 +560,27 @@ router.post('/oauth/github/unlink', requireAuth, asyncHandler(async (req, res) =
 
 /**
  * GET /api/github/status
- * Returns whether the authenticated user has GitHub connected and basic info.
+ * Returns whether the authenticated user has GitHub connected, basic info,
+ * and the current token status so the UI can render a reconnect prompt
+ * when GitHub revoked the OAuth grant out-of-band.
  */
 router.get('/github/status', requireAuth, asyncHandler(async (req, res) => {
   const [account] = await c2_query(
-    `SELECT provider_email, provider_user_id FROM oauth_accounts WHERE user_id = ? AND provider = 'github' LIMIT 1`,
+    `SELECT provider_email, provider_user_id, provider_username, provider_avatar_url, token_status
+       FROM oauth_accounts WHERE user_id = ? AND provider = 'github' LIMIT 1`,
     [req.user.id]
   );
 
   res.json({
     success: true,
     connected: Boolean(account),
+    // `username` historically returned the email; keep that for compatibility.
     username: account?.provider_email || null,
     githubId: account?.provider_user_id || null,
+    login: account?.provider_username || null,
+    avatar_url: account?.provider_avatar_url || null,
+    token_status: account?.token_status || null,
+    needs_reconnect: account?.token_status === 'revoked',
   });
 }));
 

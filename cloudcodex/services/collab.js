@@ -594,6 +594,21 @@ async function setupDocSession(ws, user, logId, canWrite) {
 }
 
 /**
+ * Broadcast an arbitrary JSON message to all active connections on a log.
+ * Used by REST handlers (e.g. GitHub pull/push) to push side-channel events
+ * to live editors without going through the Yjs sync protocol.
+ */
+export function broadcastToDoc(logId, message) {
+  const entry = docs.get(logId);
+  if (!entry) return false;
+  const data = typeof message === 'string' ? message : JSON.stringify(message);
+  for (const [ws] of entry.conns) {
+    if (ws.readyState === 1) ws.send(data);
+  }
+  return true;
+}
+
+/**
  * Returns the number of active collaborative sessions (for diagnostics).
  */
 export function getActiveDocCount() {

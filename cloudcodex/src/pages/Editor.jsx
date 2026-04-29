@@ -66,6 +66,12 @@ import { toastError } from '../components/Toast';
 import CommentSidebar from '../components/CommentSidebar';
 import CommentForm from '../components/CommentForm';
 import CommentManager from '../components/CommentManager';
+import useGitHubLink from '../hooks/useGitHubLink';
+import GitHubSyncBanner from '../components/GitHubSyncBanner';
+import GitHubCodeEmbed from '../extensions/GitHubCodeEmbed';
+import GitHubIssueEmbed from '../extensions/GitHubIssueEmbed';
+import CodeEmbedPickerModal from '../components/github/CodeEmbedPickerModal';
+import IssuePickerModal from '../components/github/IssuePickerModal';
 
 // Configure marked for safe rendering
 marked.setOptions({ breaks: true, gfm: true });
@@ -313,6 +319,42 @@ function TiptapToolbar({ editor, onImageSelect }) {
         <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().insertDrawioBlock().run()} title="Diagram (draw.io)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><line x1="10" y1="6.5" x2="14" y2="6.5" /><line x1="6.5" y1="10" x2="6.5" y2="14" /><line x1="14" y1="17.5" x2="10" y2="17.5" /></svg>
         </button>
+        <button
+          className="tiptap-toolbar__btn"
+          onClick={() => {
+            showModal(
+              <CodeEmbedPickerModal
+                onInsert={(attrs) => {
+                  destroyModal();
+                  editor.chain().focus().insertGitHubCodeEmbed(attrs).run();
+                }}
+                onCancel={destroyModal}
+              />,
+              'modal-md'
+            );
+          }}
+          title="Insert GitHub code reference"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+        </button>
+        <button
+          className="tiptap-toolbar__btn"
+          onClick={() => {
+            showModal(
+              <IssuePickerModal
+                onInsert={(attrs) => {
+                  destroyModal();
+                  editor.chain().focus().insertGitHubIssueEmbed(attrs).run();
+                }}
+                onCancel={destroyModal}
+              />,
+              'modal-md'
+            );
+          }}
+          title="Insert GitHub issue reference"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2" fill="currentColor" /></svg>
+        </button>
         <button className="tiptap-toolbar__btn" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" /></svg>
         </button>
@@ -379,6 +421,8 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
       StarterKit.configure({ codeBlock: false, underline: false, undoRedo: false }), // disable undo-redo — Collaboration provides its own; disable underline — we configure it separately below
       CodeBlockWithLanguage,
       DrawioBlock,
+      GitHubCodeEmbed,
+      GitHubIssueEmbed,
       ResizableImage.configure({ inline: false, allowBase64: false }),
       Placeholder.configure({ placeholder: 'Start typing...' }),
       Underline,
@@ -792,6 +836,9 @@ export default function Editor({ embedded = false } = {}) {
   const [restoreKey, setRestoreKey] = useState(0);
   const [viewMode, setViewMode] = useState(embedded ? 'read' : 'edit'); // 'read' | 'edit'
 
+  // --- GitHub sync (link, status, pull/push/resolve) ---
+  const ghSync = useGitHubLink(logId ? Number(logId) : null);
+
   // --- Auto-save state ---
   const dirtyRef = useRef(false);          // true when local edits haven't been saved yet
   const lastSavedRef = useRef(null);       // timestamp of last successful save
@@ -1117,13 +1164,14 @@ export default function Editor({ embedded = false } = {}) {
 
   const [publishing, setPublishing] = useState(false);
 
-  const handlePublish = useCallback(async ({ title, notes } = {}) => {
+  const handlePublish = useCallback(async ({ title, notes, create_github_release, target_repo, tag_name } = {}) => {
     if (publishing) return;
     setStatus(null);
     setPublishing(true);
 
-    // Try WebSocket publish first if collab is connected
-    if (collabConnected) {
+    // Try WebSocket publish first if collab is connected. Note: WS publish
+    // doesn't support create_github_release; fall through to REST when set.
+    if (collabConnected && !create_github_release) {
       try {
         const result = await sendPublish({ title, notes, html: contentRef.current });
         if (result?.version) {
@@ -1142,12 +1190,15 @@ export default function Editor({ embedded = false } = {}) {
     try {
       const latestContent = contentRef.current;
       await saveDocument(Number(logId), latestContent, markdownContentRef.current);
-      const result = await publishVersion(logId, { title, notes });
+      const result = await publishVersion(logId, { title, notes, create_github_release, target_repo, tag_name });
       if (result?.version) {
         setDocumentData(d => d ? { ...d, version: result.version } : d);
       }
       setVersionKey(k => k + 1);
-      setStatus({ type: 'success', message: `Version ${result?.version ?? ''} published.` });
+      const releaseSuffix = result?.github_release
+        ? ` GitHub Release ${result.github_release.tag_name} created.`
+        : (result?.github_release_error ? ` (release failed: ${result.github_release_error})` : '');
+      setStatus({ type: 'success', message: `Version ${result?.version ?? ''} published.${releaseSuffix}` });
     } catch (e) {
       setStatus({ type: 'error', message: `Error publishing: ${e.body?.message ?? e.message}` });
     }
@@ -1157,6 +1208,7 @@ export default function Editor({ embedded = false } = {}) {
   const openPublishModal = useCallback(() => {
     showModal(
       <PublishModal
+        githubLink={ghSync.link}
         onPublish={async (opts) => {
           destroyModal();
           await handlePublish(opts);
@@ -1165,7 +1217,7 @@ export default function Editor({ embedded = false } = {}) {
       />,
       'modal-md'
     );
-  }, [handlePublish]);
+  }, [handlePublish, ghSync.link]);
 
   const handleTitleSave = async () => {
     if (!title.trim()) return;
@@ -1261,6 +1313,19 @@ export default function Editor({ embedded = false } = {}) {
             )}
           </div>
         </div>
+
+        {ghSync.link && (
+          <GitHubSyncBanner
+            link={ghSync.link}
+            status={ghSync.status}
+            loading={ghSync.loading}
+            conflict={ghSync.conflict}
+            onPull={ghSync.pull}
+            onPush={ghSync.push}
+            onResolve={ghSync.resolve}
+            onClearConflict={ghSync.clearConflict}
+          />
+        )}
 
         {status && (
           <p className={`editor-status ${status.type}`}>{status.message}</p>

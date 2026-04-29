@@ -12,6 +12,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import { apiFetch, timeAgo } from '../util';
+import CIStatusBadge from '../components/CIStatusBadge';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -413,6 +414,8 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
   const [newBranchName, setNewBranchName] = useState('');
   const [createPR, setCreatePR] = useState(true);
   const [prTitle, setPrTitle] = useState('');
+  const [draftPr, setDraftPr] = useState(false);
+  const [reviewers, setReviewers] = useState('');
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
@@ -466,12 +469,18 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
       // Optionally create PR
       if (mode === 'branch' && createPR) {
         const title = prTitle.trim() || commitMsg;
+        const reviewerList = reviewers
+          .split(/[,\s]+/)
+          .map((s) => s.trim().replace(/^@/, ''))
+          .filter(Boolean);
         try {
           const prRes = await apiFetch('POST', `/api/github/repos/${owner}/${repo}/pulls`, {
             title,
             body: `Updated \`${filePath}\` via Cloud Codex`,
             head: targetBranch,
             base: branch,
+            draft: draftPr,
+            reviewers: reviewerList,
           });
           setResult({
             type: 'pr',
@@ -554,16 +563,32 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
                 <span>Create a pull request</span>
               </label>
               {createPR && (
-                <div className="gh-field">
-                  <label className="gh-field__label">PR title</label>
-                  <input
-                    type="text"
-                    placeholder="Optional — defaults to commit message"
-                    value={prTitle}
-                    onChange={(e) => setPrTitle(e.target.value)}
-                    className="gh-input"
-                  />
-                </div>
+                <>
+                  <div className="gh-field">
+                    <label className="gh-field__label">PR title</label>
+                    <input
+                      type="text"
+                      placeholder="Optional — defaults to commit message"
+                      value={prTitle}
+                      onChange={(e) => setPrTitle(e.target.value)}
+                      className="gh-input"
+                    />
+                  </div>
+                  <label className="gh-commit-pr-check">
+                    <input type="checkbox" checked={draftPr} onChange={(e) => setDraftPr(e.target.checked)} />
+                    <span>Open as draft</span>
+                  </label>
+                  <div className="gh-field">
+                    <label className="gh-field__label">Reviewers <span className="text-muted">(GitHub usernames, comma-separated)</span></label>
+                    <input
+                      type="text"
+                      placeholder="alice, bob, octocat"
+                      value={reviewers}
+                      onChange={(e) => setReviewers(e.target.value)}
+                      className="gh-input"
+                    />
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -1929,7 +1954,7 @@ function PRDetailView({ owner, repo, pr, branches, onBack, onFileClick }) {
   const [detail, setDetail] = useState(null);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('commits'); // 'commits' | 'files'
+  const [tab, setTab] = useState('discussion'); // 'discussion' | 'commits' | 'files'
 
   useEffect(() => {
     (async () => {
@@ -1976,6 +2001,9 @@ function PRDetailView({ owner, repo, pr, branches, onBack, onFileClick }) {
       </div>
 
       <div className="gh-pr-detail__tabs">
+        <button className={`gh-tab${tab === 'discussion' ? ' active' : ''}`} onClick={() => setTab('discussion')}>
+          💬 Discussion
+        </button>
         <button className={`gh-tab${tab === 'commits' ? ' active' : ''}`} onClick={() => setTab('commits')}>
           <CommitIcon /> Commits
         </button>
@@ -1989,7 +2017,9 @@ function PRDetailView({ owner, repo, pr, branches, onBack, onFileClick }) {
         )}
       </div>
 
-      {tab === 'commits' ? (
+      {tab === 'discussion' ? (
+        <PRDiscussionTab owner={owner} repo={repo} prNumber={pr.number} />
+      ) : tab === 'commits' ? (
         <CommitHistory
           owner={owner}
           repo={repo}
@@ -2015,14 +2045,77 @@ function PRDetailView({ owner, repo, pr, branches, onBack, onFileClick }) {
   );
 }
 
+function PRDiscussionTab({ owner, repo, prNumber }) {
+  const [ghComments, setGhComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      apiFetch('GET', `/api/github/repos/${owner}/${repo}/pulls/${prNumber}/session`),
+      apiFetch('GET', `/api/github/repos/${owner}/${repo}/pulls/${prNumber}/comments`),
+    ])
+      .then(([, comm]) => { if (!cancelled) setGhComments(comm.comments || []); })
+      .catch((e) => { if (!cancelled) setError(e.body?.message || e.message || 'Failed to load discussion'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [owner, repo, prNumber]);
+
+  if (loading) return <p className="text-muted gh-loading">Loading discussion…</p>;
+  if (error) return <p className="form-error">{error}</p>;
+
+  // Group review comments by file path
+  const byPath = {};
+  for (const c of ghComments) {
+    const k = c.path || '_general';
+    if (!byPath[k]) byPath[k] = [];
+    byPath[k].push(c);
+  }
+  const paths = Object.keys(byPath).sort();
+
+  return (
+    <div className="gh-pr-discussion">
+      {paths.length === 0 && (
+        <p className="text-muted">No PR review comments yet. Use the Files tab to start one.</p>
+      )}
+      {paths.map((p) => (
+        <div key={p} className="gh-pr-discussion__file">
+          <h4 className="gh-pr-discussion__file-header">{p === '_general' ? 'General' : p}</h4>
+          <ul className="gh-pr-discussion__list">
+            {byPath[p].map((c) => (
+              <li key={c.id} className="gh-pr-discussion__item">
+                <div className="gh-pr-discussion__meta">
+                  {c.user.avatar_url && (
+                    <img src={c.user.avatar_url} alt="" width="20" height="20" style={{ borderRadius: '50%' }} />
+                  )}
+                  <strong>{c.user.login}</strong>
+                  {c.line && <span className="text-muted text-sm">on line {c.line}</span>}
+                  <a href={c.html_url} target="_blank" rel="noopener noreferrer" className="text-muted text-sm">
+                    {timeAgo(c.created_at)}
+                  </a>
+                </div>
+                <div className="gh-pr-discussion__body">{c.body}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Repo Activity View (replaces welcome when no file selected) ──
 
 function RepoActivityView({ owner, repo, repoInfo, branch, branches, onNewFile, onFileClick }) {
-  const [tab, setTab] = useState('activity'); // 'activity' | 'prs'
+  const [tab, setTab] = useState('activity'); // 'activity' | 'prs' | 'releases'
   const [pulls, setPulls] = useState([]);
   const [pullsLoading, setPullsLoading] = useState(false);
   const [pullsState, setPullsState] = useState('open');
   const [selectedPR, setSelectedPR] = useState(null);
+  const [releases, setReleases] = useState([]);
+  const [releasesLoading, setReleasesLoading] = useState(false);
 
   // Load PRs when switching to that tab
   useEffect(() => {
@@ -2036,6 +2129,19 @@ function RepoActivityView({ owner, repo, repoInfo, branch, branches, onNewFile, 
       setPullsLoading(false);
     })();
   }, [owner, repo, tab, pullsState]);
+
+  // Load releases when switching to that tab
+  useEffect(() => {
+    if (tab !== 'releases') return;
+    (async () => {
+      setReleasesLoading(true);
+      try {
+        const res = await apiFetch('GET', `/api/github/repos/${owner}/${repo}/releases`);
+        setReleases(res.releases || []);
+      } catch { /* ignore */ }
+      setReleasesLoading(false);
+    })();
+  }, [owner, repo, tab]);
 
   if (selectedPR) {
     return (
@@ -2080,6 +2186,9 @@ function RepoActivityView({ owner, repo, repoInfo, branch, branches, onNewFile, 
         <button className={`gh-tab${tab === 'prs' ? ' active' : ''}`} onClick={() => setTab('prs')}>
           <PullRequestIcon /> Pull Requests
         </button>
+        <button className={`gh-tab${tab === 'releases' ? ' active' : ''}`} onClick={() => setTab('releases')}>
+          🏷 Releases
+        </button>
       </div>
 
       {/* Content */}
@@ -2092,6 +2201,27 @@ function RepoActivityView({ owner, repo, repoInfo, branch, branches, onNewFile, 
           fullWidth
           onFileClick={onFileClick}
         />
+      ) : tab === 'releases' ? (
+        <div className="gh-releases">
+          {releasesLoading ? (
+            <p className="text-muted gh-loading">Loading releases...</p>
+          ) : releases.length === 0 ? (
+            <p className="text-muted gh-loading">No releases yet</p>
+          ) : (
+            releases.map((r) => (
+              <div key={r.id} className="gh-releases__item">
+                <div>
+                  <a className="gh-releases__tag" href={r.html_url} target="_blank" rel="noopener noreferrer">{r.tag_name}</a>
+                  {r.name && <span className="gh-releases__name">{r.name}</span>}
+                  {r.draft && <span className="gh-pr-badge"> draft</span>}
+                  {r.prerelease && <span className="gh-pr-badge"> prerelease</span>}
+                  {r.published_at && <span className="text-muted text-sm" style={{ marginLeft: 8 }}>{timeAgo(r.published_at)}</span>}
+                </div>
+                {r.body && <div className="gh-releases__body">{r.body}</div>}
+              </div>
+            ))
+          )}
+        </div>
       ) : (
         <div className="gh-pr-list">
           <div className="gh-pr-list__filter">
@@ -2113,6 +2243,7 @@ function RepoActivityView({ owner, repo, repoInfo, branch, branches, onNewFile, 
                     <PullRequestIcon />
                     <span className="gh-pr-card__title">{pr.title}</span>
                     <span className={`gh-pr-badge gh-pr-badge--${pr.state}`}>{pr.state}</span>
+                    <CIStatusBadge owner={owner} repo={repo} branch={pr.head.ref} compact />
                   </div>
                   <div className="gh-pr-card__meta">
                     <span>#{pr.number}</span>

@@ -1,12 +1,24 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
+vi.mock('../../routes/oauth.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    decryptToken: vi.fn((token) => token ? 'mock-github-token' : null),
+  };
+});
+
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
 describe('Document Routes', () => {
   beforeEach(() => {
     resetMocks();
+    mockFetch.mockReset();
   });
 
   // ── GET /api/document ─────────────────────────────────────
@@ -336,6 +348,86 @@ describe('Document Routes', () => {
         .post('/api/document/1/publish')
         .set('Authorization', 'Bearer valid-token')
         .send({ title: 'a'.repeat(256) });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('creates a GitHub release when create_github_release is set', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, version: 4, archive_id: 1, squad_id: null, archive_creator: 1 }])
+        .mockResolvedValueOnce([]) // UPDATE logs
+        .mockResolvedValueOnce({ insertId: 77 }) // INSERT version
+        .mockResolvedValueOnce([{ encrypted_token: 'token-cipher' }]) // SELECT oauth token
+        .mockResolvedValueOnce([]); // UPDATE versions with release info
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 1234567,
+          tag_name: 'v5',
+          html_url: 'https://github.com/u/r/releases/tag/v5',
+        }),
+      });
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token')
+        .send({
+          title: 'Release v5',
+          notes: 'Major update',
+          create_github_release: true,
+          target_repo: 'u/r',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.github_release).toMatchObject({ id: 1234567, tag_name: 'v5' });
+      expect(res.body.github_release_error).toBeNull();
+
+      const releaseUpdateCall = c2_query.mock.calls.find(c =>
+        typeof c[0] === 'string' && c[0].includes('UPDATE versions')
+      );
+      expect(releaseUpdateCall).toBeTruthy();
+      expect(releaseUpdateCall[1][0]).toBe(1234567);
+    });
+
+    it('reports github_release_error when GitHub API fails', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, version: 4, archive_id: 1, squad_id: null, archive_creator: 1 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce({ insertId: 77 })
+        .mockResolvedValueOnce([{ encrypted_token: 'token-cipher' }]);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({ message: 'Tag already exists' }),
+      });
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token')
+        .send({
+          create_github_release: true,
+          target_repo: 'u/r',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.github_release).toBeNull();
+      expect(res.body.github_release_error).toMatch(/Tag already exists/);
+    });
+
+    it('rejects create_github_release without target_repo', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .post('/api/document/1/publish')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ create_github_release: true });
 
       expect(res.status).toBe(400);
     });

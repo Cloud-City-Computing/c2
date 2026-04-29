@@ -124,6 +124,59 @@ export const deleteWorkspace = (id) => apiFetch('DELETE', `/api/workspaces/${id}
 export const fetchArchiveRepos = (archiveId) => apiFetch('GET', `/api/archives/${archiveId}/repos`);
 export const linkArchiveRepo = (archiveId, repo) => apiFetch('POST', `/api/archives/${archiveId}/repos`, repo);
 export const unlinkArchiveRepo = (archiveId, repoId) => apiFetch('DELETE', `/api/archives/${archiveId}/repos/${repoId}`);
+export const importArchiveRepo = (archiveId, repoId) =>
+  apiFetch('POST', `/api/github/archives/${archiveId}/repos/${repoId}/import`);
+export const refreshArchiveRepo = (archiveId, repoId) =>
+  apiFetch('POST', `/api/github/archives/${archiveId}/repos/${repoId}/refresh`);
+
+// --- GitHub Sync APIs (P0) ---
+
+export const fetchGitHubLink = (logId) => apiFetch('GET', `/api/github/link/${logId}`);
+export const fetchGitHubSyncStatus = (logId) => apiFetch('GET', `/api/github/link/${logId}/status`);
+export const pullGitHub = (logId, strategy = 'merge') =>
+  apiFetch('POST', `/api/github/link/${logId}/pull`, { strategy });
+export const pushGitHub = (logId, opts) =>
+  apiFetch('POST', `/api/github/link/${logId}/push`, opts);
+export const resolveGitHub = (logId, payload) =>
+  apiFetch('POST', `/api/github/link/${logId}/resolve`, payload);
+
+// --- P2 GitHub APIs (PR-as-doc, issues, users) ---
+
+export const fetchPrSession = (owner, repo, number) =>
+  apiFetch('GET', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/session`);
+export const fetchPrComments = (owner, repo, number) =>
+  apiFetch('GET', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/comments`);
+export const postPrComment = (owner, repo, number, payload) =>
+  apiFetch('POST', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/comments`, payload);
+export const submitPrReview = (owner, repo, number, payload) =>
+  apiFetch('POST', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/reviews`, payload);
+export const searchGitHubIssues = (q) =>
+  apiFetch('GET', `/api/github/issues/search?q=${encodeURIComponent(q)}`);
+export const fetchGitHubIssue = (owner, repo, number) =>
+  apiFetch('GET', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${number}`);
+export const createGitHubIssue = (owner, repo, payload) =>
+  apiFetch('POST', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues`, payload);
+export const searchGitHubUsers = (q) =>
+  apiFetch('GET', `/api/github/users/search?q=${encodeURIComponent(q)}`);
+export const fetchLogsByGitHubRef = (repo, kind, ref) =>
+  apiFetch('GET', `/api/logs/by-github-ref?repo=${encodeURIComponent(repo)}&kind=${encodeURIComponent(kind)}&ref=${encodeURIComponent(ref)}`);
+
+// --- P3 GitHub APIs (CI, releases, squad-team) ---
+
+export const fetchActionsRuns = (owner, repo, branch) =>
+  apiFetch('GET', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`);
+export const fetchCheckRuns = (owner, repo, sha) =>
+  apiFetch('GET', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(sha)}/check-runs`);
+export const fetchReleases = (owner, repo) =>
+  apiFetch('GET', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`);
+export const createRelease = (owner, repo, payload) =>
+  apiFetch('POST', `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`, payload);
+export const previewSquadTeamSync = (squadId) =>
+  apiFetch('GET', `/api/squads/${squadId}/github-team/preview`);
+export const syncSquadTeam = (squadId) =>
+  apiFetch('POST', `/api/squads/${squadId}/github-team/sync`);
+export const publishVersionWithRelease = (logId, payload) =>
+  apiFetch('POST', `/api/document/${logId}/publish`, payload);
 
 // --- Squad APIs ---
 
@@ -273,8 +326,8 @@ export const restoreVersion = (logId, versionId) =>
   apiFetch('POST', `/api/document/${logId}/versions/${versionId}/restore`);
 export const deleteVersion = (logId, versionId) =>
   apiFetch('DELETE', `/api/document/${logId}/versions/${versionId}`);
-export const publishVersion = (logId, { title, notes } = {}) =>
-  apiFetch('POST', `/api/document/${logId}/publish`, { title, notes });
+export const publishVersion = (logId, payload = {}) =>
+  apiFetch('POST', `/api/document/${logId}/publish`, payload);
 
 // --- Upload API ---
 

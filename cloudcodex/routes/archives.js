@@ -525,8 +525,9 @@ router.get('/archives/:archiveId/repos', requireAuth, asyncHandler(async (req, r
   }
 
   const repos = await c2_query(
-    `SELECT ar.id, ar.repo_full_name, ar.repo_owner, ar.repo_name, ar.linked_at,
-            u.name AS linked_by_name
+    `SELECT ar.id, ar.repo_full_name, ar.repo_owner, ar.repo_name,
+            ar.default_branch, ar.docs_path, ar.auto_link_imports,
+            ar.linked_at, u.name AS linked_by_name
      FROM archive_repos ar
      LEFT JOIN users u ON ar.linked_by = u.id
      WHERE ar.archive_id = ?
@@ -553,7 +554,7 @@ router.post('/archives/:archiveId/repos', requireAuth, asyncHandler(async (req, 
     return res.status(403).json({ success: false, message: 'Only archive owners can link repos' });
   }
 
-  const { repoFullName, repoOwner, repoName } = req.body;
+  const { repoFullName, repoOwner, repoName, defaultBranch, docsPath, autoLinkImports } = req.body;
   if (!repoFullName || !repoOwner || !repoName) {
     return res.status(400).json({ success: false, message: 'repoFullName, repoOwner, and repoName are required' });
   }
@@ -563,9 +564,19 @@ router.post('/archives/:archiveId/repos', requireAuth, asyncHandler(async (req, 
 
   try {
     const result = await c2_query(
-      `INSERT INTO archive_repos (archive_id, repo_full_name, repo_owner, repo_name, linked_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [Number(archiveId), repoFullName.trim(), repoOwner.trim(), repoName.trim(), req.user.id]
+      `INSERT INTO archive_repos (archive_id, repo_full_name, repo_owner, repo_name,
+        default_branch, docs_path, auto_link_imports, linked_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        Number(archiveId),
+        repoFullName.trim(),
+        repoOwner.trim(),
+        repoName.trim(),
+        (defaultBranch || 'main').toString().slice(0, 255),
+        (docsPath || 'docs').toString().slice(0, 500),
+        autoLinkImports !== false,
+        req.user.id,
+      ]
     );
     res.status(201).json({ success: true, repoLinkId: result.insertId });
   } catch (err) {
