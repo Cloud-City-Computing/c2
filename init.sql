@@ -16,6 +16,8 @@ DROP TABLE IF EXISTS squad_invitations;
 DROP TABLE IF EXISTS squad_members;
 DROP TABLE IF EXISTS versions;
 DROP TABLE IF EXISTS logs;
+DROP TABLE IF EXISTS github_pr_sessions;
+DROP TABLE IF EXISTS github_embed_refs;
 DROP TABLE IF EXISTS archive_repos;
 DROP TABLE IF EXISTS archives;
 DROP TABLE IF EXISTS squad_permissions;
@@ -56,7 +58,10 @@ CREATE TABLE oauth_accounts (
   provider ENUM('google', 'github') NOT NULL,
   provider_user_id VARCHAR(255) NOT NULL,
   provider_email VARCHAR(255) NOT NULL,
+  provider_username VARCHAR(255) DEFAULT NULL,
+  provider_avatar_url VARCHAR(500) DEFAULT NULL,
   encrypted_token TEXT DEFAULT NULL,
+  token_status ENUM('active','revoked','unknown') DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   UNIQUE KEY uq_provider_user (provider, provider_user_id),
@@ -120,8 +125,12 @@ CREATE TABLE squads (
   name TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_by INT,
+  github_org VARCHAR(255) DEFAULT NULL,
+  github_team_slug VARCHAR(255) DEFAULT NULL,
+  team_sync_at TIMESTAMP NULL DEFAULT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_squad_team (github_org, github_team_slug)
 ) ENGINE=InnoDB;
 
 CREATE TABLE permissions (
@@ -194,8 +203,10 @@ CREATE TABLE archives (
   write_access_squads JSON DEFAULT (JSON_ARRAY()),
   read_access_workspace BOOLEAN DEFAULT FALSE,
   write_access_workspace BOOLEAN DEFAULT FALSE,
+  `system` BOOLEAN DEFAULT FALSE,
   FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE SET NULL,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_archives_system (`system`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE archive_repos (
@@ -204,6 +215,9 @@ CREATE TABLE archive_repos (
   repo_full_name VARCHAR(255) NOT NULL,
   repo_owner VARCHAR(255) NOT NULL,
   repo_name VARCHAR(255) NOT NULL,
+  default_branch VARCHAR(255) DEFAULT 'main',
+  docs_path VARCHAR(500) DEFAULT 'docs',
+  auto_link_imports BOOLEAN DEFAULT TRUE,
   linked_by INT NOT NULL,
   linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (archive_id) REFERENCES archives(id) ON DELETE CASCADE,
@@ -235,6 +249,36 @@ CREATE TABLE logs (
   FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE github_embed_refs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  log_id INT NOT NULL,
+  embed_type ENUM('code','issue','pr','file') NOT NULL,
+  repo_owner VARCHAR(255) NOT NULL,
+  repo_name VARCHAR(255) NOT NULL,
+  ref_value VARCHAR(500) NOT NULL,
+  pinned_sha VARCHAR(64) DEFAULT NULL,
+  branch VARCHAR(255) DEFAULT NULL,
+  last_seen_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
+  INDEX idx_embed_log (log_id),
+  INDEX idx_embed_repo (repo_owner, repo_name, embed_type)
+) ENGINE=InnoDB;
+
+CREATE TABLE github_pr_sessions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  log_id INT NOT NULL,
+  repo_owner VARCHAR(255) NOT NULL,
+  repo_name VARCHAR(255) NOT NULL,
+  pr_number INT NOT NULL,
+  opened_by INT NOT NULL,
+  opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
+  FOREIGN KEY (opened_by) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_pr_session (repo_owner, repo_name, pr_number),
+  INDEX idx_pr_session_log (log_id)
+) ENGINE=InnoDB;
+
 CREATE TABLE github_links (
   id INT AUTO_INCREMENT PRIMARY KEY,
   log_id INT NOT NULL,
@@ -243,12 +287,17 @@ CREATE TABLE github_links (
   file_path VARCHAR(500) NOT NULL,
   branch VARCHAR(255) NOT NULL,
   file_sha VARCHAR(64) DEFAULT NULL,
+  base_sha VARCHAR(64) DEFAULT NULL,
+  last_pulled_at TIMESTAMP NULL DEFAULT NULL,
+  last_pushed_at TIMESTAMP NULL DEFAULT NULL,
+  sync_status ENUM('clean','remote_ahead','local_ahead','diverged','conflict') DEFAULT 'clean',
   linked_by INT NOT NULL,
   linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
   FOREIGN KEY (linked_by) REFERENCES users(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_log_link (log_id)
+  UNIQUE KEY uq_log_link (log_id),
+  INDEX idx_links_status (sync_status)
 ) ENGINE=InnoDB;
 
 CREATE TABLE versions (
@@ -258,6 +307,9 @@ CREATE TABLE versions (
   title VARCHAR(255) DEFAULT NULL,
   notes TEXT DEFAULT NULL,
   html_content TEXT,
+  github_release_id BIGINT DEFAULT NULL,
+  github_tag_name VARCHAR(255) DEFAULT NULL,
+  github_target_repo VARCHAR(500) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_by INT,
   read_access JSON DEFAULT (JSON_ARRAY()),
@@ -270,11 +322,14 @@ CREATE TABLE comments (
   log_id INT NOT NULL,
   user_id INT NOT NULL,
   content TEXT NOT NULL,
-  tag ENUM('comment', 'suggestion', 'question', 'issue', 'note') DEFAULT 'comment',
+  tag ENUM('comment', 'suggestion', 'question', 'issue', 'note', 'pr_review') DEFAULT 'comment',
   status ENUM('open', 'resolved', 'dismissed') DEFAULT 'open',
   selection_start INT DEFAULT NULL,
   selection_end INT DEFAULT NULL,
   selected_text TEXT DEFAULT NULL,
+  external_kind ENUM('pr_file_line','pr_general','issue_thread') DEFAULT NULL,
+  external_ref VARCHAR(500) DEFAULT NULL,
+  external_id VARCHAR(64) DEFAULT NULL,
   resolved_by INT DEFAULT NULL,
   resolved_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -283,7 +338,8 @@ CREATE TABLE comments (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL,
   INDEX idx_comments_log (log_id),
-  INDEX idx_comments_status (log_id, status)
+  INDEX idx_comments_status (log_id, status),
+  INDEX idx_comments_external (external_kind, external_ref)
 ) ENGINE=InnoDB;
 
 CREATE TABLE comment_replies (

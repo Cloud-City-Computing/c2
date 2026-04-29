@@ -37,6 +37,7 @@ export function GitHubStatusProvider({ enabled, children }) {
  * Returns { connected: boolean|null, refresh: () => void }.
  * `connected` is null while loading, then true/false.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export default function useGitHubStatus() {
   return useContext(GitHubStatusContext);
 }

@@ -3691,6 +3691,409 @@ body {
   flex-shrink: 0;
 }
 
+/* --- GitHub Sync Banner (P0) --- */
+
+.gh-sync-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg-tertiary, #2a2a3e);
+  border-left: 3px solid var(--text-muted, #888);
+}
+.gh-sync-banner--ok      { border-left-color: var(--accent-green, #50c878); }
+.gh-sync-banner--info    { border-left-color: var(--accent, #2ca7db); }
+.gh-sync-banner--warn    { border-left-color: var(--accent-orange, #ffa500); }
+.gh-sync-banner--danger  { border-left-color: var(--accent-red, #e5544e); }
+.gh-sync-banner__icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.gh-sync-banner__label {
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+}
+.gh-sync-banner__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted, #888);
+}
+.gh-sync-banner__path a {
+  color: inherit;
+  text-decoration: none;
+}
+.gh-sync-banner__path a:hover {
+  color: var(--text-primary, #e0e0e0);
+  text-decoration: underline;
+}
+.gh-sync-banner__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.gh-sync-banner__push {
+  position: relative;
+}
+.gh-sync-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 240px;
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px solid var(--border, #3a3a4e);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 100;
+  overflow: hidden;
+}
+.gh-sync-menu__item {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #e0e0e0);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.gh-sync-menu__item:hover:not(:disabled) {
+  background: var(--bg-tertiary, #2a2a3e);
+}
+.gh-sync-menu__item:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 768px) {
+  .gh-sync-banner {
+    flex-wrap: wrap;
+  }
+  .gh-sync-banner__path {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+
+/* --- GitHub Merge Dialog --- */
+
+.gh-merge-dialog__panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0;
+}
+.gh-merge-dialog__pane {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border, #3a3a4e);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.gh-merge-dialog__pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-tertiary, #2a2a3e);
+  border-bottom: 1px solid var(--border, #3a3a4e);
+}
+.gh-merge-dialog__readonly {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-secondary, #1e1e2e);
+}
+.gh-merge-dialog__merged {
+  margin-top: 12px;
+}
+.gh-merge-dialog__editor {
+  width: 100%;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--border, #3a3a4e);
+  border-radius: 6px;
+  background: var(--bg-secondary, #1e1e2e);
+  color: var(--text-primary, #e0e0e0);
+  resize: vertical;
+}
+.gh-merge-dialog__warn {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--accent-orange, #ffa500);
+  background: rgba(255,165,0,0.08);
+  border-radius: 4px;
+}
+@media (max-width: 768px) {
+  .gh-merge-dialog__panes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- GitHub Code Embed (Tiptap node) --- */
+
+.gh-code-embed {
+  margin: 12px 0;
+  border: 1px solid var(--border, #3a3a4e);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-secondary, #1e1e2e);
+}
+.gh-code-embed__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary, #2a2a3e);
+  border-bottom: 1px solid var(--border, #3a3a4e);
+  font-size: 12px;
+}
+.gh-code-embed__icon {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--text-muted, #888);
+}
+.gh-code-embed__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted, #888);
+  text-decoration: none;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+.gh-code-embed__path:hover {
+  color: var(--text-primary, #e0e0e0);
+  text-decoration: underline;
+}
+.gh-code-embed__lang {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary, #1e1e2e);
+  color: var(--text-muted, #888);
+  font-size: 11px;
+}
+.gh-code-embed__stale {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255,165,0,0.15);
+  color: var(--accent-orange, #ffa500);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.gh-code-embed__remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #888);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.gh-code-embed__remove:hover { color: var(--accent-red, #e5544e); }
+.gh-code-embed__body {
+  max-height: 400px;
+  overflow: auto;
+}
+.gh-code-embed__body pre {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+.gh-code-embed__placeholder,
+.gh-code-embed__error {
+  padding: 14px;
+  font-size: 13px;
+  color: var(--text-muted, #888);
+}
+.gh-code-embed__error { color: var(--accent-red, #e5544e); }
+
+/* --- GitHub Issue Embed (Tiptap inline node) --- */
+
+.gh-issue-embed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background: var(--bg-tertiary, #2a2a3e);
+  font-size: 0.92em;
+}
+.gh-issue-embed__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  color: inherit;
+}
+.gh-issue-embed__state {
+  font-size: 9px;
+  color: var(--text-muted, #888);
+}
+.gh-issue-embed__state--open { color: var(--accent-green, #50c878); }
+.gh-issue-embed__state--closed { color: var(--accent, #2ca7db); }
+.gh-issue-embed__ref {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--text-muted, #888);
+}
+.gh-issue-embed__title {
+  color: var(--text-primary, #e0e0e0);
+}
+.gh-issue-embed__error {
+  color: var(--accent-red, #e5544e);
+  font-weight: bold;
+  cursor: help;
+}
+.gh-issue-embed__remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
+}
+.gh-issue-embed__remove:hover { color: var(--accent-red, #e5544e); }
+
+/* --- GitHub PR Discussion tab --- */
+
+.gh-pr-discussion {
+  padding: 12px;
+}
+.gh-pr-discussion__file {
+  margin-bottom: 16px;
+  border: 1px solid var(--border, #3a3a4e);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.gh-pr-discussion__file-header {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #2a2a3e);
+  font-size: 13px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+.gh-pr-discussion__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.gh-pr-discussion__item {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border, #3a3a4e);
+}
+.gh-pr-discussion__item:first-child { border-top: none; }
+.gh-pr-discussion__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.gh-pr-discussion__body {
+  font-size: 14px;
+  white-space: pre-wrap;
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* --- CI Status Badge (P3) --- */
+
+.ci-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--bg-tertiary, #2a2a3e);
+  color: var(--text-muted, #888);
+}
+.ci-badge--success { color: var(--accent-green, #50c878); background: rgba(80,200,120,0.12); }
+.ci-badge--failure { color: var(--accent-red, #e5544e); background: rgba(229,84,78,0.12); }
+.ci-badge--in_progress, .ci-badge--queued { color: var(--accent-orange, #ffa500); background: rgba(255,165,0,0.12); }
+.ci-badge--cancelled, .ci-badge--skipped { color: var(--text-muted, #888); }
+.ci-badge__label { text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* --- Releases panel (P3) --- */
+
+.gh-releases {
+  padding: 12px;
+}
+.gh-releases__item {
+  border: 1px solid var(--border, #3a3a4e);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.gh-releases__tag {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 13px;
+  color: var(--accent, #2ca7db);
+}
+.gh-releases__name {
+  font-weight: 600;
+  margin-left: 8px;
+}
+.gh-releases__body {
+  margin-top: 8px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  color: var(--text-muted, #888);
+}
+
+/* --- Squad Team binding panel (P3) --- */
+
+.squad-team-binding {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border, #3a3a4e);
+  border-radius: 6px;
+}
+.squad-team-binding__diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+.squad-team-binding__diff h5 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+/* --- GitHub reconnect banner (revoked token) --- */
+
+.gh-reconnect-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: rgba(229,84,78,0.08);
+  border: 1px solid var(--accent-red, #e5544e);
+  color: var(--accent-red, #e5544e);
+}
+
 .log-tree-actions {
   display: flex;
   gap: 4px;

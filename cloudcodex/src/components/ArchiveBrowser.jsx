@@ -15,7 +15,7 @@ import {
   uploadDocument, exportDocument, fetchDocument,
   showModal, destroyModal,
   fetchCommentCount,
-  fetchArchiveRepos, linkArchiveRepo, unlinkArchiveRepo,
+  fetchArchiveRepos, linkArchiveRepo, unlinkArchiveRepo, importArchiveRepo,
   apiFetch,
 } from '../util';
 import ConfirmDialog from './ConfirmDialog';
@@ -743,25 +743,61 @@ function LinkedRepos({ archiveId }) {
       {!loading && repos.length > 0 && (
         <ul className="settings-item-list compact">
           {repos.map(repo => (
-            <li key={repo.id} className="settings-item linked-repo-row">
-              <div className="linked-repo-row__info"
-                   onClick={() => navigate(`/github/${repo.repo_owner}/${repo.repo_name}?from_archive=${archiveId}`)}
-                   style={{ cursor: 'pointer' }}>
-                <svg className="linked-repo-row__icon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-                  <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z" />
-                </svg>
-                <span className="linked-repo-row__name">{repo.repo_full_name}</span>
-              </div>
-              <span className="text-muted text-sm">
-                Linked {new Date(repo.linked_at).toLocaleDateString()}
-                {repo.linked_by_name ? ` by ${repo.linked_by_name}` : ''}
-              </span>
-              <button className="btn btn-danger btn-sm" onClick={() => handleUnlink(repo)}>Unlink</button>
-            </li>
+            <LinkedRepoRow
+              key={repo.id}
+              repo={repo}
+              archiveId={archiveId}
+              onUnlink={() => handleUnlink(repo)}
+              onNavigate={() => navigate(`/github/${repo.repo_owner}/${repo.repo_name}?from_archive=${archiveId}`)}
+            />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function LinkedRepoRow({ repo, archiveId, onUnlink, onNavigate }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleImport = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await importArchiveRepo(archiveId, repo.id);
+      setResult({ ok: true, imported: res.imported?.length || 0, skipped: res.skipped?.length || 0 });
+    } catch (e) {
+      setResult({ ok: false, message: e.body?.message || e.message || 'Import failed' });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <li className="settings-item linked-repo-row">
+      <div className="linked-repo-row__info"
+           onClick={onNavigate}
+           style={{ cursor: 'pointer' }}>
+        <svg className="linked-repo-row__icon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+          <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z" />
+        </svg>
+        <span className="linked-repo-row__name">{repo.repo_full_name}</span>
+        <span className="text-muted text-sm" style={{ marginLeft: 8 }}>
+          {repo.docs_path || 'docs'}/ on {repo.default_branch || 'main'}
+        </span>
+      </div>
+      {result && (
+        <span className={`text-sm ${result.ok ? '' : 'form-error'}`}>
+          {result.ok
+            ? `Imported ${result.imported}, skipped ${result.skipped}`
+            : result.message}
+        </span>
+      )}
+      <button className="btn btn-ghost btn-sm" onClick={handleImport} disabled={busy} title={`Bulk import ${repo.docs_path || 'docs'}/ as logs`}>
+        {busy ? 'Importing…' : 'Import docs'}
+      </button>
+      <button className="btn btn-danger btn-sm" onClick={onUnlink} disabled={busy}>Unlink</button>
+    </li>
   );
 }
 

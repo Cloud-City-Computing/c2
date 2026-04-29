@@ -13,6 +13,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
 import { extractImagesFromHtml, inlineImagesForExport, inlineImagesForMarkdownExport } from './helpers/images.js';
+import { decryptToken } from './oauth.js';
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
@@ -139,7 +140,7 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
     return res.status(400).json({ success: false, message: 'Invalid log ID' });
   }
 
-  const { title, notes } = req.body || {};
+  const { title, notes, create_github_release, target_repo, tag_name } = req.body || {};
 
   // Validate optional title and notes
   if (title !== undefined && (typeof title !== 'string' || title.length > 255)) {
@@ -147,6 +148,9 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
   }
   if (notes !== undefined && (typeof notes !== 'string' || notes.length > 5000)) {
     return res.status(400).json({ success: false, message: 'Notes must be a string of 5000 characters or fewer' });
+  }
+  if (create_github_release && (!target_repo || !target_repo.includes('/'))) {
+    return res.status(400).json({ success: false, message: 'target_repo (owner/name) is required when create_github_release is true' });
   }
 
   // Verify write access and get current content + squad context
@@ -177,13 +181,72 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
     `UPDATE logs SET version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [newVersion, req.user.id, Number(logId)]
   );
-  await c2_query(
+  const versionResult = await c2_query(
     `INSERT INTO versions (log_id, version, title, notes, html_content, created_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [log.id, newVersion, title?.trim() || null, notes?.trim() || null, publishHtml, req.user.id]
   );
 
-  res.json({ success: true, version: newVersion });
+  let releaseInfo = null;
+  let releaseError = null;
+
+  // Optional: create a GitHub Release for this version. Failures are
+  // non-fatal — the version is already saved locally.
+  if (create_github_release && target_repo) {
+    try {
+      const [account] = await c2_query(
+        `SELECT encrypted_token FROM oauth_accounts WHERE user_id = ? AND provider = 'github' LIMIT 1`,
+        [req.user.id]
+      );
+      const token = account?.encrypted_token ? decryptToken(account.encrypted_token) : null;
+      if (!token) {
+        releaseError = 'GitHub account not connected';
+      } else {
+        const [releaseOwner, releaseRepo] = target_repo.split('/');
+        const finalTag = (tag_name || `v${newVersion}`).trim();
+        const releaseRes = await fetch(
+          `https://api.github.com/repos/${encodeURIComponent(releaseOwner)}/${encodeURIComponent(releaseRepo)}/releases`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tag_name: finalTag,
+              name: title?.trim() || finalTag,
+              body: notes?.trim() || `Published from Cloud Codex (log ${log.id} v${newVersion})`,
+            }),
+          }
+        );
+        if (releaseRes.ok) {
+          const rel = await releaseRes.json();
+          releaseInfo = { id: rel.id, html_url: rel.html_url, tag_name: rel.tag_name };
+          await c2_query(
+            `UPDATE versions
+               SET github_release_id = ?, github_tag_name = ?, github_target_repo = ?
+             WHERE id = ?`,
+            [rel.id, rel.tag_name, target_repo, versionResult.insertId]
+          );
+        } else {
+          const body = await releaseRes.json().catch(() => ({}));
+          releaseError = body?.message || `GitHub returned ${releaseRes.status}`;
+        }
+      }
+    } catch (err) {
+      releaseError = err.message || 'Release creation failed';
+    }
+  }
+
+  res.json({
+    success: true,
+    version: newVersion,
+    version_id: versionResult.insertId,
+    github_release: releaseInfo,
+    github_release_error: releaseError,
+  });
 }));
 
 /**
