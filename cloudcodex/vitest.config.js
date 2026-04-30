@@ -77,11 +77,11 @@ export default defineConfig({
       // PRs aren't blocked by their pre-existing gaps.
       thresholds: {
         // Global floor — pages/, large untested components, and src/extensions
-        // pull this down. Keeping it conservative.
-        lines: 38,
-        statements: 35,
-        branches: 30,
-        functions: 22,
+        // pull this down. Set just under achieved (46.25% lines).
+        lines: 43,
+        statements: 40,
+        branches: 33,
+        functions: 26,
 
         // Well-tested security-critical modules.
         'routes/helpers/**': { lines: 88, statements: 85, branches: 65, functions: 90 },
@@ -102,10 +102,17 @@ export default defineConfig({
         'services/email.js': { lines: 95, statements: 95, branches: 70, functions: 95 },
         'services/email-templates.js': { lines: 95, statements: 90, branches: 90, functions: 95 },
         'services/notifications.js': { lines: 90, statements: 88, branches: 80, functions: 88 },
+        // collab.js — was 25%, ratcheted to 65% after the gap-fix pass.
+        'services/collab.js': { lines: 65, statements: 65, branches: 50, functions: 75 },
+
+        // Framework files (newly tested in the gap-fix pass).
+        'mysql_connect.js': { lines: 85, statements: 85, branches: 80, functions: 90 },
+        'app.js': { lines: 75, statements: 75, branches: 5, functions: 90 },
 
         // Frontend pure logic.
         'src/editorUtils.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
         'src/userPrefs.js': { lines: 95, statements: 95, branches: 80, functions: 95 },
+        'src/util.jsx': { lines: 65, statements: 55, branches: 50, functions: 22 },
         'src/lib/**': { lines: 90, statements: 90, branches: 70, functions: 80 },
 
         // Hooks.
