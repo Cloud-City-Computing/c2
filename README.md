@@ -8,6 +8,20 @@
   A real-time collaborative documentation platform by <a href="https://cloudcitycomputing.com">Cloud City Computing, LLC</a>
 </p>
 
+<p align="center">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/RhykerWells/c2/ci.yml?branch=main&label=CI" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-1128%20passing-brightgreen" />
+  <img alt="Coverage (lines)" src="https://img.shields.io/badge/coverage%20(lines)-43%25-yellow" />
+  <img alt="Node" src="https://img.shields.io/badge/node-20.x-339933" />
+</p>
+
+> The CI badge tracks the workflow run; the test count and coverage badge
+> reflect the latest known numbers (run `npm run test:coverage` from
+> `cloudcodex/` to refresh locally). Coverage is enforced via per-glob
+> thresholds in `cloudcodex/vitest.config.js` — see
+> [`cloudcodex/tests/README.md`](cloudcodex/tests/README.md) for testing
+> patterns.
+
 ---
 
 ## About
