@@ -89,7 +89,9 @@ async function githubFetch(token, path, options = {}, userId = null) {
         c2_query(
           `UPDATE oauth_accounts SET token_status = 'revoked' WHERE user_id = ? AND provider = 'github'`,
           [userId]
-        ).catch(() => {});
+        ).catch((err) => {
+          console.error(`[${new Date().toISOString()}] github: failed to mark token revoked for user ${userId}:`, err);
+        });
       }
     }
     const err = new Error(body.message || `GitHub API error: ${res.status}`);
@@ -357,7 +359,9 @@ router.put('/github/repos/:owner/:repo/contents/{*filePath}', asyncHandler(async
          SET file_sha = ?, base_sha = ?, last_pushed_at = NOW(), sync_status = 'clean'
        WHERE repo_owner = ? AND repo_name = ? AND file_path = ? AND branch = ?`,
       [data.content.sha, data.content.sha, owner, repo, filePath, branch]
-    ).catch(() => {});
+    ).catch((err) => {
+      console.error(`[${new Date().toISOString()}] github: failed to advance link sha after push (${owner}/${repo}/${filePath}@${branch}):`, err);
+    });
   }
 
   res.json({
@@ -906,7 +910,9 @@ router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
        file_sha=VALUES(file_sha), base_sha=VALUES(base_sha),
        last_pulled_at=VALUES(last_pulled_at), sync_status=VALUES(sync_status)`,
     [result.insertId, owner, repo, path, ref || 'main', ghFile.sha, ghFile.sha, req.user.id]
-  ).catch(() => {});
+  ).catch((err) => {
+    console.error(`[${new Date().toISOString()}] github: failed to record link for log ${result.insertId} (${owner}/${repo}/${path}):`, err);
+  });
 }));
 
 // --- GitHub Link for Documents ---
@@ -1103,7 +1109,9 @@ router.get('/github/link/:logId/status', asyncHandler(async (req, res) => {
   c2_query(
     `UPDATE github_links SET file_sha = ?, sync_status = ? WHERE log_id = ?`,
     [remoteSha, status, logId]
-  ).catch(() => {});
+  ).catch((err) => {
+    console.error(`[${new Date().toISOString()}] github: failed to persist sync status for log ${logId}:`, err);
+  });
 
   res.json({
     success: true,
@@ -1293,7 +1301,9 @@ router.post('/github/link/:logId/push', asyncHandler(async (req, res) => {
       await c2_query(
         `UPDATE github_links SET sync_status = 'diverged' WHERE log_id = ?`,
         [logId]
-      ).catch(() => {});
+      ).catch((dbErr) => {
+        console.error(`[${new Date().toISOString()}] github: failed to mark log ${logId} diverged after 409/422 push:`, dbErr);
+      });
       return res.status(409).json({
         success: false,
         message: 'Remote file moved while pushing; pull first to resolve',

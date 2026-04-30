@@ -37,7 +37,6 @@ export async function ensureAdminUser() {
       `UPDATE users SET is_admin = TRUE, password_hash = ?, email = ? WHERE id = ?`,
       [passwordHash, email, existing.id]
     );
-    console.log('✔ Admin super user synced');
     return;
   }
 
@@ -51,8 +50,6 @@ export async function ensureAdminUser() {
 
   // Create default permissions row
   await createDefaultPermissions(result.insertId);
-
-  console.log('✔ Admin super user created');
 }
 
 // ─── Admin status check ─────────────────────────────────────

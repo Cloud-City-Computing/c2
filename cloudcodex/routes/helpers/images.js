@@ -19,8 +19,12 @@ import sharp from 'sharp';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DOC_IMAGES_DIR = path.join(__dirname, '..', '..', 'public', 'doc-images');
 
-// Ensure directory exists on startup
-fs.mkdir(DOC_IMAGES_DIR, { recursive: true }).catch(() => {});
+// Ensure directory exists on startup. recursive:true makes "already exists"
+// non-erroring; any other error (e.g. EACCES) means image uploads will fail
+// later with a useful error, but log the cause now so it's diagnosable.
+fs.mkdir(DOC_IMAGES_DIR, { recursive: true }).catch((err) => {
+  console.error(`[${new Date().toISOString()}] images: failed to ensure ${DOC_IMAGES_DIR}:`, err);
+});
 
 const MAX_IMAGE_DIMENSION = 2048;
 const MAX_RAW_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB decoded

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
-import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, mockUnauthenticated, resetMocks } from '../helpers.js';
 
 describe('OAuth Routes', () => {
   beforeEach(() => {
@@ -170,6 +170,168 @@ describe('OAuth Routes', () => {
       mockUnauthenticated();
       const res = await request(app).get('/api/github/status');
       expect(res.status).toBe(401);
+    });
+
+    it('exposes login, avatar_url, token_status, and needs_reconnect', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([{
+        provider_email: 'gh@x.com',
+        provider_user_id: '777',
+        provider_username: 'octocat',
+        provider_avatar_url: 'https://gh/a.png',
+        token_status: 'revoked',
+      }]);
+
+      const res = await request(app)
+        .get('/api/github/status')
+        .set('Authorization', 'Bearer t');
+
+      expect(res.body).toMatchObject({
+        connected: true,
+        login: 'octocat',
+        avatar_url: 'https://gh/a.png',
+        token_status: 'revoked',
+        needs_reconnect: true,
+      });
+    });
+
+    it('returns nulls and needs_reconnect=false when not connected', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .get('/api/github/status')
+        .set('Authorization', 'Bearer t');
+
+      expect(res.body).toMatchObject({
+        connected: false,
+        login: null,
+        avatar_url: null,
+        token_status: null,
+        needs_reconnect: false,
+      });
+    });
+  });
+
+  // --- OAuth callback error paths (Google) ---
+
+  describe('GET /api/oauth/google/callback — error redirects', () => {
+    it('redirects with oauth_error when provider passes error param', async () => {
+      const res = await request(app).get('/api/oauth/google/callback?error=access_denied');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/?oauth_error=access_denied');
+    });
+
+    it('redirects with missing_params when code is absent', async () => {
+      const res = await request(app).get('/api/oauth/google/callback?state=anything');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/?oauth_error=missing_params');
+    });
+
+    it('redirects with missing_params when state is absent', async () => {
+      const res = await request(app).get('/api/oauth/google/callback?code=abc');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/?oauth_error=missing_params');
+    });
+
+    it('redirects with invalid_state when state is unknown', async () => {
+      const res = await request(app).get('/api/oauth/google/callback?code=abc&state=never-issued');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/?oauth_error=invalid_state');
+    });
+  });
+
+  // --- OAuth callback error paths (GitHub) ---
+
+  describe('GET /api/oauth/github/callback — error redirects', () => {
+    it('redirects with github_error=access_denied when provider passes error', async () => {
+      const res = await request(app).get('/api/oauth/github/callback?error=access_denied');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/account?github_error=access_denied');
+    });
+
+    it('redirects with missing_params when code is absent', async () => {
+      const res = await request(app).get('/api/oauth/github/callback?state=anything');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/account?github_error=missing_params');
+    });
+
+    it('redirects with invalid_state when state is unknown', async () => {
+      const res = await request(app).get('/api/oauth/github/callback?code=abc&state=bogus');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/account?github_error=invalid_state');
+    });
+  });
+
+  // --- OAuth initiation guards ---
+
+  describe('GET /api/oauth/github (initiation)', () => {
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+      const res = await request(app).get('/api/oauth/github');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // --- Token encryption ---
+
+  describe('encryptToken / decryptToken', () => {
+    it('returns null when GITHUB_CLIENT_SECRET is unset', async () => {
+      const original = process.env.GITHUB_CLIENT_SECRET;
+      delete process.env.GITHUB_CLIENT_SECRET;
+      try {
+        const { encryptToken, decryptToken } = await import('../../routes/oauth.js?token-test-1');
+        expect(encryptToken('hello')).toBeNull();
+        expect(decryptToken('iv:tag:cipher')).toBeNull();
+      } finally {
+        if (original !== undefined) process.env.GITHUB_CLIENT_SECRET = original;
+      }
+    });
+
+    it('round-trips a token when GITHUB_CLIENT_SECRET is set', async () => {
+      const original = process.env.GITHUB_CLIENT_SECRET;
+      process.env.GITHUB_CLIENT_SECRET = 'unit-test-secret-with-enough-entropy';
+      try {
+        // Re-import with a different query to bypass module cache so the
+        // new env value is picked up.
+        const { encryptToken, decryptToken } = await import('../../routes/oauth.js?token-test-2');
+        const plaintext = 'gho_abc123secrettokenvalue';
+        const stored = encryptToken(plaintext);
+        expect(stored).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+        expect(decryptToken(stored)).toBe(plaintext);
+      } finally {
+        if (original === undefined) delete process.env.GITHUB_CLIENT_SECRET;
+        else process.env.GITHUB_CLIENT_SECRET = original;
+      }
+    });
+
+    it('decryptToken returns null for malformed input', async () => {
+      const original = process.env.GITHUB_CLIENT_SECRET;
+      process.env.GITHUB_CLIENT_SECRET = 'unit-test-secret-with-enough-entropy';
+      try {
+        const { decryptToken } = await import('../../routes/oauth.js?token-test-3');
+        expect(decryptToken(null)).toBeNull();
+        expect(decryptToken('')).toBeNull();
+        expect(decryptToken('only-one-segment')).toBeNull();
+        expect(decryptToken('only:two')).toBeNull();
+      } finally {
+        if (original === undefined) delete process.env.GITHUB_CLIENT_SECRET;
+        else process.env.GITHUB_CLIENT_SECRET = original;
+      }
+    });
+  });
+
+  // --- Provider availability flag ---
+
+  describe('GET /api/oauth/providers — env-driven flags', () => {
+    it('reflects current configuration of both providers', async () => {
+      const res = await request(app).get('/api/oauth/providers');
+      expect(res.body.providers.google).toBe(
+        Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+      );
+      expect(res.body.providers.github).toBe(
+        Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)
+      );
     });
   });
 });
