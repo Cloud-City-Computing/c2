@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parsePatch, splitLines, lcsIndices, diff3Merge } from '../../src/lib/githubDiff.js';
+import { parsePatch, splitLines, lcsIndices, diff3Merge } from '../../../src/lib/githubDiff.js';
 
 describe('parsePatch', () => {
   it('returns empty array for empty input', () => {

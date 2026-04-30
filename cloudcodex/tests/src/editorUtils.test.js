@@ -6,7 +6,7 @@ import {
   encodeBase64,
   decodeBase64,
   extractSvgFromDataUri,
-} from '../src/editorUtils.js';
+} from '../../src/editorUtils.js';
 
 describe('editorUtils', () => {
   // ── escapeHtml ─────────────────────────────────────────

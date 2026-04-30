@@ -28,3 +28,14 @@ jobs:
       - run: npm run lint
 
       - run: npm test
+
+      - name: Run coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: cloudcodex/coverage/
+          retention-days: 14

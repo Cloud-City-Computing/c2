@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:backend": "vitest run --project backend",
+    "test:frontend": "vitest run --project frontend"
   },
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "^3.22.3",
@@ -57,14 +59,19 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
+    "@vitest/coverage-v8": "^4.1.5",
     "eslint": "^9.35.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.4.0",
+    "jsdom": "^25.0.1",
     "supertest": "^7.2.2",
     "vite": "^7.1.6",
     "vitest": "^4.1.2"
