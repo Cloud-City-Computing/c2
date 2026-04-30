@@ -49,6 +49,7 @@ CREATE TABLE users (
   two_factor_method ENUM('none', 'email', 'totp') DEFAULT 'none',
   totp_secret VARCHAR(64) DEFAULT NULL,
   is_admin BOOLEAN DEFAULT FALSE,
+  notification_prefs JSON DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -363,5 +364,54 @@ CREATE TABLE favorites (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
   INDEX idx_favorites_user (user_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE activity_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  workspace_id INT NOT NULL,
+  squad_id INT DEFAULT NULL,
+  user_id INT NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  resource_type VARCHAR(30) NOT NULL,
+  resource_id INT NOT NULL,
+  metadata JSON DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_activity_workspace_time (workspace_id, created_at),
+  INDEX idx_activity_squad_time (squad_id, created_at),
+  INDEX idx_activity_resource (resource_type, resource_id, created_at),
+  INDEX idx_activity_user_time (user_id, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE watches (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  resource_type VARCHAR(30) NOT NULL,
+  resource_id INT NOT NULL,
+  source VARCHAR(20) NOT NULL DEFAULT 'manual',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_watches_user_resource (user_id, resource_type, resource_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_watches_resource (resource_type, resource_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE notifications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  actor_id INT DEFAULT NULL,
+  title VARCHAR(255) NOT NULL,
+  body TEXT DEFAULT NULL,
+  link_url VARCHAR(512) DEFAULT NULL,
+  resource_type VARCHAR(30) DEFAULT NULL,
+  resource_id INT DEFAULT NULL,
+  metadata JSON DEFAULT NULL,
+  read_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_notifications_user_created (user_id, created_at),
+  INDEX idx_notifications_user_unread (user_id, read_at, created_at),
+  INDEX idx_notifications_resource (resource_type, resource_id)
 ) ENGINE=InnoDB;
 

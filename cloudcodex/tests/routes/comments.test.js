@@ -240,6 +240,48 @@ describe('Comment Routes', () => {
       expect(insertCall[1]).toContain('comment');
     });
 
+    it('pings the doc creator with comment_on_my_doc when someone else comments', async () => {
+      mockAuthenticated(); // TEST_USER.id = 1
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])                 // checkLogReadAccess
+        .mockResolvedValueOnce({ insertId: 11 })             // INSERT comment
+        .mockResolvedValueOnce([COMMENT_ROW])                // SELECT back
+        .mockResolvedValueOnce([{ id: 1, title: 'My Doc', archive_id: 5, created_by: 99 }]) // log info
+        // No mentions in 'Sample comment' content, so we go to comment_on_my_doc:
+        .mockResolvedValueOnce([])                            // coalesce SELECT
+        .mockResolvedValueOnce({ insertId: 200 })             // INSERT into notifications
+        .mockResolvedValueOnce([{ id: 99, name: 'Owner', email: 'o@x.com', notification_prefs: null }]); // recipient lookup for email
+
+      const res = await request(app)
+        .post('/api/logs/1/comments')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ content: 'Sample comment' });
+
+      expect(res.status).toBe(201);
+      const notificationInsert = c2_query.mock.calls.find((c) => /INSERT INTO notifications/i.test(c[0]));
+      expect(notificationInsert).toBeTruthy();
+      expect(notificationInsert[1]).toContain(99); // recipient = doc creator
+      expect(notificationInsert[1]).toContain('comment_on_my_doc');
+    });
+
+    it('does NOT ping the doc creator if they are the comment author', async () => {
+      mockAuthenticated(); // TEST_USER.id = 1
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])
+        .mockResolvedValueOnce({ insertId: 11 })
+        .mockResolvedValueOnce([COMMENT_ROW])
+        .mockResolvedValueOnce([{ id: 1, title: 'My Doc', archive_id: 5, created_by: 1 }]); // creator === actor
+
+      const res = await request(app)
+        .post('/api/logs/1/comments')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ content: 'self comment' });
+
+      expect(res.status).toBe(201);
+      const notificationInsert = c2_query.mock.calls.find((c) => /INSERT INTO notifications/i.test(c[0]));
+      expect(notificationInsert).toBeFalsy();
+    });
+
     it('rejects empty content', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([{ id: 1 }]);

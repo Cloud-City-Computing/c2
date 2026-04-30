@@ -29,6 +29,9 @@ import adminRouter from './routes/admin.js';
 import oauthRouter from './routes/oauth.js';
 import githubRouter from './routes/github.js';
 import favoritesRouter from './routes/favorites.js';
+import notificationsRouter from './routes/notifications.js';
+import activityRouter from './routes/activity.js';
+import watchesRouter from './routes/watches.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -135,5 +138,8 @@ app.use('/api', adminRouter);
 app.use('/api', oauthRouter);
 app.use('/api', githubRouter);
 app.use('/api', favoritesRouter);
+app.use('/api', notificationsRouter);
+app.use('/api', activityRouter);
+app.use('/api', watchesRouter);
 
 export default app;

@@ -13,6 +13,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
 import { extractImagesFromHtml, inlineImagesForExport, inlineImagesForMarkdownExport } from './helpers/images.js';
+import { processMentionsOnSave } from './helpers/mentions.js';
+import { logActivity } from './helpers/activity.js';
 import { decryptToken } from './oauth.js';
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
@@ -95,7 +97,7 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
 
   // Fetch existing log and verify write access
   const [log] = await c2_query(
-    `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.archive_id
+    `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.archive_id, pg.title
        FROM logs pg
  INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
@@ -124,6 +126,22 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
       [storedHtml, req.user.id, Number(doc_id)]
     );
   }
+
+  await processMentionsOnSave({
+    logId: log.id,
+    prevHtml: log.old_content,
+    newHtml: storedHtml,
+    actor: req.user,
+    docMeta: { title: log.title, archive_id: log.archive_id },
+  });
+
+  logActivity({
+    user: req.user,
+    action: 'log.update',
+    resourceType: 'log',
+    resourceId: log.id,
+    metadata: { title: log.title },
+  });
 
   res.json({ success: true });
 }));
@@ -240,6 +258,14 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
     }
   }
 
+  logActivity({
+    user: req.user,
+    action: 'log.publish',
+    resourceType: 'log',
+    resourceId: log.id,
+    metadata: { version: newVersion, title: title?.trim() || null },
+  });
+
   res.json({
     success: true,
     version: newVersion,
@@ -283,6 +309,15 @@ router.put('/document/:logId/title', requireAuth, asyncHandler(async (req, res) 
   }
 
   await c2_query(`UPDATE logs SET title = ? WHERE id = ?`, [title.trim(), Number(logId)]);
+
+  logActivity({
+    user: req.user,
+    action: 'log.rename',
+    resourceType: 'log',
+    resourceId: Number(logId),
+    metadata: { title: title.trim() },
+  });
+
   res.json({ success: true });
 }));
 
@@ -374,7 +409,7 @@ router.post('/document/:logId/versions/:versionId/restore', requireAuth, asyncHa
 
   // Verify write access and get current content
   const [currentLog] = await c2_query(
-    `SELECT pg.id, pg.html_content, pg.version
+    `SELECT pg.id, pg.html_content, pg.version, pg.title, pg.archive_id
        FROM logs pg
  INNER JOIN archives p ON pg.archive_id = p.id
       WHERE pg.id = ?
@@ -411,6 +446,22 @@ router.post('/document/:logId/versions/:versionId/restore', requireAuth, asyncHa
     [currentLog.id, newVersion, restoredHtml, req.user.id]
   );
 
+  await processMentionsOnSave({
+    logId: currentLog.id,
+    prevHtml: currentLog.html_content,
+    newHtml: restoredHtml,
+    actor: req.user,
+    docMeta: { title: currentLog.title, archive_id: currentLog.archive_id },
+  });
+
+  logActivity({
+    user: req.user,
+    action: 'log.restore',
+    resourceType: 'log',
+    resourceId: currentLog.id,
+    metadata: { title: currentLog.title, version: newVersion },
+  });
+
   res.json({ success: true, version: newVersion });
 }));
 
@@ -440,6 +491,13 @@ router.delete('/document/:logId/versions/:versionId', requireAuth, asyncHandler(
   // Allow if user is admin or the version author
   if (req.user.is_admin || version.created_by === req.user.id) {
     await c2_query(`DELETE FROM versions WHERE id = ?`, [Number(versionId)]);
+    logActivity({
+      user: req.user,
+      action: 'version.delete',
+      resourceType: 'log',
+      resourceId: Number(logId),
+      metadata: { version_id: Number(versionId) },
+    });
     return res.json({ success: true });
   }
 
@@ -458,6 +516,13 @@ router.delete('/document/:logId/versions/:versionId', requireAuth, asyncHandler(
   }
 
   await c2_query(`DELETE FROM versions WHERE id = ?`, [Number(versionId)]);
+  logActivity({
+    user: req.user,
+    action: 'version.delete',
+    resourceType: 'log',
+    resourceId: Number(logId),
+    metadata: { version_id: Number(versionId) },
+  });
   res.json({ success: true });
 }));
 

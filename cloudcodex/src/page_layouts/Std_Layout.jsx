@@ -10,6 +10,7 @@ import { Link, useLocation } from 'react-router-dom';
 import Login from '../components/Login';
 import AccountPanel from '../components/AccountPanel';
 import SearchBox from '../components/SearchBox';
+import NotificationBell from '../components/NotificationBell';
 import {
   showModal,
   getSessionTokenFromCookie,
@@ -59,6 +60,15 @@ function ArchiveIcon() {
     <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function ActivityIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
     </svg>
   );
 }
@@ -115,6 +125,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Home', Icon: HomeIcon },
   { to: '/workspaces', label: 'Workspaces', Icon: WorkspaceIcon },
   { to: '/archives', label: 'Archives', Icon: ArchiveIcon },
+  { to: '/activity', label: 'Activity', Icon: ActivityIcon },
   { to: '/github', label: 'GitHub', Icon: GitHubNavIcon },
   { to: '/account', label: 'Account', Icon: AccountIcon },
 ];
@@ -168,17 +179,20 @@ function TopBar({ user }) {
             Login
           </button>
         ) : (
-          <button
-            className="account-button"
-            onClick={() => showDropdownMenu(<AccountPanel {...user} />)}
-            aria-label="Account menu"
-          >
-            {user.avatar_url ? (
-              <img src={user.avatar_url} alt={user.name} className="account-button__avatar" />
-            ) : (
-              <AccountIcon />
-            )}
-          </button>
+          <>
+            <NotificationBell enabled={Boolean(user)} />
+            <button
+              className="account-button"
+              onClick={() => showDropdownMenu(<AccountPanel {...user} />)}
+              aria-label="Account menu"
+            >
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt={user.name} className="account-button__avatar" />
+              ) : (
+                <AccountIcon />
+              )}
+            </button>
+          </>
         )}
       </div>
     </header>

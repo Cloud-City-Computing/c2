@@ -21,6 +21,16 @@ import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
 import { sanitizeHtml, canPublish, checkLogReadAccess, checkLogWriteAccess } from '../routes/helpers/shared.js';
 import { extractImagesFromHtml } from '../routes/helpers/images.js';
+import { processMentionsOnSave } from '../routes/helpers/mentions.js';
+import { logActivity } from '../routes/helpers/activity.js';
+
+async function fetchDocMeta(logId) {
+  const [row] = await c2_query(
+    `SELECT id, title, archive_id FROM logs WHERE id = ? LIMIT 1`,
+    [logId]
+  );
+  return row || null;
+}
 
 // In-memory store: logId → { doc, conns, saveTimer, lastSavedHtml }
 const docs = new Map();
@@ -431,6 +441,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
         (async () => {
           try {
             const state = Y.encodeStateAsUpdate(entry.doc);
+            const prevHtml = entry.lastSavedHtml;
             let storedHtml = entry.lastSavedHtml;
 
             if (typeof msg.html === 'string' && msg.html.length <= MAX_HTML_SIZE) {
@@ -441,7 +452,9 @@ async function setupDocSession(ws, user, logId, canWrite) {
             // Determine markdown_content: explicit string keeps it, explicit null clears it, undefined leaves it unchanged
             const mdVal = msg.markdown !== undefined ? (typeof msg.markdown === 'string' ? msg.markdown : null) : undefined;
 
+            let htmlChanged = false;
             if (storedHtml && storedHtml !== entry.lastSavedHtml) {
+              htmlChanged = true;
               if (mdVal !== undefined) {
                 await c2_query(
                   `UPDATE logs SET html_content = ?, markdown_content = ?, ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
@@ -461,6 +474,26 @@ async function setupDocSession(ws, user, logId, canWrite) {
               );
             }
             ws.send(JSON.stringify({ type: 'saved' }));
+
+            if (htmlChanged) {
+              const meta = await fetchDocMeta(entry.logId);
+              if (meta) {
+                await processMentionsOnSave({
+                  logId: entry.logId,
+                  prevHtml,
+                  newHtml: storedHtml,
+                  actor: user,
+                  docMeta: { title: meta.title, archive_id: meta.archive_id },
+                });
+                logActivity({
+                  user,
+                  action: 'log.update',
+                  resourceType: 'log',
+                  resourceId: entry.logId,
+                  metadata: { title: meta.title },
+                });
+              }
+            }
           } catch (err) {
             console.error(`[collab] Immediate save failed for log ${entry.logId}:`, err);
           }
@@ -479,6 +512,13 @@ async function setupDocSession(ws, user, logId, canWrite) {
             );
             // Broadcast to all other clients
             broadcastExcept(entry, ws, { type: 'title', title: safeTitle, userId: user.id });
+            logActivity({
+              user,
+              action: 'log.rename',
+              resourceType: 'log',
+              resourceId: entry.logId,
+              metadata: { title: safeTitle },
+            });
           } catch (err) {
             console.error(`[collab] Title update failed for log ${entry.logId}:`, err);
           }
@@ -510,6 +550,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
             // Publish: save content AND create a formal version snapshot
             if (entry.saveTimer) clearTimeout(entry.saveTimer);
             const state = Y.encodeStateAsUpdate(entry.doc);
+            const prevHtml = entry.lastSavedHtml;
 
             // Use client-provided HTML (preferred) or fall back to last saved HTML
             let currentHtml = entry.lastSavedHtml || '';
@@ -518,7 +559,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
             }
 
             const [log] = await c2_query(
-              `SELECT version FROM logs WHERE id = ? LIMIT 1`,
+              `SELECT version, title, archive_id FROM logs WHERE id = ? LIMIT 1`,
               [entry.logId]
             );
             if (!log) return;
@@ -532,6 +573,21 @@ async function setupDocSession(ws, user, logId, canWrite) {
               [entry.logId, newVersion, pubTitle || null, pubNotes || null, currentHtml, user.id]
             );
             entry.lastSavedHtml = currentHtml;
+
+            await processMentionsOnSave({
+              logId: entry.logId,
+              prevHtml,
+              newHtml: currentHtml,
+              actor: user,
+              docMeta: { title: log.title, archive_id: log.archive_id },
+            });
+            logActivity({
+              user,
+              action: 'log.publish',
+              resourceType: 'log',
+              resourceId: entry.logId,
+              metadata: { title: log.title, version: newVersion },
+            });
 
             // Notify all clients of the new published version
             const versionMsg = JSON.stringify({ type: 'published', version: newVersion, title: pubTitle || null });
