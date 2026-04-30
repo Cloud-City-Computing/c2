@@ -35,7 +35,12 @@ export function requireAuth(req, res, next) {
       }
       req.user = user;
       req.sessionToken = token;
-      touchSession(token).catch(() => {});
+      touchSession(token).catch((err) => {
+        // Fire-and-forget refresh of the session's last-touched timestamp;
+        // a failure here doesn't invalidate the request, but a persistent
+        // problem (DB latency, connection loss) is worth surfacing in logs.
+        console.error(`[${new Date().toISOString()}] auth: touchSession failed:`, err);
+      });
       next();
     })
     .catch(next);

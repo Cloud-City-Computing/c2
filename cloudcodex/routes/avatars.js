@@ -23,8 +23,12 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const AVATAR_SIZE = 256; // resize to 256x256
 
-// Ensure avatars directory exists
-fs.mkdir(AVATARS_DIR, { recursive: true }).catch(() => {});
+// Ensure avatars directory exists. recursive:true makes "already exists"
+// non-erroring; any other error (e.g. EACCES) means uploads will fail later
+// with a useful message, but log it now so the cause is visible.
+fs.mkdir(AVATARS_DIR, { recursive: true }).catch((err) => {
+  console.error(`[${new Date().toISOString()}] avatars: failed to ensure ${AVATARS_DIR}:`, err);
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -61,7 +65,12 @@ router.post('/users/:userId/avatar', requireAuth, upload.single('file'), asyncHa
   const [existing] = await c2_query(`SELECT avatar_url FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
   if (existing?.avatar_url) {
     const oldPath = path.join(__dirname, '..', 'public', existing.avatar_url);
-    await fs.unlink(oldPath).catch(() => {});
+    await fs.unlink(oldPath).catch((err) => {
+      // ENOENT is expected if the file was already removed; log others.
+      if (err?.code !== 'ENOENT') {
+        console.error(`[${new Date().toISOString()}] avatars: failed to unlink ${oldPath}:`, err);
+      }
+    });
   }
 
   // Generate a unique filename
@@ -98,7 +107,12 @@ router.delete('/users/:userId/avatar', requireAuth, asyncHandler(async (req, res
   const [existing] = await c2_query(`SELECT avatar_url FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
   if (existing?.avatar_url) {
     const oldPath = path.join(__dirname, '..', 'public', existing.avatar_url);
-    await fs.unlink(oldPath).catch(() => {});
+    await fs.unlink(oldPath).catch((err) => {
+      // ENOENT is expected if the file was already removed; log others.
+      if (err?.code !== 'ENOENT') {
+        console.error(`[${new Date().toISOString()}] avatars: failed to unlink ${oldPath}:`, err);
+      }
+    });
   }
 
   await c2_query(`UPDATE users SET avatar_url = NULL WHERE id = ?`, [req.user.id]);
