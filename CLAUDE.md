@@ -285,17 +285,33 @@ New files match this pattern. Update the year only if the file is genuinely new.
 
 ### Testing
 
-- Framework: **Vitest + Supertest**. Backend routes have ~7700 lines of test
-  coverage; the frontend currently does not.
-- Tests mirror the source tree: `routes/foo.js` → `tests/routes/foo.test.js`.
+- Framework: **Vitest 4 + Supertest** for backend, **Vitest + jsdom +
+  @testing-library/react** for frontend. The two suites run as separate
+  Vitest **projects** (configured in `vitest.config.js`); a single
+  `npm test` runs both.
+- Tests mirror the source tree:
+  - `routes/foo.js` → `tests/routes/foo.test.js`
+  - `services/foo.js` → `tests/services/foo.test.js`
+  - `routes/helpers/foo.js` → `tests/helpers/foo.test.js`
+  - `src/foo.js` / `src/components/Foo.jsx` / `src/hooks/useFoo.js` → `tests/src/...`
 - Use the helpers in `tests/helpers.js` (`mockAuthenticated`,
   `mockUnauthenticated`, `resetMocks`, `TEST_USER`, `ADMIN_USER`).
 - `tests/setup.js` mocks the DB (`c2_query`), email, image processing, and
-  filesystem globally — your tests inherit these.
-- **Adding or modifying a backend route requires updating the matching test
-  file.** New routes need new tests in the same shape as their neighbors.
-- Frontend component tests are not currently expected, but if you add a hook
-  or pure-JS utility under `src/`, add a Vitest test.
+  filesystem globally for **backend** tests — your tests inherit these.
+  `tests/setup.frontend.js` provides jest-dom matchers and resets DOM /
+  localStorage / sessionStorage between **frontend** tests.
+- Coverage runs via `npm run test:coverage` (uses `@vitest/coverage-v8`)
+  and is enforced by per-glob thresholds in `vitest.config.js`. CI fails
+  on threshold violations.
+- **Adding or modifying a backend route, service, helper, or middleware
+  requires updating the matching test file.** New code needs new tests
+  in the same shape as its neighbors.
+- **New or modified frontend hooks (`src/hooks/`), pure-JS utilities
+  under `src/`, and reusable components in `src/components/` require
+  matching tests.** Pages (`src/pages/`) remain out of scope by default —
+  the giants like `Editor.jsx` and `GitHubPage.jsx` need a refactor that
+  extracts logic into testable hooks before they're worth unit-testing.
+- See `cloudcodex/tests/README.md` for testing patterns and examples.
 
 ### Shippability checklist
 

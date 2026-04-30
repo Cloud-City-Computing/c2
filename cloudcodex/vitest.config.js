@@ -69,11 +69,51 @@ export default defineConfig({
         '**/*.config.{js,cjs,mjs}',
         'src/main.jsx',
       ],
-      // Thresholds are intentionally absent during the test-coverage push.
-      // Phase 5 ratchets them up to actually-achieved numbers minus a small
-      // buffer so future regressions fail CI.
+      // Thresholds set to actually-achieved coverage minus a small buffer.
+      // Anything that dips meaningfully below the achieved coverage will
+      // fail CI — but normal day-to-day churn (a few uncovered lines) won't.
+      // Numbers are deliberately conservative on directories that are
+      // partially tested (services/collab.js, src/components/) so unrelated
+      // PRs aren't blocked by their pre-existing gaps.
       thresholds: {
-        autoUpdate: false,
+        // Global floor — pages/, large untested components, and src/extensions
+        // pull this down. Keeping it conservative.
+        lines: 38,
+        statements: 35,
+        branches: 30,
+        functions: 22,
+
+        // Well-tested security-critical modules.
+        'routes/helpers/**': { lines: 88, statements: 85, branches: 65, functions: 90 },
+        'middleware/**': { lines: 80, statements: 78, branches: 70, functions: 70 },
+
+        // Routes — strong coverage already, locked in.
+        'routes/auth.js': { lines: 85, statements: 85, branches: 82, functions: 95 },
+        'routes/admin.js': { lines: 90, statements: 90, branches: 88, functions: 90 },
+        'routes/archives.js': { lines: 90, statements: 88, branches: 75, functions: 90 },
+        'routes/comments.js': { lines: 92, statements: 90, branches: 85, functions: 95 },
+        'routes/documents.js': { lines: 95, statements: 92, branches: 88, functions: 88 },
+        'routes/favorites.js': { lines: 80, statements: 80, branches: 70, functions: 80 },
+        'routes/notifications.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
+        'routes/squads.js': { lines: 85, statements: 75, branches: 65, functions: 95 },
+        'routes/watches.js': { lines: 85, statements: 85, branches: 73, functions: 95 },
+
+        // Services.
+        'services/email.js': { lines: 95, statements: 95, branches: 70, functions: 95 },
+        'services/email-templates.js': { lines: 95, statements: 90, branches: 90, functions: 95 },
+        'services/notifications.js': { lines: 90, statements: 88, branches: 80, functions: 88 },
+
+        // Frontend pure logic.
+        'src/editorUtils.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
+        'src/userPrefs.js': { lines: 95, statements: 95, branches: 80, functions: 95 },
+        'src/lib/**': { lines: 90, statements: 90, branches: 70, functions: 80 },
+
+        // Hooks.
+        'src/hooks/useClickOutside.js': { lines: 90, statements: 90, branches: 80, functions: 90 },
+        'src/hooks/usePresence.js': { lines: 95, statements: 95, branches: 80, functions: 90 },
+        'src/hooks/useGitHubStatus.jsx': { lines: 85, statements: 85, branches: 75, functions: 85 },
+        'src/hooks/useGitHubLink.js': { lines: 88, statements: 85, branches: 65, functions: 95 },
+        'src/hooks/useNotificationChannel.js': { lines: 88, statements: 85, branches: 80, functions: 85 },
       },
     },
   },
