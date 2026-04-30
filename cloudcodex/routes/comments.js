@@ -9,6 +9,9 @@ import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { isValidId, asyncHandler, checkLogReadAccess, checkLogWriteAccess } from './helpers/shared.js';
+import { extractMentions, extractContextSnippet } from './helpers/mentions.js';
+import { createNotification } from '../services/notifications.js';
+import { logActivity } from './helpers/activity.js';
 
 const VALID_TAGS = ['comment', 'suggestion', 'question', 'issue', 'note'];
 const VALID_STATUSES = ['open', 'resolved', 'dismissed'];
@@ -168,6 +171,77 @@ router.post('/logs/:logId/comments', requireAuth, asyncHandler(async (req, res) 
   );
   comment.replies = [];
 
+  // Best-effort notifications: mentions inside the comment + a single
+  // "comment_on_my_doc" ping to the doc creator.
+  try {
+    const [docInfo] = await c2_query(
+      `SELECT id, title, archive_id, created_by FROM logs WHERE id = ? LIMIT 1`,
+      [Number(logId)]
+    );
+    if (docInfo) {
+      const docTitle = docInfo.title || 'Untitled';
+      const linkUrl = `/editor/${docInfo.id}#comment-${comment.id}`;
+      const actorName = req.user.name || 'Someone';
+      const snippet = (content || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+
+      // Mentions inside the comment body
+      const mentioned = extractMentions(content);
+      for (const userId of mentioned) {
+        if (userId === req.user.id) continue;
+        const [recipient] = await c2_query(
+          `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
+          [userId]
+        );
+        if (!recipient) continue;
+        const canRead = await checkLogReadAccess(Number(logId), recipient);
+        if (!canRead) continue;
+        await createNotification({
+          recipientId: userId,
+          actorId: req.user.id,
+          type: 'mention',
+          title: `${actorName} mentioned you in “${docTitle}”`,
+          body: extractContextSnippet(content, userId) || snippet,
+          linkUrl,
+          resourceType: 'comment',
+          resourceId: comment.id,
+          metadata: { log_id: docInfo.id, archive_id: docInfo.archive_id },
+          emailData: { actorName, docTitle, snippet, linkUrl },
+        });
+      }
+
+      // Doc creator gets a "comment_on_my_doc" notification (skip if creator
+      // is the comment author or already mentioned above)
+      if (
+        docInfo.created_by &&
+        docInfo.created_by !== req.user.id &&
+        !mentioned.has(docInfo.created_by)
+      ) {
+        await createNotification({
+          recipientId: docInfo.created_by,
+          actorId: req.user.id,
+          type: 'comment_on_my_doc',
+          title: `${actorName} commented on “${docTitle}”`,
+          body: snippet,
+          linkUrl,
+          resourceType: 'comment',
+          resourceId: comment.id,
+          metadata: { log_id: docInfo.id, archive_id: docInfo.archive_id },
+          emailData: { actorName, docTitle, snippet, linkUrl },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] comment notifications failed:`, err);
+  }
+
+  logActivity({
+    user: req.user,
+    action: 'comment.create',
+    resourceType: 'comment',
+    resourceId: comment.id,
+    metadata: { log_id: Number(logId), snippet: (content || '').slice(0, 200) },
+  });
+
   res.status(201).json({ comment });
 }));
 
@@ -271,6 +345,14 @@ router.post('/comments/:commentId/resolve', requireAuth, asyncHandler(async (req
     [Number(commentId)]
   );
 
+  logActivity({
+    user: req.user,
+    action: status === 'resolved' ? 'comment.resolve' : 'comment.dismiss',
+    resourceType: 'comment',
+    resourceId: Number(commentId),
+    metadata: { log_id: comment.log_id },
+  });
+
   res.json({ comment: updated });
 }));
 
@@ -299,6 +381,14 @@ router.post('/comments/:commentId/reopen', requireAuth, asyncHandler(async (req,
     [Number(commentId)]
   );
 
+  logActivity({
+    user: req.user,
+    action: 'comment.reopen',
+    resourceType: 'comment',
+    resourceId: Number(commentId),
+    metadata: { log_id: comment.log_id },
+  });
+
   res.json({ success: true });
 }));
 
@@ -321,6 +411,15 @@ router.delete('/comments/:commentId', requireAuth, asyncHandler(async (req, res)
   }
 
   await c2_query(`DELETE FROM comments WHERE id = ?`, [Number(commentId)]);
+
+  logActivity({
+    user: req.user,
+    action: 'comment.delete',
+    resourceType: 'log',
+    resourceId: comment.log_id,
+    metadata: { comment_id: Number(commentId) },
+  });
+
   res.json({ success: true });
 }));
 
@@ -384,6 +483,14 @@ router.post('/comments/:commentId/replies', requireAuth, asyncHandler(async (req
       WHERE cr.id = ?`,
     [result.insertId]
   );
+
+  logActivity({
+    user: req.user,
+    action: 'comment.reply',
+    resourceType: 'comment',
+    resourceId: Number(commentId),
+    metadata: { log_id: comment.log_id, snippet: content.slice(0, 200) },
+  });
 
   res.status(201).json({ reply });
 }));

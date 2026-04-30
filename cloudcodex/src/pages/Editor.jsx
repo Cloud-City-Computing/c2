@@ -57,6 +57,9 @@ import {
   getSessionTokenFromCookie,
   checkFavorite,
   addFavorite,
+  checkWatch,
+  addWatch,
+  removeWatch,
   removeFavorite,
   timeAgo,
 } from '../util';
@@ -70,6 +73,7 @@ import useGitHubLink from '../hooks/useGitHubLink';
 import GitHubSyncBanner from '../components/GitHubSyncBanner';
 import GitHubCodeEmbed from '../extensions/GitHubCodeEmbed';
 import GitHubIssueEmbed from '../extensions/GitHubIssueEmbed';
+import Mention, { MentionPicker } from '../extensions/Mention';
 import CodeEmbedPickerModal from '../components/github/CodeEmbedPickerModal';
 import IssuePickerModal from '../components/github/IssuePickerModal';
 
@@ -423,6 +427,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
       DrawioBlock,
       GitHubCodeEmbed,
       GitHubIssueEmbed,
+      Mention,
       ResizableImage.configure({ inline: false, allowBase64: false }),
       Placeholder.configure({ placeholder: 'Start typing...' }),
       Underline,
@@ -552,6 +557,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
       <TiptapToolbar editor={editor} onImageSelect={handleToolbarImageSelect} />
       <div ref={editorContainerRef}>
         <EditorContent editor={editor} />
+        <MentionPicker editor={editor} />
       </div>
       {overlayContainer && createPortal(
         <RichTextCursors remoteCursors={remoteCursors} editorRef={{ current: editor }} />,
@@ -974,6 +980,32 @@ export default function Editor({ embedded = false } = {}) {
     setFavLoading(false);
   }, [logId, isFavorited, favLoading]);
 
+  // Watch state for the doc
+  const [watching, setWatching] = useState(false);
+  const [watchLoading, setWatchLoading] = useState(false);
+
+  useEffect(() => {
+    if (!logId) return;
+    checkWatch('log', Number(logId))
+      .then((res) => setWatching(Boolean(res?.watching)))
+      .catch(() => {});
+  }, [logId]);
+
+  const toggleWatch = useCallback(async () => {
+    if (watchLoading || !logId) return;
+    setWatchLoading(true);
+    try {
+      if (watching) {
+        await removeWatch('log', Number(logId));
+        setWatching(false);
+      } else {
+        await addWatch('log', Number(logId));
+        setWatching(true);
+      }
+    } catch { /* ignore */ }
+    setWatchLoading(false);
+  }, [logId, watching, watchLoading]);
+
   // Load comments for this log
   const loadComments = useCallback(async () => {
     if (!logId) return;
@@ -1297,6 +1329,22 @@ export default function Editor({ embedded = false } = {}) {
                 title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
               >
                 {isFavorited ? '★' : '☆'}
+              </button>
+            )}
+            {documentData && (
+              <button
+                className={`btn-watch${watching ? ' btn-watch--active' : ''}`}
+                onClick={toggleWatch}
+                disabled={watchLoading}
+                title={watching ? 'Stop watching this document' : 'Watch for updates and comments'}
+                aria-pressed={watching}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                  fill={watching ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
               </button>
             )}
             {documentData?.gh_owner && (

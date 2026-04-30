@@ -10,6 +10,8 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendEmail } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, APP_URL, addSquadOwnerMember } from './helpers/shared.js';
+import { logActivity } from './helpers/activity.js';
+import { createNotification } from '../services/notifications.js';
 
 const router = express.Router();
 
@@ -411,6 +413,37 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
     }
   }
 
+  logActivity({
+    user: req.user,
+    action: 'squad.invite_create',
+    resourceType: 'squad',
+    resourceId: Number(id),
+    metadata: { invited_user_id: Number(userId), role: safeRole },
+  });
+
+  // Inbox notification (in addition to the email above) so the recipient
+  // sees the invite when they next open the app.
+  if (invitedUser) {
+    try {
+      await createNotification({
+        recipientId: Number(userId),
+        actorId: req.user.id,
+        type: 'squad_invite',
+        title: `${req.user.name} invited you to ${squad.name}`,
+        body: null,
+        linkUrl: '/account',
+        resourceType: 'squad',
+        resourceId: Number(id),
+        metadata: { role: safeRole, squad_name: squad.name },
+        // Email already sent above; suppress the funnel's email by setting
+        // emailData to null so buildNotificationEmail returns null.
+        emailData: null,
+      });
+    } catch (err) {
+      console.error(`[${new Date().toISOString()}] squad invite notification failed:`, err);
+    }
+  }
+
   res.status(201).json({ success: true });
 }));
 
@@ -497,6 +530,15 @@ router.delete('/squads/:id/members/:userId', requireAuth, asyncHandler(async (re
   }
 
   await c2_query(`DELETE FROM squad_members WHERE squad_id = ? AND user_id = ?`, [Number(id), Number(userId)]);
+
+  logActivity({
+    user: req.user,
+    action: 'squad.member_leave',
+    resourceType: 'squad',
+    resourceId: Number(id),
+    metadata: { user_id: Number(userId) },
+  });
+
   res.json({ success: true });
 }));
 
@@ -592,6 +634,14 @@ router.post('/invitations/:id/accept', requireAuth, asyncHandler(async (req, res
     `UPDATE squad_invitations SET status = 'accepted', responded_at = NOW() WHERE id = ?`,
     [Number(id)]
   );
+
+  logActivity({
+    user: req.user,
+    action: 'squad.member_join',
+    resourceType: 'squad',
+    resourceId: inv.squad_id,
+    metadata: { role: inv.role },
+  });
 
   res.json({ success: true });
 }));

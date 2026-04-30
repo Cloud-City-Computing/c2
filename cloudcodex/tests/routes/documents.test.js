@@ -213,6 +213,75 @@ describe('Document Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
     });
+
+    it('creates a notification for a newly @mentioned user with read access', async () => {
+      mockAuthenticated();
+      c2_query
+        // 1: write-access fetch returning the existing doc
+        .mockResolvedValueOnce([{ id: 1, old_content: '<p>old</p>', version: 2, archive_id: 1, title: 'Doc Title' }])
+        // 2: UPDATE
+        .mockResolvedValueOnce({ affectedRows: 1 })
+        // 3: getRecipientUser SELECT
+        .mockResolvedValueOnce([{ id: 7, name: 'Bob', email: 'b@x.com', is_admin: false }])
+        // 4: checkLogReadAccess SELECT — returns the log (has access)
+        .mockResolvedValueOnce([{ id: 1 }])
+        // 5: coalesce SELECT — returns no recent duplicate
+        .mockResolvedValueOnce([])
+        // 6: INSERT into notifications
+        .mockResolvedValueOnce({ insertId: 100 })
+        // 7: getRecipient for email — returns user with no prefs (defaults apply)
+        .mockResolvedValueOnce([{ id: 7, name: 'Bob', email: 'b@x.com', notification_prefs: null }]);
+
+      const html = '<p>Hello <span data-mention-user-id="7" data-mention-username="bob">@bob</span></p>';
+      const res = await request(app)
+        .post('/api/save-document')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ doc_id: 1, html_content: html });
+
+      expect(res.status).toBe(200);
+      // Find the INSERT into notifications call
+      const insertCall = c2_query.mock.calls.find(c => /INSERT INTO notifications/i.test(c[0]));
+      expect(insertCall).toBeTruthy();
+      expect(insertCall[1]).toContain(7); // recipient
+      expect(insertCall[1]).toContain('mention');
+    });
+
+    it('does NOT notify when the mentioned user has no read access', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, old_content: '<p>old</p>', version: 2, archive_id: 1, title: 'Private Doc' }])
+        .mockResolvedValueOnce({ affectedRows: 1 })
+        .mockResolvedValueOnce([{ id: 9, name: 'Eve', email: 'e@x.com', is_admin: false }])
+        // Read access check — returns empty (denied)
+        .mockResolvedValueOnce([]);
+
+      const html = '<p><span data-mention-user-id="9" data-mention-username="eve">@eve</span></p>';
+      const res = await request(app)
+        .post('/api/save-document')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ doc_id: 1, html_content: html });
+
+      expect(res.status).toBe(200);
+      const insertCall = c2_query.mock.calls.find(c => /INSERT INTO notifications/i.test(c[0]));
+      expect(insertCall).toBeFalsy();
+    });
+
+    it('does NOT notify on a re-save with no new mentions', async () => {
+      mockAuthenticated();
+      const html = '<p><span data-mention-user-id="7" data-mention-username="bob">@bob</span></p>';
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, old_content: html, version: 2, archive_id: 1, title: 'D' }])
+        .mockResolvedValueOnce({ affectedRows: 1 });
+
+      const res = await request(app)
+        .post('/api/save-document')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ doc_id: 1, html_content: html });
+
+      expect(res.status).toBe(200);
+      const insertCall = c2_query.mock.calls.find(c => /INSERT INTO notifications/i.test(c[0]));
+      expect(insertCall).toBeFalsy();
+    });
   });
 
   // ── PUT /api/document/:logId/title ───────────────────────

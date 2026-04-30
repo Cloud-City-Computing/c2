@@ -18,6 +18,9 @@ const WorkspacesPage = lazy(() => import('./pages/WorkspacesPage'));
 const AccountSettings = lazy(() => import('./pages/AccountSettings'));
 const ArchivesPage = lazy(() => import('./pages/ArchivesPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const NotificationPreferences = lazy(() => import('./pages/NotificationPreferences'));
+const WorkspaceActivity = lazy(() => import('./pages/WorkspaceActivity'));
 
 function PageLoader() {
   return <div className="page-loader"><div className="spinner" /></div>;
@@ -61,6 +64,10 @@ function App() {
       <Route path="/github" element={<GitHubPage />} />
       <Route path="/github/:owner/:repo" element={<GitHubPage />} />
       <Route path="/admin" element={<AdminPage />} />
+      <Route path="/notifications" element={<NotificationsPage />} />
+      <Route path="/notifications/preferences" element={<NotificationPreferences />} />
+      <Route path="/activity" element={<WorkspaceActivity />} />
+      <Route path="/activity/workspace/:workspaceId" element={<WorkspaceActivity />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/404" replace />} />
     </Routes>

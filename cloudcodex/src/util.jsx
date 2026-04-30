@@ -260,6 +260,48 @@ export const fetchSearchFilters = () => apiFetch('GET', '/api/search/filters');
 
 export const fetchPresence = () => apiFetch('GET', '/api/presence');
 
+// --- Watch / Subscribe APIs ---
+
+export const fetchWatches = () => apiFetch('GET', '/api/watches');
+export const checkWatch = (resourceType, resourceId) =>
+  apiFetch('GET', `/api/watches/${resourceType}/${resourceId}`);
+export const addWatch = (resourceType, resourceId) =>
+  apiFetch('POST', '/api/watches', { resourceType, resourceId });
+export const removeWatch = (resourceType, resourceId) =>
+  apiFetch('DELETE', `/api/watches/${resourceType}/${resourceId}`);
+
+// --- Activity APIs ---
+
+export const fetchWorkspaceActivity = ({ workspaceId, before, limit = 50, actionPrefix } = {}) => {
+  if (!workspaceId) throw new Error('workspaceId is required');
+  const params = new URLSearchParams({ workspace: String(workspaceId), limit: String(limit) });
+  if (before) params.set('before', before);
+  if (actionPrefix) params.set('action_prefix', actionPrefix);
+  return apiFetch('GET', `/api/activity?${params.toString()}`);
+};
+export const fetchLogActivity = (logId, opts = {}) => {
+  const params = new URLSearchParams({ limit: String(opts.limit ?? 50) });
+  if (opts.includeComments === false) params.set('include_comments', '0');
+  if (opts.includeVersions === false) params.set('include_versions', '0');
+  return apiFetch('GET', `/api/activity/log/${logId}?${params.toString()}`);
+};
+
+// --- Notification APIs ---
+
+export const fetchNotifications = ({ limit = 20, before, unreadOnly } = {}) => {
+  const params = new URLSearchParams();
+  if (limit) params.set('limit', limit);
+  if (before) params.set('before', before);
+  if (unreadOnly) params.set('unread', '1');
+  const qs = params.toString();
+  return apiFetch('GET', `/api/notifications${qs ? `?${qs}` : ''}`);
+};
+export const fetchUnreadNotificationCount = () => apiFetch('GET', '/api/notifications/unread-count');
+export const markNotificationRead = (id) => apiFetch('POST', `/api/notifications/${id}/read`);
+export const markAllNotificationsRead = () => apiFetch('POST', '/api/notifications/read-all');
+export const fetchNotificationPreferences = () => apiFetch('GET', '/api/notifications/preferences');
+export const updateNotificationPreferences = (prefs) => apiFetch('PUT', '/api/notifications/preferences', prefs);
+
 // --- Favorites APIs ---
 
 export const fetchFavorites = ({ page = 1, limit = 12 } = {}) =>

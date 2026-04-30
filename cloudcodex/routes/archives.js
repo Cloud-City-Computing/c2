@@ -11,6 +11,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner } from './helpers/ownership.js';
 import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
+import { logActivity } from './helpers/activity.js';
 
 const router = express.Router();
 
@@ -129,6 +130,15 @@ router.post('/archives', requireAuth, requirePermission('create_archive'), async
     [name.trim(), squad_id ?? null, req.user.id, req.user.id, req.user.id]
   );
 
+  logActivity({
+    user: req.user,
+    action: 'archive.create',
+    resourceType: 'archive',
+    resourceId: result.insertId,
+    squadId: squad_id ?? null,
+    metadata: { name: name.trim() },
+  });
+
   res.status(201).json({ success: true, archiveId: result.insertId });
 }));
 
@@ -160,6 +170,15 @@ router.put('/archives/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!archive) return res.status(403).json({ success: false, message: 'Write access denied' });
 
   await c2_query(`UPDATE archives SET name = ? WHERE id = ?`, [name.trim(), Number(id)]);
+
+  logActivity({
+    user: req.user,
+    action: 'archive.rename',
+    resourceType: 'archive',
+    resourceId: Number(id),
+    metadata: { name: name.trim() },
+  });
+
   res.json({ success: true });
 }));
 
@@ -177,6 +196,14 @@ router.delete('/archives/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!allowed) return res.status(403).json({ success: false, message: 'Only a archive or squad owner can delete this archive' });
 
   await c2_query(`DELETE FROM archives WHERE id = ?`, [Number(id)]);
+
+  logActivity({
+    user: req.user,
+    action: 'archive.delete',
+    resourceType: 'archive',
+    resourceId: Number(id),
+  });
+
   res.json({ success: true });
 }));
 
@@ -427,6 +454,14 @@ router.post('/archives/:archiveId/logs', requireAuth, requirePermission('create_
     [Number(archiveId), title.trim(), parentId, req.user.id, req.user.id]
   );
 
+  logActivity({
+    user: req.user,
+    action: 'log.create',
+    resourceType: 'log',
+    resourceId: result.insertId,
+    metadata: { title: title.trim(), archive_id: Number(archiveId) },
+  });
+
   res.status(201).json({ success: true, logId: result.insertId });
 }));
 
@@ -499,6 +534,14 @@ router.delete('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(asyn
     `DELETE FROM logs WHERE id = ? AND archive_id = ?`,
     [Number(logId), Number(archiveId)]
   );
+
+  logActivity({
+    user: req.user,
+    action: 'log.delete',
+    resourceType: 'archive',
+    resourceId: Number(archiveId),
+    metadata: { log_id: Number(logId) },
+  });
 
   res.json({ success: true });
 }));
