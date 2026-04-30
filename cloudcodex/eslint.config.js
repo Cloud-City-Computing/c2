@@ -73,10 +73,11 @@ export default defineConfig([
     },
   },
   {
-    files: ['tests/**/*.js'],
+    files: ['tests/**/*.{js,jsx}'],
     languageOptions: {
       globals: {
         ...globals.node,
+        ...globals.browser,
         vi: 'readonly',
         describe: 'readonly',
         it: 'readonly',
@@ -89,6 +90,8 @@ export default defineConfig([
     },
     rules: {
       'require-await': 'off',
+      // Test files often define helper components inline.
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])
