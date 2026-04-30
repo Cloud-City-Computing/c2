@@ -1,14 +1,23 @@
+```
+─── ◆ ─────────────────────────────────────────────────────────────────────
+   API · OAuth & GitHub Integration
+─── ◆ ─────────────────────────────────────────────────────────────────────
+```
+
 # API Reference — OAuth & GitHub Integration
+
+All routes mount under `/api`. Anything that touches the GitHub API requires
+both `requireAuth` and an active GitHub OAuth link — these routes return
+`401`/`403` if either is missing.
 
 ---
 
 ## OAuth Providers
 
-Cloud Codex supports two OAuth providers. Their availability depends on whether the relevant credentials are set in `.env`.
-
 ### `GET /api/oauth/providers`
 
-Returns which OAuth providers are configured and available for login. This is a public endpoint — called by the login UI before rendering OAuth buttons.
+Returns which OAuth providers are configured. Public — called by the login
+UI before rendering OAuth buttons.
 
 **Response:** `{ success: true, providers: { google: true, github: false } }`
 
@@ -16,193 +25,331 @@ Returns which OAuth providers are configured and available for login. This is a 
 
 ## Google SSO
 
-Google OAuth is used for **login and automatic account creation**. If `GOOGLE_OAUTH_DOMAIN` is set (e.g. `yourcompany.com`), only users from that domain are accepted — enabling Google Workspace SSO for a specific organization.
+Google OAuth is used for **login and automatic account creation**. If
+`GOOGLE_OAUTH_DOMAIN` is set (e.g. `yourcompany.com`), only users from that
+domain are accepted — enabling Google Workspace SSO for a specific
+organization.
 
-### `GET /api/oauth/google/authorize`
+### `GET /api/oauth/google`
 
-Redirects the user to Google's OAuth consent screen. Generates a short-lived (10 min) CSRF state token stored in memory.
-
----
+Redirects the user to Google's OAuth consent screen. Generates a short-lived
+(10 min) CSRF state token stored in memory.
 
 ### `GET /api/oauth/google/callback`
 
-OAuth callback from Google. Validates the `state` parameter, exchanges the auth code for tokens, and verifies the ID token.
+OAuth callback. Validates the `state` parameter, exchanges the auth code
+for tokens, verifies the ID token.
 
 **Account creation behavior:**
-
 1. If a Google OAuth account is already linked → log in that user.
-2. If no linked account but a user with the same email exists → link the Google account to the existing user.
-3. If the domain matches `GOOGLE_OAUTH_DOMAIN` → auto-create a new account (no invitation required). Username is derived from the email local part.
-4. Otherwise → return `403` (no invitation flow for Google SSO users outside the allowed domain).
+2. If no linked account but a user with the same email exists → link to
+   that user.
+3. If the domain matches `GOOGLE_OAUTH_DOMAIN` → auto-create a new account
+   (no invitation required). Username derived from the email local part.
+4. Otherwise → `403` (no invitation flow for outside-domain users).
 
 On success, sets a `sessionToken` cookie and redirects to `/`.
 
----
+### `GET /api/oauth/status` *(requires auth)*
 
-### `GET /api/oauth/google/status` *(requires auth)*
+Returns whether the current user has Google linked.
 
-Returns whether the current user has a Google account linked.
+### `POST /api/oauth/google/unlink` *(requires auth)*
 
----
-
-### `DELETE /api/oauth/google/disconnect` *(requires auth)*
-
-Unlink the Google account. Only allowed if the user has a password set (to prevent account lockout).
+Unlink Google. Only allowed if the user has a password set (lockout
+prevention).
 
 ---
 
 ## GitHub OAuth
 
-GitHub OAuth is used for **linking a GitHub account** to enable the GitHub integration features (repo browsing, file editing, PR creation). It is not used for login.
+GitHub OAuth is used for **linking a GitHub account** to enable the GitHub
+integration features. It is not used for login.
 
-GitHub access tokens are stored **encrypted** in the `oauth_accounts` table using AES-256-GCM. The encryption key is derived from `GITHUB_CLIENT_SECRET` via `scrypt`. Tokens are never returned to the client.
+GitHub access tokens are stored **encrypted** in the `oauth_accounts` table
+using AES-256-GCM. The encryption key is derived from `GITHUB_CLIENT_SECRET`
+via `scrypt`. Tokens are never returned to the client.
 
-### `GET /api/oauth/github/authorize` *(requires auth)*
+### `GET /api/oauth/github` *(requires auth)*
 
-Redirects to GitHub's OAuth consent screen to link a GitHub account. Requests the `repo` scope.
-
----
+Redirects to GitHub's OAuth consent screen to link a GitHub account.
+Requests the `repo` scope.
 
 ### `GET /api/oauth/github/callback`
 
-OAuth callback from GitHub. Exchanges the code for an access token, encrypts it, and stores it in `oauth_accounts`.
+Exchanges the code for an access token, encrypts it, stores it. If the user
+already has a GitHub link, the token is refreshed. Redirects to `/github`.
 
-If the user already has a GitHub account linked, the token is updated (refreshed). On success, redirects to `/github`.
+### `GET /api/github/status` *(requires auth)*
 
----
+Returns whether the current user has GitHub linked + their GitHub username.
 
-### `GET /api/oauth/github/status` *(requires auth)*
+### `POST /api/oauth/github/unlink` *(requires auth)*
 
-Returns whether the current user has a GitHub account linked, plus their GitHub username if connected.
-
----
-
-### `DELETE /api/oauth/github/disconnect` *(requires auth)*
-
-Unlink and delete the stored GitHub token.
+Unlinks and deletes the stored token.
 
 ---
 
-## GitHub API Integration
+## Repository browsing
 
-These routes proxy GitHub API calls on behalf of the authenticated user using their stored encrypted access token. All routes require auth **and** a linked GitHub account (`requireGitHub` middleware).
+All routes below require auth + active GitHub link.
 
----
+### `GET /api/github/repos`
 
-### Repositories
+List the user's repositories (owned + collaborator + org member).
 
-#### `GET /api/github/repos`
-
-List the user's GitHub repositories (owned + collaborator + org member).
-
-**Query params:** `?page=1&per_page=30&sort=updated&q=searchterm`
+**Query params:** `?page=1&per_page=30&sort=updated&q=<search>`
 
 When `q` is provided, uses the GitHub Search API.
 
-**Response:** `{ success: true, repos: [{ id, name, full_name, description, private, default_branch, language, updated_at, html_url, owner: { login, avatar_url } }] }`
+### `GET /api/github/repos/:owner/:repo`
 
----
+Repository metadata (default branch, description, stars, etc.).
 
-#### `GET /api/github/repos/:owner/:repo/branches`
+### `GET /api/github/repos/:owner/:repo/branches`
 
-List branches for a repository.
+List branches.
 
----
+### `POST /api/github/repos/:owner/:repo/branches`
 
-#### `GET /api/github/repos/:owner/:repo/tree`
+Create a branch from a ref.
 
-List the file tree of a repository at a specific ref.
+**Body:** `{ name, fromRef }`
+
+### `GET /api/github/repos/:owner/:repo/tree`
+
+Recursive file tree at a ref.
 
 **Query params:** `?ref=main`
 
 ---
 
-#### `GET /api/github/repos/:owner/:repo/file`
+## File contents
 
-Fetch the raw content of a file.
+### `GET /api/github/repos/:owner/:repo/contents/:filePath`
 
-**Query params:** `?path=docs/guide.md&ref=main`
+Fetch a file's content. Returns the decoded content and SHA. Markdown files
+are also parsed to HTML for preview/import.
 
-Returns the decoded content and SHA. If the file is a Markdown file, the content is also parsed to HTML via `marked` for preview/import.
+### `PUT /api/github/repos/:owner/:repo/contents/:filePath`
+
+Create or update a file.
+
+**Body:** `{ content, message, branch, sha? }` — `sha` is required for
+updates (GitHub's optimistic-concurrency check).
+
+### `DELETE /api/github/repos/:owner/:repo/contents/:filePath`
+
+Delete a file via the Contents API.
+
+**Body:** `{ message, branch, sha }`
+
+### `POST /api/github/repos/:owner/:repo/rename`
+
+Rename a file (move within the same repo).
+
+**Body:** `{ fromPath, toPath, branch, message }`
 
 ---
 
-### File Editing & Pull Requests
+## Pull requests
 
-#### `POST /api/github/repos/:owner/:repo/commit`
+### `GET /api/github/repos/:owner/:repo/pulls`
 
-Commit a change to a file directly to a branch.
+List pull requests.
 
-**Body:** `{ path, content, message, branch, sha }` — `sha` is required for existing files (prevents overwrite conflicts via GitHub's API).
+**Query params:** `?state=open|closed|all`
 
----
-
-#### `POST /api/github/repos/:owner/:repo/pulls`
+### `POST /api/github/repos/:owner/:repo/pulls`
 
 Create a pull request.
 
 **Body:** `{ title, body, head, base }`
 
----
+### `GET /api/github/repos/:owner/:repo/pulls/:number`
 
-#### `GET /api/github/repos/:owner/:repo/pulls`
+Single PR details.
 
-List open pull requests.
+### `GET /api/github/repos/:owner/:repo/pulls/:number/commits`
 
----
+Commits in a PR.
 
-### GitHub ↔ Document Links
+### `GET /api/github/repos/:owner/:repo/pulls/:number/files`
 
-These endpoints link a specific GitHub file to a Cloud Codex log for two-way sync workflows.
+Changed files in a PR.
 
-#### `POST /api/github/link`
+### `GET /api/github/repos/:owner/:repo/pulls/:number/session`
 
-Link a GitHub file to a document.
+Cloud Codex's PR-session record from `github_pr_sessions` (used by the
+merge dialog UI to attach state across visits).
 
-**Body:** `{ logId, repoOwner, repoName, filePath, branch }`
+### `GET /api/github/repos/:owner/:repo/pulls/:number/comments`
 
-Requires write access to the document's archive.
+PR review-thread comments.
 
----
+### `POST /api/github/repos/:owner/:repo/pulls/:number/comments`
 
-#### `DELETE /api/github/link/:logId`
+Post a PR review-thread comment.
 
-Remove the GitHub link from a document.
+**Body:** `{ body, path?, line?, side? }`
 
----
+### `POST /api/github/repos/:owner/:repo/pulls/:number/reviews`
 
-#### `POST /api/github/push/:logId`
+Submit a PR review.
 
-Push the current document's Markdown to the linked GitHub file. Creates a commit on the configured branch.
-
-Requires write access and a linked GitHub file.
-
----
-
-#### `POST /api/github/pull/:logId`
-
-Pull the linked GitHub file's current content into the document. Converts Markdown to HTML and saves.
-
-Requires write access.
+**Body:** `{ event: 'APPROVE'|'REQUEST_CHANGES'|'COMMENT', body? }`
 
 ---
 
-### Archive Repo Links
+## Commits, search, CI
 
-#### `POST /api/archives/:id/repos`
+### `GET /api/github/repos/:owner/:repo/commits`
 
-Link a GitHub repository to an archive (for contextual display). Requires archive ownership.
+Recent commits on a branch.
 
-**Body:** `{ repoFullName }` (e.g. `"myorg/my-repo"`)
+**Query params:** `?ref=main&path=docs/`
+
+### `GET /api/github/repos/:owner/:repo/commits/:sha`
+
+Single commit details.
+
+### `GET /api/github/repos/:owner/:repo/commits/:sha/check-runs`
+
+CI / check-run status for a commit (powers the `CIStatusBadge`).
+
+### `GET /api/github/repos/:owner/:repo/search`
+
+Code search inside a repo. Wraps the GitHub Search API.
+
+**Query params:** `?q=<expr>&page=1`
+
+### `GET /api/github/repos/:owner/:repo/actions/runs`
+
+Recent Actions runs for the repo.
+
+### `GET /api/github/repos/:owner/:repo/releases`
+
+List releases.
+
+### `POST /api/github/repos/:owner/:repo/releases`
+
+Create a release.
+
+**Body:** `{ tag_name, name, body, draft?, prerelease? }`
 
 ---
 
-#### `DELETE /api/archives/:id/repos/:repoId`
+## Issues & user search
 
-Remove a linked repository from an archive.
+### `GET /api/github/issues/search`
+
+Cross-repo issue search.
+
+**Query params:** `?q=<expr>`
+
+### `GET /api/github/repos/:owner/:repo/issues/:number`
+
+Single issue details.
+
+### `POST /api/github/repos/:owner/:repo/issues`
+
+Create an issue.
+
+**Body:** `{ title, body, labels?, assignees? }`
+
+### `GET /api/github/users/search`
+
+Search GitHub users (powers `@`-mention pickers in PR reviews).
+
+**Query params:** `?q=<expr>`
 
 ---
 
-#### `GET /api/archives/:id/repos`
+## Document ↔ GitHub-file linking
 
-List GitHub repos linked to an archive.
+These routes link a single document to a GitHub file for two-way sync.
+
+### `GET /api/github/link/:logId`
+
+Link metadata for a document, or `null` if unlinked.
+
+### `PUT /api/github/link/:logId`
+
+Create or replace the link.
+
+**Body:** `{ repoOwner, repoName, filePath, branch }`
+
+### `DELETE /api/github/link/:logId`
+
+Remove the link.
+
+### `GET /api/github/link/:logId/status`
+
+Live sync state: `clean | remote_ahead | local_ahead | diverged | conflict`,
+plus the last pull/push timestamps.
+
+### `POST /api/github/link/:logId/pull`
+
+Pull the linked file's current content into the document. Markdown is
+converted to sanitized HTML.
+
+### `POST /api/github/link/:logId/push`
+
+Push the document's current Markdown to the linked file. Creates a commit
+on the link's configured branch.
+
+### `POST /api/github/link/:logId/resolve`
+
+Mark a `conflict` state resolved after a manual merge.
+
+### `GET /api/logs/by-github-ref`
+
+Reverse lookup: given a GitHub `repoOwner/repoName/path`, find the linked
+log (if any) the current user can see.
+
+---
+
+## Embeds
+
+### `GET /api/github/embed/code`
+
+Resolve an embedded code snippet to current content (used by the
+`GitHubCodeEmbed` Tiptap extension).
+
+**Query params:** `?repo_owner=&repo_name=&ref=&branch=&path=&from=&to=`
+
+---
+
+## Archive ↔ Repository linking
+
+Archives have their own bulk-import workflow tied to a repo `docs/` tree.
+
+### `POST /api/github/archives/:archiveId/repos/:repoId/import`
+
+Bulk-imports all supported files from the linked repo path as logs.
+Preserves folder structure as the log tree. Each imported log is linked
+back to its source file.
+
+### `POST /api/github/archives/:archiveId/repos/:repoId/refresh`
+
+Re-runs the import; new files become new logs, existing linked files are
+left alone.
+
+### `POST /api/github/import-to-codex`
+
+One-shot single-file import — creates a fresh log from a GitHub file with
+the link pre-populated.
+
+**Body:** `{ archiveId, repoOwner, repoName, filePath, branch }`
+
+---
+
+## Squad ↔ GitHub team sync
+
+### `GET /api/squads/:squadId/github-team/preview` *(requires auth + GitHub)*
+
+Preview the membership of a GitHub team without applying changes.
+
+### `POST /api/squads/:squadId/github-team/sync` *(requires auth + GitHub)*
+
+Sync squad membership against a GitHub team's members.

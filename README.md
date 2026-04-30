@@ -2,134 +2,149 @@
   <img src="cloudcodex/src/assets/ccc_brand/ccc_no_txt_transparent.png" alt="Cloud Codex" width="120" />
 </p>
 
-<h1 align="center">Cloud Codex</h1>
+```
+            ____ _                 _    ____          _
+           / ___| | ___  _   _  __| |  / ___|___   __| | _____  __
+          | |   | |/ _ \| | | |/ _` | | |   / _ \ / _` |/ _ \ \/ /
+          | |___| | (_) | |_| | (_| | | |___| (_) | (_| |  __/>  <
+           \____|_|\___/ \__,_|\__,_|  \____\___/ \__,_|\___/_/\_\
+```
+
+<h3 align="center">Real-time team docs that you actually own.</h3>
 
 <p align="center">
-  A real-time collaborative documentation platform by <a href="https://cloudcitycomputing.com">Cloud City Computing, LLC</a>
+  A self-hosted, real-time collaborative documentation platform by
+  <a href="https://cloudcitycomputing.com">Cloud City Computing, LLC</a>
 </p>
 
 <p align="center">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/RhykerWells/c2/ci.yml?branch=main&label=CI" />
   <img alt="Tests" src="https://img.shields.io/badge/tests-1128%20passing-brightgreen" />
-  <img alt="Coverage (lines)" src="https://img.shields.io/badge/coverage%20(lines)-43%25-yellow" />
+  <img alt="Coverage (lines)" src="https://img.shields.io/badge/coverage%20(lines)-46%25-yellow" />
   <img alt="Node" src="https://img.shields.io/badge/node-20.x-339933" />
+  <img alt="License" src="https://img.shields.io/badge/license-source--available-blue" />
 </p>
 
-> The CI badge tracks the workflow run; the test count and coverage badge
-> reflect the latest known numbers (run `npm run test:coverage` from
-> `cloudcodex/` to refresh locally). Coverage is enforced via per-glob
-> thresholds in `cloudcodex/vitest.config.js` — see
-> [`cloudcodex/tests/README.md`](cloudcodex/tests/README.md) for testing
-> patterns.
+> **A self-hosted Confluence/Notion alternative built on real CRDT
+> collaboration, with GitHub as a first-class surface — not a plugin.**
+> Multiple users edit the same document at the same time with conflict-free
+> merging, browse and edit a linked GitHub repo without leaving the page,
+> and run the whole stack on one box with one Node container and one MySQL
+> container.
 
 ---
 
-## About
+## Why Cloud Codex
 
-Cloud Codex is a self-hosted documentation platform that lets squads write, organize, and collaborate on documents in real time. Multiple users can edit the same log simultaneously with conflict-free merging, leave inline comments and annotations, manage access through workspaces and squads, and track change history with publishable versions — all from a modern browser-based interface.
+**True real-time editing, not last-write-wins.** Every doc is a Yjs
+CRDT. Two people typing in the same paragraph see each other's cursors,
+and the merge is automatic — there's no "your version overwrote mine"
+moment. The same WebSocket carries comments and presence, so the doc
+feels alive while you work in it.
 
-It is designed for teams that want full control over their documentation infrastructure without relying on third-party SaaS platforms. It runs entirely on your own hardware or cloud with a single Docker container for the database and a Node.js application server.
+**GitHub built in, not bolted on.** Browse a repo's file tree, edit
+files in-browser with proper commits, open and review pull requests,
+embed code or issues directly into a doc, and link a doc to a GitHub
+file for two-way push/pull sync. No webhooks, no background sync — every
+GitHub call is live, scoped to the user's own OAuth token (encrypted at
+rest with AES-256-GCM).
 
----
+**Layered access that composes.** Workspaces own squads, squads own
+archives, archives own documents. Permissions cascade through a 7-step
+resolution that runs in one SQL fragment — admin → archive grants →
+creator → workspace owner → squad role → squad grants → workspace flag.
+Share a single doc with one person, a whole squad, or every member of
+the workspace, without restructuring your org.
 
-## Who Is This For?
-
-Cloud Codex is a good fit for teams that:
-
-- Need a **self-hosted** alternative to Notion, Confluence, or similar platforms
-- Want **real-time collaborative editing** with CRDT-based conflict resolution, not last-write-wins
-- Operate with **squads and workspaces** and need granular, role-based access control per document
-- Want to keep documentation and **GitHub repository work** in the same interface
-- Require **invite-only user management** rather than open public registration
-
-It is not optimized for public-facing wikis, anonymous access, or very large organizations with complex SSO requirements beyond Google Workspace domain restriction.
-
----
-
-## What It Supports
-
-| Capability | Details |
-| --- | --- |
-| Collaborative editing | Yjs CRDTs, remote cursors, live presence indicators |
-| Rich text & Markdown | WYSIWYG (Tiptap) and Markdown modes, switchable per user |
-| Code blocks | Syntax highlighting for 25 languages with language selector |
-| Diagrams | Embedded draw.io diagrams, stored as XML + SVG |
-| Images | Paste/drop upload, WebP conversion, resizable in-editor, crop modal |
-| Comments | Inline text-anchored comments, threaded replies, tag + status workflow |
-| Access control | Three-tier: workspace → squad → per-user read/write grants |
-| Version history | Named snapshots with release notes, preview, restore |
-| Import / export | HTML, Markdown, plain text, PDF, DOCX in both directions |
-| Full-text search | MySQL FULLTEXT index, scoped to accessible documents |
-| GitHub integration | File browser, in-browser editing, branch and PR management |
-| OAuth / SSO | Google Workspace domain SSO, GitHub account linking |
-| Admin console | User invitations, workspace scaffolding, platform statistics |
-| 2FA | Email OTP and TOTP authenticator app (QR code setup) |
-
-→ See [docs/features.md](docs/features.md) for detailed descriptions of every feature.
+**Self-host on one box.** One Node process runs the API, both
+WebSocket servers, and the prod-built frontend. One MySQL container
+holds the data. No message broker, no Redis, no Elasticsearch, no
+external job queue. `docker compose up -d` and you're running.
 
 ---
 
-## Tech Stack
+## How it compares
 
-### Frontend
+|                                                | Cloud Codex | Notion       | Confluence    | Outline       |
+|------------------------------------------------|-------------|--------------|---------------|---------------|
+| Self-hosted, no SaaS dependency                | ✓           | ✗            | self-host paid | ✓            |
+| True real-time CRDT collaboration              | ✓           | ✓            | ✗             | partial       |
+| GitHub repo browse + in-browser edit + PR      | ✓           | ✗            | plugin        | ✗             |
+| Inline code/issue embeds with pinned refs      | ✓           | partial      | ✗             | ✗             |
+| Inline comments with tags + status workflow    | ✓           | partial      | ✓             | partial       |
+| Invite-only registration by default            | ✓           | mixed        | ✓             | ✓             |
+| Single Docker bring-up                         | ✓           | n/a          | ✗             | ✓             |
+| Source-available, view & modify the code       | ✓           | ✗            | ✗             | ✓             |
 
-| Technology | Purpose |
-| --- | --- |
-| [React](https://react.dev) 19 | UI framework |
-| [React Router](https://reactrouter.com) 7 | Client-side routing |
-| [Vite](https://vite.dev) 7 | Build tool and dev server |
-| [Tiptap](https://tiptap.dev) | Headless rich text editor (ProseMirror-based) |
-| [Lowlight](https://github.com/wooorm/lowlight) | Syntax highlighting (highlight.js AST, 25 languages) |
-| [Marked](https://marked.js.workspace) | Markdown → HTML parsing |
-| [Turndown](https://github.com/mixmark-io/turndown) | HTML → Markdown conversion |
-| [Yjs](https://yjs.dev) | CRDT framework for real-time sync |
-
-### Backend
-
-| Technology | Purpose |
-| --- | --- |
-| [Express](https://expressjs.com) 5 | HTTP framework |
-| [ViteExpress](https://github.com/szymmis/vite-express) | Vite + Express integration |
-| [mysql2](https://github.com/sidorares/node-mysql2) | MySQL driver with prepared statements |
-| [ws](https://github.com/websockets/ws) | WebSocket server |
-| [Sharp](https://sharp.pixelplumbing.com) | Image processing (avatars, document images, WebP conversion) |
-| [Multer](https://github.com/expressjs/multer) 2 | Multipart file upload handling |
-| [Nodemailer](https://nodemailer.com) | Transactional email delivery |
-| [google-auth-library](https://github.com/googleapis/google-auth-library-nodejs) | Google OAuth / SSO |
-| [Mammoth](https://github.com/mwilliamson/mammoth.js) | DOCX → HTML conversion |
-| [html-to-docx](https://github.com/nicksrandall/html-to-docx) | HTML → DOCX export |
-| [pdf-parse](https://github.com/nicksrandall/pdf-parse) | PDF text extraction |
-
-### Security
-
-| Technology | Purpose |
-| --- | --- |
-| [bcrypt](https://github.com/kelektiv/node.bcrypt.js) | Password hashing (12 rounds) |
-| [Helmet](https://helmetjs.github.io) | Security headers & Content Security Policy |
-| [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | Request rate limiting |
-| [DOMPurify](https://github.com/cure53/DOMPurify) | HTML sanitization (server & client) |
-| [CORS](https://github.com/expressjs/cors) | Cross-origin request policy |
-| [OTPAuth](https://github.com/nicksrandall/otpauth) | TOTP two-factor authentication |
-| [QRCode](https://github.com/nicksrandall/qrcode) | QR code generation for 2FA setup |
-| Node.js `crypto` | AES-256-GCM encryption for OAuth tokens at rest |
-
-### Infrastructure
-
-| Technology | Purpose |
-| --- | --- |
-| [MySQL](https://www.mysql.com) 8 | Relational database |
-| [Docker Compose](https://docs.docker.com/compose/) | Container orchestration |
-
-### Testing
-
-| Technology | Purpose |
-| --- | --- |
-| [Vitest](https://vitest.dev) 4 | Test runner |
-| [Supertest](https://github.com/ladjs/supertest) 7 | HTTP endpoint testing |
+Honest framing: Cloud Codex is opinionated and lean. If you need a
+public-facing wiki, anonymous read access, or SSO beyond Google
+Workspace domain-restriction, this isn't for you. If you want a
+self-hosted spot for a working team to actually write together, it
+probably is.
 
 ---
 
-## Quick Start
+## Highlights
+
+```
+   ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+   ┃                       CLOUD  CODEX                              ┃
+   ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+   ┌───────────┬──────────────┬────┴──────┬───────────┬────────────────┐
+   │           │              │           │           │                │
+ real-time   GitHub        layered     comments  notifications     self-host
+   CRDT     1st-class      access       tagged    coalesced        in one box
+ cursors +   repo edit +   7-step    + threaded   inbox + email   single Node
+ presence    PRs + embeds  cascade    + status    opt-in per type process
+```
+
+- **Edit together, conflict-free** — Yjs CRDT, remote cursors, live
+  presence avatars, doc-keyed WebSocket
+- **GitHub, not bolted on** — repo tree, in-browser edit, branch + PR
+  management, code/issue/PR embeds, doc↔file sync, CI status inline
+- **Layered access that composes** — 7-step resolution at the SQL
+  fragment level, no per-step round trips
+- **Talk back to the doc** — text-anchored comments with tags
+  (comment / suggestion / question / issue / note) and status workflow
+  (open → resolved / dismissed), threaded replies, real-time WS
+  broadcast
+- **Notifications that don't spam** — 60-second coalescing window,
+  per-type email opt-in/out, push-only `/notifications-ws` channel,
+  defaults that favor signal over noise
+- **Own your destiny** — invite-only, no telemetry, no third-party
+  services in the request path, source-available, runs on your box
+
+→ Full feature reference in [docs/features.md](docs/features.md).
+
+---
+
+## Architecture at a glance
+
+```
+   ┌────────────────────────────────────────────────────────────────┐
+   │                  Browser (single-page app)                     │
+   │     React 19 + Tiptap + Yjs · bundled by Vite                  │
+   └─────────┬─────────────────┬─────────────────┬─────────────────┘
+             │ HTTP / JSON     │ WS /collab      │ WS /notifications-ws
+             │                 │                 │
+   ┌─────────▼─────────────────▼─────────────────▼─────────────────┐
+   │                 Node.js  (single process)                      │
+   │     Express + 18 routers · 2 WebSocket servers                 │
+   │     Notifications funnel · Yjs CRDT sync · GitHub proxy        │
+   └──────────────────────────┬─────────────────────────────────────┘
+                              │ mysql2 pool (10)
+   ┌──────────────────────────▼─────────────────────────────────────┐
+   │                       MySQL 8  (Docker)                         │
+   │     25 tables · FULLTEXT search · activity log auto-prune       │
+   └────────────────────────────────────────────────────────────────┘
+```
+
+→ Full system design and decisions in [docs/architecture.md](docs/architecture.md).
+
+---
+
+## Quick start
 
 ```bash
 git clone <repository-url>
@@ -140,29 +155,55 @@ cp .env.example .env   # fill in DB, SMTP, and admin credentials
 
 The application will be available at **http://localhost:3000**.
 
-→ See [docs/getting-started.md](docs/getting-started.md) for the full setup guide, environment variable reference, NPM scripts, Makefile targets, and sample seed data.
+→ Full setup in [docs/getting-started.md](docs/getting-started.md).
 
 ---
 
 ## Documentation
 
-| Document | Contents |
-| --- | --- |
-| [docs/getting-started.md](docs/getting-started.md) | Prerequisites, setup, environment variables, scripts, seed data |
-| [docs/features.md](docs/features.md) | Detailed descriptions of every feature |
-| [docs/security.md](docs/security.md) | Security model — auth, sanitization, encryption, rate limiting |
-| [docs/testing.md](docs/testing.md) | Test suite overview and per-file breakdown |
-| [docs/architecture.md](docs/architecture.md) | System design, project structure, key design decisions |
-| [docs/database.md](docs/database.md) | Full MySQL schema — all 19 tables, columns, indexes |
-| [docs/access-control.md](docs/access-control.md) | Three-tier access control resolution logic |
-| [docs/services.md](docs/services.md) | Collaborative editing (Yjs/WebSocket), email, DB module |
-| [docs/frontend.md](docs/frontend.md) | React app routing, pages, components, build setup |
-| [docs/README.md](docs/README.md) | API reference index |
+Start with these and the rest flows from there:
+
+- **[Getting Started](docs/getting-started.md)** — local setup, env vars,
+  scripts, seed data
+- **[Architecture](docs/architecture.md)** — system design, project
+  structure, full tech stack
+- **[Features](docs/features.md)** — every major capability
+- **[Security](docs/security.md)** — defense-in-depth model
+- **[Full doc index](docs/README.md)** — every reference, every API doc
+
+---
+
+## Roadmap
+
+Roadmap and known issues live in **GitHub Issues** — see open
+[issues](https://github.com/RhykerWells/c2/issues) and milestones.
+
+---
+
+## Contributing
+
+Contributions are welcome. The bar is low: read
+[CONTRIBUTING.md](CONTRIBUTING.md), match the existing style, lint and
+test must pass, and the change should explain its **why** in the PR
+description. See [CLAUDE.md](CLAUDE.md) for the long-form conventions
+that govern this codebase.
+
+---
+
+## Security
+
+Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md)
+for the disclosure policy and contact address. Don't open a public
+issue for an unfixed vulnerability.
 
 ---
 
 ## License
 
-Cloud Codex is released under a **source-available license**. You may view, modify, and self-host the software for personal, educational, or internal business use at no cost. Commercial use as a hosted service requires a separate license from [Cloud City Computing, LLC](https://cloudcitycomputing.com).
+Cloud Codex is released under a **source-available license**. You may
+view, modify, and self-host the software for personal, educational, or
+internal business use at no cost. Commercial use as a hosted service
+requires a separate license from
+[Cloud City Computing, LLC](https://cloudcitycomputing.com).
 
 See [LICENSE](LICENSE) for full terms.

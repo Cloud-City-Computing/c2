@@ -1,6 +1,28 @@
+```
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║   GETTING STARTED                                                          ║
+║   From a clean machine to a running Cloud Codex in five minutes.           ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+```
+
 # Getting Started
 
-This guide covers everything you need to run Cloud Codex locally — from prerequisites through a working application with optional sample data.
+This guide covers everything you need to run Cloud Codex locally — from
+prerequisites through a working application with optional sample data.
+
+```
+   ┌─────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+   │  clone  │──►│ cp .env  │──►│ ./start  │──►│ first    │──►│ invite   │
+   │  repo   │   │ .example │   │   .sh    │   │ admin    │   │ teammates│
+   └─────────┘   └──────────┘   └──────────┘   │ login    │   └──────────┘
+                      │              │         └──────────┘
+                      ▼              ▼
+                 fill DB,       installs deps
+                 SMTP, admin    boots MySQL
+                 values         starts Vite + API
+```
 
 ---
 

@@ -1,6 +1,18 @@
+```
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║   DATABASE                                                                 ║
+║   MySQL 8 schema — 25 tables modelling the workspace → log hierarchy.      ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+```
+
 # Database
 
-Cloud Codex uses **MySQL 8** running inside Docker. The schema is initialized via [`init.sql`](../init.sql) and optional seed data is available in [`seed.sql`](../seed.sql).
+Cloud Codex uses **MySQL 8** running inside Docker. The schema is initialized
+via [`init.sql`](../init.sql), with incremental upgrades for live deployments
+in [`migrations/`](../migrations/). Optional seed data is in
+[`seed.sql`](../seed.sql).
 
 ## Connection
 
@@ -18,15 +30,27 @@ See `.env.example` for the required environment variables (`DB_HOST`, `DB_USER`,
 The database models a **workspace → squad → archive → log** hierarchy with layered access control at every level.
 
 ```
-workspaces
-  └── squads
-        └── archives
-              └── logs
-                    ├── versions
-                    ├── comments
-                    │     └── comment_replies
-                    ├── github_links
-                    └── favorites
+   workspaces
+     └── squads
+           ├── squad_permissions
+           ├── squad_members
+           ├── squad_invitations
+           └── archives
+                 ├── archive_repos          (GitHub bulk-import link)
+                 └── logs
+                       ├── versions
+                       ├── comments
+                       │     └── comment_replies
+                       ├── github_links     (per-doc file sync)
+                       ├── github_embed_refs
+                       ├── github_pr_sessions
+                       └── favorites
+
+   users  ──< sessions / oauth_accounts / permissions
+          ──< user_invitations / password_reset_tokens / two_factor_codes
+          ──< notifications  ──┐
+          ──< watches  ────────┤  fan-out paths from
+                               └─ activity_log
 ```
 
 ---
@@ -62,9 +86,10 @@ Registered user accounts. User creation is invite-only (see `user_invitations`).
 | `two_factor_method`  | ENUM('none', 'email', 'totp')        | Defaults to `'none'`                         |
 | `totp_secret`        | VARCHAR(64)                          | TOTP shared secret (only set when TOTP is enabled) |
 | `is_admin`           | BOOLEAN                              | Super-admin flag; synced from `.env` on startup |
+| `notification_prefs` | JSON                                 | Per-type email opt-in/out (NULL = use defaults from `services/notifications.js`) |
 | `created_at`         | TIMESTAMP                            |                                              |
 
-**Relationships:** Has many `sessions`, `oauth_accounts`, `permissions`, `squad_members`.
+**Relationships:** Has many `sessions`, `oauth_accounts`, `permissions`, `squad_members`, `notifications`, `watches`.
 
 ---
 
@@ -401,26 +426,175 @@ Per-user bookmark list for quick access to logs.
 
 ---
 
+### `notifications`
+
+Inbox entries surfaced to a single user. Created by
+`services/notifications.js` for every user-facing alert (mention, comment on
+my doc, watched-doc activity, squad invite). Self-suppressed and coalesced
+within a 60-second window per (user, type, resource).
+
+| Column          | Type                  | Notes                                              |
+|-----------------|-----------------------|----------------------------------------------------|
+| `id`            | INT AUTO_INCREMENT PK |                                                    |
+| `user_id`       | INT FK → users        | ON DELETE CASCADE; recipient                       |
+| `type`          | VARCHAR(50)           | e.g. `mention`, `comment_on_my_doc`, `watched_publish` |
+| `actor_id`      | INT FK → users        | ON DELETE SET NULL; who caused it (NULL for system)|
+| `title`         | VARCHAR(255)          | Sanitized + plain-text                             |
+| `body`          | TEXT                  | Sanitized; up to 2000 chars                        |
+| `link_url`      | VARCHAR(512)          | Where clicking the notification goes               |
+| `resource_type` | VARCHAR(30)           | e.g. `log`, `comment`, `version`, `squad`          |
+| `resource_id`   | INT                   | Used for the coalesce key                          |
+| `metadata`      | JSON                  | Free-form per-type detail                          |
+| `read_at`       | TIMESTAMP NULL        | NULL until marked read                             |
+| `created_at`    | TIMESTAMP             |                                                    |
+
+**Indexes:** `(user_id, created_at)`, `(user_id, read_at, created_at)`,
+`(resource_type, resource_id)`.
+
+---
+
+### `watches`
+
+Subscription rows linking a user to a log or archive. Activity events on a
+watched resource fan out to per-user `notifications` rows. Created manually
+from the document UI or automatically (e.g. when a user is mentioned).
+
+| Column          | Type                  | Notes                                  |
+|-----------------|-----------------------|----------------------------------------|
+| `id`            | INT AUTO_INCREMENT PK |                                        |
+| `user_id`       | INT FK → users        | ON DELETE CASCADE                      |
+| `resource_type` | VARCHAR(30)           | `'log'` or `'archive'`                 |
+| `resource_id`   | INT                   |                                        |
+| `source`        | VARCHAR(20)           | `'manual'` or `'auto'` (e.g. `'mention'`) |
+| `created_at`    | TIMESTAMP             |                                        |
+
+**Unique constraint:** `(user_id, resource_type, resource_id)` — one row
+per (user, resource).
+**Index:** `(resource_type, resource_id)` — fast fan-out lookups.
+
+---
+
+### `activity_log`
+
+Workspace-scoped chronological feed of meaningful events: documents
+created/published/restored, comments added/resolved, archive grants
+changed, squad memberships moved. Read access is filtered at query time
+via `routes/helpers/ownership.js`. Auto-pruned daily by `server.js` —
+entries older than 365 days are removed.
+
+| Column          | Type                  | Notes                                       |
+|-----------------|-----------------------|---------------------------------------------|
+| `id`            | BIGINT AUTO_INCREMENT PK |                                          |
+| `workspace_id`  | INT                   | Always present                              |
+| `squad_id`      | INT                   | Optional                                    |
+| `user_id`       | INT FK → users        | ON DELETE CASCADE; actor                    |
+| `action`        | VARCHAR(50)           | e.g. `log.published`, `comment.resolved`    |
+| `resource_type` | VARCHAR(30)           | `log`, `archive`, `comment`, `version`, `squad` |
+| `resource_id`   | INT                   |                                             |
+| `metadata`      | JSON                  | Free-form per-action detail                 |
+| `created_at`    | TIMESTAMP             |                                             |
+
+**Indexes:** `(workspace_id, created_at)`, `(squad_id, created_at)`,
+`(resource_type, resource_id, created_at)`, `(user_id, created_at)`.
+
+---
+
+### `github_embed_refs`
+
+Tracks every GitHub embed (code snippet, issue, pull request, file) that
+appears inside a log. Each row stores a pinned `ref_value` (and pinned SHA
+where applicable) so the embed remains stable even if the source moves.
+
+| Column         | Type                    | Notes                                      |
+|----------------|-------------------------|--------------------------------------------|
+| `id`           | INT AUTO_INCREMENT PK   |                                            |
+| `log_id`       | INT FK → logs           | ON DELETE CASCADE                          |
+| `embed_type`   | ENUM('code','issue','pr','file') |                                   |
+| `repo_owner`   | VARCHAR(255)            |                                            |
+| `repo_name`    | VARCHAR(255)            |                                            |
+| `ref_value`    | VARCHAR(500)            | File path / issue number / PR number / SHA |
+| `pinned_sha`   | VARCHAR(64)             | Optional commit SHA the embed is pinned to |
+| `branch`       | VARCHAR(255)            | Branch the embed was captured from         |
+| `last_seen_at` | TIMESTAMP NULL          | Updated when the embed is rendered         |
+| `created_at`   | TIMESTAMP               |                                            |
+
+**Indexes:** `(log_id)`, `(repo_owner, repo_name, embed_type)`.
+
+---
+
+### `github_pr_sessions`
+
+A long-lived session per GitHub PR that the team is collaborating on
+through Cloud Codex. Backs the `GitHubMergeDialog` UI and links PR-side
+conversation back to any documents tied to the changed files.
+
+| Column        | Type                  | Notes                                |
+|---------------|-----------------------|--------------------------------------|
+| `id`          | INT AUTO_INCREMENT PK |                                      |
+| `log_id`      | INT FK → logs         | ON DELETE CASCADE                    |
+| `repo_owner`  | VARCHAR(255)          |                                      |
+| `repo_name`   | VARCHAR(255)          |                                      |
+| `pr_number`   | INT                   |                                      |
+| `opened_by`   | INT FK → users        | ON DELETE CASCADE                    |
+| `opened_at`   | TIMESTAMP             |                                      |
+
+**Unique constraint:** `(repo_owner, repo_name, pr_number)`.
+**Index:** `(log_id)`.
+
+---
+
 ## Entity Relationship Diagram
 
 ```
-workspaces ──< squads ──< archives ──< logs ──< versions
-                  │              │
-                  ├──< squad_members (users)
-                  ├──< squad_invitations (users)
-                  └──< squad_permissions
+   workspaces ──< squads ──< archives ──< logs ──< versions
+                    │            │           │
+                    ├──< squad_members (users)
+                    ├──< squad_invitations (users)
+                    ├──< squad_permissions
+                    └──< archive_repos
 
-users ──< sessions
-      ──< oauth_accounts
-      ──< permissions
-      ──< password_reset_tokens
-      ──< two_factor_codes
-      ──< user_invitations
+   logs ──< comments ──< comment_replies
+        ──< favorites
+        ──< github_links              (per-doc file sync)
+        ──< github_embed_refs         (code/issue/PR/file embeds)
+        ──< github_pr_sessions        (long-lived PR session state)
 
-logs ──< comments ──< comment_replies
-    ──< github_links
-    ──< favorites
+   users ──< sessions
+         ──< oauth_accounts
+         ──< permissions
+         ──< password_reset_tokens
+         ──< two_factor_codes
+         ──< user_invitations
+         ──< notifications            (per-user inbox)
+         ──< watches                  (per-user subscriptions)
+
+   activity_log ─► (workspace, squad, user, resource_type+id)
+                    no FK on workspace/squad/resource — pruned daily
 ```
+
+---
+
+## Migrations
+
+`init.sql` is the canonical schema (used by fresh installs and by tests).
+Live deployments apply incremental upgrades from the `migrations/`
+directory. The current set:
+
+| File                            | Adds                                                |
+|---------------------------------|-----------------------------------------------------|
+| `add_github_links.sql`          | `github_links` table                                |
+| `add_markdown_content.sql`      | `logs.markdown_content` column                      |
+| `add_activity_log.sql`          | `activity_log` table                                |
+| `add_watches.sql`               | `watches` table                                     |
+| `add_notifications.sql`         | `notifications` table + `users.notification_prefs`  |
+| `p0_github_sync.sql`            | GitHub sync state on `github_links`                 |
+| `p1_github_embeds.sql`          | `github_embed_refs` table                           |
+| `p2_github_collab.sql`          | `github_pr_sessions` table                          |
+| `p3_github_polish.sql`          | indexes / column tweaks for the GitHub stack        |
+
+> **Rule:** any column or table added as a migration must also be present
+> in `init.sql`. Both must stay in sync — fresh installs and existing
+> deployments must converge to the same schema.
 
 ---
 

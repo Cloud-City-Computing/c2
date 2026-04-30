@@ -1,6 +1,65 @@
+```
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║   SECURITY                                                                 ║
+║   Defense-in-depth: edge → middleware → SQL → at-rest encryption.          ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+```
+
 # Security
 
 Cloud Codex follows security best practices across all layers of the stack.
+The model is **defense-in-depth** — a request is checked at every level
+between the network edge and the database, and stored secrets are encrypted
+even if the DB is compromised.
+
+```
+   request
+      │
+      ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  edge:    helmet (CSP, X-Frame, X-CT, Referrer-Policy)   │
+   │           CORS allowlist (no localhost in prod)          │
+   │           express-rate-limit (auth 20/15m, search 60/15m)│
+   └──────────────────────────────────────────────────────────┘
+      │
+      ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  parsing: JSON 2 MB cap                                  │
+   │           multer file size cap (10 MB)                   │
+   └──────────────────────────────────────────────────────────┘
+      │
+      ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  auth:    requireAuth (Bearer token / sessionToken cookie)│
+   │           validateAndAutoLogin → user object on req      │
+   │           requireAdmin / requirePermission               │
+   └──────────────────────────────────────────────────────────┘
+      │
+      ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  input:   DOMPurify (sanitizeHtml on every user-supplied │
+   │           HTML write — REST AND WebSocket paths)         │
+   │           length caps + isValidId on path params         │
+   └──────────────────────────────────────────────────────────┘
+      │
+      ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  access:  ownership.js readAccessWhere/writeAccessWhere  │
+   │           7-step cascade in a single SQL fragment        │
+   └──────────────────────────────────────────────────────────┘
+      │
+      ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  storage: parameterized SQL (mysql2 prepared statements) │
+   │           bcrypt 12 rounds for passwords                 │
+   │           AES-256-GCM (scrypt-derived) for OAuth tokens  │
+   └──────────────────────────────────────────────────────────┘
+      │
+      ▼
+                       MySQL 8
+```
 
 ---
 

@@ -1,3 +1,9 @@
+```
+─── ◆ ─────────────────────────────────────────────────────────────────────
+   API · Admin Panel
+─── ◆ ─────────────────────────────────────────────────────────────────────
+```
+
 # API Reference — Admin Panel
 
 All endpoints in this section require both authentication (`requireAuth`) and super-admin status (`requireAdmin`). Regular users receive `403 Forbidden`.

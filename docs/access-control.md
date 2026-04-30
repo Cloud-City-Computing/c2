@@ -1,41 +1,104 @@
+```
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║   ACCESS CONTROL                                                           ║
+║   Layered, cascading permission resolution — one SQL fragment, 7 priorities║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+```
+
 # Access Control
 
-Cloud Codex uses a layered, cascading permission system. At most levels, access is evaluated from broad/structural (admin → workspace ownership) down to fine-grained (per-user JSON grants on an archive).
+Cloud Codex uses a **layered, cascading** permission system. Access is
+evaluated from broad/structural (admin → workspace ownership) down to
+fine-grained (per-user JSON grants on an archive). The whole cascade resolves
+in a single SQL `WHERE` fragment defined in
+[`routes/helpers/ownership.js`](../cloudcodex/routes/helpers/ownership.js) —
+no in-application loop, no per-step round trip.
 
 ---
 
 ## Roles and Hierarchy
 
 ```
-Super Admin
-  └── Workspace Owner (by email in workspaces.owner)
-        └── Squad Owner (role = 'owner' in squad_members)
-              └── Squad Admin (role = 'admin')
-                    └── Squad Member (role = 'member', per-flag permissions)
-                          └── Direct Archive Grants (read_access / write_access JSON arrays)
+   Super Admin
+     └── Workspace Owner               (by email in workspaces.owner)
+           └── Squad Owner             (role = 'owner' in squad_members)
+                 └── Squad Admin       (role = 'admin')
+                       └── Squad Member (role = 'member', per-flag perms)
+                             └── Direct Archive Grants
+                                  (read_access / write_access JSON arrays)
 ```
 
-Roles higher in the chain implicitly grant everything below. There is no group that sits between "workspace owner" and "squad member" beyond the admin flag.
+Roles higher in the chain implicitly grant everything below. There is no
+group that sits between "workspace owner" and "squad member" beyond the
+admin flag.
 
 ---
 
 ## Archive (Read / Write) Resolution
 
-When checking whether a user can read or write an archive, the system queries the following conditions in order. **The first match grants access.**
+When checking whether a user can read or write an archive, the system OR-s
+together seven conditions inside a single `EXISTS` subquery. **Any match
+grants access.** The conditions, in conceptual priority order:
 
-| Priority | Condition |
-|----------|-----------|
-| 1 | User is a **super admin** (`users.is_admin = TRUE`) |
-| 2 | User's ID is in the archive's **`read_access` / `write_access`** JSON array |
-| 3 | User is the **archive creator** (`archives.created_by = user.id`) |
-| 4 | User is the **workspace owner** (via `squads → workspaces.owner = user.email`) |
-| 5 | User is a squad member with **`role = 'owner'`** or the matching `can_read` / `can_write` flag in `squad_members` |
-| 6 | User is a member of any **squad listed** in `read_access_squads` / `write_access_squads` |
-| 7 | `read_access_workspace` / `write_access_workspace` is TRUE and the user is a member of any squad in the same workspace |
+```
+                       ┌────────────────────────────────┐
+   request to read ──► │  is the user a super admin?    │ ─── yes ──► ALLOW
+   or write archive    └──────────────┬─────────────────┘
+                                      │ no
+                                      ▼
+                       ┌────────────────────────────────┐
+                       │  is user.id in read_access /   │ ─── yes ──► ALLOW
+                       │  write_access JSON array?      │
+                       └──────────────┬─────────────────┘
+                                      │ no
+                                      ▼
+                       ┌────────────────────────────────┐
+                       │  is user the archive creator?  │ ─── yes ──► ALLOW
+                       └──────────────┬─────────────────┘
+                                      │ no
+                                      ▼
+                       ┌────────────────────────────────┐
+                       │  is user the workspace owner   │ ─── yes ──► ALLOW
+                       │  (squads.workspace_id →        │
+                       │   workspaces.owner = email) ?  │
+                       └──────────────┬─────────────────┘
+                                      │ no
+                                      ▼
+                       ┌────────────────────────────────┐
+                       │  is user a squad member with   │ ─── yes ──► ALLOW
+                       │  role='owner' OR matching      │
+                       │  can_read / can_write flag ?   │
+                       └──────────────┬─────────────────┘
+                                      │ no
+                                      ▼
+                       ┌────────────────────────────────┐
+                       │  is user a member of any squad │ ─── yes ──► ALLOW
+                       │  listed in read_access_squads /│
+                       │  write_access_squads ?         │
+                       └──────────────┬─────────────────┘
+                                      │ no
+                                      ▼
+                       ┌────────────────────────────────┐
+                       │  is read_access_workspace /    │ ─── yes ──► ALLOW
+                       │  write_access_workspace TRUE   │
+                       │  AND user in any squad in the  │
+                       │  same workspace ?              │
+                       └──────────────┬─────────────────┘
+                                      │ no
+                                      ▼
+                                    DENY
+```
 
-The SQL fragments that enforce this are defined in [`routes/helpers/ownership.js`](../cloudcodex/routes/helpers/ownership.js) (`readAccessWhere` / `writeAccessWhere`).
+The SQL fragments that enforce this are
+`readAccessWhere(alias)` / `writeAccessWhere(alias)` (with parameters from
+`readAccessParams(user)` / `writeAccessParams(user)`) in
+[`routes/helpers/ownership.js`](../cloudcodex/routes/helpers/ownership.js).
 
-Write access always requires also having read access (write implies read in practice, since write grants are generally given alongside read grants by the UI).
+Write access always requires also having read access (write implies read
+in practice, since write grants are generally given alongside read grants
+by the UI).
 
 ---
 
