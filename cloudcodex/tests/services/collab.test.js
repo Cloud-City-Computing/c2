@@ -194,3 +194,284 @@ describe('services/collab — broadcastToDoc behaviour', () => {
     expect(broadcastToDoc(424242, { type: 'ping' })).toBe(false);
   });
 });
+
+// ── Authenticated flow + message routing ────────────────
+
+/**
+ * Open a real ws client, complete the auth handshake, and resolve once
+ * the server's awareness/sync messages have arrived.
+ */
+async function authenticatedClient(logId, user = TEST_USER, dbStubs = []) {
+  validateAndAutoLogin.mockResolvedValue(user);
+  // First DB call after auth is the doc load (SELECT ydoc_state, html_content);
+  // second is the read-access check; third is the write-access check.
+  c2_query
+    .mockResolvedValueOnce([{ ydoc_state: null, html_content: '<p>hi</p>' }]) // getOrCreateDoc
+    .mockResolvedValueOnce([{ id: logId }])                                    // checkLogReadAccess
+    .mockResolvedValueOnce([{ id: logId }]);                                   // checkLogWriteAccess
+  for (const stub of dbStubs) c2_query.mockResolvedValueOnce(stub);
+
+  const ws = new WebSocket(url(logId), { headers: { Origin: origin() } });
+  ws.binaryType = 'arraybuffer';
+  await new Promise((r) => ws.once('open', r));
+  ws.send(JSON.stringify({ type: 'auth', token: 'good' }));
+
+  // Wait for the JSON `sync` frame that confirms auth completed.
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('No sync within 2s')), 2000);
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) return;
+      try {
+        const parsed = JSON.parse(data.toString());
+        if (parsed.type === 'sync') {
+          clearTimeout(timer);
+          resolve();
+        }
+      } catch { /* ignore */ }
+    });
+  });
+  return ws;
+}
+
+describe('services/collab — authenticated session', () => {
+  it('admits the user and reports them via getActiveUsers / getAllPresence', async () => {
+    const ws = await authenticatedClient(101);
+    expect(getActiveUsers(101).length).toBe(1);
+    expect(getActiveUsers(101)[0]).toMatchObject({ id: TEST_USER.id, name: TEST_USER.name });
+    expect(getAllPresence()[101]).toBeDefined();
+    expect(getActiveDocCount()).toBeGreaterThanOrEqual(1);
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('broadcastToDoc returns true and sends to active connections', async () => {
+    const ws = await authenticatedClient(102);
+    const received = [];
+    ws.on('message', (data, isBinary) => {
+      if (!isBinary) {
+        try { received.push(JSON.parse(data.toString())); } catch { /* ignore */ }
+      }
+    });
+
+    expect(broadcastToDoc(102, { type: 'github-pulled' })).toBe(true);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(received.some((m) => m.type === 'github-pulled')).toBe(true);
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('rejects unknown JSON message types silently (no error frame)', async () => {
+    const ws = await authenticatedClient(103);
+    const errs = [];
+    ws.on('message', (data, isBinary) => {
+      if (!isBinary) {
+        try {
+          const m = JSON.parse(data.toString());
+          if (m.type === 'error') errs.push(m);
+        } catch { /* ignore */ }
+      }
+    });
+    ws.send(JSON.stringify({ type: 'mystery-event' }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(errs).toEqual([]);
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('rejects cursor messages with non-numeric or missing index', async () => {
+    const ws = await authenticatedClient(104);
+    const peers = [];
+    ws.on('message', (data, isBinary) => {
+      if (!isBinary) {
+        try {
+          const m = JSON.parse(data.toString());
+          if (m.type === 'cursor') peers.push(m);
+        } catch { /* ignore */ }
+      }
+    });
+    // Single client — no peers will receive this anyway, but the server
+    // still rejects malformed messages without crashing.
+    ws.send(JSON.stringify({ type: 'cursor', position: { index: 'not-a-number' } }));
+    ws.send(JSON.stringify({ type: 'cursor' }));
+    await new Promise((r) => setTimeout(r, 50));
+    // The connection is still healthy.
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('persists a title change via UPDATE logs SET title = ?', async () => {
+    const ws = await authenticatedClient(105, TEST_USER, [
+      [{ affectedRows: 1 }], // UPDATE logs SET title
+      [{ insertId: 1 }],     // logActivity insert
+    ]);
+    ws.send(JSON.stringify({ type: 'title', title: 'Renamed Doc' }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    const titleUpdate = c2_query.mock.calls.find(([sql]) =>
+      /UPDATE logs SET title/i.test(sql)
+    );
+    expect(titleUpdate).toBeDefined();
+    expect(titleUpdate[1]).toContain('Renamed Doc');
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('truncates oversized titles to 255 chars', async () => {
+    const ws = await authenticatedClient(106, TEST_USER, [
+      [{ affectedRows: 1 }],
+      [{ insertId: 1 }],
+    ]);
+    const huge = 'a'.repeat(500);
+    ws.send(JSON.stringify({ type: 'title', title: huge }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    const titleUpdate = c2_query.mock.calls.find(([sql]) =>
+      /UPDATE logs SET title/i.test(sql)
+    );
+    expect(titleUpdate).toBeDefined();
+    expect(titleUpdate[1][0].length).toBe(255);
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('ignores empty titles after trimming', async () => {
+    const ws = await authenticatedClient(107);
+    ws.send(JSON.stringify({ type: 'title', title: '   ' }));
+    await new Promise((r) => setTimeout(r, 50));
+    const titleUpdate = c2_query.mock.calls.find(([sql]) =>
+      /UPDATE logs SET title/i.test(sql)
+    );
+    expect(titleUpdate).toBeUndefined();
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('saves the document on save messages and acks with type:saved', async () => {
+    const ws = await authenticatedClient(108, TEST_USER, [
+      [{ affectedRows: 1 }], // UPDATE logs SET html_content
+      [{ id: 108, title: 'T', archive_id: 5 }], // fetchDocMeta inside processMentionsOnSave
+      [], // any mentions queries
+      [{ insertId: 1 }], // logActivity
+    ]);
+
+    const saved = new Promise((resolve) => {
+      ws.on('message', (data, isBinary) => {
+        if (!isBinary) {
+          try {
+            const m = JSON.parse(data.toString());
+            if (m.type === 'saved') resolve();
+          } catch { /* ignore */ }
+        }
+      });
+    });
+
+    ws.send(JSON.stringify({ type: 'save', html: '<p>updated</p>' }));
+    await saved;
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('rejects HTML payloads larger than MAX_HTML_SIZE on save (no error)', async () => {
+    const ws = await authenticatedClient(109);
+    const huge = 'x'.repeat(3 * 1024 * 1024); // 3 MB, over the 2 MB cap
+    ws.send(JSON.stringify({ type: 'save', html: huge }));
+    await new Promise((r) => setTimeout(r, 100));
+    // No html_content UPDATE should have happened — the server falls back to
+    // saving just the binary state with the prior html.
+    const htmlUpdate = c2_query.mock.calls.find(([sql]) =>
+      /UPDATE logs SET html_content/i.test(sql)
+    );
+    expect(htmlUpdate).toBeUndefined();
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('blocks publish when canPublish denies (squad context, no permission)', async () => {
+    const ws = await authenticatedClient(110, TEST_USER, [
+      // Get squad context for the log — squad set, archive_creator different
+      [{ squad_id: 5, archive_creator: 999 }],
+      // canPublish workspace owner check — denies
+      [],
+      // canPublish squad member check — denies
+      [{ can_publish: false, role: 'member' }],
+    ]);
+
+    const errors = new Promise((resolve) => {
+      ws.on('message', (data, isBinary) => {
+        if (!isBinary) {
+          try {
+            const m = JSON.parse(data.toString());
+            if (m.type === 'error') resolve(m);
+          } catch { /* ignore */ }
+        }
+      });
+    });
+
+    ws.send(JSON.stringify({ type: 'publish', title: 'v1' }));
+    const err = await errors;
+    expect(err.message).toMatch(/permission/i);
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('broadcasts comment events to other connections', async () => {
+    const ws1 = await authenticatedClient(111);
+    // Open a second client on the same log.
+    validateAndAutoLogin.mockResolvedValue({ ...TEST_USER, id: 2, name: 'Bob' });
+    c2_query
+      .mockResolvedValueOnce([{ id: 111 }]) // checkLogReadAccess
+      .mockResolvedValueOnce([{ id: 111 }]); // checkLogWriteAccess
+    const ws2 = new WebSocket(url(111), { headers: { Origin: origin() } });
+    ws2.binaryType = 'arraybuffer';
+    await new Promise((r) => ws2.once('open', r));
+    ws2.send(JSON.stringify({ type: 'auth', token: 'good' }));
+    await new Promise((resolve) => {
+      ws2.on('message', (data, isBinary) => {
+        if (!isBinary) {
+          try {
+            const m = JSON.parse(data.toString());
+            if (m.type === 'sync') resolve();
+          } catch { /* ignore */ }
+        }
+      });
+    });
+
+    const received = new Promise((resolve) => {
+      ws1.on('message', (data, isBinary) => {
+        if (!isBinary) {
+          try {
+            const m = JSON.parse(data.toString());
+            if (m.type === 'comment' && m.action === 'add') resolve(m);
+          } catch { /* ignore */ }
+        }
+      });
+    });
+
+    ws2.send(JSON.stringify({
+      type: 'comment',
+      action: 'add',
+      comment: { id: 99 },
+    }));
+
+    const got = await received;
+    expect(got.action).toBe('add');
+    expect(got.userId).toBe(2);
+    ws1.close();
+    ws2.close();
+    await Promise.all([
+      new Promise((r) => ws1.once('close', r)),
+      new Promise((r) => ws2.once('close', r)),
+    ]);
+  });
+
+  it('drops the user from presence on close', async () => {
+    const ws = await authenticatedClient(112);
+    expect(getActiveUsers(112).length).toBe(1);
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+    // Wait briefly for the close handler to run.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getActiveUsers(112).length).toBe(0);
+  });
+});
