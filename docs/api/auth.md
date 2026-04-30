@@ -1,3 +1,9 @@
+```
+─── ◆ ─────────────────────────────────────────────────────────────────────
+   API · Authentication & Accounts
+─── ◆ ─────────────────────────────────────────────────────────────────────
+```
+
 # API Reference — Authentication & Accounts
 
 All auth endpoints are mounted under `/api`. Rate limiting applies on sensitive routes (20 requests per 15-minute window per IP).

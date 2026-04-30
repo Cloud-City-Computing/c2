@@ -1,3 +1,9 @@
+```
+─── ◆ ─────────────────────────────────────────────────────────────────────
+   API · Workspaces, Squads & Archives
+─── ◆ ─────────────────────────────────────────────────────────────────────
+```
+
 # API Reference — Workspaces, Squads & Archives
 
 These endpoints manage the organizational hierarchy: **Workspaces → Squads → Archives**. All require authentication.
@@ -257,3 +263,28 @@ Add or remove an access grant. Requires archive ownership.
 ```
 
 Exactly one of `userId`, `squadId`, or `workspace: true` must be provided.
+
+---
+
+## Archive ↔ GitHub Repository Links
+
+Archives can be linked to one or more GitHub repositories. The links are
+used by the GitHub bulk-import workflow (see
+[oauth-github.md](./oauth-github.md)) and by the document-link UI to scope
+which repos the user picks from when linking a single doc.
+
+### `GET /api/archives/:archiveId/repos` *(read access required)*
+
+List repos linked to an archive.
+
+**Response:** `{ success: true, repos: [{ id, repo_full_name, repo_owner, repo_name, linked_by, linked_at }] }`
+
+### `POST /api/archives/:archiveId/repos` *(archive ownership required)*
+
+Link a GitHub repository to the archive.
+
+**Body:** `{ repoFullName: "owner/repo-name" }`
+
+### `DELETE /api/archives/:archiveId/repos/:repoId` *(archive ownership required)*
+
+Remove a repository link.

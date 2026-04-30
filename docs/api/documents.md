@@ -1,3 +1,9 @@
+```
+─── ◆ ─────────────────────────────────────────────────────────────────────
+   API · Documents (Logs)
+─── ◆ ─────────────────────────────────────────────────────────────────────
+```
+
 # API Reference — Documents (Logs)
 
 Documents are called **logs** in the data model and API. They live inside an archive, can be nested into a tree via `parent_id`, support real-time collaborative editing via WebSocket, and have a formal version history.

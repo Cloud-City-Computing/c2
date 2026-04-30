@@ -1,3 +1,9 @@
+```
+─── ◆ ─────────────────────────────────────────────────────────────────────
+   API · Comments & Annotations
+─── ◆ ─────────────────────────────────────────────────────────────────────
+```
+
 # API Reference — Comments & Annotations
 
 Comments attach threaded discussions to a document. Each comment is optionally anchored to a text selection range within the document content, enabling inline annotation workflows.
