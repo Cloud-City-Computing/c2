@@ -65,6 +65,36 @@
 | [deployment.md](./deployment.md) | Production operations — Docker Compose, TLS, backups, upgrades, logs |
 | [troubleshooting.md](./troubleshooting.md) | Common setup/runtime failures and the fix for each |
 
+## Specs (`specs/`)
+
+Where the maps describe how the system works today, [`specs/`](./specs/README.md)
+describes what we intend to build next and why.
+
+| Document | What it is |
+|----------|---------|
+| [specs/roadmap.md](./specs/roadmap.md) | The five tracks the project is decomposed into, the evidence behind each, and the order to do them in |
+| [specs/2026-07-27-five-minute-evaluation.md](./specs/2026-07-27-five-minute-evaluation.md) | Track A: make Cloud Codex runnable and demo-able by a stranger in five minutes |
+
+
+## Deep maps (`maps/`)
+
+The references above describe the product. [`maps/`](./maps/README.md) describes
+the **mechanism**: dense, `file:line`-cited maps written for someone about to
+change the code, covering the wiring, the invariants, and the traps.
+
+| Map | Covers |
+|----------|---------|
+| [maps/request-lifecycle.md](./maps/request-lifecycle.md) | Boot order, middleware stack, session resolution, WebSocket upgrades, error handling |
+| [maps/access-control.md](./maps/access-control.md) | The 7-clause SQL fragments, their param contract, and the four secondary permission systems |
+| [maps/documents-and-collab.md](./maps/documents-and-collab.md) | Dual-state storage, the Yjs protocol, every writer of document content, versions |
+| [maps/github-integration.md](./maps/github-integration.md) | Token crypto, the 5-state sync machine, embeds, PR sessions, team sync |
+| [maps/notifications-and-activity.md](./maps/notifications-and-activity.md) | Activity taxonomy, auto-watch, fan-out, the notification funnel, the inbox WebSocket |
+| [maps/data-model.md](./maps/data-model.md) | All 25 tables, ACL columns, the generated search column, `init.sql` vs `migrations/` |
+| [maps/frontend-architecture.md](./maps/frontend-architecture.md) | Routes, lazy chunks, the `util.jsx` API layer, hooks, preferences, lint rules |
+| [maps/build-test-and-ops.md](./maps/build-test-and-ops.md) | Dual-root layout, Docker topologies, the two Vitest projects, coverage thresholds, CI |
+| [maps/open-questions.md](./maps/open-questions.md) | Dead code paths and suspected defects found while writing the maps |
+
+
 ## API Reference
 
 | Document | Endpoints covered |
