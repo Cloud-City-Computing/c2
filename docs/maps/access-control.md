@@ -1,0 +1,227 @@
+# Access Control Map
+
+**Read this before touching any permission code.** Cloud Codex does not have one
+access-control system. It has one *primary* system plus four smaller ones that
+guard different verbs, and they do not agree with each other in every case.
+
+---
+
+## 1. The primary system: SQL fragments in `ownership.js`
+
+`routes/helpers/ownership.js` exports four functions that compose into a query.
+The pattern everywhere is:
+
+```js
+`... WHERE p.id = ? AND ${readAccessWhere('p')} LIMIT 1`,
+[id, ...readAccessParams(user)]
+```
+
+`readAccessWhere(alias)` (`ownership.js:26-40`) emits a parenthesised OR of
+**seven** clauses. Written out, access is granted when **any** of these holds:
+
+| # | Clause | Reads |
+|---|---|---|
+| 1 | `? = TRUE` | `user.is_admin`, passed as a bound param |
+| 2 | `JSON_CONTAINS(p.read_access, ?)` | the archive's per-user grant array |
+| 3 | `p.created_by = ?` | archive creator |
+| 4 | squad joined to workspace, `workspaces.owner = ?` | workspace owner, **matched by email** |
+| 5 | `squad_members.role = 'owner' OR can_read = TRUE` | squad membership |
+| 6 | `JSON_CONTAINS(p.read_access_squads, CAST(sm.squad_id AS JSON))` | per-squad grant array |
+| 7 | `p.read_access_workspace = TRUE` and the user is in *any* squad of the same workspace | workspace-wide flag |
+
+`writeAccessWhere` (`ownership.js:52-66`) is structurally identical against
+`write_access`, `can_write`, `write_access_squads`, `write_access_workspace`.
+Clauses 1, 3 and 4 are shared verbatim, so **the archive creator and the
+workspace owner always have write access**, and there is no way to demote them
+short of changing `created_by`.
+
+### The param contract
+
+```js
+readAccessParams(user)  // ownership.js:42-44
+writeAccessParams(user) // ownership.js:68-70
+// both: [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id, user.id, user.id]
+```
+
+**Always exactly 7 params, in that order.** The fragment is string-interpolated
+into the SQL, the params are bound positionally, and there is no runtime check
+that the two agree. Adding a clause to `readAccessWhere` without adding the
+matching param to `readAccessParams` shifts every subsequent `?` in the whole
+query and silently produces wrong results rather than an error. If you change
+one, change all four, and update `tests/helpers/ownership.test.js`.
+
+Two details of the params worth internalising:
+
+- **Param 2 is `JSON.stringify(user.id)`**, i.e. the string `"7"` for user 7,
+  because `JSON_CONTAINS` needs a JSON document, not an integer. Elsewhere in
+  the codebase the same arrays get appended as `CAST(? AS JSON)` with a
+  `String(user.id)` argument (`routes/github.js:1671-1678`). Both produce the
+  JSON number `7`, so they interoperate, but the two spellings are easy to
+  confuse.
+- **Param 4 is the user's email**, not id, because `workspaces.owner` is a
+  `TEXT` column holding an email address (`init.sql:39`), not a foreign key.
+  Changing a user's email silently transfers or destroys workspace ownership.
+
+### Callers
+
+Never write permission SQL by hand. The wrappers already exist in
+`routes/helpers/shared.js`:
+
+| Function | Line | Returns |
+|---|---|---|
+| `checkLogReadAccess(logId, user)` | `shared.js:56-67` | the log row, or `undefined` |
+| `checkLogWriteAccess(logId, user)` | `shared.js:73-84` | the log row, or `undefined` |
+| `checkArchiveReadAccess(archiveId, user)` | `shared.js:154-163` | the archive row, or `undefined` |
+| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:139-148` | the archive row, or `undefined` |
+
+Routes that need the fragment inline (search, browse, export, GitHub link
+loading) interpolate it directly; see `routes/documents.js:553`,
+`routes/search.js`, `routes/github.js:1004`.
+
+## 2. The critical subtlety: everything resolves against the ARCHIVE
+
+`checkLogReadAccess` (`shared.js:56-67`) joins `logs` to `archives` and applies
+`readAccessWhere('p')` where **`p` is the `archives` table**. The log's own
+columns are never consulted.
+
+`logs.read_access` and `logs.write_access` exist in the schema
+(`init.sql:244-245`). Grepping the whole backend for reads of them turns up
+nothing: they are written in exactly one place, `routes/github.js:1653` and
+`routes/github.js:1669-1679`, and read by no query anywhere.
+
+**They are write-only columns.** Any future feature that "grants access on a
+document" by writing `logs.read_access` will appear to work, persist correctly,
+and grant nothing. The PR-session feature that writes them is documented in
+[github-integration.md](github-integration.md) and flagged in
+[open-questions.md](open-questions.md).
+
+The practical rule: **the archive is the ACL boundary.** Per-document
+permissions do not exist.
+
+## 3. The four secondary systems
+
+### 3a. Global feature permissions: `requirePermission(flag)`
+
+`middleware/permissions.js:40-111`. Guards *creation* verbs, not access to
+existing rows. Three flags: `create_squad`, `create_archive`, `create_log`.
+
+Resolution order:
+
+1. `req.user.is_admin`, allow (`permissions.js:47`).
+2. Load `req.permissions` from the `permissions` table if not already loaded,
+   falling back to `DEFAULT_PERMISSIONS` (`permissions.js:50-60`).
+3. Global flag set, allow (`permissions.js:63-65`).
+4. Otherwise derive a squad from `req.body.squad_id`, or from
+   `req.params.archiveId` via the archive's `squad_id` (`permissions.js:69-78`).
+5. Workspace owner of that squad, allow (`permissions.js:82-87`).
+6. `squad_members.can_create_archive` / `can_create_log`, allow
+   (`permissions.js:90-101`).
+7. Else 403.
+
+`DEFAULT_PERMISSIONS` (`shared.js:48`) is
+`{ create_squad: false, create_archive: false, create_log: true }`, applied to
+any user with no `permissions` row. New users created through the normal paths
+get a row with **all three true** via `createDefaultPermissions`
+(`shared.js:168-173`), so the default only applies to rows that predate it or
+were made outside those paths.
+
+Note step 6 maps only two of the three flags (`permissions.js:90-93`). There is
+no squad-level fallback for `create_squad`, which is correct: squads are created
+in a workspace, not in a squad.
+
+Currently applied on exactly two routes: `routes/archives.js:115`
+(`create_archive`) and `routes/archives.js:424` (`create_log`), plus the upload
+route `routes/upload.js:92` (`create_log`).
+
+### 3b. Publish: `canPublish`
+
+`shared.js:98-125`. Ordered bypasses: no squad context at all, allow; admin,
+allow; workspace owner, allow; `squad_members.can_publish` or
+`role = 'owner'`, allow; archive creator, allow; else deny.
+
+Called from the REST publish route and from the collab WebSocket publish message
+(`services/collab.js:544`), so both paths share one policy.
+
+### 3c. Archive ownership: `isArchiveOwner`
+
+`ownership.js:76-91`. A *narrower* check than write access, used for
+destructive and administrative verbs. Admin, archive creator, workspace owner
+(by email), or squad member with `role = 'owner'`. Note it does **not** honour
+`can_write` or the JSON grant arrays: someone with full write access on an
+archive still cannot delete it or change its ACLs.
+
+Callers: delete archive (`archives.js:195`), manage access
+(`archives.js:247`), link and unlink archive repos (`archives.js:595`,
+`archives.js:644`).
+
+### 3d. Squad management: `userCanManageSquad`
+
+`routes/squads.js:283-299`. Workspace owner, squad creator, or member with
+`can_manage_members`. Also used by the GitHub team-sync routes
+(`github.js:2090`, `github.js:2168`).
+
+## 4. Per-member flags and where each is enforced
+
+`squad_members` (`init.sql:155-171`) carries `role` plus seven booleans. Their
+enforcement is uneven, which is worth knowing before you assume a flag does
+something:
+
+| Flag | Enforced by |
+|---|---|
+| `can_read` | clause 5 of `readAccessWhere` (`ownership.js:31`) |
+| `can_write` | clause 5 of `writeAccessWhere` (`ownership.js:57`) |
+| `can_create_log` | `requirePermission('create_log')` step 6 (`permissions.js:92`) |
+| `can_create_archive` | `requirePermission('create_archive')` step 6 (`permissions.js:91`) |
+| `can_manage_members` | `userCanManageSquad` (`squads.js:295`) |
+| `can_publish` | `canPublish` (`shared.js:116-119`) |
+| `can_delete_version` | version delete route only (`documents.js:503-515`) |
+
+`role` is an enum of `member`/`admin`/`owner`, but only `owner` is load-bearing
+in the SQL fragments (`ownership.js:31`, `ownership.js:57`). `admin` is treated
+as an ordinary member by every access check; it only affects UI and the squad
+management helper's `can_manage_members` grant path.
+
+**`squad_permissions` is a settings table with no enforcement path.** It is
+read and written by `GET`/`PUT /api/squads/:id/permissions`
+(`squads.js:218`, `squads.js:255-271`) and by nothing else.
+`requirePermission` consults the global `permissions` table and the
+`squad_members` columns, never `squad_permissions`. Toggling it through the API
+persists a value that changes no behaviour. See
+[open-questions.md](open-questions.md).
+
+## 5. Admin
+
+`users.is_admin` short-circuits every layer: clause 1 of both SQL fragments,
+step 1 of `requirePermission`, the first bypass in `canPublish` and
+`isArchiveOwner`, and `requireAdmin` (`middleware/auth.js:53-58`) for the
+`/api/admin/*` surface.
+
+The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
+(`server.js:41`, defined in `routes/admin.js`), which is why
+`ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
+(`server.js:24-28`).
+
+## 6. Checklist for adding a protected route
+
+1. `requireAuth` first, always. There are no internal endpoints; the only
+   surfaces are public HTTP and the two WebSockets.
+2. Creation verb, add `requirePermission('<flag>')`.
+3. Reading or writing an existing document or archive, call one of the four
+   `check*Access` helpers, or interpolate the fragment with the matching
+   `*Params` spread. Never hand-roll the SQL.
+4. Destructive or ACL-changing, use `isArchiveOwner`, not write access.
+5. Wrap in `asyncHandler`, end the router with `router.use(errorHandler)`.
+6. Add the negative test. Every route test file in `tests/routes/` already has
+   an access-denied case to copy; `tests/helpers/ownership.test.js` covers the
+   fragments themselves, and its glob carries an 88% line threshold
+   (`vitest.config.js:87`).
+
+---
+
+## Related
+
+- [data-model.md](data-model.md) for the ACL column families and their defaults.
+- [github-integration.md](github-integration.md) for the PR-session path that
+  writes the write-only log ACL columns.
+- [open-questions.md](open-questions.md) for the items above that read as
+  defects rather than design.

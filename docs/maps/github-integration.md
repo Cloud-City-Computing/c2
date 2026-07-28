@@ -1,0 +1,281 @@
+# GitHub Integration Map
+
+`routes/github.js` is 2263 lines and about 45 endpoints, the largest single file
+in the backend. It grew in four labelled phases (`P0` sync, `P1` embeds,
+`P2` PR-as-document, `P3` CI and team sync) whose section banners are still in
+the file, and it is the most volatile file in the repo, so anchor on route paths
+and function names rather than line numbers.
+
+The core stance: **live API proxy, no webhooks, no background sync, no mirror.**
+Every GitHub read is a request made in the user's name with the user's token at
+the moment they ask.
+
+---
+
+## 1. Auth and the `req.gh` helper
+
+Tokens are stored encrypted in `oauth_accounts.encrypted_token`. The crypto
+lives in `routes/oauth.js:48-81`:
+
+- AES-256-GCM, 12-byte IV, 16-byte auth tag.
+- The key is `scryptSync(GITHUB_CLIENT_SECRET, 'cloudcodex-oauth-token', 32)`
+  (`oauth.js:56`). **Rotating `GITHUB_CLIENT_SECRET` renders every stored token
+  undecryptable**; there is no key-version field and no re-encryption path.
+  Every user has to re-link.
+- Stored as `ivHex:tagHex:ciphertextHex` (`oauth.js:67`).
+- `encryptToken`/`decryptToken` return `null` when the secret is unset, which is
+  how the app degrades gracefully with GitHub unconfigured.
+
+`requireGitHub` (`github.js:111-122`) decrypts the caller's token, 403s with a
+"link your GitHub account" message when absent, and attaches
+`req.gh(path, options)`, a closure over `githubFetch` that also forwards
+`req.user.id`.
+
+`router.use('/github', requireAuth, asyncHandler(requireGitHub))`
+(`github.js:125`) applies that to every `/api/github/*` route. Note the two
+routes that live **outside** the `/github` prefix,
+`/api/logs/by-github-ref` (`github.js:1900`) and the two
+`/api/squads/:squadId/github-team/*` routes (`github.js:2085`,
+`github.js:2163`), which therefore attach `requireAuth` and `requireGitHub`
+individually.
+
+### Token revocation detection
+
+`githubFetch` (`github.js:70-104`) inspects failures. On a 401, or a 403 whose
+message mentions credentials, it fire-and-forgets
+`UPDATE oauth_accounts SET token_status = 'revoked'` (`github.js:88-95`). The
+message check matters: GitHub also returns 403 for rate limits and missing
+scopes, and flipping the status on those would produce spurious "re-link your
+account" prompts. The frontend reads this through
+`GET /api/github/status` (`oauth.js:567`) and the `useGitHubStatus` hook, which
+is what hides GitHub UI affordances for unlinked users.
+
+### This router does NOT use the shared error handler
+
+`github.js:2254-2261` installs its own terminal handler that forwards
+`err.status` when it is a plausible 4xx/5xx and prefers `err.ghBody.message`,
+so GitHub's own wording reaches the client. `githubFetch` is what attaches
+`.status` and `.ghBody` (`github.js:97-100`).
+
+**Do not replace this with `errorHandler` from `shared.js`.** That handler
+hardcodes 500, so every "file not found on that branch" and every rate-limit
+response would become an opaque server error.
+
+## 2. Document to file linking
+
+`github_links` (`init.sql:283-302`) is `UNIQUE (log_id)`, so a document links to
+at most one file. Columns that carry the sync state: `file_sha` (last observed
+remote blob sha), `base_sha` (the merge base), `last_pulled_at`,
+`last_pushed_at`, `sync_status`.
+
+Three plain CRUD routes: `GET`, `PUT`, `DELETE /api/github/link/:logId`
+(`github.js:924`, `947`, `975`). The `PUT` is an upsert keyed on the unique
+`log_id`, setting `base_sha = file_sha` at link time.
+
+**These three do not check log access.** They validate the id and act, relying
+only on `requireAuth` plus `requireGitHub`. The four sync routes below all go
+through `loadLinkAndLog` (`github.js:993-1009`), which does apply the proper
+read or write fragment. See [open-questions.md](open-questions.md).
+
+### The sync state machine
+
+`classifySync({ remoteSha, baseSha, localChanged })` (`github.js:1066-1072`):
+
+```
+remoteChanged = remoteSha && baseSha && remoteSha !== baseSha
+localChanged  = log.updated_at > max(last_pulled_at, last_pushed_at)
+
+  !remote && !local  ->  clean
+   remote && !local  ->  remote_ahead
+  !remote &&  local  ->  local_ahead
+   remote &&  local  ->  diverged
+```
+
+The schema's `sync_status` enum also has `conflict` (`init.sql:294`), which
+`classifySync` never returns; it exists for a manual-resolution state that the
+current code expresses as a 409 response instead.
+
+Two heuristics to know about:
+
+- **`localChanged` is deliberately conservative** (`github.js:1094-1102`). It
+  compares `logs.updated_at` against the last sync, and `updated_at` is bumped
+  by CRDT autosaves too, so idle-but-open documents drift to `local_ahead`. The
+  code notes this: a false positive only offers a Pull the user does not need.
+- **A link that has never been pulled or pushed reports `localChanged = false`**
+  (`lastSyncTs === 0` short-circuit, `github.js:1102`).
+
+`GET /api/github/link/:logId/status` (`github.js:1079`) also *persists* what it
+observed into `file_sha` and `sync_status` as a fire-and-forget write
+(`github.js:1109-1114`), so sidebars and banners can read cached state without
+re-hitting GitHub.
+
+### Pull (`github.js:1139`)
+
+Three strategies, validated against an allow-list (`github.js:1146`):
+
+| Strategy | Behaviour |
+|---|---|
+| `overwrite_local` | remote markdown rendered to HTML, written over the doc, `ydoc_state = NULL`, both shas advanced, `sync_status = 'clean'` |
+| `merge` | fetch the base blob by `base_sha`, run `diff3Merge(local, base, remote)`; conflict yields **409** with `conflicts`, `merged_with_markers`, `ours`, `theirs`; success writes the merged doc |
+| `preview` | identical merge computation, returns `merged_markdown`, writes nothing |
+
+`diff3Merge` is local, in `src/lib/githubDiff.js:122` (an LCS-based three-way
+merge, no external dependency). It is one of the few backend modules imported
+from `src/`.
+
+Every write path here nulls `ydoc_state` (`github.js:1165`, `1207`, `1389`) so
+live editors re-initialise their CRDT from the new HTML. That is mandatory for
+any external content writer; see
+[documents-and-collab.md](documents-and-collab.md).
+
+All three write paths also call `broadcastToDoc(logId, {type:'github-pulled'})`
+(`github.js:1174`, `1216`, `1398`) to tell open editors.
+
+### Push (`github.js:1228`)
+
+`branch_strategy: 'direct'` commits straight to the linked branch using
+`base_sha` as the parent. `'pr'` first creates `codex/<slug>-<base36 time>` off
+the linked branch (`github.js:1261-1275`), pushes there, then opens a PR.
+
+On a GitHub 409 or 422, meaning the remote moved between the status check and
+the push, it flips `sync_status = 'diverged'` and returns 409 with a
+"pull first" message (`github.js:1298-1313`).
+
+Sha bookkeeping differs by strategy (`github.js:1332-1346`): a direct push
+advances both `file_sha` and `base_sha`; a PR push advances only `base_sha`,
+because the linked branch on disk is unchanged.
+
+The content pushed is `localMarkdown(row)` (`github.js:1016-1024`), which
+**prefers `markdown_content` over `html_content`**. A document edited in
+rich-text mode sets `markdown_content` to `null`, at which point the HTML is
+round-tripped through turndown; a document with a stale `markdown_content`
+pushes the stale markdown.
+
+### Resolve (`github.js:1365`)
+
+Persists a user-merged markdown after a conflict. Guards on the client's
+`base_sha` matching the stored one (409 if the base moved underneath), writes
+the doc, and sets `sync_status = 'local_ahead'`, since the user still has to
+push.
+
+## 3. Live code embeds (P1)
+
+`GET /api/github/embed/code` (`github.js:1447`) serves the Tiptap
+`GitHubCodeEmbed` node. It fetches the file, optionally slices a line range, and
+returns content plus a `language` guess from `EXT_TO_LANG`
+(`github.js:1405-1419`).
+
+The response is cached in a module-level LRU capped at 500 entries
+(`github.js:1425-1440`), **keyed by `${req.user.id}:${owner}:${repo}:${ref}:${path}`**
+(`github.js:1456`). The user id in the key is the point: private-repo content
+must never leak across users through a shared cache. Any change to that key
+must keep the user id.
+
+The cache stores the *full* file and slices per request, so two embeds of
+different ranges in the same file cost one fetch.
+
+There is a second, separate TTL cache for CI and release reads,
+`ciCache`, 60 seconds, 200 entries (`github.js:1925-1948`).
+
+### The dead back-link table
+
+`github_embed_refs` (`init.sql:253-267`, created by
+`migrations/p1_github_embeds.sql`) is intended to answer "which documents embed
+this file / issue / PR". `GET /api/logs/by-github-ref` (`github.js:1900`) reads
+it, correctly gated by the read fragment.
+
+**Nothing writes it.** There is no `INSERT INTO github_embed_refs` anywhere in
+the repo. The endpoint therefore always returns an empty list in practice, and
+its test (`tests/routes/github.test.js:1818`) passes because the DB is mocked.
+Recorded in [open-questions.md](open-questions.md).
+
+## 4. Archive as repo (P1)
+
+`archive_repos` (`init.sql:213-228`) binds an archive to a repo, with a
+`docs_path` prefix (default `docs`) and `auto_link_imports`. Managed through
+`GET`/`POST`/`DELETE /api/archives/:archiveId/repos` (`archives.js:556`, `589`,
+`638`), all gated by `isArchiveOwner`.
+
+`bulkImportArchiveRepo` (`github.js:1502-1597`) backs **both**
+`POST .../import` and `POST .../refresh` (`github.js:1599-1600`); they are the
+same handler. It walks the tree recursively, keeps only markdown blobs under the
+prefix (`listMarkdownFilesUnder`, `github.js:1504-1516`), skips paths already
+linked, and creates a log plus a `github_links` row per new file. It yields to
+the event loop between chunks with `await new Promise(r => setImmediate(r))`
+(`github.js:1593`) so a large repo does not block the single process.
+
+Because already-linked files are reported as `skipped` rather than re-fetched,
+`/refresh` is a no-op on a fully-synced archive: it imports newly-added files
+only, and does not pull content changes into existing docs.
+
+## 5. PR as document (P2)
+
+The cleverest and most fragile part. A pull request gets a **virtual log** so
+the existing comment routes and collab WebSocket work on it unchanged.
+
+`ensureSystemArchive` (`github.js:1612-1628`) find-or-creates a single global
+archive named `__c2_github_pr_sessions__` with `system = TRUE`, `squad_id NULL`,
+`created_by NULL`, and every ACL empty. `archives.system` exists precisely so
+this row can be filtered out of normal archive listings.
+
+`getOrCreatePrSession` (`github.js:1636-1682`) then creates a log in it, records
+a `github_pr_sessions` row (unique on owner+repo+pr_number), and appends the
+caller's id to the **log's** `read_access` and `write_access` JSON arrays
+(`github.js:1669-1679`).
+
+**That last step grants nothing.** As established in
+[access-control.md](access-control.md), `checkLogReadAccess` resolves against
+the parent *archive*, and `logs.read_access` is read by no query in the codebase.
+The system archive has empty ACLs, a NULL creator, and no squad, so only
+`is_admin` satisfies the fragment. The comment routes on a PR-session log should
+therefore 403 for every non-admin. This is flagged in
+[open-questions.md](open-questions.md) as a suspected defect, not runtime
+verified.
+
+The rest of the PR surface (`github.js:1705-1800`) proxies review comments,
+review submission, and issue search straight through, with no local mirror.
+
+## 6. Squad to GitHub Team sync (P3)
+
+`squads.github_org` / `github_team_slug` / `team_sync_at`
+(`init.sql:129-131`, unique on the org+slug pair) bind a squad to a GitHub Team.
+
+`GET /api/squads/:squadId/github-team/preview` (`github.js:2085`) and
+`POST .../sync` (`github.js:2163`), both behind `userCanManageSquad`.
+
+Identity matching is `LOWER(oauth_accounts.provider_username)` against the
+GitHub login (`github.js:2137`, `github.js:2208`), so **a Codex user who has not
+linked GitHub is invisible to sync** and appears in the `unmatched` list.
+
+Adds insert with `role='member', can_read=TRUE, can_write=FALSE` and
+`ON DUPLICATE KEY UPDATE can_read = TRUE` (`github.js:2218-2220`). Removals skip
+anyone with `role = 'owner'` (`github.js:2232-2237`) so a bootstrapping admin
+cannot lock themselves out.
+
+Sync is **manual and one-directional**: GitHub is the source, Codex is the
+target, and nothing runs it on a schedule. `team_sync_at` records the last run.
+Membership fetch is capped at `per_page=100` with no pagination
+(`github.js:2181`), so teams above 100 members will silently under-report and
+the removal pass would delete the overflow. Recorded in
+[open-questions.md](open-questions.md).
+
+## 7. Frontend surface
+
+`src/pages/GitHubPage.jsx` (2631 lines) is the repo browser. It carries the
+repo's only load-bearing `eslint-disable` lines for `react-hooks/exhaustive-deps`
+and a legacy `no-alert` disable; both are deliberate, leave them.
+
+The API wrappers all live in `src/util.jsx:132-180`. `useGitHubStatus.jsx` gates
+UI on whether the user has linked an account; `useGitHubLink.js` drives the
+per-document sync banner (`GitHubSyncBanner.jsx`) and merge dialog
+(`GitHubMergeDialog.jsx`). Picker modals live under `src/components/github/`.
+
+---
+
+## Related
+
+- [access-control.md](access-control.md) for why the PR-session ACL write is
+  inert.
+- [documents-and-collab.md](documents-and-collab.md) for the `ydoc_state = NULL`
+  contract every writer here obeys.
+- [data-model.md](data-model.md) for the five GitHub tables.
