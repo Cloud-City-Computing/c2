@@ -65,6 +65,17 @@
 | [deployment.md](./deployment.md) | Production operations — Docker Compose, TLS, backups, upgrades, logs |
 | [troubleshooting.md](./troubleshooting.md) | Common setup/runtime failures and the fix for each |
 
+## Specs (`specs/`)
+
+Where the maps describe how the system works today, [`specs/`](./specs/README.md)
+describes what we intend to build next and why.
+
+| Document | What it is |
+|----------|---------|
+| [specs/roadmap.md](./specs/roadmap.md) | The five tracks the project is decomposed into, the evidence behind each, and the order to do them in |
+| [specs/2026-07-27-five-minute-evaluation.md](./specs/2026-07-27-five-minute-evaluation.md) | Track A: make Cloud Codex runnable and demo-able by a stranger in five minutes |
+
+
 ## Deep maps (`maps/`)
 
 The references above describe the product. [`maps/`](./maps/README.md) describes
