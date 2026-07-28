@@ -1,6 +1,6 @@
 # Five-Minute Evaluation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task ﹘ one fresh subagent per task, with review between tasks. This is the standing convention for executing a written plan in this repo; it is not a choice to re-present. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Cloud Codex boot and be usable with no SMTP server configured, and land a fresh admin inside a real workspace instead of an empty app.
 
