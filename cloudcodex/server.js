@@ -29,7 +29,13 @@ if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.A
 // unavailable, invitations not emailed), and a first boot would serve an
 // empty app until the seed landed. These are top-level awaits instead.
 
-const mail = await initMail();
+let mail;
+try {
+  mail = await initMail();
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] mail capability check failed:`, err);
+  mail = { enabled: false, reason: 'mail capability check threw' };
+}
 if (mail.enabled) {
   console.log('✔ SMTP connection verified');
 } else {

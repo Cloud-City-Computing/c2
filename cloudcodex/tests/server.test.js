@@ -263,4 +263,30 @@ describe('server.js: boot ordering and failure handling', () => {
       process.env = original;
     }
   });
+
+  // initMail() cannot throw today (verifyEmailConnection swallows its own
+  // errors and isMailConfigured is a pure boolean check), but its two
+  // siblings below it are each try/catch-wrapped so a rejection cannot take
+  // the process down. This proves the same guard on initMail(): a rejection
+  // must degrade to mail-disabled, not stop the port from opening.
+  it('logs and keeps serving when the mail capability check throws', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+
+      const { initMail } = await import('../services/email.js');
+      initMail.mockRejectedValueOnce(new Error('SMTP verify blew up'));
+
+      await import('../server.js');
+
+      expect(listenMock).toHaveBeenCalledTimes(1);
+      expect(exitSpy).not.toHaveBeenCalled();
+      const allLogs = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(allLogs).toMatch(/mail capability check failed/);
+      expect(allLogs).toMatch(/SMTP verify blew up/);
+      expect(allLogs).toMatch(/Email disabled/);
+    } finally {
+      process.env = original;
+    }
+  });
 });
