@@ -160,4 +160,34 @@ describe('server.js: mail is optional', () => {
       process.env = original;
     }
   });
+
+  // The two tests above prove initMail() is on the boot path but say
+  // nothing about the ensureAdminUser -> bootstrapInstance wiring right
+  // below it. `bootstrapInstance: vi.fn()` in the module mock above only
+  // stops that line from throwing — on its own it does not prove
+  // server.js passes the right value through. This closes that gap by
+  // controlling what ensureAdminUser() resolves to and asserting
+  // bootstrapInstance receives exactly that id.
+  it('calls bootstrapInstance with the id ensureAdminUser resolved', async () => {
+    const original = { ...process.env };
+    try {
+      process.env.SMTP_HOST = 'localhost';
+      process.env.SMTP_USER = 'u';
+      process.env.SMTP_PASS = 'p';
+      process.env.ADMIN_USERNAME = 'admin';
+      process.env.ADMIN_PASSWORD = 'pw';
+      process.env.ADMIN_EMAIL = 'admin@test.com';
+
+      await import('../server.js');
+      const { ensureAdminUser, bootstrapInstance } = await import('../routes/admin.js');
+      ensureAdminUser.mockResolvedValueOnce(7);
+      const listenCallback = listenMock.mock.calls[0][2];
+
+      await listenCallback();
+
+      expect(bootstrapInstance).toHaveBeenCalledWith(7);
+    } finally {
+      process.env = original;
+    }
+  });
 });

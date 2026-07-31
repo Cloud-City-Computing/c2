@@ -8,7 +8,7 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { c2_query } from '../mysql_connect.js';
+import { c2_query, withTransaction } from '../mysql_connect.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
@@ -85,34 +85,39 @@ export async function bootstrapInstance(adminId) {
   const adminEmail = process.env.ADMIN_EMAIL;
   const adminName = process.env.ADMIN_USERNAME;
 
-  // workspaces.owner is a TEXT column holding an email, not a foreign key.
-  const workspace = await c2_query(
-    'INSERT INTO workspaces (name, owner) VALUES (?, ?)',
-    [`${adminName}'s Workspace`, adminEmail]
-  );
+  // All five writes share one transaction: a failure partway through must
+  // leave zero rows, or the workspace-count guard above sees a half-seeded
+  // instance as already seeded and the next boot never retries.
+  await withTransaction(async (query) => {
+    // workspaces.owner is a TEXT column holding an email, not a foreign key.
+    const workspace = await query(
+      'INSERT INTO workspaces (name, owner) VALUES (?, ?)',
+      [`${adminName}'s Workspace`, adminEmail]
+    );
 
-  const squad = await c2_query(
-    'INSERT INTO squads (workspace_id, name, created_by) VALUES (?, ?, ?)',
-    [workspace.insertId, 'General', adminId]
-  );
+    const squad = await query(
+      'INSERT INTO squads (workspace_id, name, created_by) VALUES (?, ?, ?)',
+      [workspace.insertId, 'General', adminId]
+    );
 
-  await addSquadOwnerMember(squad.insertId, adminId);
+    await addSquadOwnerMember(squad.insertId, adminId, query);
 
-  // squad_id MUST be set. A NULL squad_id orphans the archive: clauses 4
-  // through 7 of readAccessWhere all fail and only the creator can reach it.
-  const archive = await c2_query(
-    `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
-     VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
-    ['Getting Started', squad.insertId, adminId, adminId, adminId]
-  );
+    // squad_id MUST be set. A NULL squad_id orphans the archive: clauses 4
+    // through 7 of readAccessWhere all fail and only the creator can reach it.
+    const archive = await query(
+      `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
+       VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+      ['Getting Started', squad.insertId, adminId, adminId, adminId]
+    );
 
-  // Static authored content, not user input, so it does not pass through
-  // sanitizeHtml. Never interpolate anything into WELCOME_HTML.
-  await c2_query(
-    `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by)
-     VALUES (?, ?, ?, ?, ?)`,
-    [archive.insertId, 'Welcome to Cloud Codex', WELCOME_HTML, adminId, adminId]
-  );
+    // Static authored content, not user input, so it does not pass through
+    // sanitizeHtml. Never interpolate anything into WELCOME_HTML.
+    await query(
+      `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [archive.insertId, 'Welcome to Cloud Codex', WELCOME_HTML, adminId, adminId]
+    );
+  });
 
   console.error(`[${new Date().toISOString()}] bootstrap: seeded starter workspace for ${adminEmail}`);
   return true;

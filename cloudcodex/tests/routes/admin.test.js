@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
-import { c2_query } from '../../mysql_connect.js';
+import { c2_query, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { getAllPresence, getActiveDocCount } from '../../services/collab.js';
-import { bootstrapInstance } from '../../routes/admin.js';
+import { ensureAdminUser, bootstrapInstance } from '../../routes/admin.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 vi.mock('../../services/collab.js', () => ({
@@ -1098,6 +1098,13 @@ describe('bootstrapInstance', () => {
 
     const workspaceCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO workspaces'));
     expect(workspaceCall[1][1]).toBe(process.env.ADMIN_EMAIL);
+
+    // The five writes must run inside withTransaction (not as five loose
+    // c2_query calls), or a failure partway through leaves a partial seed
+    // that the COUNT(*) guard mistakes for a completed install on the next
+    // boot. The default test mock (tests/setup.js) forwards straight to
+    // c2_query, which is why the assertions above still see the writes.
+    expect(withTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing when a workspace already exists', async () => {
@@ -1107,6 +1114,7 @@ describe('bootstrapInstance', () => {
 
     expect(seeded).toBe(false);
     expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(withTransaction).not.toHaveBeenCalled();
   });
 
   it('does nothing when no admin id is supplied', async () => {
@@ -1114,5 +1122,64 @@ describe('bootstrapInstance', () => {
 
     expect(seeded).toBe(false);
     expect(c2_query).not.toHaveBeenCalled();
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('propagates the failure and never reports success when a write fails mid-seed', async () => {
+    // Simulates what a real rollback leaves behind: withTransaction rolls
+    // back and rethrows (see tests/mysql_connect.test.js), so the caller
+    // sees the original error and no rows exist for the next boot's
+    // COUNT(*) guard to trip on.
+    c2_query.mockResolvedValueOnce([{ n: 0 }]); // workspace count
+    withTransaction.mockRejectedValueOnce(new Error('archive insert failed'));
+
+    await expect(bootstrapInstance(1)).rejects.toThrow('archive insert failed');
+  });
+});
+
+// --- ensureAdminUser ---
+// Not a route handler either. Its return value is the Step 3 deliverable
+// server.js now depends on (server.js passes it straight into
+// bootstrapInstance), so both branches — existing admin found vs. admin
+// created fresh — need direct coverage of what id comes back, not just
+// that a UPDATE/INSERT happened.
+describe('ensureAdminUser', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    resetMocks();
+    process.env.ADMIN_USERNAME = 'Admin';
+    process.env.ADMIN_PASSWORD = 'correct horse battery staple';
+    process.env.ADMIN_EMAIL = 'admin@example.com';
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('returns the existing user id and syncs credentials when the admin already exists', async () => {
+    c2_query.mockResolvedValueOnce([{ id: 5, is_admin: true }]); // SELECT existing
+    c2_query.mockResolvedValueOnce({ affectedRows: 1 });          // UPDATE
+
+    const id = await ensureAdminUser();
+
+    expect(id).toBe(5);
+    const updateCall = c2_query.mock.calls.find(([sql]) => sql.includes('UPDATE users'));
+    expect(updateCall).toBeDefined();
+    expect(updateCall[1][1]).toBe('admin@example.com'); // email
+    expect(updateCall[1][2]).toBe(5);                     // WHERE id = ?
+  });
+
+  it('creates the admin user, seeds default permissions, and returns the new id when none exists', async () => {
+    c2_query.mockResolvedValueOnce([]);                 // SELECT: no existing admin
+    c2_query.mockResolvedValueOnce({ insertId: 42 });   // INSERT users
+    c2_query.mockResolvedValueOnce({ insertId: 1 });    // createDefaultPermissions INSERT
+
+    const id = await ensureAdminUser();
+
+    expect(id).toBe(42);
+    const permissionsCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO permissions'));
+    expect(permissionsCall).toBeDefined();
+    expect(permissionsCall[1]).toEqual([42]);
   });
 });

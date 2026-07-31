@@ -3,7 +3,7 @@
  */
 
 import { vi } from 'vitest';
-import { c2_query, validateAndAutoLogin, generateSessionToken, touchSession } from '../mysql_connect.js';
+import { c2_query, validateAndAutoLogin, generateSessionToken, touchSession, withTransaction } from '../mysql_connect.js';
 
 /** A standard authenticated test user. */
 export const TEST_USER = { id: 1, name: 'testuser', email: 'test@example.com' };
@@ -37,4 +37,7 @@ export function resetMocks() {
   generateSessionToken.mockResolvedValue('mock-session-token');
   validateAndAutoLogin.mockResolvedValue(null);
   touchSession.mockResolvedValue(undefined);
+  // Default: forward straight to c2_query so existing call-ordered
+  // mockResolvedValueOnce queues work unchanged for transactional code.
+  withTransaction.mockImplementation(async fn => fn(c2_query));
 }

@@ -295,6 +295,16 @@ describe('helpers/shared', () => {
       expect(sql).toMatch(/'owner'/);
       expect(params).toEqual([7, 99]);
     });
+
+    it('addSquadOwnerMember uses a supplied query executor instead of c2_query, so it can join a caller\'s transaction', async () => {
+      const query = vi.fn().mockResolvedValueOnce({ insertId: 1 });
+      await addSquadOwnerMember(7, 99, query);
+      expect(query).toHaveBeenCalledTimes(1);
+      const [sql, params] = query.mock.calls[0];
+      expect(sql).toMatch(/INSERT INTO squad_members/i);
+      expect(params).toEqual([7, 99]);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
   });
 
   // ── errorHandler ────────────────────────────────────────
