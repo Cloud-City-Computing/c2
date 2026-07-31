@@ -26,6 +26,16 @@ vi.mock('nodemailer', () => ({
   },
 }));
 
+// Make SMTP configuration explicit and hermetic. This file's pass/fail state
+// must not depend on whether a real (gitignored) .env exists on disk — CI
+// has none. email.js runs dotenv.config() as a module-load side effect, and
+// dotenv only fills in a key that is genuinely absent from process.env
+// (Object.hasOwnProperty check), so setting these here, before the first
+// import below, wins over both a present and an absent .env alike.
+process.env.SMTP_HOST = 'smtp.test.local';
+process.env.SMTP_USER = 'test-user';
+process.env.SMTP_PASS = 'test-pass';
+
 const {
   sendEmail,
   verifyEmailConnection,
