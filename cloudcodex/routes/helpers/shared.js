@@ -174,9 +174,15 @@ export async function createDefaultPermissions(userId) {
 
 /**
  * Insert a squad owner member with full permissions.
+ *
+ * @param {number} squadId
+ * @param {number} userId
+ * @param {(sql: string, params?: Array) => Promise<Array>} [query] - Query
+ *   executor to use, defaults to `c2_query`. Pass the executor handed to a
+ *   `withTransaction` callback so this insert joins the caller's transaction.
  */
-export async function addSquadOwnerMember(squadId, userId) {
-  await c2_query(
+export async function addSquadOwnerMember(squadId, userId, query = c2_query) {
+  await query(
     `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
      VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
     [squadId, userId]

@@ -17,23 +17,50 @@ the cause and the fix.
 
 ```
 ┃ ⚠  Symptom
-┃   Server exits at startup with "SMTP credentials missing" or
-┃   "verifyEmailConnection failed".
+┃   Startup log shows "✖ Email disabled: <reason>." Invitations only
+┃   show a copyable link instead of sending mail, "Forgot password"
+┃   reports itself unavailable, and email-based 2FA can't be enabled.
 ```
 
 **Cause.** `SMTP_HOST`, `SMTP_USER`, or `SMTP_PASS` is empty in `.env`,
-or the configured server refused the test connection. SMTP is a hard
-dependency; the app exits rather than running in a half-broken state
-where password reset and 2FA silently fail.
+or the configured server refused the connection test. Mail is optional:
+the server boots either way and degrades those three features instead of
+exiting (the admin-credentials gate below is the only thing that's still
+boot-fatal). Squad invitations still work: the in-app notification is the
+reliable channel and the email was only ever a convenience.
+
+**Two-factor authentication is affected, in both directions.** Logging in
+with authenticator-app (TOTP) 2FA works normally, but *both* of these
+refuse with `503` while mail is off, because both deliver a code by email:
+
+- **Login for an account using email 2FA.** The verification code cannot
+  be sent, so the login is refused outright rather than issuing a
+  challenge nobody can answer. The account is unreachable until mail is
+  restored, and "Forgot password" is unavailable too, so there is no
+  self-service way out.
+- **Turning 2FA off,** for email *and* TOTP accounts alike. The disable
+  confirmation code is emailed in both cases.
+
+There is currently no admin-side 2FA reset, so restoring mail (or editing
+`users.two_factor_method` in the database) is the only repair. Tracked in
+`docs/maps/open-questions.md`, item B8.
 
 **Fix.**
-1. Confirm all three are set in `.env`.
+1. Confirm all three SMTP variables are set in `.env`.
 2. Try the credentials manually with `swaks` or any SMTP CLI.
 3. If you're using Gmail / Workspace, you need an **app password**, not
    your account password. TLS port 465 also works
    (`SMTP_PORT=465` triggers TLS automatically).
 4. Restart with `docker compose -f docker-compose-prod.yml up -d` and
-   watch `docker logs`.
+   watch `docker logs` for `✔ SMTP connection verified`.
+
+**The mail capability is decided once, at boot, and never re-checked.**
+`initMail()` runs before the port opens and the answer holds for the life
+of the process, so fixing `.env` or bringing the SMTP host back up does
+nothing until you **restart the app**. The same applies in reverse: a
+server that dies after boot is not noticed, sends just start failing.
+Connection and greeting attempts time out after 10 seconds each, so an
+unreachable SMTP host delays startup by seconds, not minutes.
 
 ---
 

@@ -116,23 +116,6 @@ any real document has hit the ceiling.
 **Suggested fix:** `ALTER TABLE logs MODIFY html_content MEDIUMTEXT` in both a
 migration and `init.sql`, matching `markdown_content`.
 
-### B3. `make reset-db` fails on an existing database
-
-`init.sql:12-31` drops 21 tables. Four of the 25 are missing from the list:
-`github_links`, `activity_log`, `watches`, `notifications`. None of their
-`CREATE TABLE` statements uses `IF NOT EXISTS`.
-
-**Consequence:** on a database that already has those tables, `make reset-db`
-drops and recreates everything up to the first missing one, then aborts with a
-duplicate-table error, leaving the schema half-applied.
-
-**Verified:** by reading the DROP list against the CREATE list.
-**Not verified:** the exact failure point at runtime.
-
-**Suggested fix:** add the four to the DROP block, in an order that respects the
-FK graph (the block already runs with `FOREIGN_KEY_CHECKS = 0`, so order does
-not actually matter).
-
 ### B4. GitHub link CRUD does not check document access
 
 `GET`, `PUT` and `DELETE /api/github/link/:logId` (`github.js:924`, `947`,
@@ -189,6 +172,27 @@ The email is sent anyway, by a direct `sendEmail` call in
 **Consequence:** turning off "email me about squad invites" in the preferences
 UI has no effect.
 
+### B8. There is no admin-side 2FA reset, so losing mail locks accounts out
+
+Every 2FA path that needs a code delivers it by email. `routes/auth.js` now
+refuses honestly with `503` instead of minting a token nothing can answer, in
+both places (the login branch for `two_factor_method === 'email'`, and
+`POST /2fa/disable` for **both** methods, since its confirmation code is
+emailed either way). That is the correct behaviour for the API, but it is not a
+repair.
+
+**Consequence:** on an instance where mail is off, or was configured and then
+broke, a user with email 2FA cannot log in and cannot disable 2FA;
+`POST /api/forgot-password` refuses too (`auth.js:604`), so there is no
+self-service recovery. A TOTP user can still log in but cannot turn 2FA off.
+
+**Missing piece:** an admin-only endpoint (something like
+`POST /api/admin/users/:id/2fa/reset`, `requireAdmin`, setting
+`two_factor_method = 'none'` and `totp_secret = NULL` with an `logActivity`
+audit row) so an operator can clear 2FA without a `mysql` shell. Deliberately
+out of scope for the fix that added the refusals; the only workarounds today
+are restoring SMTP or editing `users.two_factor_method` directly.
+
 ## C. Design tensions, not defects
 
 ### C1. `canWrite` is evaluated once per collab connection
@@ -199,7 +203,7 @@ per keystroke), but worth stating.
 
 ### C2. One session row per user
 
-`generateSessionToken` (`mysql_connect.js:64-99`) reuses the existing row, so
+`generateSessionToken` (`mysql_connect.js:109-144`) reuses the existing row, so
 signing in on a second device returns the first device's token and `POST
 /api/logout` signs out everywhere. The schema does not enforce the one-row
 assumption with a unique key on `user_id`.
@@ -245,7 +249,7 @@ Corrected in this pass, listed here so the drift pattern is visible:
   The doc's "filesystem globally" reads as more complete than it is.
 - **`useGitHubStatus` is `.jsx`, not `.js`.**
 - **The comment "no external job queue"** is accurate in spirit, but
-  `server.js:54-70` does run an in-process daily prune, which is a scheduled job
+  `server.js:73-89` does run an in-process daily prune, which is a scheduled job
   by another name.
 
 ## E. Things not investigated

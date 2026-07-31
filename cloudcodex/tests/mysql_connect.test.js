@@ -14,8 +14,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.unmock('../mysql_connect.js');
 
 const executeMock = vi.fn();
+
+// A dedicated connection double for withTransaction: a real mysql2 pooled
+// connection exposes execute/beginTransaction/commit/rollback/release, all
+// distinct from the pool-level execute() that c2_query uses.
+const connectionExecuteMock = vi.fn();
+const beginTransactionMock = vi.fn();
+const commitMock = vi.fn();
+const rollbackMock = vi.fn();
+const releaseMock = vi.fn();
+const getConnectionMock = vi.fn(async () => ({
+  execute: connectionExecuteMock,
+  beginTransaction: beginTransactionMock,
+  commit: commitMock,
+  rollback: rollbackMock,
+  release: releaseMock,
+}));
+
 vi.mock('mysql2/promise', () => ({
-  default: { createPool: () => ({ execute: executeMock }) },
+  default: { createPool: () => ({ execute: executeMock, getConnection: getConnectionMock }) },
 }));
 
 // Ensure the env vars exist so the require-vars guard at module load does
@@ -28,10 +45,17 @@ const {
   generateSessionToken,
   validateAndAutoLogin,
   touchSession,
+  withTransaction,
 } = await import('../mysql_connect.js');
 
 beforeEach(() => {
   executeMock.mockReset();
+  getConnectionMock.mockClear();
+  connectionExecuteMock.mockReset();
+  beginTransactionMock.mockReset();
+  commitMock.mockReset();
+  rollbackMock.mockReset();
+  releaseMock.mockReset();
 });
 
 describe('c2_query', () => {
@@ -142,5 +166,66 @@ describe('touchSession', () => {
     const [sql, params] = executeMock.mock.calls[0];
     expect(sql).toMatch(/UPDATE sessions SET last_active_at = NOW\(\)/i);
     expect(params).toEqual(['tok']);
+  });
+});
+
+describe('withTransaction', () => {
+  it('begins, runs fn against a query executor bound to the dedicated connection, commits, and releases on success', async () => {
+    connectionExecuteMock.mockResolvedValueOnce([{ insertId: 5 }, []]);
+    const fn = vi.fn(async query => query('INSERT INTO x (a) VALUES (?)', [1]));
+
+    const result = await withTransaction(fn);
+
+    expect(getConnectionMock).toHaveBeenCalledTimes(1);
+    expect(beginTransactionMock).toHaveBeenCalledTimes(1);
+    // The query executor fn receives must go through the dedicated
+    // connection's execute, never the pool-level execute c2_query uses —
+    // otherwise a write could land on a different pooled connection and
+    // fall outside the transaction.
+    expect(connectionExecuteMock).toHaveBeenCalledWith('INSERT INTO x (a) VALUES (?)', [1]);
+    expect(executeMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ insertId: 5 });
+    expect(commitMock).toHaveBeenCalledTimes(1);
+    expect(rollbackMock).not.toHaveBeenCalled();
+    expect(releaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back, releases, and rethrows without committing when fn throws', async () => {
+    const err = new Error('archive insert failed');
+    const fn = vi.fn(async () => {
+      throw err;
+    });
+
+    await expect(withTransaction(fn)).rejects.toThrow('archive insert failed');
+
+    expect(beginTransactionMock).toHaveBeenCalledTimes(1);
+    expect(commitMock).not.toHaveBeenCalled();
+    expect(rollbackMock).toHaveBeenCalledTimes(1);
+    expect(releaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the original error and logs the rollback failure when rollback itself throws', async () => {
+    const err = new Error('write failed');
+    const fn = vi.fn(async () => {
+      throw err;
+    });
+    rollbackMock.mockRejectedValueOnce(new Error('connection already closed'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      // The caller must learn which statement broke. A rollback failure that
+      // replaced 'write failed' with 'connection already closed' would hide
+      // the only actionable fact.
+      await expect(withTransaction(fn)).rejects.toThrow('write failed');
+
+      // The rollback failure is still surfaced, just not as the thrown error.
+      const logged = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(logged).toMatch(/transaction rollback failed/i);
+      expect(logged).toMatch(/connection already closed/);
+
+      expect(releaseMock).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

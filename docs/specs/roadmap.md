@@ -57,18 +57,21 @@ constraint right now.
 
 | | Track | Scope | Depends on |
 |---|---|---|---|
-| **A** | Evaluation path | Mail optional, install defects, non-empty first boot | nothing |
+| **A** | Evaluation path — **shipped** | Mail optional, install defects, non-empty first boot | nothing |
 | **B** | First-run experience | Real guided onboarding, retire or fix `/api/setup` | A |
 | **C** | Vocabulary and hierarchy | Workspaces → Squads → Archives → Logs | decide early, execute late |
 | **D** | Trust signals | Real releases, changelog, classifiable license, screenshots | A |
 | **E** | Foundation | The two giant page files, the open-questions defect list | nothing, but competes for time |
 
-### A. Evaluation path
+### A. Evaluation path — shipped
 
-Specified in
-[2026-07-27-five-minute-evaluation.md](2026-07-27-five-minute-evaluation.md).
-Removes both walls. Mostly backend and configuration, barely touches the large
-UI files, sized in days.
+Removed both walls: the app boots with no SMTP configured (`initMail()`
+degrades instead of exiting) and a fresh admin now lands inside a seeded
+workspace (`bootstrapInstance()`). Verified with a clean-clone Docker boot.
+The spec that scoped this work has been deleted per the `docs/specs/`
+convention; see [`../maps/request-lifecycle.md`](../maps/request-lifecycle.md)
+and [`../maps/build-test-and-ops.md`](../maps/build-test-and-ops.md) for how it
+works now.
 
 This is first because it is the cheapest change that converts attention already
 earned into users, and because it produces the signal (issues, forks, questions)

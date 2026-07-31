@@ -16,14 +16,14 @@ config gates run **before** anything listens.
 | Load `.env` | `mysql_connect.js:16` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
 | DB pool | `mysql_connect.js:18-26` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. |
 | DB credential gate | `mysql_connect.js:28-32` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| SMTP config gate | `server.js:17-21` | Missing `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` exits 1. |
-| Admin config gate | `server.js:24-28` | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. |
-| Listen | `server.js:30` | `ViteExpress.listen(app, 3000, cb)`. Port 3000 is hardcoded. |
-| SMTP live check | `server.js:33-38` | `verifyEmailConnection()`; a failure exits 1 **after** the socket is already listening. |
-| Admin sync | `server.js:41` | `ensureAdminUser()` from `routes/admin.js` upserts the `.env` admin. |
-| Collab WS | `server.js:45` | `setupCollabServer(server)`, path `/collab`. |
-| Notification WS | `server.js:49` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
-| Activity prune | `server.js:54-70` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
+| Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. This is now the only boot-fatal config gate besides the DB one above; there is no SMTP gate. |
+| Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
+| Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` upserts the `.env` admin and returns its `id` (`Promise<number\|null>`). Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
+| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:212`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
+| Listen | `server.js`, `ViteExpress.listen(app, 3000, cb)` | Port 3000 is hardcoded. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. |
+| Collab WS | `server.js:64` | `setupCollabServer(server)`, path `/collab`. |
+| Notification WS | `server.js:68` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Activity prune | `server.js:73-89` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 
 Two consequences worth knowing:
 
@@ -31,7 +31,7 @@ Two consequences worth knowing:
   out of `server.js` precisely so Supertest can mount the app without a
   listener (`app.js:4-5`). Tests import `app.js`; they never import `server.js`
   except `tests/server.test.js`.
-- **The daily prune is single-process by design.** `server.js:53` says so
+- **The daily prune is single-process by design.** `server.js:72` says so
   explicitly. If the app is ever scaled horizontally, every replica prunes.
 
 ## 2. The middleware stack, in mount order
@@ -101,7 +101,7 @@ activity, watches
    (`auth.js:20-25`). The cookie path exists for browser redirects, notably the
    OAuth callbacks. There is no cookie-parser dependency.
 2. No token, 401 `Authentication required`.
-3. `validateAndAutoLogin(token)` (`mysql_connect.js:107-121`) looks the session
+3. `validateAndAutoLogin(token)` (`mysql_connect.js:152-166`) looks the session
    up by primary key, rejects if `expires_at <= now`, then loads the user row.
    The returned user carries exactly `id, name, email, avatar_url, is_admin`.
 4. On success sets `req.user` and `req.sessionToken`, then fires
@@ -113,29 +113,29 @@ and must run after `requireAuth`.
 
 ### Session tokens
 
-`generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:64-99`) is
+`generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:109-144`) is
 **one session per user**, not one per device:
 
 - It looks up `WHERE user_id = ? LIMIT 1`.
 - If a live session exists, it updates `ip_address`/`user_agent`/`last_active_at`
-  and **returns the same token** (`mysql_connect.js:70-78`).
+  and **returns the same token** (`mysql_connect.js:116-123`).
 - If the session exists but is expired, it rotates the id in place and extends
-  by 7 days (`mysql_connect.js:81-88`).
+  by 7 days (`mysql_connect.js:125-133`).
 - Otherwise it inserts a new row with a 7-day expiry.
 
-Token generation (`mysql_connect.js:50-54`) uses `crypto.getRandomValues` over a
+Token generation (`mysql_connect.js:95-99`) uses `crypto.getRandomValues` over a
 62-character alphabet, default length 64, matching `sessions.id CHAR(64)`. The
 modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 
 **Consequence:** logging in from a second device silently reuses the first
-device's token, and `POST /api/logout` (`routes/auth.js:358`) therefore logs out
+device's token, and `POST /api/logout` (`routes/auth.js:371`) therefore logs out
 every device at once.
 
 ## 4. Error handling
 
 The convention is per-router, not app-global. Each router file ends with
 `router.use(errorHandler)` where `errorHandler` comes from
-`routes/helpers/shared.js:192-198`:
+`routes/helpers/shared.js:198-204`:
 
 ```js
 console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);

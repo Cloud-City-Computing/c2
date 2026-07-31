@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
 import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
-import { sendEmail } from '../services/email.js';
+import { sendEmail, isMailEnabled } from '../services/email.js';
 import { requireAuth } from '../middleware/auth.js';
 import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions } from './helpers/shared.js';
 
@@ -305,6 +305,19 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   // If 2FA is enabled (email or TOTP), require verification
   if (two_factor_method === 'email' || two_factor_method === 'totp') {
+    // Email 2FA on a mail-less instance cannot complete: the code has nowhere
+    // to go, and /api/forgot-password refuses too, so there is no self-service
+    // way out. Refuse honestly here, before minting a token or writing a code
+    // row, instead of returning a challenge nothing can answer. The password
+    // check above already passed, so this leaks nothing to a stranger, and it
+    // grants no access: the account stays locked until an admin restores mail.
+    if (two_factor_method === 'email' && !isMailEnabled()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Email delivery is disabled on this instance, so your verification code cannot be sent. Contact your administrator.',
+      });
+    }
+
     // Create a short-lived temporary token to tie the 2FA verification back to this login attempt
     const twoFactorToken = crypto.randomBytes(32).toString('hex');
     await c2_query(
@@ -574,14 +587,25 @@ function generateResetToken() {
 /**
  * POST /api/forgot-password
  * Body: { email }
- * Sends a password reset link to the user's email. Always responds with success
- * to prevent email enumeration.
+ * Sends a password reset link to the user's email. The response body is
+ * identical for every address, existing or not, to prevent email enumeration.
+ * Refuses honestly, before any lookup, when mail is disabled instance-wide.
  */
 router.post('/forgot-password', asyncHandler(async (req, res) => {
   const { email } = req.body;
 
   if (!email || !isValidEmail(email)) {
     return res.status(400).json({ success: false, message: 'A valid email address is required' });
+  }
+
+  // Return before minting a token: a reset token that can never be delivered
+  // is worse than an honest refusal. Identical for every address, so this
+  // leaks nothing about which accounts exist.
+  if (!isMailEnabled()) {
+    return res.json({
+      success: false,
+      message: 'Password reset is unavailable on this instance. Contact your administrator.',
+    });
   }
 
   // Track start time so we can normalize response timing to prevent email enumeration
@@ -761,6 +785,15 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
 router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
   const method = req.body.method || 'email';
 
+  // Email 2FA on a mail-less instance is a lockout: the login code and the
+  // disable-confirmation code both travel by email.
+  if (method === 'email' && !isMailEnabled()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email is disabled on this instance. Use an authenticator app (TOTP) instead.',
+    });
+  }
+
   if (method === 'email') {
     await c2_query(`UPDATE users SET two_factor_method = 'email', totp_secret = NULL WHERE id = ?`, [req.user.id]);
     return res.json({ success: true, message: 'Email two-factor authentication has been enabled.' });
@@ -794,6 +827,18 @@ router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
       `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))`,
       [req.user.id, setupToken]
     );
+
+    // Mail off: there is no inbox to deliver the QR to, so hand the setup
+    // material back in the response instead of emailing it.
+    if (!isMailEnabled()) {
+      return res.json({
+        success: true,
+        message: 'Scan the QR code shown on screen with your authenticator app, then enter the code below to complete setup.',
+        setupToken,
+        qr_data_url: qrDataUrl,
+        secret: secret.base32,
+      });
+    }
 
     // Email the QR code to the user
     try {
@@ -882,11 +927,24 @@ router.post('/2fa/totp/confirm', requireAuth, asyncHandler(async (req, res) => {
  * POST /api/2fa/disable
  * Sends a verification code to the user's email. Returns a confirmToken.
  * The user must call POST /api/2fa/disable/confirm with the token and code to complete.
+ * Refuses, without minting anything, when mail is disabled instance-wide.
  */
 router.post('/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
   const [userRow] = await c2_query(`SELECT email, two_factor_method FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
   if (!userRow || userRow.two_factor_method === 'none') {
     return res.json({ success: true, message: 'Two-factor authentication is already disabled.' });
+  }
+
+  // Both methods confirm the disable with an emailed code: /2fa/disable/confirm
+  // validates against two_factor_codes whether the account uses email or TOTP.
+  // With mail off there is nothing the user can ever enter, so refuse before
+  // minting a confirmToken or writing a code row rather than answering 200 with
+  // "a code has been sent to your email".
+  if (!isMailEnabled()) {
+    return res.status(503).json({
+      success: false,
+      message: 'Email delivery is disabled on this instance, so the confirmation code cannot be sent. Contact your administrator to have two-factor authentication removed.',
+    });
   }
 
   // Invalidate any existing unused codes for this user

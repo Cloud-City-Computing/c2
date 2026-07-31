@@ -3,7 +3,7 @@ import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
 import { c2_query, validateAndAutoLogin, generateSessionToken } from '../../mysql_connect.js';
-import { sendEmail } from '../../services/email.js';
+import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 // Pre-compute a bcrypt hash for login tests (low rounds for speed)
@@ -13,6 +13,7 @@ const TEST_HASH = bcrypt.hashSync(TEST_PASSWORD, 1);
 describe('Auth Routes', () => {
   beforeEach(() => {
     resetMocks();
+    isMailEnabled.mockReturnValue(true);
   });
 
   // ── POST /api/create-account ──────────────────────────────
@@ -417,6 +418,22 @@ describe('Auth Routes', () => {
     });
   });
 
+  describe('POST /api/forgot-password with mail disabled', () => {
+    it('reports unavailable without touching the database', async () => {
+      isMailEnabled.mockReturnValue(false);
+
+      const res = await request(app)
+        .post('/api/forgot-password')
+        .send({ email: 'user@test.com' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/unavailable/i);
+      expect(c2_query).not.toHaveBeenCalled();
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+  });
+
   // ── POST /api/reset-password ──────────────────────────────
 
   describe('POST /api/reset-password', () => {
@@ -575,6 +592,54 @@ describe('Auth Routes', () => {
     });
 
     it('triggers TOTP 2FA when enabled', async () => {
+      c2_query
+        .mockResolvedValueOnce([{
+          id: 5, name: 'testuser', email: 'test@example.com',
+          password_hash: TEST_HASH,
+          two_factor_method: 'totp', totp_secret: 'JBSWY3DPEHPK3PXP',
+        }])
+        .mockResolvedValueOnce([]);  // INSERT password_reset_tokens
+
+      const res = await request(app)
+        .post('/api/login')
+        .send({ username: 'testuser', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(res.body.requires_2fa).toBe(true);
+      expect(res.body.method).toBe('totp');
+    });
+
+    it('refuses email 2FA login with 503 and mints nothing when mail is disabled', async () => {
+      isMailEnabled.mockReturnValue(false);
+      c2_query.mockResolvedValueOnce([{
+        id: 5, name: 'testuser', email: 'test@example.com',
+        password_hash: TEST_HASH,
+        two_factor_method: 'email', totp_secret: null,
+      }]);
+
+      const res = await request(app)
+        .post('/api/login')
+        .send({ username: 'testuser', password: TEST_PASSWORD });
+
+      expect(res.status).toBe(503);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/contact your administrator/i);
+      // No 2FA challenge is issued: a token for a code that cannot be
+      // delivered is the lockout, and it must not reach the client.
+      expect(res.body.requires_2fa).toBeUndefined();
+      expect(res.body.twoFactorToken).toBeUndefined();
+      // The user lookup is the only query; no reset token and no code row.
+      expect(c2_query).toHaveBeenCalledTimes(1);
+      expect(c2_query.mock.calls.some(([sql]) => sql.includes('two_factor_codes'))).toBe(false);
+      expect(c2_query.mock.calls.some(([sql]) => sql.includes('password_reset_tokens'))).toBe(false);
+      expect(sendEmail).not.toHaveBeenCalled();
+      // And it grants nothing: no session token was issued.
+      expect(generateSessionToken).not.toHaveBeenCalled();
+      expect(res.body.token).toBeUndefined();
+    });
+
+    it('still challenges TOTP 2FA at login when mail is disabled', async () => {
+      isMailEnabled.mockReturnValue(false);
       c2_query
         .mockResolvedValueOnce([{
           id: 5, name: 'testuser', email: 'test@example.com',
@@ -774,6 +839,8 @@ describe('Auth Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.setupToken).toBeDefined();
       expect(sendEmail).toHaveBeenCalled();
+      expect(res.body.qr_data_url).toBeUndefined();
+      expect(res.body.secret).toBeUndefined();
     });
 
     it('rejects invalid method', async () => {
@@ -797,6 +864,44 @@ describe('Auth Routes', () => {
         .send({ method: 'email' });
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/2fa/enable with mail disabled', () => {
+    it('rejects email 2FA with 400', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(false);
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ method: 'email' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/email is disabled/i);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('still allows TOTP and returns setup material inline instead of emailing it', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(false);
+      c2_query
+        .mockResolvedValueOnce({ affectedRows: 1 })   // UPDATE users (store totp_secret)
+        .mockResolvedValueOnce([]);                   // INSERT setup token
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ method: 'totp' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.setupToken).toBeDefined();
+      expect(res.body.qr_data_url).toMatch(/^data:image\/png;base64,/);
+      expect(res.body.secret).toBeDefined();
+      expect(res.body.message).not.toMatch(/email/i);
+      expect(sendEmail).not.toHaveBeenCalled();
     });
   });
 
@@ -875,6 +980,42 @@ describe('Auth Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.message).toMatch(/already disabled/i);
+    });
+
+    it('refuses with 503 and mints nothing when mail is disabled', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(false);
+      c2_query.mockResolvedValueOnce([{ email: 'test@example.com', two_factor_method: 'email' }]);
+
+      const res = await request(app)
+        .post('/api/2fa/disable')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(503);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/contact your administrator/i);
+      // The old behaviour returned 200 with a confirmToken and claimed a code
+      // had been sent. Neither may happen now.
+      expect(res.body.confirmToken).toBeUndefined();
+      expect(res.body.message).not.toMatch(/has been sent/i);
+      expect(c2_query).toHaveBeenCalledTimes(1);
+      expect(c2_query.mock.calls.some(([sql]) => sql.includes('two_factor_codes'))).toBe(false);
+      expect(c2_query.mock.calls.some(([sql]) => sql.includes('password_reset_tokens'))).toBe(false);
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('refuses for a TOTP account too, because the disable code is emailed either way', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(false);
+      c2_query.mockResolvedValueOnce([{ email: 'test@example.com', two_factor_method: 'totp' }]);
+
+      const res = await request(app)
+        .post('/api/2fa/disable')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(503);
+      expect(res.body.confirmToken).toBeUndefined();
+      expect(sendEmail).not.toHaveBeenCalled();
     });
   });
 

@@ -43,6 +43,51 @@ export async function c2_query(sql, params) {
 }
 
 /**
+ * Runs `fn` against a single dedicated pooled connection wrapped in a
+ * transaction. `c2_query` cannot be used for multi-statement transactions:
+ * each call may be handed a different pooled connection, so a BEGIN issued
+ * through one call has no guaranteed relationship to a COMMIT issued
+ * through another.
+ *
+ * `fn` receives a query executor, `(sql, params) => Promise<Array>`, with
+ * the same shape as `c2_query`, bound to the dedicated connection so every
+ * call `fn` makes through it participates in the same transaction. Commits
+ * and returns fn's result on success; rolls back and rethrows on any
+ * failure. A rollback that itself fails is logged and swallowed so the
+ * ORIGINAL error still reaches the caller. The connection is always
+ * released back to the pool.
+ *
+ * @param { (query: (sql: string, params?: Array) => Promise<Array>) => Promise<any> } fn
+ * @returns { Promise<any> } whatever `fn` resolves to
+ */
+export async function withTransaction(fn) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const query = async (sql, params) => {
+      const [rows] = await connection.execute(sql, params);
+      return rows;
+    };
+    const result = await fn(query);
+    await connection.commit();
+    return result;
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch (rollbackErr) {
+      // A failing rollback must never replace the error that caused it: the
+      // original names the statement that actually broke, and that is the only
+      // thing an operator can act on. Surface the rollback failure in the log
+      // and rethrow the original.
+      console.error(`[${new Date().toISOString()}] transaction rollback failed:`, rollbackErr);
+    }
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
  * Generates a cryptographically random alphanumeric session token.
  * @param { Number } length
  * @returns { String }

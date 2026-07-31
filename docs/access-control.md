@@ -174,4 +174,6 @@ When 2FA is enabled on an account:
 - **Email 2FA:** After a valid password login, a 6-digit code is emailed. The session is issued only after the code is verified.
 - **TOTP 2FA:** A QR code is shown enabling any authenticator app. The 6-digit TOTP is verified against the stored secret before issuing a session.
 
+Both codes travel by email: the login code for email 2FA, and the disable-confirmation code for *either* method. When mail is disabled on the instance, those two paths refuse with `503` rather than issuing a challenge that can never be answered; no token is minted and no code row is written. TOTP login is unaffected. There is no admin-side 2FA reset, so an account using email 2FA on a mail-less instance is locked out until mail is restored (`docs/maps/open-questions.md`, item B8).
+
 On password change, all sessions for that user except the current one are invalidated.

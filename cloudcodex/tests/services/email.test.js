@@ -26,14 +26,34 @@ vi.mock('nodemailer', () => ({
   },
 }));
 
-const { sendEmail, verifyEmailConnection } = await import('../../services/email.js');
+// Make SMTP configuration explicit and hermetic. This file's pass/fail state
+// must not depend on whether a real (gitignored) .env exists on disk — CI
+// has none. email.js runs dotenv.config() as a module-load side effect, and
+// dotenv only fills in a key that is genuinely absent from process.env
+// (Object.hasOwnProperty check), so setting these here, before the first
+// import below, wins over both a present and an absent .env alike.
+process.env.SMTP_HOST = 'smtp.test.local';
+process.env.SMTP_USER = 'test-user';
+process.env.SMTP_PASS = 'test-pass';
+
+const {
+  sendEmail,
+  verifyEmailConnection,
+  initMail,
+  isMailEnabled,
+  isMailConfigured,
+} = await import('../../services/email.js');
 
 describe('services/email', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     sendMailMock.mockClear();
     verifyMock.mockClear();
     sendMailMock.mockResolvedValue({ messageId: 'sent-id' });
     verifyMock.mockResolvedValue(true);
+    // sendEmail is a no-op until initMail() has run; the pre-existing
+    // sendEmail/verifyEmailConnection tests exercise the "enabled" path,
+    // same as they did before mail became a boot-time capability.
+    await initMail();
   });
 
   describe('sendEmail', () => {
@@ -101,5 +121,72 @@ describe('services/email', () => {
       verifyMock.mockRejectedValueOnce(new Error('SMTP unavailable'));
       expect(await verifyEmailConnection()).toBe(false);
     });
+  });
+
+  describe('mail capability', () => {
+    it('reports configured when all three SMTP vars are set', () => {
+      expect(isMailConfigured()).toBe(true);
+    });
+
+    it('enables mail when verification succeeds', async () => {
+      verifyMock.mockResolvedValueOnce(true);
+      const result = await initMail();
+      expect(result.enabled).toBe(true);
+      expect(result.reason).toBeNull();
+      expect(isMailEnabled()).toBe(true);
+    });
+
+    it('disables mail when verification fails, with a reason', async () => {
+      verifyMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      const result = await initMail();
+      expect(result.enabled).toBe(false);
+      expect(result.reason).toBe('SMTP connection failed');
+      expect(isMailEnabled()).toBe(false);
+    });
+
+    it('skips sending instead of throwing when mail is disabled', async () => {
+      verifyMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      await initMail();
+
+      const result = await sendEmail({ to: 'a@b.com', subject: 'hi', text: 'x' });
+
+      expect(result).toEqual({ skipped: true, reason: 'mail disabled' });
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    it('sends normally once mail is enabled again', async () => {
+      verifyMock.mockResolvedValueOnce(true);
+      await initMail();
+
+      await sendEmail({ to: 'a@b.com', subject: 'hi', text: 'x' });
+
+      expect(sendMailMock).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('mail capability when SMTP is unconfigured', () => {
+  it('reports not configured and never verifies', async () => {
+    const saved = { ...process.env };
+    // Empty string, not delete: email.js re-runs dotenv.config() on every
+    // fresh module load, and dotenv only fills in a key that is entirely
+    // absent from process.env (Object.hasOwnProperty check), so a deleted
+    // key would be silently re-populated from the real .env file the
+    // instant the module re-imports below, defeating this test.
+    process.env.SMTP_HOST = '';
+    process.env.SMTP_USER = '';
+    process.env.SMTP_PASS = '';
+    vi.resetModules();
+
+    const mod = await import('../../services/email.js');
+    const result = await mod.initMail();
+
+    expect(mod.isMailConfigured()).toBe(false);
+    expect(result.enabled).toBe(false);
+    expect(result.reason).toBe('SMTP_HOST, SMTP_USER or SMTP_PASS not set');
+    expect(mod.isMailEnabled()).toBe(false);
+
+    process.env = saved;
+    vi.resetModules();
   });
 });

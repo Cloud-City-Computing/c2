@@ -11,7 +11,9 @@ are updated to cover it.
 | Document | What it is |
 |---|---|
 | [roadmap.md](roadmap.md) | The five tracks the project is decomposed into, the evidence behind each, and the order to do them in. Start here. |
-| [2026-07-27-five-minute-evaluation.md](2026-07-27-five-minute-evaluation.md) | Track A, the first sub-project: make Cloud Codex runnable and demo-able by a stranger in five minutes. |
+
+Track A shipped and its spec was deleted per the convention below; see
+[roadmap.md](roadmap.md) for what shipped and the maps for how it works now.
 
 ## Conventions
 

@@ -136,13 +136,20 @@ List all invitations (pending and accepted).
 
 ### `POST /api/admin/invitations`
 
-Send an invitation email to a new user. The email must not belong to an existing account or an existing pending invitation.
+Invite a new user. The email must not belong to an existing account or an existing pending invitation.
 
 **Body:** `{ email }`
 
-The invitation email contains a signup link with a `?invite=<token>` query parameter that the sign-up form uses.
+The invitation is always created and its signup link (a `?invite=<token>` query
+parameter the sign-up form reads) is always returned in the response, so the
+link is usable even when no mail is sent. Email delivery is best-effort:
+if the instance has no mail server configured, sending is skipped; if
+sending fails, the failure is logged and does not fail the request.
 
-**Response:** `201` with `{ success: true, message }` on success; `409` if already invited/registered.
+**Response:** `201` with
+`{ success: true, message, signup_url, emailed }` on success (`emailed` is
+`true` only if the invitation email was actually sent); `409` if already
+invited/registered.
 
 ---
 
@@ -179,4 +186,8 @@ Returns real-time data about active WebSocket connections from the collaborative
 
 ## Admin Super User Bootstrap
 
-On server startup, `ensureAdminUser()` is called before the HTTP server begins accepting requests. It reads `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_EMAIL` from environment variables and either creates the admin user or syncs their credentials if the account already exists. This means the admin password is always controlled by the `.env` file and is re-applied on every restart.
+On server startup, `ensureAdminUser()` reads `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_EMAIL` from environment variables and either creates the admin user or syncs their credentials if the account already exists. This means the admin password is always controlled by the `.env` file and is re-applied on every restart.
+
+Right after, `bootstrapInstance(adminId)` seeds a starter workspace: a workspace owned by `ADMIN_EMAIL`, a "General" squad with the admin as its owner member, a "Getting Started" archive, and a "Welcome to Cloud Codex" document. All five writes share one transaction, so a failure partway leaves nothing behind.
+
+It runs only when the database holds **no workspaces, archives or logs at all**. Workspaces alone are not a safe guard: deleting the last workspace leaves orphaned archives and logs behind (`archives.squad_id` is `ON DELETE SET NULL`), and seeding alongside those would drop a second "Getting Started" onto a populated install. So it no-ops on every later boot, and an install with any content is never touched. A failed seed is logged, not fatal: the instance comes up empty and the next restart retries.

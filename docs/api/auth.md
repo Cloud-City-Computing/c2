@@ -66,10 +66,18 @@ Authenticate with username and password.
 | Status | Meaning |
 |--------|---------|
 | `200`  | `{ success: true, token, user }` — login complete |
-| `200`  | `{ requires_2fa: true, twoFactorMethod: 'email'\|'totp', twoFactorToken }` — 2FA step required |
+| `200`  | `{ success: true, requires_2fa: true, method: 'email'\|'totp', twoFactorToken }`, 2FA step required |
 | `401`  | Invalid credentials (message is intentionally vague) |
+| `503`  | `{ success: false, message }`, the account uses **email** 2FA and mail is disabled on this instance |
 
 When 2FA is required, pass the returned `twoFactorToken` to the appropriate `/api/2fa/*` endpoint.
+
+The `503` case is a deliberate refusal, not a fallback: no `twoFactorToken` is
+issued and no code row is written, because a challenge whose code cannot be
+delivered is a lockout dressed up as a prompt. The password check still runs
+first, so this reveals nothing to a caller without valid credentials, and it
+grants nothing: the account stays locked until an administrator restores mail.
+TOTP accounts are unaffected and log in normally.
 
 ---
 
@@ -125,15 +133,25 @@ Verify a TOTP code during login.
 
 ---
 
-### `POST /api/2fa/setup/email` *(requires auth)*
+### `POST /api/2fa/enable` *(requires auth)*
 
-Enable email-based 2FA for the current user. Sends a verification code.
+Enable two-factor authentication for the current user.
 
----
+**Body:** `{ method: 'email' | 'totp' }`
 
-### `POST /api/2fa/setup/totp` *(requires auth)*
-
-Begin TOTP setup. Returns `{ secret, qrCode }` (base64 PNG QR code).
+- `method: 'email'` — enables email-based 2FA immediately.
+  **Response:** `{ success: true, message }`.
+  If mail is disabled on this instance, returns `400 { success: false, message }`
+  instead (email 2FA would be a lockout with no inbox to receive the login code).
+- `method: 'totp'` — generates a TOTP secret and QR code, stores the secret
+  pending confirmation, and creates a setup token. The user must then call
+  `POST /api/2fa/totp/confirm` with that token and a code from their app.
+  - If mail is enabled, the QR code is emailed to the user's address.
+    **Response:** `{ success: true, message, setupToken }`.
+  - If mail is disabled, the setup material is returned inline instead of
+    emailed. **Response:** `{ success: true, message, setupToken, qr_data_url, secret }`,
+    where `qr_data_url` is the QR code as a base64 PNG data URL and `secret` is
+    the base32 TOTP secret for manual entry.
 
 ---
 
@@ -145,11 +163,48 @@ Confirm a TOTP code to complete TOTP setup. Activates TOTP 2FA on the account.
 
 ---
 
+### `POST /api/2fa/disable` *(requires auth)*
+
+Begin disabling two-factor authentication. Emails a 6-digit verification code
+and returns a `confirmToken`; the caller completes the change with
+`POST /api/2fa/disable/confirm`. This is a two-step flow for **both** methods:
+the confirmation code travels by email whether the account uses email 2FA or
+TOTP.
+
+**Body:** none
+
+**Responses**
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | `{ success: true, confirmToken, message }`, code sent, confirm next |
+| `200`  | `{ success: true, message }` (no `confirmToken`), 2FA was already off, nothing to do |
+| `401`  | Not authenticated |
+| `503`  | `{ success: false, message }`, mail is disabled on this instance |
+
+The `503` applies to email and TOTP accounts alike, since neither can receive
+the confirmation code. Nothing is minted on that path: no `confirmToken` and no
+code row, so the API never claims a code was sent when none was. With no
+admin-side 2FA reset endpoint, restoring mail is the only route back (see
+`docs/maps/open-questions.md`, item B8).
+
+---
+
 ### `POST /api/2fa/disable/confirm` *(requires auth)*
 
-Disable 2FA. Requires current password for confirmation.
+Complete the disable started by `POST /api/2fa/disable`. Validates the
+`confirmToken` and the emailed code, then sets `two_factor_method = 'none'` and
+clears any stored TOTP secret.
 
-**Body:** `{ password }`
+**Body:** `{ confirmToken, code }`
+
+**Responses**
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | `{ success: true, message }`, 2FA disabled |
+| `400`  | `confirmToken` or `code` missing |
+| `401`  | Token expired, already used, belongs to another user, or the code is invalid/expired |
 
 ---
 

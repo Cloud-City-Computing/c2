@@ -8,7 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { sendEmail } from '../services/email.js';
+import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, APP_URL, addSquadOwnerMember } from './helpers/shared.js';
 import { logActivity } from './helpers/activity.js';
 import { createNotification } from '../services/notifications.js';
@@ -394,7 +394,7 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
 
   // Send email notification to the invited user
   const [invitedUser] = await c2_query(`SELECT email, name FROM users WHERE id = ? LIMIT 1`, [Number(userId)]);
-  if (invitedUser?.email) {
+  if (invitedUser?.email && isMailEnabled()) {
     try {
       await sendEmail({
         to: invitedUser.email,
@@ -408,8 +408,9 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
         `,
       });
     } catch (err) {
-      console.error('Failed to send squad invitation email:', err);
-      return res.status(500).json({ success: false, message: 'Failed to send squad invitation email' });
+      // The in-app squad_invite notification below is the reliable channel;
+      // a failed email must not fail an invitation that is already persisted.
+      console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: squad invitation email failed:`, err);
     }
   }
 
@@ -435,8 +436,12 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
         resourceType: 'squad',
         resourceId: Number(id),
         metadata: { role: safeRole, squad_name: squad.name },
-        // Email already sent above; suppress the funnel's email by setting
-        // emailData to null so buildNotificationEmail returns null.
+        // The invite email is handled above, so the funnel must not send a
+        // second one: emailData: null makes buildNotificationEmail return
+        // null. That holds whether the send above succeeded, failed, or was
+        // skipped because mail is disabled. This notification is the inbox
+        // channel, and a mail-off instance has no email channel to fall back
+        // to anyway.
         emailData: null,
       });
     } catch (err) {

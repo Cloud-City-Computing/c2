@@ -34,7 +34,7 @@ import {
   timeAgo,
 } from '../util';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { toastError } from '../components/Toast';
+import { showToast, toastError } from '../components/Toast';
 
 // ─── Overview Panel ─────────────────────────────────────────
 
@@ -202,19 +202,32 @@ function InviteUserModal({ onInvited }) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [lastInvite, setLastInvite] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
     setSuccess(null);
+    setLastInvite(null);
     if (!email.trim()) { setError('Email address is required.'); return; }
     try {
       const res = await createAdminInvitation(email);
       setSuccess(res.message);
+      setLastInvite({ url: res.signup_url, emailed: res.emailed, email });
       setEmail('');
       onInvited?.();
     } catch (e) {
       setError(e.body?.message ?? 'Error sending invitation.');
     }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (!navigator.clipboard) {
+      showToast('Copy not supported here. Select and copy the link manually.', 'error');
+      return;
+    }
+    navigator.clipboard.writeText(lastInvite.url)
+      .then(() => showToast('Invite link copied', 'success'))
+      .catch(() => showToast('Could not copy the link. Select and copy it manually.', 'error'));
   };
 
   return (
@@ -231,6 +244,23 @@ function InviteUserModal({ onInvited }) {
           placeholder="newuser@example.com" />
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Send Invitation</button>
       </div>
+      {lastInvite && (
+        <div className="invite-link-callout">
+          {/* `emailed: false` means the mail did not go out, which covers a
+              disabled instance AND a configured server that refused the send.
+              Naming a cause here would diagnose the wrong thing half the
+              time, so say only what is known. The server's own message above
+              already names the recipient and says to share the link, so this
+              line adds the delivery state and nothing else. */}
+          <p>
+            {lastInvite.emailed
+              ? 'You can also share this link directly:'
+              : 'No invitation email was sent.'}
+          </p>
+          <input className="invite-link-input" type="text" readOnly value={lastInvite.url} />
+          <button className="btn btn-ghost btn-sm" onClick={handleCopyInviteLink}>Copy link</button>
+        </div>
+      )}
     </div>
   );
 }

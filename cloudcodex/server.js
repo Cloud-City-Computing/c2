@@ -6,19 +6,12 @@
  */
 
 import ViteExpress from 'vite-express';
-import { verifyEmailConnection } from './services/email.js';
+import { initMail } from './services/email.js';
 import { setupCollabServer } from './services/collab.js';
 import { setupUserChannelServer } from './services/user-channel.js';
 import { c2_query } from './mysql_connect.js';
-import { ensureAdminUser } from './routes/admin.js';
+import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import app from './app.js';
-
-// ─── Require SMTP credentials before starting ───────────────
-if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-  console.error('✖ Missing required SMTP configuration: SMTP_HOST, SMTP_USER, SMTP_PASS');
-  console.error('  Copy .env.example to .env and fill in your SMTP credentials.');
-  process.exit(1);
-}
 
 // ─── Require Admin credentials before starting ──────────────
 if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_EMAIL) {
@@ -27,18 +20,50 @@ if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.A
   process.exit(1);
 }
 
-const server = ViteExpress.listen(app, 3000, async () => {
-  console.log('CloudCodex API Server is running on http://localhost:3000');
+// ─── Decide capability and seed BEFORE the port opens ───────
+//
+// ViteExpress.listen() binds the socket and starts accepting requests before
+// it runs its callback, so anything awaited in there serves traffic with the
+// answer still undecided: a correctly configured instance would report
+// isMailEnabled() === false while initMail() is in flight (forgot-password
+// unavailable, invitations not emailed), and a first boot would serve an
+// empty app until the seed landed. These are top-level awaits instead.
 
-  const emailOk = await verifyEmailConnection();
-  if (!emailOk) {
-    console.error('✖ SMTP connection failed — check .env credentials. Server shutting down.');
-    process.exit(1);
-  }
+let mail;
+try {
+  mail = await initMail();
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] mail capability check failed:`, err);
+  mail = { enabled: false, reason: 'mail capability check threw' };
+}
+if (mail.enabled) {
   console.log('✔ SMTP connection verified');
+} else {
+  console.error(
+    `✖ Email disabled: ${mail.reason}. ` +
+    'Invites will show copyable links; password reset is unavailable.'
+  );
+}
 
-  // Ensure the admin super user exists in the database
-  await ensureAdminUser();
+// Ensure the admin super user exists in the database, then seed a starter
+// workspace on a first boot. Neither may take the process down: a DB blip
+// here would otherwise mean the app never listens at all. A failed seed
+// leaves the instance empty but usable, and because the guard is on an
+// empty database the next restart retries.
+let adminId = null;
+try {
+  adminId = await ensureAdminUser();
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] admin user sync failed:`, err);
+}
+try {
+  await bootstrapInstance(adminId);
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] instance bootstrap failed:`, err);
+}
+
+const server = ViteExpress.listen(app, 3000, () => {
+  console.log('CloudCodex API Server is running on http://localhost:3000');
 });
 
 // Attach WebSocket collaborative editing server to the HTTP server

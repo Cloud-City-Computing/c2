@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
-import { c2_query } from '../../mysql_connect.js';
-import { sendEmail } from '../../services/email.js';
+import { c2_query, withTransaction } from '../../mysql_connect.js';
+import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { getAllPresence, getActiveDocCount } from '../../services/collab.js';
+import { ensureAdminUser, bootstrapInstance } from '../../routes/admin.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 vi.mock('../../services/collab.js', () => ({
@@ -18,6 +19,7 @@ describe('Admin Routes', () => {
     resetMocks();
     getAllPresence.mockReset().mockReturnValue({});
     getActiveDocCount.mockReset().mockReturnValue(0);
+    isMailEnabled.mockReturnValue(true);
   });
 
   // --- GET /api/admin/status ---
@@ -380,6 +382,63 @@ describe('Admin Routes', () => {
       expect(sendEmail).toHaveBeenCalled();
     });
 
+    it('returns the signup url and emails it when mail is enabled', async () => {
+      mockAuthenticated(ADMIN_USER);
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([]);                  // no existing user
+      c2_query.mockResolvedValueOnce([]);                  // no existing invitation
+      c2_query.mockResolvedValueOnce({ insertId: 1 });     // insert invitation
+      sendEmail.mockResolvedValueOnce({ messageId: 'sent' });
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.signup_url).toContain('?invite=');
+      expect(res.body.emailed).toBe(true);
+      expect(sendEmail).toHaveBeenCalled();
+    });
+
+    it('returns the signup url without sending when mail is disabled', async () => {
+      mockAuthenticated(ADMIN_USER);
+      isMailEnabled.mockReturnValue(false);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ insertId: 1 });
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.signup_url).toContain('?invite=');
+      expect(res.body.emailed).toBe(false);
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('still returns 201 with the link when sending throws', async () => {
+      mockAuthenticated(ADMIN_USER);
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ insertId: 1 });
+      sendEmail.mockRejectedValueOnce(new Error('smtp exploded'));
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.signup_url).toContain('?invite=');
+      expect(res.body.emailed).toBe(false);
+      expect(res.body.message).toContain('Share the link below');
+      expect(sendEmail).toHaveBeenCalled();
+    });
+
     it('rejects invalid email', async () => {
       mockAuthenticated(ADMIN_USER);
       const res = await request(app)
@@ -413,21 +472,6 @@ describe('Admin Routes', () => {
         .send({ email: 'pending@test.com' });
 
       expect(res.status).toBe(409);
-    });
-
-    it('returns 500 when email fails to send', async () => {
-      mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([]); // no user
-      c2_query.mockResolvedValueOnce([]); // no invitation
-      c2_query.mockResolvedValueOnce({ insertId: 1 }); // insert
-      sendEmail.mockRejectedValueOnce(new Error('SMTP down'));
-
-      const res = await request(app)
-        .post('/api/admin/invitations')
-        .set('Authorization', 'Bearer valid-token')
-        .send({ email: 'newuser@test.com' });
-
-      expect(res.status).toBe(500);
     });
 
     it('rejects non-admin user', async () => {
@@ -1012,5 +1056,211 @@ describe('Admin Routes', () => {
       const res = await request(app).get('/api/admin/presence');
       expect(res.status).toBe(401);
     });
+  });
+});
+
+// --- bootstrapInstance ---
+// Not a route handler, so it's exercised directly rather than over HTTP.
+// This describe block owns its own env/mock lifecycle (it's a sibling of
+// `describe('Admin Routes', ...)`, so that block's beforeEach does not
+// cascade here) to keep ADMIN_EMAIL/ADMIN_USERNAME explicit rather than
+// inherited from whatever the machine's .env happens to hold — CI has none.
+describe('bootstrapInstance', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    resetMocks();
+    process.env.ADMIN_EMAIL = 'admin@example.com';
+    process.env.ADMIN_USERNAME = 'Admin';
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('seeds workspace, squad, squad ownership, archive and welcome doc on an empty install', async () => {
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 0 }]); // content guard
+    c2_query.mockResolvedValueOnce({ insertId: 11 });    // workspace
+    c2_query.mockResolvedValueOnce({ insertId: 22 });    // squad
+    c2_query.mockResolvedValueOnce({ insertId: 33 });    // squad_members
+    c2_query.mockResolvedValueOnce({ insertId: 44 });    // archive
+    c2_query.mockResolvedValueOnce({ insertId: 55 });    // log
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(true);
+
+    const archiveCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO archives'));
+    expect(archiveCall).toBeDefined();
+    // squad_id is the second bound param and must not be null, or the
+    // archive is orphaned and unreachable by anyone but its creator.
+    expect(archiveCall[1][1]).toBe(22);
+
+    const workspaceCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO workspaces'));
+    expect(workspaceCall[1][1]).toBe(process.env.ADMIN_EMAIL);
+
+    // The squad-ownership row. Without it the admin is not a member of the
+    // squad the seeded archive hangs off, so clauses 4-7 of readAccessWhere
+    // never fire for anyone the admin later adds. Deleting the
+    // addSquadOwnerMember call used to leave the whole suite green.
+    const memberCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO squad_members'));
+    expect(memberCall).toBeDefined();
+    expect(memberCall[1]).toEqual([22, 1]);           // (squad id, admin id)
+    expect(memberCall[0]).toMatch(/'owner'/);
+
+    // The welcome document, the headline of the whole first-boot seed, and
+    // the other write that could vanish silently.
+    const logCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO logs'));
+    expect(logCall).toBeDefined();
+    expect(logCall[1][0]).toBe(44);                   // archive_id, from the archive insert
+    expect(logCall[1][1]).toBe('Welcome to Cloud Codex');
+    expect(logCall[1][2]).toMatch(/Welcome to Cloud Codex/);
+    expect(logCall[1][3]).toBe(1);                    // created_by
+    expect(logCall[1][4]).toBe(1);                    // updated_by
+
+    // Five writes, no more and no fewer, plus the single guard read.
+    expect(c2_query).toHaveBeenCalledTimes(6);
+
+    // The five writes must run inside withTransaction (not as five loose
+    // c2_query calls), or a failure partway through leaves a partial seed
+    // that the guard mistakes for a completed install on the next boot. The
+    // default test mock (tests/setup.js) forwards straight to c2_query,
+    // which is why the assertions above still see the writes. The test
+    // below overrides that to prove the writes really are on the
+    // transaction's executor.
+    expect(withTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs every seed write on the transaction executor, not the pool', async () => {
+    // The global withTransaction mock forwards with `fn(c2_query)`, so the
+    // executor the code receives IS the c2_query mock and `await query(...)`
+    // is indistinguishable from `await c2_query(...)` to every assertion
+    // above. Dropping the third argument at the addSquadOwnerMember call
+    // would silently push that insert onto a different pooled connection,
+    // outside the transaction, with the suite still green. A distinct
+    // executor spy is the only thing that can tell them apart.
+    const txQuery = vi.fn()
+      .mockResolvedValueOnce({ insertId: 11 })   // workspace
+      .mockResolvedValueOnce({ insertId: 22 })   // squad
+      .mockResolvedValueOnce({ insertId: 33 })   // squad_members
+      .mockResolvedValueOnce({ insertId: 44 })   // archive
+      .mockResolvedValueOnce({ insertId: 55 });  // log
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 0 }]); // content guard
+    withTransaction.mockImplementationOnce(fn => fn(txQuery));
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(true);
+
+    // All five writes landed on the transaction's executor.
+    const txSql = txQuery.mock.calls.map(([sql]) => sql);
+    expect(txQuery).toHaveBeenCalledTimes(5);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO workspaces'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO squads'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO squad_members'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO archives'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO logs'))).toHaveLength(1);
+
+    // …and c2_query saw only the guard read. Any write here is a write that
+    // escaped the transaction.
+    expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(c2_query.mock.calls[0][0]).toMatch(/COUNT\(\*\)/);
+    expect(c2_query.mock.calls.some(([sql]) => /INSERT/i.test(sql))).toBe(false);
+  });
+
+  it('does nothing when a workspace already exists', async () => {
+    c2_query.mockResolvedValueOnce([{ workspaces: 3, archives: 4, logs: 9 }]);
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(false);
+    expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when workspaces are gone but orphaned archives and logs survive', async () => {
+    // DELETE /api/workspaces/:id plus archives.squad_id ON DELETE SET NULL
+    // leaves archives and their logs alive with no workspace above them. A
+    // workspaces-only guard reads that as a fresh install and seeds a second
+    // workspace alongside the survivors.
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 2, logs: 7 }]);
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(false);
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when only orphaned logs survive', async () => {
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 1 }]);
+
+    expect(await bootstrapInstance(1)).toBe(false);
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when no admin id is supplied', async () => {
+    const seeded = await bootstrapInstance(null);
+
+    expect(seeded).toBe(false);
+    expect(c2_query).not.toHaveBeenCalled();
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('propagates the failure and never reports success when a write fails mid-seed', async () => {
+    // Simulates what a real rollback leaves behind: withTransaction rolls
+    // back and rethrows (see tests/mysql_connect.test.js), so the caller
+    // sees the original error and no rows exist for the next boot's
+    // COUNT(*) guard to trip on.
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 0 }]); // content guard
+    withTransaction.mockRejectedValueOnce(new Error('archive insert failed'));
+
+    await expect(bootstrapInstance(1)).rejects.toThrow('archive insert failed');
+  });
+});
+
+// --- ensureAdminUser ---
+// Not a route handler either. Its return value is the Step 3 deliverable
+// server.js now depends on (server.js passes it straight into
+// bootstrapInstance), so both branches — existing admin found vs. admin
+// created fresh — need direct coverage of what id comes back, not just
+// that a UPDATE/INSERT happened.
+describe('ensureAdminUser', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    resetMocks();
+    process.env.ADMIN_USERNAME = 'Admin';
+    process.env.ADMIN_PASSWORD = 'correct horse battery staple';
+    process.env.ADMIN_EMAIL = 'admin@example.com';
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('returns the existing user id and syncs credentials when the admin already exists', async () => {
+    c2_query.mockResolvedValueOnce([{ id: 5, is_admin: true }]); // SELECT existing
+    c2_query.mockResolvedValueOnce({ affectedRows: 1 });          // UPDATE
+
+    const id = await ensureAdminUser();
+
+    expect(id).toBe(5);
+    const updateCall = c2_query.mock.calls.find(([sql]) => sql.includes('UPDATE users'));
+    expect(updateCall).toBeDefined();
+    expect(updateCall[1][1]).toBe('admin@example.com'); // email
+    expect(updateCall[1][2]).toBe(5);                     // WHERE id = ?
+  });
+
+  it('creates the admin user, seeds default permissions, and returns the new id when none exists', async () => {
+    c2_query.mockResolvedValueOnce([]);                 // SELECT: no existing admin
+    c2_query.mockResolvedValueOnce({ insertId: 42 });   // INSERT users
+    c2_query.mockResolvedValueOnce({ insertId: 1 });    // createDefaultPermissions INSERT
+
+    const id = await ensureAdminUser();
+
+    expect(id).toBe(42);
+    const permissionsCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO permissions'));
+    expect(permissionsCall).toBeDefined();
+    expect(permissionsCall[1]).toEqual([42]);
   });
 });

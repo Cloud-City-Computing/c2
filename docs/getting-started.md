@@ -20,8 +20,9 @@ prerequisites through a working application with optional sample data.
                       │              │         └──────────┘
                       ▼              ▼
                  fill DB,       installs deps
-                 SMTP, admin    boots MySQL
-                 values         starts Vite + API
+                 admin values   boots MySQL
+                 (SMTP is       starts Vite + API
+                 optional)
 ```
 
 ---
@@ -52,7 +53,7 @@ cd c2
 cp .env.example .env
 ```
 
-Open `.env` and fill in the required values. At minimum you need database credentials, SMTP credentials, and admin account credentials. **SMTP is required** — the server will not start without valid credentials. It is used for password reset, email-based two-factor authentication, and user invitations.
+Open `.env` and fill in the required values. At minimum you need database credentials and admin account credentials. **SMTP is optional**: leave it blank and the server still starts. With mail disabled: invitations are still created and their signup link is shown copyable in the admin UI instead of emailed, password reset reports itself unavailable rather than silently failing, and email-based two-factor authentication is refused (authenticator-app TOTP still works, showing its QR code and secret in the app instead of emailing them). Squad invitations still work either way and still raise the in-app notification. **If you turn SMTP off on an instance that already had it**, note that any account already using email 2FA can no longer log in, and no account can turn 2FA off, because both flows confirm with an emailed code; there is no admin-side reset yet, so restore mail before disabling it (`docs/maps/open-questions.md`, item B8).
 
 ```dotenv
 # ─── Database ────────────────────────────────────────────────
@@ -71,7 +72,7 @@ ADMIN_USERNAME=admin
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
 
-# ─── SMTP (required — server will not start without valid credentials)
+# ─── SMTP (optional — leave blank to run without email) ─────
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USER=
@@ -84,6 +85,9 @@ GOOGLE_CLIENT_SECRET=
 GOOGLE_OAUTH_DOMAIN=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
+
+# ─── Runtime (optional) ──────────────────────────────────────
+NODE_ENV=
 ```
 
 ---
@@ -121,6 +125,11 @@ npm run dev
 ```
 
 The application will be available at **http://localhost:3000**.
+
+On first boot, once the admin logs in, they land inside a seeded "Getting
+Started" archive with a "Welcome to Cloud Codex" document, not an empty app.
+This only happens on a database that holds no workspaces, archives or logs at
+all; it never touches an install with any content in it.
 
 ---
 
@@ -161,12 +170,12 @@ All seed accounts use the password **`password`**.
 | `DB_PASS` | MySQL password | — (required) |
 | `DB_NAME` | MySQL database name | `c2` |
 | `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
-| `APP_URL` | Base URL used in outbound email links | `http://localhost:3000` |
+| `APP_URL` | Base URL used to build invitation/reset links, in emails and in the admin UI's copyable link | `http://localhost:3000` |
 | `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
-| `SMTP_HOST` | SMTP server hostname | — (required) |
+| `SMTP_HOST` | SMTP server hostname | — (optional; leave blank to run without email) |
 | `SMTP_PORT` | SMTP server port | `587` |
-| `SMTP_USER` | SMTP username | — (required) |
-| `SMTP_PASS` | SMTP password | — (required) |
+| `SMTP_USER` | SMTP username | — (optional; leave blank to run without email) |
+| `SMTP_PASS` | SMTP password | — (optional; leave blank to run without email) |
 | `SMTP_FROM` | Sender address for outbound email | — |
 | `ADMIN_USERNAME` | Username for the auto-created admin super-user | `admin` |
 | `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — (required) |
@@ -176,6 +185,7 @@ All seed accounts use the password **`password`**.
 | `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |
+| `NODE_ENV` | `production` tightens CORS to `CORS_ORIGIN` only; anything else also allows localhost origins | — (optional) |
 
 ---
 

@@ -8,9 +8,9 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { c2_query } from '../mysql_connect.js';
+import { c2_query, withTransaction } from '../mysql_connect.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { sendEmail } from '../services/email.js';
+import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
 import { getAllPresence, getActiveDocCount } from '../services/collab.js';
 
@@ -37,7 +37,7 @@ export async function ensureAdminUser() {
       `UPDATE users SET is_admin = TRUE, password_hash = ?, email = ? WHERE id = ?`,
       [passwordHash, email, existing.id]
     );
-    return;
+    return existing.id;
   }
 
   // Create the admin user
@@ -50,6 +50,92 @@ export async function ensureAdminUser() {
 
   // Create default permissions row
   await createDefaultPermissions(result.insertId);
+  return result.insertId;
+}
+
+const WELCOME_HTML = `
+<h1>Welcome to Cloud Codex</h1>
+<p>This document lives inside the structure Cloud Codex uses to organise everything:</p>
+<ul>
+  <li><strong>Workspace</strong> is the top level, usually your company or team.</li>
+  <li><strong>Squad</strong> is a group of people inside it. Membership and permissions are set here.</li>
+  <li><strong>Archive</strong> is a collection of related documents. Access is granted at this level.</li>
+  <li><strong>Log</strong> is a document, like this one.</li>
+</ul>
+<p>You are the owner of this workspace, so you can rename anything, invite people from the Admin console, and create as many squads and archives as you need.</p>
+<h2>Try it</h2>
+<p>Edit this page. Open it in two browser windows and watch the changes sync live: that is the CRDT-backed collaborative editor, not a periodic save.</p>
+<p>When you are ready, invite someone from <strong>Admin, Invitations</strong>. If this instance has no email configured, you will get a copyable invite link instead.</p>
+`;
+
+/**
+ * Seed a usable instance on first boot so a new admin does not land in an
+ * empty app.
+ *
+ * The guard is "this database holds no content of its own", not "this
+ * instance has never been seeded" (nothing records that). Workspaces alone
+ * are not enough: `DELETE /api/workspaces/:id` exists and
+ * `archives.squad_id` is `ON DELETE SET NULL` (`init.sql:212`), so deleting
+ * the last workspace leaves orphaned archives and their logs alive while
+ * `COUNT(*) FROM workspaces` reads 0. Checking archives and logs as well
+ * keeps the seed off a populated install. It is idempotent across restarts,
+ * and it will still re-seed a database that has been emptied completely,
+ * which is the intended behaviour for a fresh start.
+ *
+ * @param {number|null} adminId
+ * @returns {Promise<boolean>} true when it seeded
+ */
+export async function bootstrapInstance(adminId) {
+  if (!adminId) return false;
+
+  const [row] = await c2_query(
+    `SELECT (SELECT COUNT(*) FROM workspaces) AS workspaces,
+            (SELECT COUNT(*) FROM archives)   AS archives,
+            (SELECT COUNT(*) FROM logs)       AS logs`,
+    []
+  );
+  const existing = Number(row?.workspaces ?? 0) + Number(row?.archives ?? 0) + Number(row?.logs ?? 0);
+  if (existing > 0) return false;
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminName = process.env.ADMIN_USERNAME;
+
+  // All five writes share one transaction: a failure partway through must
+  // leave zero rows, or the workspace-count guard above sees a half-seeded
+  // instance as already seeded and the next boot never retries.
+  await withTransaction(async (query) => {
+    // workspaces.owner is a TEXT column holding an email, not a foreign key.
+    const workspace = await query(
+      'INSERT INTO workspaces (name, owner) VALUES (?, ?)',
+      [`${adminName}'s Workspace`, adminEmail]
+    );
+
+    const squad = await query(
+      'INSERT INTO squads (workspace_id, name, created_by) VALUES (?, ?, ?)',
+      [workspace.insertId, 'General', adminId]
+    );
+
+    await addSquadOwnerMember(squad.insertId, adminId, query);
+
+    // squad_id MUST be set. A NULL squad_id orphans the archive: clauses 4
+    // through 7 of readAccessWhere all fail and only the creator can reach it.
+    const archive = await query(
+      `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
+       VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+      ['Getting Started', squad.insertId, adminId, adminId, adminId]
+    );
+
+    // Static authored content, not user input, so it does not pass through
+    // sanitizeHtml. Never interpolate anything into WELCOME_HTML.
+    await query(
+      `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [archive.insertId, 'Welcome to Cloud Codex', WELCOME_HTML, adminId, adminId]
+    );
+  });
+
+  console.error(`[${new Date().toISOString()}] bootstrap: seeded starter workspace for ${adminEmail}`);
+  return true;
 }
 
 // ─── Admin status check ─────────────────────────────────────
@@ -252,24 +338,37 @@ router.post('/admin/invitations', requireAuth, requireAdmin, asyncHandler(async 
 
   const signupUrl = `${APP_URL}/?invite=${token}`;
 
-  try {
-    await sendEmail({
-      to: trimmedEmail,
-      subject: 'Cloud Codex — You\'ve Been Invited!',
-      text: `You've been invited to join Cloud Codex!\n\nClick the link below to create your account (expires in 7 days):\n${signupUrl}\n\nIf you did not expect this invitation, you can safely ignore this email.`,
-      html: `
+  // The link is the mechanism; email is a convenience. Returning it
+  // unconditionally means a mail failure degrades to a warning instead of
+  // orphaning an invitation row whose token nobody can recover.
+  let emailed = false;
+  if (isMailEnabled()) {
+    try {
+      await sendEmail({
+        to: trimmedEmail,
+        subject: 'Cloud Codex — You\'ve Been Invited!',
+        text: `You've been invited to join Cloud Codex!\n\nClick the link below to create your account (expires in 7 days):\n${signupUrl}\n\nIf you did not expect this invitation, you can safely ignore this email.`,
+        html: `
         <h2>You're Invited to Cloud Codex!</h2>
         <p>You've been invited to join Cloud Codex, a collaborative document workspace.</p>
         <p><a href="${signupUrl}" style="display:inline-block;padding:12px 24px;background:#2ca7db;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Create Your Account</a></p>
         <p style="color:#999;font-size:13px;">This invitation expires in 7 days. If you did not expect this, you can safely ignore this email.</p>
       `,
-    });
-  } catch (err) {
-    console.error('Failed to send user invitation email:', err);
-    return res.status(500).json({ success: false, message: 'Failed to send invitation email' });
+      });
+      emailed = true;
+    } catch (err) {
+      console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: invitation email failed:`, err);
+    }
   }
 
-  res.status(201).json({ success: true, message: `Invitation sent to ${trimmedEmail}` });
+  res.status(201).json({
+    success: true,
+    message: emailed
+      ? `Invitation sent to ${trimmedEmail}`
+      : `Invitation created for ${trimmedEmail}. Share the link below.`,
+    signup_url: signupUrl,
+    emailed,
+  });
 }));
 
 /**
