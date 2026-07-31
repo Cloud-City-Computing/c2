@@ -188,4 +188,6 @@ Returns real-time data about active WebSocket connections from the collaborative
 
 On server startup, `ensureAdminUser()` reads `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_EMAIL` from environment variables and either creates the admin user or syncs their credentials if the account already exists. This means the admin password is always controlled by the `.env` file and is re-applied on every restart.
 
-Right after, `bootstrapInstance(adminId)` seeds a starter workspace the first time the instance has none: a workspace owned by `ADMIN_EMAIL`, a "General" squad with the admin as owner, a "Getting Started" archive, and a "Welcome to Cloud Codex" document. It no-ops on every later boot, so an existing install is never touched.
+Right after, `bootstrapInstance(adminId)` seeds a starter workspace: a workspace owned by `ADMIN_EMAIL`, a "General" squad with the admin as its owner member, a "Getting Started" archive, and a "Welcome to Cloud Codex" document. All five writes share one transaction, so a failure partway leaves nothing behind.
+
+It runs only when the database holds **no workspaces, archives or logs at all**. Workspaces alone are not a safe guard: deleting the last workspace leaves orphaned archives and logs behind (`archives.squad_id` is `ON DELETE SET NULL`), and seeding alongside those would drop a second "Getting Started" onto a populated install. So it no-ops on every later boot, and an install with any content is never touched. A failed seed is logged, not fatal: the instance comes up empty and the next restart retries.

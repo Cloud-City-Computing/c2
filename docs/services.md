@@ -313,15 +313,24 @@ Whether mail is usable is decided once, at boot, not per-send:
 
 - **`isMailConfigured()`** — true when `SMTP_HOST`, `SMTP_USER` and
   `SMTP_PASS` are all present.
-- **`initMail()`** — called once from `server.js` inside the listen
-  callback. Configured and unconfigured both resolve (never rejects);
+- **`initMail()`** — called once from `server.js`, as a top-level `await`
+  that resolves *before* the HTTP port opens, so the app never serves
+  traffic while the answer is undecided. Configured and unconfigured both
+  resolve (never rejects);
   configured also live-verifies the connection. Returns
   `{enabled, reason}` and never exits the process. `server.js` logs the
   result: `✔ SMTP connection verified` when enabled, or
   `✖ Email disabled: <reason>. Invites will show copyable links; password
   reset is unavailable.` on stderr when not.
 - **`isMailEnabled()`** — the cached result of the last `initMail()` call;
-  what `sendEmail()` and the routes below check.
+  what `sendEmail()` and the routes below check. Nothing re-runs
+  `initMail()`, so fixing SMTP config or reviving a dead host needs a
+  restart.
+
+The transport sets `connectionTimeout` and `greetingTimeout` to 10s and
+`socketTimeout` to 20s. Nodemailer's defaults (2 minutes, 30 seconds, 10
+minutes) would let one blackholing host stall the whole boot, since
+`initMail()` now runs before `listen()`.
 
 ### `sendEmail({ to, subject, text?, html?, from? })`
 
@@ -357,6 +366,13 @@ the response for the admin UI to show copyably; password reset refuses with
 nothing; email 2FA is refused 400 at `/api/2fa/enable` (TOTP setup returns
 its QR code and secret inline instead). Squad invitation still sends its
 in-app notification either way; only the email itself is skipped.
+
+Two more refuse with `503` rather than degrade, because there is no honest
+degraded form: `POST /api/login` for an account already using email 2FA, and
+`POST /api/2fa/disable` for *any* 2FA method (its confirmation code is
+emailed either way). Both return before minting a token or writing a
+`two_factor_codes` row. See `docs/maps/open-questions.md` item B8 for the
+lockout this leaves and the admin reset that would close it.
 
 ### `verifyEmailConnection()`
 
@@ -397,10 +413,12 @@ Runs `fn` against one dedicated pooled connection wrapped in a transaction.
 `fn` receives a query executor with the same `(sql, params) => Promise<Array>`
 shape as `c2_query`, bound to that connection, so every call `fn` makes
 through it participates in the same transaction. Commits and returns `fn`'s
-result on success; rolls back and rethrows on any failure. The connection is
-always released back to the pool. Used by `bootstrapInstance()` in
-`routes/admin.js` so the first-boot workspace/squad/archive/document seed
-either lands completely or not at all.
+result on success; rolls back and rethrows on any failure. A rollback that
+itself fails is logged (`transaction rollback failed`) and swallowed so the
+**original** error still reaches the caller — the one that names the
+statement that actually broke. The connection is always released back to the
+pool. Used by `bootstrapInstance()` in `routes/admin.js` so the first-boot
+workspace/squad/archive/document seed either lands completely or not at all.
 
 #### `generateSessionToken(user, ip, userAgent)`
 

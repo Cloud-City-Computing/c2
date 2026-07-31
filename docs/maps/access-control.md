@@ -197,7 +197,8 @@ step 1 of `requirePermission`, the first bypass in `canPublish` and
 `/api/admin/*` surface.
 
 The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
-(`server.js`, inside the listen callback; defined in `routes/admin.js`), which
+(`server.js`, a top-level `await` before the port opens; defined in
+`routes/admin.js`), which
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
 (`server.js:17-21`).
 

@@ -53,7 +53,7 @@ cd c2
 cp .env.example .env
 ```
 
-Open `.env` and fill in the required values. At minimum you need database credentials and admin account credentials. **SMTP is optional** — leave it blank and the server still starts. With mail disabled: invitations are still created and their signup link is shown copyable in the admin UI instead of emailed, password reset reports itself unavailable rather than silently failing, and email-based two-factor authentication is refused (authenticator-app TOTP still works, showing its QR code and secret in the app instead of emailing them). Squad invitations still work either way and still raise the in-app notification.
+Open `.env` and fill in the required values. At minimum you need database credentials and admin account credentials. **SMTP is optional** — leave it blank and the server still starts. With mail disabled: invitations are still created and their signup link is shown copyable in the admin UI instead of emailed, password reset reports itself unavailable rather than silently failing, and email-based two-factor authentication is refused (authenticator-app TOTP still works, showing its QR code and secret in the app instead of emailing them). Squad invitations still work either way and still raise the in-app notification. **If you turn SMTP off on an instance that already had it**, note that any account already using email 2FA can no longer log in, and no account can turn 2FA off, because both flows confirm with an emailed code; there is no admin-side reset yet, so restore mail before disabling it (`docs/maps/open-questions.md`, item B8).
 
 ```dotenv
 # ─── Database ────────────────────────────────────────────────
