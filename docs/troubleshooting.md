@@ -17,23 +17,26 @@ the cause and the fix.
 
 ```
 ┃ ⚠  Symptom
-┃   Server exits at startup with "SMTP credentials missing" or
-┃   "verifyEmailConnection failed".
+┃   Startup log shows "✖ Email disabled: <reason>." Invitations only
+┃   show a copyable link instead of sending mail, "Forgot password"
+┃   reports itself unavailable, and email-based 2FA can't be enabled.
 ```
 
 **Cause.** `SMTP_HOST`, `SMTP_USER`, or `SMTP_PASS` is empty in `.env`,
-or the configured server refused the test connection. SMTP is a hard
-dependency; the app exits rather than running in a half-broken state
-where password reset and 2FA silently fail.
+or the configured server refused the connection test. Mail is optional:
+the server boots either way and degrades those three features instead of
+exiting (the admin-credentials gate below is the only thing that's still
+boot-fatal). Authenticator-app TOTP 2FA and squad invitations are
+unaffected either way.
 
 **Fix.**
-1. Confirm all three are set in `.env`.
+1. Confirm all three SMTP variables are set in `.env`.
 2. Try the credentials manually with `swaks` or any SMTP CLI.
 3. If you're using Gmail / Workspace, you need an **app password**, not
    your account password. TLS port 465 also works
    (`SMTP_PORT=465` triggers TLS automatically).
 4. Restart with `docker compose -f docker-compose-prod.yml up -d` and
-   watch `docker logs`.
+   watch `docker logs` for `✔ SMTP connection verified`.
 
 ---
 

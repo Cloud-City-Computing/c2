@@ -299,16 +299,35 @@ output.
 **File:** `cloudcodex/services/email.js`
 
 A thin wrapper around [Nodemailer](https://nodemailer.com) for sending
-transactional emails. Configured entirely via environment variables.
+transactional emails. Configured entirely via environment variables, and
+entirely optional: Cloud Codex runs without SMTP configured at all.
 
-**Required env:** `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`
-**Optional:** `SMTP_PORT` (default 587), `SMTP_FROM`
+**Optional:** `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` (all three together, or
+mail stays disabled), `SMTP_PORT` (default 587), `SMTP_FROM`
 
 A TLS connection is automatically used when `SMTP_PORT` is 465.
 
+### Mail capability
+
+Whether mail is usable is decided once, at boot, not per-send:
+
+- **`isMailConfigured()`** — true when `SMTP_HOST`, `SMTP_USER` and
+  `SMTP_PASS` are all present.
+- **`initMail()`** — called once from `server.js` inside the listen
+  callback. Configured and unconfigured both resolve (never rejects);
+  configured also live-verifies the connection. Returns
+  `{enabled, reason}` and never exits the process. `server.js` logs the
+  result: `✔ SMTP connection verified` when enabled, or
+  `✖ Email disabled: <reason>. Invites will show copyable links; password
+  reset is unavailable.` on stderr when not.
+- **`isMailEnabled()`** — the cached result of the last `initMail()` call;
+  what `sendEmail()` and the routes below check.
+
 ### `sendEmail({ to, subject, text?, html?, from? })`
 
-Sends a single email. Security notes:
+When mail is disabled, resolves `{skipped: true, reason: 'mail disabled'}`
+without touching the network — every caller below is fire-and-forget-safe
+with no changes needed. When enabled, sends a single email. Security notes:
 - `to`, `subject`, and `from` headers are validated to reject strings
   containing newline characters, which would allow
   [header injection attacks](https://owasp.org/www-community/attacks/Mail_header_injection_attack).
@@ -331,11 +350,19 @@ Sends a single email. Security notes:
    watched doc published    services/notifications.js  (watched_publish)
 ```
 
+Three of these have an explicit degraded path rather than just a silent
+no-op when mail is off: user invitation always returns its signup link in
+the response for the admin UI to show copyably; password reset refuses with
+`{success: false, message}` before minting a token instead of sending
+nothing; email 2FA is refused 400 at `/api/2fa/enable` (TOTP setup returns
+its QR code and secret inline instead). Squad invitation still sends its
+in-app notification either way; only the email itself is skipped.
+
 ### `verifyEmailConnection()`
 
-Called once at server startup. Attempts a connection to the SMTP server and
-returns `true`/`false`. If it returns `false`, the server exits immediately
-with an error — SMTP is a hard dependency.
+Attempts a connection to the configured SMTP server and returns
+`true`/`false`. Called once by `initMail()` above, not directly by
+`server.js`; nothing calls it per-send.
 
 ---
 
@@ -361,7 +388,19 @@ are required; the process exits if they're missing.
 
 A simple wrapper around `pool.execute()`. Always uses parameterized queries
 — SQL strings are never constructed by string concatenation with user input
-anywhere in the codebase.
+anywhere in the codebase. Each call may be handed a different pooled
+connection, so it cannot be used for a multi-statement transaction.
+
+#### `withTransaction(fn)`
+
+Runs `fn` against one dedicated pooled connection wrapped in a transaction.
+`fn` receives a query executor with the same `(sql, params) => Promise<Array>`
+shape as `c2_query`, bound to that connection, so every call `fn` makes
+through it participates in the same transaction. Commits and returns `fn`'s
+result on success; rolls back and rethrows on any failure. The connection is
+always released back to the pool. Used by `bootstrapInstance()` in
+`routes/admin.js` so the first-boot workspace/squad/archive/document seed
+either lands completely or not at all.
 
 #### `generateSessionToken(user, ip, userAgent)`
 
