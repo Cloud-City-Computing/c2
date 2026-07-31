@@ -16,6 +16,15 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+// Explicit timeouts. initMail() runs before the port opens, so nodemailer's
+// defaults (2 minutes to connect, 30 seconds for the greeting, 10 minutes on
+// the socket) would let one blackholing SMTP host hold up the whole boot.
+// 10s is far more than a healthy connect or banner needs and bounds the worst
+// case; SOCKET_TIMEOUT_MS covers a host that answers and then stalls mid-command.
+const CONNECTION_TIMEOUT_MS = 10_000;
+const GREETING_TIMEOUT_MS = 10_000;
+const SOCKET_TIMEOUT_MS = 20_000;
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST ?? 'localhost',
   port: Number(process.env.SMTP_PORT ?? 587),
@@ -24,6 +33,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   } : undefined,
+  connectionTimeout: CONNECTION_TIMEOUT_MS,
+  greetingTimeout: GREETING_TIMEOUT_MS,
+  socketTimeout: SOCKET_TIMEOUT_MS,
 });
 
 const DEFAULT_FROM = process.env.SMTP_FROM ?? 'Cloud Codex <noreply@cloudcitycomputing.com>';

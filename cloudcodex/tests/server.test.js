@@ -100,11 +100,15 @@ describe('server.js: mail is optional', () => {
     }
   });
 
-  // The two tests above only exercise the module-level admin gate: they
-  // never invoke the ViteExpress.listen callback, so they cannot see
-  // whether initMail() is actually called on the boot path or whether the
-  // enabled/disabled branches log the right thing. These two do, by pulling
-  // the callback vitest-express was handed and awaiting it directly.
+  // The two tests above only exercise the module-level admin gate: they say
+  // nothing about whether initMail() is actually called on the boot path or
+  // whether the enabled/disabled branches log the right thing. These do.
+  //
+  // The boot sequence used to live inside the ViteExpress.listen callback, so
+  // these tests pulled `listenMock.mock.calls[0][2]` and awaited it. It now
+  // runs as top-level awaits BEFORE listen(), so importing the module is what
+  // runs it: any mock return value has to be primed before the import, and the
+  // assertions run straight after it. The wiring being proved is unchanged.
   it('invokes initMail() on the boot path and logs the disabled reason when mail is unavailable', async () => {
     const original = { ...process.env };
     try {
@@ -115,11 +119,8 @@ describe('server.js: mail is optional', () => {
       process.env.ADMIN_PASSWORD = 'pw';
       process.env.ADMIN_EMAIL = 'admin@test.com';
 
-      await import('../server.js');
       const { initMail } = await import('../services/email.js');
-      const listenCallback = listenMock.mock.calls[0][2];
-
-      await listenCallback();
+      await import('../server.js');
 
       expect(initMail).toHaveBeenCalled();
       expect(exitSpy).not.toHaveBeenCalled();
@@ -142,13 +143,11 @@ describe('server.js: mail is optional', () => {
       process.env.ADMIN_PASSWORD = 'pw';
       process.env.ADMIN_EMAIL = 'admin@test.com';
 
-      await import('../server.js');
       const { initMail } = await import('../services/email.js');
       initMail.mockResolvedValueOnce({ enabled: true, reason: null });
-      const listenCallback = listenMock.mock.calls[0][2];
       logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await listenCallback();
+      await import('../server.js');
 
       expect(initMail).toHaveBeenCalled();
       expect(exitSpy).not.toHaveBeenCalled();
@@ -178,14 +177,88 @@ describe('server.js: mail is optional', () => {
       process.env.ADMIN_PASSWORD = 'pw';
       process.env.ADMIN_EMAIL = 'admin@test.com';
 
-      await import('../server.js');
       const { ensureAdminUser, bootstrapInstance } = await import('../routes/admin.js');
       ensureAdminUser.mockResolvedValueOnce(7);
-      const listenCallback = listenMock.mock.calls[0][2];
 
-      await listenCallback();
+      await import('../server.js');
 
       expect(bootstrapInstance).toHaveBeenCalledWith(7);
+    } finally {
+      process.env = original;
+    }
+  });
+});
+
+// The boot sequence no longer hides behind a listen callback, so the ordering
+// and the failure handling are both directly observable.
+describe('server.js: boot ordering and failure handling', () => {
+  const bootEnv = () => {
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+  };
+
+  it('resolves mail capability and seeds before the port opens', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+
+      const { initMail } = await import('../services/email.js');
+      const { ensureAdminUser, bootstrapInstance } = await import('../routes/admin.js');
+      await import('../server.js');
+
+      // listen() must be the last thing to happen: while any of these are in
+      // flight the app would otherwise be answering requests with mail
+      // reported disabled and no seeded content.
+      expect(listenMock).toHaveBeenCalledTimes(1);
+      const listenOrder = listenMock.mock.invocationCallOrder[0];
+      expect(initMail.mock.invocationCallOrder[0]).toBeLessThan(listenOrder);
+      expect(ensureAdminUser.mock.invocationCallOrder[0]).toBeLessThan(listenOrder);
+      expect(bootstrapInstance.mock.invocationCallOrder[0]).toBeLessThan(listenOrder);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('logs and keeps serving when the first-boot seed throws', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+
+      const { bootstrapInstance } = await import('../routes/admin.js');
+      bootstrapInstance.mockRejectedValueOnce(new Error('archive insert failed'));
+
+      await import('../server.js');
+
+      // Usable-but-empty beats a dead process: an unhandled rejection here
+      // would take the instance down over a seed that the next restart retries.
+      expect(listenMock).toHaveBeenCalledTimes(1);
+      expect(exitSpy).not.toHaveBeenCalled();
+      const allLogs = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(allLogs).toMatch(/instance bootstrap failed/);
+      expect(allLogs).toMatch(/archive insert failed/);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('logs and keeps serving when the admin sync throws', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+
+      const { ensureAdminUser, bootstrapInstance } = await import('../routes/admin.js');
+      ensureAdminUser.mockRejectedValueOnce(new Error('db unreachable'));
+
+      await import('../server.js');
+
+      expect(listenMock).toHaveBeenCalledTimes(1);
+      expect(exitSpy).not.toHaveBeenCalled();
+      // No admin id means nothing to seed against; bootstrapInstance's own
+      // null guard handles it rather than the seed running with undefined.
+      expect(bootstrapInstance).toHaveBeenCalledWith(null);
+      const allLogs = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(allLogs).toMatch(/admin user sync failed/);
     } finally {
       process.env = original;
     }

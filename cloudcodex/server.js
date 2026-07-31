@@ -20,22 +20,44 @@ if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.A
   process.exit(1);
 }
 
-const server = ViteExpress.listen(app, 3000, async () => {
-  console.log('CloudCodex API Server is running on http://localhost:3000');
+// ─── Decide capability and seed BEFORE the port opens ───────
+//
+// ViteExpress.listen() binds the socket and starts accepting requests before
+// it runs its callback, so anything awaited in there serves traffic with the
+// answer still undecided: a correctly configured instance would report
+// isMailEnabled() === false while initMail() is in flight (forgot-password
+// unavailable, invitations not emailed), and a first boot would serve an
+// empty app until the seed landed. These are top-level awaits instead.
 
-  const mail = await initMail();
-  if (mail.enabled) {
-    console.log('✔ SMTP connection verified');
-  } else {
-    console.error(
-      `✖ Email disabled: ${mail.reason}. ` +
-      'Invites will show copyable links; password reset is unavailable.'
-    );
-  }
+const mail = await initMail();
+if (mail.enabled) {
+  console.log('✔ SMTP connection verified');
+} else {
+  console.error(
+    `✖ Email disabled: ${mail.reason}. ` +
+    'Invites will show copyable links; password reset is unavailable.'
+  );
+}
 
-  // Ensure the admin super user exists in the database
-  const adminId = await ensureAdminUser();
+// Ensure the admin super user exists in the database, then seed a starter
+// workspace on a first boot. Neither may take the process down: a DB blip
+// here would otherwise mean the app never listens at all. A failed seed
+// leaves the instance empty but usable, and because the guard is on an
+// empty database the next restart retries.
+let adminId = null;
+try {
+  adminId = await ensureAdminUser();
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] admin user sync failed:`, err);
+}
+try {
   await bootstrapInstance(adminId);
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] instance bootstrap failed:`, err);
+}
+
+const server = ViteExpress.listen(app, 3000, () => {
+  console.log('CloudCodex API Server is running on http://localhost:3000');
 });
 
 // Attach WebSocket collaborative editing server to the HTTP server
