@@ -246,10 +246,16 @@ function InviteUserModal({ onInvited }) {
       </div>
       {lastInvite && (
         <div className="invite-link-callout">
+          {/* `emailed: false` means the mail did not go out, which covers a
+              disabled instance AND a configured server that refused the send.
+              Naming a cause here would diagnose the wrong thing half the
+              time, so say only what is known. The server's own message above
+              already names the recipient and says to share the link, so this
+              line adds the delivery state and nothing else. */}
           <p>
             {lastInvite.emailed
-              ? `Invitation emailed to ${lastInvite.email}. You can also share this link:`
-              : `Invitation created for ${lastInvite.email}. Email is disabled on this instance, so share this link:`}
+              ? 'You can also share this link directly:'
+              : 'No invitation email was sent.'}
           </p>
           <input className="invite-link-input" type="text" readOnly value={lastInvite.url} />
           <button className="btn btn-ghost btn-sm" onClick={handleCopyInviteLink}>Copy link</button>
