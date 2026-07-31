@@ -305,6 +305,19 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   // If 2FA is enabled (email or TOTP), require verification
   if (two_factor_method === 'email' || two_factor_method === 'totp') {
+    // Email 2FA on a mail-less instance cannot complete: the code has nowhere
+    // to go, and /api/forgot-password refuses too, so there is no self-service
+    // way out. Refuse honestly here, before minting a token or writing a code
+    // row, instead of returning a challenge nothing can answer. The password
+    // check above already passed, so this leaks nothing to a stranger, and it
+    // grants no access: the account stays locked until an admin restores mail.
+    if (two_factor_method === 'email' && !isMailEnabled()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Email delivery is disabled on this instance, so your verification code cannot be sent. Contact your administrator.',
+      });
+    }
+
     // Create a short-lived temporary token to tie the 2FA verification back to this login attempt
     const twoFactorToken = crypto.randomBytes(32).toString('hex');
     await c2_query(
@@ -914,11 +927,24 @@ router.post('/2fa/totp/confirm', requireAuth, asyncHandler(async (req, res) => {
  * POST /api/2fa/disable
  * Sends a verification code to the user's email. Returns a confirmToken.
  * The user must call POST /api/2fa/disable/confirm with the token and code to complete.
+ * Refuses, without minting anything, when mail is disabled instance-wide.
  */
 router.post('/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
   const [userRow] = await c2_query(`SELECT email, two_factor_method FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
   if (!userRow || userRow.two_factor_method === 'none') {
     return res.json({ success: true, message: 'Two-factor authentication is already disabled.' });
+  }
+
+  // Both methods confirm the disable with an emailed code: /2fa/disable/confirm
+  // validates against two_factor_codes whether the account uses email or TOTP.
+  // With mail off there is nothing the user can ever enter, so refuse before
+  // minting a confirmToken or writing a code row rather than answering 200 with
+  // "a code has been sent to your email".
+  if (!isMailEnabled()) {
+    return res.status(503).json({
+      success: false,
+      message: 'Email delivery is disabled on this instance, so the confirmation code cannot be sent. Contact your administrator to have two-factor authentication removed.',
+    });
   }
 
   // Invalidate any existing unused codes for this user
