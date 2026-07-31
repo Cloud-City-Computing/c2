@@ -3,7 +3,7 @@ import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
 import { c2_query, validateAndAutoLogin, generateSessionToken } from '../../mysql_connect.js';
-import { sendEmail } from '../../services/email.js';
+import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 // Pre-compute a bcrypt hash for login tests (low rounds for speed)
@@ -13,6 +13,7 @@ const TEST_HASH = bcrypt.hashSync(TEST_PASSWORD, 1);
 describe('Auth Routes', () => {
   beforeEach(() => {
     resetMocks();
+    isMailEnabled.mockReturnValue(true);
   });
 
   // ── POST /api/create-account ──────────────────────────────
@@ -797,6 +798,36 @@ describe('Auth Routes', () => {
         .send({ method: 'email' });
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/2fa/enable with mail disabled', () => {
+    it('rejects email 2FA with 400', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(false);
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ method: 'email' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/email is disabled/i);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('still allows TOTP', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(false);
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 });
+
+      const res = await request(app)
+        .post('/api/2fa/enable')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ method: 'totp' });
+
+      expect(res.status).toBe(200);
     });
   });
 

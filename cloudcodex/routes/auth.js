@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
 import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
-import { sendEmail } from '../services/email.js';
+import { sendEmail, isMailEnabled } from '../services/email.js';
 import { requireAuth } from '../middleware/auth.js';
 import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions } from './helpers/shared.js';
 
@@ -760,6 +760,15 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
  */
 router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
   const method = req.body.method || 'email';
+
+  // Email 2FA on a mail-less instance is a lockout: the login code and the
+  // disable-confirmation code both travel by email.
+  if (method === 'email' && !isMailEnabled()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email is disabled on this instance. Use an authenticator app (TOTP) instead.',
+    });
+  }
 
   if (method === 'email') {
     await c2_query(`UPDATE users SET two_factor_method = 'email', totp_secret = NULL WHERE id = ?`, [req.user.id]);
