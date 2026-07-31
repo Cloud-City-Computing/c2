@@ -186,4 +186,6 @@ Returns real-time data about active WebSocket connections from the collaborative
 
 ## Admin Super User Bootstrap
 
-On server startup, `ensureAdminUser()` is called before the HTTP server begins accepting requests. It reads `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_EMAIL` from environment variables and either creates the admin user or syncs their credentials if the account already exists. This means the admin password is always controlled by the `.env` file and is re-applied on every restart.
+On server startup, `ensureAdminUser()` reads `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_EMAIL` from environment variables and either creates the admin user or syncs their credentials if the account already exists. This means the admin password is always controlled by the `.env` file and is re-applied on every restart.
+
+Right after, `bootstrapInstance(adminId)` seeds a starter workspace the first time the instance has none: a workspace owned by `ADMIN_EMAIL`, a "General" squad with the admin as owner, a "Getting Started" archive, and a "Welcome to Cloud Codex" document. It no-ops on every later boot, so an existing install is never touched.

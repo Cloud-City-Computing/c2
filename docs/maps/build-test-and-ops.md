@@ -68,10 +68,10 @@ The Makefile does `include .env` / `export` at the top, so it needs a populated
 root `.env`, and it resolves the container via
 `docker compose ps -q database`.
 
-**`make reset-db` is not a clean reset.** `init.sql`'s `DROP TABLE IF EXISTS`
-block omits `github_links`, `activity_log`, `watches` and `notifications`, and
-none of their `CREATE TABLE` statements use `IF NOT EXISTS`, so it fails partway
-on a database that already has them. See [data-model.md](data-model.md).
+`init.sql`'s `DROP TABLE IF EXISTS` block now covers all 25 tables, including
+`github_links`, `activity_log`, `watches` and `notifications`, which used to be
+missing and made `make reset-db` fail partway on a database that already had
+them. See [data-model.md](data-model.md).
 
 ## 4. Docker topologies
 
@@ -85,22 +85,18 @@ bind mount `./db-data/`, `init.sql` mounted into
   `mysqladmin ping` healthcheck (`docker-compose-prod.yml:22-27`).
 - The app builds from `cloudcodex/Dockerfile`, waits on
   `condition: service_healthy`, publishes 3000, and takes `env_file: .env`.
-- `cloudcodex/Dockerfile` is `node:20`, `npm install` (not `npm ci`), `COPY . .`,
-  `npm run build`, then `CMD npm run start`.
+- `cloudcodex/Dockerfile` is `node:20`, `npm ci`, `COPY . .`, `npm run build`,
+  then `CMD npm run start`.
+- `docker-compose-prod.yml` sets `DB_HOST: database` under the app service's
+  `environment`, overriding `.env`'s `DB_HOST=localhost` (correct for dev,
+  where the app runs on the host, and wrong inside the prod container).
+  `environment` takes precedence over `env_file`.
 
-Two things to get right when deploying:
-
-1. **`DB_HOST` must be the compose service name `database`, not `localhost`.**
-   `.env.example` ships `DB_HOST=localhost`, which is correct for dev where the
-   app runs on the host, and wrong for the prod compose where the app runs in a
-   container. Nothing overrides it in `docker-compose-prod.yml`.
-2. **`init.sql` only executes on a fresh volume.** The MySQL entrypoint skips
-   `/docker-entrypoint-initdb.d/` when the data directory is already
-   initialised. Editing `init.sql` and restarting changes nothing; existing
-   databases need the matching file from `migrations/` applied by hand.
-
-The Dockerfile using `npm install` rather than `npm ci` means a production
-image can resolve different transitive versions than the lockfile CI tested.
+One thing to get right when deploying: **`init.sql` only executes on a fresh
+volume.** The MySQL entrypoint skips `/docker-entrypoint-initdb.d/` when the
+data directory is already initialised. Editing `init.sql` and restarting
+changes nothing; existing databases need the matching file from `migrations/`
+applied by hand.
 
 ## 5. Testing
 
@@ -112,7 +108,7 @@ image can resolve different transitive versions than the lockfile CI tested.
 | `backend` | node | `tests/setup.js` | `tests/routes/`, `tests/middleware/`, `tests/services/`, `tests/helpers/`, `tests/extensions/`, `tests/*.test.js` |
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 
-Current state: **57 files, 1128 tests, all passing.**
+Current state: **58 files, 1154 tests, all passing.**
 
 Tests mirror the source tree:
 

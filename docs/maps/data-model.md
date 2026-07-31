@@ -161,7 +161,7 @@ is flipped to `revoked` when GitHub rejects the token.
 ## 8. Activity, watches, notifications
 
 `activity_log.id` is `BIGINT` (`init.sql:370`), the only table that expects
-that volume, and it is pruned at 365 days by `server.js:54-70`. It has four
+that volume, and it is pruned at 365 days by `server.js:49-67`. It has four
 composite indexes covering the workspace, squad, resource, and user read paths.
 
 **It has a foreign key on `user_id` only.** `workspace_id`, `squad_id`,
@@ -207,22 +207,16 @@ Both compose files mount it into `/docker-entrypoint-initdb.d/`
 initialised.** Editing `init.sql` and restarting the container does nothing.
 Dev volume is the bind mount `./db-data/`; prod is the named volume `db_data`.
 
-### Trap 2: `make reset-db` is not a clean reset
+### Trap 2 (fixed): `make reset-db` used to be an incomplete reset
 
 `make reset-db` (`Makefile:21-24`) pipes `init.sql` then `seed.sql` into the
-running container. `init.sql` opens with an explicit `DROP TABLE IF EXISTS`
-list (`init.sql:12-31`) covering **21** of the 25 tables. Four are missing:
-
-```
-github_links      activity_log      watches      notifications
-```
-
-None of the corresponding `CREATE TABLE` statements uses `IF NOT EXISTS`, so on
-a database that already has those four tables, `reset-db` fails partway through
-with a duplicate-table error, having already dropped and recreated everything
-above the failure point. A genuinely clean reset means dropping the volume, or
-adding those four to the DROP list. Recorded in
-[open-questions.md](open-questions.md).
+running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-36`)
+now covers all 25 tables. It used to omit `github_links`, `activity_log`,
+`watches` and `notifications`, whose `CREATE TABLE` statements don't use
+`IF NOT EXISTS`, so `reset-db` failed partway through with a duplicate-table
+error on a database that already had those four. Fixed by adding them to the
+DROP block; order doesn't matter since it runs under
+`SET FOREIGN_KEY_CHECKS = 0`.
 
 ## 10. Adding a table or column: checklist
 

@@ -197,9 +197,9 @@ step 1 of `requirePermission`, the first bypass in `canPublish` and
 `/api/admin/*` surface.
 
 The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
-(`server.js:41`, defined in `routes/admin.js`), which is why
-`ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
-(`server.js:24-28`).
+(`server.js`, inside the listen callback; defined in `routes/admin.js`), which
+is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
+(`server.js:17-21`).
 
 ## 6. Checklist for adding a protected route
 

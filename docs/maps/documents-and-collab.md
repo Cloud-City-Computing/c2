@@ -58,6 +58,7 @@ non-empty and otherwise round-trips the HTML through turndown, so a stale
 | collab autosave (`collab.js:110-123`) | `ydoc_state` only | no |
 | GitHub pull / resolve / overwrite (`github.js:1164-1173`, `1206-1215`, `1388-1397`) | `html_content`, `markdown_content` | **yes**, `NULL` |
 | GitHub bulk import (`github.js:1578-1587`) | new `logs` row | n/a |
+| First-boot seed (`bootstrapInstance`, `routes/admin.js`) | new `logs` row, the welcome document | n/a |
 
 Clearing `ydoc_state` to `NULL` is the deliberate mechanism for "the HTML just
 changed underneath the CRDT": on next connect the Y.Doc starts empty and the

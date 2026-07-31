@@ -116,23 +116,6 @@ any real document has hit the ceiling.
 **Suggested fix:** `ALTER TABLE logs MODIFY html_content MEDIUMTEXT` in both a
 migration and `init.sql`, matching `markdown_content`.
 
-### B3. `make reset-db` fails on an existing database
-
-`init.sql:12-31` drops 21 tables. Four of the 25 are missing from the list:
-`github_links`, `activity_log`, `watches`, `notifications`. None of their
-`CREATE TABLE` statements uses `IF NOT EXISTS`.
-
-**Consequence:** on a database that already has those tables, `make reset-db`
-drops and recreates everything up to the first missing one, then aborts with a
-duplicate-table error, leaving the schema half-applied.
-
-**Verified:** by reading the DROP list against the CREATE list.
-**Not verified:** the exact failure point at runtime.
-
-**Suggested fix:** add the four to the DROP block, in an order that respects the
-FK graph (the block already runs with `FOREIGN_KEY_CHECKS = 0`, so order does
-not actually matter).
-
 ### B4. GitHub link CRUD does not check document access
 
 `GET`, `PUT` and `DELETE /api/github/link/:logId` (`github.js:924`, `947`,
@@ -245,7 +228,7 @@ Corrected in this pass, listed here so the drift pattern is visible:
   The doc's "filesystem globally" reads as more complete than it is.
 - **`useGitHubStatus` is `.jsx`, not `.js`.**
 - **The comment "no external job queue"** is accurate in spirit, but
-  `server.js:54-70` does run an in-process daily prune, which is a scheduled job
+  `server.js:49-67` does run an in-process daily prune, which is a scheduled job
   by another name.
 
 ## E. Things not investigated

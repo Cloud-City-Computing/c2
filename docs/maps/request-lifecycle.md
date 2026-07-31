@@ -16,14 +16,14 @@ config gates run **before** anything listens.
 | Load `.env` | `mysql_connect.js:16` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
 | DB pool | `mysql_connect.js:18-26` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. |
 | DB credential gate | `mysql_connect.js:28-32` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| SMTP config gate | `server.js:17-21` | Missing `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` exits 1. |
-| Admin config gate | `server.js:24-28` | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. |
-| Listen | `server.js:30` | `ViteExpress.listen(app, 3000, cb)`. Port 3000 is hardcoded. |
-| SMTP live check | `server.js:33-38` | `verifyEmailConnection()`; a failure exits 1 **after** the socket is already listening. |
-| Admin sync | `server.js:41` | `ensureAdminUser()` from `routes/admin.js` upserts the `.env` admin. |
-| Collab WS | `server.js:45` | `setupCollabServer(server)`, path `/collab`. |
-| Notification WS | `server.js:49` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
-| Activity prune | `server.js:54-70` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
+| Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. This is now the only boot-fatal config gate besides the DB one above; there is no SMTP gate. |
+| Listen | `server.js`, `ViteExpress.listen(app, 3000, cb)` | Port 3000 is hardcoded. |
+| Mail capability | `server.js`, inside the listen callback | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. |
+| Admin sync | `server.js`, inside the listen callback | `ensureAdminUser()` from `routes/admin.js` upserts the `.env` admin. **Changed:** now returns the admin's `id` (`Promise<number\|null>`), previously `undefined`. |
+| Bootstrap instance | `server.js`, inside the listen callback | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, archive and welcome document the first time `workspaces` is empty (guarded on `SELECT COUNT(*)`), so it is idempotent across restarts and never touches an existing install. All five writes share one transaction via the new `withTransaction()` helper in `mysql_connect.js`. |
+| Collab WS | `server.js:42` | `setupCollabServer(server)`, path `/collab`. |
+| Notification WS | `server.js:46` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Activity prune | `server.js:51-67` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 
 Two consequences worth knowing:
 
@@ -31,7 +31,7 @@ Two consequences worth knowing:
   out of `server.js` precisely so Supertest can mount the app without a
   listener (`app.js:4-5`). Tests import `app.js`; they never import `server.js`
   except `tests/server.test.js`.
-- **The daily prune is single-process by design.** `server.js:53` says so
+- **The daily prune is single-process by design.** `server.js:50` says so
   explicitly. If the app is ever scaled horizontally, every replica prunes.
 
 ## 2. The middleware stack, in mount order
