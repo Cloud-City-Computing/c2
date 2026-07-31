@@ -13,6 +13,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
 import { getAllPresence, getActiveDocCount } from '../services/collab.js';
+import { createNotification } from '../services/notifications.js';
 
 const router = express.Router();
 
@@ -248,7 +249,7 @@ router.delete('/admin/workspaces/:id', requireAuth, requireAdmin, asyncHandler(a
  */
 router.get('/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const users = await c2_query(
-    `SELECT u.id, u.name, u.email, u.avatar_url, u.is_admin, u.created_at,
+    `SELECT u.id, u.name, u.email, u.avatar_url, u.is_admin, u.created_at, u.two_factor_method,
             (SELECT COUNT(*) FROM squad_members tm WHERE tm.user_id = u.id) AS squad_count
      FROM users u
      ORDER BY u.created_at DESC`
@@ -279,6 +280,67 @@ router.delete('/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async 
 
   await c2_query(`DELETE FROM users WHERE id = ?`, [Number(id)]);
   res.json({ success: true });
+}));
+
+/**
+ * POST /api/admin/users/:id/2fa/reset
+ * Clear a user's two-factor enrolment (admin only).
+ *
+ * The recovery path for docs/maps/open-questions.md item B8: every 2FA code
+ * (login, disable-confirmation) travels by email, so a user with email 2FA on
+ * a mail-less instance cannot log in, disable 2FA, or reset their password.
+ * This clears everything that keeps a user enrolled or mid-flow:
+ *   - `users.two_factor_method` / `users.totp_secret`
+ *   - `two_factor_codes` rows (login and disable-confirmation codes)
+ *   - unused `password_reset_tokens` rows (POST /2fa/enable and
+ *     POST /2fa/disable both reuse this table for their short-lived
+ *     setupToken/confirmToken, there is no dedicated table for them)
+ * A user can be mid-setup (a totp_secret written by /2fa/enable that was
+ * never confirmed) without two_factor_method having changed, so this always
+ * clears state rather than short-circuiting when the method is already
+ * 'none'.
+ */
+router.post('/admin/users/:id/2fa/reset', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!isValidId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
+  const targetId = Number(id);
+
+  const [user] = await c2_query(`SELECT id, name, two_factor_method FROM users WHERE id = ? LIMIT 1`, [targetId]);
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  await c2_query(`UPDATE users SET two_factor_method = 'none', totp_secret = NULL WHERE id = ?`, [targetId]);
+  await c2_query(`DELETE FROM two_factor_codes WHERE user_id = ?`, [targetId]);
+  await c2_query(`DELETE FROM password_reset_tokens WHERE user_id = ? AND used = FALSE`, [targetId]);
+
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: admin ${req.user.id} reset 2FA for user ${targetId}`);
+
+  // Self-suppressed by createNotification when the admin resets their own
+  // 2FA. The email leg is a no-op (no email-templates.js builder for this
+  // type) which is fine: the in-app inbox works regardless of mail, and
+  // that is exactly the channel this recovery path exists for.
+  //
+  // The reset itself is already committed above, and this endpoint exists to
+  // rescue a locked-out account. Failing the request on a notification error
+  // would report failure for work that actually succeeded, and an admin
+  // retrying it would learn nothing, so a failure here is logged and swallowed.
+  try {
+    await createNotification({
+      recipientId: targetId,
+      actorId: req.user.id,
+      type: 'admin_2fa_reset',
+      title: 'Two-factor authentication was reset by an administrator',
+      body: 'An administrator reset two-factor authentication on your account. If you did not expect this, contact your administrator. You can set it up again from Account Settings.',
+      linkUrl: '/account',
+    });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: 2FA reset notification failed:`, err);
+  }
+
+  res.json({ success: true, message: 'Two-factor authentication has been reset for this user.' });
 }));
 
 // ─── User invitation (admin only) ───────────────────────────

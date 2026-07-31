@@ -334,6 +334,101 @@ describe('Admin Routes', () => {
     });
   });
 
+  // --- POST /api/admin/users/:id/2fa/reset ---
+
+  describe('POST /api/admin/users/:id/2fa/reset', () => {
+    it('clears the 2FA method, secret, codes, and setup/confirm tokens, then notifies the user', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query
+        .mockResolvedValueOnce([{ id: 5, name: 'bob', two_factor_method: 'totp' }]) // user lookup
+        .mockResolvedValueOnce({ affectedRows: 1 }) // UPDATE users
+        .mockResolvedValueOnce({ affectedRows: 2 }) // DELETE two_factor_codes
+        .mockResolvedValueOnce({ affectedRows: 1 }) // DELETE password_reset_tokens
+        .mockResolvedValueOnce({ insertId: 300 }); // INSERT INTO notifications
+
+      const res = await request(app)
+        .post('/api/admin/users/5/2fa/reset')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const calls = c2_query.mock.calls;
+
+      const updateUsers = calls.find((c) => /UPDATE users SET two_factor_method/i.test(c[0]));
+      expect(updateUsers).toBeTruthy();
+      expect(updateUsers[0]).toMatch(/totp_secret\s*=\s*NULL/i);
+      expect(updateUsers[1]).toEqual([5]);
+
+      const deleteCodes = calls.find((c) => /DELETE FROM two_factor_codes/i.test(c[0]));
+      expect(deleteCodes).toBeTruthy();
+      expect(deleteCodes[1]).toEqual([5]);
+
+      const deleteTokens = calls.find((c) => /DELETE FROM password_reset_tokens/i.test(c[0]));
+      expect(deleteTokens).toBeTruthy();
+      expect(deleteTokens[1]).toEqual([5]);
+
+      const notifInsert = calls.find((c) => /INSERT INTO notifications/i.test(c[0]));
+      expect(notifInsert).toBeTruthy();
+      expect(notifInsert[1]).toContain(5); // recipient is the target user
+      expect(notifInsert[1]).toContain('admin_2fa_reset');
+    });
+
+    it('does not notify when an admin resets their own 2FA', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query
+        .mockResolvedValueOnce([{ id: ADMIN_USER.id, name: ADMIN_USER.name, two_factor_method: 'email' }])
+        .mockResolvedValueOnce({ affectedRows: 1 })
+        .mockResolvedValueOnce({ affectedRows: 0 })
+        .mockResolvedValueOnce({ affectedRows: 0 });
+
+      const res = await request(app)
+        .post(`/api/admin/users/${ADMIN_USER.id}/2fa/reset`)
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const notifInsert = c2_query.mock.calls.find((c) => /INSERT INTO notifications/i.test(c[0]));
+      expect(notifInsert).toBeFalsy();
+    });
+
+    it('returns 404 for a user that does not exist', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]); // not found
+
+      const res = await request(app)
+        .post('/api/admin/users/999/2fa/reset')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects an invalid user ID', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const res = await request(app)
+        .post('/api/admin/users/abc/2fa/reset')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects a non-admin user', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app)
+        .post('/api/admin/users/5/2fa/reset')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authentication', async () => {
+      mockUnauthenticated();
+      const res = await request(app).post('/api/admin/users/5/2fa/reset');
+      expect(res.status).toBe(401);
+    });
+  });
+
   // --- GET /api/admin/invitations ---
 
   describe('GET /api/admin/invitations', () => {

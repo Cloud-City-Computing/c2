@@ -21,6 +21,7 @@ import {
   fetchAdminUserPermissions,
   updateAdminUserPermissions,
   updateAdminUserAdmin,
+  resetAdminUser2fa,
   fetchAdminInvitations,
   createAdminInvitation,
   deleteAdminInvitation,
@@ -499,6 +500,23 @@ function UsersPanel() {
     );
   };
 
+  const handleResetTwoFactor = (user) => {
+    showModal(
+      <ConfirmDialog
+        title={`Reset two-factor authentication for "${user.name}"?`}
+        message="This clears their 2FA method, any authenticator secret, and any in-progress setup or disable confirmation. They will need to set up 2FA again if they want it."
+        confirmLabel="Reset 2FA"
+        danger
+        onConfirm={async () => {
+          await resetAdminUser2fa(user.id);
+          destroyModal();
+          showToast('Two-factor authentication has been reset.', 'success');
+          load();
+        }}
+      />
+    );
+  };
+
   const handleToggleAdmin = async (user) => {
     const newAdmin = !user.is_admin;
     showModal(
@@ -567,6 +585,9 @@ function UsersPanel() {
                       <button className="btn btn-ghost btn-sm" onClick={() => showModal(<UserPermissionsModal user={u} onUpdated={load} />, 'modal-md')}>
                         Permissions
                       </button>
+                      {u.two_factor_method && u.two_factor_method !== 'none' && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleResetTwoFactor(u)}>Reset 2FA</button>
+                      )}
                       {!u.is_admin && (
                         <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(u)}>Delete</button>
                       )}
