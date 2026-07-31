@@ -1341,6 +1341,40 @@ body {
   margin: 4px 0;
 }
 
+.invite-link-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.invite-link-callout p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.invite-link-callout .btn {
+  align-self: flex-start;
+}
+
+.invite-link-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: monospace;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-main);
+  color: var(--text-primary);
+}
+
 .forgot-password-link {
   display: block;
   text-align: center;

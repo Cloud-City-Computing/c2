@@ -34,7 +34,7 @@ import {
   timeAgo,
 } from '../util';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { toastError } from '../components/Toast';
+import { showToast, toastError } from '../components/Toast';
 
 // ─── Overview Panel ─────────────────────────────────────────
 
@@ -202,6 +202,7 @@ function InviteUserModal({ onInvited }) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [lastInvite, setLastInvite] = useState(null);
 
   const handleSubmit = async () => {
     setError(null);
@@ -210,11 +211,22 @@ function InviteUserModal({ onInvited }) {
     try {
       const res = await createAdminInvitation(email);
       setSuccess(res.message);
+      setLastInvite({ url: res.signup_url, emailed: res.emailed, email });
       setEmail('');
       onInvited?.();
     } catch (e) {
       setError(e.body?.message ?? 'Error sending invitation.');
     }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (!navigator.clipboard) {
+      showToast('Copy not supported here. Select and copy the link manually.', 'error');
+      return;
+    }
+    navigator.clipboard.writeText(lastInvite.url)
+      .then(() => showToast('Invite link copied', 'success'))
+      .catch(() => showToast('Could not copy the link. Select and copy it manually.', 'error'));
   };
 
   return (
@@ -231,6 +243,22 @@ function InviteUserModal({ onInvited }) {
           placeholder="newuser@example.com" />
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Send Invitation</button>
       </div>
+      {lastInvite ? (
+        <div className="invite-link-callout">
+          <p>
+            {lastInvite.emailed
+              ? `Invitation emailed to ${lastInvite.email}. You can also share this link:`
+              : `Invitation created for ${lastInvite.email}. Email is disabled on this instance, so share this link:`}
+          </p>
+          <input className="invite-link-input" type="text" readOnly value={lastInvite.url} />
+          <button
+            className="btn btn-ghost"
+            onClick={handleCopyInviteLink}
+          >
+            Copy link
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
