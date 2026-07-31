@@ -34,6 +34,8 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      DB_HOST: database
     working_dir: /app
 
 volumes:

@@ -9,6 +9,10 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS notifications;
+DROP TABLE IF EXISTS watches;
+DROP TABLE IF EXISTS activity_log;
+DROP TABLE IF EXISTS github_links;
 DROP TABLE IF EXISTS favorites;
 DROP TABLE IF EXISTS comment_replies;
 DROP TABLE IF EXISTS comments;
