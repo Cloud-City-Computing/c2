@@ -1108,7 +1108,7 @@ describe('bootstrapInstance', () => {
     expect(memberCall[1]).toEqual([22, 1]);           // (squad id, admin id)
     expect(memberCall[0]).toMatch(/'owner'/);
 
-    // The welcome document — the headline of the whole first-boot seed, and
+    // The welcome document, the headline of the whole first-boot seed, and
     // the other write that could vanish silently.
     const logCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO logs'));
     expect(logCall).toBeDefined();
@@ -1125,7 +1125,7 @@ describe('bootstrapInstance', () => {
     // c2_query calls), or a failure partway through leaves a partial seed
     // that the guard mistakes for a completed install on the next boot. The
     // default test mock (tests/setup.js) forwards straight to c2_query,
-    // which is why the assertions above still see the writes — the test
+    // which is why the assertions above still see the writes. The test
     // below overrides that to prove the writes really are on the
     // transaction's executor.
     expect(withTransaction).toHaveBeenCalledTimes(1);

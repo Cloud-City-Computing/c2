@@ -66,9 +66,9 @@ Authenticate with username and password.
 | Status | Meaning |
 |--------|---------|
 | `200`  | `{ success: true, token, user }` — login complete |
-| `200`  | `{ success: true, requires_2fa: true, method: 'email'\|'totp', twoFactorToken }` — 2FA step required |
+| `200`  | `{ success: true, requires_2fa: true, method: 'email'\|'totp', twoFactorToken }`, 2FA step required |
 | `401`  | Invalid credentials (message is intentionally vague) |
-| `503`  | `{ success: false, message }` — the account uses **email** 2FA and mail is disabled on this instance |
+| `503`  | `{ success: false, message }`, the account uses **email** 2FA and mail is disabled on this instance |
 
 When 2FA is required, pass the returned `twoFactorToken` to the appropriate `/api/2fa/*` endpoint.
 
@@ -76,7 +76,7 @@ The `503` case is a deliberate refusal, not a fallback: no `twoFactorToken` is
 issued and no code row is written, because a challenge whose code cannot be
 delivered is a lockout dressed up as a prompt. The password check still runs
 first, so this reveals nothing to a caller without valid credentials, and it
-grants nothing — the account stays locked until an administrator restores mail.
+grants nothing: the account stays locked until an administrator restores mail.
 TOTP accounts are unaffected and log in normally.
 
 ---
@@ -177,10 +177,10 @@ TOTP.
 
 | Status | Meaning |
 |--------|---------|
-| `200`  | `{ success: true, confirmToken, message }` — code sent, confirm next |
-| `200`  | `{ success: true, message }` (no `confirmToken`) — 2FA was already off, nothing to do |
+| `200`  | `{ success: true, confirmToken, message }`, code sent, confirm next |
+| `200`  | `{ success: true, message }` (no `confirmToken`), 2FA was already off, nothing to do |
 | `401`  | Not authenticated |
-| `503`  | `{ success: false, message }` — mail is disabled on this instance |
+| `503`  | `{ success: false, message }`, mail is disabled on this instance |
 
 The `503` applies to email and TOTP accounts alike, since neither can receive
 the confirmation code. Nothing is minted on that path: no `confirmToken` and no
@@ -202,7 +202,7 @@ clears any stored TOTP secret.
 
 | Status | Meaning |
 |--------|---------|
-| `200`  | `{ success: true, message }` — 2FA disabled |
+| `200`  | `{ success: true, message }`, 2FA disabled |
 | `400`  | `confirmToken` or `code` missing |
 | `401`  | Token expired, already used, belongs to another user, or the code is invalid/expired |
 

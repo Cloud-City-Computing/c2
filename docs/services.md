@@ -313,7 +313,7 @@ Whether mail is usable is decided once, at boot, not per-send:
 
 - **`isMailConfigured()`** — true when `SMTP_HOST`, `SMTP_USER` and
   `SMTP_PASS` are all present.
-- **`initMail()`** — called once from `server.js`, as a top-level `await`
+- **`initMail()`**, called once from `server.js` as a top-level `await`
   that resolves *before* the HTTP port opens, so the app never serves
   traffic while the answer is undecided. Configured and unconfigured both
   resolve (never rejects);
@@ -415,7 +415,7 @@ shape as `c2_query`, bound to that connection, so every call `fn` makes
 through it participates in the same transaction. Commits and returns `fn`'s
 result on success; rolls back and rethrows on any failure. A rollback that
 itself fails is logged (`transaction rollback failed`) and swallowed so the
-**original** error still reaches the caller — the one that names the
+**original** error still reaches the caller, the one that names the
 statement that actually broke. The connection is always released back to the
 pool. Used by `bootstrapInstance()` in `routes/admin.js` so the first-boot
 workspace/squad/archive/document seed either lands completely or not at all.

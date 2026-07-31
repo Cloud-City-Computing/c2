@@ -73,13 +73,13 @@ const WELCOME_HTML = `
  * empty app.
  *
  * The guard is "this database holds no content of its own", not "this
- * instance has never been seeded" — nothing records that. Workspaces alone
+ * instance has never been seeded" (nothing records that). Workspaces alone
  * are not enough: `DELETE /api/workspaces/:id` exists and
  * `archives.squad_id` is `ON DELETE SET NULL` (`init.sql:212`), so deleting
  * the last workspace leaves orphaned archives and their logs alive while
  * `COUNT(*) FROM workspaces` reads 0. Checking archives and logs as well
  * keeps the seed off a populated install. It is idempotent across restarts,
- * and it will still re-seed a database that has been emptied completely —
+ * and it will still re-seed a database that has been emptied completely,
  * which is the intended behaviour for a fresh start.
  *
  * @param {number|null} adminId

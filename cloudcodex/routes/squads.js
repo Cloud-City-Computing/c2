@@ -439,7 +439,7 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
         // The invite email is handled above, so the funnel must not send a
         // second one: emailData: null makes buildNotificationEmail return
         // null. That holds whether the send above succeeded, failed, or was
-        // skipped because mail is disabled — this notification is the inbox
+        // skipped because mail is disabled. This notification is the inbox
         // channel, and a mail-off instance has no email channel to fall back
         // to anyway.
         emailData: null,

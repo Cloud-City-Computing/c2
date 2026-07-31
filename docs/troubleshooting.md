@@ -36,7 +36,7 @@ refuse with `503` while mail is off, because both deliver a code by email:
 - **Login for an account using email 2FA.** The verification code cannot
   be sent, so the login is refused outright rather than issuing a
   challenge nobody can answer. The account is unreachable until mail is
-  restored — "Forgot password" is unavailable too, so there is no
+  restored, and "Forgot password" is unavailable too, so there is no
   self-service way out.
 - **Turning 2FA off,** for email *and* TOTP accounts alike. The disable
   confirmation code is emailed in both cases.
