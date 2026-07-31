@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
-import { sendEmail } from '../../services/email.js';
+import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { getAllPresence, getActiveDocCount } from '../../services/collab.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
@@ -18,6 +18,7 @@ describe('Admin Routes', () => {
     resetMocks();
     getAllPresence.mockReset().mockReturnValue({});
     getActiveDocCount.mockReset().mockReturnValue(0);
+    isMailEnabled.mockReturnValue(true);
   });
 
   // --- GET /api/admin/status ---
@@ -380,6 +381,61 @@ describe('Admin Routes', () => {
       expect(sendEmail).toHaveBeenCalled();
     });
 
+    it('returns the signup url and emails it when mail is enabled', async () => {
+      mockAuthenticated(ADMIN_USER);
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([]);                  // no existing user
+      c2_query.mockResolvedValueOnce([]);                  // no existing invitation
+      c2_query.mockResolvedValueOnce({ insertId: 1 });     // insert invitation
+      sendEmail.mockResolvedValueOnce({ messageId: 'sent' });
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.signup_url).toContain('?invite=');
+      expect(res.body.emailed).toBe(true);
+      expect(sendEmail).toHaveBeenCalled();
+    });
+
+    it('returns the signup url without sending when mail is disabled', async () => {
+      mockAuthenticated(ADMIN_USER);
+      isMailEnabled.mockReturnValue(false);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ insertId: 1 });
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.signup_url).toContain('?invite=');
+      expect(res.body.emailed).toBe(false);
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('still returns 201 with the link when sending throws', async () => {
+      mockAuthenticated(ADMIN_USER);
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ insertId: 1 });
+      sendEmail.mockRejectedValueOnce(new Error('smtp exploded'));
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.signup_url).toContain('?invite=');
+      expect(res.body.emailed).toBe(false);
+    });
+
     it('rejects invalid email', async () => {
       mockAuthenticated(ADMIN_USER);
       const res = await request(app)
@@ -413,21 +469,6 @@ describe('Admin Routes', () => {
         .send({ email: 'pending@test.com' });
 
       expect(res.status).toBe(409);
-    });
-
-    it('returns 500 when email fails to send', async () => {
-      mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([]); // no user
-      c2_query.mockResolvedValueOnce([]); // no invitation
-      c2_query.mockResolvedValueOnce({ insertId: 1 }); // insert
-      sendEmail.mockRejectedValueOnce(new Error('SMTP down'));
-
-      const res = await request(app)
-        .post('/api/admin/invitations')
-        .set('Authorization', 'Bearer valid-token')
-        .send({ email: 'newuser@test.com' });
-
-      expect(res.status).toBe(500);
     });
 
     it('rejects non-admin user', async () => {

@@ -10,7 +10,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { sendEmail } from '../services/email.js';
+import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
 import { getAllPresence, getActiveDocCount } from '../services/collab.js';
 
@@ -252,24 +252,37 @@ router.post('/admin/invitations', requireAuth, requireAdmin, asyncHandler(async 
 
   const signupUrl = `${APP_URL}/?invite=${token}`;
 
-  try {
-    await sendEmail({
-      to: trimmedEmail,
-      subject: 'Cloud Codex — You\'ve Been Invited!',
-      text: `You've been invited to join Cloud Codex!\n\nClick the link below to create your account (expires in 7 days):\n${signupUrl}\n\nIf you did not expect this invitation, you can safely ignore this email.`,
-      html: `
+  // The link is the mechanism; email is a convenience. Returning it
+  // unconditionally means a mail failure degrades to a warning instead of
+  // orphaning an invitation row whose token nobody can recover.
+  let emailed = false;
+  if (isMailEnabled()) {
+    try {
+      await sendEmail({
+        to: trimmedEmail,
+        subject: 'Cloud Codex — You\'ve Been Invited!',
+        text: `You've been invited to join Cloud Codex!\n\nClick the link below to create your account (expires in 7 days):\n${signupUrl}\n\nIf you did not expect this invitation, you can safely ignore this email.`,
+        html: `
         <h2>You're Invited to Cloud Codex!</h2>
         <p>You've been invited to join Cloud Codex, a collaborative document workspace.</p>
         <p><a href="${signupUrl}" style="display:inline-block;padding:12px 24px;background:#2ca7db;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Create Your Account</a></p>
         <p style="color:#999;font-size:13px;">This invitation expires in 7 days. If you did not expect this, you can safely ignore this email.</p>
       `,
-    });
-  } catch (err) {
-    console.error('Failed to send user invitation email:', err);
-    return res.status(500).json({ success: false, message: 'Failed to send invitation email' });
+      });
+      emailed = true;
+    } catch (err) {
+      console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: invitation email failed:`, err);
+    }
   }
 
-  res.status(201).json({ success: true, message: `Invitation sent to ${trimmedEmail}` });
+  res.status(201).json({
+    success: true,
+    message: emailed
+      ? `Invitation sent to ${trimmedEmail}`
+      : `Invitation created for ${trimmedEmail}. Share the link below.`,
+    signup_url: signupUrl,
+    emailed,
+  });
 }));
 
 /**
