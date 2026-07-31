@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
+import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { mockAuthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 describe('Squad Routes', () => {
   beforeEach(() => {
     resetMocks();
+    isMailEnabled.mockReturnValue(true);
   });
 
   // ── GET /api/workspaces/:workspaceId/squads ───────────────────
@@ -234,6 +236,25 @@ describe('Squad Routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
+    });
+
+    it('creates the invitation when mail is disabled', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(false);
+      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Squad', workspace_id: 1, owner: TEST_USER.email }]);
+      c2_query.mockResolvedValueOnce([{ id: 2 }]);        // invited user exists
+      c2_query.mockResolvedValueOnce([]);                 // not already a member
+      c2_query.mockResolvedValueOnce([]);                 // no pending invitation
+      c2_query.mockResolvedValueOnce({ insertId: 10 });   // insert invitation
+      c2_query.mockResolvedValueOnce([{ email: 'b@test.com', name: 'B' }]);
+
+      const res = await request(app)
+        .post('/api/squads/1/members/invite')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 2 });
+
+      expect(res.status).toBe(201);
+      expect(sendEmail).not.toHaveBeenCalled();
     });
 
     it('rejects if user already member', async () => {
