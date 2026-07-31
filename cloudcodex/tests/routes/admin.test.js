@@ -1078,8 +1078,8 @@ describe('bootstrapInstance', () => {
     process.env = { ...originalEnv };
   });
 
-  it('seeds workspace, squad, archive and welcome doc on an empty install', async () => {
-    c2_query.mockResolvedValueOnce([{ n: 0 }]);          // workspace count
+  it('seeds workspace, squad, squad ownership, archive and welcome doc on an empty install', async () => {
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 0 }]); // content guard
     c2_query.mockResolvedValueOnce({ insertId: 11 });    // workspace
     c2_query.mockResolvedValueOnce({ insertId: 22 });    // squad
     c2_query.mockResolvedValueOnce({ insertId: 33 });    // squad_members
@@ -1099,21 +1099,102 @@ describe('bootstrapInstance', () => {
     const workspaceCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO workspaces'));
     expect(workspaceCall[1][1]).toBe(process.env.ADMIN_EMAIL);
 
+    // The squad-ownership row. Without it the admin is not a member of the
+    // squad the seeded archive hangs off, so clauses 4-7 of readAccessWhere
+    // never fire for anyone the admin later adds. Deleting the
+    // addSquadOwnerMember call used to leave the whole suite green.
+    const memberCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO squad_members'));
+    expect(memberCall).toBeDefined();
+    expect(memberCall[1]).toEqual([22, 1]);           // (squad id, admin id)
+    expect(memberCall[0]).toMatch(/'owner'/);
+
+    // The welcome document — the headline of the whole first-boot seed, and
+    // the other write that could vanish silently.
+    const logCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO logs'));
+    expect(logCall).toBeDefined();
+    expect(logCall[1][0]).toBe(44);                   // archive_id, from the archive insert
+    expect(logCall[1][1]).toBe('Welcome to Cloud Codex');
+    expect(logCall[1][2]).toMatch(/Welcome to Cloud Codex/);
+    expect(logCall[1][3]).toBe(1);                    // created_by
+    expect(logCall[1][4]).toBe(1);                    // updated_by
+
+    // Five writes, no more and no fewer, plus the single guard read.
+    expect(c2_query).toHaveBeenCalledTimes(6);
+
     // The five writes must run inside withTransaction (not as five loose
     // c2_query calls), or a failure partway through leaves a partial seed
-    // that the COUNT(*) guard mistakes for a completed install on the next
-    // boot. The default test mock (tests/setup.js) forwards straight to
-    // c2_query, which is why the assertions above still see the writes.
+    // that the guard mistakes for a completed install on the next boot. The
+    // default test mock (tests/setup.js) forwards straight to c2_query,
+    // which is why the assertions above still see the writes — the test
+    // below overrides that to prove the writes really are on the
+    // transaction's executor.
     expect(withTransaction).toHaveBeenCalledTimes(1);
   });
 
+  it('runs every seed write on the transaction executor, not the pool', async () => {
+    // The global withTransaction mock forwards with `fn(c2_query)`, so the
+    // executor the code receives IS the c2_query mock and `await query(...)`
+    // is indistinguishable from `await c2_query(...)` to every assertion
+    // above. Dropping the third argument at the addSquadOwnerMember call
+    // would silently push that insert onto a different pooled connection,
+    // outside the transaction, with the suite still green. A distinct
+    // executor spy is the only thing that can tell them apart.
+    const txQuery = vi.fn()
+      .mockResolvedValueOnce({ insertId: 11 })   // workspace
+      .mockResolvedValueOnce({ insertId: 22 })   // squad
+      .mockResolvedValueOnce({ insertId: 33 })   // squad_members
+      .mockResolvedValueOnce({ insertId: 44 })   // archive
+      .mockResolvedValueOnce({ insertId: 55 });  // log
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 0 }]); // content guard
+    withTransaction.mockImplementationOnce(fn => fn(txQuery));
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(true);
+
+    // All five writes landed on the transaction's executor.
+    const txSql = txQuery.mock.calls.map(([sql]) => sql);
+    expect(txQuery).toHaveBeenCalledTimes(5);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO workspaces'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO squads'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO squad_members'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO archives'))).toHaveLength(1);
+    expect(txSql.filter(sql => sql.includes('INSERT INTO logs'))).toHaveLength(1);
+
+    // …and c2_query saw only the guard read. Any write here is a write that
+    // escaped the transaction.
+    expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(c2_query.mock.calls[0][0]).toMatch(/COUNT\(\*\)/);
+    expect(c2_query.mock.calls.some(([sql]) => /INSERT/i.test(sql))).toBe(false);
+  });
+
   it('does nothing when a workspace already exists', async () => {
-    c2_query.mockResolvedValueOnce([{ n: 3 }]);
+    c2_query.mockResolvedValueOnce([{ workspaces: 3, archives: 4, logs: 9 }]);
 
     const seeded = await bootstrapInstance(1);
 
     expect(seeded).toBe(false);
     expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when workspaces are gone but orphaned archives and logs survive', async () => {
+    // DELETE /api/workspaces/:id plus archives.squad_id ON DELETE SET NULL
+    // leaves archives and their logs alive with no workspace above them. A
+    // workspaces-only guard reads that as a fresh install and seeds a second
+    // workspace alongside the survivors.
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 2, logs: 7 }]);
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(false);
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when only orphaned logs survive', async () => {
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 1 }]);
+
+    expect(await bootstrapInstance(1)).toBe(false);
     expect(withTransaction).not.toHaveBeenCalled();
   });
 
@@ -1130,7 +1211,7 @@ describe('bootstrapInstance', () => {
     // back and rethrows (see tests/mysql_connect.test.js), so the caller
     // sees the original error and no rows exist for the next boot's
     // COUNT(*) guard to trip on.
-    c2_query.mockResolvedValueOnce([{ n: 0 }]); // workspace count
+    c2_query.mockResolvedValueOnce([{ workspaces: 0, archives: 0, logs: 0 }]); // content guard
     withTransaction.mockRejectedValueOnce(new Error('archive insert failed'));
 
     await expect(bootstrapInstance(1)).rejects.toThrow('archive insert failed');

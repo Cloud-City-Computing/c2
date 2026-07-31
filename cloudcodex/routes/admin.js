@@ -70,8 +70,17 @@ const WELCOME_HTML = `
 
 /**
  * Seed a usable instance on first boot so a new admin does not land in an
- * empty app. Guarded on an empty workspaces table, so it is idempotent
- * across restarts and never disturbs an existing install.
+ * empty app.
+ *
+ * The guard is "this database holds no content of its own", not "this
+ * instance has never been seeded" — nothing records that. Workspaces alone
+ * are not enough: `DELETE /api/workspaces/:id` exists and
+ * `archives.squad_id` is `ON DELETE SET NULL` (`init.sql:212`), so deleting
+ * the last workspace leaves orphaned archives and their logs alive while
+ * `COUNT(*) FROM workspaces` reads 0. Checking archives and logs as well
+ * keeps the seed off a populated install. It is idempotent across restarts,
+ * and it will still re-seed a database that has been emptied completely —
+ * which is the intended behaviour for a fresh start.
  *
  * @param {number|null} adminId
  * @returns {Promise<boolean>} true when it seeded
@@ -79,8 +88,14 @@ const WELCOME_HTML = `
 export async function bootstrapInstance(adminId) {
   if (!adminId) return false;
 
-  const [row] = await c2_query('SELECT COUNT(*) AS n FROM workspaces', []);
-  if (Number(row?.n ?? 0) > 0) return false;
+  const [row] = await c2_query(
+    `SELECT (SELECT COUNT(*) FROM workspaces) AS workspaces,
+            (SELECT COUNT(*) FROM archives)   AS archives,
+            (SELECT COUNT(*) FROM logs)       AS logs`,
+    []
+  );
+  const existing = Number(row?.workspaces ?? 0) + Number(row?.archives ?? 0) + Number(row?.logs ?? 0);
+  if (existing > 0) return false;
 
   const adminEmail = process.env.ADMIN_EMAIL;
   const adminName = process.env.ADMIN_USERNAME;
