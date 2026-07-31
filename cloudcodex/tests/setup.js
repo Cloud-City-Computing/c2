@@ -18,6 +18,9 @@ vi.mock('../mysql_connect.js', () => ({
 vi.mock('../services/email.js', () => ({
   sendEmail: vi.fn(async () => ({ messageId: 'mock' })),
   verifyEmailConnection: vi.fn(async () => true),
+  initMail: vi.fn(async () => ({ enabled: true, reason: null })),
+  isMailEnabled: vi.fn(() => true),
+  isMailConfigured: vi.fn(() => true),
 }));
 
 // Mock sharp for avatar upload tests (avoid real image processing)
