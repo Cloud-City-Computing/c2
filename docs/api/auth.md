@@ -184,9 +184,10 @@ TOTP.
 
 The `503` applies to email and TOTP accounts alike, since neither can receive
 the confirmation code. Nothing is minted on that path: no `confirmToken` and no
-code row, so the API never claims a code was sent when none was. With no
-admin-side 2FA reset endpoint, restoring mail is the only route back (see
-`docs/maps/open-questions.md`, item B8).
+code row, so the API never claims a code was sent when none was. An
+administrator clears a resulting lockout with
+`POST /api/admin/users/:id/2fa/reset` (see `docs/api/admin.md`); restoring mail
+also works, but is not required.
 
 ---
 

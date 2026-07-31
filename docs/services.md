@@ -371,8 +371,9 @@ Two more refuse with `503` rather than degrade, because there is no honest
 degraded form: `POST /api/login` for an account already using email 2FA, and
 `POST /api/2fa/disable` for *any* 2FA method (its confirmation code is
 emailed either way). Both return before minting a token or writing a
-`two_factor_codes` row. See `docs/maps/open-questions.md` item B8 for the
-lockout this leaves and the admin reset that would close it.
+`two_factor_codes` row. An admin clears the resulting lockout with
+`POST /api/admin/users/:id/2fa/reset` (see `docs/api/admin.md`), which works
+regardless of mail state.
 
 ### `verifyEmailConnection()`
 

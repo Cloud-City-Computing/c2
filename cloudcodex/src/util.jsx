@@ -226,6 +226,7 @@ export const deleteAdminUser = (id) => apiFetch('DELETE', `/api/admin/users/${id
 export const fetchAdminUserPermissions = (id) => apiFetch('GET', `/api/admin/users/${id}/permissions`);
 export const updateAdminUserPermissions = (id, perms) => apiFetch('PUT', `/api/admin/users/${id}/permissions`, perms);
 export const updateAdminUserAdmin = (id, is_admin) => apiFetch('PUT', `/api/admin/users/${id}/admin`, { is_admin });
+export const resetAdminUser2fa = (id) => apiFetch('POST', `/api/admin/users/${id}/2fa/reset`);
 export const fetchAdminInvitations = () => apiFetch('GET', '/api/admin/invitations');
 export const createAdminInvitation = (email) => apiFetch('POST', '/api/admin/invitations', { email });
 export const deleteAdminInvitation = (id) => apiFetch('DELETE', `/api/admin/invitations/${id}`);
