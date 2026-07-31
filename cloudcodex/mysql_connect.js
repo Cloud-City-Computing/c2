@@ -53,7 +53,9 @@ export async function c2_query(sql, params) {
  * the same shape as `c2_query`, bound to the dedicated connection so every
  * call `fn` makes through it participates in the same transaction. Commits
  * and returns fn's result on success; rolls back and rethrows on any
- * failure. The connection is always released back to the pool.
+ * failure. A rollback that itself fails is logged and swallowed so the
+ * ORIGINAL error still reaches the caller. The connection is always
+ * released back to the pool.
  *
  * @param { (query: (sql: string, params?: Array) => Promise<Array>) => Promise<any> } fn
  * @returns { Promise<any> } whatever `fn` resolves to
@@ -70,7 +72,15 @@ export async function withTransaction(fn) {
     await connection.commit();
     return result;
   } catch (err) {
-    await connection.rollback();
+    try {
+      await connection.rollback();
+    } catch (rollbackErr) {
+      // A failing rollback must never replace the error that caused it: the
+      // original names the statement that actually broke, and that is the only
+      // thing an operator can act on. Surface the rollback failure in the log
+      // and rethrow the original.
+      console.error(`[${new Date().toISOString()}] transaction rollback failed:`, rollbackErr);
+    }
     throw err;
   } finally {
     connection.release();

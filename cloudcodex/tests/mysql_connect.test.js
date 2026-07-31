@@ -204,15 +204,28 @@ describe('withTransaction', () => {
     expect(releaseMock).toHaveBeenCalledTimes(1);
   });
 
-  it('releases the connection even when rollback itself throws', async () => {
+  it('keeps the original error and logs the rollback failure when rollback itself throws', async () => {
     const err = new Error('write failed');
     const fn = vi.fn(async () => {
       throw err;
     });
     rollbackMock.mockRejectedValueOnce(new Error('connection already closed'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(withTransaction(fn)).rejects.toThrow('connection already closed');
+    try {
+      // The caller must learn which statement broke. A rollback failure that
+      // replaced 'write failed' with 'connection already closed' would hide
+      // the only actionable fact.
+      await expect(withTransaction(fn)).rejects.toThrow('write failed');
 
-    expect(releaseMock).toHaveBeenCalledTimes(1);
+      // The rollback failure is still surfaced, just not as the thrown error.
+      const logged = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(logged).toMatch(/transaction rollback failed/i);
+      expect(logged).toMatch(/connection already closed/);
+
+      expect(releaseMock).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
