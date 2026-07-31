@@ -41,9 +41,14 @@ refuse with `503` while mail is off, because both deliver a code by email:
 - **Turning 2FA off,** for email *and* TOTP accounts alike. The disable
   confirmation code is emailed in both cases.
 
-There is currently no admin-side 2FA reset, so restoring mail (or editing
-`users.two_factor_method` in the database) is the only repair. Tracked in
-`docs/maps/open-questions.md`, item B8.
+**Recovery: an admin can clear 2FA without touching the database.**
+`POST /api/admin/users/:id/2fa/reset` (also exposed as a "Reset 2FA" button
+in the admin console's Users panel, next to a user whose 2FA is enabled)
+clears `two_factor_method`, `totp_secret`, any outstanding
+`two_factor_codes`, and any unused `password_reset_tokens` rows left behind
+by an in-progress setup or disable confirmation. The affected user gets an
+in-app notification either way; restoring mail is only needed if they want
+to set 2FA up again with email delivery. See `docs/api/admin.md`.
 
 **Fix.**
 1. Confirm all three SMTP variables are set in `.env`.

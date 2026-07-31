@@ -94,6 +94,7 @@ List all registered users.
       "avatar_url": "/avatars/bob.jpg",
       "is_admin": false,
       "created_at": "...",
+      "two_factor_method": "none",
       "squad_count": 2
     }
   ]
@@ -119,6 +120,38 @@ Get the global permission flags for a user (`create_squad`, `create_archive`, `c
 Update global permission flags for a user.
 
 **Body:** `{ create_squad?, create_archive?, create_log? }`
+
+---
+
+### `POST /api/admin/users/:id/2fa/reset`
+
+Clear a user's two-factor enrolment. The recovery path for a locked-out
+account: every 2FA code (login for email 2FA, disable-confirmation for
+either method) travels by email, so on a mail-less instance a user with
+email 2FA cannot log in, disable 2FA, or reset their password, and a user
+mid-way through TOTP setup can't finish it either. This is the only
+self-service-free repair short of editing the database directly.
+
+Clears everything that keeps the account enrolled or mid-flow:
+- `users.two_factor_method` back to `'none'` and `users.totp_secret` to `NULL`.
+- All `two_factor_codes` rows for the user (login and disable-confirmation codes).
+- Unused `password_reset_tokens` rows for the user. `POST /2fa/enable` and
+  `POST /2fa/disable` both reuse this table for their short-lived
+  `setupToken`/`confirmToken` (there is no dedicated table), so this is
+  also where an abandoned setup or disable confirmation lingers.
+
+Always clears state, even if `two_factor_method` is already `'none'`: a
+user can have an unconfirmed `totp_secret` written by `/2fa/enable` without
+the method ever having changed.
+
+Notifies the affected user in-app (`services/notifications.js`,
+type `admin_2fa_reset`) so they know their 2FA was reset if they didn't
+expect it; self-suppressed when an admin resets their own account. The
+email leg of that notification is a no-op (no `email-templates.js`
+builder for the type) by design, since the in-app inbox is the channel
+this recovery path exists to not depend on mail for.
+
+**Response:** `{ success: true, message }`; `404` if the user does not exist.
 
 ---
 

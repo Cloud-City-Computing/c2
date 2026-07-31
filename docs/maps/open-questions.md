@@ -172,27 +172,6 @@ The email is sent anyway, by a direct `sendEmail` call in
 **Consequence:** turning off "email me about squad invites" in the preferences
 UI has no effect.
 
-### B8. There is no admin-side 2FA reset, so losing mail locks accounts out
-
-Every 2FA path that needs a code delivers it by email. `routes/auth.js` now
-refuses honestly with `503` instead of minting a token nothing can answer, in
-both places (the login branch for `two_factor_method === 'email'`, and
-`POST /2fa/disable` for **both** methods, since its confirmation code is
-emailed either way). That is the correct behaviour for the API, but it is not a
-repair.
-
-**Consequence:** on an instance where mail is off, or was configured and then
-broke, a user with email 2FA cannot log in and cannot disable 2FA;
-`POST /api/forgot-password` refuses too (`auth.js:604`), so there is no
-self-service recovery. A TOTP user can still log in but cannot turn 2FA off.
-
-**Missing piece:** an admin-only endpoint (something like
-`POST /api/admin/users/:id/2fa/reset`, `requireAdmin`, setting
-`two_factor_method = 'none'` and `totp_secret = NULL` with an `logActivity`
-audit row) so an operator can clear 2FA without a `mysql` shell. Deliberately
-out of scope for the fix that added the refusals; the only workarounds today
-are restoring SMTP or editing `users.two_factor_method` directly.
-
 ## C. Design tensions, not defects
 
 ### C1. `canWrite` is evaluated once per collab connection
