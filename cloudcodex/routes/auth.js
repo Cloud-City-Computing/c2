@@ -574,14 +574,25 @@ function generateResetToken() {
 /**
  * POST /api/forgot-password
  * Body: { email }
- * Sends a password reset link to the user's email. Always responds with success
- * to prevent email enumeration.
+ * Sends a password reset link to the user's email. The response body is
+ * identical for every address, existing or not, to prevent email enumeration.
+ * Refuses honestly, before any lookup, when mail is disabled instance-wide.
  */
 router.post('/forgot-password', asyncHandler(async (req, res) => {
   const { email } = req.body;
 
   if (!email || !isValidEmail(email)) {
     return res.status(400).json({ success: false, message: 'A valid email address is required' });
+  }
+
+  // Return before minting a token: a reset token that can never be delivered
+  // is worse than an honest refusal. Identical for every address, so this
+  // leaks nothing about which accounts exist.
+  if (!isMailEnabled()) {
+    return res.json({
+      success: false,
+      message: 'Password reset is unavailable on this instance. Contact your administrator.',
+    });
   }
 
   // Track start time so we can normalize response timing to prevent email enumeration

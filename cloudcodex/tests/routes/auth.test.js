@@ -418,6 +418,22 @@ describe('Auth Routes', () => {
     });
   });
 
+  describe('POST /api/forgot-password with mail disabled', () => {
+    it('reports unavailable without touching the database', async () => {
+      isMailEnabled.mockReturnValue(false);
+
+      const res = await request(app)
+        .post('/api/forgot-password')
+        .send({ email: 'user@test.com' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/unavailable/i);
+      expect(c2_query).not.toHaveBeenCalled();
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+  });
+
   // ── POST /api/reset-password ──────────────────────────────
 
   describe('POST /api/reset-password', () => {
