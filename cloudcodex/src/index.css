@@ -4097,6 +4097,40 @@ body {
   box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
+.totp-setup-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.totp-qr-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  width: 200px;
+  margin: 4px auto;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 8px;
+}
+
+.totp-secret-text {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: monospace;
+  white-space: normal;
+  word-break: break-all;
+  user-select: all;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-main);
+  color: var(--text-primary);
+}
+
 /* =========================
    Archives Management
 ========================= */

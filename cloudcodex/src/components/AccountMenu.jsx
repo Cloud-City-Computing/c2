@@ -274,7 +274,7 @@ export function AccountPreferencesPanel() {
     setTotpCode('');
     try {
       const res = await apiFetch('POST', '/api/2fa/enable', { method: 'totp' });
-      setTotpSetup({ setupToken: res.setupToken });
+      setTotpSetup({ setupToken: res.setupToken, qrDataUrl: res.qr_data_url, secret: res.secret });
       setStatus({ type: 'success', message: res.message });
     } catch (e) {
       setStatus({ type: 'error', message: e.body?.message ?? 'Error starting authenticator setup.' });
@@ -333,7 +333,16 @@ export function AccountPreferencesPanel() {
 
       {totpSetup && (
         <div className="totp-confirm-section">
-          <p className="text-sm">Check your email for the QR code. Scan it with your authenticator app, then enter the code below:</p>
+          {totpSetup.qrDataUrl ? (
+            <div className="totp-setup-inline">
+              <p className="text-sm">Scan this QR code with your authenticator app, or enter the secret manually:</p>
+              <img className="totp-qr-image" src={totpSetup.qrDataUrl} alt="TOTP QR code" width="256" height="256" />
+              <code className="totp-secret-text">{totpSetup.secret}</code>
+              <p className="text-sm">Then enter the code below:</p>
+            </div>
+          ) : (
+            <p className="text-sm">Check your email for the QR code. Scan it with your authenticator app, then enter the code below:</p>
+          )}
           <div className="totp-confirm-form">
             <input
               type="text"

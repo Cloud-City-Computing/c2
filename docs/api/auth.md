@@ -125,15 +125,25 @@ Verify a TOTP code during login.
 
 ---
 
-### `POST /api/2fa/setup/email` *(requires auth)*
+### `POST /api/2fa/enable` *(requires auth)*
 
-Enable email-based 2FA for the current user. Sends a verification code.
+Enable two-factor authentication for the current user.
 
----
+**Body:** `{ method: 'email' | 'totp' }`
 
-### `POST /api/2fa/setup/totp` *(requires auth)*
-
-Begin TOTP setup. Returns `{ secret, qrCode }` (base64 PNG QR code).
+- `method: 'email'` — enables email-based 2FA immediately.
+  **Response:** `{ success: true, message }`.
+  If mail is disabled on this instance, returns `400 { success: false, message }`
+  instead (email 2FA would be a lockout with no inbox to receive the login code).
+- `method: 'totp'` — generates a TOTP secret and QR code, stores the secret
+  pending confirmation, and creates a setup token. The user must then call
+  `POST /api/2fa/totp/confirm` with that token and a code from their app.
+  - If mail is enabled, the QR code is emailed to the user's address.
+    **Response:** `{ success: true, message, setupToken }`.
+  - If mail is disabled, the setup material is returned inline instead of
+    emailed. **Response:** `{ success: true, message, setupToken, qr_data_url, secret }`,
+    where `qr_data_url` is the QR code as a base64 PNG data URL and `secret` is
+    the base32 TOTP secret for manual entry.
 
 ---
 

@@ -775,6 +775,8 @@ describe('Auth Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.setupToken).toBeDefined();
       expect(sendEmail).toHaveBeenCalled();
+      expect(res.body.qr_data_url).toBeUndefined();
+      expect(res.body.secret).toBeUndefined();
     });
 
     it('rejects invalid method', async () => {
@@ -817,10 +819,12 @@ describe('Auth Routes', () => {
       expect(c2_query).not.toHaveBeenCalled();
     });
 
-    it('still allows TOTP', async () => {
+    it('still allows TOTP and returns setup material inline instead of emailing it', async () => {
       mockAuthenticated();
       isMailEnabled.mockReturnValue(false);
-      c2_query.mockResolvedValueOnce({ affectedRows: 1 });
+      c2_query
+        .mockResolvedValueOnce({ affectedRows: 1 })   // UPDATE users (store totp_secret)
+        .mockResolvedValueOnce([]);                   // INSERT setup token
 
       const res = await request(app)
         .post('/api/2fa/enable')
@@ -828,6 +832,12 @@ describe('Auth Routes', () => {
         .send({ method: 'totp' });
 
       expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.setupToken).toBeDefined();
+      expect(res.body.qr_data_url).toMatch(/^data:image\/png;base64,/);
+      expect(res.body.secret).toBeDefined();
+      expect(res.body.message).not.toMatch(/email/i);
+      expect(sendEmail).not.toHaveBeenCalled();
     });
   });
 

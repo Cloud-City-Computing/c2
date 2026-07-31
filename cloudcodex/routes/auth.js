@@ -804,6 +804,18 @@ router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
       [req.user.id, setupToken]
     );
 
+    // Mail off: there is no inbox to deliver the QR to, so hand the setup
+    // material back in the response instead of emailing it.
+    if (!isMailEnabled()) {
+      return res.json({
+        success: true,
+        message: 'Scan the QR code shown on screen with your authenticator app, then enter the code below to complete setup.',
+        setupToken,
+        qr_data_url: qrDataUrl,
+        secret: secret.base32,
+      });
+    }
+
     // Email the QR code to the user
     try {
       await sendEmail({
