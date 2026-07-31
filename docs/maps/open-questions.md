@@ -183,7 +183,7 @@ repair.
 
 **Consequence:** on an instance where mail is off, or was configured and then
 broke, a user with email 2FA cannot log in and cannot disable 2FA;
-`POST /api/forgot-password` refuses too (`auth.js:591`), so there is no
+`POST /api/forgot-password` refuses too (`auth.js:604`), so there is no
 self-service recovery. A TOTP user can still log in but cannot turn 2FA off.
 
 **Missing piece:** an admin-only endpoint (something like
@@ -203,7 +203,7 @@ per keystroke), but worth stating.
 
 ### C2. One session row per user
 
-`generateSessionToken` (`mysql_connect.js:64-99`) reuses the existing row, so
+`generateSessionToken` (`mysql_connect.js:109-144`) reuses the existing row, so
 signing in on a second device returns the first device's token and `POST
 /api/logout` signs out everywhere. The schema does not enforce the one-row
 assumption with a unique key on `user_id`.
@@ -249,7 +249,7 @@ Corrected in this pass, listed here so the drift pattern is visible:
   The doc's "filesystem globally" reads as more complete than it is.
 - **`useGitHubStatus` is `.jsx`, not `.js`.**
 - **The comment "no external job queue"** is accurate in spirit, but
-  `server.js:49-67` does run an in-process daily prune, which is a scheduled job
+  `server.js:73-89` does run an in-process daily prune, which is a scheduled job
   by another name.
 
 ## E. Things not investigated
