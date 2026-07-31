@@ -357,15 +357,27 @@ describe('Admin Routes', () => {
 
       const updateUsers = calls.find((c) => /UPDATE users SET two_factor_method/i.test(c[0]));
       expect(updateUsers).toBeTruthy();
-      expect(updateUsers[0]).toMatch(/totp_secret\s*=\s*NULL/i);
+      // Pinned end-to-end: both columns cleared, unconditional on the
+      // current method (no "AND two_factor_method = ..."), scoped by a
+      // bound id (not a hardcoded literal).
+      expect(updateUsers[0]).toMatch(
+        /^UPDATE users SET two_factor_method\s*=\s*'none',\s*totp_secret\s*=\s*NULL WHERE id = \?$/i
+      );
       expect(updateUsers[1]).toEqual([5]);
 
       const deleteCodes = calls.find((c) => /DELETE FROM two_factor_codes/i.test(c[0]));
       expect(deleteCodes).toBeTruthy();
+      // Pinned: scoped to the target user, not an unfiltered wipe.
+      expect(deleteCodes[0]).toMatch(/^DELETE FROM two_factor_codes WHERE user_id = \?$/i);
       expect(deleteCodes[1]).toEqual([5]);
 
       const deleteTokens = calls.find((c) => /DELETE FROM password_reset_tokens/i.test(c[0]));
       expect(deleteTokens).toBeTruthy();
+      // Pinned: scoped to the target user AND unused only, not every user's
+      // tokens and not the used ones too.
+      expect(deleteTokens[0]).toMatch(
+        /^DELETE FROM password_reset_tokens WHERE user_id = \?\s+AND used = FALSE$/i
+      );
       expect(deleteTokens[1]).toEqual([5]);
 
       const notifInsert = calls.find((c) => /INSERT INTO notifications/i.test(c[0]));
