@@ -28,6 +28,40 @@ const transporter = nodemailer.createTransport({
 
 const DEFAULT_FROM = process.env.SMTP_FROM ?? 'Cloud Codex <noreply@cloudcitycomputing.com>';
 
+// --- Mail capability ---
+//
+// Cloud Codex runs without SMTP. The capability is decided once at boot by
+// initMail(): configuration present AND the connection verifies. Consumers
+// that carry a required payload (invitations, password reset) check
+// isMailEnabled() and degrade; fire-and-forget consumers need no changes
+// because sendEmail() becomes a no-op.
+
+let mailReady = false;
+
+/** True when all three required SMTP variables are present. */
+export function isMailConfigured() {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+/** True when mail is configured and verified. False until initMail() succeeds. */
+export function isMailEnabled() {
+  return mailReady;
+}
+
+/**
+ * Determine mail availability once, at boot.
+ * @returns {Promise<{enabled: boolean, reason: string|null}>}
+ */
+export async function initMail() {
+  if (!isMailConfigured()) {
+    mailReady = false;
+    return { enabled: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' };
+  }
+  const ok = await verifyEmailConnection();
+  mailReady = ok;
+  return { enabled: ok, reason: ok ? null : 'SMTP connection failed' };
+}
+
 /**
  * Reject strings containing newlines or carriage returns to prevent email header injection.
  */
@@ -49,6 +83,9 @@ function sanitizeHeaderValue(value, fieldName) {
  * @returns {Promise<Object>} nodemailer send result
  */
 export function sendEmail({ to, subject, text, html, from }) {
+  if (!mailReady) {
+    return Promise.resolve({ skipped: true, reason: 'mail disabled' });
+  }
   return transporter.sendMail({
     from: sanitizeHeaderValue(from ?? DEFAULT_FROM, 'from'),
     to: sanitizeHeaderValue(to, 'to'),
