@@ -16,7 +16,7 @@ const listenMock = vi.fn(() => ({}));
 vi.mock('vite-express', () => ({ default: { listen: listenMock } }));
 vi.mock('../services/collab.js', () => ({ setupCollabServer: vi.fn() }));
 vi.mock('../services/user-channel.js', () => ({ setupUserChannelServer: vi.fn() }));
-vi.mock('../routes/admin.js', () => ({ default: {}, ensureAdminUser: vi.fn() }));
+vi.mock('../routes/admin.js', () => ({ default: {}, ensureAdminUser: vi.fn(), bootstrapInstance: vi.fn() }));
 vi.mock('../app.js', () => ({ default: {} }));
 vi.mock('../services/email.js', () => ({
   verifyEmailConnection: vi.fn(async () => true),

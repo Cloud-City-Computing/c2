@@ -37,7 +37,7 @@ export async function ensureAdminUser() {
       `UPDATE users SET is_admin = TRUE, password_hash = ?, email = ? WHERE id = ?`,
       [passwordHash, email, existing.id]
     );
-    return;
+    return existing.id;
   }
 
   // Create the admin user
@@ -50,6 +50,72 @@ export async function ensureAdminUser() {
 
   // Create default permissions row
   await createDefaultPermissions(result.insertId);
+  return result.insertId;
+}
+
+const WELCOME_HTML = `
+<h1>Welcome to Cloud Codex</h1>
+<p>This document lives inside the structure Cloud Codex uses to organise everything:</p>
+<ul>
+  <li><strong>Workspace</strong> is the top level, usually your company or team.</li>
+  <li><strong>Squad</strong> is a group of people inside it. Membership and permissions are set here.</li>
+  <li><strong>Archive</strong> is a collection of related documents. Access is granted at this level.</li>
+  <li><strong>Log</strong> is a document, like this one.</li>
+</ul>
+<p>You are the owner of this workspace, so you can rename anything, invite people from the Admin console, and create as many squads and archives as you need.</p>
+<h2>Try it</h2>
+<p>Edit this page. Open it in two browser windows and watch the changes sync live: that is the CRDT-backed collaborative editor, not a periodic save.</p>
+<p>When you are ready, invite someone from <strong>Admin, Invitations</strong>. If this instance has no email configured, you will get a copyable invite link instead.</p>
+`;
+
+/**
+ * Seed a usable instance on first boot so a new admin does not land in an
+ * empty app. Guarded on an empty workspaces table, so it is idempotent
+ * across restarts and never disturbs an existing install.
+ *
+ * @param {number|null} adminId
+ * @returns {Promise<boolean>} true when it seeded
+ */
+export async function bootstrapInstance(adminId) {
+  if (!adminId) return false;
+
+  const [row] = await c2_query('SELECT COUNT(*) AS n FROM workspaces', []);
+  if (Number(row?.n ?? 0) > 0) return false;
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminName = process.env.ADMIN_USERNAME;
+
+  // workspaces.owner is a TEXT column holding an email, not a foreign key.
+  const workspace = await c2_query(
+    'INSERT INTO workspaces (name, owner) VALUES (?, ?)',
+    [`${adminName}'s Workspace`, adminEmail]
+  );
+
+  const squad = await c2_query(
+    'INSERT INTO squads (workspace_id, name, created_by) VALUES (?, ?, ?)',
+    [workspace.insertId, 'General', adminId]
+  );
+
+  await addSquadOwnerMember(squad.insertId, adminId);
+
+  // squad_id MUST be set. A NULL squad_id orphans the archive: clauses 4
+  // through 7 of readAccessWhere all fail and only the creator can reach it.
+  const archive = await c2_query(
+    `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
+     VALUES (?, ?, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
+    ['Getting Started', squad.insertId, adminId, adminId, adminId]
+  );
+
+  // Static authored content, not user input, so it does not pass through
+  // sanitizeHtml. Never interpolate anything into WELCOME_HTML.
+  await c2_query(
+    `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by)
+     VALUES (?, ?, ?, ?, ?)`,
+    [archive.insertId, 'Welcome to Cloud Codex', WELCOME_HTML, adminId, adminId]
+  );
+
+  console.error(`[${new Date().toISOString()}] bootstrap: seeded starter workspace for ${adminEmail}`);
+  return true;
 }
 
 // ─── Admin status check ─────────────────────────────────────

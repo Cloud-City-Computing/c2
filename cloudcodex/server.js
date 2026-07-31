@@ -10,7 +10,7 @@ import { initMail } from './services/email.js';
 import { setupCollabServer } from './services/collab.js';
 import { setupUserChannelServer } from './services/user-channel.js';
 import { c2_query } from './mysql_connect.js';
-import { ensureAdminUser } from './routes/admin.js';
+import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import app from './app.js';
 
 // ─── Require Admin credentials before starting ──────────────
@@ -34,7 +34,8 @@ const server = ViteExpress.listen(app, 3000, async () => {
   }
 
   // Ensure the admin super user exists in the database
-  await ensureAdminUser();
+  const adminId = await ensureAdminUser();
+  await bootstrapInstance(adminId);
 });
 
 // Attach WebSocket collaborative editing server to the HTTP server

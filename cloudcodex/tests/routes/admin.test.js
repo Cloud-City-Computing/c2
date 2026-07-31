@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { getAllPresence, getActiveDocCount } from '../../services/collab.js';
+import { bootstrapInstance } from '../../routes/admin.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 vi.mock('../../services/collab.js', () => ({
@@ -1055,5 +1056,63 @@ describe('Admin Routes', () => {
       const res = await request(app).get('/api/admin/presence');
       expect(res.status).toBe(401);
     });
+  });
+});
+
+// --- bootstrapInstance ---
+// Not a route handler, so it's exercised directly rather than over HTTP.
+// This describe block owns its own env/mock lifecycle (it's a sibling of
+// `describe('Admin Routes', ...)`, so that block's beforeEach does not
+// cascade here) to keep ADMIN_EMAIL/ADMIN_USERNAME explicit rather than
+// inherited from whatever the machine's .env happens to hold — CI has none.
+describe('bootstrapInstance', () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    resetMocks();
+    process.env.ADMIN_EMAIL = 'admin@example.com';
+    process.env.ADMIN_USERNAME = 'Admin';
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('seeds workspace, squad, archive and welcome doc on an empty install', async () => {
+    c2_query.mockResolvedValueOnce([{ n: 0 }]);          // workspace count
+    c2_query.mockResolvedValueOnce({ insertId: 11 });    // workspace
+    c2_query.mockResolvedValueOnce({ insertId: 22 });    // squad
+    c2_query.mockResolvedValueOnce({ insertId: 33 });    // squad_members
+    c2_query.mockResolvedValueOnce({ insertId: 44 });    // archive
+    c2_query.mockResolvedValueOnce({ insertId: 55 });    // log
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(true);
+
+    const archiveCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO archives'));
+    expect(archiveCall).toBeDefined();
+    // squad_id is the second bound param and must not be null, or the
+    // archive is orphaned and unreachable by anyone but its creator.
+    expect(archiveCall[1][1]).toBe(22);
+
+    const workspaceCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO workspaces'));
+    expect(workspaceCall[1][1]).toBe(process.env.ADMIN_EMAIL);
+  });
+
+  it('does nothing when a workspace already exists', async () => {
+    c2_query.mockResolvedValueOnce([{ n: 3 }]);
+
+    const seeded = await bootstrapInstance(1);
+
+    expect(seeded).toBe(false);
+    expect(c2_query).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing when no admin id is supplied', async () => {
+    const seeded = await bootstrapInstance(null);
+
+    expect(seeded).toBe(false);
+    expect(c2_query).not.toHaveBeenCalled();
   });
 });
