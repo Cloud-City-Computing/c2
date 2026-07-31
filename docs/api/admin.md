@@ -79,7 +79,10 @@ Delete a workspace and all of its contents (squads, archives, documents). **Irre
 
 ### `GET /api/admin/users`
 
-List all registered users.
+List all registered users. `has_totp_secret` is derived (`totp_secret IS NOT
+NULL`) and never carries the secret itself: it tells the admin console
+whether a user has an unconfirmed authenticator-app setup so the Reset 2FA
+button is reachable even while `two_factor_method` is still `'none'`.
 
 **Response**
 
@@ -95,6 +98,7 @@ List all registered users.
       "is_admin": false,
       "created_at": "...",
       "two_factor_method": "none",
+      "has_totp_secret": false,
       "squad_count": 2
     }
   ]
@@ -128,9 +132,8 @@ Update global permission flags for a user.
 Clear a user's two-factor enrolment. The recovery path for a locked-out
 account: every 2FA code (login for email 2FA, disable-confirmation for
 either method) travels by email, so on a mail-less instance a user with
-email 2FA cannot log in, disable 2FA, or reset their password, and a user
-mid-way through TOTP setup can't finish it either. This is the only
-self-service-free repair short of editing the database directly.
+email 2FA cannot log in, disable 2FA, or reset their password. This is the
+only self-service-free repair short of editing the database directly.
 
 Clears everything that keeps the account enrolled or mid-flow:
 - `users.two_factor_method` back to `'none'` and `users.totp_secret` to `NULL`.

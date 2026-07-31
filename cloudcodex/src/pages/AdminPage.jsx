@@ -585,7 +585,7 @@ function UsersPanel() {
                       <button className="btn btn-ghost btn-sm" onClick={() => showModal(<UserPermissionsModal user={u} onUpdated={load} />, 'modal-md')}>
                         Permissions
                       </button>
-                      {u.two_factor_method && u.two_factor_method !== 'none' && (
+                      {((u.two_factor_method && u.two_factor_method !== 'none') || u.has_totp_secret) && (
                         <button className="btn btn-ghost btn-sm" onClick={() => handleResetTwoFactor(u)}>Reset 2FA</button>
                       )}
                       {!u.is_admin && (

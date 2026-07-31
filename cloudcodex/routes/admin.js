@@ -250,6 +250,7 @@ router.delete('/admin/workspaces/:id', requireAuth, requireAdmin, asyncHandler(a
 router.get('/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const users = await c2_query(
     `SELECT u.id, u.name, u.email, u.avatar_url, u.is_admin, u.created_at, u.two_factor_method,
+            u.totp_secret IS NOT NULL AS has_totp_secret,
             (SELECT COUNT(*) FROM squad_members tm WHERE tm.user_id = u.id) AS squad_count
      FROM users u
      ORDER BY u.created_at DESC`
@@ -319,9 +320,12 @@ router.post('/admin/users/:id/2fa/reset', requireAuth, requireAdmin, asyncHandle
   console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: admin ${req.user.id} reset 2FA for user ${targetId}`);
 
   // Self-suppressed by createNotification when the admin resets their own
-  // 2FA. The email leg is a no-op (no email-templates.js builder for this
-  // type) which is fine: the in-app inbox works regardless of mail, and
-  // that is exactly the channel this recovery path exists for.
+  // 2FA. The email leg is a no-op: DEFAULT_EMAIL_PREFS in
+  // services/notifications.js has no admin_2fa_reset key, so shouldEmail()
+  // falls back to false, and setPrefs() only persists whitelisted keys, so
+  // no user can opt in either. That is fine: the in-app inbox works
+  // regardless of mail, and that is exactly the channel this recovery path
+  // exists for.
   //
   // The reset itself is already committed above, and this endpoint exists to
   // rescue a locked-out account. Failing the request on a notification error
