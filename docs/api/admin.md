@@ -136,13 +136,20 @@ List all invitations (pending and accepted).
 
 ### `POST /api/admin/invitations`
 
-Send an invitation email to a new user. The email must not belong to an existing account or an existing pending invitation.
+Invite a new user. The email must not belong to an existing account or an existing pending invitation.
 
 **Body:** `{ email }`
 
-The invitation email contains a signup link with a `?invite=<token>` query parameter that the sign-up form uses.
+The invitation is always created and its signup link (a `?invite=<token>` query
+parameter the sign-up form reads) is always returned in the response, so the
+link is usable even when no mail is sent. Email delivery is best-effort:
+if the instance has no mail server configured, sending is skipped; if
+sending fails, the failure is logged and does not fail the request.
 
-**Response:** `201` with `{ success: true, message }` on success; `409` if already invited/registered.
+**Response:** `201` with
+`{ success: true, message, signup_url, emailed }` on success (`emailed` is
+`true` only if the invitation email was actually sent); `409` if already
+invited/registered.
 
 ---
 

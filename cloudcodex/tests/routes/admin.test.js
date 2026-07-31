@@ -434,6 +434,8 @@ describe('Admin Routes', () => {
       expect(res.status).toBe(201);
       expect(res.body.signup_url).toContain('?invite=');
       expect(res.body.emailed).toBe(false);
+      expect(res.body.message).toContain('Share the link below');
+      expect(sendEmail).toHaveBeenCalled();
     });
 
     it('rejects invalid email', async () => {
