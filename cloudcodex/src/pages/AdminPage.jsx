@@ -207,6 +207,7 @@ function InviteUserModal({ onInvited }) {
   const handleSubmit = async () => {
     setError(null);
     setSuccess(null);
+    setLastInvite(null);
     if (!email.trim()) { setError('Email address is required.'); return; }
     try {
       const res = await createAdminInvitation(email);
@@ -243,7 +244,7 @@ function InviteUserModal({ onInvited }) {
           placeholder="newuser@example.com" />
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Send Invitation</button>
       </div>
-      {lastInvite ? (
+      {lastInvite && (
         <div className="invite-link-callout">
           <p>
             {lastInvite.emailed
@@ -251,14 +252,9 @@ function InviteUserModal({ onInvited }) {
               : `Invitation created for ${lastInvite.email}. Email is disabled on this instance, so share this link:`}
           </p>
           <input className="invite-link-input" type="text" readOnly value={lastInvite.url} />
-          <button
-            className="btn btn-ghost"
-            onClick={handleCopyInviteLink}
-          >
-            Copy link
-          </button>
+          <button className="btn btn-ghost btn-sm" onClick={handleCopyInviteLink}>Copy link</button>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
