@@ -18,6 +18,13 @@ vi.mock('../services/collab.js', () => ({ setupCollabServer: vi.fn() }));
 vi.mock('../services/user-channel.js', () => ({ setupUserChannelServer: vi.fn() }));
 vi.mock('../routes/admin.js', () => ({ default: {}, ensureAdminUser: vi.fn() }));
 vi.mock('../app.js', () => ({ default: {} }));
+vi.mock('../services/email.js', () => ({
+  verifyEmailConnection: vi.fn(async () => true),
+  initMail: vi.fn(async () => ({ enabled: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' })),
+  isMailEnabled: vi.fn(() => false),
+  isMailConfigured: vi.fn(() => false),
+  sendEmail: vi.fn(),
+}));
 
 let exitSpy;
 let errorSpy;
@@ -35,54 +42,6 @@ afterEach(() => {
 });
 
 describe('server.js — startup env validation', () => {
-  it('exits with status 1 when SMTP_HOST is missing', async () => {
-    const original = { ...process.env };
-    delete process.env.SMTP_HOST;
-    process.env.SMTP_USER = 'u';
-    process.env.SMTP_PASS = 'p';
-
-    try {
-      await import('../server.js');
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      // Logged a useful message
-      const allLogs = errorSpy.mock.calls.flat().join(' ');
-      expect(allLogs).toMatch(/SMTP/i);
-    } finally {
-      process.env = original;
-    }
-  });
-
-  it('exits with status 1 when SMTP_USER is missing', async () => {
-    const original = { ...process.env };
-    process.env.SMTP_HOST = 'localhost';
-    delete process.env.SMTP_USER;
-    process.env.SMTP_PASS = 'p';
-    try {
-      await import('../server.js');
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      process.env = original;
-    }
-  });
-
-  it('exits with status 1 when ADMIN_USERNAME is missing (after SMTP passes)', async () => {
-    const original = { ...process.env };
-    process.env.SMTP_HOST = 'localhost';
-    process.env.SMTP_USER = 'u';
-    process.env.SMTP_PASS = 'p';
-    delete process.env.ADMIN_USERNAME;
-    process.env.ADMIN_PASSWORD = 'p';
-    process.env.ADMIN_EMAIL = 'a@b.c';
-    try {
-      await import('../server.js');
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      const allLogs = errorSpy.mock.calls.flat().join(' ');
-      expect(allLogs).toMatch(/ADMIN/i);
-    } finally {
-      process.env = original;
-    }
-  });
-
   it('does not exit when all required env vars are present', async () => {
     const original = { ...process.env };
     process.env.SMTP_HOST = 'localhost';
@@ -101,5 +60,35 @@ describe('server.js — startup env validation', () => {
     } finally {
       process.env = original;
     }
+  });
+});
+
+describe('server.js: mail is optional', () => {
+  it('does not exit when SMTP configuration is absent', async () => {
+    const original = { ...process.env };
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+
+    await import('../server.js');
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(listenMock).toHaveBeenCalled();
+
+    process.env = original;
+  });
+
+  it('still exits when admin configuration is absent', async () => {
+    const original = { ...process.env };
+    delete process.env.ADMIN_USERNAME;
+
+    await import('../server.js');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    process.env = original;
   });
 });
