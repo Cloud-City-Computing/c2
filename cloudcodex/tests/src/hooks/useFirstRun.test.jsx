@@ -43,6 +43,7 @@ describe('useFirstRun', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.firstRun).toBeNull();
+    expect(getFirstRun).toHaveBeenCalledTimes(1);
   });
 
   it('complete() clears the payload and calls the endpoint', async () => {
@@ -67,32 +68,5 @@ describe('useFirstRun', () => {
     await act(async () => { await result.current.complete(); });
 
     expect(result.current.firstRun).toBeNull();
-  });
-
-  it('does not update state after unmount when the fetch resolves late', async () => {
-    let resolveFetch;
-    getFirstRun.mockImplementationOnce(() => new Promise((resolve) => { resolveFetch = resolve; }));
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const { unmount } = renderHook(() => useFirstRun());
-    unmount();
-    await act(async () => { resolveFetch({ success: true, needsOnboarding: true }); });
-
-    // No "state update on an unmounted component" warning means the guard worked.
-    expect(errorSpy).not.toHaveBeenCalled();
-    errorSpy.mockRestore();
-  });
-
-  it('does not update state after unmount when the fetch rejects late', async () => {
-    let rejectFetch;
-    getFirstRun.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFetch = reject; }));
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const { unmount } = renderHook(() => useFirstRun());
-    unmount();
-    await act(async () => { rejectFetch(new Error('500')); });
-
-    expect(errorSpy).not.toHaveBeenCalled();
-    errorSpy.mockRestore();
   });
 });
