@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
-import { c2_query, validateAndAutoLogin, generateSessionToken } from '../../mysql_connect.js';
+import { c2_query, validateAndAutoLogin, generateSessionToken, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
@@ -119,6 +119,75 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(409);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toMatch(/already exists/i);
+    });
+
+    it('joins the squad the invitation carries', async () => {
+      c2_query.mockResolvedValueOnce([{                    // invitation lookup
+        id: 3, invite_email: 'new@test.com', accepted: 0,
+        expires_at: new Date(Date.now() + 86400000),
+        squad_id: 7, role: 'member',
+        can_read: 1, can_write: 1, can_create_log: 0, can_create_archive: 0,
+        can_manage_members: 0, can_delete_version: 0, can_publish: 0,
+      }]);
+      c2_query.mockResolvedValueOnce([]);                  // username free
+      c2_query.mockResolvedValueOnce([]);                  // email free
+      c2_query.mockResolvedValueOnce({ insertId: 42 });    // insert user
+      c2_query.mockResolvedValueOnce({});                  // permissions row
+      c2_query.mockResolvedValueOnce({});                  // invitation accepted
+      c2_query.mockResolvedValueOnce({});                  // squad_members insert
+
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'newuser', email: 'new@test.com', password: 'Str0ng!Passw0rd', inviteToken: 'tok' });
+
+      expect(res.status).toBe(201);
+      const memberInsert = c2_query.mock.calls.find(c => c[0].includes('INSERT INTO squad_members'));
+      expect(memberInsert).toBeDefined();
+      expect(memberInsert[1].slice(0, 3)).toEqual([7, 42, 'member']);
+    });
+
+    it('creates the account normally when the invitation carries no squad', async () => {
+      c2_query.mockResolvedValueOnce([{
+        id: 3, invite_email: 'new@test.com', accepted: 0,
+        expires_at: new Date(Date.now() + 86400000),
+        squad_id: null, role: 'member',
+        can_read: 1, can_write: 0, can_create_log: 0, can_create_archive: 0,
+        can_manage_members: 0, can_delete_version: 0, can_publish: 0,
+      }]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ insertId: 42 });
+      c2_query.mockResolvedValueOnce({});
+      c2_query.mockResolvedValueOnce({});
+
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'newuser', email: 'new@test.com', password: 'Str0ng!Passw0rd', inviteToken: 'tok' });
+
+      expect(res.status).toBe(201);
+      expect(c2_query.mock.calls.some(c => c[0].includes('INSERT INTO squad_members'))).toBe(false);
+    });
+
+    it('issues no session token when the squad join fails', async () => {
+      // The real withTransaction rolls back and rethrows; the global mock
+      // forwards to c2_query, so drive the failure through it directly.
+      withTransaction.mockImplementationOnce(async () => { throw new Error('squad insert failed'); });
+      c2_query.mockResolvedValueOnce([{
+        id: 3, invite_email: 'new@test.com', accepted: 0,
+        expires_at: new Date(Date.now() + 86400000),
+        squad_id: 7, role: 'member',
+        can_read: 1, can_write: 0, can_create_log: 0, can_create_archive: 0,
+        can_manage_members: 0, can_delete_version: 0, can_publish: 0,
+      }]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'newuser', email: 'new@test.com', password: 'Str0ng!Passw0rd', inviteToken: 'tok' });
+
+      expect(res.status).toBe(500);
+      expect(generateSessionToken).not.toHaveBeenCalled();
     });
   });
 

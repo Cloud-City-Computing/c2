@@ -10,10 +10,10 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
-import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
+import { c2_query, generateSessionToken, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions } from './helpers/shared.js';
+import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
 
 const router = express.Router();
 
@@ -68,7 +68,10 @@ router.post('/create-account', asyncHandler(async (req, res) => {
 
   // Validate invitation token
   const [invitation] = await c2_query(
-    `SELECT id, email AS invite_email, accepted, expires_at FROM user_invitations WHERE token = ? LIMIT 1`,
+    `SELECT id, email AS invite_email, accepted, expires_at,
+            squad_id, role, can_read, can_write, can_create_log,
+            can_create_archive, can_manage_members, can_delete_version, can_publish
+       FROM user_invitations WHERE token = ? LIMIT 1`,
     [inviteToken]
   );
 
@@ -127,26 +130,36 @@ router.post('/create-account', asyncHandler(async (req, res) => {
     return res.status(409).json({ success: false, message: 'An account with this email already exists' });
   }
 
-  // Hash password before storing — never store plaintext passwords
+  // Hash password before storing, never store plaintext passwords
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-  const result = await c2_query(
-    `INSERT INTO users (name, password_hash, email, created_at)
-     VALUES (?, ?, ?, NOW())`,
-    [username, passwordHash, email]
-  );
+  // One transaction for every write. A partial failure here would otherwise
+  // leave a real user who belongs to no squad, holding an invitation already
+  // marked accepted and therefore unusable.
+  const userId = await withTransaction(async (query) => {
+    const result = await query(
+      `INSERT INTO users (name, password_hash, email, created_at)
+       VALUES (?, ?, ?, NOW())`,
+      [username, passwordHash, email]
+    );
 
-  const user = { id: result.insertId, name: username };
+    await createDefaultPermissions(result.insertId, query);
+
+    await query(
+      `UPDATE user_invitations SET accepted = TRUE WHERE id = ?`,
+      [invitation.id]
+    );
+
+    if (invitation.squad_id) {
+      await addSquadMember(invitation.squad_id, result.insertId, invitation, query);
+    }
+
+    return result.insertId;
+  });
+
+  // Only after the commit: the token is the caller's proof that it all landed.
+  const user = { id: userId, name: username };
   const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
-
-  // Create default permissions row for new user
-  await createDefaultPermissions(result.insertId);
-
-  // Mark invitation as accepted
-  await c2_query(
-    `UPDATE user_invitations SET accepted = TRUE WHERE id = ?`,
-    [invitation.id]
-  );
 
   res.status(201).json({ success: true, token: sessionToken, user });
 }));

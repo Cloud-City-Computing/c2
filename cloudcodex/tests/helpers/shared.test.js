@@ -24,6 +24,7 @@ import {
   checkArchiveWriteAccess,
   createDefaultPermissions,
   addSquadOwnerMember,
+  addSquadMember,
   isValidEmail,
   DEFAULT_PERMISSIONS,
   BCRYPT_ROUNDS,
@@ -304,6 +305,35 @@ describe('helpers/shared', () => {
       expect(sql).toMatch(/INSERT INTO squad_members/i);
       expect(params).toEqual([7, 99]);
       expect(c2_query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addSquadMember', () => {
+    it('inserts the role and all seven flags on the given executor', async () => {
+      const query = vi.fn(async () => ({ insertId: 5 }));
+      await addSquadMember(3, 9, {
+        role: 'admin',
+        can_read: true,
+        can_write: true,
+        can_create_log: false,
+        can_create_archive: false,
+        can_manage_members: true,
+        can_delete_version: false,
+        can_publish: false,
+      }, query);
+
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(query.mock.calls[0][0]).toContain('INSERT INTO squad_members');
+      expect(query.mock.calls[0][1]).toEqual([3, 9, 'admin', true, true, false, false, true, false, false]);
+    });
+  });
+
+  describe('createDefaultPermissions', () => {
+    it('uses the executor it is handed', async () => {
+      const query = vi.fn(async () => ({}));
+      await createDefaultPermissions(4, query);
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(query.mock.calls[0][1]).toEqual([4]);
     });
   });
 

@@ -163,10 +163,15 @@ export async function checkArchiveReadAccess(archiveId, user) {
 }
 
 /**
- * Insert default permissions for a new user.
+ * Insert the default permissions row for a new user.
+ *
+ * @param {number} userId
+ * @param {(sql: string, params?: Array) => Promise<Array>} [query] - Query
+ *   executor to use, defaults to `c2_query`. Pass the executor handed to a
+ *   `withTransaction` callback so this insert joins the caller's transaction.
  */
-export async function createDefaultPermissions(userId) {
-  await c2_query(
+export async function createDefaultPermissions(userId, query = c2_query) {
+  await query(
     `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`,
     [userId]
   );
@@ -186,6 +191,39 @@ export async function addSquadOwnerMember(squadId, userId, query = c2_query) {
     `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
      VALUES (?, ?, 'owner', TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)`,
     [squadId, userId]
+  );
+}
+
+/**
+ * Insert a squad member with an explicit role and permission set.
+ *
+ * `addSquadOwnerMember` is the fixed-permission owner case; this is the
+ * general one, used when an invitation carries the membership it grants.
+ *
+ * @param {number} squadId
+ * @param {number} userId
+ * @param {{role: string, can_read: boolean, can_write: boolean,
+ *          can_create_log: boolean, can_create_archive: boolean,
+ *          can_manage_members: boolean, can_delete_version: boolean,
+ *          can_publish: boolean}} membership
+ * @param {(sql: string, params?: Array) => Promise<Array>} [query]
+ */
+export async function addSquadMember(squadId, userId, membership, query = c2_query) {
+  await query(
+    `INSERT INTO squad_members (squad_id, user_id, role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      squadId,
+      userId,
+      membership.role ?? 'member',
+      Boolean(membership.can_read),
+      Boolean(membership.can_write),
+      Boolean(membership.can_create_log),
+      Boolean(membership.can_create_archive),
+      Boolean(membership.can_manage_members),
+      Boolean(membership.can_delete_version),
+      Boolean(membership.can_publish),
+    ]
   );
 }
 
