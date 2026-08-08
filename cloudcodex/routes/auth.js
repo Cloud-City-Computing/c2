@@ -145,10 +145,18 @@ router.post('/create-account', asyncHandler(async (req, res) => {
 
     await createDefaultPermissions(result.insertId, query);
 
-    await query(
-      `UPDATE user_invitations SET accepted = TRUE WHERE id = ?`,
+    // The invitation was checked before the 250 to 500 ms bcrypt hash above,
+    // outside this transaction. An admin can revoke it in that window, so the
+    // update must be conditional and its result inspected: an unconditional
+    // UPDATE affecting zero rows would still let this transaction commit and
+    // a session mint, creating an account no live invitation authorised.
+    const invitationUpdate = await query(
+      `UPDATE user_invitations SET accepted = TRUE WHERE id = ? AND accepted = FALSE`,
       [invitation.id]
     );
+    if (invitationUpdate.affectedRows !== 1) {
+      throw new Error('Invitation is no longer valid');
+    }
 
     if (invitation.squad_id) {
       await addSquadMember(invitation.squad_id, result.insertId, invitation, query);

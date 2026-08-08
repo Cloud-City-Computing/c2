@@ -27,7 +27,7 @@ describe('Auth Routes', () => {
       c2_query.mockResolvedValueOnce({ insertId: 10 }); // INSERT user
       generateSessionToken.mockResolvedValueOnce('new-token');
       c2_query.mockResolvedValueOnce([]); // INSERT permissions
-      c2_query.mockResolvedValueOnce([]); // UPDATE invitation accepted
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 }); // UPDATE invitation accepted
 
       const res = await request(app)
         .post('/api/create-account')
@@ -133,7 +133,7 @@ describe('Auth Routes', () => {
       c2_query.mockResolvedValueOnce([]);                  // email free
       c2_query.mockResolvedValueOnce({ insertId: 42 });    // insert user
       c2_query.mockResolvedValueOnce({});                  // permissions row
-      c2_query.mockResolvedValueOnce({});                  // invitation accepted
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 }); // invitation accepted
       c2_query.mockResolvedValueOnce({});                  // squad_members insert
 
       const res = await request(app)
@@ -161,7 +161,7 @@ describe('Auth Routes', () => {
       c2_query.mockResolvedValueOnce([]);
       c2_query.mockResolvedValueOnce({ insertId: 42 });
       c2_query.mockResolvedValueOnce({});
-      c2_query.mockResolvedValueOnce({});
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 });
 
       const res = await request(app)
         .post('/api/create-account')
@@ -169,6 +169,32 @@ describe('Auth Routes', () => {
 
       expect(res.status).toBe(201);
       expect(c2_query.mock.calls.some(c => c[0].includes('INSERT INTO squad_members'))).toBe(false);
+    });
+
+    it('issues no session token when the invitation was revoked during the bcrypt window', async () => {
+      // Mirrors the real invariant: the invitation passed its pre-transaction
+      // check, but a concurrent admin revoke (hard DELETE) or a duplicate
+      // accept means the conditional UPDATE affects zero rows once the
+      // transaction actually runs.
+      c2_query.mockResolvedValueOnce([{
+        id: 3, invite_email: 'new@test.com', accepted: 0,
+        expires_at: new Date(Date.now() + 86400000),
+        squad_id: null, role: 'member',
+        can_read: 1, can_write: 0, can_create_log: 0, can_create_archive: 0,
+        can_manage_members: 0, can_delete_version: 0, can_publish: 0,
+      }]);
+      c2_query.mockResolvedValueOnce([]);                  // username free
+      c2_query.mockResolvedValueOnce([]);                  // email free
+      c2_query.mockResolvedValueOnce({ insertId: 42 });    // insert user
+      c2_query.mockResolvedValueOnce({});                  // permissions row
+      c2_query.mockResolvedValueOnce({ affectedRows: 0 }); // invitation gone or already accepted
+
+      const res = await request(app)
+        .post('/api/create-account')
+        .send({ username: 'newuser', email: 'new@test.com', password: 'Str0ng!Passw0rd', inviteToken: 'tok' });
+
+      expect(res.status).not.toBe(201);
+      expect(generateSessionToken).not.toHaveBeenCalled();
     });
 
     it('issues no session token when the squad join fails', async () => {
