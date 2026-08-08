@@ -76,6 +76,21 @@ describe('FirstRunGate', () => {
     expect(screen.getByText(/not part of a squad yet/i)).toBeInTheDocument();
   });
 
+  it('shows an archive reached without squad membership rather than the dead-end copy', () => {
+    hookState.firstRun = {
+      needsOnboarding: true, isAdmin: false,
+      squad: null,
+      archive: { id: 5, name: 'Getting Started' },
+      log: { id: 9, title: 'Welcome to Cloud Codex' },
+      pendingSquadInvites: 0,
+    };
+    wrap(<FirstRunGate />);
+
+    expect(screen.queryByText(/not part of a squad yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Getting Started')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /welcome to cloud codex/i })).toHaveAttribute('href', '/archives/5/doc/9');
+  });
+
   it('points a squad-less member at their pending invitations when they have some', () => {
     hookState.firstRun = {
       needsOnboarding: true, isAdmin: false,
@@ -95,6 +110,21 @@ describe('FirstRunGate', () => {
     wrap(<FirstRunGate />);
 
     await user.click(screen.getByRole('button', { name: /get started/i }));
+    expect(hookState.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls complete() when the document link itself is clicked', async () => {
+    hookState.firstRun = {
+      needsOnboarding: true, isAdmin: false,
+      squad: { id: 3, name: 'General' },
+      archive: { id: 5, name: 'Getting Started' },
+      log: { id: 9, title: 'Welcome to Cloud Codex' },
+      pendingSquadInvites: 0,
+    };
+    const user = userEvent.setup();
+    wrap(<FirstRunGate />);
+
+    await user.click(screen.getByRole('link', { name: /welcome to cloud codex/i }));
     expect(hookState.complete).toHaveBeenCalledTimes(1);
   });
 });

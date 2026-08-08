@@ -13,12 +13,13 @@ import { Link } from 'react-router-dom';
 
 export default function WelcomeSetup({ firstRun, onFinish }) {
   const { isAdmin, squad, archive, log, pendingSquadInvites } = firstRun;
+  const hasSomethingToShow = squad || archive;
 
   return (
     <div className="modal-content welcome-setup">
       <h2>Welcome to Cloud Codex</h2>
 
-      {squad ? (
+      {hasSomethingToShow ? (
         <>
           <p className="welcome-subtitle">
             Cloud Codex organises work in four levels: a <strong>workspace</strong> holds
@@ -26,11 +27,11 @@ export default function WelcomeSetup({ firstRun, onFinish }) {
             your <strong>documents</strong>. Here is what you already have.
           </p>
           <ul className="welcome-hierarchy">
-            <li>Your squad: <strong>{squad.name}</strong></li>
+            {squad && <li>Your squad: <strong>{squad.name}</strong></li>}
             {archive && <li>Your archive: <strong>{archive.name}</strong></li>}
             {archive && log && (
               <li>
-                Start here: <Link to={`/archives/${archive.id}/doc/${log.id}`}>{log.title}</Link>
+                Start here: <Link to={`/archives/${archive.id}/doc/${log.id}`} onClick={onFinish}>{log.title}</Link>
               </li>
             )}
           </ul>
