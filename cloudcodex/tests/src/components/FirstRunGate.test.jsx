@@ -10,9 +10,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const hookState = { firstRun: null, loading: false, complete: vi.fn() };
 vi.mock('../../../src/hooks/useFirstRun.js', () => ({ default: () => hookState }));
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import FirstRunGate from '../../../src/components/FirstRunGate.jsx';
 
 const wrap = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -126,5 +126,59 @@ describe('FirstRunGate', () => {
 
     await user.click(screen.getByRole('link', { name: /welcome to cloud codex/i }));
     expect(hookState.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('awaits completion before navigating, so a slow POST cannot lose the race to the destination page', async () => {
+    let resolveComplete;
+    hookState.complete = vi.fn(() => new Promise((resolve) => { resolveComplete = resolve; }));
+    hookState.firstRun = {
+      needsOnboarding: true, isAdmin: false,
+      squad: { id: 3, name: 'General' },
+      archive: { id: 5, name: 'Getting Started' },
+      log: { id: 9, title: 'Welcome to Cloud Codex' },
+      pendingSquadInvites: 0,
+    };
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<FirstRunGate />} />
+          <Route path="/archives/5/doc/9" element={<div>Doc Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole('link', { name: /welcome to cloud codex/i }));
+
+    // The handler must call and await complete() before it navigates: the
+    // route change has not happened yet, even though the click resolved.
+    expect(hookState.complete).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Doc Page')).not.toBeInTheDocument();
+
+    resolveComplete();
+    await waitFor(() => expect(screen.getByText('Doc Page')).toBeInTheDocument());
+  });
+
+  it('still navigates when completion fails, so the user is never trapped under the overlay', async () => {
+    hookState.complete = vi.fn().mockRejectedValue(new Error('network error'));
+    hookState.firstRun = {
+      needsOnboarding: true, isAdmin: false,
+      squad: { id: 3, name: 'General' },
+      archive: { id: 5, name: 'Getting Started' },
+      log: { id: 9, title: 'Welcome to Cloud Codex' },
+      pendingSquadInvites: 0,
+    };
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<FirstRunGate />} />
+          <Route path="/archives/5/doc/9" element={<div>Doc Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByRole('link', { name: /welcome to cloud codex/i }));
+    await waitFor(() => expect(screen.getByText('Doc Page')).toBeInTheDocument());
   });
 });

@@ -9,11 +9,41 @@
  * https://cloudcitycomputing.com
  */
 
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function WelcomeSetup({ firstRun, onFinish }) {
   const { isAdmin, squad, archive, log, pendingSquadInvites } = firstRun;
   const hasSomethingToShow = squad || archive;
+  const navigate = useNavigate();
+
+  // A <Link>'s default navigation and the completion POST (fired inside
+  // onFinish) would otherwise race: react-router can mount the destination
+  // page, and its GET /api/first-run can read onboarded_at, before the POST's
+  // UPDATE commits, reopening the welcome over the page it just opened. Take
+  // over navigation and await completion first. onFinish already swallows a
+  // failed request, so this can never throw and never traps the user here.
+  const handleDocLinkClick = async (e) => {
+    e.preventDefault();
+    try {
+      await onFinish();
+    } catch {
+      // onFinish (complete from useFirstRun) already swallows its own
+      // errors; this guards only against an unexpected throw so navigation
+      // still proceeds rather than trapping the user under the overlay.
+    }
+    navigate(`/archives/${archive.id}/doc/${log.id}`);
+  };
+
+  const handleAdminLinkClick = async (e) => {
+    e.preventDefault();
+    try {
+      await onFinish();
+    } catch {
+      // See handleDocLinkClick: onFinish should never reject, but if it
+      // did, navigation must still proceed.
+    }
+    navigate('/admin');
+  };
 
   return (
     <div className="modal-content welcome-setup">
@@ -31,7 +61,7 @@ export default function WelcomeSetup({ firstRun, onFinish }) {
             {archive && <li>Your archive: <strong>{archive.name}</strong></li>}
             {archive && log && (
               <li>
-                Start here: <Link to={`/archives/${archive.id}/doc/${log.id}`} onClick={onFinish}>{log.title}</Link>
+                Start here: <Link to={`/archives/${archive.id}/doc/${log.id}`} onClick={handleDocLinkClick}>{log.title}</Link>
               </li>
             )}
           </ul>
@@ -40,14 +70,14 @@ export default function WelcomeSetup({ firstRun, onFinish }) {
         <p className="welcome-subtitle">
           You are not part of a squad yet, so there is nothing to read here just yet.
           {pendingSquadInvites > 0
-            ? ` You have ${pendingSquadInvites} pending squad invitations waiting on your home page.`
+            ? ` You have ${pendingSquadInvites} pending squad ${pendingSquadInvites === 1 ? 'invitation' : 'invitations'} waiting on your home page.`
             : ' Ask your administrator to add you to a squad, or to re-send your invitation with one attached.'}
         </p>
       )}
 
       <div className="welcome-actions">
         {isAdmin && (
-          <Link className="btn btn-primary" to="/admin" onClick={onFinish}>
+          <Link className="btn btn-primary" to="/admin" onClick={handleAdminLinkClick}>
             Invite your team
           </Link>
         )}
