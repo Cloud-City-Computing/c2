@@ -237,13 +237,46 @@ Invalidate the current session.
 
 ---
 
-### `POST /api/setup`
+## First-Run / Onboarding
 
-Quick-start helper for new users. Creates a standalone personal archive (not attached to any workspace/squad).
+### `GET /api/first-run` *(requires auth)*
 
-**Body:** `{ archiveName }`
+Whether the current user still needs the first-run welcome, and what it
+should point at. Costs exactly one query once a user has completed it.
 
-**Response:** `{ success: true, archiveId }`
+**Response**, if already onboarded (`users.onboarded_at` set):
+`{ success: true, needsOnboarding: false, isAdmin }`.
+
+**Response**, if not yet onboarded:
+
+```json
+{
+  "success": true,
+  "needsOnboarding": true,
+  "isAdmin": false,
+  "squad": { "id": 1, "name": "Engineering" },
+  "archive": { "id": 4, "name": "Getting Started" },
+  "log": { "id": 9, "title": "Welcome" },
+  "pendingSquadInvites": 0
+}
+```
+
+`squad`, `archive` and `log` are each `null` when the user has none reachable
+yet (for example, an invitation with no squad attached). `archive` is
+resolved through the shared read-access fragment, preferring the user's own
+squad but not restricted to it, and explicitly excludes `system` archives so
+the hidden GitHub PR-session archive can never surface here. See
+[`../maps/access-control.md`](../maps/access-control.md).
+
+---
+
+### `POST /api/first-run/complete` *(requires auth)*
+
+Marks the welcome as seen. Idempotent: stamps `users.onboarded_at = NOW()`
+only if it is still `NULL`, so a second call from another open tab succeeds
+without changing anything.
+
+**Response:** `{ success: true }`
 
 ---
 

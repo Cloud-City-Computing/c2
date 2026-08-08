@@ -590,6 +590,89 @@ describe('Admin Routes', () => {
 
       expect(res.status).toBe(403);
     });
+
+    it('persists the squad, role and flags when a squad is given', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]);                 // no existing user
+      c2_query.mockResolvedValueOnce([]);                 // no existing invitation
+      c2_query.mockResolvedValueOnce([{ id: 7 }]);        // squad exists
+      c2_query.mockResolvedValueOnce({ insertId: 1 });    // insert invitation
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({
+          email: 'newuser@test.com',
+          squadId: 7,
+          role: 'admin',
+          permissions: { can_write: true, can_create_log: true },
+        });
+
+      expect(res.status).toBe(201);
+      const insert = c2_query.mock.calls[3];
+      expect(insert[0]).toContain('INSERT INTO user_invitations');
+      // email, token, invited_by, squad_id, role, then the seven flags.
+      expect(insert[1][3]).toBe(7);
+      expect(insert[1][4]).toBe('admin');
+      expect(insert[1].slice(5)).toEqual([true, true, true, false, false, false, false]);
+    });
+
+    it('stores a NULL squad and default flags when no squad is given', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ insertId: 1 });
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com' });
+
+      expect(res.status).toBe(201);
+      const insert = c2_query.mock.calls[2];
+      expect(insert[1][3]).toBeNull();
+      expect(insert[1][4]).toBe('member');
+      expect(insert[1].slice(5)).toEqual([true, false, false, false, false, false, false]);
+    });
+
+    it('rejects a malformed squad id before it touches the database', async () => {
+      mockAuthenticated(ADMIN_USER);
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com', squadId: 'nope' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/squad/i);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('404s when the squad does not exist', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]);   // squad lookup finds nothing
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com', squadId: 99 });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects an unknown role before it touches the database', async () => {
+      mockAuthenticated(ADMIN_USER);
+
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ email: 'newuser@test.com', squadId: 7, role: 'superuser' });
+
+      expect(res.status).toBe(400);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
   });
 
   // --- DELETE /api/admin/invitations/:id ---

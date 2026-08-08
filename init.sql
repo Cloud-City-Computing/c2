@@ -54,6 +54,7 @@ CREATE TABLE users (
   totp_secret VARCHAR(64) DEFAULT NULL,
   is_admin BOOLEAN DEFAULT FALSE,
   notification_prefs JSON DEFAULT NULL,
+  onboarded_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -115,6 +116,15 @@ CREATE TABLE user_invitations (
   email VARCHAR(255) NOT NULL,
   token CHAR(64) NOT NULL UNIQUE,
   invited_by INT NOT NULL,
+  squad_id INT NULL,
+  role ENUM('member', 'admin', 'owner') DEFAULT 'member',
+  can_read BOOLEAN DEFAULT TRUE,
+  can_write BOOLEAN DEFAULT FALSE,
+  can_create_log BOOLEAN DEFAULT FALSE,
+  can_create_archive BOOLEAN DEFAULT FALSE,
+  can_manage_members BOOLEAN DEFAULT FALSE,
+  can_delete_version BOOLEAN DEFAULT FALSE,
+  can_publish BOOLEAN DEFAULT FALSE,
   expires_at TIMESTAMP NOT NULL,
   accepted BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -137,6 +147,12 @@ CREATE TABLE squads (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   UNIQUE KEY uq_squad_team (github_org, github_team_slug)
 ) ENGINE=InnoDB;
+
+-- user_invitations is declared before squads, so its squad FK is added here
+-- rather than inline, where it would reference a table that does not exist yet.
+ALTER TABLE user_invitations
+  ADD CONSTRAINT fk_user_invitations_squad
+  FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE SET NULL;
 
 CREATE TABLE permissions (
   id INT AUTO_INCREMENT PRIMARY KEY,

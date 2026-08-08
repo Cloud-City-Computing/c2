@@ -1211,7 +1211,8 @@ body {
 ========================= */
 
 #modal-dimmer,
-#dropdown-backshadow {
+#dropdown-backshadow,
+.first-run-dimmer {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);

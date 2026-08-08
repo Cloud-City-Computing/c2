@@ -10,10 +10,10 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
-import { c2_query, generateSessionToken, validateAndAutoLogin } from '../mysql_connect.js';
+import { c2_query, generateSessionToken, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions } from './helpers/shared.js';
+import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
 
 const router = express.Router();
 
@@ -68,7 +68,10 @@ router.post('/create-account', asyncHandler(async (req, res) => {
 
   // Validate invitation token
   const [invitation] = await c2_query(
-    `SELECT id, email AS invite_email, accepted, expires_at FROM user_invitations WHERE token = ? LIMIT 1`,
+    `SELECT id, email AS invite_email, accepted, expires_at,
+            squad_id, role, can_read, can_write, can_create_log,
+            can_create_archive, can_manage_members, can_delete_version, can_publish
+       FROM user_invitations WHERE token = ? LIMIT 1`,
     [inviteToken]
   );
 
@@ -127,26 +130,44 @@ router.post('/create-account', asyncHandler(async (req, res) => {
     return res.status(409).json({ success: false, message: 'An account with this email already exists' });
   }
 
-  // Hash password before storing — never store plaintext passwords
+  // Hash password before storing, never store plaintext passwords
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-  const result = await c2_query(
-    `INSERT INTO users (name, password_hash, email, created_at)
-     VALUES (?, ?, ?, NOW())`,
-    [username, passwordHash, email]
-  );
+  // One transaction for every write. A partial failure here would otherwise
+  // leave a real user who belongs to no squad, holding an invitation already
+  // marked accepted and therefore unusable.
+  const userId = await withTransaction(async (query) => {
+    const result = await query(
+      `INSERT INTO users (name, password_hash, email, created_at)
+       VALUES (?, ?, ?, NOW())`,
+      [username, passwordHash, email]
+    );
 
-  const user = { id: result.insertId, name: username };
+    await createDefaultPermissions(result.insertId, query);
+
+    // The invitation was checked before the 250 to 500 ms bcrypt hash above,
+    // outside this transaction. An admin can revoke it in that window, so the
+    // update must be conditional and its result inspected: an unconditional
+    // UPDATE affecting zero rows would still let this transaction commit and
+    // a session mint, creating an account no live invitation authorised.
+    const invitationUpdate = await query(
+      `UPDATE user_invitations SET accepted = TRUE WHERE id = ? AND accepted = FALSE`,
+      [invitation.id]
+    );
+    if (invitationUpdate.affectedRows !== 1) {
+      throw new Error('Invitation is no longer valid');
+    }
+
+    if (invitation.squad_id) {
+      await addSquadMember(invitation.squad_id, result.insertId, invitation, query);
+    }
+
+    return result.insertId;
+  });
+
+  // Only after the commit: the token is the caller's proof that it all landed.
+  const user = { id: userId, name: username };
   const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
-
-  // Create default permissions row for new user
-  await createDefaultPermissions(result.insertId);
-
-  // Mark invitation as accepted
-  await c2_query(
-    `UPDATE user_invitations SET accepted = TRUE WHERE id = ?`,
-    [invitation.id]
-  );
 
   res.status(201).json({ success: true, token: sessionToken, user });
 }));
@@ -168,29 +189,6 @@ router.get('/check-username/:username', asyncHandler(async (req, res) => {
   );
 
   res.json({ available: !existing, message: existing ? 'Username is already taken' : 'Username is available' });
-}));
-
-/**
- * POST /api/setup
- * Quick-start workspace setup for new users.
- * Creates a standalone personal archive. Workspace creation
- * is admin-only and handled via the admin console.
- * Body: { archiveName }
- */
-router.post('/setup', requireAuth, asyncHandler(async (req, res) => {
-  const { archiveName } = req.body;
-
-  if (!archiveName?.trim()) {
-    return res.status(400).json({ success: false, message: 'Provide a archive name' });
-  }
-
-  const projResult = await c2_query(
-    `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
-     VALUES (?, NULL, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
-    [archiveName.trim(), req.user.id, req.user.id, req.user.id]
-  );
-
-  res.status(201).json({ success: true, workspaceId: null, squadId: null, archiveId: projResult.insertId });
 }));
 
 /**

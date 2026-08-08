@@ -24,6 +24,7 @@ import {
   checkArchiveWriteAccess,
   createDefaultPermissions,
   addSquadOwnerMember,
+  addSquadMember,
   isValidEmail,
   DEFAULT_PERMISSIONS,
   BCRYPT_ROUNDS,
@@ -303,6 +304,85 @@ describe('helpers/shared', () => {
       const [sql, params] = query.mock.calls[0];
       expect(sql).toMatch(/INSERT INTO squad_members/i);
       expect(params).toEqual([7, 99]);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addSquadMember', () => {
+    // A single fixture cannot prove every flag lands in its own column: with
+    // seven booleans, pigeonhole guarantees at least four share a value, so
+    // some transposition always survives one assertion. Three fixtures give
+    // each flag a unique true/false signature across (A, B, C) instead:
+    // can_read 100, can_write 010, can_create_log 110, can_create_archive 001,
+    // can_manage_members 101, can_delete_version 011, can_publish 111. All
+    // seven signatures are distinct, so a transposition of any two flags
+    // changes the expected array in at least one of the three cases below.
+    // role also varies (member/admin/owner) to pin its pass-through too.
+
+    it('case A: inserts can_read, can_create_log, can_manage_members, can_publish true', async () => {
+      const query = vi.fn(async () => ({ insertId: 5 }));
+      await addSquadMember(3, 9, {
+        role: 'member',
+        can_read: true,
+        can_write: false,
+        can_create_log: true,
+        can_create_archive: false,
+        can_manage_members: true,
+        can_delete_version: false,
+        can_publish: true,
+      }, query);
+
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(query.mock.calls[0][0]).toContain('INSERT INTO squad_members');
+      expect(query.mock.calls[0][1]).toEqual([3, 9, 'member', true, false, true, false, true, false, true]);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('case B: inserts can_write, can_create_log, can_delete_version, can_publish true', async () => {
+      const query = vi.fn(async () => ({ insertId: 5 }));
+      await addSquadMember(3, 9, {
+        role: 'admin',
+        can_read: false,
+        can_write: true,
+        can_create_log: true,
+        can_create_archive: false,
+        can_manage_members: false,
+        can_delete_version: true,
+        can_publish: true,
+      }, query);
+
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(query.mock.calls[0][0]).toContain('INSERT INTO squad_members');
+      expect(query.mock.calls[0][1]).toEqual([3, 9, 'admin', false, true, true, false, false, true, true]);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('case C: inserts can_create_archive, can_manage_members, can_delete_version, can_publish true', async () => {
+      const query = vi.fn(async () => ({ insertId: 5 }));
+      await addSquadMember(3, 9, {
+        role: 'owner',
+        can_read: false,
+        can_write: false,
+        can_create_log: false,
+        can_create_archive: true,
+        can_manage_members: true,
+        can_delete_version: true,
+        can_publish: true,
+      }, query);
+
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(query.mock.calls[0][0]).toContain('INSERT INTO squad_members');
+      expect(query.mock.calls[0][1]).toEqual([3, 9, 'owner', false, false, false, true, true, true, true]);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createDefaultPermissions', () => {
+    it('uses the executor it is handed', async () => {
+      const query = vi.fn(async () => ({}));
+      await createDefaultPermissions(4, query);
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(query.mock.calls[0][1]).toEqual([4]);
       expect(c2_query).not.toHaveBeenCalled();
     });
   });

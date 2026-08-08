@@ -6,8 +6,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { destroyModal, serverReq, showModal } from '../util';
-import WelcomeSetup from './WelcomeSetup';
+import { destroyModal, serverReq } from '../util';
 
 /* ─── Password rules (mirrored from server) ─── */
 const PASSWORD_RULES = [
@@ -190,7 +189,9 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
     if (res.success) {
       document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
       destroyModal();
-      showModal(<WelcomeSetup onComplete={() => window.location.reload()} />);
+      // The welcome is mounted by Std_Layout for every user, so reloading into
+      // the authenticated app is all this needs to do.
+      window.location.reload();
     } else {
       setError(res.message ?? 'Error creating account.');
     }

@@ -1,6 +1,6 @@
 /**
  * Cloud Codex — Tests for the under-80-LOC reusable components:
- *   AccountPanel, WelcomeSetup, SearchResultItem, NewLogModal, ExportMenu,
+ *   AccountPanel, SearchResultItem, NewLogModal, ExportMenu,
  *   CollabPresence
  *
  * Each component gets a focused render + interaction smoke test rather than
@@ -33,7 +33,6 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import AccountPanel from '../../../src/components/AccountPanel.jsx';
-import WelcomeSetup from '../../../src/components/WelcomeSetup.jsx';
 import SearchResultItem from '../../../src/components/SearchResultItem.jsx';
 import NewLogModal from '../../../src/components/NewLogModal.jsx';
 import ExportMenu from '../../../src/components/ExportMenu.jsx';
@@ -60,30 +59,6 @@ describe('AccountPanel', () => {
     render(<AccountPanel name="A" email="a@b" />);
     expect(screen.getByRole('button', { name: /account settings/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /logout/i })).toBeInTheDocument();
-  });
-});
-
-describe('WelcomeSetup', () => {
-  it('renders the welcome heading and Get Started button', () => {
-    render(<WelcomeSetup onComplete={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /welcome to cloud codex/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument();
-  });
-
-  it('clicking Get Started calls destroyModal then onComplete', async () => {
-    const onComplete = vi.fn();
-    const user = userEvent.setup();
-    render(<WelcomeSetup onComplete={onComplete} />);
-    await user.click(screen.getByRole('button', { name: /get started/i }));
-    expect(utilMock.destroyModal).toHaveBeenCalled();
-    expect(onComplete).toHaveBeenCalled();
-  });
-
-  it('does not throw when onComplete is undefined', async () => {
-    const user = userEvent.setup();
-    render(<WelcomeSetup />);
-    await user.click(screen.getByRole('button', { name: /get started/i }));
-    expect(utilMock.destroyModal).toHaveBeenCalled();
   });
 });
 

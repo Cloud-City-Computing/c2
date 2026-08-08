@@ -48,7 +48,7 @@ app.set('trust proxy', 1)                    app.js:41
   ├─ searchLimiter on /api/users/search      app.js:112
   ├─ static /avatars      (7d immutable)     app.js:115-118
   ├─ static /doc-images   (30d immutable)    app.js:121-124
-  └─ 17 routers, all mounted at /api         app.js:127-143
+  └─ 18 routers, all mounted at /api
 ```
 
 **CORS** (`app.js:45-61`) allows a request with no `Origin` header, allows an
@@ -78,7 +78,7 @@ exercises the limiter behaviour itself**.
 
 ### Router mounting
 
-All 17 routers mount on the bare `/api` prefix (`app.js:127-143`), so each router
+All 18 routers mount on the bare `/api` prefix, so each router
 declares its own full path (`router.post('/login', ...)` yields `/api/login`).
 There is no per-area prefix. Mount order is the resolution order, and several
 routers declare overlapping shapes, so a path collision resolves to whichever
@@ -87,8 +87,19 @@ router was mounted first. Current order:
 ```
 auth, search, archives, documents, upload, workspaces, squads, comments,
 avatars, doc-images, admin, oauth, github, favorites, notifications,
-activity, watches
+activity, first-run, watches
 ```
+
+`first-run` (`routes/first-run.js`) is the newest addition, mounted between
+`activity` and `watches`. It answers one question, does this authenticated
+user still need the onboarding welcome and what should it point at
+(`GET /api/first-run`), and stamps `users.onboarded_at` idempotently
+(`POST /api/first-run/complete`). It has no writes of its own beyond that
+stamp; the archive and squad it points at are resolved read-only through the
+`ownership.js` fragments. See [access-control.md](access-control.md) for how
+that lookup avoids the admin-bypass trap, and
+[frontend-architecture.md](frontend-architecture.md) for the hook and gate
+component that consume it.
 
 ## 3. Authentication
 
@@ -130,6 +141,15 @@ modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 **Consequence:** logging in from a second device silently reuses the first
 device's token, and `POST /api/logout` (`routes/auth.js:371`) therefore logs out
 every device at once.
+
+**`POST /api/create-account` generates its session token only after its
+transaction commits.** The user insert, default-permissions insert,
+invitation-accepted update, and (when the invitation carried a `squadId`) the
+new `squad_members` insert all run inside one `withTransaction()` call in
+`routes/auth.js`. `generateSessionToken` is called afterward, outside the
+transaction, so the token is the caller's proof that every write landed; a
+mid-transaction failure rolls all four back and never mints a token for a
+half-created account.
 
 ## 4. Error handling
 

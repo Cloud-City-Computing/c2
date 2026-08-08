@@ -182,7 +182,6 @@ export const publishVersionWithRelease = (logId, payload) =>
 
 export const fetchSquads = (workspaceId) => apiFetch('GET', `/api/workspaces/${workspaceId}/squads`);
 export const createSquad = (workspaceId, name, { archiveName } = {}) => apiFetch('POST', `/api/workspaces/${workspaceId}/squads`, { name, archiveName });
-export const setupWorkspace = (opts) => apiFetch('POST', '/api/setup', opts);
 export const updateSquad = (id, name) => apiFetch('PUT', `/api/squads/${id}`, { name });
 export const deleteSquad = (id) => apiFetch('DELETE', `/api/squads/${id}`);
 
@@ -228,7 +227,8 @@ export const updateAdminUserPermissions = (id, perms) => apiFetch('PUT', `/api/a
 export const updateAdminUserAdmin = (id, is_admin) => apiFetch('PUT', `/api/admin/users/${id}/admin`, { is_admin });
 export const resetAdminUser2fa = (id) => apiFetch('POST', `/api/admin/users/${id}/2fa/reset`);
 export const fetchAdminInvitations = () => apiFetch('GET', '/api/admin/invitations');
-export const createAdminInvitation = (email) => apiFetch('POST', '/api/admin/invitations', { email });
+export const createAdminInvitation = (email, options = {}) =>
+  apiFetch('POST', '/api/admin/invitations', { email, ...options });
 export const deleteAdminInvitation = (id) => apiFetch('DELETE', `/api/admin/invitations/${id}`);
 export const fetchAdminSquads = () => apiFetch('GET', '/api/admin/squads');
 export const fetchAdminSquadMembers = (id) => apiFetch('GET', `/api/admin/squads/${id}/members`);
@@ -494,6 +494,11 @@ export async function exportDocument(logId, format, title, htmlContent) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// --- First-Run APIs ---
+
+export const getFirstRun = () => apiFetch('GET', '/api/first-run');
+export const completeFirstRun = () => apiFetch('POST', '/api/first-run/complete');
 
 // --- DOM Helpers ---
 
