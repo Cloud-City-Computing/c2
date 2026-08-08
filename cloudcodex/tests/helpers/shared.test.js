@@ -311,20 +311,25 @@ describe('helpers/shared', () => {
   describe('addSquadMember', () => {
     it('inserts the role and all seven flags on the given executor', async () => {
       const query = vi.fn(async () => ({ insertId: 5 }));
+      // Flags alternate true/false so no two adjacent (or nearby) flags share
+      // a value: a transposition of any pair, including can_create_log with
+      // can_create_archive or can_delete_version with can_publish, changes
+      // the expected array below instead of passing silently.
       await addSquadMember(3, 9, {
         role: 'admin',
         can_read: true,
-        can_write: true,
-        can_create_log: false,
+        can_write: false,
+        can_create_log: true,
         can_create_archive: false,
         can_manage_members: true,
         can_delete_version: false,
-        can_publish: false,
+        can_publish: true,
       }, query);
 
       expect(query).toHaveBeenCalledTimes(1);
       expect(query.mock.calls[0][0]).toContain('INSERT INTO squad_members');
-      expect(query.mock.calls[0][1]).toEqual([3, 9, 'admin', true, true, false, false, true, false, false]);
+      expect(query.mock.calls[0][1]).toEqual([3, 9, 'admin', true, false, true, false, true, false, true]);
+      expect(c2_query).not.toHaveBeenCalled();
     });
   });
 
@@ -334,6 +339,7 @@ describe('helpers/shared', () => {
       await createDefaultPermissions(4, query);
       expect(query).toHaveBeenCalledTimes(1);
       expect(query.mock.calls[0][1]).toEqual([4]);
+      expect(c2_query).not.toHaveBeenCalled();
     });
   });
 

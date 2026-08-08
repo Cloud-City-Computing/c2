@@ -206,7 +206,9 @@ export async function addSquadOwnerMember(squadId, userId, query = c2_query) {
  *          can_create_log: boolean, can_create_archive: boolean,
  *          can_manage_members: boolean, can_delete_version: boolean,
  *          can_publish: boolean}} membership
- * @param {(sql: string, params?: Array) => Promise<Array>} [query]
+ * @param {(sql: string, params?: Array) => Promise<Array>} [query] - Query
+ *   executor to use, defaults to `c2_query`. Pass the executor handed to a
+ *   `withTransaction` callback so this insert joins the caller's transaction.
  */
 export async function addSquadMember(squadId, userId, membership, query = c2_query) {
   await query(

@@ -143,7 +143,10 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(201);
       const memberInsert = c2_query.mock.calls.find(c => c[0].includes('INSERT INTO squad_members'));
       expect(memberInsert).toBeDefined();
-      expect(memberInsert[1].slice(0, 3)).toEqual([7, 42, 'member']);
+      // Full array, not a slice: pins both the column ordering and the
+      // MySQL 1/0-to-boolean conversion against the invitation fixture above,
+      // since a silent flag mismap here grants or withholds real access.
+      expect(memberInsert[1]).toEqual([7, 42, 'member', true, true, false, false, false, false, false]);
     });
 
     it('creates the account normally when the invitation carries no squad', async () => {
