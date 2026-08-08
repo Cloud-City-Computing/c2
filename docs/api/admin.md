@@ -174,7 +174,18 @@ List all invitations (pending and accepted).
 
 Invite a new user. The email must not belong to an existing account or an existing pending invitation.
 
-**Body:** `{ email }`
+**Body:** `{ email, squadId?, role?, permissions? }`
+
+`squadId`, `role` and `permissions` are all optional; omitting them behaves
+exactly as a plain email-only invitation always has. When `squadId` is set,
+the invited user joins that squad automatically the moment they create their
+account, no separate squad invitation to accept. `role` defaults to
+`member` (`member` | `admin` | `owner`). `permissions` is an object keyed by
+the same seven flags as squad membership
+(`can_read`, `can_write`, `can_create_log`, `can_create_archive`,
+`can_manage_members`, `can_delete_version`, `can_publish`); `can_read`
+defaults to `true` and every other flag defaults to `false`, matching
+`squad_invitations`.
 
 The invitation is always created and its signup link (a `?invite=<token>` query
 parameter the sign-up form reads) is always returned in the response, so the

@@ -58,7 +58,7 @@ constraint right now.
 | | Track | Scope | Depends on |
 |---|---|---|---|
 | **A** | Evaluation path — **shipped** | Mail optional, install defects, non-empty first boot | nothing |
-| **B** | First-run experience | Real guided onboarding, retire or fix `/api/setup` | A |
+| **B** | First-run experience (**shipped**) | Real guided onboarding for every user including the admin, invite-carried squad assignment, `/api/setup` retired | A |
 | **C** | Vocabulary and hierarchy | Workspaces → Squads → Archives → Logs | decide early, execute late |
 | **D** | Trust signals | Real releases, changelog, classifiable license, screenshots | A |
 | **E** | Foundation | The two giant page files, the open-questions defect list | nothing, but competes for time |
@@ -77,14 +77,33 @@ This is first because it is the cheapest change that converts attention already
 earned into users, and because it produces the signal (issues, forks, questions)
 that should aim every track after it.
 
-### B. First-run experience
+### B. First-run experience (shipped)
 
-Once people can get in, make the first ten minutes teach the product. Replace
-`WelcomeSetup.jsx` with a real guided flow, and decide whether `/api/setup`
-should survive at all rather than patching its orphaned-archive bug in place.
+Replaced `WelcomeSetup.jsx`'s dead-end modal with a real welcome, mounted via
+a new `FirstRunGate` in `Std_Layout`'s authenticated branch, which is what
+finally makes it reachable for the admin (previously it rendered only from an
+imperative call in `Login.jsx`, so the admin, synced from `.env` at boot
+rather than signing up, could never see one). The welcome creates nothing:
+it points at whatever squad, archive and document the user already has,
+resolved through a new `GET /api/first-run`, or, for a user in no squad yet,
+at their pending squad invitations if any exist.
+
+`POST /api/admin/invitations` can now optionally carry a `squadId`, `role`
+and permission flags, so an invited user joins that squad the moment they
+create their account, in the same transaction, rather than landing with
+nothing to see. `POST /api/setup` decided the answer to "should it survive":
+no. It had no callers and its only behaviour was creating an archive with
+`squad_id NULL`, an orphaned archive only its creator could ever reach; it
+and its dead `setupWorkspace` frontend wrapper are deleted.
+
+Verified end-to-end against a real database and a real browser: a squad-less
+invite, a squad-carrying invite, and the admin's own first login after a
+fresh boot.
 
 Deferred behind A because it lands in the UI layer, which carries the
-`src/pages/` testing problem described in track E.
+`src/pages/` testing problem described in track E; in practice the new
+surface area (`useFirstRun`, `FirstRunGate`, `WelcomeSetup`) is small enough
+that it did not need E's extraction work to be unit-testable.
 
 ### C. Vocabulary and hierarchy
 
@@ -128,17 +147,19 @@ against is that it produces nothing a user can see.
 ## Sequencing
 
 ```
-now         A ────────────────────────────► ship, then measure
+now         A ────────────────────────────► shipped
                     │
                     ├──► D  (cheap, parallel, compounds with A)
                     │
-                    └──► B  (needs the signal from A to aim it)
+                    └──► B ────────────────► shipped
                               │
-                    E ────────┘  (extraction unblocks B's UI work)
+                    E ────────┘  (not needed for B after all; still open for its own sake)
 
             C: decide in principle now, execute when the answer is worth the break
 ```
 
-After A ships, re-read this file before picking the next track. The measurement
-that should drive it: do the 37 stars convert into issues, forks, and questions?
-That tells us whether the wall was the only thing in the way.
+A and B have both shipped. Re-read this file before picking the next track.
+The measurement that should drive it: do the 37 stars convert into issues,
+forks, and questions? That tells us whether the wall was the only thing in
+the way. D and E remain open and undated; C is still a decide-early,
+execute-late item.

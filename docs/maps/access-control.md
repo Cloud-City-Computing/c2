@@ -35,6 +35,19 @@ Clauses 1, 3 and 4 are shared verbatim, so **the archive creator and the
 workspace owner always have write access**, and there is no way to demote them
 short of changing `created_by`.
 
+**Clause 1 is an unconditional admin bypass.** Any query that interpolates
+`readAccessWhere`/`writeAccessWhere` without narrowing the `WHERE` further
+matches *every* archive platform-wide for an admin, including ones an admin
+should not casually stumble into, such as the hidden `system` GitHub
+PR-session archive (see [data-model.md](data-model.md) and
+[github-integration.md](github-integration.md)). The fragment alone is not
+enough scoping for a query meant to return "one relevant archive" rather than
+"every archive this admin can technically reach". `routes/first-run.js` is
+the worked example of scoping it correctly: it adds
+`AND p.\`system\` = FALSE` to its archive lookup precisely so the admin
+bypass in clause 1 cannot surface that hidden archive as a "Getting Started"
+target.
+
 ### The param contract
 
 ```js
@@ -160,7 +173,33 @@ Callers: delete archive (`archives.js:195`), manage access
 `can_manage_members`. Also used by the GitHub team-sync routes
 (`github.js:2090`, `github.js:2168`).
 
-## 4. Per-member flags and where each is enforced
+## 4. How membership itself is granted
+
+The checks above all assume a `squad_members` row already exists; this
+section is about how one gets created. Three paths, one of them new:
+
+1. **Squad/workspace creation.** `addSquadOwnerMember` inserts the creator as
+   `role = 'owner'` with every flag `TRUE`.
+2. **Accepting a `squad_invitations` row.** A pending invitation the recipient
+   must explicitly accept (`routes/squads.js`), which inserts the
+   `squad_members` row with whatever role and flags that invitation carried.
+3. **An invitation-carried squad on `user_invitations`, accepted through
+   signup.** `POST /api/admin/invitations` can attach a `squadId`, `role` and
+   permission flags to the invitation. When the invited person creates their
+   account (`POST /api/create-account`), `addSquadMember`
+   (`routes/helpers/shared.js`) inserts the `squad_members` row inside the
+   same transaction as the account itself. **This is the only one of the
+   three that does not require the recipient to accept a separate
+   `squad_invitations` row**: membership is a side effect of accepting the
+   account invitation, not a second, independent grant the user has to act on
+   afterward. See [data-model.md](data-model.md) for the `user_invitations`
+   columns that carry it.
+
+All three insert into the same table with the same shape, so every check
+elsewhere in this map (clauses 5 and 6 of the SQL fragments, the per-flag
+table below) applies identically regardless of which path created the row.
+
+## 5. Per-member flags and where each is enforced
 
 `squad_members` (`init.sql:155-171`) carries `role` plus seven booleans. Their
 enforcement is uneven, which is worth knowing before you assume a flag does
@@ -189,7 +228,7 @@ read and written by `GET`/`PUT /api/squads/:id/permissions`
 persists a value that changes no behaviour. See
 [open-questions.md](open-questions.md).
 
-## 5. Admin
+## 6. Admin
 
 `users.is_admin` short-circuits every layer: clause 1 of both SQL fragments,
 step 1 of `requirePermission`, the first bypass in `canPublish` and
@@ -202,7 +241,7 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
 (`server.js:17-21`).
 
-## 6. Checklist for adding a protected route
+## 7. Checklist for adding a protected route
 
 1. `requireAuth` first, always. There are no internal endpoints; the only
    surfaces are public HTTP and the two WebSockets.

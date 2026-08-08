@@ -2,10 +2,12 @@
 
 Read this before trusting any single claim in the other maps as gospel.
 
-Everything here was found by **reading the source**, not by running the app
-against a live database. Each item states what was verified and what was not.
+Most of this was found by **reading the source**, not by running the app
+against a live database; each item states what was verified and what was not.
 The distinction matters: a static read can prove that no code queries a column,
-but it cannot prove what a user sees.
+but it cannot prove what a user sees. B8 through B10 are the exception: they
+were found by running the app against a real database in a real browser, and
+are marked as such.
 
 Nothing here has been fixed. This is a findings list, not a changelog.
 
@@ -172,6 +174,61 @@ The email is sent anyway, by a direct `sendEmail` call in
 **Consequence:** turning off "email me about squad invites" in the preferences
 UI has no effect.
 
+### B8. `server.js` hardcodes port 3000 and reports success when the bind fails
+
+There is no `PORT` env var support: `ViteExpress.listen(app, 3000, cb)` in
+`server.js` bakes the port in, and the callback logs
+`CloudCodex API Server is running on http://localhost:3000` unconditionally,
+on the assumption that reaching the callback means the bind succeeded.
+
+**Verified at runtime**, not just by reading: on a machine where another
+project already owned port 3000, the app never listened, yet still printed
+the success line, and requests to `localhost:3000` returned the *other*
+application's responses with no indication anything was wrong. There is no
+try/catch around the bind and no check that the callback fired because of a
+successful `listen` versus some other reason.
+
+**Consequence:** this is an install wall for self-hosters running more than
+one thing on a box, and the log actively misleads rather than failing loudly.
+
+**Suggested fix:** `Number(process.env.PORT) || 3000`, document `PORT` in
+`.env.example`, and surface a bind error (`server.on('error', ...)`, since
+`ViteExpress.listen` returns the underlying `http.Server`) instead of only
+ever logging success.
+
+### B9. `make reset-db` and `docker compose down -v` do not reset the dev database
+
+`docker-compose.yaml`'s `database` service mounts `./db-data/:/var/lib/mysql/`,
+a **bind mount**, not a named Docker volume. `docker compose down -v` only
+removes volumes Compose manages; a bind mount is host-owned and untouched, so
+`-v` silently does nothing here. `make reset-db` (`Makefile`) does not touch
+the volume at all either, it pipes `init.sql` then `seed.sql` through the
+MySQL client against the already-running container, which drops and
+recreates the tables it lists but never revisits the data directory or
+anything `init.sql` doesn't already know about.
+
+**Verified at runtime**: `db-data/` content survives both `make reset-db`
+and `docker compose down -v` up. Getting a genuinely fresh database (the
+`docker-entrypoint-initdb.d` path documented in
+[data-model.md](data-model.md)'s Trap 1) needs `db-data/` emptied by hand,
+and its contents are owned by uid 999 (the MySQL image's internal user), so a
+plain host-side `rm -rf db-data/*` needs either `sudo` or a throwaway
+container run as that uid to remove it.
+
+**Consequence:** every "start from a clean database" instruction anywhere in
+this repo that says `docker compose down -v` is wrong about what it does.
+
+### B10. The squad `<select>` in the admin invite modal is unstyled
+
+`AdminPage.jsx`'s invite-user modal renders a `<select>` for the optional
+squad picker next to a text `<input>` for the email address. The input picks
+up the app's dark theme; the `<select>` renders with default browser chrome
+(white background, black text), visibly inconsistent right next to it.
+
+**Verified by looking at the running app.** Cosmetic only, no functional
+impact, but jarring enough to be worth a styled `<select>` (or a themed
+listbox component) rather than the browser default.
+
 ## C. Design tensions, not defects
 
 ### C1. `canWrite` is evaluated once per collab connection
@@ -244,7 +301,10 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
   only at the route-signature level.
 - The `docs/api/*.md` contracts were not diffed against the actual handlers.
   That is the obvious next pass and would likely surface more drift.
-- No runtime verification of anything. No app was started, no browser opened, no
-  query run against a live database. The test suite was run (57 files, 1128
-  tests, green) but it mocks the database, so it validates handler logic and not
-  schema interaction.
+- No runtime verification of anything **in this pass**. No app was started, no
+  browser opened, no query run against a live database. The test suite was run
+  (57 files, 1128 tests, green) but it mocks the database, so it validates
+  handler logic and not schema interaction. A later pass (the first-run
+  experience work) did run the app against a real database and a real browser
+  and produced B8 through B10 above; the rest of this document is still
+  static-read-only.

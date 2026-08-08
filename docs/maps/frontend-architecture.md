@@ -95,6 +95,7 @@ should use React components (`ConfirmDialog`, `Toast`) instead.
 | `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance |
 | `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner` |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
+| `useFirstRun.js` | fetches `GET /api/first-run` once per mount, exposes `{ firstRun, loading, complete }` |
 
 `useCollab` is the intricate one. It memoises the `Y.Doc` so it survives
 re-renders (`useCollab.js:48`), keeps the latest callbacks in refs so the socket
@@ -106,6 +107,14 @@ a 10-second timeout (`useCollab.js:252-283`).
 
 `useGitHubStatus` is a `.jsx` file, not `.js`, because it exports a context
 provider alongside the hook.
+
+`useFirstRun` dismisses locally before the completion request resolves:
+`complete()` sets local state to null immediately, then fires
+`POST /api/first-run/complete` and swallows a failure, so a network error
+never leaves the welcome stuck on screen (worst case it reappears once on
+the next load). A fetch failure on mount leaves `firstRun` `null`, which
+renders nothing, on purpose: onboarding must never be able to gate the rest
+of the application.
 
 ## 4. Components
 
@@ -127,7 +136,23 @@ one:
   renderers over the same collab cursor data.
 
 `src/page_layouts/Std_Layout.jsx` is the shell (nav, sidebar, content slot) that
-every page composes.
+every page composes. Its authenticated branch renders `<FirstRunGate />`
+ahead of `children`, which is the mount point that finally makes the welcome
+reachable for the admin, who is synced from `.env` at boot rather than
+signing up through an invitation and so never passed through the old
+imperative call in `Login.jsx`.
+
+`FirstRunGate` holds no copy of its own: it calls `useFirstRun`, renders
+nothing while loading or once `needsOnboarding` is false, and otherwise wraps
+`WelcomeSetup` in the shared modal-dimmer markup. `WelcomeSetup` is
+payload-driven, not imperative: it takes the `firstRun` object
+(`{ isAdmin, squad, archive, log, pendingSquadInvites }`) as a prop and
+`onFinish` as a callback, and renders one of two branches depending on
+whether the user already has a squad or archive to point at (teaches the
+workspace/squad/archive/log hierarchy by naming what they already have) or
+has neither (points at `pendingSquadInvites` if any exist, otherwise tells
+them to ask an admin). It creates nothing itself, unlike the deleted
+`POST /api/setup` flow it replaces.
 
 `src/extensions/` holds the three custom Tiptap nodes: `Mention.jsx` (which also
 exports `MentionPicker`), `GitHubCodeEmbed.jsx`, `GitHubIssueEmbed.jsx`.

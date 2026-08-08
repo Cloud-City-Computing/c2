@@ -271,7 +271,9 @@ A dedicated admin dashboard provides platform-wide management:
   non-admin accounts, toggle admin status, edit per-user creation
   permissions.
 - **User invitations** — invite users by email (sends a branded HTML signup
-  link), list pending invitations, and revoke.
+  link), optionally pre-assign a squad and role so the new account joins it
+  automatically on signup instead of landing in the app with no squad, list
+  pending invitations, and revoke.
 - **Live presence telemetry** — see which documents are currently being
   edited and by whom.
 
@@ -346,5 +348,13 @@ authenticator apps** (with QR code setup).
 
 ## Guided Onboarding
 
-A post-signup welcome wizard walks new users through creating their first
-workspace, squad, and archive in a single guided flow.
+A first-run welcome shows every user, admin included, what they already have
+rather than making them create anything: their squad (if any), an archive
+they can read, and a document to start in, teaching the
+workspace/squad/archive/document hierarchy by pointing at a live instance of
+it. A user with no squad yet sees a count of pending squad invitations, if
+any, instead. It shows once, the first time a user is authenticated after
+account creation (or, for the admin, after the instance first boots), and is
+dismissed permanently once seen. An admin invitation can now optionally
+pre-assign a squad and role, so a newly invited user has something to see
+here immediately instead of landing with nothing.

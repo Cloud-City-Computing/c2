@@ -111,7 +111,35 @@ table is not necessarily a password reset.
 
 `user_invitations` is what makes signup invite-only. The `users` table is only
 ever written with a valid invite token, an admin action, or an OAuth flow
-against a configured provider.
+against a configured provider. Beyond `email`/`token`/`invited_by`, it also
+carries `squad_id` (nullable), `role`, and the same seven `can_read` through
+`can_publish` permission booleans as `squad_members`, mirroring
+`squad_invitations`'s vocabulary rather than inventing a second one. An
+invitation created with a squad attached (`POST /api/admin/invitations` with
+`squadId`) makes `POST /api/create-account` insert a `squad_members` row for
+the new account, inside the same transaction as the account and permissions
+rows, using `addSquadMember` in `routes/helpers/shared.js`. **This is a
+second way a `squad_members` row gets created**, alongside accepting a
+`squad_invitations` row, and the only one that requires no separate accept
+step: membership lands atomically with the account itself.
+
+`user_invitations.squad_id`'s foreign key to `squads(id)` is a trailing
+`ALTER TABLE` at the end of `init.sql`, **not** part of the inline
+`CREATE TABLE user_invitations` block. `init.sql` declares
+`user_invitations` before `squads`, so an inline FK there would reference a
+table that does not exist yet and abort the whole file on a fresh volume; the
+constraint is added right after `CREATE TABLE squads` instead.
+`migrations/add_first_run.sql` does not have this ordering problem, since any
+database old enough to need the migration already has a `squads` table, so
+it adds the FK constraint inline in the same `ALTER TABLE` that adds the
+other eight columns. Reviewers have misread the split placement as
+inconsistency once already; it is a fresh-install ordering constraint, not
+a mistake.
+
+`users.onboarded_at` (`TIMESTAMP NULL`, default `NULL`) marks that a user has
+completed the first-run welcome. It is `NULL` for every user that predates
+it, so each sees the welcome once, including the admin, who previously never
+saw an onboarding flow at all. `routes/first-run.js` is the only writer.
 
 ## 5. Squads and membership
 
@@ -125,6 +153,12 @@ inert, and `squad_permissions` is a settings table nothing enforces.
 (`init.sql:192`). Because `status` is part of the key, a user can hold one
 pending, one accepted, and one declined invitation to the same squad
 simultaneously; re-inviting after a decline works without cleanup.
+
+A `squad_members` row now has three writers, not two: `addSquadOwnerMember`
+(workspace/squad creation), accepting a `squad_invitations` row, and, as of
+the first-run work, `addSquadMember` called from `POST /api/create-account`
+when the invitation that created the account carried a `squad_id`. See
+Section 4 above for the `user_invitations` columns that drive it.
 
 ## 6. The five GitHub tables
 
