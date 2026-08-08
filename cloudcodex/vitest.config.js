@@ -94,6 +94,7 @@ export default defineConfig({
         'routes/comments.js': { lines: 92, statements: 90, branches: 85, functions: 95 },
         'routes/documents.js': { lines: 95, statements: 92, branches: 88, functions: 88 },
         'routes/favorites.js': { lines: 80, statements: 80, branches: 70, functions: 80 },
+        'routes/first-run.js': { lines: 95, statements: 95, branches: 85, functions: 95 },
         'routes/notifications.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
         'routes/squads.js': { lines: 85, statements: 75, branches: 65, functions: 95 },
         'routes/watches.js': { lines: 85, statements: 85, branches: 73, functions: 95 },
