@@ -10,6 +10,10 @@
 -- NULL for every existing user, so they each see it once, which is intended:
 -- the admin has never been able to see one at all.
 
+-- Only squad_id gets an AFTER clause, so on an upgraded database the
+-- remaining columns land at the end of the table, after expires_at,
+-- accepted and created_at, unlike a fresh install where init.sql places them
+-- inline. Harmless: every reader accesses columns by name, never by position.
 ALTER TABLE user_invitations
   ADD COLUMN squad_id INT NULL AFTER invited_by,
   ADD COLUMN role ENUM('member', 'admin', 'owner') DEFAULT 'member',
