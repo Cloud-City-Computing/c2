@@ -122,6 +122,7 @@ export default defineConfig({
         'src/hooks/useGitHubStatus.jsx': { lines: 85, statements: 85, branches: 75, functions: 85 },
         'src/hooks/useGitHubLink.js': { lines: 88, statements: 85, branches: 65, functions: 95 },
         'src/hooks/useNotificationChannel.js': { lines: 88, statements: 85, branches: 80, functions: 85 },
+        'src/hooks/useFirstRun.js': { lines: 95, statements: 95, branches: 85, functions: 95 },
       },
     },
   },

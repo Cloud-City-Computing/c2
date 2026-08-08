@@ -494,6 +494,11 @@ export async function exportDocument(logId, format, title, htmlContent) {
   URL.revokeObjectURL(url);
 }
 
+// --- First-Run APIs ---
+
+export const getFirstRun = () => apiFetch('GET', '/api/first-run');
+export const completeFirstRun = () => apiFetch('POST', '/api/first-run/complete');
+
 // --- DOM Helpers ---
 
 /**
