@@ -220,7 +220,16 @@ function InviteUserModal({ onInvited }) {
     setLastInvite(null);
     if (!email.trim()) { setError('Email address is required.'); return; }
     try {
-      const res = await createAdminInvitation(email, squadId ? { squadId: Number(squadId), role } : {});
+      // can_read already defaults true server-side. Member and Owner are the
+      // only roles the access-control code distinguishes: writeAccessWhere()
+      // special-cases role='owner', and canManageSquad keys off
+      // can_manage_members rather than role, so an invited teammate needs
+      // can_write and can_create_log spelled out or they land read-only
+      // regardless of the role picked.
+      const options = squadId
+        ? { squadId: Number(squadId), role, permissions: { can_write: true, can_create_log: true } }
+        : {};
+      const res = await createAdminInvitation(email, options);
       setSuccess(res.message);
       setLastInvite({ url: res.signup_url, emailed: res.emailed, email });
       setEmail('');
@@ -264,9 +273,12 @@ function InviteUserModal({ onInvited }) {
         {squadId && (
           <>
             <label htmlFor="invite-role">Role:</label>
+            {/* No "Admin" option here on purpose: nothing in the access-control
+                code (ownership.js, canManageSquad) distinguishes squad role
+                'admin' from 'member', so it would grant nothing extra while
+                looking like it does. Owner genuinely differs. */}
             <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)}>
               <option value="member">Member</option>
-              <option value="admin">Admin</option>
               <option value="owner">Owner</option>
             </select>
           </>
