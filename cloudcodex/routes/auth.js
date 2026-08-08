@@ -184,29 +184,6 @@ router.get('/check-username/:username', asyncHandler(async (req, res) => {
 }));
 
 /**
- * POST /api/setup
- * Quick-start workspace setup for new users.
- * Creates a standalone personal archive. Workspace creation
- * is admin-only and handled via the admin console.
- * Body: { archiveName }
- */
-router.post('/setup', requireAuth, asyncHandler(async (req, res) => {
-  const { archiveName } = req.body;
-
-  if (!archiveName?.trim()) {
-    return res.status(400).json({ success: false, message: 'Provide a archive name' });
-  }
-
-  const projResult = await c2_query(
-    `INSERT INTO archives (name, squad_id, created_by, read_access, write_access)
-     VALUES (?, NULL, ?, JSON_ARRAY(?), JSON_ARRAY(?))`,
-    [archiveName.trim(), req.user.id, req.user.id, req.user.id]
-  );
-
-  res.status(201).json({ success: true, workspaceId: null, squadId: null, archiveId: projResult.insertId });
-}));
-
-/**
  * POST /api/update-account
  * Body: { token, userId, name?, email?, password? }
  */

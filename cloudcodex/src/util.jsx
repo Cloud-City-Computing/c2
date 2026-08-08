@@ -182,7 +182,6 @@ export const publishVersionWithRelease = (logId, payload) =>
 
 export const fetchSquads = (workspaceId) => apiFetch('GET', `/api/workspaces/${workspaceId}/squads`);
 export const createSquad = (workspaceId, name, { archiveName } = {}) => apiFetch('POST', `/api/workspaces/${workspaceId}/squads`, { name, archiveName });
-export const setupWorkspace = (opts) => apiFetch('POST', '/api/setup', opts);
 export const updateSquad = (id, name) => apiFetch('PUT', `/api/squads/${id}`, { name });
 export const deleteSquad = (id) => apiFetch('DELETE', `/api/squads/${id}`);
 

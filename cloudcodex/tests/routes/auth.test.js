@@ -1249,44 +1249,17 @@ describe('Auth Routes', () => {
     });
   });
 
-  // ── POST /api/setup ───────────────────────────────────────
-
+  // /api/setup was removed: it had no callers and created an archive with a
+  // NULL squad_id, which only its creator could ever reach.
   describe('POST /api/setup', () => {
-    it('creates a standalone archive', async () => {
+    it('no longer exists', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce({ insertId: 30 }); // INSERT archive
-
       const res = await request(app)
         .post('/api/setup')
         .set('Authorization', 'Bearer valid-token')
-        .send({ archiveName: 'Solo Archive' });
+        .send({ archiveName: 'Anything' });
 
-      expect(res.status).toBe(201);
-      expect(res.body.workspaceId).toBeNull();
-      expect(res.body.squadId).toBeNull();
-      expect(res.body.archiveId).toBe(30);
-    });
-
-    it('rejects when no archive name provided', async () => {
-      mockAuthenticated();
-
-      const res = await request(app)
-        .post('/api/setup')
-        .set('Authorization', 'Bearer valid-token')
-        .send({});
-
-      expect(res.status).toBe(400);
-    });
-
-    it('requires authentication', async () => {
-      mockUnauthenticated();
-
-      const res = await request(app)
-        .post('/api/setup')
-        .set('Authorization', 'Bearer bad-token')
-        .send({ archiveName: 'My Archive' });
-
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(404);
     });
   });
 });
