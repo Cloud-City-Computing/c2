@@ -242,7 +242,7 @@ fi
 
 echo ""
 echo -e "${GREEN}────────────────────────────────────────${NC}"
-echo -e "${GREEN}  Cloud Codex is starting on port 3000  ${NC}"
+echo -e "${GREEN}  Cloud Codex is starting on port ${PORT:-3000}  ${NC}"
 echo -e "${GREEN}────────────────────────────────────────${NC}"
 echo ""
 

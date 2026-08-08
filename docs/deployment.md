@@ -95,8 +95,11 @@ Add new env vars to `.env.example` (with a comment) when introducing them.
 ## TLS and reverse proxy
 
 Cloud Codex serves plain HTTP on port 3000 inside its container, or on `PORT`
-if that is set. Production should always sit behind a TLS-terminating reverse
-proxy. Two requirements the proxy must satisfy:
+if that is set. `docker-compose-prod.yml` publishes `${PORT:-3000}` on both
+sides of the mapping, so setting `PORT` in `.env` moves the host port with it;
+update `APP_URL` to match, and remember the smoke test below uses that port.
+Production should always sit behind a TLS-terminating reverse proxy. Two
+requirements the proxy must satisfy:
 
 1. **WebSocket upgrade passthrough.** Both `/collab/:logId` and
    `/notifications-ws` rely on the HTTP upgrade dance. A proxy that strips

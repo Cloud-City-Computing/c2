@@ -83,15 +83,23 @@ if (configuredPort !== undefined && configuredPort.trim() !== '') {
   }
 }
 
-const server = ViteExpress.listen(app, port);
+const server = ViteExpress.listen(app, port, () => {
+  // `server.listening` is the guard, and it is not paranoia. Express 5 aliases
+  // this callback onto the socket's 'error' event
+  // (express/lib/application.js: `server.once('error', done)`), so it runs on a
+  // FAILED bind too. That is why this file used to log
+  // "running on http://localhost:3000" while the port was owned by an
+  // unrelated application and requests to that URL reached someone else.
+  // Express 4 had no such aliasing, so the bug arrived with the framework, not
+  // with vite-express.
+  //
+  // The 'listening' event is the other honest signal, but it is the WRONG one
+  // here: vite-express registers first and injects the Vite middleware
+  // asynchronously, so 'listening' fires roughly twelve seconds before the dev
+  // server can actually serve a page. This callback runs after that injection,
+  // so it reports readiness rather than merely binding.
+  if (!server.listening) return;
 
-// Announce from the 'listening' event, never from listen()'s callback. Node
-// emits 'listening' only on a bind that actually succeeded, whereas the
-// callback is not a reliable signal of one: this file previously logged
-// "running on http://localhost:3000" while the socket was owned by an
-// unrelated application, so requests to that URL were answered by someone
-// else entirely and the log insisted everything was fine.
-server.on('listening', () => {
   // Report the port actually bound, not the one requested. They differ when
   // PORT is 0, which asks the OS to pick a free one, and reporting the
   // request rather than the result is the same class of lie this fixes.

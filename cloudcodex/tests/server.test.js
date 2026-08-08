@@ -12,19 +12,28 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// server.js now registers 'listening' and 'error' handlers on the returned
-// server, so the fake has to record them. A bare {} throws on `.on` and would
-// fail every test in this file for a reason that looks unrelated. The
-// handlers are captured rather than invoked, because node emits neither event
-// synchronously and each test drives the one it cares about.
+// server.js registers an 'error' handler on the returned server and reads
+// `server.listening` and `server.address()` inside listen's callback, so the
+// fake has to carry all three. A bare {} throws on `.on` and would fail every
+// test in this file for a reason that looks unrelated.
+//
+// The callback is CAPTURED, never invoked during listen. Production defers it
+// (vite-express awaits Vite startup before calling it), and invoking it
+// synchronously here would run it before `const server = ...` is assigned,
+// producing a TDZ error that says nothing about the code under test.
 const serverHandlers = {};
+let listenCallback;
 const fakeServer = {
+  listening: true,
   on: vi.fn((event, handler) => { serverHandlers[event] = handler; }),
   // The real server reports the port it actually bound, which differs from the
   // requested one when PORT is 0. Tests override this to drive that case.
   address: vi.fn(() => ({ port: 4100 })),
 };
-const listenMock = vi.fn(() => fakeServer);
+const listenMock = vi.fn((_app, _port, callback) => {
+  listenCallback = callback;
+  return fakeServer;
+});
 vi.mock('vite-express', () => ({ default: { listen: listenMock } }));
 vi.mock('../services/collab.js', () => ({ setupCollabServer: vi.fn() }));
 vi.mock('../services/user-channel.js', () => ({ setupUserChannelServer: vi.fn() }));
@@ -50,7 +59,9 @@ beforeEach(() => {
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   listenMock.mockClear();
   fakeServer.on.mockClear();
+  fakeServer.listening = true;
   fakeServer.address.mockReturnValue({ port: 4100 });
+  listenCallback = undefined;
   Object.keys(serverHandlers).forEach(k => delete serverHandlers[k]);
 });
 
@@ -70,9 +81,10 @@ describe('server.js — startup env validation', () => {
     process.env.ADMIN_PASSWORD = 'p';
     process.env.ADMIN_EMAIL = 'a@b.c';
     try {
-      // Explicit, because dotenv refills absent keys from the developer's own
-      // .env when server.js is imported. `.env.example` ships PORT blank, and
-      // a blank value is treated as unset.
+      // Explicit, because this assertion became environment-sensitive when
+      // PORT started being read: a PORT exported in a developer's or CI's
+      // shell would otherwise decide it. (dotenv does not reach this test,
+      // its only two importers are mocked in tests/setup.js.)
       delete process.env.PORT;
       await import('../server.js');
       expect(exitSpy).not.toHaveBeenCalled();
@@ -128,28 +140,29 @@ describe('server.js: PORT', () => {
     });
   });
 
-  // Node emits 'listening' only on a bind that actually succeeded, so the
-  // success message hangs off that event and not off listen()'s callback.
-  // These two pin the difference: nothing is announced until the event fires.
-  it('says nothing about running until the listening event fires', async () => {
+  // Express 5 aliases listen's callback onto the socket's 'error' event, so it
+  // runs on a FAILED bind too. `server.listening` is what separates the two,
+  // and these three pin that: same callback, opposite outcomes.
+  it('announces the real port when the bind succeeded', async () => {
     await withEnv({ PORT: '4100' }, () => {
-      expect(logSpy.mock.calls.flat().join(' ')).not.toMatch(/running on/);
-      expect(serverHandlers.listening).toBeTypeOf('function');
-    });
-  });
-
-  it('announces the real port once the server is listening', async () => {
-    await withEnv({ PORT: '4100' }, () => {
-      serverHandlers.listening();
+      listenCallback();
       expect(logSpy.mock.calls.flat().join(' ')).toMatch(/running on http:\/\/localhost:4100/);
     });
   });
 
+  it('stays silent when the callback runs but the bind failed', async () => {
+    await withEnv({ PORT: '4100' }, () => {
+      fakeServer.listening = false;
+      listenCallback();
+      expect(logSpy.mock.calls.flat().join(' ')).not.toMatch(/running on/);
+    });
+  });
+
   it('reports the port actually bound, not the one requested, when PORT is 0', async () => {
-    fakeServer.address.mockReturnValue({ port: 45123 });
     await withEnv({ PORT: '0' }, () => {
       expect(listenMock.mock.calls[0][1]).toBe(0);
-      serverHandlers.listening();
+      fakeServer.address.mockReturnValue({ port: 45123 });
+      listenCallback();
       expect(logSpy.mock.calls.flat().join(' ')).toMatch(/running on http:\/\/localhost:45123/);
     });
   });

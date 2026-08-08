@@ -186,21 +186,42 @@ meant the bind had succeeded.
 to `localhost:3000` were answered by the *other* application with no
 indication anything was wrong.
 
-**The root cause was subtler than "no error handling".** `vite-express` calls
-the callback from inside `app.listen(port, cb)`, and with a `vite-express`
-app that callback runs **even when the bind failed**: its `bind()` step logs
-`Running in development mode` and then invokes the callback, while node
-separately emits `'error'` and leaves `server.listening` false. So the
-callback was never evidence of a successful bind in the first place. Node
-emits `'listening'` only on a bind that actually succeeded, which is the
-signal to trust.
+**The root cause is Express 5, and it generalises well beyond this file.**
+`express/lib/application.js` aliases the listen callback onto the socket's
+error event:
+
+```js
+if (typeof args[args.length - 1] === 'function') {
+  var done = args[args.length - 1] = once(args[args.length - 1])
+  server.once('error', done)
+}
+```
+
+So `app.listen(port, cb)` runs `cb` on a **failed** bind as well as a
+successful one, with `server.listening === false`. Express 4 had no such
+aliasing, so this arrived with the framework upgrade, not with `vite-express`.
+The reusable rule: **in Express 5, listen's callback is not evidence of a
+bind; `server.listening` is.**
 
 **Fixed:** `PORT` is honoured (documented in `.env.example`, blank means the
 3000 default, an out-of-range or non-numeric value exits rather than silently
-falling back), the success line moved to the `'listening'` event, and an
-`'error'` handler names the port and exits non-zero. Both paths were verified
-against the running app: a busy port prints `Port N is already in use` with no
-success line and exits 1, and a free custom port serves normally.
+falling back), the success line is guarded on `server.listening` and reports
+the port actually bound (so `PORT=0` reads correctly), and an `'error'`
+handler names the port and exits non-zero. Both paths were verified against
+the running app: a busy port prints `Port N is already in use` with no success
+line and exits 1, and a free custom port serves normally.
+
+**Why the callback and not the `'listening'` event**, which is the other
+honest signal: `vite-express` registers its own `'listening'` listener first
+and injects the Vite middleware asynchronously, so `'listening'` fires roughly
+**twelve seconds before the dev server can serve a page** (measured: 200 at
+t=11.6s, `Cannot GET /` before that). Announcing there would trade a lie about
+binding for a lie about readiness. The callback runs after injection.
+
+**Docker:** `docker-compose-prod.yml` publishes `"${PORT:-3000}:${PORT:-3000}"`
+so setting `PORT` moves the published mapping with it. Note that a port
+conflict on a Docker host is a *host*-side collision that `PORT` alone cannot
+resolve; it surfaces as Compose's own "port is already allocated".
 
 **Still true, and worth knowing:** `APP_URL` is independent of `PORT`.
 Changing the port without updating `APP_URL` produces invitation and
