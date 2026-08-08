@@ -204,6 +204,15 @@ function InviteUserModal({ onInvited }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [lastInvite, setLastInvite] = useState(null);
+  const [squads, setSquads] = useState([]);
+  const [squadId, setSquadId] = useState('');
+  const [role, setRole] = useState('member');
+
+  useEffect(() => {
+    fetchAdminSquads()
+      .then(res => setSquads(res.squads || []))
+      .catch(() => { /* the picker is optional; an invite without a squad still works */ });
+  }, []);
 
   const handleSubmit = async () => {
     setError(null);
@@ -211,7 +220,7 @@ function InviteUserModal({ onInvited }) {
     setLastInvite(null);
     if (!email.trim()) { setError('Email address is required.'); return; }
     try {
-      const res = await createAdminInvitation(email);
+      const res = await createAdminInvitation(email, squadId ? { squadId: Number(squadId), role } : {});
       setSuccess(res.message);
       setLastInvite({ url: res.signup_url, emailed: res.emailed, email });
       setEmail('');
@@ -243,6 +252,25 @@ function InviteUserModal({ onInvited }) {
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="newuser@example.com" />
+        <label htmlFor="invite-squad">Squad (optional):</label>
+        <select id="invite-squad" value={squadId} onChange={(e) => setSquadId(e.target.value)}>
+          <option value="">No squad, assign later</option>
+          {squads.map(s => (
+            <option key={s.id} value={s.id}>
+              {s.workspace_name ? `${s.workspace_name} / ${s.name}` : s.name}
+            </option>
+          ))}
+        </select>
+        {squadId && (
+          <>
+            <label htmlFor="invite-role">Role:</label>
+            <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="owner">Owner</option>
+            </select>
+          </>
+        )}
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Send Invitation</button>
       </div>
       {lastInvite && (
