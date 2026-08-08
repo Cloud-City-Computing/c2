@@ -30,8 +30,13 @@ services:
     depends_on:
       database:
         condition: service_healthy
+    # Both sides follow PORT so setting it in .env moves the published mapping
+    # too. Without this the app would bind PORT inside the container while
+    # Compose still published 3000, and every request to the host would be
+    # refused while the logs showed a clean boot. `:-3000` covers the blank
+    # PORT= that .env.example ships.
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     env_file:
       - .env
     environment:

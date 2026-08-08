@@ -153,7 +153,9 @@ cp .env.example .env   # fill in DB, SMTP, and admin credentials
 ./start.sh             # installs deps, starts MySQL, launches dev server
 ```
 
-The application will be available at **http://localhost:3000**.
+The application will be available at **http://localhost:3000**. If something
+else already owns that port, set `PORT` in `.env` and update `APP_URL` to
+match, since invitation and password-reset links are built from `APP_URL`.
 
 → Full setup in [docs/getting-started.md](docs/getting-started.md).
 
