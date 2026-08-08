@@ -58,7 +58,7 @@ describe('GET /api/first-run', () => {
     });
   });
 
-  it('resolves the archive through the ownership fragment with all seven params', async () => {
+  it('resolves the archive through the ownership fragment with all seven params, plus the squad ordering param', async () => {
     c2_query.mockResolvedValueOnce([{ onboarded_at: null }]);
     c2_query.mockResolvedValueOnce([{ id: 3, name: 'General' }]);
     c2_query.mockResolvedValueOnce([]);
@@ -68,7 +68,67 @@ describe('GET /api/first-run', () => {
 
     const archiveCall = c2_query.mock.calls[2];
     expect(archiveCall[0]).toContain('FROM archives');
-    expect(archiveCall[1]).toHaveLength(7);
+    // The seven ownership params, in the fragment's own order, plus the
+    // squad id bound after them because the ORDER BY placeholder sits
+    // textually after the WHERE fragment in the final SQL string.
+    expect(archiveCall[1]).toEqual([
+      Boolean(TEST_USER.is_admin),
+      JSON.stringify(TEST_USER.id),
+      TEST_USER.id,
+      TEST_USER.email,
+      TEST_USER.id,
+      TEST_USER.id,
+      TEST_USER.id,
+      3,
+    ]);
+  });
+
+  it('excludes system archives from the lookup, even for an admin whose bypass clause would otherwise match every row', async () => {
+    mockAuthenticated({ ...TEST_USER, is_admin: true });
+    c2_query.mockResolvedValueOnce([{ onboarded_at: null }]);
+    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockResolvedValueOnce([{ id: 8, name: 'Getting Started' }]);
+    c2_query.mockResolvedValueOnce([{ id: 20, title: 'Welcome to Cloud Codex' }]);
+    c2_query.mockResolvedValueOnce([{ n: 0 }]);
+
+    const res = await request(app)
+      .get('/api/first-run')
+      .set('Authorization', 'Bearer valid-token');
+
+    const archiveCall = c2_query.mock.calls[2];
+    expect(archiveCall[0]).toContain('`system` = FALSE');
+    expect(res.body.archive).toEqual({ id: 8, name: 'Getting Started' });
+  });
+
+  it('orders the archive query toward the resolved squad by binding its id after the ownership params', async () => {
+    c2_query.mockResolvedValueOnce([{ onboarded_at: null }]);
+    c2_query.mockResolvedValueOnce([{ id: 3, name: 'General' }]);
+    c2_query.mockResolvedValueOnce([{ id: 5, name: 'Getting Started' }]);
+    c2_query.mockResolvedValueOnce([{ id: 9, title: 'Welcome to Cloud Codex' }]);
+    c2_query.mockResolvedValueOnce([{ n: 0 }]);
+
+    await request(app).get('/api/first-run').set('Authorization', 'Bearer valid-token');
+
+    const archiveCall = c2_query.mock.calls[2];
+    expect(archiveCall[0]).toContain('ORDER BY (p.squad_id = ?) DESC');
+    expect(archiveCall[1]).toHaveLength(8);
+    expect(archiveCall[1][7]).toBe(3);
+  });
+
+  it('falls back to the oldest readable non-system archive when the user has no squad, binding null rather than excluding everything', async () => {
+    c2_query.mockResolvedValueOnce([{ onboarded_at: null }]);
+    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockResolvedValueOnce([{ id: 11, name: 'Shared Archive' }]);
+    c2_query.mockResolvedValueOnce([{ id: 40, title: 'Welcome to Cloud Codex' }]);
+    c2_query.mockResolvedValueOnce([{ n: 0 }]);
+
+    const res = await request(app)
+      .get('/api/first-run')
+      .set('Authorization', 'Bearer valid-token');
+
+    const archiveCall = c2_query.mock.calls[2];
+    expect(archiveCall[1][7]).toBeNull();
+    expect(res.body.archive).toEqual({ id: 11, name: 'Shared Archive' });
   });
 
   it('skips the log lookup and reports nulls when the user reaches no archive', async () => {

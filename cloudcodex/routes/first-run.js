@@ -50,14 +50,22 @@ router.get('/first-run', requireAuth, asyncHandler(async (req, res) => {
 
   // The archive is the ACL boundary, so this is resolved through the shared
   // fragment rather than by walking the squad. A user can legitimately reach
-  // an archive in a squad they are not a member of.
+  // an archive in a squad they are not a member of. `system` archives (the
+  // hidden GitHub PR-session archive created in routes/github.js) are
+  // excluded outright: they are meant to be invisible to normal browsing,
+  // and the admin bypass in readAccessWhere would otherwise surface one as
+  // an admin's "Getting Started" target. The squad resolved above is
+  // preferred by ORDER BY, not enforced by WHERE, so a workspace owner who
+  // reaches an archive without being in its squad still gets a result
+  // instead of a false "no archive yet".
   const [archive] = await c2_query(
     `SELECT p.id, p.name
        FROM archives p
-      WHERE ${readAccessWhere('p')}
-      ORDER BY p.created_at ASC, p.id ASC
+      WHERE p.\`system\` = FALSE
+        AND ${readAccessWhere('p')}
+      ORDER BY (p.squad_id = ?) DESC, p.created_at ASC, p.id ASC
       LIMIT 1`,
-    readAccessParams(req.user)
+    [...readAccessParams(req.user), squad?.id ?? null]
   );
 
   const [log] = archive
