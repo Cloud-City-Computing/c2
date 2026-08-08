@@ -94,9 +94,9 @@ Add new env vars to `.env.example` (with a comment) when introducing them.
 
 ## TLS and reverse proxy
 
-Cloud Codex serves plain HTTP on port 3000 inside its container. Production
-should always sit behind a TLS-terminating reverse proxy. Two requirements
-the proxy must satisfy:
+Cloud Codex serves plain HTTP on port 3000 inside its container, or on `PORT`
+if that is set. Production should always sit behind a TLS-terminating reverse
+proxy. Two requirements the proxy must satisfy:
 
 1. **WebSocket upgrade passthrough.** Both `/collab/:logId` and
    `/notifications-ws` rely on the HTTP upgrade dance. A proxy that strips

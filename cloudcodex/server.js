@@ -62,8 +62,55 @@ try {
   console.error(`[${new Date().toISOString()}] instance bootstrap failed:`, err);
 }
 
-const server = ViteExpress.listen(app, 3000, () => {
-  console.log('CloudCodex API Server is running on http://localhost:3000');
+// ─── Resolve the port ───────────────────────────────────────
+//
+// PORT is honoured so an instance can run somewhere other than 3000, which a
+// self-hoster needs the moment something else already owns that port. An
+// invalid value fails loudly instead of falling back, because a typo that
+// quietly starts the app somewhere other than where the operator asked is the
+// same defect wearing a friendlier face.
+const DEFAULT_PORT = 3000;
+let port = DEFAULT_PORT;
+const configuredPort = process.env.PORT;
+if (configuredPort !== undefined && configuredPort.trim() !== '') {
+  const parsed = Number(configuredPort);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    console.error(`✖ Invalid PORT "${configuredPort}": expected an integer between 0 and 65535.`);
+    console.error(`  Leave PORT unset to use the default (${DEFAULT_PORT}).`);
+    process.exit(1);
+  } else {
+    port = parsed;
+  }
+}
+
+const server = ViteExpress.listen(app, port);
+
+// Announce from the 'listening' event, never from listen()'s callback. Node
+// emits 'listening' only on a bind that actually succeeded, whereas the
+// callback is not a reliable signal of one: this file previously logged
+// "running on http://localhost:3000" while the socket was owned by an
+// unrelated application, so requests to that URL were answered by someone
+// else entirely and the log insisted everything was fine.
+server.on('listening', () => {
+  // Report the port actually bound, not the one requested. They differ when
+  // PORT is 0, which asks the OS to pick a free one, and reporting the
+  // request rather than the result is the same class of lie this fixes.
+  const address = server.address();
+  const boundPort = address && typeof address === 'object' ? address.port : port;
+  console.log(`CloudCodex API Server is running on http://localhost:${boundPort}`);
+});
+
+// Without a handler, a bind failure is an unhandled 'error' event. A process
+// that cannot accept requests is not degraded, it is useless, so say which
+// port and why, then exit non-zero and let the supervisor report it.
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`✖ Port ${port} is already in use.`);
+    console.error('  Set PORT in .env to a free port, or stop whatever is holding it.');
+  } else {
+    console.error(`[${new Date().toISOString()}] HTTP server error:`, err);
+  }
+  process.exit(1);
 });
 
 // Attach WebSocket collaborative editing server to the HTTP server

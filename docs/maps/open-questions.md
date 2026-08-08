@@ -174,27 +174,37 @@ The email is sent anyway, by a direct `sendEmail` call in
 **Consequence:** turning off "email me about squad invites" in the preferences
 UI has no effect.
 
-### B8. `server.js` hardcodes port 3000 and reports success when the bind fails
+### B8. `server.js` hardcoded port 3000 and reported success on a failed bind (FIXED)
 
-There is no `PORT` env var support: `ViteExpress.listen(app, 3000, cb)` in
-`server.js` bakes the port in, and the callback logs
-`CloudCodex API Server is running on http://localhost:3000` unconditionally,
-on the assumption that reaching the callback means the bind succeeded.
+`server.js` baked the port in and logged
+`CloudCodex API Server is running on http://localhost:3000` from
+`ViteExpress.listen`'s callback, on the assumption that reaching the callback
+meant the bind had succeeded.
 
-**Verified at runtime**, not just by reading: on a machine where another
-project already owned port 3000, the app never listened, yet still printed
-the success line, and requests to `localhost:3000` returned the *other*
-application's responses with no indication anything was wrong. There is no
-try/catch around the bind and no check that the callback fired because of a
-successful `listen` versus some other reason.
+**Verified at runtime:** on a machine where another project already owned port
+3000, the app never listened, yet still printed the success line, and requests
+to `localhost:3000` were answered by the *other* application with no
+indication anything was wrong.
 
-**Consequence:** this is an install wall for self-hosters running more than
-one thing on a box, and the log actively misleads rather than failing loudly.
+**The root cause was subtler than "no error handling".** `vite-express` calls
+the callback from inside `app.listen(port, cb)`, and with a `vite-express`
+app that callback runs **even when the bind failed**: its `bind()` step logs
+`Running in development mode` and then invokes the callback, while node
+separately emits `'error'` and leaves `server.listening` false. So the
+callback was never evidence of a successful bind in the first place. Node
+emits `'listening'` only on a bind that actually succeeded, which is the
+signal to trust.
 
-**Suggested fix:** `Number(process.env.PORT) || 3000`, document `PORT` in
-`.env.example`, and surface a bind error (`server.on('error', ...)`, since
-`ViteExpress.listen` returns the underlying `http.Server`) instead of only
-ever logging success.
+**Fixed:** `PORT` is honoured (documented in `.env.example`, blank means the
+3000 default, an out-of-range or non-numeric value exits rather than silently
+falling back), the success line moved to the `'listening'` event, and an
+`'error'` handler names the port and exits non-zero. Both paths were verified
+against the running app: a busy port prints `Port N is already in use` with no
+success line and exits 1, and a free custom port serves normally.
+
+**Still true, and worth knowing:** `APP_URL` is independent of `PORT`.
+Changing the port without updating `APP_URL` produces invitation and
+password-reset links pointing at the old one.
 
 ### B9. `make reset-db` and `docker compose down -v` do not reset the dev database
 
