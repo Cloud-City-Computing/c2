@@ -17,6 +17,19 @@ import { createNotification } from '../services/notifications.js';
 
 const router = express.Router();
 
+// Mirrors the squad_invitations / squad_members vocabulary exactly. Order is
+// load-bearing: it is the order the invitation INSERT binds its parameters.
+const SQUAD_PERMISSION_FLAGS = [
+  'can_read',
+  'can_write',
+  'can_create_log',
+  'can_create_archive',
+  'can_manage_members',
+  'can_delete_version',
+  'can_publish',
+];
+const SQUAD_ROLES = ['member', 'admin', 'owner'];
+
 /**
  * Ensures the admin super user exists in the database.
  * Called on server startup.
@@ -369,9 +382,19 @@ router.get('/admin/invitations', requireAuth, requireAdmin, asyncHandler(async (
  * Invite a new user by email (admin only). Sends a signup link.
  */
 router.post('/admin/invitations', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const { email } = req.body;
+  const { email, squadId, role, permissions } = req.body;
   if (!email?.trim() || !isValidEmail(email.trim())) {
     return res.status(400).json({ success: false, message: 'A valid email address is required' });
+  }
+
+  const hasSquad = squadId !== undefined && squadId !== null;
+  if (hasSquad && !isValidId(squadId)) {
+    return res.status(400).json({ success: false, message: 'Invalid squad id' });
+  }
+
+  const inviteRole = role ?? 'member';
+  if (!SQUAD_ROLES.includes(inviteRole)) {
+    return res.status(400).json({ success: false, message: 'Invalid role' });
   }
 
   const trimmedEmail = email.trim();
@@ -394,12 +417,30 @@ router.post('/admin/invitations', requireAuth, requireAdmin, asyncHandler(async 
     return res.status(409).json({ success: false, message: 'An invitation has already been sent to this email' });
   }
 
+  // Gated on hasSquad so an invitation without a squad issues exactly the
+  // queries it always has, and every existing test queue stays valid.
+  if (hasSquad) {
+    const [squad] = await c2_query(`SELECT id FROM squads WHERE id = ? LIMIT 1`, [Number(squadId)]);
+    if (!squad) {
+      return res.status(404).json({ success: false, message: 'Squad not found' });
+    }
+  }
+
+  // can_read defaults TRUE, every other flag FALSE, matching squad_invitations.
+  const flags = SQUAD_PERMISSION_FLAGS.map(flag => (
+    permissions?.[flag] === undefined
+      ? flag === 'can_read'
+      : Boolean(permissions[flag])
+  ));
+
   const token = crypto.randomBytes(32).toString('hex');
 
   await c2_query(
-    `INSERT INTO user_invitations (email, token, invited_by, expires_at)
-     VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
-    [trimmedEmail, token, req.user.id]
+    `INSERT INTO user_invitations
+       (email, token, invited_by, expires_at, squad_id, role,
+        ${SQUAD_PERMISSION_FLAGS.join(', ')})
+     VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [trimmedEmail, token, req.user.id, hasSquad ? Number(squadId) : null, inviteRole, ...flags]
   );
 
   const signupUrl = `${APP_URL}/?invite=${token}`;
