@@ -11,6 +11,7 @@ import Login from '../components/Login';
 import AccountPanel from '../components/AccountPanel';
 import SearchBox from '../components/SearchBox';
 import NotificationBell from '../components/NotificationBell';
+import FirstRunGate from '../components/FirstRunGate';
 import {
   showModal,
   getSessionTokenFromCookie,
@@ -349,7 +350,7 @@ function StdLayout({ children }) {
         />
       )}
       <main className="main-content">
-        {authChecked && (user ? children : <NoLoginMessage />)}
+        {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage />)}
       </main>
       {user && <MobileNav isAdmin={isAdmin} githubConnected={githubConnected} />}
       <footer className="log-footer">
