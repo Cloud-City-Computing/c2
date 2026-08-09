@@ -226,7 +226,7 @@ plain-text context around the mention for the inbox preview and email body.
 
 Called from four places: REST save (`documents.js:129`), version restore
 (`documents.js:449`), WS save (`collab.js:481`), WS publish
-(`collab.js:577`). The comment path does its own extraction inline rather than
+(`collab.js:580`). The comment path does its own extraction inline rather than
 reusing `processMentionsOnSave`, because comment content is plain text with a
 different link target (`comments.js:186-209`).
 

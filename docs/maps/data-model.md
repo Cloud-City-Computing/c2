@@ -34,7 +34,7 @@ Every nullable parent key is load-bearing:
   an explicit grant, or an admin can reach it. See
   [access-control.md](access-control.md).
 - `archives.squad_id NULL` is also how the GitHub PR-session system archive is
-  built deliberately (`github.js:1619-1625`).
+  built deliberately (`github.js:1638-1644`).
 - `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:247`), so deleting an
   archive destroys its documents, versions, comments and favourites.
 
@@ -178,7 +178,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 | `oauth_accounts` | unique `(provider, provider_user_id)` | `routes/oauth.js` | `getGitHubToken` (`github.js:54`), team sync identity match |
 | `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:589` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
-| `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1658` | PR session lookup |
+| `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |
 | `github_embed_refs` | index on `(repo_owner, repo_name, embed_type)` | **nothing** | `/api/logs/by-github-ref` |
 
 `github_links` being unique on `log_id` is the reason a document links to at

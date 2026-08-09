@@ -17,7 +17,7 @@ import { c2_query } from '../mysql_connect.js';
 // --- Helpers ---
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from './helpers/shared.js';
-import { isValidId } from './helpers/shared.js';
+import { isValidId, checkLogReadAccess, checkLogWriteAccess } from './helpers/shared.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 import { sanitizeHtml } from './helpers/shared.js';
 import { decryptToken } from './oauth.js';
@@ -920,11 +920,18 @@ router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
 /**
  * GET /api/github/link/:logId
  * Get the GitHub link for a Codex document (if any).
+ *
+ * Gated on read access to the document. The binding names a repo, a branch and
+ * a path, which is private-repo metadata for anyone who cannot read the doc.
  */
 router.get('/github/link/:logId', asyncHandler(async (req, res) => {
   const logId = Number(req.params.logId);
   if (!isValidId(logId)) {
     return res.status(400).json({ success: false, message: 'Invalid logId' });
+  }
+
+  if (!await checkLogReadAccess(logId, req.user)) {
+    return res.status(403).json({ success: false, message: 'Log not found or read access denied' });
   }
 
   const [link] = await c2_query(
@@ -943,6 +950,10 @@ router.get('/github/link/:logId', asyncHandler(async (req, res) => {
  * PUT /api/github/link/:logId
  * Create or update the GitHub link for a Codex document.
  * Body: { repo_owner, repo_name, file_path, branch, file_sha }
+ *
+ * Gated on WRITE access, not read: /push reads its target repo, branch and path
+ * straight off this row, so whoever can write the binding chooses where the
+ * document's content gets committed on the owner's next push.
  */
 router.put('/github/link/:logId', asyncHandler(async (req, res) => {
   const logId = Number(req.params.logId);
@@ -953,6 +964,10 @@ router.put('/github/link/:logId', asyncHandler(async (req, res) => {
   const { repo_owner, repo_name, file_path, branch, file_sha } = req.body;
   if (!repo_owner || !repo_name || !file_path || !branch) {
     return res.status(400).json({ success: false, message: 'repo_owner, repo_name, file_path, and branch are required' });
+  }
+
+  if (!await checkLogWriteAccess(logId, req.user)) {
+    return res.status(403).json({ success: false, message: 'Log not found or write access denied' });
   }
 
   await c2_query(
@@ -976,6 +991,10 @@ router.delete('/github/link/:logId', asyncHandler(async (req, res) => {
   const logId = Number(req.params.logId);
   if (!isValidId(logId)) {
     return res.status(400).json({ success: false, message: 'Invalid logId' });
+  }
+
+  if (!await checkLogWriteAccess(logId, req.user)) {
+    return res.status(403).json({ success: false, message: 'Log not found or write access denied' });
   }
 
   await c2_query('DELETE FROM github_links WHERE log_id = ?', [logId]);

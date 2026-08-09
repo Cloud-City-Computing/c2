@@ -885,6 +885,7 @@ describe('GitHub Routes', () => {
     it('returns link for a document', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // read access check
       c2_query.mockResolvedValueOnce([{
         repo_owner: 'user', repo_name: 'my-repo',
         file_path: 'docs/guide.md', branch: 'main', file_sha: 'sha-abc',
@@ -903,6 +904,7 @@ describe('GitHub Routes', () => {
     it('returns null link when none exists', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 999 }]); // read access check
       c2_query.mockResolvedValueOnce([]); // no link found
 
       const res = await request(app)
@@ -923,6 +925,21 @@ describe('GitHub Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('denies reading the link of a document the user cannot read', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([]); // read access check: no match
+
+      const res = await request(app)
+        .get('/api/github/link/1')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+      // The binding names a private repo, branch and path: none of it may leak.
+      expect(res.body.link).toBeUndefined();
+      expect(c2_query.mock.calls.some(([sql]) => /FROM github_links/i.test(sql))).toBe(false);
+    });
   });
 
   // --- PUT /api/github/link/:logId ---
@@ -931,6 +948,7 @@ describe('GitHub Routes', () => {
     it('creates or updates a link', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // write access check
       c2_query.mockResolvedValueOnce([]); // INSERT/UPDATE result
 
       const res = await request(app)
@@ -965,6 +983,22 @@ describe('GitHub Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('denies repointing the link of a document the user cannot write', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([]); // write access check: no match
+
+      const res = await request(app)
+        .put('/api/github/link/1')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ repo_owner: 'attacker', repo_name: 'evil-repo', file_path: 'exfil.md', branch: 'main' });
+
+      expect(res.status).toBe(403);
+      // /push takes its target repo and path off this row, so a write here
+      // redirects someone else's next push. Prove no write was issued.
+      expect(c2_query.mock.calls.some(([sql]) => /INSERT INTO github_links/i.test(sql))).toBe(false);
+    });
   });
 
   // --- DELETE /api/github/link/:logId ---
@@ -973,6 +1007,7 @@ describe('GitHub Routes', () => {
     it('deletes a link', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // write access check
       c2_query.mockResolvedValueOnce([]); // DELETE result
 
       const res = await request(app)
@@ -992,6 +1027,21 @@ describe('GitHub Routes', () => {
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
+    });
+
+    it('denies deleting the link of a document the user cannot write', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([]); // write access check: no match
+
+      const res = await request(app)
+        .delete('/api/github/link/1')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+      // Deleting the row discards base_sha, the merge base every later
+      // conflict check depends on. Prove the DELETE never ran.
+      expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM github_links/i.test(sql))).toBe(false);
     });
   });
 

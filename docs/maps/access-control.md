@@ -68,7 +68,7 @@ Two details of the params worth internalising:
 - **Param 2 is `JSON.stringify(user.id)`**, i.e. the string `"7"` for user 7,
   because `JSON_CONTAINS` needs a JSON document, not an integer. Elsewhere in
   the codebase the same arrays get appended as `CAST(? AS JSON)` with a
-  `String(user.id)` argument (`routes/github.js:1671-1678`). Both produce the
+  `String(user.id)` argument (`routes/github.js:1690-1697`). Both produce the
   JSON number `7`, so they interoperate, but the two spellings are easy to
   confuse.
 - **Every param is now the user's id** except param 2's JSON spelling. Param 4
@@ -93,7 +93,7 @@ Never write permission SQL by hand. The wrappers already exist in
 
 Routes that need the fragment inline (search, browse, export, GitHub link
 loading) interpolate it directly; see `routes/documents.js:553`,
-`routes/search.js`, `routes/github.js:1004`.
+`routes/search.js`, `routes/github.js:1023`.
 
 ## 2. The critical subtlety: everything resolves against the ARCHIVE
 
@@ -103,8 +103,8 @@ columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
 (`init.sql:244-245`). Grepping the whole backend for reads of them turns up
-nothing: they are written in exactly one place, `routes/github.js:1653` and
-`routes/github.js:1669-1679`, and read by no query anywhere.
+nothing: they are written in exactly one place, `routes/github.js:1672` and
+`routes/github.js:1688-1698`, and read by no query anywhere.
 
 **They are write-only columns.** Any future feature that "grants access on a
 document" by writing `logs.read_access` will appear to work, persist correctly,
@@ -157,7 +157,7 @@ allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
 Called from the REST publish route and from the collab WebSocket publish message
-(`services/collab.js:544`), so both paths share one policy.
+(`services/collab.js:547`), so both paths share one policy.
 
 ### 3c. Archive ownership: `isArchiveOwner`
 
@@ -175,7 +175,7 @@ Callers: delete archive (`archives.js:195`), manage access
 
 `routes/squads.js:283-299`. Workspace owner, squad creator, or member with
 `can_manage_members`. Also used by the GitHub team-sync routes
-(`github.js:2090`, `github.js:2168`).
+(`github.js:2109`, `github.js:2187`).
 
 ## 4. How membership itself is granted
 
