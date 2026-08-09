@@ -1118,11 +1118,15 @@ body {
   z-index: 200;
 }
 
+/* A real <a> so a result can be reached and opened by keyboard. */
 .search-dropdown-item {
+  display: block;
   padding: 10px 14px;
   cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid var(--border-color);
+  color: inherit;
+  text-decoration: none;
 }
 .search-dropdown-item:last-child { border-bottom: none; }
 .search-dropdown-item:hover { background: var(--bg-hover); }

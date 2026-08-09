@@ -6,14 +6,14 @@
  */
 
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { apiFetch, docUrl } from '../util';
 
 export default function SearchBox({ inline = false, onResults }) {
   const inputRef = useRef(null);
+  const containerRef = useRef(null);
   const [results, setResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const navigate = useNavigate();
 
   const handleSearch = async () => {
     const query = inputRef.current?.value?.trim();
@@ -31,15 +31,42 @@ export default function SearchBox({ inline = false, onResults }) {
     }
   };
 
-  const handleResultClick = (doc) => {
+  const handleResultClick = () => {
     setShowDropdown(false);
     if (inputRef.current) inputRef.current.value = '';
-    navigate(docUrl(doc));
   };
+
+  // The results are real links, so focus can land inside the dropdown. Close it
+  // only when focus leaves the whole search box, never when it moves from the
+  // input onto a result: that is what a blur timeout on the input alone got
+  // wrong, and why the results used to need onMouseDown to be reachable at all.
+  const handleBlur = (e) => {
+    if (!containerRef.current?.contains(e.relatedTarget)) setShowDropdown(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setShowDropdown(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  // Do not let a mouse press inside the dropdown move focus at all. Chromium
+  // focuses a link on mousedown, but Firefox and Safari do not, so there the
+  // input would blur with a null relatedTarget, handleBlur would unmount the
+  // results before mouseup, and the click would never land on the link. This
+  // suppresses focus, not the click, so the anchor still navigates. Keyboard
+  // users are unaffected: Tab never fires mousedown.
+  const handleDropdownMouseDown = (e) => e.preventDefault();
 
   if (inline) {
     return (
-      <div className="search-inline">
+      <div
+        className="search-inline"
+        ref={containerRef}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+      >
         <input
           ref={inputRef}
           type="text"
@@ -47,7 +74,6 @@ export default function SearchBox({ inline = false, onResults }) {
           className="search-input"
           onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
           onFocus={() => results.length > 0 && setShowDropdown(true)}
-          onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
         />
         <button className="search-icon-btn" onClick={handleSearch} aria-label="Search">
           <svg xmlns="http://www.w3.workspace/2000/svg" width="16" height="16" viewBox="0 0 24 24"
@@ -56,12 +82,17 @@ export default function SearchBox({ inline = false, onResults }) {
           </svg>
         </button>
         {showDropdown && results.length > 0 && (
-          <div className="search-dropdown">
+          <div className="search-dropdown" onMouseDown={handleDropdownMouseDown}>
             {results.map(doc => (
-              <div key={doc.id} className="search-dropdown-item" onMouseDown={() => handleResultClick(doc)}>
+              <Link
+                key={doc.id}
+                className="search-dropdown-item"
+                to={docUrl(doc)}
+                onClick={handleResultClick}
+              >
                 <h4>{doc.title}</h4>
                 <p>{doc.author}</p>
-              </div>
+              </Link>
             ))}
           </div>
         )}

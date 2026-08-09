@@ -56,15 +56,18 @@ describe('PageTree', () => {
     expect(screen.getByText('Child')).toBeInTheDocument();
   });
 
-  it('clicking a row calls onSelect with the log id', async () => {
+  // Clicks the row BACKGROUND, not the title. Since the title became a button
+  // that stops propagation, getByText('Hello') would resolve to that button and
+  // this would no longer touch the row's own onClick at all.
+  it('clicking the row background calls onSelect with the log id', async () => {
     utilMock.fetchLogs.mockResolvedValueOnce({
       logs: [{ id: 7, title: 'Hello', children: [] }],
     });
     const onSelect = vi.fn();
     const user = userEvent.setup();
-    wrap(<PageTree archiveId={1} archiveName="A" onSelect={onSelect} />);
+    const { container } = wrap(<PageTree archiveId={1} archiveName="A" onSelect={onSelect} />);
     await waitFor(() => expect(screen.getByText('Hello')).toBeInTheDocument());
-    await user.click(screen.getByText('Hello'));
+    await user.click(container.querySelector('.page-tree-row'));
     expect(onSelect).toHaveBeenCalledWith(7);
   });
 

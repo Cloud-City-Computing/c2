@@ -499,7 +499,27 @@ or card keeps its own `onClick` so the mouse affordance is unchanged:
 | Browse grid, `ExploreBrowser.jsx` `ExploreCard` | `<h3>` inside a click-only card | `<h3>` wrapping `<Link className="explore-card__title-link">` |
 | Archives page, `ArchiveBrowser.jsx` `LogTreeItem` | `<span className="log-tree-title" onClick={navigate}>` | `<Link className="log-tree-title">` |
 | Editor page tree, `PageTree.jsx` `TreeItem` | `<span className="page-tree-label">` | `<button className="page-tree-label">` calling `onSelect` |
-| `SearchResultItem.jsx` | click-only `<div>` | `<button className="result-title-btn">` |
+| Topbar search dropdown, `SearchBox.jsx` | `<div onMouseDown>` | `<Link className="search-dropdown-item">` |
+| `SearchResultItem.jsx` (no callers) | click-only `<div>` | `<button className="result-title-btn">` |
+
+**The topbar dropdown was the worst of the five and was nearly missed.** It is
+mounted on every authenticated page (`Std_Layout.jsx`), and it was not merely
+unnamed: `onMouseDown` meant even a synthetic click would not have fired it,
+and the input's `onBlur={() => setTimeout(() => setShowDropdown(false), 200)}`
+tore the results down as soon as focus left the input, so they were unreachable
+by construction. The `onMouseDown` was not sloppiness, it was the workaround for
+that timeout.
+
+Fixing it therefore took more than swapping the element. Dismissal moved to the
+container, closing only when focus leaves the whole search box
+(`relatedTarget` containment), plus Escape-to-close returning focus to the
+input. **And the dropdown container takes `onMouseDown={e => e.preventDefault()}`:**
+Chromium focuses a link on mousedown but **Firefox and Safari do not**, so
+without it the input would blur with a null `relatedTarget`, unmount the
+results before mouseup, and the click would never land, reintroducing exactly
+the bug the original `onMouseDown` was avoiding, on two browsers, invisibly to
+a jsdom suite. Suppressing focus on mousedown does not suppress the click, so
+the anchor still navigates; keyboard users never fire mousedown at all.
 
 The two link cases and the page-tree button `stopPropagation` so the row's own
 handler cannot fire a second, redundant navigation. A `<button>` is used in the
@@ -511,21 +531,35 @@ classes, and focus rings come from the pre-existing global `:focus-visible`
 rule (`index.css`), not from anything new.
 
 **Verified against a running app, not just the suite.** Logged in over CDP, the
-accessibility tree now lists one named `link`/`button` per document in all
-three live views, and pressing Enter on it navigated: browse grid `/` →
+accessibility tree now lists one named `link`/`button` per document in all four
+live views, and pressing Enter on it navigated: browse grid `/` →
 `/archives/29/doc/113` (hit-tested to `a.explore-card__title-link`), page tree
 `doc/113` → `doc/102` (`button.page-tree-label`), archives page `/archives` →
-`/archives/22/doc/65` (`a.log-tree-title`). No console errors on any step.
-Tab order within a card is title, then that card's `☆`.
+`/archives/22/doc/65` (`a.log-tree-title`), and the topbar dropbown `/` →
+`/archives/27/doc/111` (`a.search-dropdown-item`) after two Tabs from the
+input, with the dropdown staying open across the input's blur. The dropdown's
+mouse path was re-checked in the same session and still navigates
+(`doc/111` → `doc/95`), confirming the mousedown `preventDefault` does not
+swallow the click. No console errors on any step. Tab order within a card is
+title, then that card's `☆`.
 
-**`SearchResultItem` is the fourth case and it has no callers.** Grep across
-`src/` finds the component defined and default-exported, and rendered nowhere;
-search results reach the user through `ExploreCard`, not through this file. It
+**`SearchResultItem` has no callers.** Grep across `src/` finds the component
+defined and default-exported, and rendered nowhere; search results reach the
+user through `ExploreCard` and the topbar dropdown, not through this file. It
 was fixed for consistency, but it is dead code and a deletion candidate in the
 same shape as A3. Not deleted here because removing a component is a scope call.
 
-The 11 tests added with this fix were mutation-checked: reverting the four
-source changes fails all 11, so none of them is vacuous.
+**Both halves of this item were found by adversarial review, not by the author.**
+The first pass fixed the dead component and missed the live one, then wrote
+"every list view" into three docs; by this repo's own rule that stale claim was
+itself the defect. The second finding was a false green: `PageTree`'s row
+`onClick` lost its only test the moment the title became a button, because the
+test selected with `getByText`, which then resolved to the new button that
+stops propagation. Deleting the row handler left all 346 frontend tests green.
+The test now clicks `.page-tree-row` and fails when that handler is removed.
+
+The 17 tests added with this fix were mutation-checked, not assumed: reverting
+the source changes fails all of them.
 
 ### B15. Glyph-only controls announce as their glyph, not their purpose
 

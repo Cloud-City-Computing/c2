@@ -7,10 +7,12 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('../../../src/util.jsx', () => ({
-  apiFetch: vi.fn(),
-  docUrl: vi.fn((doc) => `/editor/${doc.id}`),
-}));
+// Real docUrl, so the href assertions pin the actual URL contract rather than
+// a fixture that would agree with a wrong implementation.
+vi.mock('../../../src/util.jsx', async () => {
+  const actual = await vi.importActual('../../../src/util.jsx');
+  return { ...actual, apiFetch: vi.fn() };
+});
 
 const navigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -113,9 +115,95 @@ describe('SearchBox — inline mode', () => {
 
     await waitFor(() => expect(screen.getByText('Nine')).toBeInTheDocument());
 
-    fireEvent.mouseDown(screen.getByText('Nine'));
-    expect(navigate).toHaveBeenCalledWith('/editor/9');
+    await user.click(screen.getByRole('link', { name: /Nine/ }));
     expect(input.value).toBe('');
+  });
+
+  // B13: the dropdown results were click-only <div onMouseDown> nodes, and the
+  // input's blur timeout tore the dropdown down before focus could reach them,
+  // so no result was openable without a mouse. These three fail against that.
+  it('each result is a link to the document', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X', archive_id: 4 }] });
+
+    const { container } = wrap(<SearchBox inline />);
+    const input = container.querySelector('input.search-input');
+    await user.type(input, 'nine');
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    const link = await screen.findByRole('link', { name: /Nine/ });
+    expect(link.getAttribute('href')).toBe('/archives/4/doc/9');
+  });
+
+  it('Tab moves focus from the input onto the first result without closing the dropdown', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
+
+    const { container } = wrap(<SearchBox inline />);
+    const input = container.querySelector('input.search-input');
+    await user.type(input, 'nine');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await screen.findByRole('link', { name: /Nine/ });
+
+    // Input -> search icon button -> first result.
+    await user.tab();
+    await user.tab();
+
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: /Nine/ }));
+    expect(container.querySelector('.search-dropdown')).not.toBeNull();
+  });
+
+  it('closes the dropdown when focus leaves the search box entirely', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
+
+    const { container } = wrap(
+      <>
+        <SearchBox inline />
+        <button type="button">outside</button>
+      </>
+    );
+    const input = container.querySelector('input.search-input');
+    await user.type(input, 'nine');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await screen.findByRole('link', { name: /Nine/ });
+
+    await user.click(screen.getByRole('button', { name: 'outside' }));
+    await waitFor(() => expect(container.querySelector('.search-dropdown')).toBeNull());
+  });
+
+  // Firefox and Safari do not focus a link on click. Without this, the input
+  // would blur with a null relatedTarget, the dropdown would unmount before
+  // mouseup, and the click would never reach the link. jsdom cannot reproduce
+  // that difference, so pin the mechanism instead.
+  it('a mouse press inside the dropdown is prevented, so it cannot blur the input', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
+
+    const { container } = wrap(<SearchBox inline />);
+    const input = container.querySelector('input.search-input');
+    await user.type(input, 'nine');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const link = await screen.findByRole('link', { name: /Nine/ });
+
+    // fireEvent returns false when the event was cancelled.
+    expect(fireEvent.mouseDown(link)).toBe(false);
+    expect(container.querySelector('.search-dropdown')).not.toBeNull();
+  });
+
+  it('Escape closes the dropdown and returns focus to the input', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
+
+    const { container } = wrap(<SearchBox inline />);
+    const input = container.querySelector('input.search-input');
+    await user.type(input, 'nine');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await screen.findByRole('link', { name: /Nine/ });
+
+    await user.keyboard('{Escape}');
+    expect(container.querySelector('.search-dropdown')).toBeNull();
+    expect(document.activeElement).toBe(input);
   });
 
   it('clears results to [] on fetch error', async () => {
