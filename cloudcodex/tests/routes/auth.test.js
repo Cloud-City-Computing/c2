@@ -1,16 +1,20 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
 import { c2_query, validateAndAutoLogin, generateSessionToken, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
-import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 // Pre-compute a bcrypt hash for login tests (low rounds for speed)
 const TEST_PASSWORD = 'password123';
 const TEST_HASH = bcrypt.hashSync(TEST_PASSWORD, 1);
 
 describe('Auth Routes', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => {
     resetMocks();
     isMailEnabled.mockReturnValue(true);

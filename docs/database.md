@@ -59,13 +59,13 @@ The database models a **workspace → squad → archive → log** hierarchy with
 
 ### `workspaces`
 
-Top-level organizational container, owned by a single user (by email). Workspaces can only be created by admins.
+Top-level organizational container, owned by a single user. Workspaces can only be created by admins.
 
 | Column       | Type                    | Notes                              |
 |--------------|-------------------------|------------------------------------|
 | `id`         | INT AUTO_INCREMENT PK   |                                    |
 | `name`       | TEXT NOT NULL           | Display name                       |
-| `owner`      | TEXT NOT NULL           | Email address of the owner user    |
+| `owner_id`   | INT NULL                | FK → `users(id)` ON DELETE SET NULL. Nullable so deleting a user leaves the workspace ownerless rather than deleting it |
 | `created_at` | TIMESTAMP               | Defaults to current timestamp      |
 
 **Relationships:** Has many `squads`.

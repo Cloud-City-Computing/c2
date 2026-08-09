@@ -40,8 +40,12 @@ Every nullable parent key is load-bearing:
 
 `workspaces.owner_id` is an INT referencing `users(id) ON DELETE SET NULL`.
 Clause 4 of both access fragments joins on it (`ownership.js:30`). Deleting the
-owning user leaves the workspace intact but ownerless, reachable by admins only,
-which is why the column is nullable.
+owning user leaves the workspace intact but ownerless, which is why the column
+is nullable. Ownerless does **not** mean locked down: only clause 4 stops
+matching. Squad membership (clause 5), per-squad grants (clause 6) and the
+workspace-wide flag (clause 7) are untouched, so the squad still reaches
+everything in it, and `routes/workspaces.js` still lists the workspace for any
+squad member, squad creator, or holder of an archive `read_access` grant.
 
 It was a `TEXT` column holding an **email address** until
 `migrations/add_workspace_owner_id.sql`. Under that shape, changing a user's

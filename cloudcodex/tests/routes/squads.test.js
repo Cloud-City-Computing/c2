@@ -1,11 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
-import { mockAuthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 describe('Squad Routes', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => {
     resetMocks();
     isMailEnabled.mockReturnValue(true);

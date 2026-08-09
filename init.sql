@@ -60,8 +60,10 @@ CREATE TABLE users (
 
 -- workspaces is declared before users, so its owner FK is added here rather
 -- than inline, where it would reference a table that does not exist yet.
--- ON DELETE SET NULL: deleting a user must not delete their workspace, it
--- leaves the workspace ownerless and reachable by admins only.
+-- ON DELETE SET NULL: deleting a user must not delete their workspace. It
+-- leaves the workspace ownerless, which only stops clause 4 of the access
+-- fragments from matching; squad membership and the per-squad and
+-- workspace-wide grants still reach everything in it.
 ALTER TABLE workspaces
   ADD CONSTRAINT fk_workspaces_owner
   FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL;
