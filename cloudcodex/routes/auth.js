@@ -493,9 +493,9 @@ router.get('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
       `SELECT 1 FROM squad_members tm
        JOIN squads t ON tm.squad_id = t.id
        JOIN workspaces o ON t.workspace_id = o.id
-       WHERE tm.user_id = ? AND o.owner = ?
+       WHERE tm.user_id = ? AND o.owner_id = ?
        LIMIT 1`,
-      [targetId, req.user.email]
+      [targetId, req.user.id]
     );
     if (!link) {
       return res.status(403).json({ success: false, message: 'You can only view permissions for users in your workspace' });
@@ -532,9 +532,9 @@ router.put('/permissions/:userId', requireAuth, asyncHandler(async (req, res) =>
       `SELECT 1 FROM squad_members tm
        JOIN squads t ON tm.squad_id = t.id
        JOIN workspaces o ON t.workspace_id = o.id
-       WHERE tm.user_id = ? AND o.owner = ?
+       WHERE tm.user_id = ? AND o.owner_id = ?
        LIMIT 1`,
-      [targetId, req.user.email]
+      [targetId, req.user.id]
     );
     if (!link) {
       return res.status(403).json({ success: false, message: 'Only workspace owners can update permissions for users in their workspace' });

@@ -22,23 +22,25 @@ router.get('/workspaces', requireAuth, asyncHandler(async (req, res) => {
 
   if (req.user.is_admin) {
     workspaces = await c2_query(
-      `SELECT DISTINCT o.id, o.name, o.owner, o.created_at
+      `SELECT DISTINCT o.id, o.name, u.email AS owner, o.created_at
        FROM workspaces o
+       LEFT JOIN users u ON u.id = o.owner_id
        ORDER BY o.created_at DESC`
     );
   } else {
     workspaces = await c2_query(
-      `SELECT DISTINCT o.id, o.name, o.owner, o.created_at
+      `SELECT DISTINCT o.id, o.name, u.email AS owner, o.created_at
        FROM workspaces o
+       LEFT JOIN users u ON u.id = o.owner_id
        LEFT JOIN squads t ON t.workspace_id = o.id
        LEFT JOIN squad_members tm ON tm.squad_id = t.id AND tm.user_id = ?
        LEFT JOIN archives p ON p.squad_id = t.id
-       WHERE o.owner = ?
+       WHERE o.owner_id = ?
           OR t.created_by = ?
           OR tm.id IS NOT NULL
           OR JSON_CONTAINS(p.read_access, ?)
        ORDER BY o.created_at DESC`,
-      [req.user.id, req.user.email, req.user.id, JSON.stringify(req.user.id)]
+      [req.user.id, req.user.id, req.user.id, JSON.stringify(req.user.id)]
     );
   }
 
@@ -64,8 +66,8 @@ router.post('/workspaces', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const workspaceResult = await c2_query(
-    `INSERT INTO workspaces (name, owner) VALUES (?, ?)`,
-    [name.trim(), req.user.email]
+    `INSERT INTO workspaces (name, owner_id) VALUES (?, ?)`,
+    [name.trim(), req.user.id]
   );
   const workspaceId = workspaceResult.insertId;
 
@@ -115,13 +117,13 @@ router.put('/workspaces/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const [workspace] = await c2_query(
-    `SELECT id, owner FROM workspaces WHERE id = ? LIMIT 1`,
+    `SELECT id, owner_id FROM workspaces WHERE id = ? LIMIT 1`,
     [Number(id)]
   );
   if (!workspace) {
     return res.status(404).json({ success: false, message: 'Workspace not found' });
   }
-  if (!req.user.is_admin && workspace.owner !== req.user.email) {
+  if (!req.user.is_admin && workspace.owner_id !== req.user.id) {
     return res.status(403).json({ success: false, message: 'Only the owner can update this workspace' });
   }
 
@@ -140,13 +142,13 @@ router.delete('/workspaces/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const [workspace] = await c2_query(
-    `SELECT id, owner FROM workspaces WHERE id = ? LIMIT 1`,
+    `SELECT id, owner_id FROM workspaces WHERE id = ? LIMIT 1`,
     [Number(id)]
   );
   if (!workspace) {
     return res.status(404).json({ success: false, message: 'Workspace not found' });
   }
-  if (!req.user.is_admin && workspace.owner !== req.user.email) {
+  if (!req.user.is_admin && workspace.owner_id !== req.user.id) {
     return res.status(403).json({ success: false, message: 'Only the owner can delete this workspace' });
   }
 

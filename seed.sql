@@ -31,7 +31,8 @@ DELETE FROM workspaces;
 -- =========================
 -- Workspaces
 -- =========================
-INSERT INTO workspaces (name, owner) VALUES ('Acme Corporation', 'alice@acme.com');
+-- owner_id is set once the users below exist; alice is seeded after this row.
+INSERT INTO workspaces (name) VALUES ('Acme Corporation');
 SET @workspace_id = LAST_INSERT_ID();
 
 -- =========================
@@ -50,6 +51,8 @@ SELECT @bob_id   := id FROM users WHERE email = 'bob@acme.com';
 SELECT @carol_id := id FROM users WHERE email = 'carol@acme.com';
 SELECT @dave_id  := id FROM users WHERE email = 'dave@acme.com';
 SELECT @eve_id   := id FROM users WHERE email = 'eve@acme.com';
+
+UPDATE workspaces SET owner_id = @alice_id WHERE id = @workspace_id;
 
 -- =========================
 -- Squads

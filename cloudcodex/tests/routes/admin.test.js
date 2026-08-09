@@ -1286,8 +1286,12 @@ describe('bootstrapInstance', () => {
     // archive is orphaned and unreachable by anyone but its creator.
     expect(archiveCall[1][1]).toBe(22);
 
+    // owner_id is a users FK, so the seeded workspace is owned by the admin's
+    // row id. It used to store ADMIN_EMAIL, which silently detached the
+    // workspace whenever that address changed.
     const workspaceCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO workspaces'));
-    expect(workspaceCall[1][1]).toBe(process.env.ADMIN_EMAIL);
+    expect(workspaceCall[0]).toContain('owner_id');
+    expect(workspaceCall[1][1]).toBe(1); // the admin user id passed to bootstrapInstance
 
     // The squad-ownership row. Without it the admin is not a member of the
     // squad the seeded archive hangs off, so clauses 4-7 of readAccessWhere

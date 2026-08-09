@@ -118,10 +118,9 @@ export async function bootstrapInstance(adminId) {
   // leave zero rows, or the workspace-count guard above sees a half-seeded
   // instance as already seeded and the next boot never retries.
   await withTransaction(async (query) => {
-    // workspaces.owner is a TEXT column holding an email, not a foreign key.
     const workspace = await query(
-      'INSERT INTO workspaces (name, owner) VALUES (?, ?)',
-      [`${adminName}'s Workspace`, adminEmail]
+      'INSERT INTO workspaces (name, owner_id) VALUES (?, ?)',
+      [`${adminName}'s Workspace`, adminId]
     );
 
     const squad = await query(
@@ -170,10 +169,11 @@ router.get('/admin/status', requireAuth, asyncHandler(async (req, res) => {
  */
 router.get('/admin/workspaces', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const workspaces = await c2_query(
-    `SELECT o.id, o.name, o.owner, o.created_at,
+    `SELECT o.id, o.name, u.email AS owner, o.created_at,
             (SELECT COUNT(*) FROM squads t WHERE t.workspace_id = o.id) AS squad_count,
             (SELECT COUNT(DISTINCT tm.user_id) FROM squads t2 JOIN squad_members tm ON tm.squad_id = t2.id WHERE t2.workspace_id = o.id) AS member_count
      FROM workspaces o
+     LEFT JOIN users u ON u.id = o.owner_id
      ORDER BY o.created_at DESC`
   );
   res.json({ success: true, workspaces: workspaces });
@@ -205,8 +205,8 @@ router.post('/admin/workspaces', requireAuth, requireAdmin, asyncHandler(async (
   }
 
   const workspaceResult = await c2_query(
-    `INSERT INTO workspaces (name, owner) VALUES (?, ?)`,
-    [name.trim(), ownerEmail.trim()]
+    `INSERT INTO workspaces (name, owner_id) VALUES (?, ?)`,
+    [name.trim(), owner.id]
   );
   const workspaceId = workspaceResult.insertId;
 

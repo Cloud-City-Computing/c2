@@ -38,11 +38,18 @@ Every nullable parent key is load-bearing:
 - `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:247`), so deleting an
   archive destroys its documents, versions, comments and favourites.
 
-`workspaces.owner` is a `TEXT` column holding an **email address**
-(`init.sql:39`), not a foreign key. Clause 4 of both access fragments joins on
-it (`ownership.js:30`). Changing a user's email silently transfers or destroys
-workspace ownership, and deleting the owning user leaves the workspace with a
-dangling owner string.
+`workspaces.owner_id` is an INT referencing `users(id) ON DELETE SET NULL`.
+Clause 4 of both access fragments joins on it (`ownership.js:30`). Deleting the
+owning user leaves the workspace intact but ownerless, reachable by admins only,
+which is why the column is nullable.
+
+It was a `TEXT` column holding an **email address** until
+`migrations/add_workspace_owner_id.sql`. Under that shape, changing a user's
+email silently destroyed their workspace ownership, and deleting the user left a
+dangling string that a later account registering the same address would inherit.
+The FK is declared as a trailing `ALTER TABLE` in `init.sql` rather than inline,
+because `workspaces` is created before `users` (the same reason
+`user_invitations.squad_id` is declared that way).
 
 ## 2. The ACL columns
 

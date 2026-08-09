@@ -22,7 +22,7 @@ no in-application loop, no per-step round trip.
 
 ```
    Super Admin
-     └── Workspace Owner               (by email in workspaces.owner)
+     └── Workspace Owner               (users FK in workspaces.owner_id)
            └── Squad Owner             (role = 'owner' in squad_members)
                  └── Squad Admin       (role = 'admin')
                        └── Squad Member (role = 'member', per-flag perms)
@@ -62,7 +62,7 @@ grants access.** The conditions, in conceptual priority order:
                        ┌────────────────────────────────┐
                        │  is user the workspace owner   │ ─── yes ──► ALLOW
                        │  (squads.workspace_id →        │
-                       │   workspaces.owner = email) ?  │
+                       │   workspaces.owner_id = id) ?  │
                        └──────────────┬─────────────────┘
                                       │ no
                                       ▼

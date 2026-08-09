@@ -38,7 +38,7 @@ async function userCanAccessWorkspace(workspaceId, user) {
        FROM workspaces o
       WHERE o.id = ?
         AND (
-          o.owner = ?
+          o.owner_id = ?
           OR EXISTS (
             SELECT 1 FROM squads s
               INNER JOIN squad_members sm ON sm.squad_id = s.id
@@ -50,7 +50,7 @@ async function userCanAccessWorkspace(workspaceId, user) {
           )
         )
       LIMIT 1`,
-    [workspaceId, user.email, user.id, user.id]
+    [workspaceId, user.id, user.id, user.id]
   );
   return Boolean(row);
 }

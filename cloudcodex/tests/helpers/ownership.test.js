@@ -51,9 +51,9 @@ describe('helpers/ownership', () => {
 
     it('cascades through workspace owner, squad owner, squad member, and squad-listed access', () => {
       const sql = readAccessWhere('p');
-      // Workspace owner cascade
+      // Workspace owner cascade, matched on the users FK rather than an email string
       expect(sql).toMatch(/JOIN workspaces _oo ON _ot\.workspace_id = _oo\.id/i);
-      expect(sql).toMatch(/_oo\.owner = \?/i);
+      expect(sql).toMatch(/_oo\.owner_id = \?/i);
       // Squad owner / member with read perm
       expect(sql).toMatch(/_om\.role = 'owner' OR _om\.can_read = TRUE/i);
       // Squad-id-listed access
@@ -85,14 +85,22 @@ describe('helpers/ownership', () => {
     it('orders params to match the SQL placeholders', () => {
       const params = readAccessParams(TEST_USER);
       // Order from the SQL:
-      //  [is_admin, JSON.stringify(id), id, email, id, id, id]
+      //  [is_admin, JSON.stringify(id), id, id, id, id, id]
       expect(params[0]).toBe(false); // TEST_USER.is_admin is unset → false
       expect(params[1]).toBe(JSON.stringify(TEST_USER.id));
       expect(params[2]).toBe(TEST_USER.id);
-      expect(params[3]).toBe(TEST_USER.email);
+      expect(params[3]).toBe(TEST_USER.id); // workspace owner, by user id
       expect(params[4]).toBe(TEST_USER.id);
       expect(params[5]).toBe(TEST_USER.id);
       expect(params[6]).toBe(TEST_USER.id);
+    });
+
+    it('never binds an email into an ownership predicate', () => {
+      // workspaces.owner was a TEXT column holding an email with no FK, so a
+      // user changing their email silently lost workspace ownership. Ownership
+      // is matched on users.id now and no email may creep back in.
+      expect(readAccessParams(TEST_USER)).not.toContain(TEST_USER.email);
+      expect(writeAccessParams(TEST_USER)).not.toContain(TEST_USER.email);
     });
 
     it('coerces is_admin to a boolean', () => {
@@ -129,9 +137,9 @@ describe('helpers/ownership', () => {
       expect(sql).toMatch(/FROM archives p/i);
       // Cascade: created_by, workspace owner, squad owner-role
       expect(sql).toMatch(/p\.created_by = \?/i);
-      expect(sql).toMatch(/o\.owner = \?/i);
+      expect(sql).toMatch(/o\.owner_id = \?/i);
       expect(sql).toMatch(/tm\.role = 'owner'/i);
-      expect(params).toEqual([5, TEST_USER.id, TEST_USER.email, TEST_USER.id]);
+      expect(params).toEqual([5, TEST_USER.id, TEST_USER.id, TEST_USER.id]);
     });
 
     it('returns false when DB returns no row', async () => {

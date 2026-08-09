@@ -24,7 +24,7 @@ The pattern everywhere is:
 | 1 | `? = TRUE` | `user.is_admin`, passed as a bound param |
 | 2 | `JSON_CONTAINS(p.read_access, ?)` | the archive's per-user grant array |
 | 3 | `p.created_by = ?` | archive creator |
-| 4 | squad joined to workspace, `workspaces.owner = ?` | workspace owner, **matched by email** |
+| 4 | squad joined to workspace, `workspaces.owner_id = ?` | workspace owner, matched on the `users` FK |
 | 5 | `squad_members.role = 'owner' OR can_read = TRUE` | squad membership |
 | 6 | `JSON_CONTAINS(p.read_access_squads, CAST(sm.squad_id AS JSON))` | per-squad grant array |
 | 7 | `p.read_access_workspace = TRUE` and the user is in *any* squad of the same workspace | workspace-wide flag |
@@ -53,7 +53,7 @@ target.
 ```js
 readAccessParams(user)  // ownership.js:42-44
 writeAccessParams(user) // ownership.js:68-70
-// both: [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id, user.id, user.id]
+// both: [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.id, user.id, user.id, user.id]
 ```
 
 **Always exactly 7 params, in that order.** The fragment is string-interpolated
@@ -71,9 +71,13 @@ Two details of the params worth internalising:
   `String(user.id)` argument (`routes/github.js:1671-1678`). Both produce the
   JSON number `7`, so they interoperate, but the two spellings are easy to
   confuse.
-- **Param 4 is the user's email**, not id, because `workspaces.owner` is a
-  `TEXT` column holding an email address (`init.sql:39`), not a foreign key.
-  Changing a user's email silently transfers or destroys workspace ownership.
+- **Every param is now the user's id** except param 2's JSON spelling. Param 4
+  used to be `user.email`, because `workspaces.owner` was a `TEXT` column
+  holding an email address rather than a foreign key, so changing a user's
+  email silently destroyed their workspace ownership and a later account
+  registering that address inherited it. `workspaces.owner_id` is an INT
+  referencing `users(id) ON DELETE SET NULL` as of
+  `migrations/add_workspace_owner_id.sql`. The param count is unchanged at 7.
 
 ### Callers
 

@@ -40,7 +40,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 CREATE TABLE workspaces (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name TEXT NOT NULL,
-  owner TEXT NOT NULL,
+  owner_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -57,6 +57,14 @@ CREATE TABLE users (
   onboarded_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+
+-- workspaces is declared before users, so its owner FK is added here rather
+-- than inline, where it would reference a table that does not exist yet.
+-- ON DELETE SET NULL: deleting a user must not delete their workspace, it
+-- leaves the workspace ownerless and reachable by admins only.
+ALTER TABLE workspaces
+  ADD CONSTRAINT fk_workspaces_owner
+  FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE oauth_accounts (
   id INT AUTO_INCREMENT PRIMARY KEY,
