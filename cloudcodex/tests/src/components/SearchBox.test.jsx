@@ -14,11 +14,8 @@ vi.mock('../../../src/util.jsx', async () => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-const navigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
-  return { ...actual, useNavigate: () => navigate };
-});
+// No useNavigate mock: SearchBox navigates through <Link> now, and the URL it
+// builds is pinned by the href assertions instead.
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -30,7 +27,6 @@ const wrap = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
 beforeEach(() => {
   apiFetch.mockReset();
-  navigate.mockReset();
 });
 
 describe('SearchBox — non-inline mode', () => {
@@ -104,7 +100,7 @@ describe('SearchBox — inline mode', () => {
     });
   });
 
-  it('clicking a result navigates and clears the input', async () => {
+  it('clicking a result clears the input and closes the dropdown', async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
 
@@ -191,7 +187,11 @@ describe('SearchBox — inline mode', () => {
     expect(container.querySelector('.search-dropdown')).not.toBeNull();
   });
 
-  it('Escape closes the dropdown and returns focus to the input', async () => {
+  // Focus is moved ONTO a result first. Pressing Escape while focus is still in
+  // the input would make the activeElement assertion true no matter what the
+  // implementation did, which is how this test was originally written and why
+  // it could not fail.
+  it('Escape closes the dropdown and returns focus to the input from a result', async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
 
@@ -199,10 +199,58 @@ describe('SearchBox — inline mode', () => {
     const input = container.querySelector('input.search-input');
     await user.type(input, 'nine');
     fireEvent.keyDown(input, { key: 'Enter' });
-    await screen.findByRole('link', { name: /Nine/ });
+    const link = await screen.findByRole('link', { name: /Nine/ });
+
+    await user.tab();
+    await user.tab();
+    expect(document.activeElement).toBe(link);
 
     await user.keyboard('{Escape}');
     expect(container.querySelector('.search-dropdown')).toBeNull();
+    // The link that had focus is gone; without an explicit restore, focus falls
+    // to <body> and the next Tab restarts from the top of the document.
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('a dismissed dropdown does not reopen when the input is refocused', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
+
+    const { container } = wrap(
+      <>
+        <SearchBox inline />
+        <button type="button">outside</button>
+      </>
+    );
+    const input = container.querySelector('input.search-input');
+    await user.type(input, 'nine');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await screen.findByRole('link', { name: /Nine/ });
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'outside' }));
+    await user.click(input);
+
+    expect(container.querySelector('.search-dropdown')).toBeNull();
+  });
+
+  it('searching keeps focus inside the search box, so the dropdown stays dismissable', async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce({ results: [{ id: 9, title: 'Nine', author: 'X' }] });
+
+    const { container } = wrap(<SearchBox inline />);
+    const input = container.querySelector('input.search-input');
+    await user.type(input, 'nine');
+
+    // Search via the magnifier button. Safari, and Firefox on macOS, do not
+    // focus a button on mouse press, so the results open with focus on <body>,
+    // where no focusout and no Escape can ever reach them. fireEvent.click is
+    // what models that: unlike user.click it does no focus management, so the
+    // button does not become activeElement the way it would in Chromium.
+    input.blur();
+    fireEvent.click(screen.getByRole('button', { name: /search/i }));
+    await screen.findByRole('link', { name: /Nine/ });
+
     expect(document.activeElement).toBe(input);
   });
 

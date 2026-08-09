@@ -535,7 +535,7 @@ accessibility tree now lists one named `link`/`button` per document in all four
 live views, and pressing Enter on it navigated: browse grid `/` →
 `/archives/29/doc/113` (hit-tested to `a.explore-card__title-link`), page tree
 `doc/113` → `doc/102` (`button.page-tree-label`), archives page `/archives` →
-`/archives/22/doc/65` (`a.log-tree-title`), and the topbar dropbown `/` →
+`/archives/22/doc/65` (`a.log-tree-title`), and the topbar dropdown `/` →
 `/archives/27/doc/111` (`a.search-dropdown-item`) after two Tabs from the
 input, with the dropdown staying open across the input's blur. The dropdown's
 mouse path was re-checked in the same session and still navigates
@@ -548,6 +548,20 @@ defined and default-exported, and rendered nowhere; search results reach the
 user through `ExploreCard` and the topbar dropdown, not through this file. It
 was fixed for consistency, but it is dead code and a deletion candidate in the
 same shape as A3. Not deleted here because removing a component is a scope call.
+
+**Two things about the dropdown are deliberately unverified**, because iris is
+Chromium-only and this fix is built around a Firefox/Safari behaviour:
+
+- Whether `preventDefault` on `mousedown` suppresses **scrollbar thumb
+  dragging** inside `.search-dropdown` (`max-height: 320px; overflow-y: auto`),
+  which Chromium dispatches to content. Worst case is degraded, not broken:
+  wheel and keyboard scrolling are unaffected. Test with 6+ results.
+- **Touch.** WebKit stops dispatching the rest of its synthesized mouse
+  sequence once an earlier synthesized event is default-prevented. If that
+  includes `mousedown`, tapping a result would never fire `click`, which would
+  be a regression from the old `onMouseDown` on iPad and touch laptops. The
+  topbar search is hidden below 768px (`index.css`), so phones are out of
+  scope. Test on an iPad in landscape.
 
 **Both halves of this item were found by adversarial review, not by the author.**
 The first pass fixed the dead component and missed the live one, then wrote

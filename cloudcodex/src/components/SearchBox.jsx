@@ -24,6 +24,13 @@ export default function SearchBox({ inline = false, onResults }) {
       if (inline) {
         setResults(response.results || []);
         setShowDropdown(true);
+        // Dismissal is driven entirely by focus leaving the container, so the
+        // dropdown must never open while focus is outside it or nothing can
+        // close it. Clicking the magnifier is exactly that case: the same
+        // browsers that do not focus a link on mousedown do not focus a button
+        // either, so the press blurs the input to <body> and the results then
+        // open unreachable, overlaying the page at z-index 200.
+        inputRef.current?.focus();
       }
       onResults?.(response.results || []);
     } catch {
@@ -31,8 +38,12 @@ export default function SearchBox({ inline = false, onResults }) {
     }
   };
 
+  // Drop the results, not just the overlay. Leaving them in state means the
+  // next focus of the input silently reopens the previous query's dropdown,
+  // because onFocus reopens whenever results is non-empty.
   const handleResultClick = () => {
     setShowDropdown(false);
+    setResults([]);
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -44,9 +55,13 @@ export default function SearchBox({ inline = false, onResults }) {
     if (!containerRef.current?.contains(e.relatedTarget)) setShowDropdown(false);
   };
 
+  // Escape is a real dismissal, so it discards the results too: otherwise the
+  // next focus of the input undoes it. Focus returns to the input because the
+  // element being dismissed may be the one holding it.
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
       setShowDropdown(false);
+      setResults([]);
       inputRef.current?.focus();
     }
   };
