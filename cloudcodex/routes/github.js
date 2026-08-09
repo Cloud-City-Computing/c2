@@ -18,7 +18,7 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from './helpers/shared.js';
 import { isValidId, checkLogReadAccess, checkLogWriteAccess } from './helpers/shared.js';
-import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { sanitizeHtml } from './helpers/shared.js';
 import { decryptToken } from './oauth.js';
 import { diff3Merge } from '../src/lib/githubDiff.js';
@@ -866,6 +866,7 @@ router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
     `SELECT p.id, p.name FROM archives p
      WHERE p.id = ?
        AND ${writeAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      LIMIT 1`,
     [Number(archive_id), ...writeAccessParams(req.user)]
   );

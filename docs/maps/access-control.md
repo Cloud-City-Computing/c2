@@ -54,12 +54,29 @@ distinction load-bearing rather than an admin-only curiosity:
 > resolving *whether this user may touch this document* must not.
 
 `excludeSystemArchives(alias)` in `ownership.js` is that predicate. It takes no
-parameter, so it does not disturb the seven-param contract below. It is applied
-in `routes/archives.js` (listing, log listing, rename, ACL read and write, log
-create/update/delete, repos) and `routes/search.js` (search, browse, filters),
-and deliberately **not** in `checkLogReadAccess`/`checkLogWriteAccess`,
-`/api/presence`, or `/api/document`, which are the document-level paths the PR
-feature depends on.
+parameter, so it does not disturb the seven-param contract below, and it spells
+the test `NOT COALESCE(alias.\`system\`, FALSE)` because the column is
+nullable and `NULL = FALSE` is NULL, which would hide the row from everyone.
+
+Applied in:
+
+| File | Surfaces |
+|---|---|
+| `routes/archives.js` | listing, log listing, rename, ACL read and write, log create/update/delete, repos |
+| `routes/search.js` | search, browse, filters |
+| `routes/upload.js` | `POST /archives/:archiveId/logs/upload` |
+| `routes/github.js` | `POST /github/import-to-codex` |
+
+**Those last two are the trap.** There are three ways to create a log inside an
+archive, and they live in three different routers; excluding only the obvious
+one in `archives.js` left the other two writing into a hidden archive that
+nothing could then list or clean up. Any new archive-scoped route belongs in
+this table.
+
+Deliberately **not** applied in `checkLogReadAccess`/`checkLogWriteAccess`,
+`/api/presence`, `/api/document`, `routes/favorites.js` or `routes/activity.js`:
+those are document-level or per-user opt-in, and are exactly what the PR
+feature rides on.
 
 Getting this wrong is not cosmetic. Reviewed on 2026-08-09: because the grant
 carries write, an unscoped `DELETE /api/archives/:id/logs/:logId` let anyone who

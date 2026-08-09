@@ -108,5 +108,9 @@ export async function isArchiveOwner(user, archiveId) {
  * archive-as-an-ACL: this predicate governs the first only.
  */
 export function excludeSystemArchives(alias = 'p') {
-  return `${alias}.\`system\` = FALSE`;
+  // COALESCE, not a bare `= FALSE`: `archives.system` is nullable, and in SQL
+  // `NULL = FALSE` is NULL, not true, so a row with an explicit NULL would
+  // vanish from every listing for every user. Nothing writes NULL today and
+  // the migration backfilled 0, so this is cheap insurance rather than a fix.
+  return `NOT COALESCE(${alias}.\`system\`, FALSE)`;
 }

@@ -284,6 +284,18 @@ describe('GitHub Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.commit.sha).toBe('commitsha');
+
+      // B14: this commit moved the file on GitHub; it changed no Codex
+      // document. Recording base_sha and 'clean' told every linked document it
+      // matched a remote it had never seen, which made classifySync unable to
+      // ever report remote_ahead and let the owner's next push silently
+      // overwrite this commit. Assert on the SQL, since the response body is
+      // identical either way, which is how the original defect hid.
+      const upd = c2_query.mock.calls.find(([sql]) => /UPDATE github_links/i.test(sql));
+      expect(upd).toBeDefined();
+      expect(upd[0]).toMatch(/sync_status = 'remote_ahead'/);
+      expect(upd[0]).not.toMatch(/base_sha/);
+      expect(upd[1]).toEqual(['newfilesha', 'user', 'my-repo', 'docs/README.md', 'main']);
     });
 
     it('rejects missing content', async () => {
