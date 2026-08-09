@@ -43,7 +43,13 @@ function TreeItem({ log, depth = 0, activeLogId, onSelect, archiveId, onLogCreat
         ) : (
           <span className="page-tree-dot">•</span>
         )}
-        <span className="page-tree-label">{log.title}</span>
+        <button
+          type="button"
+          className="page-tree-label"
+          onClick={(e) => { e.stopPropagation(); onSelect(log.id); }}
+        >
+          {log.title}
+        </button>
         {log.gh_owner && (
           <a
             className="gh-doc-badge"

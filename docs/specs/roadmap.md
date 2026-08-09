@@ -184,8 +184,8 @@ Two things found by actually running the built image, both recorded in
   inside a React-owned host. The app also gained its **first `ErrorBoundary`**,
   which is what turned that unmount race from a cosmetic bug into a total
   outage, and which E inherits as a solved problem.
-- **B13, open:** document titles are click-only and unreachable by keyboard in
-  every list view.
+- **B13, fixed:** document titles were click-only and unreachable by keyboard
+  in every list view. Each now exposes a real named link or button.
 
 ### E. Foundation
 
@@ -211,10 +211,17 @@ re-measured after. Detail, with the evidence, in
 Three of these were reachable by any authenticated user, and the suite was
 green throughout: none of them was a test failure waiting to be noticed.
 
-**Still open from that list: B13**, document titles are click-only and
-unreachable by keyboard in every list view. **A1 and A2 stay open by
-decision**: `logs.read_access` remains deliberately dead (B1 routes around it
-rather than reviving it), and `github_embed_refs` still has no writer.
+**B13 shipped 2026-08-09**: document titles were click-only `<div>`/`<span>`
+elements, so no list view offered any way to open a document without a mouse.
+Each of the three live views now exposes a real named link or button, verified
+by keyboard against a running app. It turned up two follow-ons, both filed:
+**B15**, glyph-only controls that announce as "☆ button" rather than their
+purpose, and `SearchResultItem`, a component with no callers anywhere in
+`src/`.
+
+**A1 and A2 stay open by decision**: `logs.read_access` remains deliberately
+dead (B1 routes around it rather than reviving it), and `github_embed_refs`
+still has no writer.
 
 #### E2. The extraction (open)
 
@@ -243,7 +250,9 @@ deferred into it: the editor no longer blanks the app on navigation, and the
 app now has an error boundary, so a render error is no longer unrecoverable.
 
 What remains is **E2**, breaking up `Editor.jsx` (1520 lines) and
-`GitHubPage.jsx` (2631 lines) so the interface is testable, plus **B13**.
+`GitHubPage.jsx` (2631 lines) so the interface is testable. B13 shipped on
+2026-08-09, leaving **B15** (glyph-only control names) as the open
+accessibility item.
 
 The measurement re-read on 2026-08-09, one day after the v0.9.0 release: still
 38 stars, 1 fork, 0 open issues, 0 watchers, 12 unique viewers and 66 unique

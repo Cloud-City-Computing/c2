@@ -475,22 +475,83 @@ export flow's own explicit `PUT /api/github/link` still settles that one
 document back to clean, because there the document and the commit really do
 match.
 
-### B13. Document titles are not reachable by keyboard anywhere
+### B13. Document titles were not reachable by keyboard anywhere (FIXED)
 
 On the browse grid, the archives page and the editor's page tree, a document's
-title is a click-only element. The accessibility tree for those pages exposes
+title was a click-only element. The accessibility tree for those pages exposed
 the surrounding controls (favourite `☆`, comment count, delete `×`, "+ New
 Log") but **no actionable node for the document itself**, so the only way to
-open a document from any list is a mouse click.
+open a document from any list was a mouse click.
 
 Found while driving the app over CDP for the README screenshots: navigating to
 a document required going through the first-run welcome modal, whose "Start
 here" link is a real `<a>`, because no list view offered one.
 
-Not investigated: whether the rows are focusable with a `tabIndex` and a key
-handler that the accessibility tree simply does not advertise, which would
-still be a naming problem, or whether they are plain `<div onClick>`, which
-would make them unreachable outright.
+**The open question resolved the worse way.** The rows were plain
+`<div onClick>` / `<span onClick>` with no `tabIndex`, no `role` and no key
+handler, so the titles were unreachable outright rather than merely unnamed.
+
+**Fixed 2026-08-09.** The title is now a real element in each view, and the row
+or card keeps its own `onClick` so the mouse affordance is unchanged:
+
+| View | Was | Now |
+|---|---|---|
+| Browse grid, `ExploreBrowser.jsx` `ExploreCard` | `<h3>` inside a click-only card | `<h3>` wrapping `<Link className="explore-card__title-link">` |
+| Archives page, `ArchiveBrowser.jsx` `LogTreeItem` | `<span className="log-tree-title" onClick={navigate}>` | `<Link className="log-tree-title">` |
+| Editor page tree, `PageTree.jsx` `TreeItem` | `<span className="page-tree-label">` | `<button className="page-tree-label">` calling `onSelect` |
+| `SearchResultItem.jsx` | click-only `<div>` | `<button className="result-title-btn">` |
+
+The two link cases and the page-tree button `stopPropagation` so the row's own
+handler cannot fire a second, redundant navigation. A `<button>` is used in the
+page tree rather than a link because `ArchiveView` selects with
+`navigate(..., { replace: true })` on purpose, so the tree is an in-page
+selector and not a history step; the tradeoff is that a tree page cannot be
+opened in a new tab. Appearance is held constant by CSS resets on the four
+classes, and focus rings come from the pre-existing global `:focus-visible`
+rule (`index.css`), not from anything new.
+
+**Verified against a running app, not just the suite.** Logged in over CDP, the
+accessibility tree now lists one named `link`/`button` per document in all
+three live views, and pressing Enter on it navigated: browse grid `/` →
+`/archives/29/doc/113` (hit-tested to `a.explore-card__title-link`), page tree
+`doc/113` → `doc/102` (`button.page-tree-label`), archives page `/archives` →
+`/archives/22/doc/65` (`a.log-tree-title`). No console errors on any step.
+Tab order within a card is title, then that card's `☆`.
+
+**`SearchResultItem` is the fourth case and it has no callers.** Grep across
+`src/` finds the component defined and default-exported, and rendered nowhere;
+search results reach the user through `ExploreCard`, not through this file. It
+was fixed for consistency, but it is dead code and a deletion candidate in the
+same shape as A3. Not deleted here because removing a component is a scope call.
+
+The 11 tests added with this fix were mutation-checked: reverting the four
+source changes fails all 11, so none of them is vacuous.
+
+### B15. Glyph-only controls announce as their glyph, not their purpose
+
+Found while writing the B13 tests, and **distinct from B13**: these controls are
+focusable and always were, so they are reachable. What they lack is a name.
+
+A control whose entire content is a glyph takes that glyph as its accessible
+name, because content wins over the `title` attribute in the accname
+computation. A `title` only becomes the name when the element has no content at
+all. So these are announced as "☆ button", "+ button", "× button":
+
+- `ExploreBrowser.jsx` favourite `☆` (has `title`, still names as `☆`)
+- `PageTree.jsx` expand/collapse `▾`/`▸`, row-add `+`, header `←`, `+`, `◂`
+- `ArchiveBrowser.jsx` `LogTreeItem` add `+`, comments `💬`, delete `×`, export `⤓`
+
+Confirmed live over CDP: the archives page lists 88 actionable nodes, of which
+the per-document controls appear as `button "⤓"`, `button "+"`, `button "💬"`,
+`button "×"` repeated once per row, giving a screen-reader user no way to tell
+which document any of them belongs to.
+
+`ArchiveBrowser.jsx`'s tree toggle already does the right thing with
+`aria-label={expanded ? 'Collapse' : 'Expand'}`, so the fix is that pattern
+applied consistently, ideally naming the document too ("Delete Authentication
+Guide"). Not done with B13 because several existing tests query these buttons
+by their glyph name, so it is a wider diff than the defect it fixes, and B13
+was scoped to titles.
 
 ## C. Design tensions, not defects
 

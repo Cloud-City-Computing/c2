@@ -68,6 +68,51 @@ describe('PageTree', () => {
     expect(onSelect).toHaveBeenCalledWith(7);
   });
 
+  // B13: the title used to be a plain <span>, so a document could only be
+  // opened with a mouse. These two fail against that version.
+  it('exposes the page title as an actionable node named after the document', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 7, title: 'Hello', children: [] }],
+    });
+    wrap(<PageTree archiveId={1} archiveName="A" onSelect={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Hello' })).toBeInTheDocument();
+  });
+
+  it('the page title is reachable by Tab and opens the page on Enter', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 7, title: 'Hello', children: [] }],
+    });
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    wrap(<PageTree archiveId={1} archiveName="A" onSelect={onSelect} />);
+    const title = await screen.findByRole('button', { name: 'Hello' });
+
+    // Walk the real tab order rather than calling .focus(), so a non-tabbable
+    // element (the old <span>) cannot pass this.
+    let reached = false;
+    for (let i = 0; i < 10 && !reached; i++) {
+      await user.tab();
+      reached = document.activeElement === title;
+    }
+    expect(reached).toBe(true);
+
+    await user.keyboard('{Enter}');
+    expect(onSelect).toHaveBeenCalledWith(7);
+  });
+
+  it('activating the title selects the page exactly once', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 7, title: 'Hello', children: [] }],
+    });
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    wrap(<PageTree archiveId={1} archiveName="A" onSelect={onSelect} />);
+    await user.click(await screen.findByRole('button', { name: 'Hello' }));
+    // The row keeps its own onClick for mouse users; the title button stops
+    // propagation so the click is not counted twice.
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
   it('marks the active log with the active class', async () => {
     utilMock.fetchLogs.mockResolvedValueOnce({
       logs: [{ id: 5, title: 'Active', children: [] }],

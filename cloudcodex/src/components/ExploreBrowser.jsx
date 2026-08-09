@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, fetchSearchFilters, docUrl } from '../util';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
@@ -41,7 +41,15 @@ function ExploreCard({ item, isSearch, onClick, activeUsers, isFavorited, onTogg
   return (
     <div className="explore-card" onClick={onClick}>
       <div className="explore-card__header">
-        <h3 className="explore-card__title">{item.title}</h3>
+        <h3 className="explore-card__title">
+          <Link
+            className="explore-card__title-link"
+            to={docUrl(item)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {item.title}
+          </Link>
+        </h3>
         <div className="explore-card__indicators">
           {onToggleFavorite && (
             <button
