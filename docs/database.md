@@ -32,7 +32,6 @@ The database models a **workspace → squad → archive → log** hierarchy with
 ```
    workspaces
      └── squads
-           ├── squad_permissions
            ├── squad_members
            ├── squad_invitations
            └── archives
@@ -189,7 +188,7 @@ A team or group within a workspace. Squads own archives.
 | `created_at`   | TIMESTAMP               |                                 |
 | `created_by`   | INT FK → users          | ON DELETE SET NULL              |
 
-**Relationships:** Has many `squad_members`, `archives`, and one `squad_permissions` row.
+**Relationships:** Has many `squad_members` and `archives`.
 
 ---
 
@@ -206,19 +205,6 @@ Global per-user permissions for top-level actions. One row per user.
 | `create_log`      | BOOLEAN         | Defaults to TRUE — can create documents       |
 
 > Admins bypass all permission checks. Workspace owners also bypass permission checks within their workspace.
-
----
-
-### `squad_permissions`
-
-Per-squad default permissions for members. One row per squad.
-
-| Column            | Type            | Notes                                    |
-|-------------------|-----------------|------------------------------------------|
-| `id`              | INT AUTO_INCREMENT PK |                                    |
-| `squad_id`        | INT FK → squads | ON DELETE CASCADE; UNIQUE               |
-| `create_archive`  | BOOLEAN         | Default for this squad's members         |
-| `create_log`      | BOOLEAN         | Defaults to TRUE                         |
 
 ---
 
@@ -550,7 +536,6 @@ conversation back to any documents tied to the changed files.
                     │            │           │
                     ├──< squad_members (users)
                     ├──< squad_invitations (users)
-                    ├──< squad_permissions
                     └──< archive_repos
 
    logs ──< comments ──< comment_replies

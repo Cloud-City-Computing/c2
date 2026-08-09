@@ -22,8 +22,10 @@ These are the highest-confidence items. Each was checked by grepping the whole
 
 ### A1. `logs.read_access` and `logs.write_access` are write-only
 
-- **Written by:** `routes/github.js:1672` (insert) and `github.js:1688-1698`
-  (`JSON_ARRAY_APPEND` on PR-session open).
+- **Written by:** the PR-session log insert (`routes/github.js:1698`), and
+  only as an empty `JSON_ARRAY()`. Until 2026-08-09 the PR-session open also
+  `JSON_ARRAY_APPEND`ed the caller's id here, which is what made that feature
+  admin-only (B1); the grant now lands on a per-PR archive instead.
 - **Read by:** nothing. `checkLogReadAccess` / `checkLogWriteAccess`
   (`routes/helpers/shared.js:56-84`) join `logs` to `archives` and apply the
   access fragment against the **archive** alias.
@@ -36,7 +38,7 @@ never written.
 
 ### A2. `github_embed_refs` has no writer
 
-`GET /api/logs/by-github-ref` (`github.js:1919-1940`) reads the table.
+`GET /api/logs/by-github-ref` (`github.js:1956-1977`) reads the table.
 `migrations/p1_github_embeds.sql` and `init.sql:253-267` create it. There is no
 `INSERT INTO github_embed_refs` anywhere in the repo.
 
@@ -49,33 +51,65 @@ suite cannot catch this class of gap.
 embed nodes (`src/extensions/GitHubCodeEmbed.jsx`,
 `GitHubIssueEmbed.jsx`) are the obvious place to record a ref on save.
 
-### A3. `squad_permissions` is enforced by nothing
+### A3. `squad_permissions` was enforced by nothing (REMOVED)
 
-Read and written only by `GET`/`PUT /api/squads/:id/permissions`
-(`routes/squads.js:218`, `squads.js:255-271`). `requirePermission`
-(`middleware/permissions.js:40-111`) consults the global `permissions` table and
-then `squad_members.can_create_*`, never `squad_permissions`.
+Read and written only by `GET`/`PUT /api/squads/:id/permissions`.
+`requirePermission` consults the global `permissions` table and then
+`squad_members.can_create_*`, never `squad_permissions`. A workspace owner
+could toggle squad-level create permissions through the API, the value
+persisted, and no behaviour changed.
 
-**Consequence:** a workspace owner can toggle squad-level create permissions
-through the API and the UI, the value persists, and no behaviour changes.
+**Removed 2026-08-09** rather than enforced (Kyle's call): `squad_members`
+already carries per-member `can_create_log` / `can_create_archive` flags that
+*are* enforced, so this was a second, redundant answer to the same question,
+in the repo's most trap-laden subsystem.
 
-**Open question:** should `requirePermission` gain a `squad_permissions` step
-between the global check and the per-member check, or should the table and its
-two routes be removed?
+Gone: the table (`migrations/drop_squad_permissions.sql` plus the `CREATE` in
+`init.sql`, with the `DROP` line kept so `reset-db` still cleans older
+databases), both routes, the six tests that covered them, and the two
+`util.jsx` wrappers, `fetchSquadPermissions` / `updateSquadPermissions`, which
+turned out to have no callers anywhere in `src/`.
 
 ## B. Suspected functional defects
 
 Higher-value, lower-certainty. Each needs a runtime check to confirm.
 
-### B1. PR-as-document sessions are probably admin-only
+### B1. PR-as-document sessions were admin-only (FIXED)
 
-`getOrCreatePrSession` (`github.js:1655-1701`) grants the caller access by
+**Confirmed at runtime**, 2026-08-09, by replicating `getOrCreatePrSession`'s
+exact inserts and grant: `logs.read_access` came back `[19]` and that user
+still got **403** on `GET` and `POST /api/logs/:logId/comments`, while an admin
+got 200. The reading below was correct in every particular.
+
+**A second defect, found while fixing it and not recorded here before:**
+`GET .../pulls/:number/session` made **no GitHub call at all**. It took
+`owner`, `repo` and `number` from the URL and created a session. That was
+harmless only because the grant did nothing; making the grant real without
+fixing this would have let any authenticated user with any GitHub account open
+a session on a private repo's PR and read the Codex-side discussion. The route
+now fetches the PR through the caller's token first.
+
+**Fixed** by option (a) of the two below, per Kyle's call on 2026-08-09: one
+hidden archive **per PR** (`__c2_github_pr_sessions__:owner/repo#N`) with the
+grant appended to that archive's `read_access`/`write_access`. Per-PR rather
+than one shared archive because the archive is the ACL boundary, so a shared
+one would have made any session grant access to every other PR's session.
+Sessions created earlier are moved into their per-PR archive on next open.
+Verified live: the granted user now reads (200) and comments (201), two users
+holding different PR sessions each get 403 on the other's, and the admin
+control still passes. **A1 is unchanged: `logs.read_access` is still dead**,
+and this fix deliberately routes around it rather than reviving it.
+
+Original finding below.
+
+### B1 (original reading). PR-as-document sessions are probably admin-only
+
+`getOrCreatePrSession` granted the caller access by
 appending their id to the virtual log's `read_access`/`write_access`. Per **A1**
 those columns are inert.
 
-The parent archive is `__c2_github_pr_sessions__` (`github.js:1623`), created
-with `squad_id NULL`, `created_by NULL`, and every ACL column empty
-(`github.js:1637-1645`). Walk the seven clauses of `readAccessWhere` against
+The parent archive was a single `__c2_github_pr_sessions__`, created with
+`squad_id NULL`, `created_by NULL`, and every ACL column empty. Walk the seven clauses of `readAccessWhere` against
 that row for a non-admin user:
 
 | Clause | Result |
@@ -170,8 +204,8 @@ three tests that were each confirmed to fail against the unfixed route.
 
 ### B5. GitHub team sync silently truncates above 100 members
 
-`github.js:2122` and `github.js:2200` fetch team members with `per_page=100` and
-no pagination loop.
+Both team-sync routes fetched team members with a single `per_page=100`
+call and no pagination loop.
 
 **FIXED 2026-08-09.** Both call sites now go through `fetchTeamMemberLogins`,
 which follows pagination to a 20-page (2,000 member) cap and reports whether
@@ -183,7 +217,7 @@ nobody. Original finding below.
 
 **Consequence:** a team with more than 100 members yields a partial `ghLogins`
 set. The preview under-reports, and the sync's removal pass
-(`github.js:2249-2262`) deletes every current member whose login fell outside
+then deleted every current member whose login fell outside
 the first page.
 
 **Not verified:** no team of that size has been tested.

@@ -1,6 +1,6 @@
 # Data Model Map
 
-25 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
+24 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
 definition; `migrations/` is the incremental path for databases that already
 exist. Both must be kept in sync, and there is a live trap in how `init.sql` is
 re-applied.
@@ -34,7 +34,7 @@ Every nullable parent key is load-bearing:
   an explicit grant, or an admin can reach it. See
   [access-control.md](access-control.md).
 - `archives.squad_id NULL` is also how the GitHub PR-session system archive is
-  built deliberately (`github.js:1638-1644`).
+  built deliberately (`github.js:1648-1656`), one archive per PR.
 - `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:247`), so deleting an
   archive destroys its documents, versions, comments and favourites.
 
@@ -163,7 +163,8 @@ saw an onboarding flow at all. `routes/first-run.js` is the only writer.
 carries `role ENUM('member','admin','owner')` plus seven permission booleans.
 Which of those are actually enforced, and where, is tabulated in
 [access-control.md](access-control.md). Short version: `admin` as a role is
-inert, and `squad_permissions` is a settings table nothing enforces.
+inert. (A `squad_permissions` table also existed and was enforced by nothing;
+it was removed on 2026-08-09.)
 
 `squad_invitations` is unique on `(squad_id, invited_user_id, status)`
 (`init.sql:192`). Because `status` is part of the key, a user can hold one
@@ -261,7 +262,7 @@ Dev volume is the bind mount `./db-data/`; prod is the named volume `db_data`.
 
 `make reset-db` (`Makefile:21-24`) pipes `init.sql` then `seed.sql` into the
 running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-36`)
-now covers all 25 tables. It used to omit `github_links`, `activity_log`,
+now covers all 24 tables. It used to omit `github_links`, `activity_log`,
 `watches` and `notifications`, whose `CREATE TABLE` statements don't use
 `IF NOT EXISTS`, so `reset-db` failed partway through with a duplicate-table
 error on a database that already had those four. Fixed by adding them to the

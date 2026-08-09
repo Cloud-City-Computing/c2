@@ -68,9 +68,9 @@ Two details of the params worth internalising:
 - **Param 2 is `JSON.stringify(user.id)`**, i.e. the string `"7"` for user 7,
   because `JSON_CONTAINS` needs a JSON document, not an integer. Elsewhere in
   the codebase the same arrays get appended as `CAST(? AS JSON)` with a
-  `String(user.id)` argument (`routes/github.js:1690-1697`). Both produce the
-  JSON number `7`, so they interoperate, but the two spellings are easy to
-  confuse.
+  `String(user.id)` argument (`routes/github.js:1715-1726`, the PR-session
+  grant). Both produce the JSON number `7`, so they interoperate, but the two
+  spellings are easy to confuse.
 - **Every param is now the user's id** except param 2's JSON spelling. Param 4
   used to be `user.email`, because `workspaces.owner` was a `TEXT` column
   holding an email address rather than a foreign key, so changing a user's
@@ -103,13 +103,16 @@ columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
 (`init.sql:244-245`). Grepping the whole backend for reads of them turns up
-nothing: they are written in exactly one place, `routes/github.js:1672` and
-`routes/github.js:1688-1698`, and read by no query anywhere.
+nothing. Since 2026-08-09 the only thing that writes them is the PR-session
+log insert (`routes/github.js:1698`), which sets both to an empty
+`JSON_ARRAY()`.
 
-**They are write-only columns.** Any future feature that "grants access on a
-document" by writing `logs.read_access` will appear to work, persist correctly,
-and grant nothing. The PR-session feature that writes them is documented in
-[github-integration.md](github-integration.md) and flagged in
+**They are write-only columns**, and the decision on 2026-08-09 was to keep
+them that way. Any future feature that "grants access on a document" by writing
+`logs.read_access` will appear to work, persist correctly, and grant nothing.
+The PR-session feature used to do exactly that and was admin-only for it; it
+now grants on a per-PR archive instead. See
+[github-integration.md](github-integration.md) and B1 in
 [open-questions.md](open-questions.md).
 
 The practical rule: **the archive is the ACL boundary.** Per-document
@@ -175,7 +178,7 @@ Callers: delete archive (`archives.js:195`), manage access
 
 `routes/squads.js:283-299`. Workspace owner, squad creator, or member with
 `can_manage_members`. Also used by the GitHub team-sync routes
-(`github.js:2109`, `github.js:2187`).
+(`github.js:2173`, `github.js:2253`).
 
 ## 4. How membership itself is granted
 
@@ -224,13 +227,13 @@ in the SQL fragments (`ownership.js:31`, `ownership.js:57`). `admin` is treated
 as an ordinary member by every access check; it only affects UI and the squad
 management helper's `can_manage_members` grant path.
 
-**`squad_permissions` is a settings table with no enforcement path.** It is
-read and written by `GET`/`PUT /api/squads/:id/permissions`
-(`squads.js:218`, `squads.js:255-271`) and by nothing else.
-`requirePermission` consults the global `permissions` table and the
-`squad_members` columns, never `squad_permissions`. Toggling it through the API
-persists a value that changes no behaviour. See
-[open-questions.md](open-questions.md).
+**`squad_permissions` no longer exists.** It was a settings table with no
+enforcement path: read and written by `GET`/`PUT /api/squads/:id/permissions`
+and by nothing else, while `requirePermission` consulted the global
+`permissions` table and the `squad_members` columns. Toggling it persisted a
+value that changed no behaviour. Removed 2026-08-09 along with both routes,
+since `squad_members.can_create_*` already answers the same question and is
+enforced. See [open-questions.md](open-questions.md) A3.
 
 ## 6. Admin
 

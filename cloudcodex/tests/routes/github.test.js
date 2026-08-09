@@ -1680,19 +1680,21 @@ describe('GitHub Routes', () => {
       mockAuthenticated();
       mockGitHubConnected();
 
+      mockGitHubApiResponse({ number: 42, title: 'A PR the caller can see' });
+
       // Order of c2_query calls inside the route handler:
       //   1) SELECT existing pr_session (empty)
-      //   2) SELECT existing system archive (empty)
-      //   3) INSERT system archive
+      //   2) SELECT existing per-PR archive (empty)
+      //   3) INSERT per-PR archive
       //   4) INSERT logs
       //   5) INSERT github_pr_sessions
-      //   6) UPDATE logs ACL
+      //   6) UPDATE archives ACL
       c2_query.mockResolvedValueOnce([]); // pr_session lookup
       c2_query.mockResolvedValueOnce([]); // archive lookup
       c2_query.mockResolvedValueOnce({ insertId: 99 }); // INSERT archive
       c2_query.mockResolvedValueOnce({ insertId: 200 }); // INSERT logs
       c2_query.mockResolvedValueOnce({ insertId: 1 }); // INSERT pr_sessions
-      c2_query.mockResolvedValueOnce([]); // UPDATE logs ACL
+      c2_query.mockResolvedValueOnce([]); // UPDATE archives ACL
 
       const res = await request(app)
         .get('/api/github/repos/u/r/pulls/42/session')
@@ -1701,16 +1703,44 @@ describe('GitHub Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.log_id).toBe(200);
       expect(res.body.session_id).toBe(1);
+
+      // The archive name must be per-PR. One shared archive would make this
+      // grant reach every other PR session, since the archive is the ACL
+      // boundary.
+      const archiveInsert = c2_query.mock.calls.find(([sql]) => /INSERT INTO archives/i.test(sql));
+      expect(archiveInsert[1][0]).toBe('__c2_github_pr_sessions__:u/r#42');
+
+      // And the grant must land on archives, not on the inert logs columns.
+      const grant = c2_query.mock.calls.find(([sql]) => /JSON_ARRAY_APPEND/i.test(sql));
+      expect(grant[0]).toMatch(/UPDATE archives/i);
+      expect(grant[1]).toContain(String(TEST_USER.id));
+    });
+
+    it('refuses to open a session for a PR GitHub will not show the caller', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      mockGitHubApiResponse({ message: 'Not Found' }, 404);
+
+      const res = await request(app)
+        .get('/api/github/repos/someone/private/pulls/7/session')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+      // Nothing may be created or granted for a PR the caller cannot see.
+      expect(c2_query.mock.calls.some(([sql]) => /INSERT INTO (archives|logs|github_pr_sessions)/i.test(sql))).toBe(false);
+      expect(c2_query.mock.calls.some(([sql]) => /JSON_ARRAY_APPEND/i.test(sql))).toBe(false);
     });
 
     it('reuses the existing session on subsequent calls', async () => {
       mockAuthenticated();
       mockGitHubConnected();
 
-      // session lookup returns existing row -> short-circuit
-      c2_query.mockResolvedValueOnce([{ id: 5, log_id: 555 }]);
-      // UPDATE logs read/write_access (still runs to keep ACL fresh)
-      c2_query.mockResolvedValueOnce([]);
+      mockGitHubApiResponse({ number: 42, title: 'A PR the caller can see' });
+
+      c2_query.mockResolvedValueOnce([{ id: 5, log_id: 555 }]); // existing session
+      c2_query.mockResolvedValueOnce([{ id: 99 }]);             // existing per-PR archive
+      c2_query.mockResolvedValueOnce([]);                       // UPDATE logs.archive_id (legacy move)
+      c2_query.mockResolvedValueOnce([]);                       // UPDATE archives ACL
 
       const res = await request(app)
         .get('/api/github/repos/u/r/pulls/42/session')
@@ -1736,7 +1766,11 @@ describe('GitHub Routes', () => {
       });
       // Session lookup: existing session
       c2_query.mockResolvedValueOnce([{ id: 5, log_id: 555 }]);
-      // UPDATE logs ACL
+      // Per-PR archive lookup: exists
+      c2_query.mockResolvedValueOnce([{ id: 99 }]);
+      // UPDATE logs.archive_id (no-op unless the log predates per-PR archives)
+      c2_query.mockResolvedValueOnce([]);
+      // UPDATE archives ACL
       c2_query.mockResolvedValueOnce([]);
       // INSERT comments
       c2_query.mockResolvedValueOnce({ insertId: 333 });

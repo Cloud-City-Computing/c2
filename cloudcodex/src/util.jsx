@@ -190,8 +190,6 @@ export const deleteSquad = (id) => apiFetch('DELETE', `/api/squads/${id}`);
 export const fetchPermissions = () => apiFetch('GET', '/api/permissions');
 export const fetchUserPermissions = (userId) => apiFetch('GET', `/api/permissions/${userId}`);
 export const updatePermissions = (userId, perms) => apiFetch('PUT', `/api/permissions/${userId}`, perms);
-export const fetchSquadPermissions = (squadId) => apiFetch('GET', `/api/squads/${squadId}/permissions`);
-export const updateSquadPermissions = (squadId, perms) => apiFetch('PUT', `/api/squads/${squadId}/permissions`, perms);
 
 // --- Squad Member APIs ---
 

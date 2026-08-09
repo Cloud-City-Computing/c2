@@ -1,6 +1,6 @@
 # GitHub Integration Map
 
-`routes/github.js` is 2263 lines and about 45 endpoints, the largest single file
+`routes/github.js` is about 2,350 lines and about 45 endpoints, the largest single file
 in the backend. It grew in four labelled phases (`P0` sync, `P1` embeds,
 `P2` PR-as-document, `P3` CI and team sync) whose section banners are still in
 the file, and it is the most volatile file in the repo, so anchor on route paths
@@ -34,9 +34,9 @@ lives in `routes/oauth.js:48-81`:
 `router.use('/github', requireAuth, asyncHandler(requireGitHub))`
 (`github.js:125`) applies that to every `/api/github/*` route. Note the two
 routes that live **outside** the `/github` prefix,
-`/api/logs/by-github-ref` (`github.js:1919`) and the two
-`/api/squads/:squadId/github-team/*` routes (`github.js:2104`,
-`github.js:2182`), which therefore attach `requireAuth` and `requireGitHub`
+`/api/logs/by-github-ref` (`github.js:1956`) and the two
+`/api/squads/:squadId/github-team/*` routes (`github.js:2168`,
+`github.js:2248`), which therefore attach `requireAuth` and `requireGitHub`
 individually.
 
 ### Token revocation detection
@@ -52,7 +52,7 @@ is what hides GitHub UI affordances for unlinked users.
 
 ### This router does NOT use the shared error handler
 
-`github.js:2273-2280` installs its own terminal handler that forwards
+`github.js:2340-2347` installs its own terminal handler that forwards
 `err.status` when it is a plausible 4xx/5xx and prefers `err.ghBody.message`,
 so GitHub's own wording reaches the client. `githubFetch` is what attaches
 `.status` and `.ghBody` (`github.js:97-100`).
@@ -178,13 +178,13 @@ The cache stores the *full* file and slices per request, so two embeds of
 different ranges in the same file cost one fetch.
 
 There is a second, separate TTL cache for CI and release reads,
-`ciCache`, 60 seconds, 200 entries (`github.js:1944-1967`).
+`ciCache`, 60 seconds, 200 entries (`github.js:1981-2004`).
 
 ### The dead back-link table
 
 `github_embed_refs` (`init.sql:253-267`, created by
 `migrations/p1_github_embeds.sql`) is intended to answer "which documents embed
-this file / issue / PR". `GET /api/logs/by-github-ref` (`github.js:1919`) reads
+this file / issue / PR". `GET /api/logs/by-github-ref` (`github.js:1956`) reads
 it, correctly gated by the read fragment.
 
 **Nothing writes it.** There is no `INSERT INTO github_embed_refs` anywhere in
@@ -216,26 +216,37 @@ only, and does not pull content changes into existing docs.
 The cleverest and most fragile part. A pull request gets a **virtual log** so
 the existing comment routes and collab WebSocket work on it unchanged.
 
-`ensureSystemArchive` (`github.js:1631-1647`) find-or-creates a single global
-archive named `__c2_github_pr_sessions__` with `system = TRUE`, `squad_id NULL`,
-`created_by NULL`, and every ACL empty. `archives.system` exists precisely so
-this row can be filtered out of normal archive listings.
+Two things have to be true for this to work, and until 2026-08-09 neither was.
 
-`getOrCreatePrSession` (`github.js:1655-1701`) then creates a log in it, records
-a `github_pr_sessions` row (unique on owner+repo+pr_number), and appends the
-caller's id to the **log's** `read_access` and `write_access` JSON arrays
-(`github.js:1688-1698`).
+**The session must be authorised by GitHub.** `GET .../pulls/:number/session`
+now fetches the PR through the caller's own token before doing anything else.
+GitHub is the only authority on who may see a PR, and this is the only place
+that asks; a caller who cannot see it gets GitHub's 404 forwarded by this
+router's error handler. Before, the route took `owner/repo/number` from the URL
+and trusted them, which mattered the moment the grant below became real.
 
-**That last step grants nothing.** As established in
-[access-control.md](access-control.md), `checkLogReadAccess` resolves against
-the parent *archive*, and `logs.read_access` is read by no query in the codebase.
-The system archive has empty ACLs, a NULL creator, and no squad, so only
-`is_admin` satisfies the fragment. The comment routes on a PR-session log should
-therefore 403 for every non-admin. This is flagged in
-[open-questions.md](open-questions.md) as a suspected defect, not runtime
-verified.
+**The grant must land on an archive, and on one archive per PR.**
+`ensurePrArchive(owner, repo, prNumber)` find-or-creates a hidden archive named
+`__c2_github_pr_sessions__:owner/repo#N` with `system = TRUE`, `squad_id NULL`,
+`created_by NULL` and empty ACLs. `getOrCreatePrSession` creates the log in it,
+records a `github_pr_sessions` row (unique on owner+repo+pr_number), and
+appends the caller's id to **that archive's** `read_access` / `write_access`,
+which is clause 2 of the shared fragment.
 
-The rest of the PR surface (`github.js:1724-1819`) proxies review comments,
+One archive per PR is the whole point: the archive is the ACL boundary, so a
+single shared archive would make opening any PR session grant access to every
+other PR's session. A session created before this change is moved into its
+per-PR archive on next open.
+
+The old code appended the caller's id to the **log's** ACL columns, which are
+read by no query in the codebase (A1). Live-confirmed 2026-08-09: the grant was
+written and a non-admin still got 403 on the comment routes while an admin got
+200, i.e. the feature was admin-only. Also live-confirmed after the fix: the
+granted user reads and comments, and two users holding different PR sessions
+each get 403 on the other's. **`logs.read_access` remains dead**, deliberately;
+this fix routes around it rather than reviving it.
+
+The rest of the PR surface (`github.js:1761-1856`) proxies review comments,
 review submission, and issue search straight through, with no local mirror.
 
 ## 6. Squad to GitHub Team sync (P3)
@@ -243,16 +254,16 @@ review submission, and issue search straight through, with no local mirror.
 `squads.github_org` / `github_team_slug` / `team_sync_at`
 (`init.sql:129-131`, unique on the org+slug pair) bind a squad to a GitHub Team.
 
-`GET /api/squads/:squadId/github-team/preview` (`github.js:2104`) and
-`POST .../sync` (`github.js:2182`), both behind `userCanManageSquad`.
+`GET /api/squads/:squadId/github-team/preview` (`github.js:2168`) and
+`POST .../sync` (`github.js:2248`), both behind `userCanManageSquad`.
 
 Identity matching is `LOWER(oauth_accounts.provider_username)` against the
-GitHub login (`github.js:2156`, `github.js:2227`), so **a Codex user who has not
+GitHub login (`github.js:2195`, `github.js:2272`), so **a Codex user who has not
 linked GitHub is invisible to sync** and appears in the `unmatched` list.
 
 Adds insert with `role='member', can_read=TRUE, can_write=FALSE` and
-`ON DUPLICATE KEY UPDATE can_read = TRUE` (`github.js:2237-2239`). Removals skip
-anyone with `role = 'owner'` (`github.js:2251-2256`) so a bootstrapping admin
+`ON DUPLICATE KEY UPDATE can_read = TRUE` (`github.js:2302-2304`). Removals skip
+anyone with `role = 'owner'` (`github.js:2318-2323`) so a bootstrapping admin
 cannot lock themselves out.
 
 Sync is **manual and one-directional**: GitHub is the source, Codex is the

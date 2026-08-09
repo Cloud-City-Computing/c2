@@ -1620,18 +1620,30 @@ router.post('/github/archives/:archiveId/repos/:repoId/refresh', asyncHandler(bu
 
 // ─── P2: PR-as-document + Doc<->Issue cross-linking ────────────────
 
-const SYSTEM_ARCHIVE_NAME = '__c2_github_pr_sessions__';
+const SYSTEM_ARCHIVE_PREFIX = '__c2_github_pr_sessions__';
+
+/** The hidden archive name for one PR. One archive per PR, not one for all. */
+function prArchiveName(owner, repo, prNumber) {
+  return `${SYSTEM_ARCHIVE_PREFIX}:${owner}/${repo}#${prNumber}`;
+}
 
 /**
- * Find-or-create the global system archive that hosts virtual PR-session
- * logs. The archive carries `system=TRUE` and empty ACLs so it's invisible
- * to standard archive listings; per-user read access is injected on each
- * session open via JSON_ARRAY_APPEND on the log's read_access column.
+ * Find-or-create the hidden archive that hosts one PR's virtual session log.
+ *
+ * The archive carries `system=TRUE`, `squad_id NULL` and empty ACLs, so it is
+ * invisible to normal browsing; access is granted per user by appending their
+ * id to **this archive's** `read_access`/`write_access`, which is clause 2 of
+ * the shared fragment.
+ *
+ * One archive per PR rather than one shared archive is the point: the archive
+ * is the ACL boundary, so a single shared one would make opening any PR
+ * session grant access to every other PR's session too.
  */
-async function ensureSystemArchive() {
+async function ensurePrArchive(owner, repo, prNumber) {
+  const name = prArchiveName(owner, repo, prNumber);
   const [existing] = await c2_query(
     'SELECT id FROM archives WHERE name = ? AND `system` = TRUE AND squad_id IS NULL LIMIT 1',
-    [SYSTEM_ARCHIVE_NAME]
+    [name]
   );
   if (existing) return existing.id;
   const ins = await c2_query(
@@ -1641,16 +1653,24 @@ async function ensureSystemArchive() {
     'VALUES (NULL, ?, TRUE, NULL, ' +
     'JSON_ARRAY(), JSON_ARRAY(), JSON_ARRAY(), JSON_ARRAY(), ' +
     'FALSE, FALSE)',
-    [SYSTEM_ARCHIVE_NAME]
+    [name]
   );
   return ins.insertId;
 }
 
 /**
  * Idempotently obtain the virtual log id for a PR session, creating the
- * archive + log + session row if needed. Always grants the calling user
- * read AND write access on the underlying log so the existing comment
- * routes and collab WS auth pass through unchanged.
+ * archive + log + session row if needed, and grant the calling user read and
+ * write access so the existing comment routes and collab WS auth pass through
+ * unchanged.
+ *
+ * The grant lands on the **archive**, not the log. `logs.read_access` /
+ * `logs.write_access` are read by nothing (A1 in open-questions.md), which is
+ * why this whole feature was admin-only until 2026-08-09: the grant was
+ * written, and every non-admin still got a 403.
+ *
+ * Callers must have verified with GitHub that this user can see this PR
+ * before calling. Nothing below re-checks it.
  */
 async function getOrCreatePrSession(user, owner, repo, prNumber) {
   const [existing] = await c2_query(
@@ -1660,14 +1680,20 @@ async function getOrCreatePrSession(user, owner, repo, prNumber) {
     [owner, repo, prNumber]
   );
 
+  const archiveId = await ensurePrArchive(owner, repo, prNumber);
   let logId;
   let sessionId;
 
   if (existing) {
     sessionId = existing.id;
     logId = existing.log_id;
+    // Sessions opened before per-PR archives existed sit in the one shared
+    // archive. Move them, or the grant below would reach every other PR.
+    await c2_query(
+      `UPDATE logs SET archive_id = ? WHERE id = ? AND archive_id <> ?`,
+      [archiveId, logId, archiveId]
+    );
   } else {
-    const archiveId = await ensureSystemArchive();
     const logIns = await c2_query(
       `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by, read_access, write_access)
        VALUES (?, ?, '', ?, ?, JSON_ARRAY(), JSON_ARRAY())`,
@@ -1682,11 +1708,11 @@ async function getOrCreatePrSession(user, owner, repo, prNumber) {
     sessionId = sessIns.insertId;
   }
 
-  // Append user.id to read_access AND write_access if not already present.
-  // Comments routes gate on the standard ACL, so this is what makes the
-  // session viewable + commentable for the user.
+  // Append user.id to the archive's read_access and write_access if absent.
+  // CAST(? AS JSON) of a numeric string yields a JSON number, which is what
+  // readAccessParams' JSON.stringify(user.id) compares against in clause 2.
   await c2_query(
-    `UPDATE logs
+    `UPDATE archives
        SET read_access = IF(JSON_CONTAINS(IFNULL(read_access, JSON_ARRAY()), CAST(? AS JSON)),
                             read_access,
                             JSON_ARRAY_APPEND(IFNULL(read_access, JSON_ARRAY()), '$', CAST(? AS JSON))),
@@ -1694,7 +1720,7 @@ async function getOrCreatePrSession(user, owner, repo, prNumber) {
                              write_access,
                              JSON_ARRAY_APPEND(IFNULL(write_access, JSON_ARRAY()), '$', CAST(? AS JSON)))
      WHERE id = ?`,
-    [String(user.id), String(user.id), String(user.id), String(user.id), logId]
+    [String(user.id), String(user.id), String(user.id), String(user.id), archiveId]
   );
 
   return { sessionId, logId };
@@ -1712,6 +1738,17 @@ router.get('/github/repos/:owner/:repo/pulls/:number/session', asyncHandler(asyn
   if (!isValidId(prNumber)) {
     return res.status(400).json({ success: false, message: 'Invalid PR number' });
   }
+
+  // GitHub is the authority on who may see this PR, and this is the only
+  // place that asks. Opening a session grants read+write on the session
+  // document, so without this an authenticated user could name any
+  // owner/repo/number and read the Codex-side discussion of a private PR.
+  // A user who cannot see the PR gets GitHub's own 404 forwarded by this
+  // router's error handler.
+  await req.gh(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${prNumber}`
+  );
+
   const session = await getOrCreatePrSession(req.user, owner, repo, prNumber);
   res.json({ success: true, log_id: session.logId, session_id: session.sessionId });
 }));

@@ -173,15 +173,6 @@ CREATE TABLE permissions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE squad_permissions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  squad_id INT NOT NULL,
-  create_archive BOOLEAN DEFAULT FALSE,
-  create_log BOOLEAN DEFAULT TRUE,
-  FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE CASCADE,
-  UNIQUE KEY (squad_id)
-) ENGINE=InnoDB;
-
 CREATE TABLE squad_members (
   id INT AUTO_INCREMENT PRIMARY KEY,
   squad_id INT NOT NULL,
