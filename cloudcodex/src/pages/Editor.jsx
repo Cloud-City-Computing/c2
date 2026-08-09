@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -524,16 +523,16 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
     editor.commands.setContent(content || '', false);
   }, [restoreKey, content, editor]);
 
-  // Detect the Tiptap editor DOM container for portal overlays
-  const [overlayContainer, setOverlayContainer] = useState(null);
-  useEffect(() => {
-    if (!editorContainerRef.current) return;
-    const tiptapEl = editorContainerRef.current.querySelector('.tiptap');
-    if (tiptapEl) {
-      tiptapEl.parentElement.style.position = 'relative';
-      setOverlayContainer(tiptapEl.parentElement);
-    }
-  }, [editor]);
+  // Positioning context for the cursor and highlight overlays. This element is
+  // rendered by React and contains EditorContent, rather than being the div
+  // EditorContent renders: overlays used to be portalled into
+  // `.tiptap`.parentElement, which ProseMirror owns, and tearing the editor
+  // down then left React removing portal children from a parent that no longer
+  // held them. That threw
+  // "removeChild: The node to be removed is not a child of this node" and, with
+  // no error boundary, blanked the entire app on every navigation away from the
+  // editor. See open-questions.md B11.
+  const overlayHostRef = useRef(null);
 
   // --- Crop modal state (for toolbar uploads only) ---
   const [cropQueue, setCropQueue] = useState([]);
@@ -556,17 +555,22 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
     <>
       <TiptapToolbar editor={editor} onImageSelect={handleToolbarImageSelect} />
       <div ref={editorContainerRef}>
-        <EditorContent editor={editor} />
+        <div className="tiptap-overlay-host" ref={overlayHostRef}>
+          <EditorContent editor={editor} />
+          <RichTextCursors
+            remoteCursors={remoteCursors}
+            editorRef={{ current: editor }}
+            containerRef={overlayHostRef}
+          />
+          <RichTextHighlights
+            editorRef={{ current: editor }}
+            comments={comments || []}
+            activeCommentId={activeCommentId}
+            containerRef={overlayHostRef}
+          />
+        </div>
         <MentionPicker editor={editor} />
       </div>
-      {overlayContainer && createPortal(
-        <RichTextCursors remoteCursors={remoteCursors} editorRef={{ current: editor }} />,
-        overlayContainer
-      )}
-      {overlayContainer && createPortal(
-        <RichTextHighlights editorRef={{ current: editor }} comments={comments || []} activeCommentId={activeCommentId} />,
-        overlayContainer
-      )}
       {cropFile && <ImageCropModal file={cropFile} onConfirm={handleCropConfirm} onCancel={handleCropCancel} />}
     </>
   );

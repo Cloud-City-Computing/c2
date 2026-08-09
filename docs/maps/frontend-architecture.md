@@ -9,9 +9,22 @@ files plus a single 8844-line `src/index.css`.
 ## 1. Routing and code splitting
 
 `src/main.jsx` mounts, `src/App.jsx` routes. Only `HomePage` is imported
-eagerly (`App.jsx:9`); **eleven pages are `lazy()`-loaded**
-(`App.jsx:13-23`) behind one `<Suspense fallback={<PageLoader />}>`
-(`App.jsx:51`).
+eagerly; **eleven pages are `lazy()`-loaded** behind one
+`<Suspense fallback={<PageLoader />}>`, and the whole thing sits inside a
+single `<ErrorBoundary>`.
+
+**`ErrorBoundary` (`src/components/ErrorBoundary.jsx`) is the only one in the
+app,** wrapping `Suspense` in `App.jsx`. Before it existed, any render throw
+unmounted the React root and left a blank page with no message and no way back
+except a manual reload; that is what turned the editor teardown race into a
+total outage (`open-questions.md` B11) and what would have made a null
+workspace owner take down the admin console. It renders a message plus "Reload
+the page" and "Try again", and logs with the project's
+`[timestamp] Unhandled render error:` format.
+
+Note what it cannot do: React error boundaries never see errors from event
+handlers, async callbacks, or `setTimeout`. It is a floor under render errors,
+not a general catch-all.
 
 | Route | Page | Notes |
 |---|---|---|

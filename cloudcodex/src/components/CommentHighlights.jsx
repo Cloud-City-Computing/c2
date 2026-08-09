@@ -81,7 +81,7 @@ function findTextRanges(rootEl, doc, searchText) {
  * CommentHighlights for the rich text (Tiptap) editor.
  * Rendered via createPortal into the Tiptap content wrapper.
  */
-export function RichTextHighlights({ editorRef, comments, activeCommentId }) {
+export function RichTextHighlights({ editorRef, comments, activeCommentId, containerRef }) {
   const [highlights, setHighlights] = useState([]);
 
   const computeHighlights = useCallback(() => {
@@ -90,7 +90,10 @@ export function RichTextHighlights({ editorRef, comments, activeCommentId }) {
 
     const editorEl = editor.view.dom;
     const editorDoc = editorEl.ownerDocument;
-    const container = editorEl.parentElement;
+    // Prefer the caller's own element: these rects are offsets inside whatever
+    // the overlay renders into, and that has to be a node React owns.
+    // editorEl.parentElement belongs to ProseMirror (see open-questions.md B11).
+    const container = containerRef?.current || editorEl.parentElement;
     if (!container) { setHighlights([]); return; }
     const containerRect = container.getBoundingClientRect();
 
@@ -120,7 +123,7 @@ export function RichTextHighlights({ editorRef, comments, activeCommentId }) {
     }
 
     setHighlights(items);
-  }, [editorRef, comments]);
+  }, [editorRef, comments, containerRef]);
 
   // Recompute on comments change and periodically (content may reflow)
   useEffect(() => {

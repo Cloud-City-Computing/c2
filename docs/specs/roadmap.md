@@ -177,10 +177,15 @@ than a docs one. It was considered and declined, and the badge stays "Other".
 Two things found by actually running the built image, both recorded in
 [`../maps/open-questions.md`](../maps/open-questions.md):
 
-- **B12, fixed here:** production CORS rejected the app's own login request, so
-  the documented self-hosting path could not log in at all.
-- **B11, not fixed:** navigating away from the editor blanks the whole app.
-  That is track E's, and it is the strongest argument yet for doing E next.
+- **B12, fixed:** production CORS rejected the app's own login request, so the
+  documented self-hosting path could not log in at all.
+- **B11, fixed:** navigating away from the editor blanked the whole app. The
+  overlays were portalled into ProseMirror-owned DOM; they are now siblings
+  inside a React-owned host. The app also gained its **first `ErrorBoundary`**,
+  which is what turned that unmount race from a cosmetic bug into a total
+  outage, and which E inherits as a solved problem.
+- **B13, open:** document titles are click-only and unreachable by keyboard in
+  every list view.
 
 ### E. Foundation
 
@@ -211,11 +216,14 @@ now         A ──────────────────────
             C: decided 2026-08-08, no breaking change to execute
 ```
 
-A, B and D have shipped and C is decided. **E is the only track left**, and
-two findings from D's release work argue for doing it now rather than later:
-the editor blanks the app on navigation (B11) and nothing in `src/` has an
-error boundary, so every render error is unrecoverable. Both sit in exactly the
-files E exists to break up.
+A, B and D have shipped and C is decided. **E is the only track left.** Two of
+the arguments for it were settled during D rather than deferred into it: the
+editor no longer blanks the app on navigation, and the app now has an error
+boundary, so a render error is no longer unrecoverable. What remains for E is
+its actual subject, breaking up `Editor.jsx` (1516 lines) and `GitHubPage.jsx`
+(2631 lines) so the interface is testable, plus the rest of the
+`open-questions.md` list, of which **B1** (PR-as-document access granted through
+a column nothing reads) is still the highest-value item.
 
 The measurement that drove D: 38 stars, 1 fork, 2 issues ever, both closed. Now
 that the repository looks maintained and an evaluator can `docker compose up` a

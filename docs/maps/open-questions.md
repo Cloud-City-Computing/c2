@@ -260,7 +260,7 @@ up the app's dark theme; the `<select>` renders with default browser chrome
 impact, but jarring enough to be worth a styled `<select>` (or a themed
 listbox component) rather than the browser default.
 
-### B11. Navigating away from the editor blanks the whole app
+### B11. Navigating away from the editor blanks the whole app (FIXED)
 
 **Reproduced twice, in two independent browser sessions, against the built
 production image.** Open any document, click `✏️ Edit`, then click any sidebar
@@ -286,11 +286,38 @@ ErrorBoundary anywhere in `cloudcodex/src/`**, so one throw during unmount
 takes down the entire root. That missing boundary is the same gap flagged for
 the null-owner crash in the workspace `owner_id` review.
 
-Not fixed here. `Editor.jsx` is 1516 lines and out of test scope by policy, so
-this belongs to track E, which owns both the extraction and the missing error
-boundary. Two things are worth separating when it is picked up: the unmount
-race itself, and the fact that **any** render error in this app is
-unrecoverable.
+**Root cause.** `RichTextEditor` in `Editor.jsx` portalled the cursor and
+comment-highlight overlays into `.tiptap`'s **`parentElement`**, the node
+`EditorContent` renders and whose children ProseMirror manages. An effect even
+reached in and set `position: relative` on it. React and ProseMirror therefore
+both mutated the same parent, and on teardown ProseMirror emptied it before
+React removed the portal children, so React's `removeChild` found a node that
+was no longer its child.
+
+**Both halves are fixed.**
+
+1. **No more portals.** The overlays now render as ordinary siblings of
+   `EditorContent` inside `div.tiptap-overlay-host`, an element React owns
+   outright, which carries the `position: relative` in CSS rather than through a
+   DOM mutation. `RichTextCursors` and `RichTextHighlights` take an optional
+   `containerRef` so their coordinates are measured against that same host,
+   keeping the geometry identical (they previously measured against
+   `editor.view.dom.parentElement`, which was also the portal target).
+2. **An `ErrorBoundary` now wraps the app** (`src/components/ErrorBoundary.jsx`,
+   mounted in `App.jsx`). It was the absence of any boundary that promoted an
+   unmount race into a total outage, and it would have done the same for the
+   null-owner admin crash. Covered by `tests/src/components/ErrorBoundary.test.jsx`.
+
+**Verified against the built production image**, not the dev server: opened a
+document, clicked Edit, clicked a sidebar link. Before, the DOM collapsed from
+~275 nodes to ~25 with the `removeChild` exception; after, it navigates with
+**274 nodes and zero console errors**, and the destination page renders. The
+editor's own layout and the comment highlight positions are unchanged, checked
+by comparing captures either side of the change.
+
+Tested one destination (editor to `/`) after the fix. The original bug
+reproduced identically to two different destinations and the cause is
+destination-independent, so this was not re-run for every route.
 
 ### B12. Production CORS rejected the app's own browser (FIXED)
 

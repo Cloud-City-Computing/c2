@@ -19,22 +19,28 @@ const CURSOR_STALE_MS = 10000; // Hide cursors older than 10s
  * Find the Tiptap content area (.tiptap / .ProseMirror) and its parent wrapper
  * so we can position cursors relative to it.
  */
-function findEditorContentArea(editorRef) {
+function findEditorContentArea(editorRef, containerRef) {
   const editor = editorRef.current;
   if (!editor?.view?.dom) return null;
   const dom = editor.view.dom; // The .tiptap / .ProseMirror element
-  return { editorEl: dom, container: dom.parentElement || dom };
+  // Prefer the caller's own element. Coordinates have to be relative to
+  // whatever the overlay is positioned inside, and that must be a node React
+  // owns: dom.parentElement is managed by ProseMirror, and rendering into it
+  // makes teardown throw (see open-questions.md B11). The fallback keeps this
+  // usable for a caller that has no host of its own.
+  const container = containerRef?.current || dom.parentElement || dom;
+  return { editorEl: dom, container };
 }
 
 /**
  * Get coordinates for a ProseMirror document position inside Tiptap's editor.
  * Returns { top, left } relative to the container element.
  */
-function getRichTextPosition(editorRef, charIndex) {
+function getRichTextPosition(editorRef, charIndex, containerRef) {
   const editor = editorRef.current;
   if (!editor?.view) return null;
 
-  const result = findEditorContentArea(editorRef);
+  const result = findEditorContentArea(editorRef, containerRef);
   if (!result) return null;
   const { container } = result;
   const containerRect = container.getBoundingClientRect();
@@ -56,11 +62,11 @@ function getRichTextPosition(editorRef, charIndex) {
  * Get bounding rectangles for a selection range (start to end document position)
  * inside Tiptap's editor, relative to its container.
  */
-function getRichTextSelectionRects(editorRef, startIndex, endIndex) {
+function getRichTextSelectionRects(editorRef, startIndex, endIndex, containerRef) {
   const editor = editorRef.current;
   if (!editor?.view) return [];
 
-  const result = findEditorContentArea(editorRef);
+  const result = findEditorContentArea(editorRef, containerRef);
   if (!result) return [];
   const { container } = result;
   const containerRect = container.getBoundingClientRect();
@@ -105,7 +111,7 @@ function getRichTextSelectionRects(editorRef, startIndex, endIndex) {
  * RemoteCursors for the rich text (Tiptap) editor.
  * Positioned over the .tiptap content area.
  */
-export function RichTextCursors({ remoteCursors, editorRef }) {
+export function RichTextCursors({ remoteCursors, editorRef, containerRef }) {
   const [positions, setPositions] = useState({});
 
   useEffect(() => {
@@ -116,14 +122,15 @@ export function RichTextCursors({ remoteCursors, editorRef }) {
       if (now - cursor.timestamp > CURSOR_STALE_MS) continue;
       if (!cursor.position) continue;
 
-      const pos = getRichTextPosition(editorRef, cursor.position.index || 0);
+      const pos = getRichTextPosition(editorRef, cursor.position.index || 0, containerRef);
       const selectionLength = cursor.position.length || 0;
       let selectionRects = [];
       if (selectionLength > 0) {
         selectionRects = getRichTextSelectionRects(
           editorRef,
           cursor.position.index || 0,
-          (cursor.position.index || 0) + selectionLength
+          (cursor.position.index || 0) + selectionLength,
+          containerRef
         );
       }
       if (pos) {
@@ -132,7 +139,7 @@ export function RichTextCursors({ remoteCursors, editorRef }) {
     }
 
     setPositions(newPositions);
-  }, [remoteCursors, editorRef]);
+  }, [remoteCursors, editorRef, containerRef]);
 
   const entries = Object.values(positions);
   if (entries.length === 0) return null;

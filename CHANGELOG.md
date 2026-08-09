@@ -58,6 +58,8 @@ build toolchain.
   enforced in CI.
 - **Mobile CSS** across the interface.
 - `CODE_OF_CONDUCT.md`, and this changelog.
+- An application-wide error boundary, so a render failure is recoverable rather
+  than a blank page.
 
 ### Changed
 
@@ -72,11 +74,21 @@ build toolchain.
 - **The editor is Tiptap 3** on ProseMirror, replacing the previous WYSIWYG.
 - **Collaborative editing uses native Yjs binary sync** for conflict-free merges.
 - **Vocabulary settled** on Workspaces, Squads, Archives and Logs, and a
-  commitment that a day-one user meets three levels: Squad, Archive, Log.
+  commitment that a day-one user meets three levels: Squad, Archive, Log. The
+  welcome screen now says three rather than four, matching that.
 - Documentation reorganised around per-area API contracts and architecture docs.
 
 ### Fixed
 
+- **Navigating away from an open editor no longer blanks the application.** The
+  collaborative cursor and comment overlays were rendered into DOM that
+  ProseMirror owns, so tearing the editor down threw during unmount and, with no
+  error boundary anywhere, took down the whole page until a manual reload.
+- **The app has an error boundary.** A render error now shows a recoverable
+  message instead of an empty window.
+- **Same-origin API requests work in production.** A self-hosted instance
+  following `.env.example` rejected its own browser's writes with a 500, which
+  made logging in impossible.
 - **`PORT` is honoured** through the app, Docker, and `start.sh`, and the boot
   log no longer reports a successful start when the bind actually failed.
 - **Account creation is rejected when the invitation was revoked mid-signup.**
@@ -101,6 +113,8 @@ build toolchain.
 - Documents edited only over the collaborative WebSocket have a stale
   `html_content` until an explicit save, which affects search, exports, and
   GitHub pushes. See [`docs/maps/documents-and-collab.md`](docs/maps/documents-and-collab.md).
+- Document titles in list views are click-only and cannot be reached by
+  keyboard.
 
 ## [0.1.0-alpha] - 2026-03-27
 
