@@ -180,7 +180,7 @@ walks a 7-step priority cascade on every check:
    1.  super admin                                            ─► allow
    2.  user ID listed in archives.read_access                 ─► allow
    3.  archive creator (archives.created_by)                  ─► allow
-   4.  workspace owner (squad → workspaces.owner = email)     ─► allow
+   4.  workspace owner (squad → workspaces.owner_id = id)     ─► allow
    5.  squad member with role='owner' or matching can_*       ─► allow
    6.  user is in any squad listed in read_access_squads      ─► allow
    7.  read_access_workspace=TRUE and any squad in workspace  ─► allow

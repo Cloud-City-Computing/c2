@@ -81,8 +81,8 @@ export function requirePermission(permission) {
         // Workspace owner always has full access within their workspace
         const [orgOwner] = await c2_query(
           `SELECT 1 FROM squads t JOIN workspaces o ON t.workspace_id = o.id
-           WHERE t.id = ? AND o.owner = ? LIMIT 1`,
-          [squadId, req.user.email]
+           WHERE t.id = ? AND o.owner_id = ? LIMIT 1`,
+          [squadId, req.user.id]
         );
         if (orgOwner) return next();
 

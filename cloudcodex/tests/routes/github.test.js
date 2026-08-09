@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
-import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 // Mock the decryptToken function from oauth.js
 vi.mock('../../routes/oauth.js', async (importOriginal) => {
@@ -35,6 +35,10 @@ function mockGitHubApiResponse(data, status = 200) {
 }
 
 describe('GitHub Routes', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => {
     resetMocks();
     mockFetch.mockReset();

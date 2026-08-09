@@ -33,9 +33,9 @@ router.get('/workspaces/:workspaceId/squads', requireAuth, asyncHandler(async (r
        LEFT JOIN squad_members tm ON tm.squad_id = t.id AND tm.user_id = ?
        LEFT JOIN archives p ON p.squad_id = t.id
        WHERE o.id = ?
-         AND (o.owner = ? OR t.created_by = ? OR tm.id IS NOT NULL OR JSON_CONTAINS(p.read_access, ?))
+         AND (o.owner_id = ? OR t.created_by = ? OR tm.id IS NOT NULL OR JSON_CONTAINS(p.read_access, ?))
        LIMIT 1`,
-      [req.user.id, Number(workspaceId), req.user.email, req.user.id, JSON.stringify(req.user.id)]
+      [req.user.id, Number(workspaceId), req.user.id, req.user.id, JSON.stringify(req.user.id)]
     );
     if (!access) {
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -75,7 +75,7 @@ router.post(
 
     // Verify workspace exists and check ownership
     const [workspace] = await c2_query(
-      `SELECT id, owner FROM workspaces WHERE id = ? LIMIT 1`,
+      `SELECT id, owner_id FROM workspaces WHERE id = ? LIMIT 1`,
       [Number(workspaceId)]
     );
     if (!workspace) {
@@ -83,7 +83,7 @@ router.post(
     }
 
     // Workspace owners bypass the create_squad permission check
-    const isOwner = req.user.is_admin || workspace.owner === req.user.email;
+    const isOwner = req.user.is_admin || workspace.owner_id === req.user.id;
     if (!isOwner) {
       const [perms] = await c2_query(
         `SELECT create_squad FROM permissions WHERE user_id = ? LIMIT 1`,
@@ -104,15 +104,11 @@ router.post(
     // Auto-add the creator as a squad owner with full permissions
     await addSquadOwnerMember(newSquadId, req.user.id);
 
-    // If the workspace owner is someone else, also add them as a squad owner
-    if (!isOwner) {
-      const [ownerUser] = await c2_query(
-        `SELECT id FROM users WHERE email = ? LIMIT 1`,
-        [workspace.owner]
-      );
-      if (ownerUser) {
-        await addSquadOwnerMember(newSquadId, ownerUser.id);
-      }
+    // If the workspace owner is someone else, also add them as a squad owner.
+    // owner_id is the users FK, so no lookup by email is needed; it is nullable,
+    // so a workspace whose owner account was deleted simply adds nobody.
+    if (!isOwner && workspace.owner_id) {
+      await addSquadOwnerMember(newSquadId, workspace.owner_id);
     }
 
     let archiveId = null;
@@ -147,7 +143,7 @@ router.put('/squads/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const [squad] = await c2_query(
-    `SELECT t.id, t.created_by, o.owner
+    `SELECT t.id, t.created_by, o.owner_id
      FROM squads t
      LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE t.id = ? LIMIT 1`,
@@ -156,7 +152,7 @@ router.put('/squads/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!squad) {
     return res.status(404).json({ success: false, message: 'Squad not found' });
   }
-  if (!req.user.is_admin && squad.created_by !== req.user.id && squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.created_by !== req.user.id && squad.owner_id !== req.user.id) {
     return res.status(403).json({ success: false, message: 'Only the squad creator or workspace owner can rename this squad' });
   }
 
@@ -175,7 +171,7 @@ router.delete('/squads/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const [squad] = await c2_query(
-    `SELECT t.id, t.created_by, o.owner
+    `SELECT t.id, t.created_by, o.owner_id
      FROM squads t
      LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE t.id = ? LIMIT 1`,
@@ -184,7 +180,7 @@ router.delete('/squads/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!squad) {
     return res.status(404).json({ success: false, message: 'Squad not found' });
   }
-  if (!req.user.is_admin && squad.created_by !== req.user.id && squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.created_by !== req.user.id && squad.owner_id !== req.user.id) {
     return res.status(403).json({ success: false, message: 'Only the squad creator or workspace owner can delete this squad' });
   }
 
@@ -203,14 +199,14 @@ router.get('/squads/:id/permissions', requireAuth, asyncHandler(async (req, res)
   }
 
   const [squad] = await c2_query(
-    `SELECT t.id, o.owner
+    `SELECT t.id, o.owner_id
      FROM squads t
      LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE t.id = ? LIMIT 1`,
     [Number(id)]
   );
   if (!squad) return res.status(404).json({ success: false, message: 'Squad not found' });
-  if (!req.user.is_admin && squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.owner_id !== req.user.id) {
     return res.status(403).json({ success: false, message: 'Only the workspace owner can view squad permissions' });
   }
 
@@ -237,14 +233,14 @@ router.put('/squads/:id/permissions', requireAuth, asyncHandler(async (req, res)
   }
 
   const [squad] = await c2_query(
-    `SELECT t.id, o.owner
+    `SELECT t.id, o.owner_id
      FROM squads t
      LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE t.id = ? LIMIT 1`,
     [Number(id)]
   );
   if (!squad) return res.status(404).json({ success: false, message: 'Squad not found' });
-  if (!req.user.is_admin && squad.owner !== req.user.email) {
+  if (!req.user.is_admin && squad.owner_id !== req.user.id) {
     return res.status(403).json({ success: false, message: 'Only the workspace owner can update squad permissions' });
   }
 
@@ -284,13 +280,13 @@ router.put('/squads/:id/permissions', requireAuth, asyncHandler(async (req, res)
  */
 async function canManageSquad(squadId, user) {
   const [squad] = await c2_query(
-    `SELECT t.id, t.created_by, o.owner
+    `SELECT t.id, t.created_by, o.owner_id
      FROM squads t LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE t.id = ? LIMIT 1`,
     [squadId]
   );
   if (!squad) return { squad: null, allowed: false };
-  if (user.is_admin || squad.owner === user.email || squad.created_by === user.id) return { squad, allowed: true };
+  if (user.is_admin || squad.owner_id === user.id || squad.created_by === user.id) return { squad, allowed: true };
   const [membership] = await c2_query(
     `SELECT can_manage_members FROM squad_members WHERE squad_id = ? AND user_id = ? LIMIT 1`,
     [squadId, user.id]
@@ -308,14 +304,14 @@ router.get('/squads/:id/members', requireAuth, asyncHandler(async (req, res) => 
 
   // Verify caller has visibility into this squad
   const [squad] = await c2_query(
-    `SELECT t.id, t.created_by, o.owner
+    `SELECT t.id, t.created_by, o.owner_id
      FROM squads t LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE t.id = ? LIMIT 1`,
     [Number(id)]
   );
   if (!squad) return res.status(404).json({ success: false, message: 'Squad not found' });
 
-  const isOwnerOrCreator = req.user.is_admin || squad.owner === req.user.email || squad.created_by === req.user.id;
+  const isOwnerOrCreator = req.user.is_admin || squad.owner_id === req.user.id || squad.created_by === req.user.id;
   if (!isOwnerOrCreator) {
     const [membership] = await c2_query(
       `SELECT id FROM squad_members WHERE squad_id = ? AND user_id = ? LIMIT 1`,
@@ -355,7 +351,7 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
 
   // Prevent privilege escalation: only workspace owners / squad creators can grant
   // can_manage_members or invite as admin
-  const isOrgOwnerOrCreator = squad.owner === req.user.email || squad.created_by === req.user.id;
+  const isOrgOwnerOrCreator = squad.owner_id === req.user.id || squad.created_by === req.user.id;
   if (!isOrgOwnerOrCreator) {
     if (can_manage_members === true) {
       return res.status(403).json({ success: false, message: 'Only workspace owners and squad creators can grant member management permissions' });
@@ -482,7 +478,7 @@ router.put('/squads/:id/members/:userId', requireAuth, asyncHandler(async (req, 
 
   // Only workspace owners and squad creators can grant can_manage_members or set role to admin
   // (prevents privilege escalation by members who only have can_manage_members)
-  const isOrgOwnerOrCreator = squad.owner === req.user.email || squad.created_by === req.user.id;
+  const isOrgOwnerOrCreator = squad.owner_id === req.user.id || squad.created_by === req.user.id;
   const { role, can_read, can_write, can_create_log, can_create_archive, can_manage_members, can_delete_version, can_publish } = req.body;
 
   if (!isOrgOwnerOrCreator) {

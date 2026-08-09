@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
-import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 describe('Workspace Routes', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => {
     resetMocks();
   });
@@ -110,7 +114,7 @@ describe('Workspace Routes', () => {
     it('renames workspace for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: 'test@example.com' }])  // owner check
+        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])  // owner check
         .mockResolvedValueOnce([]);            // UPDATE
 
       const res = await request(app)
@@ -124,7 +128,7 @@ describe('Workspace Routes', () => {
 
     it('rejects non-owner', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'someone-else@example.com' }]); // workspace exists but different owner
+      c2_query.mockResolvedValueOnce([{ id: 1, owner_id: 999 }]); // workspace exists but different owner
 
       const res = await request(app)
         .put('/api/workspaces/1')
@@ -163,7 +167,7 @@ describe('Workspace Routes', () => {
     it('deletes workspace for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: 'test@example.com' }]) // owner check
+        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }]) // owner check
         .mockResolvedValueOnce([]);           // DELETE
 
       const res = await request(app)
@@ -176,7 +180,7 @@ describe('Workspace Routes', () => {
 
     it('rejects non-owner', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'someone-else@example.com' }]); // workspace exists but different owner
+      c2_query.mockResolvedValueOnce([{ id: 1, owner_id: 999 }]); // workspace exists but different owner
 
       const res = await request(app)
         .delete('/api/workspaces/1')

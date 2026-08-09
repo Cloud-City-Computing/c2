@@ -75,7 +75,7 @@ describe('GET /api/first-run', () => {
       Boolean(TEST_USER.is_admin),
       JSON.stringify(TEST_USER.id),
       TEST_USER.id,
-      TEST_USER.email,
+      TEST_USER.id, // workspace owner, matched on users.id not an email
       TEST_USER.id,
       TEST_USER.id,
       TEST_USER.id,

@@ -9,9 +9,9 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { c2_query } from '../../mysql_connect.js';
-import { resetMocks, TEST_USER } from '../helpers.js';
+import { resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 import {
   isValidId,
   asyncHandler,
@@ -32,6 +32,10 @@ import {
 } from '../../routes/helpers/shared.js';
 
 describe('helpers/shared', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => resetMocks());
 
   // ── isValidId ───────────────────────────────────────────

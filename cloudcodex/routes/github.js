@@ -2068,11 +2068,11 @@ async function userCanManageSquad(user, squadId) {
      LEFT JOIN workspaces w ON w.id = s.workspace_id
      LEFT JOIN squad_members sm ON sm.squad_id = s.id AND sm.user_id = ?
      WHERE s.id = ?
-       AND (w.owner = ?
+       AND (w.owner_id = ?
             OR sm.role = 'owner'
             OR (sm.role = 'admin' AND sm.can_manage_members = TRUE))
      LIMIT 1`,
-    [user.id, Number(squadId), user.email]
+    [user.id, Number(squadId), user.id]
   );
   return Boolean(row);
 }

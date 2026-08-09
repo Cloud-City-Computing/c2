@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { c2_query } from '../../mysql_connect.js';
 import { loadPermissions, requirePermission } from '../../middleware/permissions.js';
-import { resetMocks, TEST_USER } from '../helpers.js';
+import { resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 function createMocks(overrides = {}) {
   const req = {
@@ -21,6 +21,10 @@ function createMocks(overrides = {}) {
 }
 
 describe('loadPermissions Middleware', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => {
     resetMocks();
   });

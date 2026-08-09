@@ -647,7 +647,7 @@ export default function WorkspacesPage() {
                 <span style={{ fontSize: '0.8em' }}>{expandedOrg === workspace.id ? '▾' : '▸'}</span>
                 <h3 className="card__title" style={{ margin: 0 }}>{workspace.name}</h3>
               </div>
-              <p className="card__meta">Owner: {workspace.owner} &middot; Created: {new Date(workspace.created_at).toLocaleDateString()}</p>
+              <p className="card__meta">Owner: {workspace.owner || 'none'} &middot; Created: {new Date(workspace.created_at).toLocaleDateString()}</p>
             </div>
             <div className="card__actions" onClick={(e) => e.stopPropagation()}>
               <button

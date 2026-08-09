@@ -38,11 +38,22 @@ Every nullable parent key is load-bearing:
 - `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:247`), so deleting an
   archive destroys its documents, versions, comments and favourites.
 
-`workspaces.owner` is a `TEXT` column holding an **email address**
-(`init.sql:39`), not a foreign key. Clause 4 of both access fragments joins on
-it (`ownership.js:30`). Changing a user's email silently transfers or destroys
-workspace ownership, and deleting the owning user leaves the workspace with a
-dangling owner string.
+`workspaces.owner_id` is an INT referencing `users(id) ON DELETE SET NULL`.
+Clause 4 of both access fragments joins on it (`ownership.js:30`). Deleting the
+owning user leaves the workspace intact but ownerless, which is why the column
+is nullable. Ownerless does **not** mean locked down: only clause 4 stops
+matching. Squad membership (clause 5), per-squad grants (clause 6) and the
+workspace-wide flag (clause 7) are untouched, so the squad still reaches
+everything in it, and `routes/workspaces.js` still lists the workspace for any
+squad member, squad creator, or holder of an archive `read_access` grant.
+
+It was a `TEXT` column holding an **email address** until
+`migrations/add_workspace_owner_id.sql`. Under that shape, changing a user's
+email silently destroyed their workspace ownership, and deleting the user left a
+dangling string that a later account registering the same address would inherit.
+The FK is declared as a trailing `ALTER TABLE` in `init.sql` rather than inline,
+because `workspaces` is created before `users` (the same reason
+`user_invitations.squad_id` is declared that way).
 
 ## 2. The ACL columns
 

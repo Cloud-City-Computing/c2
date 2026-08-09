@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import request from 'supertest';
 
 vi.mock('../../services/user-channel.js', () => ({
@@ -10,11 +10,15 @@ vi.mock('../../services/user-channel.js', () => ({
 
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
-import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 const ADMIN_USER = { ...TEST_USER, is_admin: true };
 
 describe('Activity Routes', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => resetMocks());
 
   describe('GET /api/activity', () => {

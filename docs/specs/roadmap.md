@@ -59,7 +59,7 @@ constraint right now.
 |---|---|---|---|
 | **A** | Evaluation path — **shipped** | Mail optional, install defects, non-empty first boot | nothing |
 | **B** | First-run experience (**shipped**) | Real guided onboarding for every user including the admin, invite-carried squad assignment, `/api/setup` retired | A |
-| **C** | Vocabulary and hierarchy | Workspaces → Squads → Archives → Logs | decide early, execute late |
+| **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
 | **D** | Trust signals | Real releases, changelog, classifiable license, screenshots | A |
 | **E** | Foundation | The two giant page files, the open-questions defect list | nothing, but competes for time |
 
@@ -105,22 +105,53 @@ Deferred behind A because it lands in the UI layer, which carries the
 surface area (`useFirstRun`, `FirstRunGate`, `WelcomeSetup`) is small enough
 that it did not need E's extraction work to be unit-testable.
 
-### C. Vocabulary and hierarchy
+### C. Vocabulary and hierarchy (decided 2026-08-08)
 
-**Decide early even though we execute late.** Cloud Codex uses four levels with
-invented names: Workspaces → Squads → Archives → Logs. Confluence is Spaces →
-Pages. Notion is Teamspaces → Pages. Every evaluator arrives with one of those
-models and has to translate.
+**The names stay, the level count stays, and the translation tax gets paid at
+the presentation layer.** Recorded here because this was always meant to be
+decided early and executed late; the decision is now made and the execution is
+mostly "keep doing what the URL scheme already does".
 
-The hierarchy is baked into the schema, every route, the entire UI, all the
-documentation, and 1128 tests, so renaming is a large breaking change. **Its
-cost only ever increases with each new user and each new self-hosted install
-carrying real data.** That makes it the one item where deferring the *decision*
-is more expensive than deferring the *work*.
+Three findings shaped it:
 
-The open questions: is four levels one too many, and are the names worth the
-translation tax they charge? Track A's welcome document is a cheap down payment
-either way, since it teaches the model by being an instance of it.
+1. **It is five levels, not four.** `logs.parent_id` is live: `archives.js`
+   assembles a document tree and `src/components/PageTree.jsx` renders it. So
+   the real model is Workspace → Squad → Archive → Log → nested Logs, against
+   Confluence's Space → Page → nested Page. The component that draws the
+   deepest level is already named after the outside vocabulary.
+2. **Workspace is the thinnest level, and the only plausible cut.** It is four
+   columns, it has no members of its own (membership lives entirely in
+   `squad_members`), only an admin can create one, and it earns its keep in
+   exactly two places: grouping squads, and the `read_access_workspace` /
+   `write_access_workspace` flag that is clause 7 of the ACL fragments.
+3. **But it is not ours alone to cut.** Cloud Command uses `workspace` as its
+   **tenant boundary**, with every row below scoped to a `workspace_id` and
+   Postgres RLS built on it, and its `NORTH_STAR.md` commits to adopting this
+   product's vocabulary rather than renaming. Removing the level here would
+   desync the suite at the top of the shared model, at exactly the level the
+   other product uses for isolation. Renaming has the same problem, for the
+   same reason.
+
+So neither rename nor removal is a Cloud Codex-only lever, and the schema keeps
+all four levels. What is decided instead is a presentation commitment:
+
+> **A day-one user meets three levels: Squad → Archive → Log.** Workspace is an
+> administrative concept that appears where it is managed, not something a new
+> user must learn in order to reach their first document.
+
+That is already true of the URL scheme (`/archives/:archiveId/doc/:logId`
+mentions neither workspace nor squad) and of track B's welcome, which walks
+squad → archive → log. This makes the existing behaviour a rule rather than an
+accident, and it is the standard any new surface is held to.
+
+**The honest limit of this decision:** it reduces *encountered* complexity, not
+real complexity. Four levels still exist and an admin still meets all four.
+Anyone reading this looking for "we simplified the hierarchy" will not find it.
+
+**What would reopen it:** a real install needing more than one workspace (which
+would make the level load-bearing here too, settling it the other way), or
+Cloud Command moving off `workspace` as its tenant boundary (which would remove
+the constraint that decided this).
 
 ### D. Trust signals
 
@@ -155,11 +186,10 @@ now         A ──────────────────────
                               │
                     E ────────┘  (not needed for B after all; still open for its own sake)
 
-            C: decide in principle now, execute when the answer is worth the break
+            C: decided 2026-08-08, no breaking change to execute
 ```
 
-A and B have both shipped. Re-read this file before picking the next track.
-The measurement that should drive it: do the 37 stars convert into issues,
-forks, and questions? That tells us whether the wall was the only thing in
-the way. D and E remain open and undated; C is still a decide-early,
-execute-late item.
+A and B have shipped and C is decided. Re-read this file before picking the
+next track. The measurement that should drive it: do the 37 stars convert into
+issues, forks, and questions? That tells us whether the wall was the only thing
+in the way. D and E remain open and undated.

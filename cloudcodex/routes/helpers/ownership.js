@@ -27,7 +27,7 @@ export function readAccessWhere(alias = 'p') {
   return `(
     ? = TRUE
     OR JSON_CONTAINS(${alias}.read_access, ?) OR ${alias}.created_by = ?
-    OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner = ?)
+    OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner_id = ?)
     OR EXISTS (SELECT 1 FROM squad_members _om WHERE _om.squad_id = ${alias}.squad_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_read = TRUE))
     OR EXISTS (SELECT 1 FROM squad_members _sm WHERE _sm.user_id = ? AND JSON_CONTAINS(${alias}.read_access_squads, CAST(_sm.squad_id AS JSON)))
     OR (${alias}.read_access_workspace = TRUE AND EXISTS (
@@ -40,7 +40,7 @@ export function readAccessWhere(alias = 'p') {
 }
 
 export function readAccessParams(user) {
-  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id, user.id, user.id];
+  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.id, user.id, user.id, user.id];
 }
 
 /**
@@ -53,7 +53,7 @@ export function writeAccessWhere(alias = 'p') {
   return `(
     ? = TRUE
     OR JSON_CONTAINS(${alias}.write_access, ?) OR ${alias}.created_by = ?
-    OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner = ?)
+    OR EXISTS (SELECT 1 FROM squads _ot JOIN workspaces _oo ON _ot.workspace_id = _oo.id WHERE _ot.id = ${alias}.squad_id AND _oo.owner_id = ?)
     OR EXISTS (SELECT 1 FROM squad_members _om WHERE _om.squad_id = ${alias}.squad_id AND _om.user_id = ? AND (_om.role = 'owner' OR _om.can_write = TRUE))
     OR EXISTS (SELECT 1 FROM squad_members _sm WHERE _sm.user_id = ? AND JSON_CONTAINS(${alias}.write_access_squads, CAST(_sm.squad_id AS JSON)))
     OR (${alias}.write_access_workspace = TRUE AND EXISTS (
@@ -66,7 +66,7 @@ export function writeAccessWhere(alias = 'p') {
 }
 
 export function writeAccessParams(user) {
-  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.email, user.id, user.id, user.id];
+  return [Boolean(user.is_admin), JSON.stringify(user.id), user.id, user.id, user.id, user.id, user.id];
 }
 
 /**
@@ -81,11 +81,11 @@ export async function isArchiveOwner(user, archiveId) {
      WHERE p.id = ?
        AND (
          p.created_by = ?
-         OR EXISTS (SELECT 1 FROM squads t JOIN workspaces o ON t.workspace_id = o.id WHERE t.id = p.squad_id AND o.owner = ?)
+         OR EXISTS (SELECT 1 FROM squads t JOIN workspaces o ON t.workspace_id = o.id WHERE t.id = p.squad_id AND o.owner_id = ?)
          OR EXISTS (SELECT 1 FROM squad_members tm WHERE tm.squad_id = p.squad_id AND tm.user_id = ? AND tm.role = 'owner')
        )
      LIMIT 1`,
-    [Number(archiveId), user.id, user.email, user.id]
+    [Number(archiveId), user.id, user.id, user.id]
   );
   return Boolean(result);
 }

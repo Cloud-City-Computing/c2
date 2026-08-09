@@ -12,7 +12,7 @@ These endpoints manage the organizational hierarchy: **Workspaces → Squads →
 
 ## Workspaces
 
-Workspaces are top-level containers owned by a single user (the owner's email is stored). Only admins can create workspaces.
+Workspaces are top-level containers owned by a single user (`workspaces.owner_id`, a `users` foreign key). Only admins can create workspaces. List responses still return the owner as an email string for display, resolved by joining `users`.
 
 ---
 

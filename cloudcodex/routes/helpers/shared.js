@@ -105,9 +105,9 @@ export async function canPublish(squadId, archiveCreatorId, user) {
   const [orgOwner] = await c2_query(
     `SELECT 1 FROM squads t
      JOIN workspaces o ON t.workspace_id = o.id
-     WHERE t.id = ? AND o.owner = ?
+     WHERE t.id = ? AND o.owner_id = ?
      LIMIT 1`,
-    [squadId, user.email]
+    [squadId, user.id]
   );
   if (orgOwner) return true;
 

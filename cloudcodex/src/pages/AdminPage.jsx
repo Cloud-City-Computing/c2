@@ -455,7 +455,9 @@ function WorkspacesPanel() {
   };
 
   const filtered = filter
-    ? workspaces.filter(w => w.name.toLowerCase().includes(filter.toLowerCase()) || w.owner.toLowerCase().includes(filter.toLowerCase()))
+    // owner is null for a workspace whose owner account was deleted
+    // (workspaces.owner_id is ON DELETE SET NULL), so it cannot be dereferenced.
+    ? workspaces.filter(w => w.name.toLowerCase().includes(filter.toLowerCase()) || (w.owner || '').toLowerCase().includes(filter.toLowerCase()))
     : workspaces;
 
   return (
@@ -490,7 +492,7 @@ function WorkspacesPanel() {
               {filtered.map(workspace => (
                 <tr key={workspace.id}>
                   <td className="admin-cell--name">{workspace.name}</td>
-                  <td>{workspace.owner}</td>
+                  <td>{workspace.owner || 'No owner'}</td>
                   <td>{workspace.squad_count}</td>
                   <td>{workspace.member_count}</td>
                   <td>{timeAgo(workspace.created_at)}</td>

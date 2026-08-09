@@ -1,11 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
-import { mockAuthenticated, resetMocks, TEST_USER } from '../helpers.js';
+import { mockAuthenticated, resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 describe('Squad Routes', () => {
+  // Guards every query this suite drives: a workspace-ownership predicate
+  // must never bind an email. See expectOwnerPredicatesBindIds.
+  afterEach(() => expectOwnerPredicatesBindIds());
+
   beforeEach(() => {
     resetMocks();
     isMailEnabled.mockReturnValue(true);
@@ -58,7 +62,7 @@ describe('Squad Routes', () => {
     it('creates squad as workspace owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }]) // workspace check
+        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }]) // workspace check
         .mockResolvedValueOnce({ insertId: 10 })                     // INSERT squad
         .mockResolvedValueOnce([]);                                   // INSERT squad_members (creator)
 
@@ -94,6 +98,51 @@ describe('Squad Routes', () => {
 
       expect(res.status).toBe(404);
     });
+
+    it('adds the workspace owner as a squad owner without looking them up by email', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner_id: 42 }])  // workspace, owned by someone else
+        .mockResolvedValueOnce([{ create_squad: 1 }])       // caller holds the permission
+        .mockResolvedValueOnce({ insertId: 10 })            // INSERT squad
+        .mockResolvedValueOnce([])                          // squad_members: the creator
+        .mockResolvedValueOnce([]);                         // squad_members: the workspace owner
+
+      const res = await request(app)
+        .post('/api/workspaces/1/squads')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'New Squad' });
+
+      expect(res.status).toBe(201);
+
+      // owner_id is the users FK, so the old `SELECT id FROM users WHERE email = ?`
+      // round trip is gone. Both owners are still enrolled.
+      const sqls = c2_query.mock.calls.map(([sql]) => sql);
+      expect(sqls.some(sql => /FROM users WHERE email/i.test(sql))).toBe(false);
+      const memberInserts = c2_query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO squad_members'));
+      expect(memberInserts).toHaveLength(2);
+      expect(memberInserts[0][1]).toEqual([10, TEST_USER.id]);
+      expect(memberInserts[1][1]).toEqual([10, 42]);
+    });
+
+    it('enrols only the creator when the workspace has no owner', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner_id: null }])  // owner account was deleted
+        .mockResolvedValueOnce([{ create_squad: 1 }])
+        .mockResolvedValueOnce({ insertId: 10 })
+        .mockResolvedValueOnce([]);                          // squad_members: the creator only
+
+      const res = await request(app)
+        .post('/api/workspaces/1/squads')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'New Squad' });
+
+      expect(res.status).toBe(201);
+      const memberInserts = c2_query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO squad_members'));
+      expect(memberInserts).toHaveLength(1);
+      expect(memberInserts[0][1]).toEqual([10, TEST_USER.id]);
+    });
   });
 
   // ── PUT /api/squads/:id ────────────────────────────────────
@@ -102,7 +151,7 @@ describe('Squad Routes', () => {
     it('renames squad for creator', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: 'other@test.com' }]) // squad check
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: 999 }]) // squad check
         .mockResolvedValueOnce([]); // UPDATE
 
       const res = await request(app)
@@ -116,7 +165,7 @@ describe('Squad Routes', () => {
 
     it('rejects non-owner/creator', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, created_by: 999, owner: 'other@test.com' }]);
+      c2_query.mockResolvedValueOnce([{ id: 1, created_by: 999, owner_id: 999 }]);
 
       const res = await request(app)
         .put('/api/squads/1')
@@ -156,7 +205,7 @@ describe('Squad Routes', () => {
     it('deletes squad for creator', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: 'other@test.com' }])
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: 999 }])
         .mockResolvedValueOnce([]);
 
       const res = await request(app)
@@ -169,7 +218,7 @@ describe('Squad Routes', () => {
 
     it('rejects non-owner/creator', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, created_by: 999, owner: 'other@test.com' }]);
+      c2_query.mockResolvedValueOnce([{ id: 1, created_by: 999, owner_id: 999 }]);
 
       const res = await request(app)
         .delete('/api/squads/1')
@@ -185,7 +234,7 @@ describe('Squad Routes', () => {
     it('returns members for squad creator', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: null }]) // squad check
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: null }]) // squad check
         .mockResolvedValueOnce([
           { id: 1, user_id: 1, name: 'testuser', email: 'test@example.com', role: 'owner', can_read: true, can_write: true, can_create_log: true, can_create_archive: true, can_manage_members: true, can_delete_version: true, joined_at: '2026-01-01' },
         ]);
@@ -201,7 +250,7 @@ describe('Squad Routes', () => {
     it('rejects non-member', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: 999, owner: 'other@test.com' }]) // squad found, not creator/owner
+        .mockResolvedValueOnce([{ id: 1, created_by: 999, owner_id: 999 }]) // squad found, not creator/owner
         .mockResolvedValueOnce([]); // not a member
 
       const res = await request(app)
@@ -219,7 +268,7 @@ describe('Squad Routes', () => {
       mockAuthenticated();
       // canManageSquad queries
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: null }]) // squad check
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: null }]) // squad check
         // target user exists
         .mockResolvedValueOnce([{ id: 2 }])
         // not already a member
@@ -241,7 +290,7 @@ describe('Squad Routes', () => {
     it('creates the invitation when mail is disabled', async () => {
       mockAuthenticated();
       isMailEnabled.mockReturnValue(false);
-      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Squad', workspace_id: 1, owner: TEST_USER.email }]);
+      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Squad', workspace_id: 1, owner_id: TEST_USER.id }]);
       c2_query.mockResolvedValueOnce([{ id: 2 }]);        // invited user exists
       c2_query.mockResolvedValueOnce([]);                 // not already a member
       c2_query.mockResolvedValueOnce([]);                 // no pending invitation
@@ -260,7 +309,7 @@ describe('Squad Routes', () => {
     it('rejects if user already member', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: null }])
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: null }])
         .mockResolvedValueOnce([{ id: 2 }])
         .mockResolvedValueOnce([{ id: 1 }]); // already member
 
@@ -369,7 +418,7 @@ describe('Squad Routes', () => {
     it('returns permissions for workspace owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // squad found, user is owner
+        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])  // squad found, user is owner
         .mockResolvedValueOnce([{ create_archive: true, create_log: true }]);  // perms
 
       const res = await request(app)
@@ -384,7 +433,7 @@ describe('Squad Routes', () => {
     it('returns defaults when no permissions row exists', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])
         .mockResolvedValueOnce([]);  // no perms row
 
       const res = await request(app)
@@ -398,7 +447,7 @@ describe('Squad Routes', () => {
 
     it('rejects non-owner', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'other@example.com' }]);
+      c2_query.mockResolvedValueOnce([{ id: 1, owner_id: 999 }]);
 
       const res = await request(app)
         .get('/api/squads/1/permissions')
@@ -425,7 +474,7 @@ describe('Squad Routes', () => {
     it('updates existing permissions for workspace owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])  // squad found, user is owner
+        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])  // squad found, user is owner
         .mockResolvedValueOnce([{ id: 10 }])  // existing row
         .mockResolvedValueOnce([]);            // UPDATE
 
@@ -441,7 +490,7 @@ describe('Squad Routes', () => {
     it('inserts permissions when none exist', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])
         .mockResolvedValueOnce([])   // no existing row
         .mockResolvedValueOnce([]);  // INSERT
 
@@ -456,7 +505,7 @@ describe('Squad Routes', () => {
 
     it('rejects non-owner', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, owner: 'other@example.com' }]);
+      c2_query.mockResolvedValueOnce([{ id: 1, owner_id: 999 }]);
 
       const res = await request(app)
         .put('/api/squads/1/permissions')
@@ -473,7 +522,7 @@ describe('Squad Routes', () => {
     it('updates member role with manage permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad: squad found
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: TEST_USER.id }])  // canManageSquad: squad found
         .mockResolvedValueOnce([{ id: 50, role: 'member' }])  // member found
         .mockResolvedValueOnce([]);  // UPDATE
 
@@ -488,7 +537,7 @@ describe('Squad Routes', () => {
 
     it('prevents modifying own permissions', async () => {
       mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }]);
+      c2_query.mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: TEST_USER.id }]);
 
       const res = await request(app)
         .put(`/api/squads/1/members/${TEST_USER.id}`)
@@ -502,7 +551,7 @@ describe('Squad Routes', () => {
     it('prevents modifying a squad owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: TEST_USER.id }])
         .mockResolvedValueOnce([{ id: 50, role: 'owner' }]);  // target is owner
 
       const res = await request(app)
@@ -518,7 +567,7 @@ describe('Squad Routes', () => {
       mockAuthenticated();
       // canManageSquad: user is not owner/creator but has can_manage_members
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // squad (not owner/creator)
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner_id: 999 }])  // squad (not owner/creator)
         .mockResolvedValueOnce([{ can_manage_members: true }])  // membership check in canManageSquad
         .mockResolvedValueOnce([{ id: 50, role: 'member' }]);   // target member
 
@@ -534,7 +583,7 @@ describe('Squad Routes', () => {
     it('rejects without management permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner_id: 999 }])
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)
@@ -552,7 +601,7 @@ describe('Squad Routes', () => {
     it('removes a member', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: TEST_USER.id }])  // canManageSquad
         .mockResolvedValueOnce([{ role: 'member' }])  // member found, not owner
         .mockResolvedValueOnce([]);                    // DELETE
 
@@ -567,7 +616,7 @@ describe('Squad Routes', () => {
     it('prevents removing a squad owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: TEST_USER.id }])
         .mockResolvedValueOnce([{ role: 'owner' }]);  // target is owner
 
       const res = await request(app)
@@ -581,7 +630,7 @@ describe('Squad Routes', () => {
     it('rejects without management permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner_id: 999 }])
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)
@@ -598,7 +647,7 @@ describe('Squad Routes', () => {
     it('returns pending invitations for squad manager', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: TEST_USER.id }])  // canManageSquad
         .mockResolvedValueOnce([{ id: 10, name: 'Invited User', email: 'inv@example.com' }]);   // invitations
 
       const res = await request(app)
@@ -613,7 +662,7 @@ describe('Squad Routes', () => {
     it('rejects without management permission', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner_id: 999 }])
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)
@@ -642,7 +691,7 @@ describe('Squad Routes', () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 10, squad_id: 1 }])  // invitation found
-        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner: TEST_USER.email }])  // canManageSquad
+        .mockResolvedValueOnce([{ id: 1, created_by: TEST_USER.id, owner_id: TEST_USER.id }])  // canManageSquad
         .mockResolvedValueOnce([]);  // DELETE
 
       const res = await request(app)
@@ -668,7 +717,7 @@ describe('Squad Routes', () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 10, squad_id: 1 }])  // invitation found
-        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner: 'other@example.com' }])  // squad (not owner)
+        .mockResolvedValueOnce([{ id: 1, created_by: 99, owner_id: 999 }])  // squad (not owner)
         .mockResolvedValueOnce([]);  // no can_manage_members
 
       const res = await request(app)

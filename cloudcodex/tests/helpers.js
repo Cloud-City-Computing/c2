@@ -2,7 +2,7 @@
  * Shared test helpers and fixtures.
  */
 
-import { vi } from 'vitest';
+import { vi, expect } from 'vitest';
 import { c2_query, validateAndAutoLogin, generateSessionToken, touchSession, withTransaction } from '../mysql_connect.js';
 
 /** A standard authenticated test user. */
@@ -25,6 +25,27 @@ export function mockAuthenticated(user = TEST_USER) {
  */
 export function mockUnauthenticated() {
   validateAndAutoLogin.mockResolvedValue(null);
+}
+
+/**
+ * Assert that every workspace-ownership predicate issued so far bound a user
+ * id, never an email.
+ *
+ * `workspaces.owner_id` is an INT foreign key into `users`. Binding
+ * `user.email` against it compares an INT column to a string, which matches
+ * nothing and silently denies access with no error and nothing logged. That is
+ * exactly the failure mode the `owner` TEXT column had, so it must not be able
+ * to creep back in one call site at a time. Wire it into a suite's `afterEach`
+ * so it covers every query that suite happens to drive, not just the one the
+ * test author remembered.
+ */
+export function expectOwnerPredicatesBindIds() {
+  const offenders = c2_query.mock.calls
+    .filter(([sql, params]) =>
+      /owner_id\s*=\s*\?/.test(sql) &&
+      (params || []).some(p => typeof p === 'string' && p.includes('@')))
+    .map(([sql]) => sql);
+  expect(offenders).toEqual([]);
 }
 
 /**
