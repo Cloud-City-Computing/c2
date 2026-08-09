@@ -89,3 +89,28 @@ export async function isArchiveOwner(user, archiveId) {
   );
   return Boolean(result);
 }
+
+/**
+ * SQL predicate excluding `system` archives, which take no parameter.
+ *
+ * A system archive is one the application creates for its own bookkeeping:
+ * today, the hidden per-PR archives that host GitHub PR-session documents.
+ * Opening a PR session grants the caller read AND write on such an archive, so
+ * **every archive-scoped browsing or management surface must exclude them** or
+ * that grant turns into "this junk archive is in my sidebar and my search
+ * results" at best, and "I can delete the shared PR document and every
+ * mirrored comment on it" at worst.
+ *
+ * Deliberately NOT folded into readAccessWhere/writeAccessWhere: the
+ * document-level helpers (checkLogReadAccess and friends) compose those same
+ * fragments, and the PR-session feature depends on them still resolving for a
+ * system archive. The distinction is archive-as-a-place versus
+ * archive-as-an-ACL: this predicate governs the first only.
+ */
+export function excludeSystemArchives(alias = 'p') {
+  // COALESCE, not a bare `= FALSE`: `archives.system` is nullable, and in SQL
+  // `NULL = FALSE` is NULL, not true, so a row with an explicit NULL would
+  // vanish from every listing for every user. Nothing writes NULL today and
+  // the migration backfilled 0, so this is cheap insurance rather than a fix.
+  return `NOT COALESCE(${alias}.\`system\`, FALSE)`;
+}

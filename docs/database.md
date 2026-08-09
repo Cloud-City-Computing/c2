@@ -32,7 +32,6 @@ The database models a **workspace → squad → archive → log** hierarchy with
 ```
    workspaces
      └── squads
-           ├── squad_permissions
            ├── squad_members
            ├── squad_invitations
            └── archives
@@ -189,7 +188,7 @@ A team or group within a workspace. Squads own archives.
 | `created_at`   | TIMESTAMP               |                                 |
 | `created_by`   | INT FK → users          | ON DELETE SET NULL              |
 
-**Relationships:** Has many `squad_members`, `archives`, and one `squad_permissions` row.
+**Relationships:** Has many `squad_members` and `archives`.
 
 ---
 
@@ -206,19 +205,6 @@ Global per-user permissions for top-level actions. One row per user.
 | `create_log`      | BOOLEAN         | Defaults to TRUE — can create documents       |
 
 > Admins bypass all permission checks. Workspace owners also bypass permission checks within their workspace.
-
----
-
-### `squad_permissions`
-
-Per-squad default permissions for members. One row per squad.
-
-| Column            | Type            | Notes                                    |
-|-------------------|-----------------|------------------------------------------|
-| `id`              | INT AUTO_INCREMENT PK |                                    |
-| `squad_id`        | INT FK → squads | ON DELETE CASCADE; UNIQUE               |
-| `create_archive`  | BOOLEAN         | Default for this squad's members         |
-| `create_log`      | BOOLEAN         | Defaults to TRUE                         |
 
 ---
 
@@ -314,10 +300,10 @@ An individual document (referred to as a "log" in the data model). This is the c
 | `id`                | INT AUTO_INCREMENT PK |                                                                     |
 | `archive_id`        | INT FK → archives   | ON DELETE CASCADE                                                     |
 | `title`             | TEXT NOT NULL       |                                                                       |
-| `html_content`      | TEXT                | Rendered HTML from the editor; sanitized before storage               |
+| `html_content`      | MEDIUMTEXT          | Rendered HTML from the editor; sanitized before storage               |
 | `markdown_content`  | MEDIUMTEXT          | Optional markdown source; NULL when rich text is the canonical format |
 | `ydoc_state`        | LONGBLOB            | Binary Yjs CRDT state for real-time collaboration                     |
-| `plain_content`     | TEXT (GENERATED)    | Strips HTML tags from `html_content`; stored for full-text search     |
+| `plain_content`     | MEDIUMTEXT (GENERATED) | Strips HTML tags from `html_content`; stored for full-text search  |
 | `parent_id`         | INT FK → logs       | ON DELETE SET NULL; used to nest logs into a tree                     |
 | `created_at`        | TIMESTAMP           |                                                                       |
 | `created_by`        | INT FK → users      | ON DELETE SET NULL                                                    |
@@ -363,7 +349,7 @@ Published version snapshots of a document's HTML content.
 | `version`      | INT NOT NULL       | Monotonically increasing version number         |
 | `title`        | VARCHAR(255)       | Optional human-readable version label           |
 | `notes`        | TEXT               | Optional release notes (up to 5000 chars)       |
-| `html_content` | TEXT               | Snapshot of document HTML at publish time       |
+| `html_content` | MEDIUMTEXT         | Snapshot of document HTML at publish time       |
 | `created_at`   | TIMESTAMP          |                                                 |
 | `created_by`   | INT FK → users     | ON DELETE SET NULL                              |
 | `read_access`  | JSON ARRAY         | Future use; currently mirrors the parent log    |
@@ -550,7 +536,6 @@ conversation back to any documents tied to the changed files.
                     │            │           │
                     ├──< squad_members (users)
                     ├──< squad_invitations (users)
-                    ├──< squad_permissions
                     └──< archive_repos
 
    logs ──< comments ──< comment_replies

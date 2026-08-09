@@ -201,7 +201,7 @@ handlers reach it because every route is wrapped in `asyncHandler`
 (`shared.js:30-31`), a one-liner that catches a rejected promise into `next`.
 
 **`routes/github.js` is the deliberate exception.** Its terminal handler
-(`github.js:2254-2261`) forwards the upstream status when it is a sane
+(`github.js:2340-2347`) forwards the upstream status when it is a sane
 4xx/5xx and prefers `err.ghBody.message`, so a GitHub 404 surfaces as a 404
 with GitHub's own wording. Replacing it with the shared `errorHandler` would
 turn every "file not found on that branch" into a 500. See

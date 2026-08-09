@@ -233,6 +233,45 @@ async function authenticatedClient(logId, user = TEST_USER, dbStubs = []) {
   return ws;
 }
 
+/**
+ * Same handshake, but the write-access check comes back empty, so the server
+ * admits the client with canWrite=false. Every mutating message must be a
+ * no-op for this client.
+ */
+async function readOnlyClient(logId, user = TEST_USER, dbStubs = []) {
+  validateAndAutoLogin.mockResolvedValue(user);
+  // Real call order, which matters here: the connection handler checks read
+  // access, then write access, and only then does setupDocSession load the
+  // doc. (authenticatedClient above queues these in a different order and gets
+  // away with it because all three of its stubs are truthy rows.)
+  c2_query
+    .mockResolvedValueOnce([{ id: logId }])                                     // checkLogReadAccess
+    .mockResolvedValueOnce([])                                                  // checkLogWriteAccess: none
+    .mockResolvedValueOnce([{ ydoc_state: null, html_content: '<p>hi</p>' }]);  // getOrCreateDoc
+  for (const stub of dbStubs) c2_query.mockResolvedValueOnce(stub);
+
+  const ws = new WebSocket(url(logId), { headers: { Origin: origin() } });
+  ws.binaryType = 'arraybuffer';
+  await new Promise((r) => ws.once('open', r));
+  ws.send(JSON.stringify({ type: 'auth', token: 'good' }));
+
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('No sync within 2s')), 2000);
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) return;
+      try {
+        const parsed = JSON.parse(data.toString());
+        if (parsed.type === 'sync') {
+          expect(parsed.canWrite).toBe(false);
+          clearTimeout(timer);
+          resolve();
+        }
+      } catch { /* ignore */ }
+    });
+  });
+  return ws;
+}
+
 describe('services/collab — authenticated session', () => {
   it('admits the user and reports them via getActiveUsers / getAllPresence', async () => {
     const ws = await authenticatedClient(101);
@@ -343,6 +382,19 @@ describe('services/collab — authenticated session', () => {
       /UPDATE logs SET title/i.test(sql)
     );
     expect(titleUpdate).toBeUndefined();
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  });
+
+  it('refuses a title change from a read-only participant', async () => {
+    const ws = await readOnlyClient(108);
+    ws.send(JSON.stringify({ type: 'title', title: 'PWNED BY A READ-ONLY USER' }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(c2_query.mock.calls.some(([sql]) => /UPDATE logs SET title/i.test(sql))).toBe(false);
+    // logActivity('log.rename') auto-watches the actor and emails every other
+    // watcher, so a rename that slips through is not a cosmetic problem.
+    expect(c2_query.mock.calls.some(([sql]) => /INSERT INTO activity_log/i.test(sql))).toBe(false);
     ws.close();
     await new Promise((r) => ws.once('close', r));
   });

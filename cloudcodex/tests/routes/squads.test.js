@@ -306,6 +306,48 @@ describe('Squad Routes', () => {
       expect(sendEmail).not.toHaveBeenCalled();
     });
 
+    it('emails the invited user when they have not opted out', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Squad', workspace_id: 1, owner_id: TEST_USER.id }]);
+      c2_query.mockResolvedValueOnce([{ id: 2 }]);        // invited user exists
+      c2_query.mockResolvedValueOnce([]);                 // not already a member
+      c2_query.mockResolvedValueOnce([]);                 // no pending invitation
+      c2_query.mockResolvedValueOnce({ insertId: 10 });   // insert invitation
+      c2_query.mockResolvedValueOnce([{ email: 'b@test.com', name: 'B' }]);
+      c2_query.mockResolvedValueOnce([{ notification_prefs: null }]); // getPrefs: defaults
+
+      const res = await request(app)
+        .post('/api/squads/1/members/invite')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 2 });
+
+      expect(res.status).toBe(201);
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sendEmail.mock.calls[0][0].to).toBe('b@test.com');
+    });
+
+    it('does not email an invited user who turned email_squad_invite off', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Squad', workspace_id: 1, owner_id: TEST_USER.id }]);
+      c2_query.mockResolvedValueOnce([{ id: 2 }]);        // invited user exists
+      c2_query.mockResolvedValueOnce([]);                 // not already a member
+      c2_query.mockResolvedValueOnce([]);                 // no pending invitation
+      c2_query.mockResolvedValueOnce({ insertId: 10 });   // insert invitation
+      c2_query.mockResolvedValueOnce([{ email: 'b@test.com', name: 'B' }]);
+      c2_query.mockResolvedValueOnce([{ notification_prefs: { email_squad_invite: false } }]);
+
+      const res = await request(app)
+        .post('/api/squads/1/members/invite')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 2 });
+
+      // The invitation still exists; only the email is suppressed.
+      expect(res.status).toBe(201);
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+
     it('rejects if user already member', async () => {
       mockAuthenticated();
       c2_query
@@ -409,110 +451,6 @@ describe('Squad Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-    });
-  });
-
-  // ── GET /api/squads/:id/permissions ────────────────────────
-
-  describe('GET /api/squads/:id/permissions', () => {
-    it('returns permissions for workspace owner', async () => {
-      mockAuthenticated();
-      c2_query
-        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])  // squad found, user is owner
-        .mockResolvedValueOnce([{ create_archive: true, create_log: true }]);  // perms
-
-      const res = await request(app)
-        .get('/api/squads/1/permissions')
-        .set('Authorization', 'Bearer valid-token');
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.permissions.create_archive).toBe(true);
-    });
-
-    it('returns defaults when no permissions row exists', async () => {
-      mockAuthenticated();
-      c2_query
-        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])
-        .mockResolvedValueOnce([]);  // no perms row
-
-      const res = await request(app)
-        .get('/api/squads/1/permissions')
-        .set('Authorization', 'Bearer valid-token');
-
-      expect(res.status).toBe(200);
-      expect(res.body.permissions.create_archive).toBe(false);
-      expect(res.body.permissions.create_log).toBe(true);
-    });
-
-    it('rejects non-owner', async () => {
-      mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, owner_id: 999 }]);
-
-      const res = await request(app)
-        .get('/api/squads/1/permissions')
-        .set('Authorization', 'Bearer valid-token');
-
-      expect(res.status).toBe(403);
-    });
-
-    it('returns 404 for unknown squad', async () => {
-      mockAuthenticated();
-      c2_query.mockResolvedValueOnce([]);
-
-      const res = await request(app)
-        .get('/api/squads/999/permissions')
-        .set('Authorization', 'Bearer valid-token');
-
-      expect(res.status).toBe(404);
-    });
-  });
-
-  // ── PUT /api/squads/:id/permissions ────────────────────────
-
-  describe('PUT /api/squads/:id/permissions', () => {
-    it('updates existing permissions for workspace owner', async () => {
-      mockAuthenticated();
-      c2_query
-        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])  // squad found, user is owner
-        .mockResolvedValueOnce([{ id: 10 }])  // existing row
-        .mockResolvedValueOnce([]);            // UPDATE
-
-      const res = await request(app)
-        .put('/api/squads/1/permissions')
-        .set('Authorization', 'Bearer valid-token')
-        .send({ create_archive: true });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-    });
-
-    it('inserts permissions when none exist', async () => {
-      mockAuthenticated();
-      c2_query
-        .mockResolvedValueOnce([{ id: 1, owner_id: TEST_USER.id }])
-        .mockResolvedValueOnce([])   // no existing row
-        .mockResolvedValueOnce([]);  // INSERT
-
-      const res = await request(app)
-        .put('/api/squads/1/permissions')
-        .set('Authorization', 'Bearer valid-token')
-        .send({ create_archive: true, create_log: false });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-    });
-
-    it('rejects non-owner', async () => {
-      mockAuthenticated();
-      c2_query.mockResolvedValueOnce([{ id: 1, owner_id: 999 }]);
-
-      const res = await request(app)
-        .put('/api/squads/1/permissions')
-        .set('Authorization', 'Bearer valid-token')
-        .send({ create_archive: true });
-
-      expect(res.status).toBe(403);
     });
   });
 

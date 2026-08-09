@@ -11,7 +11,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, APP_URL, addSquadOwnerMember } from './helpers/shared.js';
 import { logActivity } from './helpers/activity.js';
-import { createNotification } from '../services/notifications.js';
+import { createNotification, getPrefs } from '../services/notifications.js';
 
 const router = express.Router();
 
@@ -188,89 +188,6 @@ router.delete('/squads/:id', requireAuth, asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
-/**
- * GET /api/squads/:id/permissions
- * Get permissions for a squad (workspace owner only)
- */
-router.get('/squads/:id/permissions', requireAuth, asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!isValidId(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid squad ID' });
-  }
-
-  const [squad] = await c2_query(
-    `SELECT t.id, o.owner_id
-     FROM squads t
-     LEFT JOIN workspaces o ON t.workspace_id = o.id
-     WHERE t.id = ? LIMIT 1`,
-    [Number(id)]
-  );
-  if (!squad) return res.status(404).json({ success: false, message: 'Squad not found' });
-  if (!req.user.is_admin && squad.owner_id !== req.user.id) {
-    return res.status(403).json({ success: false, message: 'Only the workspace owner can view squad permissions' });
-  }
-
-  const [perms] = await c2_query(
-    `SELECT create_archive, create_log FROM squad_permissions WHERE squad_id = ? LIMIT 1`,
-    [Number(id)]
-  );
-
-  res.json({
-    success: true,
-    permissions: perms || { create_archive: false, create_log: true }
-  });
-}));
-
-/**
- * PUT /api/squads/:id/permissions
- * Update permissions for a squad (workspace owner only)
- * Body: { create_archive?, create_log? }
- */
-router.put('/squads/:id/permissions', requireAuth, asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!isValidId(id)) {
-    return res.status(400).json({ success: false, message: 'Invalid squad ID' });
-  }
-
-  const [squad] = await c2_query(
-    `SELECT t.id, o.owner_id
-     FROM squads t
-     LEFT JOIN workspaces o ON t.workspace_id = o.id
-     WHERE t.id = ? LIMIT 1`,
-    [Number(id)]
-  );
-  if (!squad) return res.status(404).json({ success: false, message: 'Squad not found' });
-  if (!req.user.is_admin && squad.owner_id !== req.user.id) {
-    return res.status(403).json({ success: false, message: 'Only the workspace owner can update squad permissions' });
-  }
-
-  const { create_archive, create_log } = req.body;
-
-  // Upsert
-  const [existing] = await c2_query(
-    `SELECT id FROM squad_permissions WHERE squad_id = ? LIMIT 1`,
-    [Number(id)]
-  );
-
-  if (existing) {
-    const fields = [];
-    const params = [];
-    if (create_archive !== undefined) { fields.push('create_archive = ?'); params.push(Boolean(create_archive)); }
-    if (create_log !== undefined)    { fields.push('create_log = ?');    params.push(Boolean(create_log));    }
-    if (fields.length) {
-      params.push(Number(id));
-      await c2_query(`UPDATE squad_permissions SET ${fields.join(', ')} WHERE squad_id = ?`, params);
-    }
-  } else {
-    await c2_query(
-      `INSERT INTO squad_permissions (squad_id, create_archive, create_log) VALUES (?, ?, ?)`,
-      [Number(id), Boolean(create_archive), create_log !== false]
-    );
-  }
-
-  res.json({ success: true });
-}));
-
 // =============================================
 // Squad Members
 // =============================================
@@ -388,9 +305,14 @@ router.post('/squads/:id/members/invite', requireAuth, asyncHandler(async (req, 
      can_read !== false, Boolean(can_write), Boolean(can_create_log), Boolean(can_create_archive), Boolean(can_manage_members), Boolean(can_delete_version), Boolean(can_publish)]
   );
 
-  // Send email notification to the invited user
+  // Send email notification to the invited user.
+  // This send does not go through the notification funnel (see the
+  // createNotification call below for why), so it has to honour the user's
+  // email_squad_invite preference itself. Until 2026-08-09 it did not, and
+  // turning that toggle off in the preferences UI changed nothing.
   const [invitedUser] = await c2_query(`SELECT email, name FROM users WHERE id = ? LIMIT 1`, [Number(userId)]);
-  if (invitedUser?.email && isMailEnabled()) {
+  const invitedPrefs = await getPrefs(Number(userId));
+  if (invitedUser?.email && isMailEnabled() && invitedPrefs.email_squad_invite) {
     try {
       await sendEmail({
         to: invitedUser.email,

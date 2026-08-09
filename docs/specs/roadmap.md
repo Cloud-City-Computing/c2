@@ -61,7 +61,7 @@ constraint right now.
 | **B** | First-run experience (**shipped**) | Real guided onboarding for every user including the admin, invite-carried squad assignment, `/api/setup` retired | A |
 | **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
-| **E** | Foundation | The two giant page files, the open-questions defect list | nothing, but competes for time |
+| **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
 
 ### A. Evaluation path — shipped
 
@@ -189,18 +189,39 @@ Two things found by actually running the built image, both recorded in
 
 ### E. Foundation
 
-`src/pages/Editor.jsx` (1516 lines) and `src/pages/GitHubPage.jsx` (2631 lines)
+Two halves that want separate sessions. **The defect half shipped 2026-08-09**;
+the extraction half is what remains.
+
+#### E1. The open-questions defect list (shipped)
+
+Every item was confirmed against a real database before being fixed, and
+re-measured after. Detail, with the evidence, in
+[`../maps/open-questions.md`](../maps/open-questions.md).
+
+| | Was | Now |
+|---|---|---|
+| **B1** | PR-as-document granted access by writing `logs.read_access`, which nothing reads, so the feature was admin-only. The session route also never asked GitHub whether the caller could see the PR. | Grant lands on a hidden archive **per PR**; the session route fetches the PR through the caller's token first. |
+| **B4** | `GET`/`PUT`/`DELETE /api/github/link/:logId` checked nothing. Any user could read, repoint or delete any document's GitHub binding, and `/push` reads its target off that row. | Gated on read, write and write. |
+| **B6** | A read-only collab participant could rename a document, which also mailed every watcher. | Gated on `canWrite` like every other mutating message. |
+| **B2** | `html_content` was `TEXT`, so a 70 KiB save 500'd and the edit was lost. | All three content columns `MEDIUMTEXT`. |
+| **B5** | Team sync fetched one page and deleted every member past it. | Paginated; a truncated listing removes nobody. |
+| **B7** | The `email_squad_invite` toggle did nothing. | Honoured. |
+| **A3** | `squad_permissions` was enforced by nothing. | Removed, table and routes. |
+
+Three of these were reachable by any authenticated user, and the suite was
+green throughout: none of them was a test failure waiting to be noticed.
+
+**Still open from that list: B13**, document titles are click-only and
+unreachable by keyboard in every list view. **A1 and A2 stay open by
+decision**: `logs.read_access` remains deliberately dead (B1 routes around it
+rather than reviving it), and `github_embed_refs` still has no writer.
+
+#### E2. The extraction (open)
+
+`src/pages/Editor.jsx` (1520 lines) and `src/pages/GitHubPage.jsx` (2631 lines)
 hold most of the interface and are explicitly out of test scope by policy. Any
 significant UI work either drags their extraction along or piles onto them.
-Plus the suspected defects in
-[`../maps/open-questions.md`](../maps/open-questions.md), of which the
-highest-value is **B1**: PR-as-document sessions grant access by writing
-`logs.read_access`, a column nothing reads, so the feature is likely admin-only
-in practice.
-
-This track has no dependencies and competes purely for time. The argument for
-doing some of it early is that B is blocked behind it in practice; the argument
-against is that it produces nothing a user can see.
+This is what "track E" now means.
 
 ## Sequencing
 
@@ -211,21 +232,22 @@ now         A ──────────────────────
                     │
                     └──► B ────────────────► shipped
                               │
-                    E ────────┘  (not needed for B after all; still open for its own sake)
+                    E ────────┘  E1 defects shipped 2026-08-09; E2 extraction open
 
             C: decided 2026-08-08, no breaking change to execute
 ```
 
-A, B and D have shipped and C is decided. **E is the only track left.** Two of
-the arguments for it were settled during D rather than deferred into it: the
-editor no longer blanks the app on navigation, and the app now has an error
-boundary, so a render error is no longer unrecoverable. What remains for E is
-its actual subject, breaking up `Editor.jsx` (1516 lines) and `GitHubPage.jsx`
-(2631 lines) so the interface is testable, plus the rest of the
-`open-questions.md` list, of which **B1** (PR-as-document access granted through
-a column nothing reads) is still the highest-value item.
+A, B and D have shipped, C is decided, and **E's defect half shipped on
+2026-08-09**. Two of the arguments for E were settled during D rather than
+deferred into it: the editor no longer blanks the app on navigation, and the
+app now has an error boundary, so a render error is no longer unrecoverable.
 
-The measurement that drove D: 38 stars, 1 fork, 2 issues ever, both closed. Now
-that the repository looks maintained and an evaluator can `docker compose up` a
-published image, that number is worth re-reading before committing to E's full
-scope.
+What remains is **E2**, breaking up `Editor.jsx` (1520 lines) and
+`GitHubPage.jsx` (2631 lines) so the interface is testable, plus **B13**.
+
+The measurement re-read on 2026-08-09, one day after the v0.9.0 release: still
+38 stars, 1 fork, 0 open issues, 0 watchers, 12 unique viewers and 66 unique
+cloners in 14 days. Too early to read anything into it, but it is why the
+defect half was done first: with no inbound signal to prioritise by, the work
+that could actually bite whoever pulls the image outranks the work that only
+makes the next change cheaper.

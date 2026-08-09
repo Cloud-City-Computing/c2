@@ -115,6 +115,11 @@ describe('Search Routes', () => {
       expect(res.body.total).toBe(2);
       expect(res.body.page).toBe(1);
       expect(res.body.totalPages).toBe(1);
+      // Browse is an archive-as-a-place surface, so hidden `system` archives
+      // (GitHub PR sessions, which ordinary users now hold grants on) must be
+      // excluded from both the count and the result query.
+      expect(c2_query.mock.calls[0][0]).toMatch(/COALESCE\(pr\.`system`, FALSE\)/);
+      expect(c2_query.mock.calls[1][0]).toMatch(/COALESCE\(pr\.`system`, FALSE\)/);
     });
 
     it('accepts sort parameter', async () => {

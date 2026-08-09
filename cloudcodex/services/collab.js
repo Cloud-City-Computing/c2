@@ -500,7 +500,10 @@ async function setupDocSession(ws, user, logId, canWrite) {
         })();
       }
 
-      if (msg.type === 'title' && typeof msg.title === 'string') {
+      // Gated on canWrite like every other mutating message: renaming writes
+      // the row, sets updated_by, and logs log.rename, which auto-watches the
+      // actor and emails every other watcher.
+      if (msg.type === 'title' && canWrite && typeof msg.title === 'string') {
         const safeTitle = msg.title.trim().slice(0, 255);
         if (!safeTitle) return;
 

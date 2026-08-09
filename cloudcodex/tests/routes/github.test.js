@@ -284,6 +284,18 @@ describe('GitHub Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.commit.sha).toBe('commitsha');
+
+      // B14: this commit moved the file on GitHub; it changed no Codex
+      // document. Recording base_sha and 'clean' told every linked document it
+      // matched a remote it had never seen, which made classifySync unable to
+      // ever report remote_ahead and let the owner's next push silently
+      // overwrite this commit. Assert on the SQL, since the response body is
+      // identical either way, which is how the original defect hid.
+      const upd = c2_query.mock.calls.find(([sql]) => /UPDATE github_links/i.test(sql));
+      expect(upd).toBeDefined();
+      expect(upd[0]).toMatch(/sync_status = 'remote_ahead'/);
+      expect(upd[0]).not.toMatch(/base_sha/);
+      expect(upd[1]).toEqual(['newfilesha', 'user', 'my-repo', 'docs/README.md', 'main']);
     });
 
     it('rejects missing content', async () => {
@@ -885,6 +897,7 @@ describe('GitHub Routes', () => {
     it('returns link for a document', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // read access check
       c2_query.mockResolvedValueOnce([{
         repo_owner: 'user', repo_name: 'my-repo',
         file_path: 'docs/guide.md', branch: 'main', file_sha: 'sha-abc',
@@ -903,6 +916,7 @@ describe('GitHub Routes', () => {
     it('returns null link when none exists', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 999 }]); // read access check
       c2_query.mockResolvedValueOnce([]); // no link found
 
       const res = await request(app)
@@ -923,6 +937,21 @@ describe('GitHub Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('denies reading the link of a document the user cannot read', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([]); // read access check: no match
+
+      const res = await request(app)
+        .get('/api/github/link/1')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+      // The binding names a private repo, branch and path: none of it may leak.
+      expect(res.body.link).toBeUndefined();
+      expect(c2_query.mock.calls.some(([sql]) => /FROM github_links/i.test(sql))).toBe(false);
+    });
   });
 
   // --- PUT /api/github/link/:logId ---
@@ -931,6 +960,7 @@ describe('GitHub Routes', () => {
     it('creates or updates a link', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // write access check
       c2_query.mockResolvedValueOnce([]); // INSERT/UPDATE result
 
       const res = await request(app)
@@ -965,6 +995,22 @@ describe('GitHub Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('denies repointing the link of a document the user cannot write', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([]); // write access check: no match
+
+      const res = await request(app)
+        .put('/api/github/link/1')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ repo_owner: 'attacker', repo_name: 'evil-repo', file_path: 'exfil.md', branch: 'main' });
+
+      expect(res.status).toBe(403);
+      // /push takes its target repo and path off this row, so a write here
+      // redirects someone else's next push. Prove no write was issued.
+      expect(c2_query.mock.calls.some(([sql]) => /INSERT INTO github_links/i.test(sql))).toBe(false);
+    });
   });
 
   // --- DELETE /api/github/link/:logId ---
@@ -973,6 +1019,7 @@ describe('GitHub Routes', () => {
     it('deletes a link', async () => {
       mockAuthenticated();
       mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ id: 1 }]); // write access check
       c2_query.mockResolvedValueOnce([]); // DELETE result
 
       const res = await request(app)
@@ -992,6 +1039,21 @@ describe('GitHub Routes', () => {
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
+    });
+
+    it('denies deleting the link of a document the user cannot write', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([]); // write access check: no match
+
+      const res = await request(app)
+        .delete('/api/github/link/1')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(403);
+      // Deleting the row discards base_sha, the merge base every later
+      // conflict check depends on. Prove the DELETE never ran.
+      expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM github_links/i.test(sql))).toBe(false);
     });
   });
 
@@ -1630,19 +1692,21 @@ describe('GitHub Routes', () => {
       mockAuthenticated();
       mockGitHubConnected();
 
+      mockGitHubApiResponse({ number: 42, title: 'A PR the caller can see' });
+
       // Order of c2_query calls inside the route handler:
       //   1) SELECT existing pr_session (empty)
-      //   2) SELECT existing system archive (empty)
-      //   3) INSERT system archive
+      //   2) SELECT existing per-PR archive (empty)
+      //   3) INSERT per-PR archive
       //   4) INSERT logs
       //   5) INSERT github_pr_sessions
-      //   6) UPDATE logs ACL
+      //   6) UPDATE archives ACL
       c2_query.mockResolvedValueOnce([]); // pr_session lookup
       c2_query.mockResolvedValueOnce([]); // archive lookup
       c2_query.mockResolvedValueOnce({ insertId: 99 }); // INSERT archive
       c2_query.mockResolvedValueOnce({ insertId: 200 }); // INSERT logs
       c2_query.mockResolvedValueOnce({ insertId: 1 }); // INSERT pr_sessions
-      c2_query.mockResolvedValueOnce([]); // UPDATE logs ACL
+      c2_query.mockResolvedValueOnce([]); // UPDATE archives ACL
 
       const res = await request(app)
         .get('/api/github/repos/u/r/pulls/42/session')
@@ -1651,16 +1715,50 @@ describe('GitHub Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.log_id).toBe(200);
       expect(res.body.session_id).toBe(1);
+
+      // The archive name must be per-PR. One shared archive would make this
+      // grant reach every other PR session, since the archive is the ACL
+      // boundary.
+      const archiveInsert = c2_query.mock.calls.find(([sql]) => /INSERT INTO archives/i.test(sql));
+      expect(archiveInsert[1][0]).toBe('__c2_github_pr_sessions__:u/r#42');
+
+      // And the grant must land on archives, not on the inert logs columns,
+      // and specifically on THIS PR's archive. Asserting only "params contain
+      // the user id" would stay green if the WHERE bound the log id instead,
+      // which is a live privilege escalation onto whatever archive shares that
+      // id.
+      const grant = c2_query.mock.calls.find(([sql]) => /JSON_ARRAY_APPEND/i.test(sql));
+      expect(grant[0]).toMatch(/UPDATE archives/i);
+      expect(grant[1]).toContain(String(TEST_USER.id));
+      expect(grant[1][4]).toBe(99);      // the archive insertId
+      expect(grant[1][4]).not.toBe(200); // not the log insertId
+    });
+
+    it('refuses to open a session for a PR GitHub will not show the caller', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      mockGitHubApiResponse({ message: 'Not Found' }, 404);
+
+      const res = await request(app)
+        .get('/api/github/repos/someone/private/pulls/7/session')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(404);
+      // Nothing may be created or granted for a PR the caller cannot see.
+      expect(c2_query.mock.calls.some(([sql]) => /INSERT INTO (archives|logs|github_pr_sessions)/i.test(sql))).toBe(false);
+      expect(c2_query.mock.calls.some(([sql]) => /JSON_ARRAY_APPEND/i.test(sql))).toBe(false);
     });
 
     it('reuses the existing session on subsequent calls', async () => {
       mockAuthenticated();
       mockGitHubConnected();
 
-      // session lookup returns existing row -> short-circuit
-      c2_query.mockResolvedValueOnce([{ id: 5, log_id: 555 }]);
-      // UPDATE logs read/write_access (still runs to keep ACL fresh)
-      c2_query.mockResolvedValueOnce([]);
+      mockGitHubApiResponse({ number: 42, title: 'A PR the caller can see' });
+
+      c2_query.mockResolvedValueOnce([{ id: 5, log_id: 555 }]); // existing session
+      c2_query.mockResolvedValueOnce([{ id: 99 }]);             // existing per-PR archive
+      c2_query.mockResolvedValueOnce([]);                       // UPDATE logs.archive_id (legacy move)
+      c2_query.mockResolvedValueOnce([]);                       // UPDATE archives ACL
 
       const res = await request(app)
         .get('/api/github/repos/u/r/pulls/42/session')
@@ -1686,7 +1784,11 @@ describe('GitHub Routes', () => {
       });
       // Session lookup: existing session
       c2_query.mockResolvedValueOnce([{ id: 5, log_id: 555 }]);
-      // UPDATE logs ACL
+      // Per-PR archive lookup: exists
+      c2_query.mockResolvedValueOnce([{ id: 99 }]);
+      // UPDATE logs.archive_id (no-op unless the log predates per-PR archives)
+      c2_query.mockResolvedValueOnce([]);
+      // UPDATE archives ACL
       c2_query.mockResolvedValueOnce([]);
       // INSERT comments
       c2_query.mockResolvedValueOnce({ insertId: 333 });
@@ -1984,6 +2086,94 @@ describe('GitHub Routes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/not bound/i);
+    });
+
+    it('follows pagination past the first 100 team members', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]); // userCanManageSquad
+      c2_query.mockResolvedValueOnce([{ github_org: 'acme', github_team_slug: 'devs' }]);
+
+      // A full page, then a short one: the member on page 2 must be seen.
+      mockGitHubApiResponse(Array.from({ length: 100 }, (_, i) => ({ login: `dev${i}` })));
+      mockGitHubApiResponse([{ login: 'page-two-dev' }]);
+
+      c2_query.mockResolvedValueOnce([]); // current squad members: none
+      // One matching-user lookup per GitHub login, all unmatched.
+      for (let i = 0; i < 101; i++) c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]); // UPDATE squads SET team_sync_at
+
+      const res = await request(app)
+        .post('/api/squads/1/github-team/sync')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.members_complete).toBe(true);
+      expect(res.body.unmatched).toContain('page-two-dev');
+      expect(res.body.unmatched).toHaveLength(101);
+
+      const pages = mockFetch.mock.calls.map(([url]) => url);
+      expect(pages.some((u) => u.includes('page=1'))).toBe(true);
+      expect(pages.some((u) => u.includes('page=2'))).toBe(true);
+    });
+
+    it('removes a member who is no longer on the team', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]); // userCanManageSquad
+      c2_query.mockResolvedValueOnce([{ github_org: 'acme', github_team_slug: 'devs' }]);
+
+      // One short page: the listing is complete, so removals are allowed.
+      mockGitHubApiResponse([{ login: 'still-here' }]);
+
+      c2_query.mockResolvedValueOnce([
+        { user_id: 7, gh_login: 'still-here' },
+        { user_id: 8, gh_login: 'departed' },
+      ]);
+      c2_query.mockResolvedValueOnce([{ role: 'member' }]); // departed is not an owner
+      c2_query.mockResolvedValueOnce([]);                   // DELETE FROM squad_members
+      c2_query.mockResolvedValueOnce([]);                   // UPDATE squads SET team_sync_at
+
+      const res = await request(app)
+        .post('/api/squads/1/github-team/sync')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.members_complete).toBe(true);
+      expect(res.body.removed).toEqual([{ user_id: 8, gh_login: 'departed' }]);
+      // The kill switch added for B5 must not disable removals outright: pin
+      // the ON side, or a regression to complete=false would stop all removals
+      // forever behind a 200 and a green suite.
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM squad_members/i.test(sql));
+      expect(del).toBeDefined();
+      expect(del[1]).toEqual([1, 8]);
+    });
+
+    it('runs no removals when the team listing is truncated', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]); // userCanManageSquad
+      c2_query.mockResolvedValueOnce([{ github_org: 'acme', github_team_slug: 'devs' }]);
+
+      // Every page comes back full, so the cap is hit and `complete` is false.
+      for (let p = 0; p < 20; p++) {
+        mockGitHubApiResponse(Array.from({ length: 100 }, (_, i) => ({ login: `dev${p}-${i}` })));
+      }
+
+      // A current member whose login is on none of those pages. Under the old
+      // single-page fetch this user was deleted from the squad.
+      c2_query.mockResolvedValueOnce([{ user_id: 42, gh_login: 'someone-on-page-21' }]);
+      for (let i = 0; i < 2000; i++) c2_query.mockResolvedValueOnce([]); // user lookups
+      c2_query.mockResolvedValueOnce([]); // UPDATE squads SET team_sync_at
+
+      const res = await request(app)
+        .post('/api/squads/1/github-team/sync')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.members_complete).toBe(false);
+      expect(res.body.removed).toEqual([]);
+      expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM squad_members/i.test(sql))).toBe(false);
     });
   });
 

@@ -9,7 +9,9 @@ but it cannot prove what a user sees. B8 through B10 are the exception: they
 were found by running the app against a real database in a real browser, and
 are marked as such.
 
-Nothing here has been fixed. This is a findings list, not a changelog.
+This is a findings list, not a changelog. Items that have since been fixed are
+marked `(FIXED)` in their heading and kept, because the reasoning that found
+them is worth more than the closure.
 
 ---
 
@@ -20,8 +22,10 @@ These are the highest-confidence items. Each was checked by grepping the whole
 
 ### A1. `logs.read_access` and `logs.write_access` are write-only
 
-- **Written by:** `routes/github.js:1653` (insert) and `github.js:1669-1679`
-  (`JSON_ARRAY_APPEND` on PR-session open).
+- **Written by:** the PR-session log insert (`routes/github.js:1698`), and
+  only as an empty `JSON_ARRAY()`. Until 2026-08-09 the PR-session open also
+  `JSON_ARRAY_APPEND`ed the caller's id here, which is what made that feature
+  admin-only (B1); the grant now lands on a per-PR archive instead.
 - **Read by:** nothing. `checkLogReadAccess` / `checkLogWriteAccess`
   (`routes/helpers/shared.js:56-84`) join `logs` to `archives` and apply the
   access fragment against the **archive** alias.
@@ -34,7 +38,7 @@ never written.
 
 ### A2. `github_embed_refs` has no writer
 
-`GET /api/logs/by-github-ref` (`github.js:1900-1921`) reads the table.
+`GET /api/logs/by-github-ref` (`github.js:1956-1977`) reads the table.
 `migrations/p1_github_embeds.sql` and `init.sql:253-267` create it. There is no
 `INSERT INTO github_embed_refs` anywhere in the repo.
 
@@ -47,33 +51,65 @@ suite cannot catch this class of gap.
 embed nodes (`src/extensions/GitHubCodeEmbed.jsx`,
 `GitHubIssueEmbed.jsx`) are the obvious place to record a ref on save.
 
-### A3. `squad_permissions` is enforced by nothing
+### A3. `squad_permissions` was enforced by nothing (REMOVED)
 
-Read and written only by `GET`/`PUT /api/squads/:id/permissions`
-(`routes/squads.js:218`, `squads.js:255-271`). `requirePermission`
-(`middleware/permissions.js:40-111`) consults the global `permissions` table and
-then `squad_members.can_create_*`, never `squad_permissions`.
+Read and written only by `GET`/`PUT /api/squads/:id/permissions`.
+`requirePermission` consults the global `permissions` table and then
+`squad_members.can_create_*`, never `squad_permissions`. A workspace owner
+could toggle squad-level create permissions through the API, the value
+persisted, and no behaviour changed.
 
-**Consequence:** a workspace owner can toggle squad-level create permissions
-through the API and the UI, the value persists, and no behaviour changes.
+**Removed 2026-08-09** rather than enforced (Kyle's call): `squad_members`
+already carries per-member `can_create_log` / `can_create_archive` flags that
+*are* enforced, so this was a second, redundant answer to the same question,
+in the repo's most trap-laden subsystem.
 
-**Open question:** should `requirePermission` gain a `squad_permissions` step
-between the global check and the per-member check, or should the table and its
-two routes be removed?
+Gone: the table (`migrations/drop_squad_permissions.sql` plus the `CREATE` in
+`init.sql`, with the `DROP` line kept so `reset-db` still cleans older
+databases), both routes, the six tests that covered them, and the two
+`util.jsx` wrappers, `fetchSquadPermissions` / `updateSquadPermissions`, which
+turned out to have no callers anywhere in `src/`.
 
 ## B. Suspected functional defects
 
 Higher-value, lower-certainty. Each needs a runtime check to confirm.
 
-### B1. PR-as-document sessions are probably admin-only
+### B1. PR-as-document sessions were admin-only (FIXED)
 
-`getOrCreatePrSession` (`github.js:1636-1682`) grants the caller access by
+**Confirmed at runtime**, 2026-08-09, by replicating `getOrCreatePrSession`'s
+exact inserts and grant: `logs.read_access` came back `[19]` and that user
+still got **403** on `GET` and `POST /api/logs/:logId/comments`, while an admin
+got 200. The reading below was correct in every particular.
+
+**A second defect, found while fixing it and not recorded here before:**
+`GET .../pulls/:number/session` made **no GitHub call at all**. It took
+`owner`, `repo` and `number` from the URL and created a session. That was
+harmless only because the grant did nothing; making the grant real without
+fixing this would have let any authenticated user with any GitHub account open
+a session on a private repo's PR and read the Codex-side discussion. The route
+now fetches the PR through the caller's token first.
+
+**Fixed** by option (a) of the two below, per Kyle's call on 2026-08-09: one
+hidden archive **per PR** (`__c2_github_pr_sessions__:owner/repo#N`) with the
+grant appended to that archive's `read_access`/`write_access`. Per-PR rather
+than one shared archive because the archive is the ACL boundary, so a shared
+one would have made any session grant access to every other PR's session.
+Sessions created earlier are moved into their per-PR archive on next open.
+Verified live: the granted user now reads (200) and comments (201), two users
+holding different PR sessions each get 403 on the other's, and the admin
+control still passes. **A1 is unchanged: `logs.read_access` is still dead**,
+and this fix deliberately routes around it rather than reviving it.
+
+Original finding below.
+
+### B1 (original reading). PR-as-document sessions are probably admin-only
+
+`getOrCreatePrSession` granted the caller access by
 appending their id to the virtual log's `read_access`/`write_access`. Per **A1**
 those columns are inert.
 
-The parent archive is `__c2_github_pr_sessions__` (`github.js:1604`), created
-with `squad_id NULL`, `created_by NULL`, and every ACL column empty
-(`github.js:1618-1626`). Walk the seven clauses of `readAccessWhere` against
+The parent archive was a single `__c2_github_pr_sessions__`, created with
+`squad_id NULL`, `created_by NULL`, and every ACL column empty. Walk the seven clauses of `readAccessWhere` against
 that row for a non-admin user:
 
 | Clause | Result |
@@ -100,48 +136,88 @@ user.
 than the log, or (b) teach the log-level checks to also honour
 `logs.read_access`, which would resolve **A1** at the same time.
 
-### B2. `html_content TEXT` caps documents at 64 KiB
+### B2. `html_content TEXT` capped documents at 64 KiB (FIXED)
 
-`logs.html_content` is `TEXT` (`init.sql:234`), i.e. 65,535 bytes. The
-application's own ceiling is 2 MiB (`documents.js:22`, `collab.js:44`), and
-`markdown_content` is `MEDIUMTEXT`.
+`logs.html_content` was `TEXT`, i.e. 65,535 bytes, against an application
+ceiling of 2 MiB (`documents.js:22`, `collab.js:44`).
 
-**Consequence:** the app accepts a 500 KiB document, passes its own size check,
-and hands MySQL a value the column cannot hold. Under MySQL 8's default
-`STRICT_TRANS_TABLES` that is an error, not a silent truncation, so the save
-fails with a 500 from `errorHandler`; without strict mode it truncates and the
-document is corrupted.
+**Confirmed at runtime**, 2026-08-09. `sql_mode` on the shipped image (MySQL
+8.4.8) does include `STRICT_TRANS_TABLES`, so this is an error, not truncation.
+Saving through the real `POST /api/save-document`:
 
-**Not verified:** actual `sql_mode` on the shipped MySQL 8 image, and whether
-any real document has hit the ceiling.
+| HTML size | Before |
+|---|---|
+| 40 KiB | 200, stored |
+| 70 KiB | **500** "An internal server error occurred", nothing stored |
+| 300 KiB | **500**, nothing stored |
 
-**Suggested fix:** `ALTER TABLE logs MODIFY html_content MEDIUMTEXT` in both a
-migration and `init.sql`, matching `markdown_content`.
+The user's edit is simply lost, behind a generic 500 that names nothing.
 
-### B4. GitHub link CRUD does not check document access
+**Two columns the original note missed**, both found by looking rather than
+reasoning:
 
-`GET`, `PUT` and `DELETE /api/github/link/:logId` (`github.js:924`, `947`,
-`975`) validate the id and act. They inherit `requireAuth` and `requireGitHub`
-from `github.js:125` but never call `loadLinkAndLog` or any `check*Access`
-helper.
+- `plain_content` is `STORED GENERATED` from `html_content`, and it was `TEXT`
+  too. Stripping tags from prose barely shrinks it (40,993 bytes of HTML gave
+  40,986 of text), so widening `html_content` alone would have moved the same
+  failure one column sideways.
+- `versions.html_content` was `TEXT`, and publish copies the document into it,
+  so a widened `logs` would have pushed the same 500 from save to publish.
 
-**Consequence, as read:** any authenticated user with GitHub linked can read
-which repo and path *any* document is bound to, repoint that binding, or delete
-it. The four sync routes (`/status`, `/pull`, `/push`, `/resolve`) do gate
-properly through `loadLinkAndLog` (`github.js:993-1009`), so content cannot be
-exfiltrated this way, but metadata disclosure and denial-of-service on someone
-else's link both look reachable.
+**Fixed** in `migrations/widen_log_content.sql` plus `init.sql` (both, per the
+no-migration-runner rule): all three columns are now `MEDIUMTEXT`. Verified
+live after applying it: 40, 70 and 300 KiB all save 200, a 300 KiB publish
+returns 200 with `versions.html_content` holding all 307,213 bytes, and the
+`ft_logs_search` FULLTEXT index survived the `MODIFY` and still matches.
 
-**Not verified:** runtime.
+### B4. GitHub link CRUD did not check document access (FIXED)
+
+`GET`, `PUT` and `DELETE /api/github/link/:logId` validated the id and acted.
+They inherit `requireAuth` and `requireGitHub` from the router, but called
+neither `loadLinkAndLog` nor any `check*Access` helper.
+
+**Confirmed at runtime**, 2026-08-09, against a real database with two users
+sharing no squad and a document the attacker provably could not read (`GET
+/api/document` returned 404, and the gated `/status` route returned 404 for the
+same log in the same run):
+
+| Route | Before | Effect |
+|---|---|---|
+| `GET /github/link/:logId` | **200** | returned the private repo, branch and path the document is bound to |
+| `PUT /github/link/:logId` | **200** | repointed the binding to an attacker-chosen repo and path; `linked_by` stayed the victim's id, so the audit trail still named them |
+| `DELETE /github/link/:logId` | **200** | row gone |
+
+**This map previously said "content cannot be exfiltrated this way". That was
+wrong.** `/push` reads `repo_owner`, `repo_name`, `file_path` and `branch`
+straight off the `github_links` row and takes only a commit message from the
+caller. So an unauthorised `PUT` redirects the *victim's own next push*, which
+commits their document content into the attacker's repo using the victim's
+token. The four sync routes gating correctly is not sufficient when an
+unguarded route decides where they point.
+
+Deleting the row is not merely annoying either: it discards `base_sha`, the
+merge base every later conflict check depends on.
+
+**Fixed** by gating `GET` on `checkLogReadAccess` and `PUT`/`DELETE` on
+`checkLogWriteAccess` (write, not read, precisely because `PUT` chooses a push
+target). All three now 403, verified live on the same fixtures and covered by
+three tests that were each confirmed to fail against the unfixed route.
 
 ### B5. GitHub team sync silently truncates above 100 members
 
-`github.js:2103` and `github.js:2181` fetch team members with `per_page=100` and
-no pagination loop.
+Both team-sync routes fetched team members with a single `per_page=100`
+call and no pagination loop.
+
+**FIXED 2026-08-09.** Both call sites now go through `fetchTeamMemberLogins`,
+which follows pagination to a 20-page (2,000 member) cap and reports whether
+the listing is `complete`. When it is not, the removal pass is skipped
+entirely and `members_complete: false` is returned, because a login on an
+unfetched page is indistinguishable from one that left the team. Covered by
+two tests: one proves page 2 is read, one proves a truncated listing deletes
+nobody. Original finding below.
 
 **Consequence:** a team with more than 100 members yields a partial `ghLogins`
 set. The preview under-reports, and the sync's removal pass
-(`github.js:2230-2243`) deletes every current member whose login fell outside
+then deleted every current member whose login fell outside
 the first page.
 
 **Not verified:** no team of that size has been tested.
@@ -149,16 +225,30 @@ the first page.
 **Suggested fix:** paginate, or refuse to run the removal pass when the response
 is a full page.
 
-### B6. `title` is the only WS message not gated on write access
+### B6. `title` was the only WS message not gated on write access (FIXED)
 
-`collab.js:503` handles `{type:'title'}` with no `canWrite` check, unlike
-`cursor`, `save`, `publish` and `comment`. A read-only participant can rename
-the document, and the rename is broadcast and logged as `log.rename` activity.
+The `{type:'title'}` handler in `collab.js` had no `canWrite` check, unlike
+`cursor`, `save`, `publish` and `comment`.
 
-**Verified:** by reading the five handler branches.
-**Not verified:** whether the client ever exposes the affordance to a read-only
-user (it likely does not, which would make this defence-in-depth rather than a
-live hole).
+**Confirmed at runtime**, 2026-08-09, with a squad member holding
+`can_read = TRUE, can_write = FALSE`. The server itself sent
+`sync { canWrite: false }`, correctly ignored a `save` in the same session, and
+then honoured the rename: the title became "PWNED BY A READ-ONLY USER",
+`updated_by` was set to the read-only user, and one `log.rename` row landed in
+`activity_log`.
+
+**This was a live hole, not defence-in-depth.** The earlier note wondered
+whether the client exposes the affordance; that question does not matter, since
+the message is reachable from any WebSocket client. And the activity row is the
+sharper end of it: `logActivity` auto-enrols the actor as a watcher and emails
+every other watcher, so a read-only user could rename a document *and* send
+mail about it to everyone watching.
+
+**Fixed** by adding `canWrite` to the branch condition. Re-verified on the same
+fixtures: title unchanged, `updated_by` still NULL, zero `log.rename` rows. The
+collab suite had no read-only coverage at all, which is why this survived; it
+now has a `readOnlyClient` helper and a test that fails against the unfixed
+service.
 
 ### B7. Squad-invite emails bypass notification preferences
 
@@ -173,6 +263,18 @@ The email is sent anyway, by a direct `sendEmail` call in
 
 **Consequence:** turning off "email me about squad invites" in the preferences
 UI has no effect.
+
+**FIXED 2026-08-09**, minimally: the direct send now calls `getPrefs()` and
+honours `email_squad_invite`. The invitation itself, and the inbox
+notification, are unaffected.
+
+The larger option was to give `squad_invite` a builder in
+`email-templates.js` and let the funnel own the send, which is what the rest
+of the notification types do. It was not taken here: the route deliberately
+sends its own mail and passes `emailData: null` so the funnel does not send a
+second copy, and rerouting it would change the send's timing and content for
+a defect whose whole substance was "the toggle does nothing". Worth revisiting
+if a second such bypass appears.
 
 ### B8. `server.js` hardcoded port 3000 and reported success on a failed bind (FIXED)
 
@@ -347,6 +449,32 @@ Still true and not addressed: a genuinely disallowed cross-origin request
 produces a **500 with an HTML body** rather than a 403, because the rejection
 throws before any router and `app.js` mounts no global error handler.
 
+### B14. Committing a file through the browser falsified every linked doc's merge base (FIXED)
+
+Found by adversarial review on 2026-08-09, not by the original survey.
+
+`PUT /api/github/contents/*` (the CommitPanel path) ends with a
+fire-and-forget `UPDATE github_links` matching on
+`(repo_owner, repo_name, file_path, branch)` alone. It set **both** `file_sha`
+and `base_sha` to the new commit's sha and `sync_status = 'clean'`.
+
+**Consequence:** document 42 is linked to `acme/docs/a.md@main` holding content
+A. Anyone with push rights on that repo commits content B to that path through
+the browser. Document 42, untouched, is now recorded as clean against a remote
+it has never seen, and since `classifySync` derives `remoteChanged` from
+`remoteSha !== baseSha`, it can no longer *ever* report `remote_ahead` for it.
+The owner sees a clean banner and their next push silently overwrites B with A:
+no conflict, no 409, no trace.
+
+**Fixed** by recording only what actually happened: advance `file_sha` (the
+last observed remote blob), leave `base_sha` (the merge base) alone, and set
+`sync_status = 'remote_ahead'`. The row is still updated for *every* linked
+document regardless of who committed, which is correct, since "the remote file
+moved" is true for all of them; it was the false `clean` that caused loss. The
+export flow's own explicit `PUT /api/github/link` still settles that one
+document back to clean, because there the document and the commit really do
+match.
+
 ### B13. Document titles are not reachable by keyboard anywhere
 
 On the browse grid, the archives page and the editor's page tree, a document's
@@ -401,7 +529,7 @@ make it slow.
 
 `github_links.sync_status` is `ENUM('clean','remote_ahead','local_ahead',
 'diverged','conflict')` (`init.sql:294`) but `classifySync`
-(`github.js:1066-1072`) returns only the first four. Conflicts are expressed as
+(`github.js:1085-1091`) returns only the first four. Conflicts are expressed as
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.
 

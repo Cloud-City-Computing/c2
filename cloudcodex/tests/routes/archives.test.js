@@ -26,6 +26,11 @@ describe('Archive Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.archives).toHaveLength(1);
       expect(res.body.archives[0].name).toBe('Archive A');
+      // Hidden `system` archives (the GitHub PR-session ones) must never be
+      // listed. Ordinary users hold real read AND write grants on those, so
+      // without this predicate they appear in everyone's sidebar. Asserting on
+      // the generated SQL because c2_query is mocked and cannot filter.
+      expect(c2_query.mock.calls[0][0]).toMatch(/COALESCE\(p\.`system`, FALSE\)/);
     });
 
     it('requires authentication', async () => {
@@ -565,6 +570,11 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+      // The write-access check must also exclude `system` archives: opening a
+      // GitHub PR session grants write on one, and without this a session
+      // opener could delete that PR's shared document and cascade away every
+      // mirrored review comment on it.
+      expect(c2_query.mock.calls[0][0]).toMatch(/COALESCE\(p\.`system`, FALSE\)/);
     });
 
     it('rejects without write access', async () => {

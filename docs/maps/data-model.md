@@ -1,6 +1,6 @@
 # Data Model Map
 
-25 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
+24 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
 definition; `migrations/` is the incremental path for databases that already
 exist. Both must be kept in sync, and there is a live trap in how `init.sql` is
 re-applied.
@@ -34,7 +34,7 @@ Every nullable parent key is load-bearing:
   an explicit grant, or an admin can reach it. See
   [access-control.md](access-control.md).
 - `archives.squad_id NULL` is also how the GitHub PR-session system archive is
-  built deliberately (`github.js:1619-1625`).
+  built deliberately (`github.js:1648-1656`), one archive per PR.
 - `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:247`), so deleting an
   archive destroys its documents, versions, comments and favourites.
 
@@ -74,10 +74,10 @@ see [open-questions.md](open-questions.md).
 ## 3. `logs`: the document row
 
 ```sql
-html_content     TEXT
+html_content     MEDIUMTEXT
 markdown_content MEDIUMTEXT
 ydoc_state       LONGBLOB
-plain_content    TEXT GENERATED ALWAYS AS
+plain_content    MEDIUMTEXT GENERATED ALWAYS AS
                    (REGEXP_REPLACE(html_content, '<[^>]+>', '')) STORED
 FULLTEXT INDEX ft_logs_search (title, plain_content)
 ```
@@ -92,11 +92,16 @@ Consequences:
   [documents-and-collab.md](documents-and-collab.md).
 - The tag-strip is a regex, not a parser, so entities such as `&amp;` survive
   into the index verbatim.
-- `TEXT` caps `html_content` at 64 KiB. `markdown_content` is `MEDIUMTEXT`
-  (16 MiB) and the app enforces a 2 MiB ceiling in code
-  (`documents.js:22`, `collab.js:44`), so **the real limit on HTML is the
-  column, not the constant**: a document over 64 KiB of HTML will be truncated
-  or rejected by MySQL well before the app's own check fires.
+- **All three content columns are `MEDIUMTEXT` (16 MiB)** since 2026-08-09, so
+  the app's own 2 MiB ceiling (`documents.js:22`, `collab.js:44`) is now the
+  real limit. Until then `html_content` and `plain_content` were `TEXT`
+  (64 KiB) and the column was the true ceiling: measured, a 40 KiB save
+  returned 200 and a 70 KiB save returned an opaque 500 with the edit lost,
+  because the shipped image runs `STRICT_TRANS_TABLES`. `plain_content` had to
+  widen with it (stripping tags from prose barely shrinks it), and so did
+  `versions.html_content`, which publish copies the document into. See B2 in
+  [open-questions.md](open-questions.md) and
+  `migrations/widen_log_content.sql`.
 - `logs.parent_id` self-references with `ON DELETE SET NULL` (`init.sql:248`),
   giving documents a tree shape rendered by `PageTree.jsx`.
 - `logs.version` is an integer counter bumped on publish and restore; the
@@ -158,7 +163,8 @@ saw an onboarding flow at all. `routes/first-run.js` is the only writer.
 carries `role ENUM('member','admin','owner')` plus seven permission booleans.
 Which of those are actually enforced, and where, is tabulated in
 [access-control.md](access-control.md). Short version: `admin` as a role is
-inert, and `squad_permissions` is a settings table nothing enforces.
+inert. (A `squad_permissions` table also existed and was enforced by nothing;
+it was removed on 2026-08-09.)
 
 `squad_invitations` is unique on `(squad_id, invited_user_id, status)`
 (`init.sql:192`). Because `status` is part of the key, a user can hold one
@@ -178,7 +184,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 | `oauth_accounts` | unique `(provider, provider_user_id)` | `routes/oauth.js` | `getGitHubToken` (`github.js:54`), team sync identity match |
 | `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:589` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
-| `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1658` | PR session lookup |
+| `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |
 | `github_embed_refs` | index on `(repo_owner, repo_name, embed_type)` | **nothing** | `/api/logs/by-github-ref` |
 
 `github_links` being unique on `log_id` is the reason a document links to at
@@ -256,7 +262,7 @@ Dev volume is the bind mount `./db-data/`; prod is the named volume `db_data`.
 
 `make reset-db` (`Makefile:21-24`) pipes `init.sql` then `seed.sql` into the
 running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-36`)
-now covers all 25 tables. It used to omit `github_links`, `activity_log`,
+now covers all 24 tables. It used to omit `github_links`, `activity_log`,
 `watches` and `notifications`, whose `CREATE TABLE` statements don't use
 `IF NOT EXISTS`, so `reset-db` failed partway through with a duplicate-table
 error on a database that already had those four. Fixed by adding them to the

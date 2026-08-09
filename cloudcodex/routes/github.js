@@ -17,8 +17,8 @@ import { c2_query } from '../mysql_connect.js';
 // --- Helpers ---
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from './helpers/shared.js';
-import { isValidId } from './helpers/shared.js';
-import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+import { isValidId, checkLogReadAccess, checkLogWriteAccess } from './helpers/shared.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { sanitizeHtml } from './helpers/shared.js';
 import { decryptToken } from './oauth.js';
 import { diff3Merge } from '../src/lib/githubDiff.js';
@@ -351,14 +351,29 @@ router.put('/github/repos/:owner/:repo/contents/{*filePath}', asyncHandler(async
   );
 
   // Keep linked Codex docs in sync: if any github_links row matches this
-  // (owner, repo, path, branch), advance both file_sha and base_sha so the
-  // link record stops drifting after a direct CommitPanel push.
+  // (owner, repo, path, branch), record the new remote sha so the link record
+  // stops drifting after a direct CommitPanel push.
+  //
+  // Advance `file_sha` (the last observed remote blob) but NOT `base_sha` (the
+  // merge base), and say `remote_ahead` rather than `clean`. This commit
+  // changed the file on GitHub; it did not change any linked document. Marking
+  // the row clean and moving the merge base told every linked document that it
+  // matched a remote it had never seen, which made `classifySync` structurally
+  // unable to report `remote_ahead`, so the document's owner got no conflict
+  // and their next push silently overwrote this commit.
+  //
+  // Deliberately still unscoped by document access: recording "the remote file
+  // moved" is true for every document linked to that path no matter who
+  // committed. It is only the false `clean` that was dangerous. The export
+  // flow's own explicit PUT /api/github/link runs after this and settles that
+  // one document back to clean, which is correct, because there the document
+  // and the commit really do match.
   if (branch) {
     c2_query(
       `UPDATE github_links
-         SET file_sha = ?, base_sha = ?, last_pushed_at = NOW(), sync_status = 'clean'
+         SET file_sha = ?, sync_status = 'remote_ahead'
        WHERE repo_owner = ? AND repo_name = ? AND file_path = ? AND branch = ?`,
-      [data.content.sha, data.content.sha, owner, repo, filePath, branch]
+      [data.content.sha, owner, repo, filePath, branch]
     ).catch((err) => {
       console.error(`[${new Date().toISOString()}] github: failed to advance link sha after push (${owner}/${repo}/${filePath}@${branch}):`, err);
     });
@@ -851,6 +866,7 @@ router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
     `SELECT p.id, p.name FROM archives p
      WHERE p.id = ?
        AND ${writeAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      LIMIT 1`,
     [Number(archive_id), ...writeAccessParams(req.user)]
   );
@@ -920,11 +936,18 @@ router.post('/github/import-to-codex', asyncHandler(async (req, res) => {
 /**
  * GET /api/github/link/:logId
  * Get the GitHub link for a Codex document (if any).
+ *
+ * Gated on read access to the document. The binding names a repo, a branch and
+ * a path, which is private-repo metadata for anyone who cannot read the doc.
  */
 router.get('/github/link/:logId', asyncHandler(async (req, res) => {
   const logId = Number(req.params.logId);
   if (!isValidId(logId)) {
     return res.status(400).json({ success: false, message: 'Invalid logId' });
+  }
+
+  if (!await checkLogReadAccess(logId, req.user)) {
+    return res.status(403).json({ success: false, message: 'Log not found or read access denied' });
   }
 
   const [link] = await c2_query(
@@ -943,6 +966,10 @@ router.get('/github/link/:logId', asyncHandler(async (req, res) => {
  * PUT /api/github/link/:logId
  * Create or update the GitHub link for a Codex document.
  * Body: { repo_owner, repo_name, file_path, branch, file_sha }
+ *
+ * Gated on WRITE access, not read: /push reads its target repo, branch and path
+ * straight off this row, so whoever can write the binding chooses where the
+ * document's content gets committed on the owner's next push.
  */
 router.put('/github/link/:logId', asyncHandler(async (req, res) => {
   const logId = Number(req.params.logId);
@@ -953,6 +980,10 @@ router.put('/github/link/:logId', asyncHandler(async (req, res) => {
   const { repo_owner, repo_name, file_path, branch, file_sha } = req.body;
   if (!repo_owner || !repo_name || !file_path || !branch) {
     return res.status(400).json({ success: false, message: 'repo_owner, repo_name, file_path, and branch are required' });
+  }
+
+  if (!await checkLogWriteAccess(logId, req.user)) {
+    return res.status(403).json({ success: false, message: 'Log not found or write access denied' });
   }
 
   await c2_query(
@@ -976,6 +1007,10 @@ router.delete('/github/link/:logId', asyncHandler(async (req, res) => {
   const logId = Number(req.params.logId);
   if (!isValidId(logId)) {
     return res.status(400).json({ success: false, message: 'Invalid logId' });
+  }
+
+  if (!await checkLogWriteAccess(logId, req.user)) {
+    return res.status(403).json({ success: false, message: 'Log not found or write access denied' });
   }
 
   await c2_query('DELETE FROM github_links WHERE log_id = ?', [logId]);
@@ -1601,18 +1636,34 @@ router.post('/github/archives/:archiveId/repos/:repoId/refresh', asyncHandler(bu
 
 // ─── P2: PR-as-document + Doc<->Issue cross-linking ────────────────
 
-const SYSTEM_ARCHIVE_NAME = '__c2_github_pr_sessions__';
+const SYSTEM_ARCHIVE_PREFIX = '__c2_github_pr_sessions__';
+
+/** The hidden archive name for one PR. One archive per PR, not one for all. */
+function prArchiveName(owner, repo, prNumber) {
+  return `${SYSTEM_ARCHIVE_PREFIX}:${owner}/${repo}#${prNumber}`;
+}
 
 /**
- * Find-or-create the global system archive that hosts virtual PR-session
- * logs. The archive carries `system=TRUE` and empty ACLs so it's invisible
- * to standard archive listings; per-user read access is injected on each
- * session open via JSON_ARRAY_APPEND on the log's read_access column.
+ * Find-or-create the hidden archive that hosts one PR's virtual session log.
+ *
+ * The archive carries `system=TRUE`, `squad_id NULL` and empty ACLs, so it is
+ * invisible to normal browsing; access is granted per user by appending their
+ * id to **this archive's** `read_access`/`write_access`, which is clause 2 of
+ * the shared fragment.
+ *
+ * One archive per PR rather than one shared archive is the point: the archive
+ * is the ACL boundary, so a single shared one would make opening any PR
+ * session grant access to every other PR's session too.
  */
-async function ensureSystemArchive() {
+async function ensurePrArchive(owner, repo, prNumber) {
+  const name = prArchiveName(owner, repo, prNumber);
+  // ORDER BY id, not a bare LIMIT 1: `archives.name` is TEXT and carries no
+  // unique key, so two simultaneous first-opens of the same PR can both insert.
+  // Picking the lowest id deterministically makes every later caller converge
+  // on the same archive instead of splitting the grant across duplicates.
   const [existing] = await c2_query(
-    'SELECT id FROM archives WHERE name = ? AND `system` = TRUE AND squad_id IS NULL LIMIT 1',
-    [SYSTEM_ARCHIVE_NAME]
+    'SELECT id FROM archives WHERE name = ? AND `system` = TRUE AND squad_id IS NULL ORDER BY id LIMIT 1',
+    [name]
   );
   if (existing) return existing.id;
   const ins = await c2_query(
@@ -1622,16 +1673,24 @@ async function ensureSystemArchive() {
     'VALUES (NULL, ?, TRUE, NULL, ' +
     'JSON_ARRAY(), JSON_ARRAY(), JSON_ARRAY(), JSON_ARRAY(), ' +
     'FALSE, FALSE)',
-    [SYSTEM_ARCHIVE_NAME]
+    [name]
   );
   return ins.insertId;
 }
 
 /**
  * Idempotently obtain the virtual log id for a PR session, creating the
- * archive + log + session row if needed. Always grants the calling user
- * read AND write access on the underlying log so the existing comment
- * routes and collab WS auth pass through unchanged.
+ * archive + log + session row if needed, and grant the calling user read and
+ * write access so the existing comment routes and collab WS auth pass through
+ * unchanged.
+ *
+ * The grant lands on the **archive**, not the log. `logs.read_access` /
+ * `logs.write_access` are read by nothing (A1 in open-questions.md), which is
+ * why this whole feature was admin-only until 2026-08-09: the grant was
+ * written, and every non-admin still got a 403.
+ *
+ * Callers must have verified with GitHub that this user can see this PR
+ * before calling. Nothing below re-checks it.
  */
 async function getOrCreatePrSession(user, owner, repo, prNumber) {
   const [existing] = await c2_query(
@@ -1641,33 +1700,60 @@ async function getOrCreatePrSession(user, owner, repo, prNumber) {
     [owner, repo, prNumber]
   );
 
+  const archiveId = await ensurePrArchive(owner, repo, prNumber);
   let logId;
   let sessionId;
 
   if (existing) {
     sessionId = existing.id;
     logId = existing.log_id;
+    // Sessions opened before per-PR archives existed sit in the one shared
+    // archive. Move them, or the grant below would reach every other PR.
+    await c2_query(
+      `UPDATE logs SET archive_id = ? WHERE id = ? AND archive_id <> ?`,
+      [archiveId, logId, archiveId]
+    );
   } else {
-    const archiveId = await ensureSystemArchive();
     const logIns = await c2_query(
       `INSERT INTO logs (archive_id, title, html_content, created_by, updated_by, read_access, write_access)
        VALUES (?, ?, '', ?, ?, JSON_ARRAY(), JSON_ARRAY())`,
       [archiveId, `${owner}/${repo}#${prNumber}`, user.id, user.id]
     );
     logId = logIns.insertId;
-    const sessIns = await c2_query(
-      `INSERT INTO github_pr_sessions (log_id, repo_owner, repo_name, pr_number, opened_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [logId, owner, repo, prNumber, user.id]
-    );
-    sessionId = sessIns.insertId;
+    try {
+      const sessIns = await c2_query(
+        `INSERT INTO github_pr_sessions (log_id, repo_owner, repo_name, pr_number, opened_by)
+         VALUES (?, ?, ?, ?, ?)`,
+        [logId, owner, repo, prNumber, user.id]
+      );
+      sessionId = sessIns.insertId;
+    } catch (err) {
+      // uq_pr_session lost a race with a concurrent first open. The other
+      // request's session is the real one; drop the log this request just
+      // created rather than leaving an orphan behind, and adopt theirs.
+      if (err?.code !== 'ER_DUP_ENTRY') throw err;
+      await c2_query('DELETE FROM logs WHERE id = ?', [logId]);
+      const [winner] = await c2_query(
+        `SELECT id, log_id FROM github_pr_sessions
+         WHERE repo_owner = ? AND repo_name = ? AND pr_number = ?
+         LIMIT 1`,
+        [owner, repo, prNumber]
+      );
+      if (!winner) throw err;
+      sessionId = winner.id;
+      logId = winner.log_id;
+      await c2_query(
+        `UPDATE logs SET archive_id = ? WHERE id = ? AND archive_id <> ?`,
+        [archiveId, logId, archiveId]
+      );
+    }
   }
 
-  // Append user.id to read_access AND write_access if not already present.
-  // Comments routes gate on the standard ACL, so this is what makes the
-  // session viewable + commentable for the user.
+  // Append user.id to the archive's read_access and write_access if absent.
+  // CAST(? AS JSON) of a numeric string yields a JSON number, which is what
+  // readAccessParams' JSON.stringify(user.id) compares against in clause 2.
   await c2_query(
-    `UPDATE logs
+    `UPDATE archives
        SET read_access = IF(JSON_CONTAINS(IFNULL(read_access, JSON_ARRAY()), CAST(? AS JSON)),
                             read_access,
                             JSON_ARRAY_APPEND(IFNULL(read_access, JSON_ARRAY()), '$', CAST(? AS JSON))),
@@ -1675,7 +1761,7 @@ async function getOrCreatePrSession(user, owner, repo, prNumber) {
                              write_access,
                              JSON_ARRAY_APPEND(IFNULL(write_access, JSON_ARRAY()), '$', CAST(? AS JSON)))
      WHERE id = ?`,
-    [String(user.id), String(user.id), String(user.id), String(user.id), logId]
+    [String(user.id), String(user.id), String(user.id), String(user.id), archiveId]
   );
 
   return { sessionId, logId };
@@ -1693,6 +1779,17 @@ router.get('/github/repos/:owner/:repo/pulls/:number/session', asyncHandler(asyn
   if (!isValidId(prNumber)) {
     return res.status(400).json({ success: false, message: 'Invalid PR number' });
   }
+
+  // GitHub is the authority on who may see this PR, and this is the only
+  // place that asks. Opening a session grants read+write on the session
+  // document, so without this an authenticated user could name any
+  // owner/repo/number and read the Codex-side discussion of a private PR.
+  // A user who cannot see the PR gets GitHub's own 404 forwarded by this
+  // router's error handler.
+  await req.gh(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${prNumber}`
+  );
+
   const session = await getOrCreatePrSession(req.user, owner, repo, prNumber);
   res.json({ success: true, log_id: session.logId, session_id: session.sessionId });
 }));
@@ -2077,6 +2174,33 @@ async function userCanManageSquad(user, squadId) {
   return Boolean(row);
 }
 
+// GitHub caps `per_page` at 100. Stop after this many pages rather than loop
+// forever on a pathological response; 20 pages is 2,000 members.
+const TEAM_MEMBER_MAX_PAGES = 20;
+
+/**
+ * Fetch every login on a GitHub team, following pagination.
+ *
+ * Returns `{ logins, complete }`. `complete` is false only when the page cap
+ * was hit, and callers must **not** run a removal pass on an incomplete set:
+ * a member missing from a truncated list is indistinguishable from one who
+ * genuinely left the team, and removing them is destructive.
+ */
+async function fetchTeamMemberLogins(req, org, slug) {
+  const logins = new Set();
+  for (let page = 1; page <= TEAM_MEMBER_MAX_PAGES; page++) {
+    const batch = await req.gh(
+      `/orgs/${encodeURIComponent(org)}/teams/${encodeURIComponent(slug)}/members?per_page=100&page=${page}`
+    );
+    for (const m of batch || []) {
+      if (m?.login) logins.add(m.login.toLowerCase());
+    }
+    // A short page is the last page.
+    if (!batch || batch.length < 100) return { logins, complete: true };
+  }
+  return { logins, complete: false };
+}
+
 /**
  * GET /api/squads/:squadId/github-team/preview
  * Compares the bound GitHub Team's members against current squad members.
@@ -2099,10 +2223,9 @@ router.get('/squads/:squadId/github-team/preview', requireAuth, asyncHandler(req
     return res.status(400).json({ success: false, message: 'Squad is not bound to a GitHub team' });
   }
 
-  const ghMembers = await req.gh(
-    `/orgs/${encodeURIComponent(squad.github_org)}/teams/${encodeURIComponent(squad.github_team_slug)}/members?per_page=100`
+  const { logins: ghLogins, complete } = await fetchTeamMemberLogins(
+    req, squad.github_org, squad.github_team_slug
   );
-  const ghLogins = new Set((ghMembers || []).map((m) => m.login.toLowerCase()));
 
   // Current squad members joined with GitHub identity (provider_username)
   const currentMembers = await c2_query(
@@ -2120,7 +2243,9 @@ router.get('/squads/:squadId/github-team/preview', requireAuth, asyncHandler(req
   for (const m of currentMembers) {
     if (m.gh_login) {
       currentLogins.add(m.gh_login.toLowerCase());
-      if (!ghLogins.has(m.gh_login.toLowerCase())) {
+      // On a truncated member list, "not on the team" cannot be distinguished
+      // from "on a page we never fetched", so propose no removals at all.
+      if (complete && !ghLogins.has(m.gh_login.toLowerCase())) {
         toRemove.push({ user_id: m.user_id, gh_login: m.gh_login, email: m.email, name: m.user_name });
       }
     }
@@ -2151,6 +2276,7 @@ router.get('/squads/:squadId/github-team/preview', requireAuth, asyncHandler(req
     team_slug: squad.github_team_slug,
     to_add: toAdd,
     to_remove: toRemove,
+    members_complete: complete,
   });
 }));
 
@@ -2177,10 +2303,9 @@ router.post('/squads/:squadId/github-team/sync', requireAuth, asyncHandler(requi
     return res.status(400).json({ success: false, message: 'Squad is not bound to a GitHub team' });
   }
 
-  const ghMembers = await req.gh(
-    `/orgs/${encodeURIComponent(squad.github_org)}/teams/${encodeURIComponent(squad.github_team_slug)}/members?per_page=100`
+  const { logins: ghLogins, complete } = await fetchTeamMemberLogins(
+    req, squad.github_org, squad.github_team_slug
   );
-  const ghLogins = new Set((ghMembers || []).map((m) => m.login.toLowerCase()));
 
   const currentMembers = await c2_query(
     `SELECT sm.user_id, oa.provider_username AS gh_login
@@ -2226,8 +2351,10 @@ router.post('/squads/:squadId/github-team/sync', requireAuth, asyncHandler(requi
     }
   }
 
-  // Remove members no longer on the team
-  for (const [ghLogin, userId] of currentByLogin.entries()) {
+  // Remove members no longer on the team. Skipped entirely when the team
+  // listing was truncated: every login on an unfetched page looks exactly like
+  // someone who left, and this pass deletes them.
+  for (const [ghLogin, userId] of complete ? currentByLogin.entries() : []) {
     if (!ghLogins.has(ghLogin)) {
       // Don't remove squad owners — they might be the bootstrapping admin.
       const [row] = await c2_query(
@@ -2248,7 +2375,7 @@ router.post('/squads/:squadId/github-team/sync', requireAuth, asyncHandler(requi
     [squadId]
   );
 
-  res.json({ success: true, added, removed, unmatched });
+  res.json({ success: true, added, removed, unmatched, members_complete: complete });
 }));
 
 router.use((err, req, res, _next) => {

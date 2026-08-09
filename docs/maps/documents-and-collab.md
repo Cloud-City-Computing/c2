@@ -13,8 +13,8 @@ generated column:
 
 | Column | Type | Written by | Read by |
 |---|---|---|---|
-| `html_content` | `TEXT` | REST save, publish, restore, explicit WS save, GitHub pull | everything: rendering, export, search (via generated column), GitHub push |
-| `markdown_content` | `MEDIUMTEXT` | REST save when the client sends it, WS save, GitHub pull/resolve/import | GitHub push (`github.js:1016-1024`), markdown-mode editing |
+| `html_content` | `MEDIUMTEXT` | REST save, publish, restore, explicit WS save, GitHub pull | everything: rendering, export, search (via generated column), GitHub push |
+| `markdown_content` | `MEDIUMTEXT` | REST save when the client sends it, WS save, GitHub pull/resolve/import | GitHub push (`github.js:1035-1043`), markdown-mode editing |
 | `ydoc_state` | `LONGBLOB` | collab autosave and explicit save (`collab.js:114-118`) | collab session restore only (`collab.js:69-76`) |
 | `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:237`) | the FULLTEXT index |
 
@@ -41,7 +41,7 @@ GitHub push, and the version snapshot taken by REST publish
 explicit `null` clears it, a string replaces it (`documents.js:113-124`,
 `collab.js:453`). Rich-text-mode saves send `null` to signal "HTML is now the
 canonical source"; markdown-mode saves send the raw markdown. `localMarkdown()`
-in the GitHub path (`github.js:1016-1024`) prefers `markdown_content` when
+in the GitHub path (`github.js:1035-1043`) prefers `markdown_content` when
 non-empty and otherwise round-trips the HTML through turndown, so a stale
 `markdown_content` silently wins over fresher HTML on push.
 
@@ -53,11 +53,11 @@ non-empty and otherwise round-trips the HTML through turndown, so a stale
 | `POST /api/document/:logId/publish` (`documents.js:155`) | `version`, `versions` row from existing `html_content` | no |
 | `POST .../versions/:versionId/restore` (`documents.js:404`) | `html_content`, `version`, new `versions` row | **yes**, `NULL` (`documents.js:437`) |
 | WS `{type:'save'}` (`collab.js:437-501`) | `html_content` if changed, `markdown_content`, `ydoc_state` | no |
-| WS `{type:'publish'}` (`collab.js:528-601`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
-| WS `{type:'title'}` (`collab.js:503-526`) | `title` only | no |
+| WS `{type:'publish'}` (`collab.js:531-604`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
+| WS `{type:'title'}` (`collab.js:506-529`) | `title` only | no |
 | collab autosave (`collab.js:110-123`) | `ydoc_state` only | no |
-| GitHub pull / resolve / overwrite (`github.js:1164-1173`, `1206-1215`, `1388-1397`) | `html_content`, `markdown_content` | **yes**, `NULL` |
-| GitHub bulk import (`github.js:1578-1587`) | new `logs` row | n/a |
+| GitHub pull / resolve / overwrite (`github.js:1183-1192`, `1225-1234`, `1407-1416`) | `html_content`, `markdown_content` | **yes**, `NULL` |
+| GitHub bulk import (`github.js:1597-1606`) | new `logs` row | n/a |
 | First-boot seed (`bootstrapInstance`, `routes/admin.js`) | new `logs` row, the welcome document | n/a |
 
 Clearing `ydoc_state` to `NULL` is the deliberate mechanism for "the HTML just
@@ -119,12 +119,14 @@ allow-listed to exactly five values (`collab.js:408-410`):
 | `cursor` | `canWrite` | position is validated and coerced to safe integers (`collab.js:414-425`), then broadcast to others |
 | `save` | `canWrite` | immediate save, see below |
 | `publish` | `canWrite` | permission-checked snapshot, see below |
-| `comment` | `canWrite` | relays only ids, never content (`collab.js:606-620`); the actual CRUD is REST |
-| `title` | **none** | updates `logs.title` and broadcasts |
+| `comment` | `canWrite` | relays only ids, never content (`collab.js:609-623`); the actual CRUD is REST |
+| `title` | `canWrite` | updates `logs.title`, broadcasts, and logs `log.rename` |
 
-Two things stand out. First, `title` is the only message type not gated on
-`canWrite` (`collab.js:503`), so a read-only participant can rename the
-document. Second, `comment` broadcasts are id-only by design: the receiving
+All five are gated the same way. `title` was the exception until 2026-08-09
+(B6 in `open-questions.md`): a read-only participant could rename the document,
+and the `log.rename` activity that followed also mailed every watcher.
+
+`comment` broadcasts are id-only by design: the receiving
 client refetches over REST, which keeps the WS from becoming a second
 authorisation surface for comment content.
 
@@ -142,18 +144,18 @@ Cancels the debounce, encodes the CRDT state, sanitises the client HTML through
 runs `processMentionsOnSave` and `logActivity('log.update')`
 (`collab.js:478-496`).
 
-### Publish (`collab.js:528-601`)
+### Publish (`collab.js:531-604`)
 
 Loads the log's squad context, calls the shared `canPublish`
-(`collab.js:544`), bumps `logs.version`, writes HTML plus blob plus version,
+(`collab.js:547`), bumps `logs.version`, writes HTML plus blob plus version,
 inserts the `versions` row, fires mentions and `log.publish` activity, then
 broadcasts `{type:'published', version, title}` to **all** connections including
 the publisher. Title is capped at 255 chars, notes at 5000
-(`collab.js:530-531`).
+(`collab.js:533-534`).
 
 ### Lifecycle and teardown
 
-On close (`collab.js:623-638`): drop the connection, decrement the per-user
+On close (`collab.js:626-641`): drop the connection, decrement the per-user
 count, rebroadcast awareness, and if this was the last connection schedule both
 a final save and cleanup. Cleanup after 30s destroys the `Y.Doc` and removes the
 map entry, but only if no one reconnected (`collab.js:128-137`).
@@ -166,15 +168,15 @@ for the same log.
 
 ### The REST side-channel
 
-`broadcastToDoc(logId, message)` (`collab.js:657-665`) lets REST handlers push
+`broadcastToDoc(logId, message)` (`collab.js:660-668`) lets REST handlers push
 arbitrary JSON to live editors without going through Yjs. Its only current
 callers are the GitHub pull and resolve routes, which emit
-`{type:'github-pulled', ...}` (`github.js:1174`, `1216`, `1398`). It returns
+`{type:'github-pulled', ...}` (`github.js:1193`, `1235`, `1417`). It returns
 `false` when no one has the doc open.
 
 Three read-only accessors feed the admin and presence surfaces:
-`getActiveDocCount` (`collab.js:670`), `getActiveUsers(logId)`
-(`collab.js:677`), `getAllPresence()` (`collab.js:690`).
+`getActiveDocCount` (`collab.js:673`), `getActiveUsers(logId)`
+(`collab.js:680`), `getAllPresence()` (`collab.js:693`).
 
 ## 3. Versions
 
@@ -182,7 +184,7 @@ Three read-only accessors feed the admin and presence surfaces:
 release notes (`init.sql:304-319`). Four operations:
 
 - **Publish** bumps `logs.version` and inserts a row. Two entry points, REST
-  (`documents.js:155`) and WS (`collab.js:528`), sharing `canPublish`.
+  (`documents.js:155`) and WS (`collab.js:531`), sharing `canPublish`.
 - **List / fetch** (`documents.js:328`, `documents.js:364`) behind read access.
 - **Restore** (`documents.js:404`) writes the old HTML back as a *new* version,
   so history is append-only and nothing is lost. It nulls `ydoc_state`.

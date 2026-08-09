@@ -38,15 +38,52 @@ short of changing `created_by`.
 **Clause 1 is an unconditional admin bypass.** Any query that interpolates
 `readAccessWhere`/`writeAccessWhere` without narrowing the `WHERE` further
 matches *every* archive platform-wide for an admin, including ones an admin
-should not casually stumble into, such as the hidden `system` GitHub
-PR-session archive (see [data-model.md](data-model.md) and
-[github-integration.md](github-integration.md)). The fragment alone is not
-enough scoping for a query meant to return "one relevant archive" rather than
-"every archive this admin can technically reach". `routes/first-run.js` is
-the worked example of scoping it correctly: it adds
-`AND p.\`system\` = FALSE` to its archive lookup precisely so the admin
-bypass in clause 1 cannot surface that hidden archive as a "Getting Started"
-target.
+should not casually stumble into.
+
+### `system` archives, and the `excludeSystemArchives()` rule
+
+A `system` archive is one the app creates for its own bookkeeping: today, the
+hidden per-PR archives hosting GitHub PR-session documents. Since 2026-08-09
+**ordinary users hold real grants on these**, because that is how PR-as-document
+works at all (B1 in [open-questions.md](open-questions.md)). That makes the
+distinction load-bearing rather than an admin-only curiosity:
+
+> **Archive-as-a-place versus archive-as-an-ACL.** Any query that treats an
+> archive as *somewhere a user browses, lists, manages or deletes within* must
+> add `AND ${excludeSystemArchives('p')}` alongside the fragment. Any query
+> resolving *whether this user may touch this document* must not.
+
+`excludeSystemArchives(alias)` in `ownership.js` is that predicate. It takes no
+parameter, so it does not disturb the seven-param contract below, and it spells
+the test `NOT COALESCE(alias.\`system\`, FALSE)` because the column is
+nullable and `NULL = FALSE` is NULL, which would hide the row from everyone.
+
+Applied in:
+
+| File | Surfaces |
+|---|---|
+| `routes/archives.js` | listing, log listing, rename, ACL read and write, log create/update/delete, repos |
+| `routes/search.js` | search, browse, filters |
+| `routes/upload.js` | `POST /archives/:archiveId/logs/upload` |
+| `routes/github.js` | `POST /github/import-to-codex` |
+
+**Those last two are the trap.** There are three ways to create a log inside an
+archive, and they live in three different routers; excluding only the obvious
+one in `archives.js` left the other two writing into a hidden archive that
+nothing could then list or clean up. Any new archive-scoped route belongs in
+this table.
+
+Deliberately **not** applied in `checkLogReadAccess`/`checkLogWriteAccess`,
+`/api/presence`, `/api/document`, `routes/favorites.js` or `routes/activity.js`:
+those are document-level or per-user opt-in, and are exactly what the PR
+feature rides on.
+
+Getting this wrong is not cosmetic. Reviewed on 2026-08-09: because the grant
+carries write, an unscoped `DELETE /api/archives/:id/logs/:logId` let anyone who
+had opened a PR session delete that PR's shared document and, by cascade, every
+mirrored review comment on it. `GET /api/archives/:id/access` likewise let them
+enumerate the name and email of everyone else who had opened it.
+`routes/first-run.js` had the rule right before there was a rule.
 
 ### The param contract
 
@@ -68,9 +105,9 @@ Two details of the params worth internalising:
 - **Param 2 is `JSON.stringify(user.id)`**, i.e. the string `"7"` for user 7,
   because `JSON_CONTAINS` needs a JSON document, not an integer. Elsewhere in
   the codebase the same arrays get appended as `CAST(? AS JSON)` with a
-  `String(user.id)` argument (`routes/github.js:1671-1678`). Both produce the
-  JSON number `7`, so they interoperate, but the two spellings are easy to
-  confuse.
+  `String(user.id)` argument (`routes/github.js:1715-1726`, the PR-session
+  grant). Both produce the JSON number `7`, so they interoperate, but the two
+  spellings are easy to confuse.
 - **Every param is now the user's id** except param 2's JSON spelling. Param 4
   used to be `user.email`, because `workspaces.owner` was a `TEXT` column
   holding an email address rather than a foreign key, so changing a user's
@@ -93,7 +130,7 @@ Never write permission SQL by hand. The wrappers already exist in
 
 Routes that need the fragment inline (search, browse, export, GitHub link
 loading) interpolate it directly; see `routes/documents.js:553`,
-`routes/search.js`, `routes/github.js:1004`.
+`routes/search.js`, `routes/github.js:1023`.
 
 ## 2. The critical subtlety: everything resolves against the ARCHIVE
 
@@ -103,13 +140,16 @@ columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
 (`init.sql:244-245`). Grepping the whole backend for reads of them turns up
-nothing: they are written in exactly one place, `routes/github.js:1653` and
-`routes/github.js:1669-1679`, and read by no query anywhere.
+nothing. Since 2026-08-09 the only thing that writes them is the PR-session
+log insert (`routes/github.js:1698`), which sets both to an empty
+`JSON_ARRAY()`.
 
-**They are write-only columns.** Any future feature that "grants access on a
-document" by writing `logs.read_access` will appear to work, persist correctly,
-and grant nothing. The PR-session feature that writes them is documented in
-[github-integration.md](github-integration.md) and flagged in
+**They are write-only columns**, and the decision on 2026-08-09 was to keep
+them that way. Any future feature that "grants access on a document" by writing
+`logs.read_access` will appear to work, persist correctly, and grant nothing.
+The PR-session feature used to do exactly that and was admin-only for it; it
+now grants on a per-PR archive instead. See
+[github-integration.md](github-integration.md) and B1 in
 [open-questions.md](open-questions.md).
 
 The practical rule: **the archive is the ACL boundary.** Per-document
@@ -157,7 +197,7 @@ allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
 Called from the REST publish route and from the collab WebSocket publish message
-(`services/collab.js:544`), so both paths share one policy.
+(`services/collab.js:547`), so both paths share one policy.
 
 ### 3c. Archive ownership: `isArchiveOwner`
 
@@ -175,7 +215,7 @@ Callers: delete archive (`archives.js:195`), manage access
 
 `routes/squads.js:283-299`. Workspace owner, squad creator, or member with
 `can_manage_members`. Also used by the GitHub team-sync routes
-(`github.js:2090`, `github.js:2168`).
+(`github.js:2173`, `github.js:2253`).
 
 ## 4. How membership itself is granted
 
@@ -224,13 +264,13 @@ in the SQL fragments (`ownership.js:31`, `ownership.js:57`). `admin` is treated
 as an ordinary member by every access check; it only affects UI and the squad
 management helper's `can_manage_members` grant path.
 
-**`squad_permissions` is a settings table with no enforcement path.** It is
-read and written by `GET`/`PUT /api/squads/:id/permissions`
-(`squads.js:218`, `squads.js:255-271`) and by nothing else.
-`requirePermission` consults the global `permissions` table and the
-`squad_members` columns, never `squad_permissions`. Toggling it through the API
-persists a value that changes no behaviour. See
-[open-questions.md](open-questions.md).
+**`squad_permissions` no longer exists.** It was a settings table with no
+enforcement path: read and written by `GET`/`PUT /api/squads/:id/permissions`
+and by nothing else, while `requirePermission` consulted the global
+`permissions` table and the `squad_members` columns. Toggling it persisted a
+value that changed no behaviour. Removed 2026-08-09 along with both routes,
+since `squad_members.can_create_*` already answers the same question and is
+enforced. See [open-questions.md](open-questions.md) A3.
 
 ## 6. Admin
 

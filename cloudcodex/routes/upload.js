@@ -19,7 +19,7 @@ const { PDFParse } = require('pdf-parse');
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
-import { writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+import { writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, errorHandler } from './helpers/shared.js';
 import { extractImagesFromHtml } from './helpers/images.js';
 
@@ -109,6 +109,7 @@ router.post(
       `SELECT p.id FROM archives p
        WHERE p.id = ?
          AND ${writeAccessWhere('p')}
+         AND ${excludeSystemArchives('p')}
        LIMIT 1`,
       [Number(archiveId), ...writeAccessParams(req.user)]
     );

@@ -8,7 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { readAccessWhere, readAccessParams } from './helpers/ownership.js';
+import { readAccessWhere, readAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { asyncHandler, errorHandler } from './helpers/shared.js';
 import { getAllPresence } from '../services/collab.js';
 
@@ -116,7 +116,7 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
   const page = Math.max(parseInt(rawPage) || 1, 1);
   const offset = (page - 1) * limit;
 
-  const accessWhere = readAccessWhere('pr');
+  const accessWhere = `${readAccessWhere('pr')} AND ${excludeSystemArchives('pr')}`;
   const accessParams = readAccessParams(req.user);
 
   const { filterJoins, filterWhere, joinParams, whereParams } = buildFilters(req.query, req.user);
@@ -229,7 +229,7 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
   };
   const orderBy = allowedSorts[sort] || allowedSorts.newest;
 
-  const accessWhere = readAccessWhere('pr');
+  const accessWhere = `${readAccessWhere('pr')} AND ${excludeSystemArchives('pr')}`;
   const accessParams = readAccessParams(req.user);
 
   const { filterJoins, filterWhere, joinParams, whereParams } = buildFilters(req.query, req.user);
@@ -280,7 +280,7 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
  * workspaces, squads (grouped by workspace), and archives (grouped by squad).
  */
 router.get('/search/filters', requireAuth, asyncHandler(async (req, res) => {
-  const accessWhere = readAccessWhere('pr');
+  const accessWhere = `${readAccessWhere('pr')} AND ${excludeSystemArchives('pr')}`;
   const accessParams = readAccessParams(req.user);
 
   // Get all accessible archives with their squad/workspace context

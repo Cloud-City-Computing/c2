@@ -192,9 +192,11 @@ known keys and coerces to boolean, so a client cannot inject arbitrary JSON.
 `comment_on_my_doc`, `watched_log_update`, `watched_publish`,
 `watched_comment`. `buildNotificationEmail` returns `null` for anything else
 and `deliverEmail` bails (`services/notifications.js:170`). Squad invites do still send
-email, but through a direct `sendEmail` call in `routes/squads.js:399`, which
-does **not** consult the user's notification preferences. Recorded in
-[open-questions.md](open-questions.md).
+email, but through a direct `sendEmail` call in `routes/squads.js`, outside the
+funnel. That send now calls `getPrefs()` and honours `email_squad_invite`
+itself; until 2026-08-09 it consulted nothing, so the preference toggle had no
+effect (B7 in [open-questions.md](open-questions.md)). **Any future send that
+bypasses the funnel inherits the same obligation.**
 
 ### Reads
 
@@ -226,7 +228,7 @@ plain-text context around the mention for the inbox preview and email body.
 
 Called from four places: REST save (`documents.js:129`), version restore
 (`documents.js:449`), WS save (`collab.js:481`), WS publish
-(`collab.js:577`). The comment path does its own extraction inline rather than
+(`collab.js:580`). The comment path does its own extraction inline rather than
 reusing `processMentionsOnSave`, because comment content is plain text with a
 different link target (`comments.js:186-209`).
 

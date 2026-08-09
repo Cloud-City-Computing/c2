@@ -717,15 +717,25 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
 
       const commitRes = await apiFetch('PUT', `/api/github/repos/${owner}/${repo}/contents/${trimmed}`, payload);
 
-      // Save/update the github link for this document
+      // Save/update the github link for this document. Deliberately not
+      // fire-and-forget: this flow only needs read access on the document, but
+      // PUT /api/github/link requires write, so a read-only user's link call
+      // 403s. Swallowing that reported a clean success for a file that landed
+      // on GitHub with no link row, and therefore no sync status and no push
+      // path, with nothing said about why.
+      let linkWarning = '';
       if (exportLogId) {
-        apiFetch('PUT', `/api/github/link/${exportLogId}`, {
-          repo_owner: owner,
-          repo_name: repo,
-          file_path: trimmed,
-          branch: commitBranch,
-          file_sha: commitRes.content.sha,
-        }).catch(() => {}); // fire-and-forget
+        try {
+          await apiFetch('PUT', `/api/github/link/${exportLogId}`, {
+            repo_owner: owner,
+            repo_name: repo,
+            file_path: trimmed,
+            branch: commitBranch,
+            file_sha: commitRes.content.sha,
+          });
+        } catch (e) {
+          linkWarning = `, but linking it to this document failed: ${e.body?.message || e.message}`;
+        }
       }
 
       // Optionally create PR when using a new branch
@@ -740,19 +750,30 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
           });
           setResult({
             type: 'pr',
-            message: `File ${isUpdate ? 'updated' : 'created'} & PR #${prRes.pull.number} opened`,
+            message: `File ${isUpdate ? 'updated' : 'created'} & PR #${prRes.pull.number} opened${linkWarning}`,
             url: prRes.pull.html_url,
             commitUrl: commitRes.commit.html_url,
           });
         } catch (e) {
           setResult({
             type: 'commit',
-            message: `${isUpdate ? 'Updated' : 'Created'} on ${commitBranch} (PR failed: ${e.body?.message || e.message})`,
+            message: `${isUpdate ? 'Updated' : 'Created'} on ${commitBranch} (PR failed: ${e.body?.message || e.message})${linkWarning}`,
             url: commitRes.commit.html_url,
           });
         }
         setCreating(false);
         return; // Keep modal open to show result
+      }
+
+      if (linkWarning) {
+        // Keep the modal open rather than closing on a silent partial success.
+        setResult({
+          type: 'commit',
+          message: `${isUpdate ? 'Updated' : 'Created'} ${trimmed} on ${commitBranch}${linkWarning}`,
+          url: commitRes.commit.html_url,
+        });
+        setCreating(false);
+        return;
       }
 
       onCreated(trimmed, commitBranch);

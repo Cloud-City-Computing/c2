@@ -173,15 +173,6 @@ CREATE TABLE permissions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE squad_permissions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  squad_id INT NOT NULL,
-  create_archive BOOLEAN DEFAULT FALSE,
-  create_log BOOLEAN DEFAULT TRUE,
-  FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE CASCADE,
-  UNIQUE KEY (squad_id)
-) ENGINE=InnoDB;
-
 CREATE TABLE squad_members (
   id INT AUTO_INCREMENT PRIMARY KEY,
   squad_id INT NOT NULL,
@@ -261,10 +252,10 @@ CREATE TABLE logs (
   id INT AUTO_INCREMENT PRIMARY KEY,
   archive_id INT,
   title TEXT NOT NULL,
-  html_content TEXT,
+  html_content MEDIUMTEXT,
   markdown_content MEDIUMTEXT DEFAULT NULL,
   ydoc_state LONGBLOB DEFAULT NULL,
-  plain_content TEXT GENERATED ALWAYS AS (REGEXP_REPLACE(html_content, '<[^>]+>', '')) STORED,
+  plain_content MEDIUMTEXT GENERATED ALWAYS AS (REGEXP_REPLACE(html_content, '<[^>]+>', '')) STORED,
   parent_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_by INT,
@@ -337,7 +328,7 @@ CREATE TABLE versions (
   version INT NOT NULL,
   title VARCHAR(255) DEFAULT NULL,
   notes TEXT DEFAULT NULL,
-  html_content TEXT,
+  html_content MEDIUMTEXT,
   github_release_id BIGINT DEFAULT NULL,
   github_tag_name VARCHAR(255) DEFAULT NULL,
   github_target_repo VARCHAR(500) DEFAULT NULL,
