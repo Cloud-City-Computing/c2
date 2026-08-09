@@ -266,12 +266,18 @@ publish job goes green and an anonymous `docker pull` still answers
 `unauthorized`, which is the worst possible failure here because the whole point
 of the image is that a stranger can run it. Confirmed after the 0.9.0 publish.
 
-Fix it once, in the web UI: **Organisation → Packages → cloud-codex → Package
-settings → Danger Zone → Change visibility → Public**. While you are there,
-"Manage Actions access" → add the `c2` repository with Write, so future
-publishes keep working if the default token scope tightens. There is no REST
-endpoint for the visibility flip, and `gh api` needs `read:packages` even to
-report the current setting.
+Fix it once, in the web UI. Straight to the page:
+
+https://github.com/orgs/Cloud-City-Computing/packages/container/cloud-codex/settings
+
+**Danger Zone → Change visibility → Public.** While you are there, "Manage
+Actions access" → add the `c2` repository with Write, so future publishes keep
+working if the default token scope tightens.
+
+**This cannot be scripted.** There is no REST endpoint: `GET` on the package
+answers 403 asking for `read:packages`, while `PATCH .../packages/container/
+cloud-codex -f visibility=public` answers **404**, because the route does not
+exist. No token scope changes that. It is a click, once per package, forever.
 
 Verify from a logged-out client rather than trusting the workflow:
 
