@@ -314,10 +314,10 @@ An individual document (referred to as a "log" in the data model). This is the c
 | `id`                | INT AUTO_INCREMENT PK |                                                                     |
 | `archive_id`        | INT FK → archives   | ON DELETE CASCADE                                                     |
 | `title`             | TEXT NOT NULL       |                                                                       |
-| `html_content`      | TEXT                | Rendered HTML from the editor; sanitized before storage               |
+| `html_content`      | MEDIUMTEXT          | Rendered HTML from the editor; sanitized before storage               |
 | `markdown_content`  | MEDIUMTEXT          | Optional markdown source; NULL when rich text is the canonical format |
 | `ydoc_state`        | LONGBLOB            | Binary Yjs CRDT state for real-time collaboration                     |
-| `plain_content`     | TEXT (GENERATED)    | Strips HTML tags from `html_content`; stored for full-text search     |
+| `plain_content`     | MEDIUMTEXT (GENERATED) | Strips HTML tags from `html_content`; stored for full-text search  |
 | `parent_id`         | INT FK → logs       | ON DELETE SET NULL; used to nest logs into a tree                     |
 | `created_at`        | TIMESTAMP           |                                                                       |
 | `created_by`        | INT FK → users      | ON DELETE SET NULL                                                    |
@@ -363,7 +363,7 @@ Published version snapshots of a document's HTML content.
 | `version`      | INT NOT NULL       | Monotonically increasing version number         |
 | `title`        | VARCHAR(255)       | Optional human-readable version label           |
 | `notes`        | TEXT               | Optional release notes (up to 5000 chars)       |
-| `html_content` | TEXT               | Snapshot of document HTML at publish time       |
+| `html_content` | MEDIUMTEXT         | Snapshot of document HTML at publish time       |
 | `created_at`   | TIMESTAMP          |                                                 |
 | `created_by`   | INT FK → users     | ON DELETE SET NULL                              |
 | `read_access`  | JSON ARRAY         | Future use; currently mirrors the parent log    |

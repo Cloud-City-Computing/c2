@@ -74,10 +74,10 @@ see [open-questions.md](open-questions.md).
 ## 3. `logs`: the document row
 
 ```sql
-html_content     TEXT
+html_content     MEDIUMTEXT
 markdown_content MEDIUMTEXT
 ydoc_state       LONGBLOB
-plain_content    TEXT GENERATED ALWAYS AS
+plain_content    MEDIUMTEXT GENERATED ALWAYS AS
                    (REGEXP_REPLACE(html_content, '<[^>]+>', '')) STORED
 FULLTEXT INDEX ft_logs_search (title, plain_content)
 ```
@@ -92,11 +92,16 @@ Consequences:
   [documents-and-collab.md](documents-and-collab.md).
 - The tag-strip is a regex, not a parser, so entities such as `&amp;` survive
   into the index verbatim.
-- `TEXT` caps `html_content` at 64 KiB. `markdown_content` is `MEDIUMTEXT`
-  (16 MiB) and the app enforces a 2 MiB ceiling in code
-  (`documents.js:22`, `collab.js:44`), so **the real limit on HTML is the
-  column, not the constant**: a document over 64 KiB of HTML will be truncated
-  or rejected by MySQL well before the app's own check fires.
+- **All three content columns are `MEDIUMTEXT` (16 MiB)** since 2026-08-09, so
+  the app's own 2 MiB ceiling (`documents.js:22`, `collab.js:44`) is now the
+  real limit. Until then `html_content` and `plain_content` were `TEXT`
+  (64 KiB) and the column was the true ceiling: measured, a 40 KiB save
+  returned 200 and a 70 KiB save returned an opaque 500 with the edit lost,
+  because the shipped image runs `STRICT_TRANS_TABLES`. `plain_content` had to
+  widen with it (stripping tags from prose barely shrinks it), and so did
+  `versions.html_content`, which publish copies the document into. See B2 in
+  [open-questions.md](open-questions.md) and
+  `migrations/widen_log_content.sql`.
 - `logs.parent_id` self-references with `ON DELETE SET NULL` (`init.sql:248`),
   giving documents a tree shape rendered by `PageTree.jsx`.
 - `logs.version` is an integer counter bumped on publish and restore; the

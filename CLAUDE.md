@@ -258,8 +258,11 @@ Each is expanded, with citations, in the map named after it.
   the mock ordering before assuming your change is wrong.
 - **`src/lib/githubDiff.js` is imported by the backend.** It lives under `src/`
   but changing its exports breaks the server.
-- **`logs.html_content` is `TEXT` (64 KiB)** while the app's own ceiling is
-  2 MiB. See `docs/maps/open-questions.md`.
+- **Widening a content column means widening three.** `logs.html_content`,
+  the `plain_content` generated from it, and `versions.html_content` (publish
+  copies the document into it) all have to move together, or the same error
+  just relocates. All three are `MEDIUMTEXT` as of 2026-08-09; the app's 2 MiB
+  ceiling is now the real one. See `docs/maps/open-questions.md` B2.
 
 ## Development commands
 

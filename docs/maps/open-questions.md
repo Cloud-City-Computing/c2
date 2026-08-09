@@ -102,23 +102,38 @@ user.
 than the log, or (b) teach the log-level checks to also honour
 `logs.read_access`, which would resolve **A1** at the same time.
 
-### B2. `html_content TEXT` caps documents at 64 KiB
+### B2. `html_content TEXT` capped documents at 64 KiB (FIXED)
 
-`logs.html_content` is `TEXT` (`init.sql:234`), i.e. 65,535 bytes. The
-application's own ceiling is 2 MiB (`documents.js:22`, `collab.js:44`), and
-`markdown_content` is `MEDIUMTEXT`.
+`logs.html_content` was `TEXT`, i.e. 65,535 bytes, against an application
+ceiling of 2 MiB (`documents.js:22`, `collab.js:44`).
 
-**Consequence:** the app accepts a 500 KiB document, passes its own size check,
-and hands MySQL a value the column cannot hold. Under MySQL 8's default
-`STRICT_TRANS_TABLES` that is an error, not a silent truncation, so the save
-fails with a 500 from `errorHandler`; without strict mode it truncates and the
-document is corrupted.
+**Confirmed at runtime**, 2026-08-09. `sql_mode` on the shipped image (MySQL
+8.4.8) does include `STRICT_TRANS_TABLES`, so this is an error, not truncation.
+Saving through the real `POST /api/save-document`:
 
-**Not verified:** actual `sql_mode` on the shipped MySQL 8 image, and whether
-any real document has hit the ceiling.
+| HTML size | Before |
+|---|---|
+| 40 KiB | 200, stored |
+| 70 KiB | **500** "An internal server error occurred", nothing stored |
+| 300 KiB | **500**, nothing stored |
 
-**Suggested fix:** `ALTER TABLE logs MODIFY html_content MEDIUMTEXT` in both a
-migration and `init.sql`, matching `markdown_content`.
+The user's edit is simply lost, behind a generic 500 that names nothing.
+
+**Two columns the original note missed**, both found by looking rather than
+reasoning:
+
+- `plain_content` is `STORED GENERATED` from `html_content`, and it was `TEXT`
+  too. Stripping tags from prose barely shrinks it (40,993 bytes of HTML gave
+  40,986 of text), so widening `html_content` alone would have moved the same
+  failure one column sideways.
+- `versions.html_content` was `TEXT`, and publish copies the document into it,
+  so a widened `logs` would have pushed the same 500 from save to publish.
+
+**Fixed** in `migrations/widen_log_content.sql` plus `init.sql` (both, per the
+no-migration-runner rule): all three columns are now `MEDIUMTEXT`. Verified
+live after applying it: 40, 70 and 300 KiB all save 200, a 300 KiB publish
+returns 200 with `versions.html_content` holding all 307,213 bytes, and the
+`ft_logs_search` FULLTEXT index survived the `MODIFY` and still matches.
 
 ### B4. GitHub link CRUD did not check document access (FIXED)
 
