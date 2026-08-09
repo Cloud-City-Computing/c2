@@ -51,10 +51,28 @@ app.set('trust proxy', 1)                    app.js:41
   └─ 18 routers, all mounted at /api
 ```
 
-**CORS** (`app.js:45-61`) allows a request with no `Origin` header, allows an
-exact match against `CORS_ORIGIN`, and additionally allows any localhost or
-127.0.0.1 origin **when `NODE_ENV !== 'production'`**. Everything else is
-rejected.
+**CORS** (`app.js`, the `cors((req, cb) => ...)` block) allows, in order: a
+request with no `Origin` header at all; a **same-origin** request, decided by
+comparing the `Origin` URL's host against `req.headers.host`; an exact match
+against `CORS_ORIGIN`; and any localhost or 127.0.0.1 origin **when
+`NODE_ENV !== 'production'`**. Everything else is rejected, which surfaces as a
+500 rather than a 403 because the rejection is thrown as an error before any
+router runs, and `app.js` mounts no global error handler.
+
+The same-origin clause is why this uses the request-taking form of `cors()`
+rather than the simpler `cors({ origin: fn })`: the origin-only callback never
+sees the request, so it cannot tell the app's own browser apart from a third
+party's. Without it, a production instance with `CORS_ORIGIN` unset rejected
+its own login POST, because browsers send `Origin` on same-origin
+POST/PUT/DELETE. That was every install following `.env.example`, since
+`npm run start` and the Docker image both force `NODE_ENV=production` while
+`.env.example` ships `CORS_ORIGIN` blank. Covered by the `CORS` describe block
+in `tests/app.test.js`, which forces `NODE_ENV=production` because the suite
+otherwise runs as `test` and never reaches the branch that can reject.
+
+The host comparison deliberately ignores scheme, so an install behind a
+TLS-terminating proxy (browser sends an `https` Origin, the app sees a plain
+`http` request) is still recognised as itself.
 
 **CSP** (`app.js:68-77`) is scoped to `/api` on purpose so the Vite dev server's
 inline module scripts are not blocked. `frameAncestors: 'none'`,

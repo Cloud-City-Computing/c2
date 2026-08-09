@@ -41,26 +41,48 @@ const app = express();
 // Needed for rate limiting, sessions, and req.ip to work properly
 app.set('trust proxy', 1);
 
-// CORS: restrict API to same-origin requests only
-app.use('/api', cors({
-  origin: (origin, cb) => {
-    // Allow requests with no Origin header (same-origin, server-to-server, etc.)
-    if (!origin) return cb(null, true);
-    // Allow if an explicit allowlist is configured
-    const allowed = process.env.CORS_ORIGIN;
-    if (allowed && origin === allowed) return cb(null, true);
-    // In development only, allow localhost origins on any port
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        const parsed = new URL(origin);
-        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-          return cb(null, true);
-        }
-      } catch { /* invalid origin */ }
+// CORS: restrict the API to same-origin requests, plus an explicit allowlist.
+//
+// The request-taking form of cors() is used because deciding this needs the
+// Host header, and the origin-only callback never sees the request. Browsers
+// send an Origin header on same-origin POST/PUT/DELETE, so a rule written
+// against Origin alone cannot tell the app's own login form apart from another
+// site's, and the previous version rejected both: a production instance with
+// no CORS_ORIGIN set answered its own login request with a 500, which is every
+// self-hosted install following .env.example.
+app.use('/api', cors((req, cb) => {
+  const origin = req.headers.origin;
+  const options = { credentials: true };
+
+  // No Origin header: a same-origin GET, a server-to-server call, curl.
+  if (!origin) return cb(null, { ...options, origin: true });
+
+  let originHost = null;
+  try {
+    originHost = new URL(origin).host;
+  } catch { /* malformed Origin header */ }
+
+  // Same origin. Compared on host rather than the whole URL so that an install
+  // behind a TLS-terminating proxy, where the browser sends an https Origin and
+  // the app sees a plain http request, is still recognised as itself.
+  if (originHost && req.headers.host && originHost === req.headers.host) {
+    return cb(null, { ...options, origin: true });
+  }
+
+  // Explicitly allowed cross-origin caller.
+  const allowed = process.env.CORS_ORIGIN;
+  if (allowed && origin === allowed) return cb(null, { ...options, origin: true });
+
+  // In development only, allow localhost origins on any port, so the Vite dev
+  // server on 5173 can call the API on 3000.
+  if (process.env.NODE_ENV !== 'production' && originHost) {
+    const hostname = originHost.split(':')[0];
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return cb(null, { ...options, origin: true });
     }
-    cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
+  }
+
+  cb(new Error('Not allowed by CORS'));
 }));
 
 // Security headers (scoped to API routes so Vite dev server isn't affected)

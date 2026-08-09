@@ -1,0 +1,58 @@
+# Run a published Cloud Codex release without a build toolchain.
+#
+# This is the evaluation path: `docker compose -f docker-compose-release.yml up`
+# pulls a prebuilt image instead of compiling the frontend locally, so trying
+# Cloud Codex needs Docker and a .env, nothing else.
+#
+# Use docker-compose-prod.yml instead when you are running modified source:
+# that file builds ./cloudcodex, this one ignores your working tree entirely.
+
+services:
+  database:
+    image: mysql:8
+    container_name: cloudcodex-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    env_file:
+      - .env
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      # init.sql runs only when this volume is created empty. On an existing
+      # volume Docker skips docker-entrypoint-initdb.d entirely, so schema
+      # changes need a migrations/ file applied by hand.
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-u${DB_USER}", "-p${DB_PASS}"]
+      interval: 7s
+      timeout: 8s
+      retries: 15
+
+  app:
+    # Pin a release rather than tracking :latest, so an evaluator's install
+    # does not change under them on the next publish. Override with
+    # CLOUDCODEX_VERSION in .env to try a different release.
+    image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.9.0}
+    container_name: cloudcodex-app
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    # Both sides follow PORT so setting it in .env moves the published mapping
+    # too. Without this the app would bind PORT inside the container while
+    # Compose still published 3000, and every request to the host would be
+    # refused while the logs showed a clean boot.
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: database
+
+volumes:
+  db_data:

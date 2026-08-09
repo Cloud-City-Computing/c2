@@ -85,8 +85,20 @@ bind mount `./db-data/`, `init.sql` mounted into
   `mysqladmin ping` healthcheck (`docker-compose-prod.yml:22-27`).
 - The app builds from `cloudcodex/Dockerfile`, waits on
   `condition: service_healthy`, publishes 3000, and takes `env_file: .env`.
-- `cloudcodex/Dockerfile` is `node:20`, `npm ci`, `COPY . .`, `npm run build`,
-  then `CMD npm run start`.
+- `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build
+  stage runs `npm ci` and `npm run build`, and the runtime stage runs
+  `npm ci --omit=dev`, copies the source, then copies `dist/` across from the
+  build stage. `CMD npm run start`.
+- The runtime stage sets `ENV NODE_ENV=production` rather than relying on the
+  `npm run start` script, because `vite-express` reads it when `server.js` is
+  imported to decide between serving `dist/` and booting a Vite dev server.
+- `src/` is copied whole rather than dropped in favour of `dist/`: the server
+  imports `src/lib/githubDiff.js` directly.
+- `cloudcodex/.dockerignore` excludes `node_modules`, `dist`, `tests`,
+  `coverage` and `.env*`. Without it, `COPY . .` shipped the host's 405 MB
+  `node_modules` on top of the tree `npm ci` had just installed, so every
+  dependency was in the image twice. Single-stage with no ignore file produced
+  a **2.86 GB** image; the current one is **679 MB**.
 - `docker-compose-prod.yml` sets `DB_HOST: database` under the app service's
   `environment`, overriding `.env`'s `DB_HOST=localhost` (correct for dev,
   where the app runs on the host, and wrong inside the prod container).
@@ -203,6 +215,35 @@ Coverage is uploaded as an artifact with 14-day retention,
 
 Note the branch filter: work on `dev` does not trigger CI until it targets
 `main`.
+
+## 6b. Releases
+
+`.github/workflows/release.yml`, triggered by pushing a `v*` tag. Two jobs:
+
+1. **verify** re-runs `npm ci`, `npm run lint` and `npm test`. A tag is not
+   evidence the commit is green, because tags can point at any commit and
+   `ci.yml` only runs on `main`.
+2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
+   pushes `ghcr.io/cloud-city-computing/cloud-codex` at both the bare version
+   and `:latest`, with `packages: write` and the GITHUB_TOKEN.
+
+Two deliberate details:
+
+- The image is named for the **product**, not the repository. `c2` is a legacy
+  codename and a string people type into `docker pull` is user-facing. The
+  owner is spelled out in lowercase because ghcr.io rejects the mixed-case
+  `Cloud-City-Computing` that `github.repository_owner` would give.
+- A guard step fails the build when the tag does not match
+  `cloudcodex/package.json`'s version. A published image that misreports its
+  own version is worse than no image.
+
+**Known gap: `linux/amd64` only.** arm64 would mean cross-building `sharp` and
+`bcrypt` under QEMU, which is slow and fails in ways that only appear at
+runtime. Apple Silicon runs the amd64 image under Docker Desktop's emulation.
+
+`docker-compose-release.yml` consumes the published image instead of building,
+pinned to `${CLOUDCODEX_VERSION:-0.9.0}` so an evaluator's install does not
+move under them on the next publish.
 
 ## 7. Shippability checklist
 

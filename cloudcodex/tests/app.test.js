@@ -33,6 +33,84 @@ describe('app.js — Express configuration', () => {
     expect([400, 401]).toContain(res.status);
   });
 
+  // These run with NODE_ENV forced to production, because that is the only
+  // branch that can reject anything and the suite otherwise runs as 'test'.
+  // A same-origin request answering 500 here is the regression these cover:
+  // it means the app refused its own browser, which is every self-hosted
+  // install, since .env.example ships CORS_ORIGIN blank.
+  describe('CORS', () => {
+    const withProdEnv = async (fn) => {
+      const priorEnv = process.env.NODE_ENV;
+      const priorOrigin = process.env.CORS_ORIGIN;
+      process.env.NODE_ENV = 'production';
+      delete process.env.CORS_ORIGIN;
+      try {
+        return await fn();
+      } finally {
+        process.env.NODE_ENV = priorEnv;
+        if (priorOrigin === undefined) delete process.env.CORS_ORIGIN;
+        else process.env.CORS_ORIGIN = priorOrigin;
+      }
+    };
+
+    it('allows a same-origin request in production with no CORS_ORIGIN set', async () => {
+      const res = await withProdEnv(() =>
+        request(app)
+          .get('/api/workspaces')
+          .set('Host', 'codex.example.com')
+          .set('Origin', 'http://codex.example.com'));
+
+      // 401 means CORS let it through to requireAuth. 500 means CORS rejected
+      // the app's own origin, which is the bug.
+      expect(res.status).toBe(401);
+    });
+
+    it('treats an https Origin behind a TLS-terminating proxy as same-origin', async () => {
+      const res = await withProdEnv(() =>
+        request(app)
+          .get('/api/workspaces')
+          .set('Host', 'codex.example.com')
+          .set('Origin', 'https://codex.example.com'));
+
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects an unlisted cross-origin request in production', async () => {
+      const res = await withProdEnv(() =>
+        request(app)
+          .get('/api/workspaces')
+          .set('Host', 'codex.example.com')
+          .set('Origin', 'https://attacker.example'));
+
+      expect(res.status).toBe(500);
+    });
+
+    it('allows a cross-origin request that matches CORS_ORIGIN', async () => {
+      const priorEnv = process.env.NODE_ENV;
+      const priorOrigin = process.env.CORS_ORIGIN;
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ORIGIN = 'https://app.example.com';
+      try {
+        const res = await request(app)
+          .get('/api/workspaces')
+          .set('Host', 'codex.example.com')
+          .set('Origin', 'https://app.example.com');
+
+        expect(res.status).toBe(401);
+        expect(res.headers['access-control-allow-origin']).toBe('https://app.example.com');
+      } finally {
+        process.env.NODE_ENV = priorEnv;
+        if (priorOrigin === undefined) delete process.env.CORS_ORIGIN;
+        else process.env.CORS_ORIGIN = priorOrigin;
+      }
+    });
+
+    it('allows a request with no Origin header at all', async () => {
+      const res = await withProdEnv(() => request(app).get('/api/workspaces'));
+      expect(res.status).toBe(401);
+    });
+  });
+
   it('applies helmet security headers on /api responses', async () => {
     const res = await request(app).get('/api/oauth/providers');
     expect(res.status).toBe(200);

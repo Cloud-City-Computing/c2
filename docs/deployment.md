@@ -55,16 +55,30 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
 
 ## Compose files
 
-| File                          | When to use                                       |
-|-------------------------------|---------------------------------------------------|
-| `docker-compose.yaml`         | **Dev** — MySQL only, app runs from `npm run dev` |
-| `docker-compose-prod.yml`     | **Prod** — MySQL + the Cloud Codex app together   |
-| `docker-compose.linux.yml`    | WSL variant (host networking quirks)              |
+| File                          | When to use                                        |
+|-------------------------------|----------------------------------------------------|
+| `docker-compose.yaml`         | **Dev** — MySQL only, app runs from `npm run dev`  |
+| `docker-compose-release.yml`  | **Prod, published image** — no build toolchain     |
+| `docker-compose-prod.yml`     | **Prod, from source** — builds `./cloudcodex`      |
+| `docker-compose.linux.yml`    | WSL variant (host networking quirks)               |
 
-For production:
+Running a published release, which is the recommended path unless you are
+deploying modified source:
 
 ```bash
 cp .env.example .env       # fill every required variable (see below)
+docker compose -f docker-compose-release.yml up -d
+```
+
+This pulls `ghcr.io/cloud-city-computing/cloud-codex`, pinned by
+`CLOUDCODEX_VERSION` (default `0.9.0`), so nothing is compiled locally and the
+version does not move under you on the next publish. The published image is
+`linux/amd64`; Apple Silicon runs it under Docker Desktop's emulation.
+
+Building from your own source instead:
+
+```bash
+cp .env.example .env
 docker compose -f docker-compose-prod.yml up -d --build
 ```
 
