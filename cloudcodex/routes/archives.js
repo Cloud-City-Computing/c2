@@ -9,7 +9,7 @@ import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
-import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner } from './helpers/ownership.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
 import { logActivity } from './helpers/activity.js';
 
@@ -44,6 +44,7 @@ router.get('/archives', requireAuth, asyncHandler(async (req, res) => {
      LEFT JOIN squads t  ON p.squad_id     = t.id
      LEFT JOIN workspaces o ON t.workspace_id = o.id
      WHERE ${readAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      ORDER BY p.created_at DESC`,
     [...readAccessParams(req.user)]
   );
@@ -66,6 +67,7 @@ router.get('/archives/:archiveId/logs', requireAuth, asyncHandler(async (req, re
     `SELECT p.id FROM archives p
      WHERE p.id = ?
        AND ${readAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      LIMIT 1`,
     [Number(archiveId), ...readAccessParams(req.user)]
   );
@@ -164,6 +166,7 @@ router.put('/archives/:id', requireAuth, asyncHandler(async (req, res) => {
     `SELECT p.id FROM archives p
      WHERE p.id = ?
        AND ${writeAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      LIMIT 1`,
     [Number(id), ...writeAccessParams(req.user)]
   );
@@ -305,7 +308,7 @@ router.get('/archives/:id/access', requireAuth, asyncHandler(async (req, res) =>
   }
 
   const [hasAccess] = await c2_query(
-    `SELECT p.id FROM archives p WHERE p.id = ? AND ${readAccessWhere('p')} LIMIT 1`,
+    `SELECT p.id FROM archives p WHERE p.id = ? AND ${readAccessWhere('p')} AND ${excludeSystemArchives('p')} LIMIT 1`,
     [Number(id), ...readAccessParams(req.user)]
   );
   if (!hasAccess) return res.status(403).json({ success: false, message: 'Access denied' });
@@ -442,6 +445,7 @@ router.post('/archives/:archiveId/logs', requireAuth, requirePermission('create_
     `SELECT p.id FROM archives p
      WHERE p.id = ?
        AND ${writeAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      LIMIT 1`,
     [Number(archiveId), ...writeAccessParams(req.user)]
   );
@@ -481,6 +485,7 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
     `SELECT p.id FROM archives p
      WHERE p.id = ?
        AND ${writeAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      LIMIT 1`,
     [Number(archiveId), ...writeAccessParams(req.user)]
   );
@@ -525,6 +530,7 @@ router.delete('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(asyn
     `SELECT p.id FROM archives p
      WHERE p.id = ?
        AND ${writeAccessWhere('p')}
+       AND ${excludeSystemArchives('p')}
      LIMIT 1`,
     [Number(archiveId), ...writeAccessParams(req.user)]
   );
@@ -560,7 +566,7 @@ router.get('/archives/:archiveId/repos', requireAuth, asyncHandler(async (req, r
   }
 
   const [archive] = await c2_query(
-    `SELECT p.id FROM archives p WHERE p.id = ? AND ${readAccessWhere('p')}`,
+    `SELECT p.id FROM archives p WHERE p.id = ? AND ${readAccessWhere('p')} AND ${excludeSystemArchives('p')}`,
     [Number(archiveId), ...readAccessParams(req.user)]
   );
   if (!archive) {

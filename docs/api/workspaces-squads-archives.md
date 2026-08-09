@@ -103,19 +103,11 @@ Delete a squad. Cascades to all associated archives and documents. Squad creator
 
 ---
 
-### `GET /api/squads/:id/permissions`
-
-Get the squad-level default permissions (`create_archive`, `create_log`). Workspace owner only.
-
-**Response:** `{ success: true, permissions: { create_archive, create_log } }`
-
----
-
-### `PUT /api/squads/:id/permissions`
-
-Update squad-level default permissions. Workspace owner only.
-
-**Body:** `{ create_archive?, create_log? }`
+> **Removed 2026-08-09:** `GET` and `PUT /api/squads/:id/permissions`. They
+> read and wrote a `squad_permissions` table that no permission check ever
+> consulted, so the values persisted and changed nothing. Per-member
+> `can_create_log` / `can_create_archive` on squad membership are the enforced
+> equivalents. See `docs/maps/open-questions.md` A3.
 
 ---
 

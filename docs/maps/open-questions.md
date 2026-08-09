@@ -449,6 +449,32 @@ Still true and not addressed: a genuinely disallowed cross-origin request
 produces a **500 with an HTML body** rather than a 403, because the rejection
 throws before any router and `app.js` mounts no global error handler.
 
+### B14. Committing a file through the browser falsified every linked doc's merge base (FIXED)
+
+Found by adversarial review on 2026-08-09, not by the original survey.
+
+`PUT /api/github/contents/*` (the CommitPanel path) ends with a
+fire-and-forget `UPDATE github_links` matching on
+`(repo_owner, repo_name, file_path, branch)` alone. It set **both** `file_sha`
+and `base_sha` to the new commit's sha and `sync_status = 'clean'`.
+
+**Consequence:** document 42 is linked to `acme/docs/a.md@main` holding content
+A. Anyone with push rights on that repo commits content B to that path through
+the browser. Document 42, untouched, is now recorded as clean against a remote
+it has never seen, and since `classifySync` derives `remoteChanged` from
+`remoteSha !== baseSha`, it can no longer *ever* report `remote_ahead` for it.
+The owner sees a clean banner and their next push silently overwrites B with A:
+no conflict, no 409, no trace.
+
+**Fixed** by recording only what actually happened: advance `file_sha` (the
+last observed remote blob), leave `base_sha` (the merge base) alone, and set
+`sync_status = 'remote_ahead'`. The row is still updated for *every* linked
+document regardless of who committed, which is correct, since "the remote file
+moved" is true for all of them; it was the false `clean` that caused loss. The
+export flow's own explicit `PUT /api/github/link` still settles that one
+document back to clean, because there the document and the commit really do
+match.
+
 ### B13. Document titles are not reachable by keyboard anywhere
 
 On the browse grid, the archives page and the editor's page tree, a document's

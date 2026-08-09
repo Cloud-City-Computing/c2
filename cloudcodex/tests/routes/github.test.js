@@ -1710,10 +1710,16 @@ describe('GitHub Routes', () => {
       const archiveInsert = c2_query.mock.calls.find(([sql]) => /INSERT INTO archives/i.test(sql));
       expect(archiveInsert[1][0]).toBe('__c2_github_pr_sessions__:u/r#42');
 
-      // And the grant must land on archives, not on the inert logs columns.
+      // And the grant must land on archives, not on the inert logs columns,
+      // and specifically on THIS PR's archive. Asserting only "params contain
+      // the user id" would stay green if the WHERE bound the log id instead,
+      // which is a live privilege escalation onto whatever archive shares that
+      // id.
       const grant = c2_query.mock.calls.find(([sql]) => /JSON_ARRAY_APPEND/i.test(sql));
       expect(grant[0]).toMatch(/UPDATE archives/i);
       expect(grant[1]).toContain(String(TEST_USER.id));
+      expect(grant[1][4]).toBe(99);      // the archive insertId
+      expect(grant[1][4]).not.toBe(200); // not the log insertId
     });
 
     it('refuses to open a session for a PR GitHub will not show the caller', async () => {
@@ -2097,6 +2103,38 @@ describe('GitHub Routes', () => {
       const pages = mockFetch.mock.calls.map(([url]) => url);
       expect(pages.some((u) => u.includes('page=1'))).toBe(true);
       expect(pages.some((u) => u.includes('page=2'))).toBe(true);
+    });
+
+    it('removes a member who is no longer on the team', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]); // userCanManageSquad
+      c2_query.mockResolvedValueOnce([{ github_org: 'acme', github_team_slug: 'devs' }]);
+
+      // One short page: the listing is complete, so removals are allowed.
+      mockGitHubApiResponse([{ login: 'still-here' }]);
+
+      c2_query.mockResolvedValueOnce([
+        { user_id: 7, gh_login: 'still-here' },
+        { user_id: 8, gh_login: 'departed' },
+      ]);
+      c2_query.mockResolvedValueOnce([{ role: 'member' }]); // departed is not an owner
+      c2_query.mockResolvedValueOnce([]);                   // DELETE FROM squad_members
+      c2_query.mockResolvedValueOnce([]);                   // UPDATE squads SET team_sync_at
+
+      const res = await request(app)
+        .post('/api/squads/1/github-team/sync')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.members_complete).toBe(true);
+      expect(res.body.removed).toEqual([{ user_id: 8, gh_login: 'departed' }]);
+      // The kill switch added for B5 must not disable removals outright: pin
+      // the ON side, or a regression to complete=false would stop all removals
+      // forever behind a 200 and a green suite.
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM squad_members/i.test(sql));
+      expect(del).toBeDefined();
+      expect(del[1]).toEqual([1, 8]);
     });
 
     it('runs no removals when the team listing is truncated', async () => {

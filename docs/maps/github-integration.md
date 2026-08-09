@@ -236,7 +236,15 @@ which is clause 2 of the shared fragment.
 One archive per PR is the whole point: the archive is the ACL boundary, so a
 single shared archive would make opening any PR session grant access to every
 other PR's session. A session created before this change is moved into its
-per-PR archive on next open.
+per-PR archive on next open. A concurrent first open of the same PR is handled
+by treating `uq_pr_session`'s duplicate-key error as "the other request won":
+this request deletes the log it just created and adopts theirs.
+
+**The grant carries write, so every archive-scoped surface must exclude
+`system` archives.** See the `excludeSystemArchives()` rule in
+[access-control.md](access-control.md). Without it, opening a session on any
+public PR was enough to list, search, delete documents in, and enumerate the
+members of that hidden archive.
 
 The old code appended the caller's id to the **log's** ACL columns, which are
 read by no query in the codebase (A1). Live-confirmed 2026-08-09: the grant was

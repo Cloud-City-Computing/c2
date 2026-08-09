@@ -351,14 +351,29 @@ router.put('/github/repos/:owner/:repo/contents/{*filePath}', asyncHandler(async
   );
 
   // Keep linked Codex docs in sync: if any github_links row matches this
-  // (owner, repo, path, branch), advance both file_sha and base_sha so the
-  // link record stops drifting after a direct CommitPanel push.
+  // (owner, repo, path, branch), record the new remote sha so the link record
+  // stops drifting after a direct CommitPanel push.
+  //
+  // Advance `file_sha` (the last observed remote blob) but NOT `base_sha` (the
+  // merge base), and say `remote_ahead` rather than `clean`. This commit
+  // changed the file on GitHub; it did not change any linked document. Marking
+  // the row clean and moving the merge base told every linked document that it
+  // matched a remote it had never seen, which made `classifySync` structurally
+  // unable to report `remote_ahead`, so the document's owner got no conflict
+  // and their next push silently overwrote this commit.
+  //
+  // Deliberately still unscoped by document access: recording "the remote file
+  // moved" is true for every document linked to that path no matter who
+  // committed. It is only the false `clean` that was dangerous. The export
+  // flow's own explicit PUT /api/github/link runs after this and settles that
+  // one document back to clean, which is correct, because there the document
+  // and the commit really do match.
   if (branch) {
     c2_query(
       `UPDATE github_links
-         SET file_sha = ?, base_sha = ?, last_pushed_at = NOW(), sync_status = 'clean'
+         SET file_sha = ?, sync_status = 'remote_ahead'
        WHERE repo_owner = ? AND repo_name = ? AND file_path = ? AND branch = ?`,
-      [data.content.sha, data.content.sha, owner, repo, filePath, branch]
+      [data.content.sha, owner, repo, filePath, branch]
     ).catch((err) => {
       console.error(`[${new Date().toISOString()}] github: failed to advance link sha after push (${owner}/${repo}/${filePath}@${branch}):`, err);
     });
@@ -1641,8 +1656,12 @@ function prArchiveName(owner, repo, prNumber) {
  */
 async function ensurePrArchive(owner, repo, prNumber) {
   const name = prArchiveName(owner, repo, prNumber);
+  // ORDER BY id, not a bare LIMIT 1: `archives.name` is TEXT and carries no
+  // unique key, so two simultaneous first-opens of the same PR can both insert.
+  // Picking the lowest id deterministically makes every later caller converge
+  // on the same archive instead of splitting the grant across duplicates.
   const [existing] = await c2_query(
-    'SELECT id FROM archives WHERE name = ? AND `system` = TRUE AND squad_id IS NULL LIMIT 1',
+    'SELECT id FROM archives WHERE name = ? AND `system` = TRUE AND squad_id IS NULL ORDER BY id LIMIT 1',
     [name]
   );
   if (existing) return existing.id;
@@ -1700,12 +1719,33 @@ async function getOrCreatePrSession(user, owner, repo, prNumber) {
       [archiveId, `${owner}/${repo}#${prNumber}`, user.id, user.id]
     );
     logId = logIns.insertId;
-    const sessIns = await c2_query(
-      `INSERT INTO github_pr_sessions (log_id, repo_owner, repo_name, pr_number, opened_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [logId, owner, repo, prNumber, user.id]
-    );
-    sessionId = sessIns.insertId;
+    try {
+      const sessIns = await c2_query(
+        `INSERT INTO github_pr_sessions (log_id, repo_owner, repo_name, pr_number, opened_by)
+         VALUES (?, ?, ?, ?, ?)`,
+        [logId, owner, repo, prNumber, user.id]
+      );
+      sessionId = sessIns.insertId;
+    } catch (err) {
+      // uq_pr_session lost a race with a concurrent first open. The other
+      // request's session is the real one; drop the log this request just
+      // created rather than leaving an orphan behind, and adopt theirs.
+      if (err?.code !== 'ER_DUP_ENTRY') throw err;
+      await c2_query('DELETE FROM logs WHERE id = ?', [logId]);
+      const [winner] = await c2_query(
+        `SELECT id, log_id FROM github_pr_sessions
+         WHERE repo_owner = ? AND repo_name = ? AND pr_number = ?
+         LIMIT 1`,
+        [owner, repo, prNumber]
+      );
+      if (!winner) throw err;
+      sessionId = winner.id;
+      logId = winner.log_id;
+      await c2_query(
+        `UPDATE logs SET archive_id = ? WHERE id = ? AND archive_id <> ?`,
+        [archiveId, logId, archiveId]
+      );
+    }
   }
 
   // Append user.id to the archive's read_access and write_access if absent.

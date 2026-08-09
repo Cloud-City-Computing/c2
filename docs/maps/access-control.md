@@ -38,15 +38,35 @@ short of changing `created_by`.
 **Clause 1 is an unconditional admin bypass.** Any query that interpolates
 `readAccessWhere`/`writeAccessWhere` without narrowing the `WHERE` further
 matches *every* archive platform-wide for an admin, including ones an admin
-should not casually stumble into, such as the hidden `system` GitHub
-PR-session archive (see [data-model.md](data-model.md) and
-[github-integration.md](github-integration.md)). The fragment alone is not
-enough scoping for a query meant to return "one relevant archive" rather than
-"every archive this admin can technically reach". `routes/first-run.js` is
-the worked example of scoping it correctly: it adds
-`AND p.\`system\` = FALSE` to its archive lookup precisely so the admin
-bypass in clause 1 cannot surface that hidden archive as a "Getting Started"
-target.
+should not casually stumble into.
+
+### `system` archives, and the `excludeSystemArchives()` rule
+
+A `system` archive is one the app creates for its own bookkeeping: today, the
+hidden per-PR archives hosting GitHub PR-session documents. Since 2026-08-09
+**ordinary users hold real grants on these**, because that is how PR-as-document
+works at all (B1 in [open-questions.md](open-questions.md)). That makes the
+distinction load-bearing rather than an admin-only curiosity:
+
+> **Archive-as-a-place versus archive-as-an-ACL.** Any query that treats an
+> archive as *somewhere a user browses, lists, manages or deletes within* must
+> add `AND ${excludeSystemArchives('p')}` alongside the fragment. Any query
+> resolving *whether this user may touch this document* must not.
+
+`excludeSystemArchives(alias)` in `ownership.js` is that predicate. It takes no
+parameter, so it does not disturb the seven-param contract below. It is applied
+in `routes/archives.js` (listing, log listing, rename, ACL read and write, log
+create/update/delete, repos) and `routes/search.js` (search, browse, filters),
+and deliberately **not** in `checkLogReadAccess`/`checkLogWriteAccess`,
+`/api/presence`, or `/api/document`, which are the document-level paths the PR
+feature depends on.
+
+Getting this wrong is not cosmetic. Reviewed on 2026-08-09: because the grant
+carries write, an unscoped `DELETE /api/archives/:id/logs/:logId` let anyone who
+had opened a PR session delete that PR's shared document and, by cascade, every
+mirrored review comment on it. `GET /api/archives/:id/access` likewise let them
+enumerate the name and email of everyone else who had opened it.
+`routes/first-run.js` had the rule right before there was a rule.
 
 ### The param contract
 
