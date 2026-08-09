@@ -78,6 +78,12 @@ This pulls `ghcr.io/cloud-city-computing/cloud-codex`, pinned by
 version does not move under you on the next publish. The published image is
 `linux/amd64`; Apple Silicon runs it under Docker Desktop's emulation.
 
+> **If the pull answers `unauthorized`,** the GHCR package is still private.
+> Container packages created by Actions start private regardless of repository
+> visibility, and it has to be flipped once by an org owner in Package settings.
+> See the release section of
+> [`docs/maps/build-test-and-ops.md`](maps/build-test-and-ops.md).
+
 Building from your own source instead:
 
 ```bash

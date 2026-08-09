@@ -259,6 +259,27 @@ Deliberate details, each of which is load-bearing:
 `bcrypt` under QEMU, which is slow and fails in ways that only appear at
 runtime. Apple Silicon runs the amd64 image under Docker Desktop's emulation.
 
+**One-time setup the workflow cannot do for you: make the package public.**
+A container package first created by Actions is **private**, whatever the
+repository's visibility, and nothing in `release.yml` can change that. The
+publish job goes green and an anonymous `docker pull` still answers
+`unauthorized`, which is the worst possible failure here because the whole point
+of the image is that a stranger can run it. Confirmed after the 0.9.0 publish.
+
+Fix it once, in the web UI: **Organisation → Packages → cloud-codex → Package
+settings → Danger Zone → Change visibility → Public**. While you are there,
+"Manage Actions access" → add the `c2` repository with Write, so future
+publishes keep working if the default token scope tightens. There is no REST
+endpoint for the visibility flip, and `gh api` needs `read:packages` even to
+report the current setting.
+
+Verify from a logged-out client rather than trusting the workflow:
+
+```
+docker logout ghcr.io
+docker pull ghcr.io/cloud-city-computing/cloud-codex:0.9.0
+```
+
 `docker-compose-release.yml` consumes the published image instead of building,
 pinned to `${CLOUDCODEX_VERSION:-0.9.0}` so an evaluator's install does not
 move under them on the next publish. It also differs from
