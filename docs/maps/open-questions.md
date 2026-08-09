@@ -173,6 +173,14 @@ three tests that were each confirmed to fail against the unfixed route.
 `github.js:2122` and `github.js:2200` fetch team members with `per_page=100` and
 no pagination loop.
 
+**FIXED 2026-08-09.** Both call sites now go through `fetchTeamMemberLogins`,
+which follows pagination to a 20-page (2,000 member) cap and reports whether
+the listing is `complete`. When it is not, the removal pass is skipped
+entirely and `members_complete: false` is returned, because a login on an
+unfetched page is indistinguishable from one that left the team. Covered by
+two tests: one proves page 2 is read, one proves a truncated listing deletes
+nobody. Original finding below.
+
 **Consequence:** a team with more than 100 members yields a partial `ghLogins`
 set. The preview under-reports, and the sync's removal pass
 (`github.js:2249-2262`) deletes every current member whose login fell outside
@@ -221,6 +229,18 @@ The email is sent anyway, by a direct `sendEmail` call in
 
 **Consequence:** turning off "email me about squad invites" in the preferences
 UI has no effect.
+
+**FIXED 2026-08-09**, minimally: the direct send now calls `getPrefs()` and
+honours `email_squad_invite`. The invitation itself, and the inbox
+notification, are unaffected.
+
+The larger option was to give `squad_invite` a builder in
+`email-templates.js` and let the funnel own the send, which is what the rest
+of the notification types do. It was not taken here: the route deliberately
+sends its own mail and passes `emailData: null` so the funnel does not send a
+second copy, and rerouting it would change the send's timing and content for
+a defect whose whole substance was "the toggle does nothing". Worth revisiting
+if a second such bypass appears.
 
 ### B8. `server.js` hardcoded port 3000 and reported success on a failed bind (FIXED)
 

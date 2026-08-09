@@ -2035,6 +2035,62 @@ describe('GitHub Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/not bound/i);
     });
+
+    it('follows pagination past the first 100 team members', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]); // userCanManageSquad
+      c2_query.mockResolvedValueOnce([{ github_org: 'acme', github_team_slug: 'devs' }]);
+
+      // A full page, then a short one: the member on page 2 must be seen.
+      mockGitHubApiResponse(Array.from({ length: 100 }, (_, i) => ({ login: `dev${i}` })));
+      mockGitHubApiResponse([{ login: 'page-two-dev' }]);
+
+      c2_query.mockResolvedValueOnce([]); // current squad members: none
+      // One matching-user lookup per GitHub login, all unmatched.
+      for (let i = 0; i < 101; i++) c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([]); // UPDATE squads SET team_sync_at
+
+      const res = await request(app)
+        .post('/api/squads/1/github-team/sync')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.members_complete).toBe(true);
+      expect(res.body.unmatched).toContain('page-two-dev');
+      expect(res.body.unmatched).toHaveLength(101);
+
+      const pages = mockFetch.mock.calls.map(([url]) => url);
+      expect(pages.some((u) => u.includes('page=1'))).toBe(true);
+      expect(pages.some((u) => u.includes('page=2'))).toBe(true);
+    });
+
+    it('runs no removals when the team listing is truncated', async () => {
+      mockAuthenticated();
+      mockGitHubConnected();
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]); // userCanManageSquad
+      c2_query.mockResolvedValueOnce([{ github_org: 'acme', github_team_slug: 'devs' }]);
+
+      // Every page comes back full, so the cap is hit and `complete` is false.
+      for (let p = 0; p < 20; p++) {
+        mockGitHubApiResponse(Array.from({ length: 100 }, (_, i) => ({ login: `dev${p}-${i}` })));
+      }
+
+      // A current member whose login is on none of those pages. Under the old
+      // single-page fetch this user was deleted from the squad.
+      c2_query.mockResolvedValueOnce([{ user_id: 42, gh_login: 'someone-on-page-21' }]);
+      for (let i = 0; i < 2000; i++) c2_query.mockResolvedValueOnce([]); // user lookups
+      c2_query.mockResolvedValueOnce([]); // UPDATE squads SET team_sync_at
+
+      const res = await request(app)
+        .post('/api/squads/1/github-team/sync')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.members_complete).toBe(false);
+      expect(res.body.removed).toEqual([]);
+      expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM squad_members/i.test(sql))).toBe(false);
+    });
   });
 
   // --- 401/403 → token_status=revoked ---

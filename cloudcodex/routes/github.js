@@ -2096,6 +2096,33 @@ async function userCanManageSquad(user, squadId) {
   return Boolean(row);
 }
 
+// GitHub caps `per_page` at 100. Stop after this many pages rather than loop
+// forever on a pathological response; 20 pages is 2,000 members.
+const TEAM_MEMBER_MAX_PAGES = 20;
+
+/**
+ * Fetch every login on a GitHub team, following pagination.
+ *
+ * Returns `{ logins, complete }`. `complete` is false only when the page cap
+ * was hit, and callers must **not** run a removal pass on an incomplete set:
+ * a member missing from a truncated list is indistinguishable from one who
+ * genuinely left the team, and removing them is destructive.
+ */
+async function fetchTeamMemberLogins(req, org, slug) {
+  const logins = new Set();
+  for (let page = 1; page <= TEAM_MEMBER_MAX_PAGES; page++) {
+    const batch = await req.gh(
+      `/orgs/${encodeURIComponent(org)}/teams/${encodeURIComponent(slug)}/members?per_page=100&page=${page}`
+    );
+    for (const m of batch || []) {
+      if (m?.login) logins.add(m.login.toLowerCase());
+    }
+    // A short page is the last page.
+    if (!batch || batch.length < 100) return { logins, complete: true };
+  }
+  return { logins, complete: false };
+}
+
 /**
  * GET /api/squads/:squadId/github-team/preview
  * Compares the bound GitHub Team's members against current squad members.
@@ -2118,10 +2145,9 @@ router.get('/squads/:squadId/github-team/preview', requireAuth, asyncHandler(req
     return res.status(400).json({ success: false, message: 'Squad is not bound to a GitHub team' });
   }
 
-  const ghMembers = await req.gh(
-    `/orgs/${encodeURIComponent(squad.github_org)}/teams/${encodeURIComponent(squad.github_team_slug)}/members?per_page=100`
+  const { logins: ghLogins, complete } = await fetchTeamMemberLogins(
+    req, squad.github_org, squad.github_team_slug
   );
-  const ghLogins = new Set((ghMembers || []).map((m) => m.login.toLowerCase()));
 
   // Current squad members joined with GitHub identity (provider_username)
   const currentMembers = await c2_query(
@@ -2139,7 +2165,9 @@ router.get('/squads/:squadId/github-team/preview', requireAuth, asyncHandler(req
   for (const m of currentMembers) {
     if (m.gh_login) {
       currentLogins.add(m.gh_login.toLowerCase());
-      if (!ghLogins.has(m.gh_login.toLowerCase())) {
+      // On a truncated member list, "not on the team" cannot be distinguished
+      // from "on a page we never fetched", so propose no removals at all.
+      if (complete && !ghLogins.has(m.gh_login.toLowerCase())) {
         toRemove.push({ user_id: m.user_id, gh_login: m.gh_login, email: m.email, name: m.user_name });
       }
     }
@@ -2170,6 +2198,7 @@ router.get('/squads/:squadId/github-team/preview', requireAuth, asyncHandler(req
     team_slug: squad.github_team_slug,
     to_add: toAdd,
     to_remove: toRemove,
+    members_complete: complete,
   });
 }));
 
@@ -2196,10 +2225,9 @@ router.post('/squads/:squadId/github-team/sync', requireAuth, asyncHandler(requi
     return res.status(400).json({ success: false, message: 'Squad is not bound to a GitHub team' });
   }
 
-  const ghMembers = await req.gh(
-    `/orgs/${encodeURIComponent(squad.github_org)}/teams/${encodeURIComponent(squad.github_team_slug)}/members?per_page=100`
+  const { logins: ghLogins, complete } = await fetchTeamMemberLogins(
+    req, squad.github_org, squad.github_team_slug
   );
-  const ghLogins = new Set((ghMembers || []).map((m) => m.login.toLowerCase()));
 
   const currentMembers = await c2_query(
     `SELECT sm.user_id, oa.provider_username AS gh_login
@@ -2245,8 +2273,10 @@ router.post('/squads/:squadId/github-team/sync', requireAuth, asyncHandler(requi
     }
   }
 
-  // Remove members no longer on the team
-  for (const [ghLogin, userId] of currentByLogin.entries()) {
+  // Remove members no longer on the team. Skipped entirely when the team
+  // listing was truncated: every login on an unfetched page looks exactly like
+  // someone who left, and this pass deletes them.
+  for (const [ghLogin, userId] of complete ? currentByLogin.entries() : []) {
     if (!ghLogins.has(ghLogin)) {
       // Don't remove squad owners — they might be the bootstrapping admin.
       const [row] = await c2_query(
@@ -2267,7 +2297,7 @@ router.post('/squads/:squadId/github-team/sync', requireAuth, asyncHandler(requi
     [squadId]
   );
 
-  res.json({ success: true, added, removed, unmatched });
+  res.json({ success: true, added, removed, unmatched, members_complete: complete });
 }));
 
 router.use((err, req, res, _next) => {

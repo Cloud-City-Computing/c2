@@ -306,6 +306,48 @@ describe('Squad Routes', () => {
       expect(sendEmail).not.toHaveBeenCalled();
     });
 
+    it('emails the invited user when they have not opted out', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Squad', workspace_id: 1, owner_id: TEST_USER.id }]);
+      c2_query.mockResolvedValueOnce([{ id: 2 }]);        // invited user exists
+      c2_query.mockResolvedValueOnce([]);                 // not already a member
+      c2_query.mockResolvedValueOnce([]);                 // no pending invitation
+      c2_query.mockResolvedValueOnce({ insertId: 10 });   // insert invitation
+      c2_query.mockResolvedValueOnce([{ email: 'b@test.com', name: 'B' }]);
+      c2_query.mockResolvedValueOnce([{ notification_prefs: null }]); // getPrefs: defaults
+
+      const res = await request(app)
+        .post('/api/squads/1/members/invite')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 2 });
+
+      expect(res.status).toBe(201);
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sendEmail.mock.calls[0][0].to).toBe('b@test.com');
+    });
+
+    it('does not email an invited user who turned email_squad_invite off', async () => {
+      mockAuthenticated();
+      isMailEnabled.mockReturnValue(true);
+      c2_query.mockResolvedValueOnce([{ id: 1, name: 'Squad', workspace_id: 1, owner_id: TEST_USER.id }]);
+      c2_query.mockResolvedValueOnce([{ id: 2 }]);        // invited user exists
+      c2_query.mockResolvedValueOnce([]);                 // not already a member
+      c2_query.mockResolvedValueOnce([]);                 // no pending invitation
+      c2_query.mockResolvedValueOnce({ insertId: 10 });   // insert invitation
+      c2_query.mockResolvedValueOnce([{ email: 'b@test.com', name: 'B' }]);
+      c2_query.mockResolvedValueOnce([{ notification_prefs: { email_squad_invite: false } }]);
+
+      const res = await request(app)
+        .post('/api/squads/1/members/invite')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 2 });
+
+      // The invitation still exists; only the email is suppressed.
+      expect(res.status).toBe(201);
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+
     it('rejects if user already member', async () => {
       mockAuthenticated();
       c2_query

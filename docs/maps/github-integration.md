@@ -257,10 +257,15 @@ cannot lock themselves out.
 
 Sync is **manual and one-directional**: GitHub is the source, Codex is the
 target, and nothing runs it on a schedule. `team_sync_at` records the last run.
-Membership fetch is capped at `per_page=100` with no pagination
-(`github.js:2200`), so teams above 100 members will silently under-report and
-the removal pass would delete the overflow. Recorded in
-[open-questions.md](open-questions.md).
+Membership fetch goes through `fetchTeamMemberLogins`, which follows
+pagination to a 20-page (2,000 member) cap and returns
+`{ logins, complete }`. **A truncated listing disables removals**, in both the
+preview and the sync, and surfaces as `members_complete: false` in the
+response: a login on a page that was never fetched looks exactly like a member
+who left, and the removal pass deletes them. Until 2026-08-09 the fetch was a
+single `per_page=100` call with no loop, so a team over 100 members silently
+under-reported and the sync deleted the overflow (B5 in
+[open-questions.md](open-questions.md)).
 
 ## 7. Frontend surface
 
