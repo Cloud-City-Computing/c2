@@ -5,6 +5,7 @@
  * https://cloudcitycomputing.com
  */
 import { lazy, Suspense } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { Routes, Route, Navigate } from "react-router-dom";
 import HomePage from './pages/HomePage'
 
@@ -48,6 +49,9 @@ function MobileEditorGuard({ children }) {
 
 function App() {
   return (
+    // Outermost, so a throw from any page shows a recoverable message instead
+    // of unmounting the React root and leaving a blank window.
+    <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
     <Routes>
       <Route path="/" element={<HomePage />} />
@@ -72,6 +76,7 @@ function App() {
       <Route path="*" element={<Navigate to="/404" replace />} />
     </Routes>
     </Suspense>
+    </ErrorBoundary>
   )
 }
 

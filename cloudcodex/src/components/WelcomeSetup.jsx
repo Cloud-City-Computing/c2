@@ -51,10 +51,16 @@ export default function WelcomeSetup({ firstRun, onFinish }) {
 
       {hasSomethingToShow ? (
         <>
+          {/*
+            Three levels, not four. Track C settled that a day-one user meets
+            Squad, Archive and Log; workspace is an administrative concept that
+            appears where it is managed, not something you have to learn to
+            reach your first document. See docs/specs/roadmap.md track C.
+          */}
           <p className="welcome-subtitle">
-            Cloud Codex organises work in four levels: a <strong>workspace</strong> holds
-            <strong> squads</strong>, a squad holds <strong>archives</strong>, and an archive holds
-            your <strong>documents</strong>. Here is what you already have.
+            Cloud Codex organises work in three levels: a <strong>squad</strong> holds
+            <strong> archives</strong>, and an archive holds your <strong>documents</strong>.
+            Here is what you already have.
           </p>
           <ul className="welcome-hierarchy">
             {squad && <li>Your squad: <strong>{squad.name}</strong></li>}

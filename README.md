@@ -18,9 +18,10 @@
 </p>
 
 <p align="center">
-  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/RhykerWells/c2/ci.yml?branch=main&label=CI" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-1128%20passing-brightgreen" />
-  <img alt="Coverage (lines)" src="https://img.shields.io/badge/coverage%20(lines)-46%25-yellow" />
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Cloud-City-Computing/c2/ci.yml?branch=main&label=CI" />
+  <img alt="Release" src="https://img.shields.io/github/v/release/Cloud-City-Computing/c2?label=release" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-1224%20passing-brightgreen" />
+  <img alt="Coverage (lines)" src="https://img.shields.io/badge/coverage%20(lines)-47%25-yellow" />
   <img alt="Node" src="https://img.shields.io/badge/node-20.x-339933" />
   <img alt="License" src="https://img.shields.io/badge/license-source--available-blue" />
 </p>
@@ -31,6 +32,24 @@
 > merging, browse and edit a linked GitHub repo without leaving the page,
 > and run the whole stack on one box with one Node container and one MySQL
 > container.
+
+---
+
+## What it looks like
+
+One document, two people, two browsers. `alice` owns the squad and `bob` is a
+member of it; both are in the editor at the same time, and each sees the
+other's presence marker next to the document title.
+
+![Two users editing the same Cloud Codex document at the same time, each showing both presence avatars](docs/images/collaborative-editing.png)
+
+Browse and full-text search across everything you can reach, and a document
+with its page tree, version, inline comments and export options.
+
+<p align="center">
+  <img src="docs/images/browse.png" alt="Browsing and searching documents in Cloud Codex" width="49%" />
+  <img src="docs/images/document.png" alt="A Cloud Codex document with its page tree and version history" width="49%" />
+</p>
 
 ---
 
@@ -145,6 +164,19 @@ probably is.
 ---
 
 ## Quick start
+
+**Try a release.** Pulls a prebuilt image, so this needs Docker and nothing
+else. No Node, no build step.
+
+```bash
+git clone <repository-url>
+cd c2
+cp .env.example .env   # fill in DB and admin credentials; SMTP is optional
+docker compose -f docker-compose-release.yml up
+```
+
+**Work on the source.** Installs dependencies and runs the dev server with
+hot reload.
 
 ```bash
 git clone <repository-url>

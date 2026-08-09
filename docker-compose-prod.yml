@@ -42,6 +42,13 @@ services:
     environment:
       DB_HOST: database
     working_dir: /app
+    volumes:
+      # Same reason as docker-compose-release.yml: uploaded avatars and images
+      # extracted out of documents exist only on this disk, because
+      # routes/helpers/images.js swaps the base64 data URI in html_content for a
+      # /doc-images/ URL. Rebuilding without this volume loses all of them.
+      - app_public:/app/public
 
 volumes:
   db_data:
+  app_public:

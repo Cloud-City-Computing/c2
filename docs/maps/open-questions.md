@@ -260,6 +260,110 @@ up the app's dark theme; the `<select>` renders with default browser chrome
 impact, but jarring enough to be worth a styled `<select>` (or a themed
 listbox component) rather than the browser default.
 
+### B11. Navigating away from the editor blanks the whole app (FIXED)
+
+**Reproduced twice, in two independent browser sessions, against the built
+production image.** Open any document, click `✏️ Edit`, then click any sidebar
+nav link. React throws
+
+```
+NotFoundError: Failed to execute 'removeChild' on 'Node':
+The node to be removed is not a child of this node.
+```
+
+and the DOM collapses from ~275 nodes to ~25. The page renders **completely
+blank** and stays blank until a manual reload; the route changes in the URL
+bar but nothing mounts.
+
+Confirmed it is the editor unmounting, not any particular destination: one
+session went editor to `/admin`, the other editor to `/`, with byte-identical
+stack traces. Both were in edit mode with a live collab session open.
+
+The shape is the familiar ProseMirror-and-React teardown race, where
+ProseMirror removes DOM that React still believes it owns, so React's own
+removal fails. It is fatal rather than merely noisy because **there is no
+ErrorBoundary anywhere in `cloudcodex/src/`**, so one throw during unmount
+takes down the entire root. That missing boundary is the same gap flagged for
+the null-owner crash in the workspace `owner_id` review.
+
+**Root cause.** `RichTextEditor` in `Editor.jsx` portalled the cursor and
+comment-highlight overlays into `.tiptap`'s **`parentElement`**, the node
+`EditorContent` renders and whose children ProseMirror manages. An effect even
+reached in and set `position: relative` on it. React and ProseMirror therefore
+both mutated the same parent, and on teardown ProseMirror emptied it before
+React removed the portal children, so React's `removeChild` found a node that
+was no longer its child.
+
+**Both halves are fixed.**
+
+1. **No more portals.** The overlays now render as ordinary siblings of
+   `EditorContent` inside `div.tiptap-overlay-host`, an element React owns
+   outright, which carries the `position: relative` in CSS rather than through a
+   DOM mutation. `RichTextCursors` and `RichTextHighlights` take an optional
+   `containerRef` so their coordinates are measured against that same host,
+   keeping the geometry identical (they previously measured against
+   `editor.view.dom.parentElement`, which was also the portal target).
+2. **An `ErrorBoundary` now wraps the app** (`src/components/ErrorBoundary.jsx`,
+   mounted in `App.jsx`). It was the absence of any boundary that promoted an
+   unmount race into a total outage, and it would have done the same for the
+   null-owner admin crash. Covered by `tests/src/components/ErrorBoundary.test.jsx`.
+
+**Verified against the built production image**, not the dev server: opened a
+document, clicked Edit, clicked a sidebar link. Before, the DOM collapsed from
+~275 nodes to ~25 with the `removeChild` exception; after, it navigates with
+**274 nodes and zero console errors**, and the destination page renders. The
+editor's own layout and the comment highlight positions are unchanged, checked
+by comparing captures either side of the change.
+
+Tested one destination (editor to `/`) after the fix. The original bug
+reproduced identically to two different destinations and the cause is
+destination-independent, so this was not re-run for every route.
+
+### B12. Production CORS rejected the app's own browser (FIXED)
+
+`app.js` used `cors({ origin: fn })`, whose callback receives only the origin
+string and never the request, so it could not recognise a same-origin call.
+Browsers send an `Origin` header on same-origin POST/PUT/DELETE, so with
+`NODE_ENV=production` (forced by both `npm run start` and the Docker image) and
+`CORS_ORIGIN` unset (what `.env.example` ships), every write request from the
+app's own UI was rejected and answered **500**. Login was impossible through
+the documented self-hosting path.
+
+It survived because `curl` sends no `Origin` header, so every manual API check
+passed, and because `tests/app.test.js` had **no CORS test at all** despite its
+file header claiming to verify "CORS scoping". The suite also runs as
+`NODE_ENV=test`, which never reaches the rejecting branch.
+
+Fixed by switching to the request-taking form of `cors()` and comparing the
+`Origin` host against `req.headers.host`, plus `APP_URL`'s host for installs
+behind a proxy that does not rewrite `Host` (nginx's default `proxy_pass` does
+not). See `request-lifecycle.md` for the resolution order and for why this must
+not use `req.hostname`. Regression cover is the `CORS` describe block in
+`tests/app.test.js`; the two same-origin cases were confirmed to fail against
+the old implementation before the fix was kept, both by the author and
+independently during adversarial review.
+
+Still true and not addressed: a genuinely disallowed cross-origin request
+produces a **500 with an HTML body** rather than a 403, because the rejection
+throws before any router and `app.js` mounts no global error handler.
+
+### B13. Document titles are not reachable by keyboard anywhere
+
+On the browse grid, the archives page and the editor's page tree, a document's
+title is a click-only element. The accessibility tree for those pages exposes
+the surrounding controls (favourite `☆`, comment count, delete `×`, "+ New
+Log") but **no actionable node for the document itself**, so the only way to
+open a document from any list is a mouse click.
+
+Found while driving the app over CDP for the README screenshots: navigating to
+a document required going through the first-run welcome modal, whose "Start
+here" link is a real `<a>`, because no list view offered one.
+
+Not investigated: whether the rows are focusable with a `tabIndex` and a key
+handler that the accessibility tree simply does not advertise, which would
+still be a naming problem, or whether they are plain `<div onClick>`, which
+would make them unreachable outright.
+
 ## C. Design tensions, not defects
 
 ### C1. `canWrite` is evaluated once per collab connection

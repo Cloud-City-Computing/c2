@@ -1,0 +1,21 @@
+# Build context exclusions.
+#
+# Without this file `COPY . .` ships the host's node_modules (405 MB) into the
+# image on top of the dependencies the build already installed, so every
+# dependency lands twice. dist/ is excluded for the same reason: the image
+# builds its own from source rather than trusting whatever the host last built.
+
+node_modules
+dist
+coverage
+
+# Never bake secrets into a published image.
+.env
+.env.*
+!.env.example
+
+# Not needed at runtime.
+tests
+.git
+.gitignore
+*.md

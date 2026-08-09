@@ -60,7 +60,7 @@ constraint right now.
 | **A** | Evaluation path — **shipped** | Mail optional, install defects, non-empty first boot | nothing |
 | **B** | First-run experience (**shipped**) | Real guided onboarding for every user including the admin, invite-carried squad assignment, `/api/setup` retired | A |
 | **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
-| **D** | Trust signals | Real releases, changelog, classifiable license, screenshots | A |
+| **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
 | **E** | Foundation | The two giant page files, the open-questions defect list | nothing, but competes for time |
 
 ### A. Evaluation path — shipped
@@ -153,12 +153,39 @@ would make the level load-bearing here too, settling it the other way), or
 Cloud Command moving off `workspace` as its tenant boundary (which would remove
 the constraint that decided this).
 
-### D. Trust signals
+### D. Trust signals (mostly shipped)
 
 A self-hoster evaluating an unfamiliar platform checks for signals that it is
-maintained: tagged releases (there is one pre-release from March), a changelog,
-a license GitHub can classify (currently reported as "Other"), and screenshots
-proving the collaborative editing is real. Cheap, and it compounds with A.
+maintained. The measurement this file asked for came back weak: 38 stars, 1
+fork, 2 issues ever and both closed. Nothing about the repository said
+"maintained", so this track was picked next.
+
+Shipped: a `CHANGELOG.md` reconstructed back to the March alpha, the version
+reconciled to **0.9.0** (`package.json` claimed 1.0.0 while the only tag was a
+pre-release), a `release.yml` that verifies and then publishes
+`ghcr.io/cloud-city-computing/cloud-codex` on a version tag, a
+`docker-compose-release.yml` that runs a release without a build toolchain,
+README screenshots including a two-browser shot of one document open as two
+users, and a `CODE_OF_CONDUCT.md`.
+
+**Deliberately not done: the classifiable licence.** GitHub reports "Other"
+because the `LICENSE` is a bespoke source-available text, and `licensee`
+matches only known licence texts, so no rewording can change the badge. The
+only fix is adopting a standard licence, which is a business decision rather
+than a docs one. It was considered and declined, and the badge stays "Other".
+
+Two things found by actually running the built image, both recorded in
+[`../maps/open-questions.md`](../maps/open-questions.md):
+
+- **B12, fixed:** production CORS rejected the app's own login request, so the
+  documented self-hosting path could not log in at all.
+- **B11, fixed:** navigating away from the editor blanked the whole app. The
+  overlays were portalled into ProseMirror-owned DOM; they are now siblings
+  inside a React-owned host. The app also gained its **first `ErrorBoundary`**,
+  which is what turned that unmount race from a cosmetic bug into a total
+  outage, and which E inherits as a solved problem.
+- **B13, open:** document titles are click-only and unreachable by keyboard in
+  every list view.
 
 ### E. Foundation
 
@@ -189,7 +216,16 @@ now         A ──────────────────────
             C: decided 2026-08-08, no breaking change to execute
 ```
 
-A and B have shipped and C is decided. Re-read this file before picking the
-next track. The measurement that should drive it: do the 37 stars convert into
-issues, forks, and questions? That tells us whether the wall was the only thing
-in the way. D and E remain open and undated.
+A, B and D have shipped and C is decided. **E is the only track left.** Two of
+the arguments for it were settled during D rather than deferred into it: the
+editor no longer blanks the app on navigation, and the app now has an error
+boundary, so a render error is no longer unrecoverable. What remains for E is
+its actual subject, breaking up `Editor.jsx` (1516 lines) and `GitHubPage.jsx`
+(2631 lines) so the interface is testable, plus the rest of the
+`open-questions.md` list, of which **B1** (PR-as-document access granted through
+a column nothing reads) is still the highest-value item.
+
+The measurement that drove D: 38 stars, 1 fork, 2 issues ever, both closed. Now
+that the repository looks maintained and an evaluator can `docker compose up` a
+published image, that number is worth re-reading before committing to E's full
+scope.

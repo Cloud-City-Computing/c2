@@ -6335,6 +6335,21 @@ body {
    Remote Cursors — Collaborative Editing
 ========================= */
 
+/*
+ * Positioning context for the cursor and comment-highlight overlays, which are
+ * absolutely positioned against it. This wrapper is rendered by React and holds
+ * EditorContent plus both overlays as siblings.
+ *
+ * It replaces an effect that reached into the DOM and set position:relative on
+ * `.tiptap`.parentElement, then portalled the overlays into that same
+ * ProseMirror-owned node. Tearing the editor down made React remove portal
+ * children from a parent ProseMirror had already emptied, which threw and
+ * blanked the whole app. See docs/maps/open-questions.md B11.
+ */
+.tiptap-overlay-host {
+  position: relative;
+}
+
 .remote-cursors {
   position: absolute;
   top: 0;
@@ -8912,3 +8927,59 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover-strong); }
+/* =========================
+   Error Boundary
+   Last-resort UI when a render throws. Before this existed, any such throw
+   unmounted the React root and left a blank page (open-questions.md B11).
+========================= */
+
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  background: var(--bg, #1b1b1d);
+}
+
+.error-boundary__panel {
+  max-width: 34rem;
+  width: 100%;
+  padding: 2rem;
+  border: 1px solid var(--border, #3a3a3f);
+  border-radius: 8px;
+  background: var(--panel, #232326);
+  text-align: center;
+}
+
+.error-boundary__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.35rem;
+  color: var(--text, #e6edf3);
+}
+
+.error-boundary__body {
+  margin: 0 0 1rem;
+  color: var(--text-muted, #9aa0a6);
+  line-height: 1.5;
+}
+
+.error-boundary__detail {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--bg, #1b1b1d);
+  color: var(--text-muted, #9aa0a6);
+  font-size: 0.85rem;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-boundary__actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}

@@ -1,0 +1,137 @@
+name: Release
+
+# Publishes the Cloud Codex container image when a version tag is pushed.
+#
+# The image is named for the product, not the repository: `c2` is a legacy
+# codename and an image an evaluator types into `docker pull` is a user-facing
+# string. ghcr.io also requires a lowercase path, which `Cloud-City-Computing`
+# is not, so the owner is spelled out rather than taken from the context.
+
+on:
+  push:
+    # Plain vMAJOR.MINOR.PATCH only. A prerelease tag would otherwise move
+    # :latest, and the version guard below cannot match one against
+    # package.json anyway.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+env:
+  IMAGE: ghcr.io/cloud-city-computing/cloud-codex
+
+jobs:
+  # The tag is not a promise that the tagged commit is green: tags can be
+  # pushed to any commit, and CI only runs on main. Re-prove it here before
+  # publishing something the world can pull.
+  verify:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: cloudcodex
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloudcodex/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm test
+
+      # CI's gate is the 26 per-glob thresholds in vitest.config.js, not the
+      # plain test run. Without this the release path is a weaker check than
+      # the one it claims to be re-proving.
+      - run: npm run test:coverage
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Full history so the :latest decision below can see every other tag.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Strip the leading v so the image tag reads 0.9.0, matching the version
+      # in package.json rather than the git tag spelling.
+      - name: Derive version
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # VERSION comes through the environment, never interpolated into the
+      # script body. A tag name is attacker-choosable and `v1.0.0$(id)` is a
+      # valid, pushable ref, so a `${{ }}` expansion here would be command
+      # execution inside a job that holds packages: write and a ghcr.io login.
+      - name: Fail if the tag disagrees with the version in the repo
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          manifest=$(node -p "require('./cloudcodex/package.json').version")
+          if [ "$manifest" != "$VERSION" ]; then
+            echo "Tag $VERSION does not match package.json $manifest." >&2
+            echo "A published image whose reported version is a lie is worse than no image." >&2
+            exit 1
+          fi
+
+          # docker-compose-release.yml carries the version an evaluator gets by
+          # default. Nothing bumps it automatically, so fail loudly here rather
+          # than shipping a release that the documented command does not run.
+          pinned=$(sed -n 's/.*cloud-codex:\${CLOUDCODEX_VERSION:-\([^}]*\)}.*/\1/p' \
+            docker-compose-release.yml)
+          if [ "$pinned" != "$VERSION" ]; then
+            echo "docker-compose-release.yml defaults to '$pinned', tag is '$VERSION'." >&2
+            echo "Bump the default so 'docker compose up' runs the release being published." >&2
+            exit 1
+          fi
+
+      # :latest must never move backwards. A hotfix on an older line (v0.9.1
+      # tagged after v1.0.0 shipped) is a normal thing to do, and republishing
+      # :latest from it would silently downgrade everyone who tracks that tag,
+      # onto a database the newer release has already migrated.
+      - name: Decide whether this is the newest release
+        id: newest
+        run: |
+          highest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          if [ "$highest" = "$GITHUB_REF_NAME" ]; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$GITHUB_REF_NAME is not the highest tag ($highest);" \
+                 "publishing the version tag only, leaving :latest alone."
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # linux/amd64 only. arm64 would need cross-building sharp and bcrypt under
+      # QEMU emulation, which is slow and fails in ways that only show up at
+      # runtime; Apple Silicon users run this under Docker Desktop's emulation
+      # instead. Tracked as a known gap in docs/maps/build-test-and-ops.md.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./cloudcodex
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.value }}
+            ${{ steps.newest.outputs.value == 'true'
+                && format('{0}:latest', env.IMAGE) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
