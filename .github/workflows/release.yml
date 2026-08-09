@@ -9,7 +9,10 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    # Plain vMAJOR.MINOR.PATCH only. A prerelease tag would otherwise move
+    # :latest, and the version guard below cannot match one against
+    # package.json anyway.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
 env:
   IMAGE: ghcr.io/cloud-city-computing/cloud-codex
@@ -40,6 +43,11 @@ jobs:
 
       - run: npm test
 
+      # CI's gate is the 26 per-glob thresholds in vitest.config.js, not the
+      # plain test run. Without this the release path is a weaker check than
+      # the one it claims to be re-proving.
+      - run: npm run test:coverage
+
   publish:
     needs: verify
     runs-on: ubuntu-latest
@@ -49,7 +57,10 @@ jobs:
       packages: write
 
     steps:
+      # Full history so the :latest decision below can see every other tag.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Strip the leading v so the image tag reads 0.9.0, matching the version
       # in package.json rather than the git tag spelling.
@@ -57,13 +68,46 @@ jobs:
         id: version
         run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Fail if the tag disagrees with package.json
+      # VERSION comes through the environment, never interpolated into the
+      # script body. A tag name is attacker-choosable and `v1.0.0$(id)` is a
+      # valid, pushable ref, so a `${{ }}` expansion here would be command
+      # execution inside a job that holds packages: write and a ghcr.io login.
+      - name: Fail if the tag disagrees with the version in the repo
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           manifest=$(node -p "require('./cloudcodex/package.json').version")
-          if [ "$manifest" != "${{ steps.version.outputs.value }}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package.json ${manifest}." >&2
+          if [ "$manifest" != "$VERSION" ]; then
+            echo "Tag $VERSION does not match package.json $manifest." >&2
             echo "A published image whose reported version is a lie is worse than no image." >&2
             exit 1
+          fi
+
+          # docker-compose-release.yml carries the version an evaluator gets by
+          # default. Nothing bumps it automatically, so fail loudly here rather
+          # than shipping a release that the documented command does not run.
+          pinned=$(sed -n 's/.*cloud-codex:\${CLOUDCODEX_VERSION:-\([^}]*\)}.*/\1/p' \
+            docker-compose-release.yml)
+          if [ "$pinned" != "$VERSION" ]; then
+            echo "docker-compose-release.yml defaults to '$pinned', tag is '$VERSION'." >&2
+            echo "Bump the default so 'docker compose up' runs the release being published." >&2
+            exit 1
+          fi
+
+      # :latest must never move backwards. A hotfix on an older line (v0.9.1
+      # tagged after v1.0.0 shipped) is a normal thing to do, and republishing
+      # :latest from it would silently downgrade everyone who tracks that tag,
+      # onto a database the newer release has already migrated.
+      - name: Decide whether this is the newest release
+        id: newest
+        run: |
+          highest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          if [ "$highest" = "$GITHUB_REF_NAME" ]; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$GITHUB_REF_NAME is not the highest tag ($highest);" \
+                 "publishing the version tag only, leaving :latest alone."
           fi
 
       - uses: docker/setup-buildx-action@v3
@@ -87,6 +131,7 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE }}:${{ steps.version.outputs.value }}
-            ${{ env.IMAGE }}:latest
+            ${{ steps.newest.outputs.value == 'true'
+                && format('{0}:latest', env.IMAGE) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

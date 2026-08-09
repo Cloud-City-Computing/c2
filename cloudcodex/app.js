@@ -57,15 +57,38 @@ app.use('/api', cors((req, cb) => {
   // No Origin header: a same-origin GET, a server-to-server call, curl.
   if (!origin) return cb(null, { ...options, origin: true });
 
-  let originHost = null;
-  try {
-    originHost = new URL(origin).host;
-  } catch { /* malformed Origin header */ }
+  const hostOf = (value) => {
+    try {
+      // Lowercased by the URL parser. req.headers.host is not, so both sides of
+      // every comparison below go through here.
+      return new URL(value).host || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const originHost = hostOf(origin);
 
   // Same origin. Compared on host rather than the whole URL so that an install
   // behind a TLS-terminating proxy, where the browser sends an https Origin and
   // the app sees a plain http request, is still recognised as itself.
-  if (originHost && req.headers.host && originHost === req.headers.host) {
+  //
+  // Deliberately the raw Host header and NOT req.hostname: `trust proxy` is set
+  // above, so req.hostname would honour a client-supplied X-Forwarded-Host, and
+  // the app's port is published directly by the compose files. That would turn
+  // this clause into "allow any origin that asks".
+  const rawHost = req.headers.host ? hostOf(`http://${req.headers.host}`) : null;
+  if (originHost && rawHost && originHost === rawHost) {
+    return cb(null, { ...options, origin: true });
+  }
+
+  // The configured public origin. A reverse proxy that does not rewrite Host
+  // (nginx's default `proxy_pass` sends Host: 127.0.0.1:3000, not the public
+  // name) would otherwise make the app reject its own browser again, which is
+  // the same outage this middleware was rewritten to fix. APP_URL is already
+  // required, and unlike X-Forwarded-Host it is operator-set, not caller-set.
+  const appHost = process.env.APP_URL ? hostOf(process.env.APP_URL) : null;
+  if (originHost && appHost && originHost === appHost) {
     return cb(null, { ...options, origin: true });
   }
 

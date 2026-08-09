@@ -39,15 +39,18 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
    │   Cloud Codex Node container  (docker-compose-prod)  │
    │   · vite-express serves dist/ + Express API          │
    │   · 2 WS servers attached (collab + notifications)   │
-   │   · reads .env, exits if SMTP/admin missing          │
+   │   · reads .env, exits if admin credentials missing   │
+   │   · SMTP is optional; mail degrades if unconfigured  │
+   │   · named volume app_public (avatars, doc-images)    │
    │   · daily activity_log prune                         │
    └─────────────────────────┬────────────────────────────┘
                              │ mysql2 pool (10)
                              ▼
    ┌──────────────────────────────────────────────────────┐
    │   MySQL 8 container                                  │
-   │   · named volume db-data                             │
-   │   · port 3306 NOT exposed publicly                   │
+   │   · named volume db_data                             │
+   │   · 3306 not published by docker-compose-release.yml │
+   │   · 3306 IS published by docker-compose-prod.yml     │
    └──────────────────────────────────────────────────────┘
 ```
 
@@ -130,8 +133,9 @@ connections will be refused at the browser level too — that's deliberate.
 
 ## Backups
 
-The only stateful container is MySQL; the named volume `db-data` is the
-single source of truth.
+There are **two** stateful volumes, and a MySQL dump alone is not a complete
+backup: `db_data` holds the database, and `app_public` holds uploaded avatars
+and the images extracted out of documents. Back up both.
 
 ```bash
 # Logical dump (recommended — portable, point-in-time)
@@ -146,26 +150,46 @@ docker exec -i <mysql-container> \
 
 Schedule the dump however suits your environment (cron on the host,
 managed snapshot on your cloud, GitHub Actions pulling a dump). The
-`db-data` volume can also be snapshotted at the volume-driver level if
+`db_data` volume can also be snapshotted at the volume-driver level if
 your storage supports it.
 
-User-uploaded files (avatars and document images) live inside the **Node
-container**, under `cloudcodex/public/avatars/` and
-`cloudcodex/public/doc-images/`. Mount these as a volume in
-`docker-compose-prod.yml` if you want them to persist across container
-rebuilds.
+**Uploaded files are not in the dump.** Avatars and document images are written
+to `/app/public/avatars/` and `/app/public/doc-images/` inside the app
+container, and both compose files mount the named volume `app_public` there so
+they survive a container being recreated. They are not optional extras: when an
+image is pasted into a document, `routes/helpers/images.js` extracts it to disk
+and **replaces the base64 data URI in `html_content` with a `/doc-images/` URL**,
+so after extraction the file on disk is the only copy. Lose the volume and every
+affected document renders a broken image while the database still points at it.
+
+```bash
+# Back the uploads up alongside the SQL dump
+docker run --rm -v cloudcodex_app_public:/data -v "$PWD":/backup alpine \
+   tar czf /backup/uploads-$(date +%F).tar.gz -C /data .
+```
 
 ---
 
 ## Upgrades
 
+**Applying migrations is a manual step, on every upgrade path, including the
+published image.** There is no migration runner and no applied-migrations
+table. Bumping `CLOUDCODEX_VERSION` and running `docker compose up -d` starts a
+newer app against an older schema, and it boots cleanly before throwing 500s on
+whatever column it expects and cannot find. `init.sql` will not save you: MySQL
+executes `docker-entrypoint-initdb.d` only when it initialises an **empty** data
+directory, so on an existing `db_data` volume it is skipped entirely.
+
+Take a dump before starting, and read the release's CHANGELOG entry for schema
+changes.
+
 ```
    ┌─────────────────┐   ┌────────────────────────┐   ┌──────────────────┐
    │ git pull main   │──►│ inspect migrations/    │──►│ docker compose   │
-   │ (or pull image) │   │ for new files          │   │ up -d --build    │
-   └─────────────────┘   │  · apply each in order │   └──────────────────┘
-                         │    against running DB  │
-                         │  · init.sql is for new │
+   │ (or bump        │   │ for new files          │   │ up -d [--build]  │
+   │  CLOUDCODEX_    │   │  · apply each in order │   └──────────────────┘
+   │  VERSION)       │   │    against running DB  │
+   └─────────────────┘   │  · init.sql is for new │
                          │    installs only       │
                          └────────────────────────┘
 ```

@@ -39,25 +39,30 @@ Two consequences worth knowing:
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', 1)                    app.js:41
+app.set('trust proxy', 1)                    app.js:42
   │
-  ├─ CORS, scoped to /api                    app.js:44-63
-  ├─ helmet + CSP, scoped to /api            app.js:66-79
-  ├─ express.json({ limit: '2mb' })          app.js:91
-  ├─ authLimiter on 8 specific paths         app.js:94-101
-  ├─ searchLimiter on /api/users/search      app.js:112
-  ├─ static /avatars      (7d immutable)     app.js:115-118
-  ├─ static /doc-images   (30d immutable)    app.js:121-124
+  ├─ CORS, scoped to /api                    app.js:53-109
+  ├─ helmet + CSP, scoped to /api            app.js:112-125
+  ├─ express.json({ limit: '2mb' })          app.js:137
+  ├─ authLimiter on 8 specific paths         app.js:140-147
+  ├─ searchLimiter on /api/users/search      app.js:158
+  ├─ static /avatars      (7d immutable)     app.js:161-164
+  ├─ static /doc-images   (30d immutable)    app.js:167-170
   └─ 18 routers, all mounted at /api
 ```
 
 **CORS** (`app.js`, the `cors((req, cb) => ...)` block) allows, in order: a
 request with no `Origin` header at all; a **same-origin** request, decided by
-comparing the `Origin` URL's host against `req.headers.host`; an exact match
-against `CORS_ORIGIN`; and any localhost or 127.0.0.1 origin **when
-`NODE_ENV !== 'production'`**. Everything else is rejected, which surfaces as a
-500 rather than a 403 because the rejection is thrown as an error before any
-router runs, and `app.js` mounts no global error handler.
+comparing the `Origin` URL's host against `req.headers.host`; a request whose
+Origin matches **`APP_URL`**'s host; an exact match against `CORS_ORIGIN`; and
+any localhost or 127.0.0.1 origin **when `NODE_ENV !== 'production'`**.
+Everything else is rejected, which surfaces as a 500 rather than a 403 because
+the rejection is thrown as an error before any router runs, and `app.js` mounts
+no global error handler.
+
+Both sides of every host comparison go through `new URL(...).host`, which
+lowercases. A raw `Host` header does not, so a proxy emitting
+`Host: Codex.Example.com` would otherwise fail to match its own `Origin`.
 
 The same-origin clause is why this uses the request-taking form of `cors()`
 rather than the simpler `cors({ origin: fn })`: the origin-only callback never
@@ -74,12 +79,23 @@ The host comparison deliberately ignores scheme, so an install behind a
 TLS-terminating proxy (browser sends an `https` Origin, the app sees a plain
 `http` request) is still recognised as itself.
 
-**CSP** (`app.js:68-77`) is scoped to `/api` on purpose so the Vite dev server's
+**The `APP_URL` clause exists because the `Host` clause alone is not enough
+behind a proxy.** nginx's default `proxy_pass` sends `Host: 127.0.0.1:3000`, not
+the public name, unless the operator adds `proxy_set_header Host $host`. Without
+the `APP_URL` fallback that configuration reproduces the original outage exactly:
+every write returns 500. `APP_URL` is already required and is operator-set.
+
+It is deliberately **not** `req.hostname`. `trust proxy` is 1, so `req.hostname`
+honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
+app's port directly, so an attacker could set that header themselves and turn
+the same-origin clause into "allow any origin".
+
+**CSP** (`app.js:113-124`) is scoped to `/api` on purpose so the Vite dev server's
 inline module scripts are not blocked. `frameAncestors: 'none'`,
 `objectSrc: 'none'`, `connectSrc` allows `ws:`/`wss:` for the two WebSockets,
 `imgSrc` allows `data:` and `blob:` for pasted images.
 
-**Body limit is 2 MB** (`app.js:91`). The collab WebSocket has its own, larger
+**Body limit is 2 MB** (`app.js:137`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:43-44`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -87,8 +103,8 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:82-89`) | 15 min / 20 | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:94-101`) |
-| `searchLimiter` (`app.js:104-111`) | 15 min / 60 | `/api/users/search` only (`app.js:112`), to blunt user enumeration |
+| `authLimiter` (`app.js:128-136`) | 15 min / 20 | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`) |
+| `searchLimiter` (`app.js:150-157`) | 15 min / 60 | `/api/users/search` only (`app.js:158`), to blunt user enumeration |
 
 Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. That also means **no test

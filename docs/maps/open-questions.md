@@ -308,10 +308,13 @@ file header claiming to verify "CORS scoping". The suite also runs as
 `NODE_ENV=test`, which never reaches the rejecting branch.
 
 Fixed by switching to the request-taking form of `cors()` and comparing the
-`Origin` host against `req.headers.host`. See `request-lifecycle.md` for the
-resolution order. Regression cover is the `CORS` describe block in
+`Origin` host against `req.headers.host`, plus `APP_URL`'s host for installs
+behind a proxy that does not rewrite `Host` (nginx's default `proxy_pass` does
+not). See `request-lifecycle.md` for the resolution order and for why this must
+not use `req.hostname`. Regression cover is the `CORS` describe block in
 `tests/app.test.js`; the two same-origin cases were confirmed to fail against
-the old implementation before the fix was kept.
+the old implementation before the fix was kept, both by the author and
+independently during adversarial review.
 
 Still true and not addressed: a genuinely disallowed cross-origin request
 produces a **500 with an HTML body** rather than a 403, because the rejection

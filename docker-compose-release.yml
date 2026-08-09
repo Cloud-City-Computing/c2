@@ -19,8 +19,13 @@ services:
       MYSQL_PASSWORD: ${DB_PASS}
     env_file:
       - .env
-    ports:
-      - "3306:3306"
+    # Deliberately NOT published to the host. The app reaches MySQL as
+    # DB_HOST: database over the compose network, so publishing 3306 only
+    # exposes the database, and Docker's published ports are a DNAT rule that
+    # sits in front of the host firewall, so `ufw deny 3306` does not close it.
+    # Use `docker compose exec database mysql ...` for a shell.
+    expose:
+      - "3306"
     volumes:
       - db_data:/var/lib/mysql
       # init.sql runs only when this volume is created empty. On an existing
@@ -37,6 +42,12 @@ services:
     # Pin a release rather than tracking :latest, so an evaluator's install
     # does not change under them on the next publish. Override with
     # CLOUDCODEX_VERSION in .env to try a different release.
+    #
+    # UPGRADING IS NOT JUST THIS NUMBER. There is no migration runner, and
+    # init.sql runs only on an empty data directory, so a newer app against an
+    # older schema boots cleanly and then 500s. Apply the relevant
+    # migrations/*.sql by hand first: see "Upgrades" in docs/deployment.md.
+    # release.yml fails the build if this default falls behind the tag.
     image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.9.0}
     container_name: cloudcodex-app
     restart: unless-stopped
@@ -53,6 +64,15 @@ services:
       - .env
     environment:
       DB_HOST: database
+    volumes:
+      # Uploaded avatars and images extracted out of documents live on disk
+      # here, and only the path to them lives in MySQL: routes/helpers/images.js
+      # replaces the base64 data URI in html_content with a /doc-images/ URL, so
+      # after extraction the file IS the only copy. Without this volume, pulling
+      # a newer image recreates the container and every avatar and pasted image
+      # is gone for good while the database still points at it.
+      - app_public:/app/public
 
 volumes:
   db_data:
+  app_public:

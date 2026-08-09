@@ -39,19 +39,29 @@ describe('app.js — Express configuration', () => {
   // it means the app refused its own browser, which is every self-hosted
   // install, since .env.example ships CORS_ORIGIN blank.
   describe('CORS', () => {
-    const withProdEnv = async (fn) => {
-      const priorEnv = process.env.NODE_ENV;
-      const priorOrigin = process.env.CORS_ORIGIN;
-      process.env.NODE_ENV = 'production';
-      delete process.env.CORS_ORIGIN;
+    // Restores by delete-or-assign for every key, never a bare assignment: a
+    // bare one writes the string "undefined" when the key was absent, which
+    // would silently arm the rate limiters for later tests in this file.
+    const withEnv = async (overrides, fn) => {
+      const prior = {};
+      for (const [key, value] of Object.entries(overrides)) {
+        prior[key] = process.env[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
       try {
         return await fn();
       } finally {
-        process.env.NODE_ENV = priorEnv;
-        if (priorOrigin === undefined) delete process.env.CORS_ORIGIN;
-        else process.env.CORS_ORIGIN = priorOrigin;
+        for (const [key, value] of Object.entries(prior)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
       }
     };
+
+    // Production with nothing configured is what .env.example ships.
+    const withProdEnv = (fn) =>
+      withEnv({ NODE_ENV: 'production', CORS_ORIGIN: undefined, APP_URL: undefined }, fn);
 
     it('allows a same-origin request in production with no CORS_ORIGIN set', async () => {
       const res = await withProdEnv(() =>
@@ -75,6 +85,38 @@ describe('app.js — Express configuration', () => {
       expect(res.status).toBe(401);
     });
 
+    // nginx's default `proxy_pass` sends Host: 127.0.0.1:3000, not the public
+    // name, so the same-origin clause alone rejects every write on the setup
+    // docs/deployment.md tells operators to build. APP_URL is operator-set, so
+    // unlike X-Forwarded-Host it is safe to trust.
+    it('allows the APP_URL origin when a proxy did not rewrite Host', async () => {
+      const res = await withEnv(
+        {
+          NODE_ENV: 'production',
+          CORS_ORIGIN: undefined,
+          APP_URL: 'https://codex.example.com',
+        },
+        () =>
+          request(app)
+            .get('/api/workspaces')
+            .set('Host', '127.0.0.1:3000')
+            .set('Origin', 'https://codex.example.com'));
+
+      expect(res.status).toBe(401);
+    });
+
+    // new URL().host lowercases; a raw Host header does not. Both sides have to
+    // be normalised or a proxy emitting Host: Codex.Example.com 500s every write.
+    it('matches Host and Origin case-insensitively', async () => {
+      const res = await withProdEnv(() =>
+        request(app)
+          .get('/api/workspaces')
+          .set('Host', 'Codex.Example.com')
+          .set('Origin', 'https://codex.example.com'));
+
+      expect(res.status).toBe(401);
+    });
+
     it('rejects an unlisted cross-origin request in production', async () => {
       const res = await withProdEnv(() =>
         request(app)
@@ -86,23 +128,20 @@ describe('app.js — Express configuration', () => {
     });
 
     it('allows a cross-origin request that matches CORS_ORIGIN', async () => {
-      const priorEnv = process.env.NODE_ENV;
-      const priorOrigin = process.env.CORS_ORIGIN;
-      process.env.NODE_ENV = 'production';
-      process.env.CORS_ORIGIN = 'https://app.example.com';
-      try {
-        const res = await request(app)
-          .get('/api/workspaces')
-          .set('Host', 'codex.example.com')
-          .set('Origin', 'https://app.example.com');
+      const res = await withEnv(
+        {
+          NODE_ENV: 'production',
+          CORS_ORIGIN: 'https://app.example.com',
+          APP_URL: undefined,
+        },
+        () =>
+          request(app)
+            .get('/api/workspaces')
+            .set('Host', 'codex.example.com')
+            .set('Origin', 'https://app.example.com'));
 
-        expect(res.status).toBe(401);
-        expect(res.headers['access-control-allow-origin']).toBe('https://app.example.com');
-      } finally {
-        process.env.NODE_ENV = priorEnv;
-        if (priorOrigin === undefined) delete process.env.CORS_ORIGIN;
-        else process.env.CORS_ORIGIN = priorOrigin;
-      }
+      expect(res.status).toBe(401);
+      expect(res.headers['access-control-allow-origin']).toBe('https://app.example.com');
     });
 
     it('allows a request with no Origin header at all', async () => {

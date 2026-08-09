@@ -39,8 +39,8 @@ it (directly or transitively) before reading `process.env`.
 | `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
 
 `NODE_ENV` matters in three places: CORS localhost allowance
-(`app.js:52`), rate-limiter `skip` when `'test'` (`app.js:87`,
-`app.js:109`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+(`app.js:101`), rate-limiter `skip` when `'test'` (`app.js:133`,
+`app.js:155`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -120,7 +120,7 @@ applied by hand.
 | `backend` | node | `tests/setup.js` | `tests/routes/`, `tests/middleware/`, `tests/services/`, `tests/helpers/`, `tests/extensions/`, `tests/*.test.js` |
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 
-Current state: **58 files, 1154 tests, all passing.**
+Current state: **61 files, 1226 tests, all passing.**
 
 Tests mirror the source tree:
 
@@ -220,22 +220,40 @@ Note the branch filter: work on `dev` does not trigger CI until it targets
 
 `.github/workflows/release.yml`, triggered by pushing a `v*` tag. Two jobs:
 
-1. **verify** re-runs `npm ci`, `npm run lint` and `npm test`. A tag is not
-   evidence the commit is green, because tags can point at any commit and
-   `ci.yml` only runs on `main`.
+1. **verify** re-runs `npm ci`, `npm run lint`, `npm test` **and
+   `npm run test:coverage`**. A tag is not evidence the commit is green, because
+   tags can point at any commit and `ci.yml` only runs on `main`. The coverage
+   run is not optional padding: the 26 per-glob thresholds are CI's real gate,
+   so omitting it would make the release path weaker than the thing it claims
+   to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
    pushes `ghcr.io/cloud-city-computing/cloud-codex` at both the bare version
    and `:latest`, with `packages: write` and the GITHUB_TOKEN.
 
-Two deliberate details:
+Deliberate details, each of which is load-bearing:
 
 - The image is named for the **product**, not the repository. `c2` is a legacy
   codename and a string people type into `docker pull` is user-facing. The
   owner is spelled out in lowercase because ghcr.io rejects the mixed-case
   `Cloud-City-Computing` that `github.repository_owner` would give.
 - A guard step fails the build when the tag does not match
-  `cloudcodex/package.json`'s version. A published image that misreports its
-  own version is worse than no image.
+  `cloudcodex/package.json`'s version **or** the default pinned in
+  `docker-compose-release.yml`. A published image that misreports its own
+  version is worse than no image, and a stale compose default means the
+  documented `docker compose up` silently runs an older release than the
+  README describes.
+- **The tag name reaches that guard through `env:`, never through a `${{ }}`
+  expansion inside `run:`.** A tag is attacker-choosable and `v1.0.0$(id)` is a
+  valid, pushable ref, so interpolating it into the script body would be
+  command execution in a job holding `packages: write` and a ghcr.io login.
+- The trigger is `v[0-9]+.[0-9]+.[0-9]+`, not `v*`, so a prerelease tag cannot
+  start a publish.
+- **`:latest` is only moved when the tag is the highest version tag in the
+  repo.** A hotfix on an older line (`v0.9.1` cut after `v1.0.0` shipped) is
+  normal, and republishing `:latest` from it would downgrade everyone tracking
+  that tag onto a database a newer release has already migrated. The job checks
+  `git tag --sort=-v:refname` and, when it is not the newest, publishes the
+  version tag alone and says so with a `::notice::`.
 
 **Known gap: `linux/amd64` only.** arm64 would mean cross-building `sharp` and
 `bcrypt` under QEMU, which is slow and fails in ways that only appear at
@@ -243,7 +261,19 @@ runtime. Apple Silicon runs the amd64 image under Docker Desktop's emulation.
 
 `docker-compose-release.yml` consumes the published image instead of building,
 pinned to `${CLOUDCODEX_VERSION:-0.9.0}` so an evaluator's install does not
-move under them on the next publish.
+move under them on the next publish. It also differs from
+`docker-compose-prod.yml` in not publishing 3306: the app reaches MySQL over the
+compose network, and Docker's published ports are a DNAT rule that sits in front
+of the host firewall, so publishing it on a VPS exposes the database to the
+internet past a `ufw deny`.
+
+**Both** compose files mount a named volume `app_public` at `/app/public`.
+Uploaded avatars and extracted document images live only there:
+`routes/helpers/images.js` writes the file and then replaces the base64 data URI
+in `html_content` with a `/doc-images/` URL, so after extraction the file on
+disk is the sole copy. Without the volume, `docker compose pull && up -d`
+recreates the container and destroys every one of them while the database keeps
+pointing at them.
 
 ## 7. Shippability checklist
 
