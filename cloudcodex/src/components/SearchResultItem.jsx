@@ -25,10 +25,19 @@ function DocumentPreviewModal({ doc, onOpen }) {
 function SearchResultItem({ doc }) {
   const navigate = useNavigate();
   const openDoc = () => navigate(docUrl(doc));
+  const openPreview = () => showModal(<DocumentPreviewModal doc={doc} onOpen={openDoc} />, 'modal-md');
 
   return (
-    <div className="search-result-item" onClick={() => showModal(<DocumentPreviewModal doc={doc} onOpen={openDoc} />, 'modal-md')}>
-      <h3 className="result-title">{doc.title}</h3>
+    <div className="search-result-item" onClick={openPreview}>
+      <h3 className="result-title">
+        <button
+          type="button"
+          className="result-title-btn"
+          onClick={(e) => { e.stopPropagation(); openPreview(); }}
+        >
+          {doc.title}
+        </button>
+      </h3>
       {doc.archive_name && <span className="result-archive">{doc.archive_name}</span>}
     </div>
   );

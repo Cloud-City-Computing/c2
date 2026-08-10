@@ -142,7 +142,24 @@ one:
 - `<PresenceAvatars>` pairs with `usePresence`.
 - `<PageTree>` renders the `logs.parent_id` tree.
 - `<SearchBox>` / `<SearchResultItem>`, `<NotificationBell>` /
-  `<NotificationItem>`, `<ActivityItem>`, `<CIStatusBadge>`.
+  `<NotificationItem>`, `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`
+  has no callers**: search results reach the user through `ExploreCard`, so it
+  is dead code (see `open-questions.md` B13).
+- **A document's title is a real `<Link>` or `<button>` in every list view**
+  (`ExploreCard`, `LogTreeItem`, `PageTree`'s `TreeItem`, `SearchBox`'s
+  dropdown), while the row or card around it keeps its own `onClick` for the
+  mouse. The title stops propagation so one activation is not counted twice.
+  Adding a new list of documents means carrying that pattern, not a bare
+  `<div onClick>`: see `open-questions.md` B13 for why.
+- **`SearchBox`'s dropdown is the fiddly one.** Its results are links, so it
+  cannot dismiss on the input's blur; it closes when focus leaves the container
+  (`relatedTarget` containment) or on Escape, and the results container
+  `preventDefault`s `mousedown` because Firefox and Safari do not focus a link
+  on click. Removing that one line silently breaks mouse users on those
+  browsers and no jsdom test can see it.
+- Two inner components are exported purely so they can be unit-tested without
+  mounting their data-fetching parent: `ExploreCard` and `Pagination` from
+  `ExploreBrowser.jsx`, and `LogTreeItem` from `ArchiveBrowser.jsx`.
 - Comment UI is four components: `CommentManager` (orchestration),
   `CommentSidebar`, `CommentForm`, `CommentHighlights` (in-document marks).
 - `RemoteCursors.jsx` exports `RichTextCursors` and `MarkdownCursors`, two

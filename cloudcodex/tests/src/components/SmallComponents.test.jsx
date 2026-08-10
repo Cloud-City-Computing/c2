@@ -76,6 +76,21 @@ describe('SearchResultItem', () => {
     await user.click(container.querySelector('.search-result-item'));
     expect(utilMock.showModal).toHaveBeenCalled();
   });
+
+  // B13: the result was a click-only <div>, with no actionable node for the
+  // document itself. This fails against that version.
+  it('the result title is reachable by Tab and opens the preview on Enter', async () => {
+    const user = userEvent.setup();
+    const doc = { id: 1, title: 'Doc', author: 'Alice', created_at: new Date().toISOString() };
+    wrap(<SearchResultItem doc={doc} />);
+    const title = screen.getByRole('button', { name: 'Doc' });
+
+    await user.tab();
+    expect(document.activeElement).toBe(title);
+
+    await user.keyboard('{Enter}');
+    expect(utilMock.showModal).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('NewLogModal', () => {

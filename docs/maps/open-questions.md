@@ -475,22 +475,131 @@ export flow's own explicit `PUT /api/github/link` still settles that one
 document back to clean, because there the document and the commit really do
 match.
 
-### B13. Document titles are not reachable by keyboard anywhere
+### B13. Document titles were not reachable by keyboard anywhere (FIXED)
 
 On the browse grid, the archives page and the editor's page tree, a document's
-title is a click-only element. The accessibility tree for those pages exposes
+title was a click-only element. The accessibility tree for those pages exposed
 the surrounding controls (favourite `☆`, comment count, delete `×`, "+ New
 Log") but **no actionable node for the document itself**, so the only way to
-open a document from any list is a mouse click.
+open a document from any list was a mouse click.
 
 Found while driving the app over CDP for the README screenshots: navigating to
 a document required going through the first-run welcome modal, whose "Start
 here" link is a real `<a>`, because no list view offered one.
 
-Not investigated: whether the rows are focusable with a `tabIndex` and a key
-handler that the accessibility tree simply does not advertise, which would
-still be a naming problem, or whether they are plain `<div onClick>`, which
-would make them unreachable outright.
+**The open question resolved the worse way.** The rows were plain
+`<div onClick>` / `<span onClick>` with no `tabIndex`, no `role` and no key
+handler, so the titles were unreachable outright rather than merely unnamed.
+
+**Fixed 2026-08-09.** The title is now a real element in each view, and the row
+or card keeps its own `onClick` so the mouse affordance is unchanged:
+
+| View | Was | Now |
+|---|---|---|
+| Browse grid, `ExploreBrowser.jsx` `ExploreCard` | `<h3>` inside a click-only card | `<h3>` wrapping `<Link className="explore-card__title-link">` |
+| Archives page, `ArchiveBrowser.jsx` `LogTreeItem` | `<span className="log-tree-title" onClick={navigate}>` | `<Link className="log-tree-title">` |
+| Editor page tree, `PageTree.jsx` `TreeItem` | `<span className="page-tree-label">` | `<button className="page-tree-label">` calling `onSelect` |
+| Topbar search dropdown, `SearchBox.jsx` | `<div onMouseDown>` | `<Link className="search-dropdown-item">` |
+| `SearchResultItem.jsx` (no callers) | click-only `<div>` | `<button className="result-title-btn">` |
+
+**The topbar dropdown was the worst of the five and was nearly missed.** It is
+mounted on every authenticated page (`Std_Layout.jsx`), and it was not merely
+unnamed: `onMouseDown` meant even a synthetic click would not have fired it,
+and the input's `onBlur={() => setTimeout(() => setShowDropdown(false), 200)}`
+tore the results down as soon as focus left the input, so they were unreachable
+by construction. The `onMouseDown` was not sloppiness, it was the workaround for
+that timeout.
+
+Fixing it therefore took more than swapping the element. Dismissal moved to the
+container, closing only when focus leaves the whole search box
+(`relatedTarget` containment), plus Escape-to-close returning focus to the
+input. **And the dropdown container takes `onMouseDown={e => e.preventDefault()}`:**
+Chromium focuses a link on mousedown but **Firefox and Safari do not**, so
+without it the input would blur with a null `relatedTarget`, unmount the
+results before mouseup, and the click would never land, reintroducing exactly
+the bug the original `onMouseDown` was avoiding, on two browsers, invisibly to
+a jsdom suite. Suppressing focus on mousedown does not suppress the click, so
+the anchor still navigates; keyboard users never fire mousedown at all.
+
+The two link cases and the page-tree button `stopPropagation` so the row's own
+handler cannot fire a second, redundant navigation. A `<button>` is used in the
+page tree rather than a link because `ArchiveView` selects with
+`navigate(..., { replace: true })` on purpose, so the tree is an in-page
+selector and not a history step; the tradeoff is that a tree page cannot be
+opened in a new tab. Appearance is held constant by CSS resets on the four
+classes, and focus rings come from the pre-existing global `:focus-visible`
+rule (`index.css`), not from anything new.
+
+**Verified against a running app, not just the suite.** Logged in over CDP, the
+accessibility tree now lists one named `link`/`button` per document in all four
+live views, and pressing Enter on it navigated: browse grid `/` →
+`/archives/29/doc/113` (hit-tested to `a.explore-card__title-link`), page tree
+`doc/113` → `doc/102` (`button.page-tree-label`), archives page `/archives` →
+`/archives/22/doc/65` (`a.log-tree-title`), and the topbar dropdown `/` →
+`/archives/27/doc/111` (`a.search-dropdown-item`) after two Tabs from the
+input, with the dropdown staying open across the input's blur. The dropdown's
+mouse path was re-checked in the same session and still navigates
+(`doc/111` → `doc/95`), confirming the mousedown `preventDefault` does not
+swallow the click. No console errors on any step. Tab order within a card is
+title, then that card's `☆`.
+
+**`SearchResultItem` has no callers.** Grep across `src/` finds the component
+defined and default-exported, and rendered nowhere; search results reach the
+user through `ExploreCard` and the topbar dropdown, not through this file. It
+was fixed for consistency, but it is dead code and a deletion candidate in the
+same shape as A3. Not deleted here because removing a component is a scope call.
+
+**Two things about the dropdown are deliberately unverified**, because iris is
+Chromium-only and this fix is built around a Firefox/Safari behaviour:
+
+- Whether `preventDefault` on `mousedown` suppresses **scrollbar thumb
+  dragging** inside `.search-dropdown` (`max-height: 320px; overflow-y: auto`),
+  which Chromium dispatches to content. Worst case is degraded, not broken:
+  wheel and keyboard scrolling are unaffected. Test with 6+ results.
+- **Touch.** WebKit stops dispatching the rest of its synthesized mouse
+  sequence once an earlier synthesized event is default-prevented. If that
+  includes `mousedown`, tapping a result would never fire `click`, which would
+  be a regression from the old `onMouseDown` on iPad and touch laptops. The
+  topbar search is hidden below 768px (`index.css`), so phones are out of
+  scope. Test on an iPad in landscape.
+
+**Both halves of this item were found by adversarial review, not by the author.**
+The first pass fixed the dead component and missed the live one, then wrote
+"every list view" into three docs; by this repo's own rule that stale claim was
+itself the defect. The second finding was a false green: `PageTree`'s row
+`onClick` lost its only test the moment the title became a button, because the
+test selected with `getByText`, which then resolved to the new button that
+stops propagation. Deleting the row handler left all 346 frontend tests green.
+The test now clicks `.page-tree-row` and fails when that handler is removed.
+
+The 17 tests added with this fix were mutation-checked, not assumed: reverting
+the source changes fails all of them.
+
+### B15. Glyph-only controls announce as their glyph, not their purpose
+
+Found while writing the B13 tests, and **distinct from B13**: these controls are
+focusable and always were, so they are reachable. What they lack is a name.
+
+A control whose entire content is a glyph takes that glyph as its accessible
+name, because content wins over the `title` attribute in the accname
+computation. A `title` only becomes the name when the element has no content at
+all. So these are announced as "☆ button", "+ button", "× button":
+
+- `ExploreBrowser.jsx` favourite `☆` (has `title`, still names as `☆`)
+- `PageTree.jsx` expand/collapse `▾`/`▸`, row-add `+`, header `←`, `+`, `◂`
+- `ArchiveBrowser.jsx` `LogTreeItem` add `+`, comments `💬`, delete `×`, export `⤓`
+
+Confirmed live over CDP: the archives page lists 88 actionable nodes, of which
+the per-document controls appear as `button "⤓"`, `button "+"`, `button "💬"`,
+`button "×"` repeated once per row, giving a screen-reader user no way to tell
+which document any of them belongs to.
+
+`ArchiveBrowser.jsx`'s tree toggle already does the right thing with
+`aria-label={expanded ? 'Collapse' : 'Expand'}`, so the fix is that pattern
+applied consistently, ideally naming the document too ("Delete Authentication
+Guide"). Not done with B13 because several existing tests query these buttons
+by their glyph name, so it is a wider diff than the defect it fixes, and B13
+was scoped to titles.
 
 ## C. Design tensions, not defects
 

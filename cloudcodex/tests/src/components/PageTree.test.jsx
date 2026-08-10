@@ -56,16 +56,64 @@ describe('PageTree', () => {
     expect(screen.getByText('Child')).toBeInTheDocument();
   });
 
-  it('clicking a row calls onSelect with the log id', async () => {
+  // Clicks the row BACKGROUND, not the title. Since the title became a button
+  // that stops propagation, getByText('Hello') would resolve to that button and
+  // this would no longer touch the row's own onClick at all.
+  it('clicking the row background calls onSelect with the log id', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 7, title: 'Hello', children: [] }],
+    });
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    const { container } = wrap(<PageTree archiveId={1} archiveName="A" onSelect={onSelect} />);
+    await waitFor(() => expect(screen.getByText('Hello')).toBeInTheDocument());
+    await user.click(container.querySelector('.page-tree-row'));
+    expect(onSelect).toHaveBeenCalledWith(7);
+  });
+
+  // B13: the title used to be a plain <span>, so a document could only be
+  // opened with a mouse. These two fail against that version.
+  it('exposes the page title as an actionable node named after the document', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 7, title: 'Hello', children: [] }],
+    });
+    wrap(<PageTree archiveId={1} archiveName="A" onSelect={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Hello' })).toBeInTheDocument();
+  });
+
+  it('the page title is reachable by Tab and opens the page on Enter', async () => {
     utilMock.fetchLogs.mockResolvedValueOnce({
       logs: [{ id: 7, title: 'Hello', children: [] }],
     });
     const onSelect = vi.fn();
     const user = userEvent.setup();
     wrap(<PageTree archiveId={1} archiveName="A" onSelect={onSelect} />);
-    await waitFor(() => expect(screen.getByText('Hello')).toBeInTheDocument());
-    await user.click(screen.getByText('Hello'));
+    const title = await screen.findByRole('button', { name: 'Hello' });
+
+    // Walk the real tab order rather than calling .focus(), so a non-tabbable
+    // element (the old <span>) cannot pass this.
+    let reached = false;
+    for (let i = 0; i < 10 && !reached; i++) {
+      await user.tab();
+      reached = document.activeElement === title;
+    }
+    expect(reached).toBe(true);
+
+    await user.keyboard('{Enter}');
     expect(onSelect).toHaveBeenCalledWith(7);
+  });
+
+  it('activating the title selects the page exactly once', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 7, title: 'Hello', children: [] }],
+    });
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    wrap(<PageTree archiveId={1} archiveName="A" onSelect={onSelect} />);
+    await user.click(await screen.findByRole('button', { name: 'Hello' }));
+    // The row keeps its own onClick for mouse users; the title button stops
+    // propagation so the click is not counted twice.
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it('marks the active log with the active class', async () => {

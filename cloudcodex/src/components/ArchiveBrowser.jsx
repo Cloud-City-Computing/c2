@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchArchives, createArchive, updateArchive, deleteArchive,
   fetchLogs, deleteLog,
@@ -453,7 +453,9 @@ function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
 
 // --- Log Tree ---
 
-function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, getLogUsers }) {
+// Exported for unit tests, following the same convention as ExploreBrowser's
+// ExploreCard: the tree row is the piece worth testing on its own.
+export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, getLogUsers }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [commentCount, setCommentCount] = useState(0);
   const navigate = useNavigate();
@@ -514,9 +516,9 @@ function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, ge
             {expanded ? '▾' : '▸'}
           </button>
         )}
-        <span className="log-tree-title" onClick={() => navigate(`/archives/${archiveId}/doc/${log.id}`)}>
+        <Link className="log-tree-title" to={`/archives/${archiveId}/doc/${log.id}`}>
           {log.title}
-        </span>
+        </Link>
         {log.gh_owner && (
           <a
             className="gh-doc-badge"
