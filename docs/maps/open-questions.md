@@ -636,8 +636,25 @@ it was focusable and not activatable, and the Restore `<button>` was nested
 info block is now a real `<button>` carrying `aria-expanded`, and Restore is
 its sibling rather than its child.
 
-Mutation-checked: neutralising `PageTree`'s five `aria-label`s fails 7 tests,
-and reverting the `VersionHistory` row to its `div` fails 2.
+Two traps this fix walked into, both caught by review:
+
+- **`aria-label` overrides content**, so naming the comments button hid the
+  visible open-comment badge from screen readers entirely, having previously
+  announced it (badly) as part of `💬3`. The count is back in the label.
+- **A toggle keeps one name.** The favourite button first flipped its name
+  *and* carried `aria-pressed`; the two channels then contradict, so "pressed"
+  reads as qualifying "Remove". It is now a stable `Favorite <doc>` with the
+  state on `aria-pressed` alone.
+
+The `VersionHistory` row keeps its own `onClick` as a mouse convenience, so the
+row padding and the gap before Restore stay clickable and the row-wide hover
+highlight is not advertising a dead target. That is the same pattern B13
+established for every other list view.
+
+Mutation-checked per attribute, not per file: neutralising `PageTree`'s five
+`aria-label`s fails 7 tests; reverting the `VersionHistory` info block to a
+`div` fails 3; removing the row `onClick`, the comment count, or the sort
+label fails 1 each.
 
 ## C. Design tensions, not defects
 

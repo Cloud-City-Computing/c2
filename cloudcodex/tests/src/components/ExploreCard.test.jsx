@@ -85,7 +85,7 @@ describe('ExploreCard', () => {
       <ExploreCard item={ITEM} onClick={onClick} activeUsers={[]}
         isFavorited={false} onToggleFavorite={onToggleFavorite} />
     );
-    await user.click(screen.getByRole('button', { name: 'Add Runbook to favorites' }));
+    await user.click(screen.getByRole('button', { name: 'Favorite Runbook' }));
     expect(onToggleFavorite).toHaveBeenCalledWith(42);
     expect(onClick).not.toHaveBeenCalled();
   });
@@ -97,8 +97,10 @@ describe('ExploreCard', () => {
       <ExploreCard item={ITEM} onClick={vi.fn()} activeUsers={[]}
         isFavorited={false} onToggleFavorite={vi.fn()} />
     );
-    const add = screen.getByRole('button', { name: 'Add Runbook to favorites' });
-    expect(add).toHaveAttribute('aria-pressed', 'false');
+    // A toggle keeps ONE name and reports state through aria-pressed; a name
+    // that flips too makes the two channels contradict each other.
+    const fav = screen.getByRole('button', { name: 'Favorite Runbook' });
+    expect(fav).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByRole('button', { name: '☆' })).toBeNull();
 
     rerender(
@@ -107,7 +109,15 @@ describe('ExploreCard', () => {
           isFavorited onToggleFavorite={vi.fn()} />
       </MemoryRouter>
     );
-    expect(screen.getByRole('button', { name: 'Remove Runbook from favorites' }))
+    expect(screen.getByRole('button', { name: 'Favorite Runbook' }))
       .toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // Deleting the sort control's aria-label previously broke nothing: it had no
+  // accessible name at all before B15, which is the state this guards against.
+  it('names the sort control', async () => {
+    const { default: ExploreBrowser } = await import('../../../src/components/ExploreBrowser.jsx');
+    wrap(<ExploreBrowser />);
+    expect(await screen.findByRole('combobox', { name: 'Sort documents' })).toBeInTheDocument();
   });
 });

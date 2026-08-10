@@ -201,7 +201,7 @@ describe('VersionHistory', () => {
     const { container } = render(<VersionHistory logId={5} />);
     await screen.findByText('Second cut');
 
-    const row = container.querySelector('.version-list__info');
+    const row = screen.getByRole('button', { name: /^Second cut/ });
     expect(row).toHaveAttribute('aria-expanded', 'false');
     // Restore is a sibling of the row control, not a descendant of it.
     expect(row.querySelector('button')).toBeNull();
@@ -209,5 +209,34 @@ describe('VersionHistory', () => {
     await user.click(row);
     await waitFor(() => expect(container.querySelector('.version-list__info'))
       .toHaveAttribute('aria-expanded', 'true'));
+  });
+
+  // The row keeps its own onClick as a mouse convenience, matching the pattern
+  // B13 established for every other list view: the padding and the gap between
+  // the info block and Restore stay clickable, so the row-wide hover highlight
+  // is not advertising a target that does nothing.
+  it('the row background is still clickable, and counts once', async () => {
+    utilMock.fetchVersion.mockResolvedValue({
+      version: { id: 1, version_number: 2, title: 'Second cut', saved_at: '2026-01-02', html_content: '' },
+    });
+    const user = userEvent.setup();
+    const { container } = render(<VersionHistory logId={5} />);
+    await screen.findByText('Second cut');
+
+    await user.click(container.querySelector('.version-list__item'));
+    await waitFor(() => expect(utilMock.fetchVersion).toHaveBeenCalledWith(5, 1));
+    expect(utilMock.fetchVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('activating the info block counts once, not twice', async () => {
+    utilMock.fetchVersion.mockResolvedValue({
+      version: { id: 1, version_number: 2, title: 'Second cut', saved_at: '2026-01-02', html_content: '' },
+    });
+    const user = userEvent.setup();
+    render(<VersionHistory logId={5} />);
+    await screen.findByText('Second cut');
+
+    await user.click(screen.getByRole('button', { name: /^Second cut/ }));
+    await waitFor(() => expect(utilMock.fetchVersion).toHaveBeenCalledTimes(1));
   });
 });

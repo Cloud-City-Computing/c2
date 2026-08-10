@@ -82,11 +82,14 @@ export default function VersionHistory({ logId, onRestore, versionKey }) {
                 the Restore button was nested inside it, the row's accessible
                 name swallowed that button's label. The info block is now the
                 real button and Restore is its sibling. */}
-            <div className={`version-list__item${previewId === v.id ? ' version-list__item--active' : ''}`}>
+            <div
+              className={`version-list__item${previewId === v.id ? ' version-list__item--active' : ''}`}
+              onClick={() => handlePreview(v)}
+            >
               <button
                 type="button"
                 className="version-list__info"
-                onClick={() => handlePreview(v)}
+                onClick={(e) => { e.stopPropagation(); handlePreview(v); }}
                 aria-expanded={previewId === v.id}
               >
                 <span className="version-list__heading">
@@ -102,7 +105,7 @@ export default function VersionHistory({ logId, onRestore, versionKey }) {
               {previewId !== v.id && (
                 <button
                   className="btn btn-ghost btn-sm"
-                  onClick={() => handleRestore(v)}
+                  onClick={(e) => { e.stopPropagation(); handleRestore(v); }}
                   aria-label={`Restore ${v.title || `version ${v.version_number}`}`}
                 >
                   Restore

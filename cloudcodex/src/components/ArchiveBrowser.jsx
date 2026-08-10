@@ -542,7 +542,10 @@ export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDele
               <CommentManager logId={log.id} logTitle={log.title} onClose={destroyModal} onNavigate={(_c) => { destroyModal(); navigate(`/archives/${archiveId}/doc/${log.id}`); }} />,
               'modal-lg'
             );
-          }} title="Manage comments" aria-label={`Manage comments on ${log.title}`}>
+          }} title="Manage comments"
+            aria-label={commentCount > 0
+              ? `Manage comments on ${log.title}, ${commentCount} open`
+              : `Manage comments on ${log.title}`}>
             💬{commentCount > 0 && <span className="comment-count-badge">{commentCount}</span>}
           </button>
           <button className="log-tree-delete" onClick={handleDelete}

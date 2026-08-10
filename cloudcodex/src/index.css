@@ -5449,7 +5449,12 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  /* Deliberately NOT align-items: flex-start. The heading, notes and author
+     are nowrap + ellipsis and need the default stretch to be sized by the
+     container; under flex-start their cross size is fit-content, which for
+     nowrap text is the full text width, so the ellipsis can never trigger and
+     a long title overruns the panel. A flex button does not centre its content
+     anyway: computed align-items is `normal`. */
   gap: 3px;
   min-width: 0;
   background: none;

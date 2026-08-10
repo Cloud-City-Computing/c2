@@ -111,4 +111,13 @@ describe('LogTreeItem', () => {
       expect(screen.queryByRole('button', { name: glyph })).toBeNull();
     }
   });
+
+  // aria-label overrides content, so the visible comment-count badge stops
+  // being announced unless the label carries the number itself.
+  it('keeps the open-comment count in the accessible name', async () => {
+    utilMock.fetchCommentCount.mockResolvedValue({ count: 3 });
+    renderItem();
+    expect(await screen.findByRole('button', { name: 'Manage comments on Onboarding, 3 open' }))
+      .toBeInTheDocument();
+  });
 });

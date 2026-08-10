@@ -56,9 +56,7 @@ function ExploreCard({ item, isSearch, onClick, activeUsers, isFavorited, onTogg
               className={`btn-favorite btn-favorite--card${isFavorited ? ' btn-favorite--active' : ''}`}
               onClick={handleStar}
               title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
-              aria-label={isFavorited
-                ? `Remove ${item.title} from favorites`
-                : `Add ${item.title} to favorites`}
+              aria-label={`Favorite ${item.title}`}
               aria-pressed={isFavorited}
             >
               {isFavorited ? '★' : '☆'}
