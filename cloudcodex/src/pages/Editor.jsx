@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -18,14 +18,10 @@ import TextAlign from '@tiptap/extension-text-align';
 import Link from '@tiptap/extension-link';
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import CodeBlockWithLanguage from '../components/CodeBlockWithLanguage';
+import { sanitizeHtml, htmlToMarkdown, markdownToHtml } from '../editorUtils';
+import ReadOnlyContent from '../components/editor/ReadOnlyContent';
+import VersionHistory from '../components/editor/VersionHistory';
 import DrawioBlock from '../components/DrawioBlock';
-import { createLowlight, common } from 'lowlight';
-import { hastToHtml, decodeBase64 } from '../editorUtils';
-
-const readonlyLowlight = createLowlight(common);
-import { marked } from 'marked';
-import TurndownService from 'turndown';
-import DOMPurify from 'dompurify';
 import { getPreferredEditorMode } from '../userPrefs';
 import useCollab from '../hooks/useCollab';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -37,10 +33,6 @@ import {
   saveDocument,
   updateLogTitle,
   publishVersion,
-  fetchVersions,
-  fetchVersion,
-  restoreVersion,
-  deleteVersion,
   exportDocument,
   showModal,
   destroyModal,
@@ -60,7 +52,6 @@ import {
   addWatch,
   removeWatch,
   removeFavorite,
-  timeAgo,
 } from '../util';
 import PublishModal from '../components/PublishModal';
 import ExportMenu from '../components/ExportMenu';
@@ -76,8 +67,6 @@ import Mention, { MentionPicker } from '../extensions/Mention';
 import CodeEmbedPickerModal from '../components/github/CodeEmbedPickerModal';
 import IssuePickerModal from '../components/github/IssuePickerModal';
 
-// Configure marked for safe rendering
-marked.setOptions({ breaks: true, gfm: true });
 
 /**
  * Upload an image file to the server and return the served URL.
@@ -147,87 +136,6 @@ async function insertImagePlaceholderAndUpload(editor, file, insertPos) {
       }
     });
   }
-}
-
-/** Sanitize HTML to prevent XSS — strips scripts, event handlers, and dangerous URIs */
-function sanitizeHtml(html) {
-  if (!html) return '';
-  return DOMPurify.sanitize(html, {
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
-  });
-}
-
-const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
-
-function htmlToMarkdown(html) {
-  if (!html) return '';
-  return turndown.turndown(html);
-}
-
-function markdownToHtml(md) {
-  if (!md) return '';
-  return sanitizeHtml(marked.parse(md));
-}
-
-/** Read-only content renderer — pre-processes HTML with syntax highlighting and draw.io SVGs */
-function ReadOnlyContent({ html }) {
-  const processedHtml = useMemo(() => {
-    if (!html) return '';
-    const sanitized = sanitizeHtml(html);
-    // Parse into a DOM so we can process code blocks and diagrams
-    const parser = new DOMParser();
-    const doc = parser.parseFromString('<div>' + sanitized + '</div>', 'text/html');
-    const container = doc.body.firstChild;
-
-    // Highlight code blocks with lowlight
-    const codeBlocks = container.querySelectorAll('pre code');
-    for (const codeEl of codeBlocks) {
-      const pre = codeEl.parentElement;
-      const langClass = [...codeEl.classList].find(c => c.startsWith('language-'));
-      const lang = langClass ? langClass.replace('language-', '') : '';
-      const text = codeEl.textContent || '';
-      try {
-        const result = lang && lang !== 'plaintext'
-          ? readonlyLowlight.highlight(lang, text)
-          : readonlyLowlight.highlightAuto(text);
-        codeEl.innerHTML = hastToHtml(result);
-        codeEl.classList.add('hljs');
-        const detectedLang = lang || result.data?.language || '';
-        if (detectedLang && pre) {
-          const badge = doc.createElement('span');
-          badge.className = 'code-lang-badge';
-          badge.textContent = detectedLang;
-          pre.appendChild(badge);
-        }
-      } catch { /* leave unhighlighted */ }
-    }
-
-    // Process draw.io diagram blocks — handle both legacy (base64 data attr)
-    // and current (inline SVG) formats
-    const drawioBlocks = container.querySelectorAll('div[data-type="drawioBlock"], div[data-drawio-svg]');
-    for (const div of drawioBlocks) {
-      // Legacy format: decode base64 from data-drawio-svg attribute
-      const b64 = div.getAttribute('data-drawio-svg');
-      if (b64) {
-        try {
-          const svgStr = decodeBase64(b64);
-          const clean = DOMPurify.sanitize(svgStr, { USE_PROFILES: { svg: true, svgFilters: true } });
-          div.innerHTML = clean;
-        } catch { /* leave empty */ }
-      }
-      // Current format: SVG is already inline, just ensure it's sanitized
-      // (sanitizeHtml at the top of this function already handled it)
-    }
-
-    return container.innerHTML;
-  }, [html]);
-
-  return (
-    <div
-      className="document-readonly"
-      dangerouslySetInnerHTML={{ __html: processedHtml }}
-    />
-  );
 }
 
 // --- Tiptap Formatting Toolbar ---
@@ -581,7 +489,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
 function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId, markdownContent, onMarkdownChange }) {
   // Use stored raw markdown if available; fall back to HTML→markdown conversion
   const [md, setMd] = useState(() => markdownContent ?? htmlToMarkdown(content));
-  const [preview, setPreview] = useState(() => markdownContent ? sanitizeHtml(marked.parse(markdownContent)) : sanitizeHtml(content || ''));
+  const [preview, setPreview] = useState(() => markdownContent ? markdownToHtml(markdownContent) : sanitizeHtml(content || ''));
   const textareaRef = useRef(null);
   const previewRef = useRef(null);
   const initializedRef = useRef(false);
@@ -725,102 +633,6 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
 }
 
 // --- Version History Panel ---
-
-function VersionHistory({ logId, onRestore, versionKey }) {
-  const [versions, setVersions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [preview, setPreview] = useState(null);
-  const [previewId, setPreviewId] = useState(null);
-
-  const loadVersions = useCallback(async () => {
-    try {
-      const res = await fetchVersions(logId);
-      setVersions(res.versions || []);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [logId, versionKey]);
-
-  useEffect(() => { loadVersions(); }, [loadVersions]);
-
-  const handlePreview = async (v) => {
-    if (previewId === v.id) {
-      setPreview(null);
-      setPreviewId(null);
-      return;
-    }
-    try {
-      const res = await fetchVersion(logId, v.id);
-      setPreview(res.version);
-      setPreviewId(v.id);
-    } catch { /* ignore */ }
-  };
-
-  const handleRestore = async (v) => {
-    try {
-      await restoreVersion(logId, v.id);
-      onRestore?.();
-      setPreview(null);
-      setPreviewId(null);
-    } catch (e) { toastError(e); }
-  };
-
-  const handleDelete = async (v) => {
-    try {
-      await deleteVersion(logId, v.id);
-      setVersions(prev => prev.filter(ver => ver.id !== v.id));
-      if (previewId === v.id) { setPreview(null); setPreviewId(null); }
-    } catch (e) { toastError(e); }
-  };
-
-  if (loading) return <p className="text-muted">Loading history...</p>;
-  if (versions.length === 0) return <p className="text-muted">No previous versions.</p>;
-
-  return (
-    <div className="version-history">
-      <h3>Version History</h3>
-      <ul className="version-list">
-        {versions.map(v => (
-          <li key={v.id}>
-            <div className={`version-list__item${previewId === v.id ? ' version-list__item--active' : ''}`}
-                 onClick={() => handlePreview(v)} role="button" tabIndex={0}>
-              <div className="version-list__info">
-                <span className="version-list__heading">
-                  {v.title || `Version ${v.version_number}`}
-                </span>
-                {v.notes && <span className="version-list__notes">{v.notes}</span>}
-                <span className="version-list__meta">
-                  <span className="version-list__badge">v{v.version_number}</span>
-                  <span className="version-list__date">{timeAgo(v.saved_at)}</span>
-                  {v.created_by && <span className="version-list__author">{v.created_by}</span>}
-                </span>
-              </div>
-              {previewId !== v.id && <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); handleRestore(v); }}>Restore</button>}
-            </div>
-            {previewId === v.id && preview && (
-              <div className="version-preview">
-                <div className="version-preview__header">
-                  <div className="version-preview__title-block">
-                    <span className="version-preview__title">{preview.title || `Version ${preview.version_number}`}</span>
-                    <span className="version-preview__meta">v{preview.version_number} &middot; {new Date(preview.saved_at).toLocaleString()}{preview.created_by ? ` · ${preview.created_by}` : ''}</span>
-                  </div>
-                  <span className="version-preview__actions">
-                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(preview)}>Delete</button>
-                    <button className="btn btn-primary btn-sm" onClick={() => handleRestore(preview)}>Restore</button>
-                  </span>
-                </div>
-                {preview.notes && <p className="version-preview__notes">{preview.notes}</p>}
-                <details className="version-preview__details">
-                  <summary>View document content</summary>
-                  <div className="version-preview__content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.html_content) }} />
-                </details>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 // --- Editor Log ---
 
