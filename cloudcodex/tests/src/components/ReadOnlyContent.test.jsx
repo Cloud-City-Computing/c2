@@ -44,9 +44,24 @@ describe('ReadOnlyContent', () => {
     );
     const code = el.querySelector('pre code');
     expect(code.classList.contains('hljs')).toBe(true);
-    // lowlight wraps tokens in spans rather than leaving bare text
-    expect(code.innerHTML).toContain('<span');
+    // A language-specific token, not merely "some span". This is what catches
+    // highlight(lang) being swapped for highlightAuto: asserting <span alone
+    // passes either way, and so does the badge, which reads the class
+    // attribute rather than the highlighter's result.
+    expect(code.innerHTML).toContain('hljs-keyword');
     expect(el.querySelector('.code-lang-badge').textContent).toBe('javascript');
+  });
+
+  // Content labelled as a language it is not: xml highlighting finds no
+  // JavaScript keywords in it. A regression guard on the declared language
+  // being what gets used and reported, not a second catch for the mutation
+  // above, which the keyword assertion already covers.
+  it('honours the declared language rather than sniffing the content', () => {
+    const el = html(
+      <ReadOnlyContent html={'<pre><code class="language-xml">const a = 1;</code></pre>'} />
+    );
+    expect(el.querySelector('pre code').innerHTML).not.toContain('hljs-keyword');
+    expect(el.querySelector('.code-lang-badge').textContent).toBe('xml');
   });
 
   it('leaves an unknown language unhighlighted rather than throwing', () => {

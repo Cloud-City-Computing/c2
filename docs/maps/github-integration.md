@@ -288,7 +288,7 @@ under-reported and the sync deleted the overflow (B5 in
 
 ## 7. Frontend surface
 
-`src/pages/GitHubPage.jsx` (2631 lines) is the repo browser. It carries the
+`src/pages/GitHubPage.jsx` (2652 lines) is the repo browser. It carries the
 repo's only load-bearing `eslint-disable` lines for `react-hooks/exhaustive-deps`
 and a legacy `no-alert` disable; both are deliberate, leave them.
 
