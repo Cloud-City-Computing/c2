@@ -251,10 +251,21 @@ The `frontend` Vitest project runs jsdom + Testing Library over
 `CLAUDE.md`: `src/hooks/`, pure-JS utilities under `src/`, and reusable
 components in `src/components/`.
 
-Out of scope by default: `src/pages/`. `Editor.jsx` (1516 lines) and
-`GitHubPage.jsx` (2631 lines) need logic extracted into testable hooks before
-unit-testing them is worth it. That extraction is the natural next refactor and
-would also let their coverage thresholds be raised.
+Out of scope by default: `src/pages/`. `Editor.jsx` (1332 lines) and
+`GitHubPage.jsx` (2652 lines) need logic extracted into testable components and
+hooks before unit-testing them is worth it. That extraction is **track E2, now
+in progress**: `src/components/editor/` holds the pieces already pulled out of
+`Editor.jsx` (`ReadOnlyContent`, `VersionHistory`), and the markdown/sanitize
+helpers moved to `src/editorUtils.js`. Anything extracted out of a page is in
+scope and needs tests, which is the point of moving it.
+
+`src/editorUtils.js` also owns `marked.setOptions({ breaks, gfm })`, which
+belongs beside `markdownToHtml` rather than in a page now that the parsing
+function is independently importable. `marked` is a module singleton, so a
+second module setting different options would win globally; `GitHubPage.jsx`
+sets the same two and is therefore harmless. This was never a live bug: while
+`markdownToHtml` lived in `Editor.jsx`, ESM guaranteed that file's
+`setOptions` ran before anything could call it.
 
 ---
 

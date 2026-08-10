@@ -3,6 +3,38 @@
  * Extracted for testability — used by ReadOnlyContent in Editor.jsx.
  */
 
+import DOMPurify from 'dompurify';
+import TurndownService from 'turndown';
+import { marked } from 'marked';
+
+/** Sanitize HTML to prevent XSS — strips scripts, event handlers, and dangerous URIs */
+export function sanitizeHtml(html) {
+  if (!html) return '';
+  return DOMPurify.sanitize(html, {
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+  });
+}
+
+const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+
+// Configure marked for safe rendering. This lives here, beside the only
+// function that parses markdown, rather than in Editor.jsx: marked is a module
+// singleton, so configuring it there worked only for as long as Editor.jsx
+// happened to be loaded first.
+marked.setOptions({ breaks: true, gfm: true });
+
+/** Convert editor HTML to markdown for the markdown editing mode and GitHub push. */
+export function htmlToMarkdown(html) {
+  if (!html) return '';
+  return turndown.turndown(html);
+}
+
+/** Convert markdown back to HTML. Always sanitized: markdown can carry raw HTML. */
+export function markdownToHtml(md) {
+  if (!md) return '';
+  return sanitizeHtml(marked.parse(md));
+}
+
 /** Escape HTML special characters */
 export function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

@@ -223,12 +223,33 @@ purpose, and `SearchResultItem`, a component with no callers anywhere in
 dead (B1 routes around it rather than reviving it), and `github_embed_refs`
 still has no writer.
 
-#### E2. The extraction (open)
+#### E2. The extraction (in progress)
 
-`src/pages/Editor.jsx` (1520 lines) and `src/pages/GitHubPage.jsx` (2631 lines)
-hold most of the interface and are explicitly out of test scope by policy. Any
-significant UI work either drags their extraction along or piles onto them.
-This is what "track E" now means.
+`src/pages/Editor.jsx` and `src/pages/GitHubPage.jsx` (2652 lines) hold most of
+the interface and are explicitly out of test scope by policy. Any significant UI
+work either drags their extraction along or piles onto them. This is what
+"track E" now means.
+
+**First cut, 2026-08-10.** `Editor.jsx` went from 1520 to 1332 lines. Moved out,
+each with the tests the page could never have:
+
+| Extracted | To | Why it was worth doing first |
+|---|---|---|
+| `sanitizeHtml`, `htmlToMarkdown`, `markdownToHtml` | `src/editorUtils.js` | Pure functions behind markdown mode and GitHub round-tripping, previously uncovered |
+| `ReadOnlyContent` | `src/components/editor/ReadOnlyContent.jsx` | Renders saved HTML with `dangerouslySetInnerHTML`; its sanitizing is load-bearing |
+| `VersionHistory` | `src/components/editor/VersionHistory.jsx` | Restore and delete are destructive and had no frontend coverage at all |
+
+`marked.setOptions({ breaks, gfm })` moved from `Editor.jsx` to sit beside
+`markdownToHtml`, its only caller, and both options now have tests. **This was
+cohesion, not a bug fix, and no call site was ever mis-ordered**: `marked` is a
+module singleton, but `markdownToHtml` was defined in `Editor.jsx` itself, and
+ESM runs a module body to completion before any of its exports can be called.
+`GitHubPage.jsx` sets the same two options for itself. Keeping the
+configuration next to the parsing is what makes that stay true now that the
+function lives elsewhere and is independently importable.
+
+Still inside `Editor.jsx`: `TiptapToolbar`, `RichTextEditor`, `MarkdownEditor`,
+and the ~690-line `Editor` component itself. `GitHubPage.jsx` is untouched.
 
 ## Sequencing
 
@@ -249,10 +270,10 @@ A, B and D have shipped, C is decided, and **E's defect half shipped on
 deferred into it: the editor no longer blanks the app on navigation, and the
 app now has an error boundary, so a render error is no longer unrecoverable.
 
-What remains is **E2**, breaking up `Editor.jsx` (1520 lines) and
-`GitHubPage.jsx` (2631 lines) so the interface is testable. B13 shipped on
-2026-08-09, leaving **B15** (glyph-only control names) as the open
-accessibility item.
+What remains is **E2**, breaking up `Editor.jsx` and `GitHubPage.jsx` (2652
+lines) so the interface is testable; its first cut landed 2026-08-10 and took
+`Editor.jsx` to 1332 lines. B13 shipped on 2026-08-09, leaving **B15**
+(glyph-only control names) as the open accessibility item.
 
 The measurement re-read on 2026-08-09, one day after the v0.9.0 release: still
 38 stars, 1 fork, 0 open issues, 0 watchers, 12 unique viewers and 66 unique
