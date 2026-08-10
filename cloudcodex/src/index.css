@@ -5433,7 +5433,6 @@ body {
   gap: 10px;
   padding: 10px 8px;
   font-size: 13px;
-  cursor: pointer;
   border-radius: var(--radius-sm);
   transition: background 0.15s;
 }
@@ -5444,12 +5443,23 @@ body {
   padding-left: 6px;
 }
 
+/* A real <button> so a version can be previewed from the keyboard, styled to
+   look like the plain block it replaced. */
 .version-list__info {
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 3px;
   min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .version-list__heading {

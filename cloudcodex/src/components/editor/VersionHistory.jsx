@@ -77,9 +77,18 @@ export default function VersionHistory({ logId, onRestore, versionKey }) {
       <ul className="version-list">
         {versions.map(v => (
           <li key={v.id}>
-            <div className={`version-list__item${previewId === v.id ? ' version-list__item--active' : ''}`}
-                 onClick={() => handlePreview(v)} role="button" tabIndex={0}>
-              <div className="version-list__info">
+            {/* The row was a div with role="button" and tabIndex, but no key
+                handler, so it was focusable and not activatable; and because
+                the Restore button was nested inside it, the row's accessible
+                name swallowed that button's label. The info block is now the
+                real button and Restore is its sibling. */}
+            <div className={`version-list__item${previewId === v.id ? ' version-list__item--active' : ''}`}>
+              <button
+                type="button"
+                className="version-list__info"
+                onClick={() => handlePreview(v)}
+                aria-expanded={previewId === v.id}
+              >
                 <span className="version-list__heading">
                   {v.title || `Version ${v.version_number}`}
                 </span>
@@ -89,8 +98,16 @@ export default function VersionHistory({ logId, onRestore, versionKey }) {
                   <span className="version-list__date">{timeAgo(v.saved_at)}</span>
                   {v.created_by && <span className="version-list__author">{v.created_by}</span>}
                 </span>
-              </div>
-              {previewId !== v.id && <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); handleRestore(v); }}>Restore</button>}
+              </button>
+              {previewId !== v.id && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => handleRestore(v)}
+                  aria-label={`Restore ${v.title || `version ${v.version_number}`}`}
+                >
+                  Restore
+                </button>
+              )}
             </div>
             {previewId === v.id && preview && (
               <div className="version-preview">

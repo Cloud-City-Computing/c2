@@ -132,7 +132,7 @@ describe('PageTree', () => {
     const user = userEvent.setup();
     wrap(<PageTree archiveId={1} archiveName="A" onSelect={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('Hidden')).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: '▾' }));
+    await user.click(screen.getByRole('button', { name: 'Collapse Parent' }));
     expect(screen.queryByText('Hidden')).toBeNull();
   });
 
@@ -141,7 +141,7 @@ describe('PageTree', () => {
     const user = userEvent.setup();
     wrap(<PageTree archiveId={3} archiveName="A" onSelect={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/no pages yet/i)).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: '←' }));
+    await user.click(screen.getByRole('button', { name: 'Back to archives' }));
     expect(navigateMock).toHaveBeenCalledWith('/archives/3');
   });
 
@@ -155,7 +155,7 @@ describe('PageTree', () => {
       onSelect={vi.fn()}
     />);
     await waitFor(() => expect(screen.getByText(/no pages yet/i)).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: '←' }));
+    await user.click(screen.getByRole('button', { name: 'Back to archives' }));
     expect(navigateMock).toHaveBeenCalledWith('/archives/3?squad=9&workspace=4');
   });
 
@@ -164,7 +164,7 @@ describe('PageTree', () => {
     const user = userEvent.setup();
     wrap(<PageTree archiveId={1} archiveName="A" onSelect={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/no pages yet/i)).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: '+' }));
+    await user.click(screen.getByRole('button', { name: 'New page' }));
     expect(utilMock.showModal).toHaveBeenCalled();
   });
 
@@ -192,7 +192,36 @@ describe('PageTree', () => {
     const user = userEvent.setup();
     wrap(<PageTree archiveId={1} archiveName="A" onSelect={vi.fn()} onCollapse={onCollapse} />);
     await waitFor(() => expect(screen.getByText(/no pages yet/i)).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: '◂' }));
+    await user.click(screen.getByRole('button', { name: 'Collapse page tree' }));
     expect(onCollapse).toHaveBeenCalled();
+  });
+
+  // B15: these controls were named by their glyph ("▾", "+"), so a screen
+  // reader announced "+ button" with no way to tell which page it acted on.
+  it('names the per-page controls after the page they act on', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 1, title: 'Parent', children: [{ id: 2, title: 'Child', children: [] }] }],
+    });
+    wrap(<PageTree archiveId={1} archiveName="A" onSelect={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: 'Collapse Parent' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add a subpage under Parent' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add a subpage under Child' })).toBeInTheDocument();
+    // No control is left announcing as a bare glyph.
+    expect(screen.queryByRole('button', { name: '+' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '▾' })).toBeNull();
+  });
+
+  it('reports the toggle state through aria-expanded', async () => {
+    utilMock.fetchLogs.mockResolvedValueOnce({
+      logs: [{ id: 1, title: 'Parent', children: [{ id: 2, title: 'Child', children: [] }] }],
+    });
+    const user = userEvent.setup();
+    wrap(<PageTree archiveId={1} archiveName="A" onSelect={vi.fn()} />);
+
+    const toggle = await screen.findByRole('button', { name: 'Collapse Parent' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await user.click(toggle);
+    expect(screen.getByRole('button', { name: 'Expand Parent' })).toHaveAttribute('aria-expanded', 'false');
   });
 });

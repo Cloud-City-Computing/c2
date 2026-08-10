@@ -85,10 +85,29 @@ describe('ExploreCard', () => {
       <ExploreCard item={ITEM} onClick={onClick} activeUsers={[]}
         isFavorited={false} onToggleFavorite={onToggleFavorite} />
     );
-    // Queried by title, not by accessible name: the button's name is the bare
-    // glyph "☆". That is a separate defect, filed as B15.
-    await user.click(screen.getByTitle('Add to favorites'));
+    await user.click(screen.getByRole('button', { name: 'Add Runbook to favorites' }));
     expect(onToggleFavorite).toHaveBeenCalledWith(42);
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  // B15: this button announced as the bare glyph "☆", so a screen reader user
+  // met a row of identical "☆ button"s with no way to tell them apart.
+  it('names the favourite button after the document, and reports its state', () => {
+    const { rerender } = wrap(
+      <ExploreCard item={ITEM} onClick={vi.fn()} activeUsers={[]}
+        isFavorited={false} onToggleFavorite={vi.fn()} />
+    );
+    const add = screen.getByRole('button', { name: 'Add Runbook to favorites' });
+    expect(add).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: '☆' })).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <ExploreCard item={ITEM} onClick={vi.fn()} activeUsers={[]}
+          isFavorited onToggleFavorite={vi.fn()} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('button', { name: 'Remove Runbook from favorites' }))
+      .toHaveAttribute('aria-pressed', 'true');
   });
 });

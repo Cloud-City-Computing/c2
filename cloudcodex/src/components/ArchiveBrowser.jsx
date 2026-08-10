@@ -533,17 +533,20 @@ export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDele
         )}
         <PresenceAvatars users={activeUsers} />
         <div className="log-tree-actions">
-          <ExportMenu onExport={handleExport} btnClass="log-tree-export" btnLabel="⤓" menuClass="export-dropdown__menu--up" />
-          <button className="log-tree-add" onClick={handleNewSublog} title="Add sublog">+</button>
+          <ExportMenu onExport={handleExport} btnClass="log-tree-export" btnLabel="⤓"
+            ariaLabel={`Export ${log.title}`} menuClass="export-dropdown__menu--up" />
+          <button className="log-tree-add" onClick={handleNewSublog}
+            title="Add sublog" aria-label={`Add a sublog under ${log.title}`}>+</button>
           <button className="log-tree-comments" onClick={() => {
             showModal(
               <CommentManager logId={log.id} logTitle={log.title} onClose={destroyModal} onNavigate={(_c) => { destroyModal(); navigate(`/archives/${archiveId}/doc/${log.id}`); }} />,
               'modal-lg'
             );
-          }} title="Manage comments">
+          }} title="Manage comments" aria-label={`Manage comments on ${log.title}`}>
             💬{commentCount > 0 && <span className="comment-count-badge">{commentCount}</span>}
           </button>
-          <button className="log-tree-delete" onClick={handleDelete} title="Delete log">&times;</button>
+          <button className="log-tree-delete" onClick={handleDelete}
+            title="Delete log" aria-label={`Delete ${log.title}`}>&times;</button>
         </div>
       </div>
       {expanded && log.children?.length > 0 && (

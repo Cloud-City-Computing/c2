@@ -72,6 +72,12 @@ export default function SearchBox({ inline = false, onResults }) {
   // results before mouseup, and the click would never land on the link. This
   // suppresses focus, not the click, so the anchor still navigates. Keyboard
   // users are unaffected: Tab never fires mousedown.
+  //
+  // Whether this also freezes scrollbar thumb dragging is an open question,
+  // recorded in open-questions.md B13. It is NOT settled here: a headless
+  // Chromium probe suggested it did, but a control on a plain scrollable div
+  // with no handler at all failed identically, so the method was measuring
+  // nothing. Wheel and keyboard scrolling are unaffected either way.
   const handleDropdownMouseDown = (e) => e.preventDefault();
 
   if (inline) {

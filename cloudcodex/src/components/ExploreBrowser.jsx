@@ -56,6 +56,10 @@ function ExploreCard({ item, isSearch, onClick, activeUsers, isFavorited, onTogg
               className={`btn-favorite btn-favorite--card${isFavorited ? ' btn-favorite--active' : ''}`}
               onClick={handleStar}
               title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+              aria-label={isFavorited
+                ? `Remove ${item.title} from favorites`
+                : `Add ${item.title} to favorites`}
+              aria-pressed={isFavorited}
             >
               {isFavorited ? '★' : '☆'}
             </button>
@@ -341,7 +345,7 @@ export default function ExploreBrowser() {
             Filters
             {hasActiveFilters && <span className="filter-active-dot" />}
           </button>
-          <select className="explore-sort" value={sort} onChange={handleSortChange}>
+          <select className="explore-sort" value={sort} onChange={handleSortChange} aria-label="Sort documents">
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="title">By title</option>
