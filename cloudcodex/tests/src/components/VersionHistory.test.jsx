@@ -82,11 +82,11 @@ describe('VersionHistory', () => {
     const { container } = render(<VersionHistory logId={5} />);
     await screen.findByText('Second cut');
 
-    await user.click(container.querySelector('.version-list__item'));
+    await user.click(container.querySelector('.version-list__info'));
     await waitFor(() => expect(container.querySelector('.version-preview')).not.toBeNull());
     expect(utilMock.fetchVersion).toHaveBeenCalledWith(5, 1);
 
-    await user.click(container.querySelector('.version-list__item'));
+    await user.click(container.querySelector('.version-list__info'));
     await waitFor(() => expect(container.querySelector('.version-preview')).toBeNull());
   });
 
@@ -97,7 +97,7 @@ describe('VersionHistory', () => {
     const user = userEvent.setup();
     const { container } = render(<VersionHistory logId={5} />);
     await screen.findByText('Second cut');
-    await user.click(container.querySelector('.version-list__item'));
+    await user.click(container.querySelector('.version-list__info'));
 
     const preview = await waitFor(() => {
       const el = container.querySelector('.version-preview__content');
@@ -115,7 +115,7 @@ describe('VersionHistory', () => {
     render(<VersionHistory logId={5} onRestore={onRestore} />);
     await screen.findByText('Second cut');
 
-    await user.click(screen.getAllByRole('button', { name: 'Restore' })[0]);
+    await user.click(screen.getByRole('button', { name: 'Restore Second cut' }));
     await waitFor(() => expect(utilMock.restoreVersion).toHaveBeenCalledWith(5, 1));
     expect(onRestore).toHaveBeenCalled();
     // The row click must not also have fired and opened a preview.
@@ -128,7 +128,7 @@ describe('VersionHistory', () => {
     render(<VersionHistory logId={5} />);
     await screen.findByText('Second cut');
 
-    await user.click(screen.getAllByRole('button', { name: 'Restore' })[0]);
+    await user.click(screen.getByRole('button', { name: 'Restore Second cut' }));
     await waitFor(() => expect(toastMock.toastError).toHaveBeenCalled());
   });
 
@@ -141,7 +141,7 @@ describe('VersionHistory', () => {
     const { container } = render(<VersionHistory logId={5} />);
     await screen.findByText('Second cut');
 
-    await user.click(container.querySelector('.version-list__item'));
+    await user.click(container.querySelector('.version-list__info'));
     await waitFor(() => expect(container.querySelector('.version-preview')).not.toBeNull());
 
     await user.click(screen.getByRole('button', { name: /delete/i }));
@@ -158,7 +158,7 @@ describe('VersionHistory', () => {
     const user = userEvent.setup();
     const { container } = render(<VersionHistory logId={5} />);
     await screen.findByText('Second cut');
-    await user.click(container.querySelector('.version-list__item'));
+    await user.click(container.querySelector('.version-list__info'));
     await waitFor(() => expect(container.querySelector('.version-preview')).not.toBeNull());
 
     expect(container.querySelectorAll('.version-list__item')).toHaveLength(2);
@@ -168,5 +168,75 @@ describe('VersionHistory', () => {
     // The row survives a rejected delete. Counted rather than queried by text:
     // the open preview repeats the title, so getByText would find two.
     expect(container.querySelectorAll('.version-list__item')).toHaveLength(2);
+  });
+
+  // The row was a div with role="button" and tabIndex but no key handler, so it
+  // was focusable and not activatable; and Restore was nested INSIDE it, so the
+  // row's accessible name swallowed that button's label.
+  it('previews a version from the keyboard', async () => {
+    utilMock.fetchVersion.mockResolvedValue({
+      version: { id: 1, version_number: 2, title: 'Second cut', saved_at: '2026-01-02', html_content: '<p>body</p>' },
+    });
+    const user = userEvent.setup();
+    const { container } = render(<VersionHistory logId={5} />);
+    await screen.findByText('Second cut');
+
+    const row = container.querySelector('.version-list__info');
+    let reached = false;
+    for (let i = 0; i < 6 && !reached; i++) {
+      await user.tab();
+      reached = document.activeElement === row;
+    }
+    expect(reached).toBe(true);
+
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(utilMock.fetchVersion).toHaveBeenCalledWith(5, 1));
+  });
+
+  it('reports whether a version is expanded, and does not nest Restore inside the row control', async () => {
+    utilMock.fetchVersion.mockResolvedValue({
+      version: { id: 1, version_number: 2, title: 'Second cut', saved_at: '2026-01-02', html_content: '' },
+    });
+    const user = userEvent.setup();
+    const { container } = render(<VersionHistory logId={5} />);
+    await screen.findByText('Second cut');
+
+    const row = screen.getByRole('button', { name: /^Second cut/ });
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    // Restore is a sibling of the row control, not a descendant of it.
+    expect(row.querySelector('button')).toBeNull();
+
+    await user.click(row);
+    await waitFor(() => expect(container.querySelector('.version-list__info'))
+      .toHaveAttribute('aria-expanded', 'true'));
+  });
+
+  // The row keeps its own onClick as a mouse convenience, matching the pattern
+  // B13 established for every other list view: the padding and the gap between
+  // the info block and Restore stay clickable, so the row-wide hover highlight
+  // is not advertising a target that does nothing.
+  it('the row background is still clickable, and counts once', async () => {
+    utilMock.fetchVersion.mockResolvedValue({
+      version: { id: 1, version_number: 2, title: 'Second cut', saved_at: '2026-01-02', html_content: '' },
+    });
+    const user = userEvent.setup();
+    const { container } = render(<VersionHistory logId={5} />);
+    await screen.findByText('Second cut');
+
+    await user.click(container.querySelector('.version-list__item'));
+    await waitFor(() => expect(utilMock.fetchVersion).toHaveBeenCalledWith(5, 1));
+    expect(utilMock.fetchVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('activating the info block counts once, not twice', async () => {
+    utilMock.fetchVersion.mockResolvedValue({
+      version: { id: 1, version_number: 2, title: 'Second cut', saved_at: '2026-01-02', html_content: '' },
+    });
+    const user = userEvent.setup();
+    render(<VersionHistory logId={5} />);
+    await screen.findByText('Second cut');
+
+    await user.click(screen.getByRole('button', { name: /^Second cut/ }));
+    await waitFor(() => expect(utilMock.fetchVersion).toHaveBeenCalledTimes(1));
   });
 });

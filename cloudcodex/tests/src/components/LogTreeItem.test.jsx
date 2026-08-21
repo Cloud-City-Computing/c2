@@ -94,4 +94,30 @@ describe('LogTreeItem', () => {
     const badge = screen.getByTitle('octocat/hello/README.md');
     expect(badge.getAttribute('href')).toBe('https://github.com/octocat/hello/blob/main/README.md');
   });
+
+  // B15: add, comments, delete and export all announced as bare glyphs
+  // ("+", "💬", "×", "⤓"), repeated once per row, so a screen-reader user
+  // could not tell which document any of them belonged to.
+  it('names every per-document control after the document', async () => {
+    renderItem();
+    await screen.findByRole('link', { name: 'Onboarding' });
+
+    expect(screen.getByRole('button', { name: 'Add a sublog under Onboarding' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage comments on Onboarding' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Onboarding' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export Onboarding' })).toBeInTheDocument();
+
+    for (const glyph of ['+', '\u00d7', '\u2913']) {
+      expect(screen.queryByRole('button', { name: glyph })).toBeNull();
+    }
+  });
+
+  // aria-label overrides content, so the visible comment-count badge stops
+  // being announced unless the label carries the number itself.
+  it('keeps the open-comment count in the accessible name', async () => {
+    utilMock.fetchCommentCount.mockResolvedValue({ count: 3 });
+    renderItem();
+    expect(await screen.findByRole('button', { name: 'Manage comments on Onboarding, 3 open' }))
+      .toBeInTheDocument();
+  });
 });

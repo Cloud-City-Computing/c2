@@ -549,19 +549,35 @@ user through `ExploreCard` and the topbar dropdown, not through this file. It
 was fixed for consistency, but it is dead code and a deletion candidate in the
 same shape as A3. Not deleted here because removing a component is a scope call.
 
-**Two things about the dropdown are deliberately unverified**, because iris is
-Chromium-only and this fix is built around a Firefox/Safari behaviour:
+**Two things about the dropdown remain unverified, and an attempt on
+2026-08-10 established that neither is answerable on this workstation.** Both
+concern `preventDefault` on the results container's `mousedown`.
 
-- Whether `preventDefault` on `mousedown` suppresses **scrollbar thumb
-  dragging** inside `.search-dropdown` (`max-height: 320px; overflow-y: auto`),
-  which Chromium dispatches to content. Worst case is degraded, not broken:
-  wheel and keyboard scrolling are unaffected. Test with 6+ results.
+- **Scrollbar thumb dragging** inside `.search-dropdown`
+  (`max-height: 320px; overflow-y: auto`). Chromium dispatches a gutter press
+  to the content, so preventing it could freeze the thumb. **A headless
+  Chromium probe reported exactly that, and the report was worthless:** a
+  control dragging the scrollbar of a plain scrollable `div` carrying no
+  handler at all failed identically, so the method was measuring nothing, not
+  the app. This headless build renders a 2 px overlay scrollbar with no
+  draggable thumb, and `--disable-features=OverlayScrollbar` did not change it.
+  **Settle it by hand in a headed browser with 6+ results**, not with CDP.
+  Worst case is degraded, not broken: wheel and keyboard scrolling cannot be
+  affected by this, and both were confirmed working (wheel scrolled 0 → 200
+  with the handler in place).
 - **Touch.** WebKit stops dispatching the rest of its synthesized mouse
   sequence once an earlier synthesized event is default-prevented. If that
-  includes `mousedown`, tapping a result would never fire `click`, which would
-  be a regression from the old `onMouseDown` on iPad and touch laptops. The
-  topbar search is hidden below 768px (`index.css`), so phones are out of
-  scope. Test on an iPad in landscape.
+  includes `mousedown`, tapping a result would never fire `click`, a
+  regression from the old `onMouseDown` on iPad and touch laptops. The topbar
+  search is hidden below 768 px (`index.css`), so phones are out of scope.
+  **Playwright ships a real WebKit build and would answer this**, but
+  installing it needs ~25 system libraries (GTK 4, GStreamer, flite) that this
+  box lacks, i.e. a root package install. Either do that, or tap a result on
+  an iPad in landscape.
+
+What the probe *did* confirm, with the handler in place: the dropdown stays
+open across a press inside it, focus stays on `input.search-input`, and
+clicking a result still navigates.
 
 **Both halves of this item were found by adversarial review, not by the author.**
 The first pass fixed the dead component and missed the live one, then wrote
@@ -575,10 +591,11 @@ The test now clicks `.page-tree-row` and fails when that handler is removed.
 The 17 tests added with this fix were mutation-checked, not assumed: reverting
 the source changes fails all of them.
 
-### B15. Glyph-only controls announce as their glyph, not their purpose
+### B15. Glyph-only controls announced as their glyph, not their purpose (FIXED)
 
-Found while writing the B13 tests, and **distinct from B13**: these controls are
-focusable and always were, so they are reachable. What they lack is a name.
+Found while writing the B13 tests, and **distinct from B13**: these controls
+were focusable and always had been, so they were reachable. What they lacked
+was a name.
 
 A control whose entire content is a glyph takes that glyph as its accessible
 name, because content wins over the `title` attribute in the accname
@@ -594,12 +611,50 @@ the per-document controls appear as `button "⤓"`, `button "+"`, `button "💬"
 `button "×"` repeated once per row, giving a screen-reader user no way to tell
 which document any of them belongs to.
 
-`ArchiveBrowser.jsx`'s tree toggle already does the right thing with
-`aria-label={expanded ? 'Collapse' : 'Expand'}`, so the fix is that pattern
-applied consistently, ideally naming the document too ("Delete Authentication
-Guide"). Not done with B13 because several existing tests query these buttons
-by their glyph name, so it is a wider diff than the defect it fixes, and B13
-was scoped to titles.
+**Fixed 2026-08-10.** `aria-label` on all twelve, naming the **document** where
+one is involved, because "Delete" repeated once per row is barely better than
+"×":
+
+| Control | Now announces |
+|---|---|
+| `PageTree` toggle | `Collapse <page>` / `Expand <page>`, plus `aria-expanded` |
+| `PageTree` row `+` | `Add a subpage under <page>` |
+| `PageTree` header `←`, `+`, `◂` | `Back to archives`, `New page`, `Collapse page tree` |
+| `ExploreCard` `☆` | `Add <doc> to favorites` / `Remove <doc> from favorites`, plus `aria-pressed` |
+| `LogTreeItem` `+`, `💬`, `×`, `⤓` | `Add a sublog under <doc>`, `Manage comments on <doc>`, `Delete <doc>`, `Export <doc>` |
+
+Two things the fix needed beyond adding attributes. `ExportMenu` renders
+`btnLabel` as its content, so a caller passing a bare `⤓` had no way to supply
+a name; it now takes an optional `ariaLabel`. And the browse sort `<select>`
+had **no accessible name at all** (iris reported it as
+`combobox (no accessible name)`), now `Sort documents`.
+
+**`VersionHistory`'s row was the worst case and is fixed in the same pass.** It
+was a `div` with `role="button"` and `tabIndex={0}` but **no key handler**, so
+it was focusable and not activatable, and the Restore `<button>` was nested
+*inside* it, so the row's accessible name swallowed that button's label. The
+info block is now a real `<button>` carrying `aria-expanded`, and Restore is
+its sibling rather than its child.
+
+Two traps this fix walked into, both caught by review:
+
+- **`aria-label` overrides content**, so naming the comments button hid the
+  visible open-comment badge from screen readers entirely, having previously
+  announced it (badly) as part of `💬3`. The count is back in the label.
+- **A toggle keeps one name.** The favourite button first flipped its name
+  *and* carried `aria-pressed`; the two channels then contradict, so "pressed"
+  reads as qualifying "Remove". It is now a stable `Favorite <doc>` with the
+  state on `aria-pressed` alone.
+
+The `VersionHistory` row keeps its own `onClick` as a mouse convenience, so the
+row padding and the gap before Restore stay clickable and the row-wide hover
+highlight is not advertising a dead target. That is the same pattern B13
+established for every other list view.
+
+Mutation-checked per attribute, not per file: neutralising `PageTree`'s five
+`aria-label`s fails 7 tests; reverting the `VersionHistory` info block to a
+`div` fails 3; removing the row `onClick`, the comment count, or the sort
+label fails 1 each.
 
 ## C. Design tensions, not defects
 

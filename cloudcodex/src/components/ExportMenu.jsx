@@ -13,9 +13,9 @@ const FORMATS = [
 
 /**
  * Reusable dropdown menu for document export.
- * @param {{ onExport: (format: string) => void, btnClass?: string, btnLabel?: string, menuClass?: string }} props
+ * @param {{ onExport: (format: string) => void, btnClass?: string, btnLabel?: string, ariaLabel?: string, menuClass?: string }} props
  */
-export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm', btnLabel = '📥 Export ▾', menuClass = '' }) {
+export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm', btnLabel = '📥 Export ▾', ariaLabel, menuClass = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const { connected: githubConnected } = useGitHubStatus();
@@ -30,7 +30,7 @@ export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm'
 
   return (
     <div className="export-dropdown" ref={ref}>
-      <button className={btnClass} onClick={() => setOpen(v => !v)}>{btnLabel}</button>
+      <button className={btnClass} onClick={() => setOpen(v => !v)} aria-label={ariaLabel}>{btnLabel}</button>
       {open && (
         <div className={`export-dropdown__menu ${menuClass}`}>
           {formats.map(([fmt, label]) => (
