@@ -267,9 +267,11 @@ describe('Archive Routes', () => {
     it('adds read access for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ '1': 1 }])        // isArchiveOwner
-        .mockResolvedValueOnce([{ acl: '[1]' }])     // SELECT current acl
-        .mockResolvedValueOnce([]);                    // UPDATE
+        .mockResolvedValueOnce([{ '1': 1 }])            // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: 7 }])   // archive workspace
+        .mockResolvedValueOnce([{ '1': 1 }])            // grantee is a member
+        .mockResolvedValueOnce([{ acl: '[1]' }])         // SELECT current acl
+        .mockResolvedValueOnce([]);                       // UPDATE
 
       const res = await request(app)
         .post('/api/archives/1/access')
@@ -332,9 +334,11 @@ describe('Archive Routes', () => {
     it('adds squad read access', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ '1': 1 }])        // isArchiveOwner
-        .mockResolvedValueOnce([{ acl: '[]' }])      // SELECT current squad acl
-        .mockResolvedValueOnce([]);                    // UPDATE
+        .mockResolvedValueOnce([{ '1': 1 }])            // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: 7 }])   // archive workspace
+        .mockResolvedValueOnce([{ '1': 1 }])            // grantee squad is in it
+        .mockResolvedValueOnce([{ acl: '[]' }])          // SELECT current squad acl
+        .mockResolvedValueOnce([]);                       // UPDATE
 
       const res = await request(app)
         .post('/api/archives/1/access')
@@ -403,6 +407,151 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+    });
+
+    // -- Tenant boundary on the grantee (C2-1c) --
+    //
+    // The caller is authorised with isArchiveOwner, which says nothing about
+    // the grantee. Without a boundary check an archive owner can hand read or
+    // write on their tenant's content to an account, or a whole squad, in a
+    // different workspace.
+
+    it('rejects granting access to a user outside the archive workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: 7 }])     // archive workspace
+        .mockResolvedValueOnce([]);                        // grantee not in it
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 42, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('outside this workspace');
+      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(false);
+    });
+
+    it('rejects granting access to a squad outside the archive workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: 7 }])     // archive workspace
+        .mockResolvedValueOnce([]);                        // grantee squad not in it
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ squadId: 9, accessType: 'write', action: 'add' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('outside this workspace');
+      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(false);
+    });
+
+    it('accepts a user inside the archive workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: 7 }])     // archive workspace
+        .mockResolvedValueOnce([{ '1': 1 }])              // grantee is a member
+        .mockResolvedValueOnce([{ acl: '[]' }])            // SELECT current acl
+        .mockResolvedValueOnce([]);                        // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 42, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      // The boundary lookup and the membership predicate both ran, and the
+      // membership predicate asked about the grantee, not the caller.
+      expect(c2_query.mock.calls.some(([sql]) => /JOIN squads t ON t\.id = p\.squad_id/.test(sql))).toBe(true);
+      const memberCall = c2_query.mock.calls.find(([sql]) => /FROM workspaces o/.test(sql));
+      expect(memberCall).toBeDefined();
+      expect(memberCall[1]).toEqual([7, 42, 42]);
+      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(true);
+    });
+
+    it('accepts a squad inside the archive workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: 7 }])     // archive workspace
+        .mockResolvedValueOnce([{ '1': 1 }])              // grantee squad is in it
+        .mockResolvedValueOnce([{ acl: '[]' }])            // SELECT current squad acl
+        .mockResolvedValueOnce([]);                        // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ squadId: 9, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(200);
+      // The granted squad is compared to the archive workspace directly, not
+      // routed through the user-shaped membership predicate.
+      const squadCall = c2_query.mock.calls.find(([sql]) => /FROM squads WHERE id = \? AND workspace_id = \?/.test(sql));
+      expect(squadCall).toBeDefined();
+      expect(squadCall[1]).toEqual([9, 7]);
+      expect(c2_query.mock.calls.some(([sql]) => /FROM workspaces o/.test(sql))).toBe(false);
+    });
+
+    it('still removes a grantee that is outside the archive workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([{ acl: '[42]' }])          // SELECT current acl
+        .mockResolvedValueOnce([]);                        // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 42, accessType: 'read', action: 'remove' });
+
+      expect(res.status).toBe(200);
+      // Cross-tenant grants predate this check, so a remove must never be
+      // boundary-gated: gating it would make those grants unrevokable.
+      expect(c2_query.mock.calls.some(([sql]) => /JOIN squads t ON t\.id = p\.squad_id/.test(sql))).toBe(false);
+      const update = c2_query.mock.calls.find(([sql]) => /UPDATE archives SET/.test(sql));
+      expect(update[1][0]).toBe('[]');
+    });
+
+    it('accepts a grant on an archive with no owning squad', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([])                         // no squad, so no workspace
+        .mockResolvedValueOnce([{ acl: '[]' }])            // SELECT current acl
+        .mockResolvedValueOnce([]);                        // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 42, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(200);
+      expect(c2_query.mock.calls.some(([sql]) => /FROM workspaces o/.test(sql))).toBe(false);
+      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(true);
+    });
+
+    it('accepts a grant when the owning squad has no workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: null }])  // orphaned squad
+        .mockResolvedValueOnce([{ acl: '[]' }])            // SELECT current squad acl
+        .mockResolvedValueOnce([]);                        // UPDATE
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ squadId: 9, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(200);
+      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(true);
     });
   });
 
