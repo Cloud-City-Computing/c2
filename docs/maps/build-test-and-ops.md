@@ -37,6 +37,7 @@ it (directly or transitively) before reading `process.env`.
 | `test:watch` | `vitest` | |
 | `test:coverage` | `vitest run --coverage` | v8 provider, enforces thresholds |
 | `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
+| `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 
 `NODE_ENV` matters in three places: CORS localhost allowance
 (`app.js:101`), rate-limiter `skip` when `'test'` (`app.js:133`,
@@ -107,8 +108,12 @@ bind mount `./db-data/`, `init.sql` mounted into
 One thing to get right when deploying: **`init.sql` only executes on a fresh
 volume.** The MySQL entrypoint skips `/docker-entrypoint-initdb.d/` when the
 data directory is already initialised. Editing `init.sql` and restarting
-changes nothing; existing databases need the matching file from `migrations/`
-applied by hand.
+changes nothing; existing databases need the matching file from `migrations/`,
+applied with `npm run migrate` (one-time adoption first, see
+`docs/deployment.md`). No compose file mounts `migrations/` into the **MySQL**
+container, so it is never applied from inside `make db-shell`; the release and
+prod compose files mount it into the **app** container, which is where the
+runner runs.
 
 ## 5. Testing
 
@@ -117,10 +122,10 @@ applied by hand.
 
 | Project | Environment | Setup file | Includes |
 |---|---|---|---|
-| `backend` | node | `tests/setup.js` | `tests/routes/`, `tests/middleware/`, `tests/services/`, `tests/helpers/`, `tests/extensions/`, `tests/*.test.js` |
+| `backend` | node | `tests/setup.js` | `tests/routes/`, `tests/middleware/`, `tests/services/`, `tests/helpers/`, `tests/extensions/`, `tests/scripts/`, `tests/*.test.js` |
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 
-Current state: **61 files, 1226 tests, all passing.**
+Current state: **68 files, 1347 tests, all passing.**
 
 Tests mirror the source tree:
 
@@ -173,8 +178,8 @@ empties `document.body`.
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **28 per-glob thresholds**. (Several docs, `CLAUDE.md` included,
-say 26; that is a miscount, corrected here.) The security-critical and
+Above that sit **29 per-glob thresholds** (this map and the root `CLAUDE.md`
+both used to say 26; that was a miscount). The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -191,8 +196,14 @@ well-covered modules are ratcheted high:
 | `src/util.jsx` | 65 |
 
 Plus `services/email.js` and `email-templates.js` at 95, `app.js` at 75 lines
-but only 5 branches, `src/editorUtils.js` and `src/userPrefs.js` at 95, and five
-per-hook thresholds.
+but only 5 branches, `src/editorUtils.js` and `src/userPrefs.js` at 95,
+`scripts/**` at 82, and five per-hook thresholds.
+
+`coverage.include` is an allowlist, so a directory absent from it is **invisible
+to coverage rather than under-covered**. `scripts/**/*.js` was added to it when
+the migration runner landed; anything new outside `routes/`, `middleware/`,
+`services/`, `scripts/`, `src/` and the three named root files needs the same
+treatment or it silently counts for nothing.
 
 **The practical consequence:** adding an uncovered branch to a high-threshold
 file fails CI even though every test passes. Write the test with the code. When
@@ -201,7 +212,7 @@ you raise real coverage, ratchet the threshold up in the same PR; the comment at
 
 ## 6. CI
 
-`.github/workflows/ci.yml`, on push and PR to `main` only. Ubuntu, Node 20, npm
+`.github/workflows/ci.yml`, on push to `main` and on every pull request. Ubuntu, Node 20, npm
 cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 
 ```
@@ -250,7 +261,7 @@ reports blocks a merge permanently rather than failing it.
 1. **verify** re-runs `npm ci`, `npm run lint`, `npm test` **and
    `npm run test:coverage`**. A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 28 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 29 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
@@ -337,7 +348,8 @@ Before calling a change done:
 2. `npm test` green.
 3. New env vars in `.env.example` with a comment.
 4. New heavy frontend deps added to `manualChunks` in `vite.config.js`.
-5. New SQL in **both** `migrations/` and `init.sql`.
+5. New SQL in **both** `migrations/` and `init.sql`. Never add the new file to
+   `LEGACY_BASELINE` in `scripts/migrate.js`; that list is closed.
 6. New admin-visible behaviour documented in the relevant `docs/*.md`, and any
    architectural change reflected in the matching `docs/maps/` file.
 7. UI changes verified in a browser at desktop and mobile widths.

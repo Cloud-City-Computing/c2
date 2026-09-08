@@ -53,8 +53,8 @@ Each is expanded in the map named after it.
 4. **`init.sql` only ever runs on a fresh MySQL volume.** Docker mounts it into
    `docker-entrypoint-initdb.d`, which is skipped when the data directory is
    already populated. Schema changes need both a `migrations/` file and an
-   `init.sql` edit, and existing dev databases need the migration applied by
-   hand. See [data-model.md](data-model.md).
+   `init.sql` edit, and existing databases need the migration applied with
+   `npm run migrate` from `cloudcodex/`. See [data-model.md](data-model.md).
 5. **Coverage thresholds are per-glob and CI runs them.** Adding an untested
    branch to a well-covered file can fail the build even when every test passes.
    See [build-test-and-ops.md](build-test-and-ops.md).

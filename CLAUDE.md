@@ -44,7 +44,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← two projects + 26 per-glob coverage thresholds
+    ├── vitest.config.js         ← two projects + 29 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -246,8 +246,12 @@ Each is expanded, with citations, in the map named after it.
   paths and version restore do this; copy that pattern.
 - **`init.sql` only runs on a fresh MySQL volume.** Docker skips
   `docker-entrypoint-initdb.d` on an initialised data dir. Schema changes need a
-  `migrations/` file **and** an `init.sql` edit, applied by hand to existing dev
-  databases. There is no migration runner and no applied-migrations table.
+  `migrations/` file **and** an `init.sql` edit. Apply the migration with
+  `npm run migrate`; `schema_migrations` records what ran. Each database needs
+  one adoption command first: `--adopt-fresh-install` if `init.sql` just built
+  it, `--baseline` if it predates the runner. The `LEGACY_BASELINE` list in
+  `scripts/migrate.js` is closed: never append a new migration to it, or
+  `--baseline` will mark it applied without running it.
 - **`make reset-db` is not a clean reset.** `init.sql`'s DROP list omits four
   tables (`github_links`, `activity_log`, `watches`, `notifications`) whose
   CREATEs lack `IF NOT EXISTS`, so it aborts partway on an existing database.
@@ -277,6 +281,9 @@ npm run lint                 # ESLint over the whole package
 npm test                     # Vitest, single run
 npm run test:watch           # Vitest watch
 npm run test:coverage        # coverage report
+npm run migrate              # apply pending migrations/*.sql
+npm run migrate -- --adopt-fresh-install  # once, on a database init.sql built
+npm run migrate -- --baseline             # once, on a pre-runner install
 ```
 
 From the repo root:

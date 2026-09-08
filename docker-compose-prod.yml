@@ -48,6 +48,13 @@ services:
       # routes/helpers/images.js swaps the base64 data URI in html_content for a
       # /doc-images/ URL. Rebuilding without this volume loses all of them.
       - app_public:/app/public
+      # The migration runner reads this. scripts/migrate.js ships in the image
+      # (it is inside the cloudcodex/ build context) but migrations/ is at the
+      # repo root and is not, so without this mount `docker compose exec app
+      # npm run migrate` fails on a missing directory. Read-only: the runner
+      # never writes here. /migrations is where scripts/migrate.js resolves it
+      # from WORKDIR /app.
+      - ./migrations:/migrations:ro
 
 volumes:
   db_data:

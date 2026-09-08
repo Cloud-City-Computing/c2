@@ -30,7 +30,9 @@ services:
       - db_data:/var/lib/mysql
       # init.sql runs only when this volume is created empty. On an existing
       # volume Docker skips docker-entrypoint-initdb.d entirely, so schema
-      # changes need a migrations/ file applied by hand.
+      # changes need a migrations/ file, applied with
+      # `docker compose exec app npm run migrate` (see the app service, which
+      # mounts migrations/ for exactly that).
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-u${DB_USER}", "-p${DB_PASS}"]
@@ -43,10 +45,12 @@ services:
     # does not change under them on the next publish. Override with
     # CLOUDCODEX_VERSION in .env to try a different release.
     #
-    # UPGRADING IS NOT JUST THIS NUMBER. There is no migration runner, and
-    # init.sql runs only on an empty data directory, so a newer app against an
-    # older schema boots cleanly and then 500s. Apply the relevant
-    # migrations/*.sql by hand first: see "Upgrades" in docs/deployment.md.
+    # UPGRADING IS NOT JUST THIS NUMBER. init.sql runs only on an empty data
+    # directory, so a newer app against an older schema boots cleanly and then
+    # 500s. Run `docker compose exec app npm run migrate` first: see "Upgrades"
+    # in docs/deployment.md, which also covers the one-time adoption step this
+    # database needs before its first ordinary run. 3306 is not published here,
+    # so the runner is run inside the app container, not from the host.
     # release.yml fails the build if this default falls behind the tag.
     image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.9.0}
     container_name: cloudcodex-app
@@ -72,6 +76,13 @@ services:
       # a newer image recreates the container and every avatar and pasted image
       # is gone for good while the database still points at it.
       - app_public:/app/public
+      # The migration runner reads this. scripts/migrate.js ships in the image
+      # (it is inside the cloudcodex/ build context) but migrations/ is at the
+      # repo root and is not, so without this mount `docker compose exec app
+      # npm run migrate` fails on a missing directory. Read-only: the runner
+      # never writes here. /migrations is where scripts/migrate.js resolves it
+      # from WORKDIR /app.
+      - ./migrations:/migrations:ro
 
 volumes:
   db_data:

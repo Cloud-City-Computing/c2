@@ -97,10 +97,13 @@ on push and PR to `main`.
 
 Schema changes are dual-tracked: every column or table added in a
 `migrations/*.sql` file must also appear in `init.sql`. Fresh installs
-use `init.sql`; existing deployments apply migrations in order. Both
-must converge to the same schema.
+use `init.sql`; existing deployments apply migrations with `npm run migrate`,
+in lexicographic order. Both must converge to the same schema.
 
-Migrations are additive — once a file ships, it is never rewritten.
+Migrations are additive: once a file ships, it is never rewritten. The runner
+enforces that: it records a sha256 of every file it applies and refuses to run
+again if one has changed. Name new files `<date>-<topic>.sql`, and never add
+them to the closed `LEGACY_BASELINE` list in `cloudcodex/scripts/migrate.js`.
 
 ---
 

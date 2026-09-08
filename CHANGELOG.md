@@ -6,11 +6,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Versions before 1.0.0 make no stability promise about the database schema.
-There is no migration runner: schema changes ship as a file in
-[`migrations/`](migrations/) that you apply by hand, and `init.sql` runs only
-when MySQL initialises an empty data directory.
+Schema changes ship as a file in [`migrations/`](migrations/), applied with
+`npm run migrate` from `cloudcodex/`, and `init.sql` runs only when MySQL
+initialises an empty data directory.
 
 ## [Unreleased]
+
+### Added
+
+- A database migration runner (`cloudcodex/scripts/migrate.js`,
+  `npm run migrate`). It applies pending `migrations/*.sql` in lexicographic
+  order, records each in a new `schema_migrations` table with its sha256, and
+  refuses to run when an already-applied file has been edited. Concurrent runs
+  are serialised by a MySQL advisory lock. Each database takes one adoption
+  command first: `npm run migrate -- --adopt-fresh-install` for a database
+  `init.sql` has just built, or `npm run migrate -- --baseline` for an install
+  that predates the runner. MySQL implicitly commits DDL, so a failed migration
+  reports that the database may be partially migrated rather than claiming a
+  rollback. The release and prod compose files now mount `migrations/` into the
+  app container, which is where the runner runs when MySQL is not published to
+  the host.
+
+### Fixed
+
+- `docs/deployment.md` documented applying migrations with
+  `source /var/lib/mysql/migrations/<file>.sql` inside `make db-shell`. No
+  compose file mounts `migrations/` into the MySQL container, so that path does
+  not exist there and the documented upgrade path could not work.
 
 ### Security
 
@@ -36,8 +58,9 @@ rollback. The new column is `VARCHAR(32) NOT NULL` with a `CHECK` constraint and
 no `DEFAULT`, which makes the schema incompatible with the application in both
 directions, and the migration deletes existing token rows because they cannot be
 classified after the fact: in-flight password resets and 2FA challenges must be
-restarted. Full reasoning is in the
-migration header and in [`docs/deployment.md`](docs/deployment.md).
+restarted. Apply it with the new runner (`npm run migrate`), which lands in the same
+release. Full reasoning is in the migration header and in
+[`docs/deployment.md`](docs/deployment.md).
 
 ## [0.9.0] - 2026-08-08
 
