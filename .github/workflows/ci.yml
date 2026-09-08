@@ -1,4 +1,4 @@
-name: CI — Backend Tests
+name: CI
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    name: Lint, test and build
     runs-on: ubuntu-latest
 
     defaults:
@@ -31,6 +32,12 @@ jobs:
 
       - name: Run coverage
         run: npm run test:coverage
+
+      # The production Vite build is not exercised by lint or the suite. Without
+      # this step a bad import, or a dependency missing from vite.config.js's
+      # manualChunks, passes CI and reaches main.
+      - name: Build production frontend
+        run: npm run build
 
       - name: Upload coverage report
         if: always()

@@ -173,7 +173,8 @@ empties `document.body`.
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **26 per-glob thresholds**. The security-critical and
+Above that sit **28 per-glob thresholds**. (Several docs, `CLAUDE.md` included,
+say 26; that is a miscount, corrected here.) The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -204,11 +205,33 @@ you raise real coverage, ratchet the threshold up in the same PR; the comment at
 cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 
 ```
-npm ci  ->  npm run lint  ->  npm test  ->  npm run test:coverage
+npm ci -> npm run lint -> npm test -> npm run test:coverage -> npm run build
 ```
 
+The job is named `Lint, test and build`, and that name (not the job id `test`)
+is the check run context. Renaming the job renames the check, and would break
+the gate until branch protection is updated to match.
+
+**Whether that check is actually required on `main` is repository configuration,
+not repository content, and it is applied by hand.** Until someone runs the
+`PUT` on `/branches/main/protection`, `main` has no `required_status_checks` key
+at all and a red run is mergeable on one approval. Verify rather than assume:
+
+```
+gh api repos/Cloud-City-Computing/c2/branches/main/protection/required_status_checks
+```
+
+A 404 means no status check is required yet.
+
+`npm run build` is the newest step and the reason for the job's name: lint and
+the suite never exercise the production Vite build, so a bad import or a
+dependency missing from `vite.config.js`'s `manualChunks` used to pass CI and
+reach `main`. The build emits a "Circular chunk" warning about the vendor chunks
+and still exits 0, so that warning is not a gate failure.
+
 Coverage is uploaded as an artifact with 14-day retention,
-`if: always()`.
+`if: always()`. That `if` makes the upload run even when an earlier step failed;
+it does not affect the job's own pass or fail conclusion.
 
 **There are no pre-commit hooks.** Running lint and tests locally is on you.
 `npm ci` means the lockfile must be committed and current.
@@ -223,7 +246,7 @@ Note the branch filter: work on `dev` does not trigger CI until it targets
 1. **verify** re-runs `npm ci`, `npm run lint`, `npm test` **and
    `npm run test:coverage`**. A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 26 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 28 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
