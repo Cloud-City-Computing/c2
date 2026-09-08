@@ -131,6 +131,53 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    // The workspace is the tenant boundary. Holding the *global* create_archive
+    // bit (which createDefaultPermissions hands every account) must not mean
+    // "may create an archive inside anyone's squad".
+    it('rejects a squad_id in a workspace the caller is not in', async () => {
+      mockAuthenticated();
+      c2_query
+        // requirePermission loads permissions: global create_archive is set
+        .mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }])
+        // isSquadWorkspaceMember: the squad resolves to workspace 99
+        .mockResolvedValueOnce([{ workspace_id: 99 }])
+        // isWorkspaceMember: the caller is neither owner nor squad member there
+        .mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .post('/api/archives')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'Planted Archive', squad_id: 42 });
+
+      expect(res.status).toBe(403);
+      // Generic message on purpose: naming the squad would make this route a
+      // squad enumeration oracle.
+      expect(res.body.message).toBe("You do not have the 'create_archive' permission");
+      // The insert must never have been reached.
+      expect(c2_query.mock.calls.some(c => /INSERT INTO archives/.test(c[0]))).toBe(false);
+    });
+
+    it('creates an archive when the squad is in the caller workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        // requirePermission loads permissions
+        .mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }])
+        // isSquadWorkspaceMember: the squad resolves to workspace 7
+        .mockResolvedValueOnce([{ workspace_id: 7 }])
+        // isWorkspaceMember: the caller is inside workspace 7
+        .mockResolvedValueOnce([{ 1: 1 }])
+        // INSERT archive
+        .mockResolvedValueOnce({ insertId: 6 });
+
+      const res = await request(app)
+        .post('/api/archives')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'Own Archive', squad_id: 42 });
+
+      expect(res.status).toBe(201);
+      expect(res.body.archiveId).toBe(6);
+    });
   });
 
   // ── PUT /api/archives/:id ─────────────────────────────────
@@ -459,6 +506,34 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
+    });
+
+    // Regression guard for the tenant-boundary change in requirePermission:
+    // only a *body*-supplied squad_id is validated ahead of the global bit.
+    // The archive-derived squad deliberately is not, because this route
+    // re-checks with writeAccessWhere immediately after the middleware, and an
+    // early check would refuse a caller holding an explicit write_access grant
+    // without workspace membership. It would also add a middleware query that
+    // shifts every mock queue driving this route.
+    it('issues no extra middleware query for the archive-derived squad', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }])
+        .mockResolvedValueOnce([{ id: 1 }])
+        .mockResolvedValueOnce({ insertId: 10 });
+
+      const res = await request(app)
+        .post('/api/archives/1/logs')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Log' });
+
+      expect(res.status).toBe(201);
+      // The middleware never resolves the archive's squad on this path.
+      expect(c2_query.mock.calls.some(c => /SELECT squad_id FROM archives/.test(c[0]))).toBe(false);
+      // Permissions load, then straight to the writeAccessWhere re-check.
+      expect(c2_query.mock.calls[0][0]).toMatch(/FROM permissions WHERE user_id/);
+      expect(c2_query.mock.calls[1][0]).toMatch(/FROM archives p/);
+      expect(c2_query.mock.calls[1][0]).toMatch(/JSON_CONTAINS\(p\.write_access/);
     });
 
     it('requires authentication', async () => {

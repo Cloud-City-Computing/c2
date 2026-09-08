@@ -7,6 +7,7 @@
 
 import { c2_query } from '../mysql_connect.js';
 import { isValidId, DEFAULT_PERMISSIONS } from '../routes/helpers/shared.js';
+import { isSquadWorkspaceMember } from '../routes/helpers/ownership.js';
 
 /**
  * Middleware that loads user permissions from the permissions table
@@ -59,6 +60,29 @@ export function requirePermission(permission) {
       }
     }
 
+    // A body-supplied squad context is validated regardless of the global bit:
+    // the global permission means "may create", never "may create anywhere".
+    // createDefaultPermissions grants every account all three bits, so without
+    // this any account could plant an archive inside any squad in any
+    // workspace via POST /api/archives, where this middleware is the only gate.
+    //
+    // Deliberately NOT the archiveId-derived squad below. Both create_log
+    // routes re-check with writeAccessWhere straight after this middleware, so
+    // that path is already covered, and checking it here would refuse a caller
+    // who holds an explicit write_access grant without workspace membership.
+    const bodySquadId = req.body?.squad_id && isValidId(req.body.squad_id)
+      ? Number(req.body.squad_id)
+      : null;
+
+    if (bodySquadId && !(await isSquadWorkspaceMember(req.user, bodySquadId))) {
+      // The generic permission message, not one naming the squad: a
+      // distinguishable refusal would turn this into a squad enumeration oracle.
+      return res.status(403).json({
+        success: false,
+        message: `You do not have the '${permission}' permission`
+      });
+    }
+
     // Global permission grants access immediately
     if (req.permissions[permission]) {
       return next();
@@ -66,7 +90,7 @@ export function requirePermission(permission) {
 
     // Fallback: check squad-level permissions when squad context is available
     try {
-      let squadId = req.body?.squad_id && isValidId(req.body.squad_id) ? Number(req.body.squad_id) : null;
+      let squadId = bodySquadId;
 
       // For log creation, derive squad_id from the archive
       if (!squadId && req.params?.archiveId && isValidId(req.params.archiveId)) {
