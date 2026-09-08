@@ -10,6 +10,7 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, APP_URL, addSquadOwnerMember } from './helpers/shared.js';
+import { isWorkspaceMember } from './helpers/ownership.js';
 import { logActivity } from './helpers/activity.js';
 import { createNotification, getPrefs } from '../services/notifications.js';
 
@@ -84,6 +85,23 @@ router.post(
 
     // Workspace owners bypass the create_squad permission check
     const isOwner = req.user.is_admin || workspace.owner_id === req.user.id;
+
+    // The workspace is the tenant boundary. Holding create_squad means "may
+    // create a squad", not "may create a squad anywhere": without this check
+    // any account can enrol itself as a squad owner inside a workspace it has
+    // no relationship to, and squad ownership is a live term in
+    // readAccessWhere/writeAccessWhere. An orphaned workspace (owner_id NULL,
+    // the owner account deleted) is not a public workspace either: with no
+    // owner to match, membership is the only way in, and such a workspace gets
+    // adopted by an admin rather than colonised by whoever asks first.
+    //
+    // 404 rather than 403, with the not-found message byte for byte, because a
+    // distinguishable 403 would turn this route into a workspace enumeration
+    // oracle for any authenticated account.
+    if (!isOwner && !(await isWorkspaceMember(req.user, Number(workspaceId)))) {
+      return res.status(404).json({ success: false, message: 'Workspace not found' });
+    }
+
     if (!isOwner) {
       const [perms] = await c2_query(
         `SELECT create_squad FROM permissions WHERE user_id = ? LIMIT 1`,

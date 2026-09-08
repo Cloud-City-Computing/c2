@@ -99,10 +99,35 @@ describe('Squad Routes', () => {
       expect(res.status).toBe(404);
     });
 
+    it('refuses a workspace the caller has no relationship to, indistinguishably from a missing one', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner_id: 42 }])  // workspace, owned by someone else
+        .mockResolvedValueOnce([]);                        // isWorkspaceMember: the caller is outside it
+
+      const res = await request(app)
+        .post('/api/workspaces/1/squads')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'New Squad' });
+
+      // create_squad means "may create a squad", not "may create a squad
+      // anywhere". The response is byte for byte the not-found response, so a
+      // caller cannot use this route to enumerate workspaces they cannot see.
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ success: false, message: 'Workspace not found' });
+
+      // Nothing was created, and no permission lookup was even reached.
+      const sqls = c2_query.mock.calls.map(([sql]) => sql);
+      expect(sqls.some(sql => sql.includes('INSERT INTO squads'))).toBe(false);
+      expect(sqls.some(sql => sql.includes('INSERT INTO squad_members'))).toBe(false);
+      expect(sqls.some(sql => /FROM permissions/i.test(sql))).toBe(false);
+    });
+
     it('adds the workspace owner as a squad owner without looking them up by email', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1, owner_id: 42 }])  // workspace, owned by someone else
+        .mockResolvedValueOnce([{ '1': 1 }])                // isWorkspaceMember: caller is in a squad here
         .mockResolvedValueOnce([{ create_squad: 1 }])       // caller holds the permission
         .mockResolvedValueOnce({ insertId: 10 })            // INSERT squad
         .mockResolvedValueOnce([])                          // squad_members: the creator
@@ -125,10 +150,31 @@ describe('Squad Routes', () => {
       expect(memberInserts[1][1]).toEqual([10, 42]);
     });
 
-    it('enrols only the creator when the workspace has no owner', async () => {
+    it('treats an orphaned workspace as private, not public: a deleted owner does not open it up', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1, owner_id: null }])  // owner account was deleted
+        .mockResolvedValueOnce([]);                          // isWorkspaceMember: the caller is outside it
+
+      const res = await request(app)
+        .post('/api/workspaces/1/squads')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'New Squad' });
+
+      // There is no owner to compare against, so the ownership bypass cannot
+      // fire and membership is the only way in. A workspace whose owner account
+      // was deleted gets adopted by an admin, not colonised by whoever asks first.
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ success: false, message: 'Workspace not found' });
+      const sqls = c2_query.mock.calls.map(([sql]) => sql);
+      expect(sqls.some(sql => sql.includes('INSERT INTO squads'))).toBe(false);
+    });
+
+    it('enrols only the creator when a member creates a squad in an orphaned workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1, owner_id: null }])  // owner account was deleted
+        .mockResolvedValueOnce([{ '1': 1 }])                 // isWorkspaceMember: caller is in a squad here
         .mockResolvedValueOnce([{ create_squad: 1 }])
         .mockResolvedValueOnce({ insertId: 10 })
         .mockResolvedValueOnce([]);                          // squad_members: the creator only

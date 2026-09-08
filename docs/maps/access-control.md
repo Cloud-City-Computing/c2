@@ -190,6 +190,22 @@ Currently applied on exactly two routes: `routes/archives.js:115`
 (`create_archive`) and `routes/archives.js:424` (`create_log`), plus the upload
 route `routes/upload.js:92` (`create_log`).
 
+`create_squad` is not enforced through this middleware at all. `POST
+/api/workspaces/:workspaceId/squads` (`routes/squads.js`) checks the flag
+inline, and only **after** `isWorkspaceMember` (`ownership.js`): the workspace is
+the tenant boundary, so holding the flag means "may create a squad", not "may
+create a squad anywhere". `createDefaultPermissions` (`shared.js`) hands every
+new account `create_squad`, so without that ordering any account could enrol
+itself as a squad *owner* inside a workspace it has no relationship to, and squad
+ownership is a live term in `readAccessWhere`/`writeAccessWhere`. A caller who is
+neither the workspace owner nor a member of some squad in the workspace gets the
+same `404` and the same body as a workspace that does not exist, deliberately: a
+distinguishable `403` would make the route a workspace enumeration oracle. An
+orphaned workspace (`owner_id` NULL because the owner account was deleted) is not
+a public workspace either; with no owner to match, membership is the only way in,
+and such a workspace is adopted by an admin rather than claimed by whoever asks
+first.
+
 ### 3b. Publish: `canPublish`
 
 `shared.js:98-125`. Ordered bypasses: no squad context at all, allow; admin,
