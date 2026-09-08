@@ -91,6 +91,55 @@ export async function isArchiveOwner(user, archiveId) {
 }
 
 /**
+ * Check whether a user is inside a workspace, the product's tenant boundary.
+ *
+ * There is no `workspace_members` table: membership of workspace W is
+ * an admin, OR the workspace owner (`workspaces.owner_id`), OR a member of
+ * some squad whose `workspace_id` is W (`squad_members` joined to `squads`).
+ *
+ * Use this to gate any route that accepts a caller-supplied workspace id.
+ * A global permission flag means "may do this", never "may do this anywhere".
+ */
+export async function isWorkspaceMember(user, workspaceId) {
+  if (user.is_admin) return true;
+
+  const [row] = await c2_query(
+    `SELECT 1 FROM workspaces o
+     WHERE o.id = ?
+       AND (
+         o.owner_id = ?
+         OR EXISTS (
+           SELECT 1 FROM squad_members sm
+           JOIN squads t ON t.id = sm.squad_id
+           WHERE t.workspace_id = o.id AND sm.user_id = ?
+         )
+       )
+     LIMIT 1`,
+    [Number(workspaceId), user.id, user.id]
+  );
+  return Boolean(row);
+}
+
+/**
+ * Check whether a user is inside the workspace that owns a given squad.
+ *
+ * `squads.workspace_id` is nullable. A squad that belongs to no workspace has
+ * no tenant boundary to resolve, so this returns false for everyone but an
+ * admin rather than treating "no workspace" as "any workspace".
+ */
+export async function isSquadWorkspaceMember(user, squadId) {
+  if (user.is_admin) return true;
+
+  const [row] = await c2_query(
+    `SELECT t.workspace_id FROM squads t WHERE t.id = ? LIMIT 1`,
+    [Number(squadId)]
+  );
+  if (!row) return false;
+  if (row.workspace_id === null) return false;
+  return isWorkspaceMember(user, row.workspace_id);
+}
+
+/**
  * SQL predicate excluding `system` archives, which take no parameter.
  *
  * A system archive is one the application creates for its own bookkeeping:
