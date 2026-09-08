@@ -125,13 +125,23 @@ Separate from access to specific content, users have a row in the `permissions` 
 
 | Permission      | Effect                                       |
 |-----------------|----------------------------------------------|
-| `create_squad`  | Can create new squads in any workspace       |
+| `create_squad`  | Can create new squads                        |
 | `create_archive`| Can create new archives                      |
 | `create_log`    | Can create documents (TRUE by default)       |
 
-These global flags are checked first. If a user lacks the global flag, the system also checks:
+**A global flag means "may create", never "may create anywhere."** The workspace
+is the tenant boundary. A caller who supplies a workspace or squad id has to be
+inside that workspace first: its owner, or a member of one of its squads. Admins
+are exempt. A workspace whose owner account was deleted is not a public
+workspace, and a squad that belongs to no workspace has no tenant to test
+against, so both refuse everyone but an admin.
+
+These global flags are checked next. If a user lacks the global flag, the system also checks:
 - Whether they are the workspace owner (bypasses all)
 - Whether they have the equivalent squad-member permission (`can_create_archive`, `can_create_log`)
+
+User discovery is bounded the same way: `GET /api/users/search` shows a
+non-admin caller only themselves plus people who share a workspace with them.
 
 ---
 

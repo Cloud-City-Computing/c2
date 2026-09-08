@@ -284,6 +284,12 @@ without changing anything.
 
 ### `GET /api/users/search?q=<query>`
 
-Search for users by username (for invite dialogs). Rate-limited to 60 requests per 15 minutes per IP to prevent user enumeration.
+Search for users by name or email (for invite and mention dialogs). Minimum two
+characters. Rate-limited to 60 requests per 15 minutes per IP.
 
-**Response:** `{ users: [{ id, name, email, avatar_url }] }`
+**Scoped to the caller's workspaces.** An admin sees every account. Everyone
+else sees only themselves plus users who share a workspace with them, meaning a
+workspace the caller owns or one holding a squad the caller belongs to. A caller
+who owns no workspace and belongs to no squad therefore finds only themselves.
+
+**Response:** `{ success: true, users: [{ id, name, email, avatar_url }] }`

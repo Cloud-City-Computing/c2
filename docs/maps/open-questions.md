@@ -656,6 +656,70 @@ Mutation-checked per attribute, not per file: neutralising `PageTree`'s five
 `div` fails 3; removing the row `onClick`, the comment count, or the sort
 label fails 1 each.
 
+### B16. A global create flag meant "may create anywhere" (FIXED)
+
+**The semantic bug, stated once:** `permissions.create_squad`,
+`create_archive` and `create_log` mean *this account may create this kind of
+thing*. They have never meant *this account may create it in any workspace*,
+but until 2026-09-08 four surfaces read them the second way, and
+`createDefaultPermissions` (`shared.js`) hands every new account all three.
+The workspace is the tenant boundary, and nothing in the codebase could ask
+"is this user inside workspace W?", so there was no check to make.
+
+Four holes, in descending severity:
+
+- **(a) Squad creation.** `POST /api/workspaces/:workspaceId/squads` checked
+  that the workspace row existed and that the caller held `create_squad`, then
+  called `addSquadOwnerMember`. Squad ownership is a live term in clause 5 of
+  both access fragments, so **any authenticated account could give itself
+  owner-level footing inside any workspace** and read and write everything
+  under it.
+- **(b) `requirePermission` returned early on the global flag**
+  (`permissions.js`), so the squad-context branch below it never ran for a
+  normal user. `POST /api/archives` takes `squad_id` from the body and that
+  middleware is its only gate, so any account could plant an archive inside any
+  squad in any workspace.
+- **(c) The archive ACL grantee was never resolved.**
+  `POST /api/archives/:id/access` authorised the caller with `isArchiveOwner`
+  and then wrote the supplied `userId` or `squadId` straight into the ACL JSON,
+  validated as a well-formed id and nothing else.
+- **(d) `GET /api/users/search` was unscoped.** `name LIKE ? OR email LIKE ?`
+  over the whole `users` table for any authenticated caller, returning id, name,
+  email and avatar. Every account on the install, with its email address, was
+  enumerable by every other account across every workspace.
+
+**Fixed 2026-09-08.** `isWorkspaceMember` / `isSquadWorkspaceMember` in
+`ownership.js` supply the missing predicate and all four routes now use it. The
+7-param fragments were not touched. Full write-up, including why the
+archive-derived squad is deliberately *not* validated in the middleware, in 3e
+of [access-control.md](access-control.md).
+
+**Known cost, accepted rather than special-cased.** The body-squad check runs
+above the global flag, so a squad with `workspace_id` NULL no longer reaches
+the `squad_members` fallback: a member holding `can_create_archive` on an
+**orphaned** squad now gets `403` where they used to get `201`. An orphaned
+squad has no tenant, so "is this user inside its tenant?" is unanswerable and
+failing closed is the right answer. All four `INSERT INTO squads` sites set
+`workspace_id`, so only legacy or hand-edited rows are affected.
+
+**The fix is prospective, and there is no cleanup migration on purpose.** Rows
+created through (a), (b) and (c) before the fix still resolve, because each is
+an ordinary row the fragments read correctly. No query can separate one of them
+from an install that used these routes exactly as they behaved, so deleting
+automatically would destroy legitimate data. `docs/security.md` ships three
+read-only enumeration queries instead; the disposition is the operator's.
+
+Those three queries were run, not just written: against MySQL 8 with `init.sql`
+loaded and a synthetic fixture holding one planted squad, a second planted squad
+alibiing the first, a planted archive, a cross-tenant user grant and a
+cross-tenant squad grant, alongside legitimate rows for a workspace owner, a
+genuine member, an admin and a second workspace. Each query reported exactly its
+attack rows and none of the legitimate ones. The first query is the one that
+needs the care: the naive membership test returns **nothing** on that fixture,
+because planting a squad enrols the planter as a member of the very workspace
+under examination.
+
+
 ## C. Design tensions, not defects
 
 ### C1. `canWrite` is evaluated once per collab connection

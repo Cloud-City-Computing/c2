@@ -1,7 +1,7 @@
 # Access Control Map
 
 **Read this before touching any permission code.** Cloud Codex does not have one
-access-control system. It has one *primary* system plus four smaller ones that
+access-control system. It has one *primary* system plus five smaller ones that
 guard different verbs, and they do not agree with each other in every case.
 
 ---
@@ -139,7 +139,7 @@ loading) interpolate it directly; see `routes/documents.js:553`,
 columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
-(`init.sql:244-245`). Grepping the whole backend for reads of them turns up
+(`init.sql:265-266`). Grepping the whole backend for reads of them turns up
 nothing. Since 2026-08-09 the only thing that writes them is the PR-session
 log insert (`routes/github.js:1698`), which sets both to an empty
 `JSON_ARRAY()`.
@@ -155,7 +155,7 @@ now grants on a per-PR archive instead. See
 The practical rule: **the archive is the ACL boundary.** Per-document
 permissions do not exist.
 
-## 3. The four secondary systems
+## 3. The five secondary systems
 
 ### 3a. Global feature permissions: `requirePermission(flag)`
 
@@ -164,16 +164,20 @@ existing rows. Three flags: `create_squad`, `create_archive`, `create_log`.
 
 Resolution order:
 
-1. `req.user.is_admin`, allow (`permissions.js:47`).
+1. `req.user.is_admin`, allow (`permissions.js:48`).
 2. Load `req.permissions` from the `permissions` table if not already loaded,
-   falling back to `DEFAULT_PERMISSIONS` (`permissions.js:50-60`).
-3. Global flag set, allow (`permissions.js:63-65`).
-4. Otherwise derive a squad from `req.body.squad_id`, or from
-   `req.params.archiveId` via the archive's `squad_id` (`permissions.js:69-78`).
-5. Workspace owner of that squad, allow (`permissions.js:82-87`).
-6. `squad_members.can_create_archive` / `can_create_log`, allow
-   (`permissions.js:90-101`).
-7. Else 403.
+   falling back to `DEFAULT_PERMISSIONS` (`permissions.js:51-61`).
+3. **Tenant check.** If `req.body.squad_id` is present and well formed, the
+   caller must be inside that squad's workspace, or 403
+   (`isSquadWorkspaceMember`, `permissions.js:73-84`). This sits *above* the
+   global flag deliberately; see 3e.
+4. Global flag set, allow (`permissions.js:87-89`).
+5. Otherwise derive a squad from `req.body.squad_id`, or from
+   `req.params.archiveId` via the archive's `squad_id` (`permissions.js:93-102`).
+6. Workspace owner of that squad, allow (`permissions.js:105-111`).
+7. `squad_members.can_create_archive` / `can_create_log`, allow
+   (`permissions.js:113-125`).
+8. Else 403.
 
 `DEFAULT_PERMISSIONS` (`shared.js:48`) is
 `{ create_squad: false, create_archive: false, create_log: true }`, applied to
@@ -182,13 +186,20 @@ get a row with **all three true** via `createDefaultPermissions`
 (`shared.js:168-173`), so the default only applies to rows that predate it or
 were made outside those paths.
 
-Note step 6 maps only two of the three flags (`permissions.js:90-93`). There is
-no squad-level fallback for `create_squad`, which is correct: squads are created
-in a workspace, not in a squad.
+Note step 7 maps only two of the three flags (`permissions.js:114-117`). There
+is no squad-level fallback for `create_squad`, which is correct: squads are
+created in a workspace, not in a squad.
 
-Currently applied on exactly two routes: `routes/archives.js:115`
-(`create_archive`) and `routes/archives.js:424` (`create_log`), plus the upload
-route `routes/upload.js:92` (`create_log`).
+Currently applied on exactly two routes: `routes/archives.js:117`
+(`create_archive`) and `routes/archives.js:470` (`create_log`), plus the upload
+route `routes/upload.js:95` (`create_log`).
+
+Step 3 is what makes the global flag mean "may create" rather than "may create
+anywhere". `POST /api/archives` takes its `squad_id` from the body and this
+middleware is its only gate, so before step 3 existed any account could plant an
+archive inside any squad in any workspace. The 403 reuses the generic permission
+message rather than naming the squad, so the route does not become a squad
+enumeration oracle.
 
 `create_squad` is not enforced through this middleware at all. `POST
 /api/workspaces/:workspaceId/squads` (`routes/squads.js`) checks the flag
@@ -204,7 +215,8 @@ distinguishable `403` would make the route a workspace enumeration oracle. An
 orphaned workspace (`owner_id` NULL because the owner account was deleted) is not
 a public workspace either; with no owner to match, membership is the only way in,
 and such a workspace is adopted by an admin rather than claimed by whoever asks
-first.
+first. That rule and the middleware's step 3 are two halves of the same boundary;
+3e below is where the whole of it is written down.
 
 ### 3b. Publish: `canPublish`
 
@@ -232,6 +244,99 @@ Callers: delete archive (`archives.js:195`), manage access
 `routes/squads.js:283-299`. Workspace owner, squad creator, or member with
 `can_manage_members`. Also used by the GitHub team-sync routes
 (`github.js:2173`, `github.js:2253`).
+
+### 3e. The tenant boundary: `isWorkspaceMember` / `isSquadWorkspaceMember`
+
+`ownership.js:103-140`, added 2026-09-08. **The workspace is Cloud Codex's
+tenant boundary**, and until these two helpers existed nothing in the codebase
+could ask "is this user inside workspace W?". Four routes therefore read a
+caller-supplied workspace or squad id as authorisation on its own, because
+`createDefaultPermissions` (`shared.js`) hands every new account all three
+global flags and each of those routes treated the flag as sufficient.
+
+There is no `workspace_members` table. Membership of workspace W resolves as:
+admin, OR `workspaces.owner_id = user`, OR a member of some squad whose
+`workspace_id` is W. `isSquadWorkspaceMember(user, squadId)` looks the squad's
+`workspace_id` up and delegates to `isWorkspaceMember`. Both short-circuit for
+admins before touching the database, and both parameterise every id.
+
+Enforced at exactly four points:
+
+| Where | What it gates |
+|---|---|
+| `POST /api/workspaces/:workspaceId/squads` (`squads.js:101`) | `isWorkspaceMember` before the `create_squad` lookup, non-owner path only. Squad creation enrols the caller as a squad *owner*, which is a live term in clause 5 of both fragments. |
+| `requirePermission(flag)` (`permissions.js:73-84`) | `isSquadWorkspaceMember` on `req.body.squad_id`, above the global-flag short circuit. Step 3 of 3a. |
+| `POST /api/archives/:id/access` (`archives.js:260-294`) | the grantee, user or squad, against the archive's workspace, on `action: 'add'` only |
+| `GET /api/users/search` (`routes/auth.js`) | a non-admin caller sees only themselves plus users who share a workspace with them, instead of every account and email on the install |
+
+Two shapes of the same question, and they are not interchangeable. The user
+branch of the archive ACL check asks *is this grantee inside the archive's
+workspace*, and passes a synthetic user with `is_admin` forced false, because
+`isWorkspaceMember` short-circuits on `is_admin` and the question there is the
+grantee's tenancy, not their privilege. The squad branch does not use
+`isSquadWorkspaceMember` at all: "is the granted squad inside this workspace" is
+a direct `squads.workspace_id` comparison, not a membership test.
+
+`POST /api/archives/:id/access` gates `add` and deliberately leaves `remove`
+open to a cross-tenant grantee. Gating removal would make exactly the
+pre-existing cross-tenant grants unrevokable, which is the opposite of the point.
+
+**The 7-param fragments were deliberately not touched.** These helpers add no
+clause to `readAccessWhere`/`writeAccessWhere` and no param to
+`readAccessParams`/`writeAccessParams`, so the contract in section 1 is
+unchanged at seven. The boundary is a precondition on *creating* a row or naming
+a grantee; the fragments answer the different question of who may reach a row
+that already exists. Folding one into the other would have meant an eighth param
+and a rewrite of every caller, for a check most of those callers do not need.
+
+**Why the archive-derived squad is not part of the middleware check.** Step 5 of
+3a derives a squad from `req.params.archiveId` for `create_log`. That derivation
+stays exactly where it is, below the global flag, and is not hoisted into step 3:
+
+- Both `create_log` routes re-check with `writeAccessWhere` immediately after
+  the middleware (`archives.js:486-496`, `upload.js:107-119`), so the
+  archive-derived path was never open the way the body path was.
+- Checking it in the middleware would be a behaviour regression. A caller
+  holding the global `create_log` flag plus an explicit `write_access` JSON
+  grant matches clause 2 of the fragment and can create logs today without
+  belonging to the workspace at all. An early archive-derived tenant check would
+  403 them before the fragment is ever consulted.
+- Hoisting the `SELECT squad_id FROM archives` above the global flag would also
+  fire a query that does not run on that path today, shifting the `c2_query`
+  mock queue in the archives and upload tests.
+
+**Refusals that are decisions, not oversights:**
+
+- An **orphaned workspace** (`owner_id` NULL after the owner account was
+  deleted) is not a public workspace. Membership is then the only way in, and
+  such a workspace is adopted by an admin rather than claimed by whoever asks
+  first. The squad-creation route answers `404` with the byte-for-byte
+  not-found body rather than a distinguishable `403`, so it is not a workspace
+  enumeration oracle.
+- An **orphaned squad** (`workspace_id` NULL) has no tenant to resolve, so
+  `isSquadWorkspaceMember` answers false for everyone but an admin rather than
+  reading "no workspace" as "any workspace".
+
+**The orphaned-squad rule is a behaviour change with a cost, and it was priced
+in.** Because step 3 runs above the global flag, a body-supplied squad is now
+validated on the no-flag path too, so an orphaned squad no longer reaches the
+`squad_members` fallback at step 7 either. A member holding `can_create_archive`
+on an orphaned squad used to get `201` and now gets `403`. That was accepted
+rather than special-cased: an orphaned squad has no tenant, so "is this user
+inside its tenant?" is unanswerable, and failing closed is the right answer to
+an unanswerable question. It is also consistent with the orphaned-workspace
+rule above. All four `INSERT INTO squads` sites set `workspace_id`
+(`squads.js:116`, `workspaces.js:80`, `admin.js:127`, `admin.js:218`), so only
+legacy or hand-edited rows can be in this state.
+
+**The fix is prospective.** It stops new cross-tenant rows and removes none of
+the ones already there, each of which still resolves through the fragments as an
+ordinary row: an owner `squad_members` row satisfies clause 5, a planted archive
+matches `created_by` in clause 3, a cross-tenant grant matches clause 2.
+`docs/security.md` carries three read-only enumeration queries for finding them
+and ships no cleanup migration on purpose, because no query separates an attack
+row from an install that used these routes exactly as they behaved. See B16 in
+[open-questions.md](open-questions.md).
 
 ## 4. How membership itself is granted
 
@@ -261,7 +366,7 @@ table below) applies identically regardless of which path created the row.
 
 ## 5. Per-member flags and where each is enforced
 
-`squad_members` (`init.sql:155-171`) carries `role` plus seven booleans. Their
+`squad_members` (`init.sql:176-192`) carries `role` plus seven booleans. Their
 enforcement is uneven, which is worth knowing before you assume a flag does
 something:
 
@@ -269,8 +374,8 @@ something:
 |---|---|
 | `can_read` | clause 5 of `readAccessWhere` (`ownership.js:31`) |
 | `can_write` | clause 5 of `writeAccessWhere` (`ownership.js:57`) |
-| `can_create_log` | `requirePermission('create_log')` step 6 (`permissions.js:92`) |
-| `can_create_archive` | `requirePermission('create_archive')` step 6 (`permissions.js:91`) |
+| `can_create_log` | `requirePermission('create_log')` step 7 (`permissions.js:116`) |
+| `can_create_archive` | `requirePermission('create_archive')` step 7 (`permissions.js:115`) |
 | `can_manage_members` | `userCanManageSquad` (`squads.js:295`) |
 | `can_publish` | `canPublish` (`shared.js:116-119`) |
 | `can_delete_version` | version delete route only (`documents.js:503-515`) |
@@ -305,7 +410,11 @@ is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
 
 1. `requireAuth` first, always. There are no internal endpoints; the only
    surfaces are public HTTP and the two WebSockets.
-2. Creation verb, add `requirePermission('<flag>')`.
+2. Creation verb, add `requirePermission('<flag>')`. If the route takes a
+   workspace or squad id from the caller rather than deriving it from a row the
+   caller already reaches, gate it with `isWorkspaceMember` /
+   `isSquadWorkspaceMember` as well: the flag means "may create", never "may
+   create anywhere" (3e).
 3. Reading or writing an existing document or archive, call one of the four
    `check*Access` helpers, or interpolate the fragment with the matching
    `*Params` spread. Never hand-roll the SQL.
@@ -325,3 +434,5 @@ is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
   writes the write-only log ACL columns.
 - [open-questions.md](open-questions.md) for the items above that read as
   defects rather than design.
+- [../security.md](../security.md) for the tenant-boundary summary and the three
+  read-only queries that enumerate cross-tenant rows predating 3e.
