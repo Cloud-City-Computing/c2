@@ -433,6 +433,57 @@ describe('Auth Routes', () => {
       expect(res.body.users).toHaveLength(1);
     });
 
+    it('scopes a non-admin caller to users sharing a workspace', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([
+        { id: 2, name: 'alice', email: 'alice@test.com' },
+      ]);
+
+      const res = await request(app)
+        .get('/api/users/search?q=ali')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(c2_query).toHaveBeenCalledTimes(1);
+
+      const [sql, params] = c2_query.mock.calls[0];
+
+      // The tenant boundary must be in the query, not applied after the fact.
+      expect(sql).toMatch(/workspace_id/);
+      expect(sql).toMatch(/squad_members/);
+
+      // Not the unscoped form, which returns every account on the install.
+      expect(sql.replace(/\s+/g, ' ')).not.toMatch(
+        /FROM users WHERE name LIKE \? OR email LIKE \?/i
+      );
+
+      // Five placeholders, five params, caller id bound three times.
+      expect((sql.match(/\?/g) || [])).toHaveLength(5);
+      expect(params).toHaveLength(5);
+      expect(params.filter(p => p === TEST_USER.id)).toHaveLength(3);
+      expect(params.slice(0, 2)).toEqual(['%ali%', '%ali%']);
+    });
+
+    it('keeps the unscoped query for an admin caller', async () => {
+      mockAuthenticated({ ...TEST_USER, is_admin: true });
+      c2_query.mockResolvedValueOnce([
+        { id: 2, name: 'alice', email: 'alice@test.com' },
+      ]);
+
+      const res = await request(app)
+        .get('/api/users/search?q=ali')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.users).toHaveLength(1);
+      expect(c2_query).toHaveBeenCalledTimes(1);
+
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).not.toMatch(/squad_members/);
+      expect(sql).not.toMatch(/workspace_id/);
+      expect(params).toEqual(['%ali%', '%ali%']);
+    });
+
     it('returns empty for short query', async () => {
       mockAuthenticated();
 
