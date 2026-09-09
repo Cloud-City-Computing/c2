@@ -101,6 +101,26 @@ Consequences for anyone adding a fifth flow:
 
 ---
 
+## Machine Credentials (Service Token)
+
+A machine caller (another service that needs to read this install's documents) authenticates with a shared secret rather than a session. It is **off unless both** `SERVICE_TOKEN` and `SERVICE_TOKEN_USER` are set, so an install that configures neither gains no new authentication path.
+
+| Property | Rule |
+| --- | --- |
+| Secret | `SERVICE_TOKEN`, minimum 32 characters. Shorter and the feature stays disabled, with the reason logged and the value never logged. |
+| Comparison | `crypto.timingSafeEqual` over two SHA-256 digests, never `===`. Equal-length by construction, so a wrong-length token is rejected without throwing and without leaking the configured length. |
+| Identity | `SERVICE_TOKEN_USER`, the email of an existing **non-admin** user. The credential acts as that user. |
+| Reach | `GET /api/search` and `GET /api/browse`. Nothing else. Every other route, including `GET /api/search/filters`, keeps bare `requireAuth`. |
+| Rotation | Change `SERVICE_TOKEN` and restart. No database change, no key version. Any caller still holding the old value gets 401s. |
+
+The credential has no access-control rules of its own. Because it acts as a real user, the whole existing layer applies unchanged and there is no machine-specific permission SQL to get wrong: give a machine what it should see by putting its user in the right squads or on the right archive grants.
+
+**An admin is refused outright.** `is_admin` is the first bound parameter of every access fragment in `routes/helpers/ownership.js`, so an admin principal matches every archive in the install. `verifyMachineCredential` refuses an admin row and logs it, and the principal it returns is built with a literal `is_admin: false` rather than the column. Both guards exist because either one alone silently converts a scoped read credential into a full-install one.
+
+The whole surface is one function, `verifyMachineCredential` in `services/machine-auth.js`. A later OIDC client-credentials grant replaces its body without touching a call site.
+
+---
+
 ## HTML Sanitization
 
 **DOMPurify** is applied at three points: on server writes, on WebSocket broadcast, and on client rendering. `data:` URIs are restricted to `<img>` tags to prevent script injection via data URIs.

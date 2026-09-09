@@ -463,6 +463,40 @@ falls back to the `sessionToken` cookie (for OAuth browser redirects). Calls
 Must be used after `requireAuth`. Returns `403` if `req.user.is_admin` is
 not true.
 
+### `machineOrAuth`
+
+Tries a machine credential first and otherwise falls through to `requireAuth`
+unchanged, so a human session is unaffected. On a match it attaches a machine
+principal (`{ id, name, email, is_admin: false, is_machine: true }`) and sets no
+`req.sessionToken`, because a machine caller holds no session row.
+
+Mounted on exactly two routes, `GET /api/search` and `GET /api/browse`. It is
+not a drop-in replacement for `requireAuth`: the value of the credential is
+that its reach stays enumerable by reading the routers.
+
+---
+
+## Machine Authentication Service
+
+**File:** `cloudcodex/services/machine-auth.js`
+
+### `verifyMachineCredential(token)`
+
+The single seam for non-human authentication. Returns the principal the
+credential acts as, or `null` when machine auth is unconfigured, the token does
+not match, or the configured user does not resolve. A later OIDC
+client-credentials grant replaces the body of this one function and no call
+site changes.
+
+Configured by `SERVICE_TOKEN` (the shared secret, minimum 32 characters) and
+`SERVICE_TOKEN_USER` (the email of an existing non-admin user), both required.
+The token is compared with `crypto.timingSafeEqual` over SHA-256 digests, and
+the users lookup only runs after that comparison passes. An admin
+`SERVICE_TOKEN_USER` is refused outright and logged, and the principal is built
+with a literal `is_admin: false`: `is_admin` is the first bound parameter of
+every fragment in `routes/helpers/ownership.js`, so an admin principal would
+reach every archive in the install.
+
 ---
 
 **File:** `cloudcodex/middleware/permissions.js`

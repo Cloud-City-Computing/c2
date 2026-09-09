@@ -14,7 +14,7 @@ verify before trusting either.
 | Map | When you need it |
 |---|---|
 | [request-lifecycle.md](request-lifecycle.md) | Boot order, the middleware stack in mount order, how `requireAuth` resolves a session, the two WebSocket upgrade paths, the per-router error-handler pattern, rate limiters. |
-| [access-control.md](access-control.md) | **Read before touching any permission code.** The 7-clause `readAccessWhere`/`writeAccessWhere` fragments, their fixed param arity, the four *other* permission systems that exist alongside them, and why `logs.read_access` is a write-only column. |
+| [access-control.md](access-control.md) | **Read before touching any permission code.** The 7-clause `readAccessWhere`/`writeAccessWhere` fragments, their fixed param arity, the four *other* permission systems that exist alongside them, and why `logs.read_access` is a write-only column. Plus machine principals: the service-token seam and the never-admin rule. |
 | [documents-and-collab.md](documents-and-collab.md) | Dual-state storage (`html_content` vs `ydoc_state`), the Yjs binary sync protocol, the JSON side-channel message taxonomy, the debounce/cleanup timers, save vs publish, presence. |
 | [github-integration.md](github-integration.md) | Token encryption and the `req.gh` helper, the 5-state sync machine, pull/push/resolve with diff3, live code embeds, PR-as-document sessions, squad to GitHub-Team sync, and the error handler this router does *not* share. |
 | [notifications-and-activity.md](notifications-and-activity.md) | The activity taxonomy, auto-watch rules, watcher fan-out, the notification funnel with its two independent coalescing windows, email preference resolution, the user-scoped WebSocket. |

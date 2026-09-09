@@ -105,6 +105,14 @@ Workspace SSO, GitHub OAuth (token AES-256-GCM encrypted at rest). Use
 `requireAuth` and `requireAdmin` from `middleware/auth.js` on any new protected
 route.
 
+**Machine callers**: `services/machine-auth.js` exports the one seam,
+`verifyMachineCredential`, gated on `SERVICE_TOKEN` + `SERVICE_TOKEN_USER`
+(both required, off by default). `machineOrAuth` in `middleware/auth.js` is
+mounted on `GET /api/search` and `GET /api/browse` and **nothing else**. The
+principal is always a real non-admin user with `is_admin` forced false, because
+`is_admin` is the first bound parameter of every `ownership.js` fragment. Do
+not widen the scope or copy `is_admin` from the row.
+
 ### Org hierarchy: `routes/workspaces.js`, `routes/squads.js`, `routes/archives.js`
 Workspaces own squads; squads own archives; archives own logs. Squad members
 have roles (member/admin/owner) and per-member permission flags

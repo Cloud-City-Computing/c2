@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { validateAndAutoLogin, touchSession } from '../../mysql_connect.js';
-import { requireAuth, extractSessionToken } from '../../middleware/auth.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { c2_query, validateAndAutoLogin, touchSession } from '../../mysql_connect.js';
+import { requireAuth, machineOrAuth, extractSessionToken } from '../../middleware/auth.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
 
 /**
@@ -123,5 +123,98 @@ describe('requireAuth Middleware', () => {
     await vi.waitFor(() => expect(next).toHaveBeenCalled());
 
     expect(touchSession).toHaveBeenCalledWith('valid-token');
+  });
+});
+
+describe('machineOrAuth Middleware', () => {
+  const SERVICE_TOKEN = 'middleware-service-token-0000000000';
+  const SERVICE_ROW = { id: 9, name: 'cloud-command', email: 'svc@example.com', is_admin: 0 };
+
+  beforeEach(() => {
+    resetMocks();
+    process.env.SERVICE_TOKEN = SERVICE_TOKEN;
+    process.env.SERVICE_TOKEN_USER = 'svc@example.com';
+  });
+
+  afterEach(() => {
+    delete process.env.SERVICE_TOKEN;
+    delete process.env.SERVICE_TOKEN_USER;
+  });
+
+  it('attaches a machine principal for a valid service token', async () => {
+    c2_query.mockResolvedValueOnce([SERVICE_ROW]);
+
+    const { req, res, next } = createMocks({
+      headers: { authorization: `Bearer ${SERVICE_TOKEN}` },
+    });
+
+    machineOrAuth(req, res, next);
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+
+    expect(req.user).toEqual({
+      id: 9,
+      name: 'cloud-command',
+      email: 'svc@example.com',
+      is_admin: false,
+      is_machine: true,
+    });
+    // A machine caller holds no session, so nothing to validate or refresh.
+    expect(validateAndAutoLogin).not.toHaveBeenCalled();
+    expect(touchSession).not.toHaveBeenCalled();
+    expect(req.sessionToken).toBeUndefined();
+  });
+
+  it('falls through to requireAuth for an ordinary session token', async () => {
+    validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
+
+    const { req, res, next } = createMocks({
+      headers: { authorization: 'Bearer valid-token' },
+    });
+
+    machineOrAuth(req, res, next);
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+
+    expect(req.user).toEqual(TEST_USER);
+    expect(req.sessionToken).toBe('valid-token');
+    expect(validateAndAutoLogin).toHaveBeenCalledWith('valid-token');
+  });
+
+  it('returns 401 when the request carries no token at all', () => {
+    const { req, res, next } = createMocks();
+
+    machineOrAuth(req, res, next);
+
+    expect(res.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('falls through to requireAuth when machine auth is unconfigured', async () => {
+    delete process.env.SERVICE_TOKEN;
+    delete process.env.SERVICE_TOKEN_USER;
+    validateAndAutoLogin.mockResolvedValueOnce(null);
+
+    const { req, res, next } = createMocks({
+      headers: { authorization: `Bearer ${SERVICE_TOKEN}` },
+    });
+
+    machineOrAuth(req, res, next);
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('forwards a lookup failure to the error handler rather than authenticating', async () => {
+    c2_query.mockRejectedValueOnce(new Error('db down'));
+
+    const { req, res, next } = createMocks({
+      headers: { authorization: `Bearer ${SERVICE_TOKEN}` },
+    });
+
+    machineOrAuth(req, res, next);
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+
+    expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+    expect(req.user).toBeUndefined();
   });
 });

@@ -33,6 +33,19 @@ initialises an empty data directory.
   SELinux host), which is where the runner runs when MySQL is not published to
   the host: `docker compose ... run --rm app npm run migrate`, in a one-off
   container, after stopping the app.
+- **A scoped service token, for a machine that needs to read your documents.**
+  Set `SERVICE_TOKEN` (at least 32 characters) and `SERVICE_TOKEN_USER` (the
+  email of an existing, non-admin user) and a caller presenting
+  `Authorization: Bearer <SERVICE_TOKEN>` can read `GET /api/search` and
+  `GET /api/browse`, and nothing else. Set neither and nothing changes: there
+  is no new authentication path on an install that does not opt in.
+  The token acts as that user through the ordinary archive ACLs, so you widen
+  or narrow what a machine sees by changing that user's squad membership and
+  archive grants, not by editing permission code. An admin
+  `SERVICE_TOKEN_USER` is refused outright, because an admin principal matches
+  every archive in the install. Rotating the secret is immediate and needs no
+  database change, and any caller still holding the old value starts getting
+  401s. See [`docs/security.md`](docs/security.md) and `.env.example`.
 
 ### Fixed
 
