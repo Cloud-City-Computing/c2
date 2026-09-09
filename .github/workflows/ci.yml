@@ -1,13 +1,18 @@
-name: CI — Backend Tests
+name: CI
 
 on:
   push:
     branches: [main]
+  # Every pull request, not only those targeting main. A stacked PR (one whose
+  # base is another feature branch) reported no checks at all under a
+  # `branches: [main]` filter, and a required status check that never reports
+  # blocks the merge permanently rather than failing it. That combination would
+  # have deadlocked this repo the moment required checks were switched on.
   pull_request:
-    branches: [main]
 
 jobs:
   test:
+    name: Lint, test and build
     runs-on: ubuntu-latest
 
     defaults:
@@ -31,6 +36,12 @@ jobs:
 
       - name: Run coverage
         run: npm run test:coverage
+
+      # The production Vite build is not exercised by lint or the suite. Without
+      # this step a bad import, or a dependency missing from vite.config.js's
+      # manualChunks, passes CI and reaches main.
+      - name: Build production frontend
+        run: npm run build
 
       - name: Upload coverage report
         if: always()

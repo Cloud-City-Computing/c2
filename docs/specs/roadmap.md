@@ -53,7 +53,7 @@ existing database.
 The leak is overwhelmingly at evaluation and install. Features are not the
 constraint right now.
 
-## The five tracks
+## The tracks
 
 | | Track | Scope | Depends on |
 |---|---|---|---|
@@ -62,6 +62,7 @@ constraint right now.
 | **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
+| **S** | Security and infrastructure (**open**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token | nothing; C2-0 gates the rest |
 
 ### A. Evaluation path — shipped
 
@@ -251,6 +252,24 @@ function lives elsewhere and is independently importable.
 Still inside `Editor.jsx`: `TiptapToolbar`, `RichTextEditor`, `MarkdownEditor`,
 and the ~690-line `Editor` component itself. `GitHubPage.jsx` is untouched.
 
+### S. Security and infrastructure
+
+Added 2026-09-08. Tracks A through E are all aimed at adoption, which left this
+project with no written security track at all while four cross-tenant
+escalations and a credential-flow defect sat in the tree. Scoped in
+[`2026-09-08-security-and-infrastructure.md`](2026-09-08-security-and-infrastructure.md),
+decomposed in
+[`../plans/2026-09-08-security-and-infrastructure.md`](../plans/2026-09-08-security-and-infrastructure.md).
+
+Unlike the other tracks it is not justified by adoption. Cloud City proposes to
+operate this software for money, and C2-1 through C2-3 are live defects in a
+multi-tenant product, so they are owed on that basis alone. Only C2-4, the
+scoped service token, exists because another product is waiting on it.
+
+C2-0 comes first and is a hard gate: `main` requires a review but requires no
+status checks, so a red run is mergeable today, and C2-2 rewrites the credential
+reset path.
+
 ## Sequencing
 
 ```
@@ -263,7 +282,14 @@ now         A ──────────────────────
                     E ────────┘  E1 defects shipped 2026-08-09; E2 extraction open
 
             C: decided 2026-08-08, no breaking change to execute
+
+            S ────────────────────────────► open, C2-0 gates C2-1..C2-4
 ```
+
+Track S runs alongside the rest rather than after them. It does not depend on
+A through E and they do not depend on it, but C2-0 is a hard gate inside S: it
+makes a red CI run block a merge, and the PRs that follow it change access
+control and the credential reset path.
 
 A, B and D have shipped, C is decided, and **E's defect half shipped on
 2026-08-09**. Two of the arguments for E were settled during D rather than
