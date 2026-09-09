@@ -505,10 +505,27 @@ ALTER TABLE password_reset_tokens
 DELETE FROM password_reset_tokens WHERE purpose IS NULL;
 
 ALTER TABLE password_reset_tokens
-  MODIFY COLUMN purpose
-    ENUM('password_reset','two_factor_login','totp_setup','two_factor_disable')
-    NOT NULL;
+  MODIFY COLUMN purpose VARCHAR(32) NOT NULL,
+  ADD CONSTRAINT chk_password_reset_tokens_purpose
+    CHECK (purpose IN ('password_reset','two_factor_login','totp_setup','two_factor_disable'));
 ```
+
+**`VARCHAR` plus `CHECK`, deliberately not `ENUM`.** An earlier draft of this
+plan specified `ENUM`, on the reasoning that `NOT NULL` with no `DEFAULT` makes
+an omitted purpose fail loudly. **ENUM does not do that**, measured on
+`mysql:8.4.8` with the shipped image's default `STRICT_TRANS_TABLES`: an insert
+omitting a `NOT NULL` ENUM with no `DEFAULT` **succeeds** and stores the first
+listed value. Here that value would be `password_reset`, so a flow that forgot
+to name its purpose would silently mint a password reset token, which is the
+exact defect this column exists to close. It would also mean old code against
+the new schema mistypes every 2FA challenge token as a reset token instead of
+erroring, reinstating the vulnerability rather than 500ing.
+
+`VARCHAR(32) NOT NULL` with a `CHECK` measures 1364 on omission and 3819 on a
+bad value, which is the behaviour that was wanted. Keep the constraint in the
+migration and in `init.sql` **both**: a test that reads only `init.sql` stays
+green when a value is dropped from the migration's `CHECK`, which is correct on
+fresh installs and error 3819 in production only.
 
 `init.sql`, inside `CREATE TABLE password_reset_tokens` (currently
 `init.sql:100-109`), after the `token` column:
