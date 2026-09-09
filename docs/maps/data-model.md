@@ -134,9 +134,17 @@ endpoint's own token was accepted as a password reset token. Impact was a
 persistent password rewrite plus a full session wipe of the victim, i.e.
 lockout and an integrity defect; reset-password issues no session and does not
 clear `two_factor_method`, and the caller must already hold the victim's
-password to reach the challenge, so it was **not** account takeover. The other
-three readers additionally require `tokenRecord.user_id === req.user.id` behind
-`requireAuth`, so they were lower still.
+password to reach the challenge, so it was **not** account takeover.
+
+Two of the other three readers were lower still, because `/2fa/totp/confirm`
+and `/2fa/disable/confirm` sit behind `requireAuth` and additionally require
+`tokenRecord.user_id === req.user.id`. **`/2fa/verify` is neither.** It is
+unauthenticated, there is no `req.user` to compare against, and its guard
+checks only `used` and `expires_at`. What actually stops a stray token there is
+the separate code check that follows: a TOTP validation, or a matching unused
+row in `two_factor_codes`. Anyone adding a branch to `/2fa/verify` that skips
+that check is minting a full session for whatever `user_id` the token row
+names, from an unauthenticated endpoint.
 
 Four rules follow, and all four are load-bearing:
 

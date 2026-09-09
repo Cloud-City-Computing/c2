@@ -187,22 +187,29 @@ describe('helpers/shared', () => {
       });
     });
 
-    it('TOKEN_PURPOSE matches the password_reset_tokens.purpose CHECK in init.sql', () => {
+    it('TOKEN_PURPOSE matches the purpose CHECK in init.sql AND in the migration', () => {
       // Verified on mysql:8 (8.4.8): the column is VARCHAR NOT NULL with no
       // DEFAULT, so omitting it is error 1364, and the CHECK makes a value
       // outside this set error 3819. Both mistakes are loud, which is the whole
       // point. ENUM cannot do this: MySQL gives a NOT NULL ENUM with no DEFAULT
       // an implicit default of the first value even under STRICT_TRANS_TABLES,
       // so an omitted purpose would silently become 'password_reset'.
-      const initSql = readFileSync(
-        resolve(dirname(fileURLToPath(import.meta.url)), '../../../init.sql'),
-        'utf8'
-      );
-      const [, checkBody] = initSql.match(/CHECK \(purpose IN \(([^)]+)\)\)/) || [];
-      expect(checkBody).toBeDefined();
-      const declared = checkBody.split(',').map((v) => v.trim().replace(/^'|'$/g, ''));
+      //
+      // Both files are checked, not just init.sql. A fresh install builds from
+      // init.sql and an existing one from the migration, so a value present in
+      // one and missing from the other is green in dev and error 3819 in
+      // production only.
+      const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+      const purposesIn = (file) => {
+        const sql = readFileSync(resolve(repoRoot, file), 'utf8');
+        const [, body] = sql.match(/CHECK \(purpose IN \(([^)]+)\)\)/) || [];
+        expect(body, `no purpose CHECK found in ${file}`).toBeDefined();
+        return body.split(',').map((v) => v.trim().replace(/^'|'$/g, '')).sort();
+      };
 
-      expect(Object.values(TOKEN_PURPOSE).sort()).toEqual(declared.sort());
+      const expected = Object.values(TOKEN_PURPOSE).sort();
+      expect(purposesIn('init.sql')).toEqual(expected);
+      expect(purposesIn('migrations/2026-09-08-token-purpose.sql')).toEqual(expected);
     });
   });
 

@@ -152,11 +152,11 @@ component that consume it.
    up by primary key, rejects if `expires_at <= now`, then loads the user row.
    The returned user carries exactly `id, name, email, avatar_url, is_admin`.
 4. On success sets `req.user` and `req.sessionToken`, then fires
-   `touchSession(token)` **without awaiting** (`auth.js:38-43`); a failure is
-   logged, never fatal.
+   `touchSession(token)` **without awaiting**; a failure is logged, never
+   fatal.
 
-`requireAdmin` (`middleware/auth.js:53-58`) is a pure `req.user.is_admin` check
-and must run after `requireAuth`.
+`requireAdmin` (`middleware/auth.js`) is a pure `req.user.is_admin` check and
+must run after `requireAuth`.
 
 ### Session tokens
 

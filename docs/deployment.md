@@ -233,8 +233,12 @@ planned one costs nothing extra.
 
 Stopping the writers also closes a partial-failure race for any migration that
 deletes rows and then tightens the column: a row inserted in between makes the
-`MODIFY` fail (error 1138), and MySQL implicitly commits DDL, so the table is
-left half-migrated with nothing recording it.
+tightening `ALTER` fail, and MySQL implicitly commits DDL, so the table is left
+half-migrated with nothing recording it. For
+`2026-09-08-token-purpose.sql` that error is 1265, `Data truncated for column
+'purpose'`, because the `CHECK` in the same `ALTER` forces the table-copy path;
+a bare `MODIFY` would report 1138 instead. Recovery is the same either way:
+drop the column and re-apply with the writers down.
 
 **Assume no rollback.** Reverting the application after applying a migration
 lands you in old-code-against-new-schema. Getting back means undoing the DDL by

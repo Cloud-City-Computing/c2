@@ -59,11 +59,17 @@
 --   new code + old schema -> error 1054, unknown column 'purpose'.
 --
 -- Stopping the writers first also closes a partial-failure race: a row
--- inserted between the DELETE and the MODIFY makes the MODIFY fail with error
--- 1138, and MySQL implicitly commits DDL, so the table would be left with a
--- nullable VARCHAR(32) and no CHECK constraint, and nothing recording that
--- state (there is no schema_migrations table at this point in the history).
--- Nothing can insert while the writers are down.
+-- inserted between the DELETE and the final ALTER makes that ALTER fail, and
+-- MySQL implicitly commits DDL, so the table would be left with a nullable
+-- VARCHAR(32) and no CHECK constraint, and nothing recording that state (there
+-- is no schema_migrations table at this point in the history). Nothing can
+-- insert while the writers are down.
+--
+-- The error you would see is 1265, "Data truncated for column 'purpose'",
+-- measured on 8.4.8 with one NULL row present. Not 1138: adding the CHECK in
+-- the same ALTER forces the table-copy path, which reports the NULL that way.
+-- A bare MODIFY on its own is what gives 1138. Either way the recovery is the
+-- same, drop the column and re-apply.
 --
 -- THERE IS NO ROLLBACK. Reverting the application after applying this lands
 -- the operator in old-code-against-new-schema, described above. Getting back
