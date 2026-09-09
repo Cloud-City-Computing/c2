@@ -243,6 +243,10 @@ hand; each migration header says what that is.
 ### Applying a migration
 
 ```bash
+# 0. Load .env into this shell. Compose reads it on its own, but the redirect
+#    and the mysql flags below run on the host, where it is not loaded.
+set -a; . ./.env; set +a
+
 # 1. Stop every writer.
 docker compose -f docker-compose-release.yml stop app   # or -f docker-compose-prod.yml
 #    In dev there is no app container: stop `npm run dev` on the host instead.
@@ -256,9 +260,10 @@ docker compose -f docker-compose-release.yml exec -T database \
 docker compose -f docker-compose-release.yml up -d app
 ```
 
-Redirect the file in from the host rather than `source`-ing it inside the
-container: no compose file mounts `migrations/` into the database container, so
-a path under `/var/lib/mysql/migrations/` does not exist there.
+Both compose files name the MySQL service `database`. Redirect the file in from
+the host rather than `source`-ing it inside the container: no compose file
+mounts `migrations/` into the database container, so a path under
+`/var/lib/mysql/migrations/` does not exist there.
 
 In dev, `make db-shell` opens a MySQL shell in the same container if you want to
 inspect the result afterwards.
