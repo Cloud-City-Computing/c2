@@ -167,7 +167,7 @@ membership of some squad whose `workspace_id` is W.
 | `POST /api/workspaces/:workspaceId/squads` | `isWorkspaceMember` before the `create_squad` lookup, on the non-owner path. Refuses with the byte-for-byte not-found body, so the route is not a workspace enumeration oracle. |
 | `requirePermission(flag)` (`middleware/permissions.js`) | `isSquadWorkspaceMember` on a body-supplied `squad_id`, above the global-flag short circuit |
 | `POST /api/archives/:id/access` | the grantee, user or squad, has to be inside the archive's workspace. On `add` only: gating `remove` would make pre-existing cross-tenant grants unrevokable. |
-| `GET /api/users/search` | a non-admin caller sees only themselves plus users who share a workspace with them |
+| `GET /api/users/search` | a non-admin caller sees themselves, users who share a workspace with them, and the owners of those workspaces. Accounts with no squad membership anywhere are added only for a caller who can invite: a squad `owner`/`admin` role, `can_manage_members`, or a workspace of their own. Without that last disjunct an SSO or squad-less-invitation account is invisible to everyone but a platform admin and can never be invited into a squad. |
 
 The 7-param `readAccessWhere` / `writeAccessWhere` fragments are not part of this
 and were not changed. The boundary is a precondition on creating a row or naming
@@ -181,7 +181,9 @@ Two refusals are deliberate:
   only way in, and such a workspace is adopted by an admin rather than claimed
   by whoever asks first.
 - An **orphaned squad** (`workspace_id` NULL) has no tenant to test against, so
-  `isSquadWorkspaceMember` answers false for everyone but an admin. All four
+  `isSquadWorkspaceMember` answers false for everyone but an admin, and the
+  archive ACL check refuses every grantee on an archive owned by such a squad.
+  Only an archive with **no** squad at all skips that check. All four
   `INSERT INTO squads` sites set `workspace_id`, so only legacy or hand-edited
   rows can be in this state.
 
@@ -228,8 +230,19 @@ workspace also alibi each other, so excluding the current row alone is not
 enough either.
 
 The predicate below is therefore: the creator is not `workspaces.owner_id`, and
-holds no `squad_members` row anywhere in that workspace once **every squad in
-that workspace created by that same user** is excluded.
+holds no `squad_members` row anywhere in that workspace, as of the moment the
+squad was created, once **every squad in that workspace created by that same
+user** is excluded.
+
+`sm.joined_at <= s.created_at` is the second half of that, and it is not
+optional. Without it a single membership of any squad the creator did not make,
+acquired at any time, clears every squad they ever planted in that workspace.
+Being onboarded properly later is the most likely thing to happen to a planter,
+so the query would go quiet exactly when the operator most needs it. And because
+query 2's extra clauses are only applied after reading query 1's output, a
+silent query 1 hides the planted archives too. `squad_members.joined_at` defaults to
+the insert time and the invitation-accept `ON DUPLICATE KEY UPDATE`
+(`squads.js`) does not touch it, so it survives re-invitation.
 
 ```sql
 SELECT s.id           AS squad_id,
@@ -253,6 +266,7 @@ WHERE s.created_by IS NOT NULL
     WHERE other.workspace_id = s.workspace_id
       AND sm.user_id = s.created_by
       AND (other.created_by IS NULL OR other.created_by <> s.created_by)
+      AND sm.joined_at <= s.created_at
   )
   -- and is not a platform admin, who may legitimately act in any workspace
   AND NOT EXISTS (
@@ -272,6 +286,12 @@ Reading the output:
 - `is_admin` is current state, not state at creation time. An account that was
   an admin when it created the squad and is not one now will be listed; an
   account promoted since will not.
+- Membership is read **as of the squad's creation**, so a squad created by
+  someone with no footing in that workspace stays on the list even after they
+  are legitimately onboarded. That is deliberate: later onboarding does not
+  retroactively authorise the creation. It also means a genuine member who
+  created a squad *before* joining any other squad in that workspace is listed,
+  and is one of the shapes the operator dispositions by hand.
 
 ### 2. Archives whose creator is outside the owning squad's workspace
 
@@ -312,23 +332,47 @@ compare a creator against.
 **If query 1 returned rows, this query under-reports.** Someone who planted a
 squad in a workspace *does* hold a `squad_members` row there, so any archive
 they also planted in that same workspace passes the membership test above. To
-see those too, add the same exclusion query 1 uses:
+see those too, add the same two exclusions query 1 uses:
 
 ```sql
       AND (m.created_by IS NULL OR m.created_by <> p.created_by)
+      AND sm.joined_at <= p.created_at
 ```
 
-as the last line inside the `NOT EXISTS` above. Only do this after reading query
-1's output, because it also reports archives created by anyone whose only
-membership of a workspace came from a squad they made themselves.
+as the last lines inside the `NOT EXISTS` above. Both are needed, for two
+different alibis. The first drops the memberships the planter's own squads
+handed them. The second drops memberships acquired *after* the archive was
+created, so that a planter who is later onboarded legitimately does not thereby
+clear the archive they planted before it: without it, one `squad_members` row
+from any squad they did not create hides every archive they planted in that
+workspace, which is exactly the shape query 1 guards against one level up.
+
+Only do this after reading query 1's output, because it also reports archives
+created by anyone whose only membership of a workspace came from a squad they
+made themselves, or who created the archive before joining any other squad
+there.
 
 ### 3. ACL grants naming a user or squad outside the archive's workspace
 
 The four ACL columns hold JSON arrays of ids (`JSON_ARRAY(...)` on insert,
 `JSON.stringify`d arrays on update), so `JSON_TABLE` expands them into rows.
 Writing an ACL grant creates no `squad_members` row, so the membership test is
-straightforward here as well, with the same caveat as query 2 for a grantee who
-also planted a squad in that workspace.
+straightforward here as well.
+
+**This query under-reports one shape, deliberately, and an empty result is not
+proof of none.** A grantee who holds any `squad_members` row in the archive's
+workspace clears the user branch, so a grant naming someone who planted a squad
+there, or who was onboarded legitimately afterwards, is not listed. There is no
+"as of" time to test against: an ACL grant carries no timestamp of its own.
+Query 1 is the compensating control. It names those users, and every grant held
+by a user query 1 reports is worth reading directly:
+
+```sql
+-- substitute the user id query 1 reported for <user_id>
+SELECT id, name, squad_id, read_access, write_access FROM archives
+WHERE JSON_CONTAINS(read_access,  CAST(<user_id> AS JSON))
+   OR JSON_CONTAINS(write_access, CAST(<user_id> AS JSON));
+```
 
 ```sql
 WITH acl AS (

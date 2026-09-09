@@ -252,8 +252,10 @@ Add or remove an access grant. Requires archive ownership.
 
 On `add`, the grantee must be inside the archive's workspace: for a `userId`,
 the workspace owner or a member of one of its squads; for a `squadId`, a squad
-of that same workspace. Otherwise `403`. An archive with no owning squad has no
-workspace, so no boundary is applied.
+of that same workspace. Otherwise `403`. An archive with no owning squad at all
+has no workspace, so no boundary is applied. An archive whose squad exists but
+has no workspace (an orphaned squad) fails closed: the check runs and every
+grantee is refused, because an orphaned squad has no tenant to be inside of.
 
 `remove` is deliberately not gated this way, so grants that predate the check
 can still be revoked.

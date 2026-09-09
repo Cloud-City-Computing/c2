@@ -537,21 +537,46 @@ describe('Archive Routes', () => {
       expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(true);
     });
 
-    it('accepts a grant when the owning squad has no workspace', async () => {
+    it('refuses a squad grant when the owning squad has no workspace', async () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
         .mockResolvedValueOnce([{ workspace_id: null }])  // orphaned squad
-        .mockResolvedValueOnce([{ acl: '[]' }])            // SELECT current squad acl
-        .mockResolvedValueOnce([]);                        // UPDATE
+        .mockResolvedValueOnce([]);                        // grantee squad: no match on NULL
 
       const res = await request(app)
         .post('/api/archives/1/access')
         .set('Authorization', 'Bearer valid-token')
         .send({ squadId: 9, accessType: 'read', action: 'add' });
 
-      expect(res.status).toBe(200);
-      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(true);
+      // An orphaned squad has no tenant, so "is the grantee inside it?" is
+      // unanswerable and the answer to an unanswerable question is no. The
+      // check runs and `workspace_id = NULL` matches nothing.
+      expect(res.status).toBe(403);
+      expect(res.body.message).toMatch(/outside this workspace/i);
+      const squadCall = c2_query.mock.calls.find(([sql]) => /FROM squads WHERE id = \? AND workspace_id = \?/.test(sql));
+      expect(squadCall[1]).toEqual([9, null]);
+      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(false);
+    });
+
+    it('refuses a user grant when the owning squad has no workspace', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])              // isArchiveOwner
+        .mockResolvedValueOnce([{ workspace_id: null }])  // orphaned squad
+        .mockResolvedValueOnce([]);                        // isWorkspaceMember: no match
+
+      const res = await request(app)
+        .post('/api/archives/1/access')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ userId: 42, accessType: 'read', action: 'add' });
+
+      expect(res.status).toBe(403);
+      // isWorkspaceMember is still asked, and `Number(null)` binds workspace 0,
+      // which no row has.
+      const memberCall = c2_query.mock.calls.find(([sql]) => /FROM workspaces o/.test(sql));
+      expect(memberCall[1][0]).toBe(0);
+      expect(c2_query.mock.calls.some(([sql]) => /UPDATE archives SET/.test(sql))).toBe(false);
     });
   });
 

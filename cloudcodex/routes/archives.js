@@ -265,9 +265,19 @@ router.post('/archives/:id/access', requireAuth, asyncHandler(async (req, res) =
       [Number(id)]
     );
 
-    // An archive with no squad has no workspace, so there is no boundary to
-    // compare against and the grant is left to the owner's judgement.
-    if (owning?.workspace_id) {
+    // An archive with no squad has no workspace, so the JOIN yields no row,
+    // there is no boundary to compare against and the grant is left to the
+    // owner's judgement.
+    //
+    // `if (owning)`, not `if (owning?.workspace_id)`: an **orphaned** squad
+    // (row present, `workspace_id` NULL) must enter the check and be refused,
+    // not skip it. Skipping let the owner of an archive in an orphaned squad
+    // grant access to any user or squad in any workspace. Inside the check the
+    // NULL denies on its own: `isWorkspaceMember` binds `Number(null)` as
+    // workspace 0, and `workspace_id = NULL` is NULL rather than true, so
+    // neither branch can match. That is the same fail-closed answer
+    // `isSquadWorkspaceMember` gives an orphaned squad.
+    if (owning) {
       let ok;
       if (hasUser) {
         // is_admin is forced false: isWorkspaceMember short-circuits on it, and

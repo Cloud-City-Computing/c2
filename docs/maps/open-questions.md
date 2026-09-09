@@ -702,6 +702,19 @@ squad has no tenant, so "is this user inside its tenant?" is unanswerable and
 failing closed is the right answer. All four `INSERT INTO squads` sites set
 `workspace_id`, so only legacy or hand-edited rows are affected.
 
+**Two follow-on corrections, same day.** The first cut of (c) guarded the
+grantee check with `if (owning?.workspace_id)`, which skipped it not only for an
+archive with no squad but for an archive whose squad had a NULL `workspace_id`,
+so that one case still failed **open** while the docs said it failed closed. The
+guard is now `if (owning)` and an orphaned squad is refused, matching the rule
+everywhere else. The first cut of (d) scoped on shared membership alone, which
+over-blocked: an account with no `squad_members` row anywhere, which is how
+every SSO and squad-less-invitation account begins, matched nothing but itself
+and so could never be picked in the squad invite modal. It now also returns the
+owners of the caller's workspaces and, only to a caller who can actually invite,
+accounts with no squad membership. See 3e in
+[access-control.md](access-control.md).
+
 **The fix is prospective, and there is no cleanup migration on purpose.** Rows
 created through (a), (b) and (c) before the fix still resolve, because each is
 an ordinary row the fragments read correctly. No query can separate one of them
@@ -718,6 +731,19 @@ attack rows and none of the legitimate ones. The first query is the one that
 needs the care: the naive membership test returns **nothing** on that fixture,
 because planting a squad enrols the planter as a member of the very workspace
 under examination.
+
+**A second silencing shape was found on re-run and fixed the same day.**
+Excluding the planter's own squads is not enough: one `squad_members` row from
+any squad they did not create clears every plant they made in that workspace, so
+the planter simply being onboarded properly afterwards, the most likely thing to
+happen next, hid both planted squads and, through the ordering of the three
+queries, the planted archive too. Membership is now read as of the row's
+creation (`sm.joined_at <= s.created_at` in query 1, and against `p.created_at`
+in query 2's extra clauses). Query 3 still under-reports a grantee who holds any
+membership in the workspace, because an ACL grant carries no timestamp to test
+against; that is stated in `docs/security.md` with a `JSON_CONTAINS` follow-up
+for reading the grants held by whoever query 1 named, so an empty query 3 is not
+read as proof of none.
 
 
 ## C. Design tensions, not defects

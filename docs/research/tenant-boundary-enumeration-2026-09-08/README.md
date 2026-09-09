@@ -23,10 +23,11 @@ database that looks fine. Pipe it in instead, as above.
 |---|---|
 | S2, S3: squads planted by mallory, each enrolling her as squad owner | query 1, both of them |
 | S8: squad created by bob in the ownerless workspace W2 | query 1 |
-| A2: archive planted by mallory into alice's squad S1 | query 2 only with the extra clause the doc gives, because mallory's planted squads make her a W1 member |
+| A2: archive planted by mallory into alice's squad S1 | query 2 only with the two extra clauses the doc gives, because mallory's planted squads make her a W1 member |
 | A6: archive planted by dave, who has no squad anywhere in W1 | query 2 |
 | `A1.read_access` naming dave | query 3 |
 | `A1.read_access_squads` naming S5, a squad in workspace W3 | query 3 |
+| `A1.write_access` naming mallory, labelled "attack (c)" in the fixture | **nothing: an expected under-report.** Query 3's user branch clears any grantee holding a `squad_members` row in the workspace, and mallory's planted squads give her one in W1. The doc states this caveat in prose above query 3; it is recorded here so a future run cannot read the absence as a pass. The row is still reachable through query 1, which names mallory, and the doc now ships a `JSON_CONTAINS` follow-up for reading every grant a reported user holds. |
 
 and, as controls that must **not** be reported: S1 (by the workspace owner), S4
 (by bob, a genuine member via a squad he did not create), S5 (carol in her own
@@ -41,4 +42,30 @@ clears its own planter, and a second planted squad alibis the first. That is why
 the shipped query excludes every squad in the workspace created by the user
 under examination before testing membership.
 
-Last run 2026-09-08 against `mysql:8` with the then-current `init.sql`.
+**The second result that matters: the late-membership case.** Excluding
+self-created squads is not enough on its own. Add one ordinary row,
+
+```sql
+INSERT INTO squad_members (squad_id, user_id, role) VALUES (4, 3, 'member');
+```
+
+which is mallory being onboarded properly into bob's legitimate squad S4 some
+time after her plants, and the exclusion stops mattering: she now holds a
+membership through a squad she did not create, and every squad she planted in W1
+drops off the list. Measured on this fixture, query 1 without the `joined_at`
+guard then reports **S8 only**, hiding both plants; and because query 2's extra
+clauses are applied only after reading query 1's output, the planted archive A2
+stays hidden too. Three queries, a clean-looking result, four real attack rows
+invisible, reached by the single most likely follow-on event.
+
+`AND sm.joined_at <= s.created_at` inside query 1's `NOT EXISTS` fixes it by
+reading membership as of the squad's creation, and the same guard against
+`p.created_at` was added to query 2's extra clauses. With them, the
+late-membership state reports S2, S3 and S8 from query 1 and A2 and A6 from
+query 2, identical to the baseline, and no control appears in either state.
+`squad_members.joined_at` defaults to the insert time and the
+invitation-accept `ON DUPLICATE KEY UPDATE` does not touch it, so it survives
+re-invitation.
+
+Last run 2026-09-08 against `mysql:8` (server 8.4.8) with the then-current
+`init.sql`, in both the baseline and the late-membership state.

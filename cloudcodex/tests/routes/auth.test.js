@@ -457,11 +457,102 @@ describe('Auth Routes', () => {
         /FROM users WHERE name LIKE \? OR email LIKE \?/i
       );
 
-      // Five placeholders, five params, caller id bound three times.
-      expect((sql.match(/\?/g) || [])).toHaveLength(5);
-      expect(params).toHaveLength(5);
-      expect(params.filter(p => p === TEST_USER.id)).toHaveLength(3);
-      expect(params.slice(0, 2)).toEqual(['%ali%', '%ali%']);
+      // Seven placeholders, seven params, caller id bound five times: twice in
+      // the workspace-set CTE, once for self, twice for the invite gate. The
+      // fragment and its params are coupled by position, and a mismatch here
+      // returns wrong rows instead of erroring.
+      expect((sql.match(/\?/g) || [])).toHaveLength(7);
+      expect(params).toHaveLength(7);
+      expect(params.filter(p => p === TEST_USER.id)).toHaveLength(5);
+      expect(params.slice(2, 4)).toEqual(['%ali%', '%ali%']);
+    });
+
+    // The four tests below assert the shape of the disjunct set. The query
+    // itself was run against MySQL 8 with a fixture covering each of these
+    // cases: docs/research/users-search-scope-2026-09-08/.
+
+    it('surfaces an account with no squad membership to a workspace owner', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      await request(app)
+        .get('/api/users/search?q=eri')
+        .set('Authorization', 'Bearer valid-token');
+
+      const sql = c2_query.mock.calls[0][0].replace(/\s+/g, ' ');
+
+      // Every account starts with zero squad_members rows: SSO auto-provisioning
+      // and an admin invitation with no squad both create the users row alone.
+      // Without this disjunct such an account matches nothing but itself, so the
+      // squad invite picker stays empty and the account can never be invited.
+      expect(sql).toMatch(
+        /NOT EXISTS \( SELECT 1 FROM squad_members sm_none WHERE sm_none\.user_id = u\.id \)/
+      );
+
+      // Owning a workspace is one of the two ways to qualify as an inviter.
+      expect(sql).toMatch(
+        /EXISTS \( SELECT 1 FROM workspaces o_mine WHERE o_mine\.owner_id = \? \)/
+      );
+    });
+
+    it('surfaces an account with no squad membership to a squad owner or admin', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      await request(app)
+        .get('/api/users/search?q=eri')
+        .set('Authorization', 'Bearer valid-token');
+
+      const sql = c2_query.mock.calls[0][0].replace(/\s+/g, ' ');
+
+      // The other way to qualify: squad-management standing anywhere.
+      expect(sql).toMatch(
+        /FROM squad_members sm_mgr WHERE sm_mgr\.user_id = \? AND \(sm_mgr\.role IN \('owner', 'admin'\) OR sm_mgr\.can_manage_members = TRUE\)/
+      );
+    });
+
+    it('gates the unattached-account disjunct on the caller being able to invite', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      await request(app)
+        .get('/api/users/search?q=eri')
+        .set('Authorization', 'Bearer valid-token');
+
+      const sql = c2_query.mock.calls[0][0].replace(/\s+/g, ' ');
+
+      // The AND must bind inside its own parentheses. Unparenthesised it would
+      // slip under the surrounding OR and hand every account with no squad to
+      // every caller, which is the enumeration this boundary exists to stop.
+      expect(sql).toMatch(
+        /OR \( NOT EXISTS \( SELECT 1 FROM squad_members sm_none WHERE sm_none\.user_id = u\.id \) AND \( EXISTS/
+      );
+
+      // An ordinary member with no management standing satisfies neither
+      // EXISTS in that gate, so the disjunct contributes nothing for them.
+      expect(sql).toMatch(/can_manage_members = TRUE\) \) OR EXISTS \( SELECT 1 FROM workspaces o_mine/);
+    });
+
+    it('surfaces a workspace owner who is in no squad to members of that workspace', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      await request(app)
+        .get('/api/users/search?q=ali')
+        .set('Authorization', 'Bearer valid-token');
+
+      const sql = c2_query.mock.calls[0][0].replace(/\s+/g, ' ');
+
+      // A workspace owner holds no squad_members row unless they made a squad,
+      // so without this they were invisible to their own workspace's members.
+      expect(sql).toMatch(
+        /EXISTS \( SELECT 1 FROM workspaces o_them WHERE o_them\.owner_id = u\.id AND o_them\.id IN \(SELECT workspace_id FROM my_workspaces\) \)/
+      );
+
+      // Built on the caller's workspace set, not a second copy of it: the
+      // UNION appears once and both consumers read the same CTE.
+      expect((sql.match(/UNION/g) || [])).toHaveLength(1);
+      expect((sql.match(/SELECT workspace_id FROM my_workspaces/g) || [])).toHaveLength(2);
     });
 
     it('keeps the unscoped query for an admin caller', async () => {

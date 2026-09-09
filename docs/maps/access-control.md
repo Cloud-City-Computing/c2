@@ -239,11 +239,20 @@ Callers: delete archive (`archives.js:195`), manage access
 (`archives.js:247`), link and unlink archive repos (`archives.js:595`,
 `archives.js:644`).
 
-### 3d. Squad management: `userCanManageSquad`
+### 3d. Squad management: `canManageSquad`, and its GitHub-only twin
 
-`routes/squads.js:283-299`. Workspace owner, squad creator, or member with
-`can_manage_members`. Also used by the GitHub team-sync routes
-(`github.js:2173`, `github.js:2253`).
+`canManageSquad(squadId, user)` in `routes/squads.js`. Admin, workspace owner,
+squad creator, or member with `can_manage_members`. Returns
+`{ squad, allowed }`, and every squad-member route in that file gates on it.
+
+**A second helper answers the same question differently.**
+`userCanManageSquad(user, squadId)` in `routes/github.js` serves the two
+team-sync routes only. It admits admin, workspace owner, a member whose `role`
+is `owner`, or a member whose `role` is `admin` **and** who holds
+`can_manage_members`. So it does not admit the squad creator, and it reads
+`can_manage_members` only alongside an `admin` role, where `canManageSquad`
+reads the flag on its own. Same name shape, different rule: check which file
+you are in before assuming either answer.
 
 ### 3e. The tenant boundary: `isWorkspaceMember` / `isSquadWorkspaceMember`
 
@@ -266,8 +275,8 @@ Enforced at exactly four points:
 |---|---|
 | `POST /api/workspaces/:workspaceId/squads` (`squads.js:101`) | `isWorkspaceMember` before the `create_squad` lookup, non-owner path only. Squad creation enrols the caller as a squad *owner*, which is a live term in clause 5 of both fragments. |
 | `requirePermission(flag)` (`permissions.js:73-84`) | `isSquadWorkspaceMember` on `req.body.squad_id`, above the global-flag short circuit. Step 3 of 3a. |
-| `POST /api/archives/:id/access` (`archives.js:260-294`) | the grantee, user or squad, against the archive's workspace, on `action: 'add'` only |
-| `GET /api/users/search` (`routes/auth.js`) | a non-admin caller sees only themselves plus users who share a workspace with them, instead of every account and email on the install |
+| `POST /api/archives/:id/access` (`archives.js`) | the grantee, user or squad, against the archive's workspace, on `action: 'add'` only |
+| `GET /api/users/search` (`routes/auth.js`) | a non-admin caller sees themselves, users who share a workspace with them, the owners of those workspaces, and unattached accounts only if they can invite, instead of every account and email on the install |
 
 Two shapes of the same question, and they are not interchangeable. The user
 branch of the archive ACL check asks *is this grantee inside the archive's
@@ -280,6 +289,32 @@ a direct `squads.workspace_id` comparison, not a membership test.
 `POST /api/archives/:id/access` gates `add` and deliberately leaves `remove`
 open to a cross-tenant grantee. Gating removal would make exactly the
 pre-existing cross-tenant grants unrevokable, which is the opposite of the point.
+
+**The ACL check enters on an orphaned squad rather than skipping it.** The guard
+is `if (owning)`, not `if (owning?.workspace_id)`. An archive with no squad at
+all yields no row from the `JOIN squads` and skips the check, as documented. A
+squad row whose `workspace_id` is NULL goes *through* it and is refused, because
+neither branch can match a NULL tenant: `isWorkspaceMember` binds `Number(null)`,
+which is workspace 0, and `squads.workspace_id = NULL` evaluates to NULL rather
+than true. Until 2026-09-08 the guard tested the column, so an orphaned squad
+skipped the check entirely and its archive owner could grant to any user or
+squad in any workspace: the one place the boundary failed open.
+
+**`GET /api/users/search` cannot be scoped on shared membership alone.** An
+account with no `squad_members` row anywhere shares no workspace with anyone,
+and that is where every account starts, since Google SSO auto-provisioning
+(`oauth.js`) and an admin invitation with no squad (`admin.js`) both write the
+`users` row and nothing else. Membership-only scoping made such an account
+invisible to every non-admin caller, which severs the squad invite flow: the
+picker in `InviteMemberModal` is driven entirely by this endpoint, so the
+account became unaddable by anyone but a platform admin, with an empty list as
+the only symptom. Two further disjuncts close that: **owners of the caller's own
+workspaces** (a workspace owner who joined no squad was invisible to their own
+members), and **accounts with no squad membership at all, gated on the caller
+being able to invite** (a `squad_members` row with `role` owner or admin or
+`can_manage_members`, or owning a workspace). The gate is the point. Ungated,
+the second disjunct would hand most of a young install's user table to every
+caller, which is the enumeration the boundary exists to stop.
 
 **The 7-param fragments were deliberately not touched.** These helpers add no
 clause to `readAccessWhere`/`writeAccessWhere` and no param to
@@ -376,7 +411,7 @@ something:
 | `can_write` | clause 5 of `writeAccessWhere` (`ownership.js:57`) |
 | `can_create_log` | `requirePermission('create_log')` step 7 (`permissions.js:116`) |
 | `can_create_archive` | `requirePermission('create_archive')` step 7 (`permissions.js:115`) |
-| `can_manage_members` | `userCanManageSquad` (`squads.js:295`) |
+| `can_manage_members` | `canManageSquad` (`squads.js`), and `userCanManageSquad` (`github.js`) on the team-sync routes only, where it counts only alongside an `admin` role |
 | `can_publish` | `canPublish` (`shared.js:116-119`) |
 | `can_delete_version` | version delete route only (`documents.js:503-515`) |
 
