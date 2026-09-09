@@ -270,11 +270,21 @@ next change to that file should not have to re-derive this reasoning. No plan,
 commit message, PR body or map entry produced by this track may restate it as
 takeover.
 
-The other three pairings are lower still, because their readers additionally
+Two of the other three readers are lower still, because they additionally
 require `tokenRecord.user_id === req.user.id` behind `requireAuth`
 (`auth.js:888`, `auth.js:1001`), so a cross-user swap does not survive them.
-They are in scope because the fix is one column, and leaving three of four
-readers unconstrained preserves the trap for whoever adds the fifth flow.
+
+**The third is not, and an earlier draft of this spec said it was.**
+`POST /api/2fa/verify` (`auth.js:752`) carries no `requireAuth` and never
+references `req.user` at all, so it has no identity binding to fall back on. Its
+real guard is the second factor itself: after reading the token it still has to
+match a TOTP code against the user's secret, or an unused row in
+`two_factor_codes`. That is a genuine guard, but it is a different one, and the
+distinction matters because it is the reason this reader most needs the purpose
+column rather than least.
+
+All four are in scope because the fix is one column, and leaving any reader
+unconstrained preserves the trap for whoever adds the fifth flow.
 
 ### The logout no-op
 
