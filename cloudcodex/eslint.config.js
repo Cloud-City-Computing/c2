@@ -67,7 +67,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['server.js', 'app.js', 'mysql_connect.js', 'routes/**/*.js', 'middleware/**/*.js', 'services/**/*.js'],
+    files: ['server.js', 'app.js', 'mysql_connect.js', 'routes/**/*.js', 'middleware/**/*.js', 'services/**/*.js', 'scripts/**/*.js'],
     languageOptions: {
       globals: globals.node,
     },

@@ -301,17 +301,110 @@ As of this writing the two are in sync; the p0 and p3 migration columns are all
 present in `init.sql` (`init.sql:56-70`, `init.sql:129-131`,
 `init.sql:304-319`).
 
-There is **no migration runner**. Migrations are applied by hand:
+### The runner and `schema_migrations`
 
-```
-docker exec -i $(docker compose ps -q database) \
-  mysql -u$DB_USER -p$DB_PASS $DB_NAME < migrations/<file>.sql
-```
+`cloudcodex/scripts/migrate.js`, run as `npm run migrate` from `cloudcodex/`,
+applies pending files in lexicographic order and records each in
+`schema_migrations`:
 
-Nothing records which have been applied. The files are individually
+| column | type | note |
+|---|---|---|
+| `filename` | `VARCHAR(255) PRIMARY KEY` | the file's name, the identity |
+| `checksum` | `CHAR(64) NOT NULL` | sha256 of the file's bytes when applied |
+| `applied_ms` | `INT NOT NULL` | wall time the apply took, `0` for a baseline row |
+| `applied_at` | `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` | |
+
+That table is **runner-owned bookkeeping and is deliberately not in
+`init.sql`**. It is created by `ensureBookkeeping()` outside any transaction.
+Adding it to `init.sql` would break the runner: a fresh install would arrive
+with the table present and empty, the runner would read "nothing applied", and
+it would replay every shipped delta against the schema those deltas are already
+folded into. That is the one exception to the dual-tracking rule above, which
+still stands for every table the application itself reads.
+
+Bookkeeping is what makes re-running safe: the files are individually
 idempotent-ish (`CREATE TABLE IF NOT EXISTS`) but the `ALTER TABLE ... ADD
-COLUMN` files are not: re-running `p0_github_sync.sql` errors on duplicate
-column.
+COLUMN` files are not, and re-running `p0_github_sync.sql` errors on a
+duplicate column. The runner never re-runs a recorded file, and a recorded file
+whose sha256 no longer matches is a hard stop over the whole set before
+anything is applied, with the message that applied migrations are immutable.
+
+Three states, decided in the runner:
+
+1. No `users` table: **refuse.** Run `init.sql` first. The runner never
+   bootstraps a schema, because the shipped files are deltas against `init.sql`
+   and `drop_squad_permissions.sql` sorts ahead of most `add_*.sql` files.
+2. `users` present, `schema_migrations` missing: **refuse**, and print both
+   adoption commands. With no bookkeeping the runner cannot tell a
+   fully-migrated database from a partly-migrated one, and either guess is
+   destructive.
+3. `schema_migrations` present: apply pending, with the drift guard.
+
+Two adoption modes, and they are **not** interchangeable, because the two
+situations have different correct sets:
+
+- `--baseline` records the **closed** list in `LEGACY_BASELINE`, the thirteen
+  files that shipped before the runner existed, and applies none. For an
+  install that predates the runner and was migrated by hand. It is not a scan
+  of `migrations/`: any file added after the runner landed stays pending and is
+  applied by the next ordinary run. A sweep would mark a genuinely-unapplied
+  file as applied and leave the app running against a schema that never got the
+  change. **Never append to that list.**
+- `--adopt-fresh-install` records **every** file on disk and applies none. For
+  a database `init.sql` has just built. Correct there and only there, because
+  the dual-tracking rule means `init.sql` already contains every migration, so
+  applying any of them is a duplicate-column error.
+
+Two guards on that second one, because it is the mode that can bury a migration
+on purpose. It **refuses once `schema_migrations` holds a row**, which keeps it
+off a tracked install. And for every file that postdates `LEGACY_BASELINE` it
+**checks the live schema first**: `schemaClaims()` reads the `CREATE TABLE` and
+`ALTER TABLE ... ADD COLUMN` out of the file (comments stripped, because the
+headers quote the DDL that reverses them), and `assertSchemaAlreadyHas()` asks
+`information_schema` whether each of those is already there, refusing unless it
+is. Emptiness cannot be the guard: an install that predates the runner has zero
+bookkeeping rows **by definition**, which is precisely the population reaching
+for an adoption flag, and `bootstrapInstance()` seeds a workspace, squad,
+archive and document on first admin boot, so "no content yet" is not a signal
+either. The pre-runner thirteen are exempt from the check, because adopting
+exactly those is what `--baseline` does anyway and because two of them (a `DROP`
+and a `MODIFY`) add nothing an ADD-shaped check could look for. The mode prints
+the exact list of files it is about to adopt before adopting them, and both
+adoption modes write their rows in **one transaction**, so an interrupted run
+leaves no partial bookkeeping to refuse over later.
+
+One honest limit on both: an adopted row records the sha256 of the file **as it
+is on disk at adoption time**, not of whatever that install actually ran years
+ago. Drift that predates adoption is therefore invisible to the guard forever.
+That is inherent to adopting a baseline rather than a defect, but it means the
+guard's promise is "nothing has changed since adoption", not "this is what ran".
+
+The apply phase is serialised by a MySQL advisory lock
+(`GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`). Without it two
+concurrent runs both compute the same pending set, MySQL serialises the DDL, and
+the loser gets a duplicate-column error that the runner would report as "may be
+partially migrated" when the database is in fact correct. The lock is
+connection-scoped, which suits the CLI's single dedicated connection, but the
+NAME is scoped to the MySQL **server**, not to a database, which is why it
+carries `DATABASE()`: without that, two Cloud Codex schemas on one server
+serialise against each other and the loser is told a run is in progress against
+its own database. `0` (someone holds it) and `NULL` (the attempt errored) get
+different messages.
+
+**MySQL implicitly commits DDL**, so a transaction per file cannot make a
+migration atomic the way it can on Postgres. The runner opens one anyway for
+the DML that honours it, and on failure it stops at the failing file and
+reports that the database **may be partially migrated** rather than promising a
+rollback it cannot deliver. Take a dump first.
+
+One failure is the opposite of partial: `ER_DUP_FIELDNAME`,
+`ER_TABLE_EXISTS_ERROR` and `ER_DUP_KEYNAME` mean the object is already there,
+and the run may have changed nothing. The usual cause is a fresh install
+baselined with `--baseline` instead of `--adopt-fresh-install`, which leaves the
+newer files pending and then dies on their first `ALTER`, minutes after install,
+with no dump to restore. The runner names the code, says which flag that
+database wanted, and prints the `INSERT INTO schema_migrations` that records the
+file by hand.
 
 ### Trap 1: `init.sql` only runs on a fresh volume
 
@@ -336,7 +429,11 @@ DROP block; order doesn't matter since it runs under
 
 1. Add it to `init.sql` in dependency order, and to the `DROP TABLE IF EXISTS`
    block at the top if it is a new table.
-2. Add a `migrations/<descriptive_name>.sql` for existing databases.
+2. Add a `migrations/<date>-<descriptive-name>.sql` for existing databases, and
+   do **not** add it to `LEGACY_BASELINE` in `scripts/migrate.js`. Lexicographic
+   order is the apply order; a date prefix sorts new files correctly among
+   themselves and, since digits sort ahead of letters, harmlessly ahead of the
+   already-applied legacy set.
 3. Index anything you will filter or join on. Look at
    `idx_activity_workspace_time` and `idx_notifications_user_unread` for the
    composite-index style already in use.

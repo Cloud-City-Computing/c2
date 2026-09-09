@@ -43,7 +43,7 @@ jobs:
 
       - run: npm test
 
-      # CI's gate is the 26 per-glob thresholds in vitest.config.js, not the
+      # CI's gate is the 29 per-glob thresholds in vitest.config.js, not the
       # plain test run. Without this the release path is a weaker check than
       # the one it claims to be re-proving.
       - run: npm run test:coverage

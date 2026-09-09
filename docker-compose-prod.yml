@@ -48,6 +48,22 @@ services:
       # routes/helpers/images.js swaps the base64 data URI in html_content for a
       # /doc-images/ URL. Rebuilding without this volume loses all of them.
       - app_public:/app/public
+      # The migration runner reads this. scripts/migrate.js ships in the image
+      # (it is inside the cloudcodex/ build context) but migrations/ is at the
+      # repo root and is not, so without this mount `npm run migrate` fails on a
+      # missing directory. /migrations is where scripts/migrate.js resolves it
+      # from WORKDIR /app.
+      #
+      # `ro,z`: read-only, because the runner never writes here, and `z` because
+      # on an SELinux host (Fedora, RHEL, CentOS, Rocky) a bind mount with no
+      # relabel flag is unreadable inside the container. Measured there:
+      #   docker run --rm -v ./migrations:/migrations:ro node:20-slim ls /migrations
+      #   ls: cannot open directory '/migrations': Permission denied
+      # Lowercase `z` (shared label), not `Z` (private): more than one container
+      # reads this directory, and `Z` would relabel it for one of them only.
+      # docker-compose.linux.yml adds :Z for the DEV file's mounts; it does not
+      # cover this file, so the flag belongs inline here.
+      - ./migrations:/migrations:ro,z
 
 volumes:
   db_data:

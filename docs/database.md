@@ -577,7 +577,13 @@ conversation back to any documents tied to the changed files.
 
 `init.sql` is the canonical schema (used by fresh installs and by tests).
 Live deployments apply incremental upgrades from the `migrations/`
-directory. The current set:
+directory with `npm run migrate`. The runner records each applied file in
+`schema_migrations` (filename, sha256, elapsed ms, timestamp), so re-running is
+a no-op and an edited applied file is a hard stop. Every database needs one
+adoption command before its first ordinary run: `--adopt-fresh-install` if
+`init.sql` just built it, `--baseline` if it predates the runner. See
+[deployment.md](deployment.md#upgrades) for which, and for where to run it on
+each compose file. The current set:
 
 | File                            | Adds                                                |
 |---------------------------------|-----------------------------------------------------|
@@ -594,6 +600,11 @@ directory. The current set:
 > **Rule:** any column or table added as a migration must also be present
 > in `init.sql`. Both must stay in sync — fresh installs and existing
 > deployments must converge to the same schema.
+>
+> `schema_migrations` is the one exception: it is runner-owned bookkeeping and
+> is deliberately **not** in `init.sql`. A fresh install that already had the
+> table would read "nothing applied" and try to replay every delta above
+> against the schema they are already folded into.
 
 ---
 

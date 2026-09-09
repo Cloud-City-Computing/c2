@@ -164,7 +164,7 @@ reasoning:
   so a widened `logs` would have pushed the same 500 from save to publish.
 
 **Fixed** in `migrations/widen_log_content.sql` plus `init.sql` (both, per the
-no-migration-runner rule): all three columns are now `MEDIUMTEXT`. Verified
+dual-tracking rule in [data-model.md](data-model.md)): all three columns are now `MEDIUMTEXT`. Verified
 live after applying it: 40, 70 and 300 KiB all save 200, a 300 KiB publish
 returns 200 with `versions.html_content` holding all 307,213 bytes, and the
 `ft_logs_search` FULLTEXT index survived the `MODIFY` and still matches.
