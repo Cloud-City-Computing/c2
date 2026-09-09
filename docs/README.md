@@ -73,7 +73,6 @@ describes what we intend to build next and why.
 | Document | What it is |
 |----------|---------|
 | [specs/roadmap.md](./specs/roadmap.md) | The tracks the project is decomposed into, the evidence behind each, and the order to do them in |
-| [specs/2026-09-08-security-and-infrastructure.md](./specs/2026-09-08-security-and-infrastructure.md) | The security and infrastructure track (C2-0 through C2-4): the merge gate, four cross-tenant escalations, token purpose confusion, a migration runner, and one scoped service token |
 
 
 ## Deep maps (`maps/`)

@@ -62,7 +62,7 @@ constraint right now.
 | **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
-| **S** | Security and infrastructure (**open**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token | nothing; C2-0 gates the rest |
+| **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token | nothing; C2-0 gates the rest |
 
 ### A. Evaluation path — shipped
 
@@ -252,9 +252,17 @@ function lives elsewhere and is independently importable.
 Still inside `Editor.jsx`: `TiptapToolbar`, `RichTextEditor`, `MarkdownEditor`,
 and the ~690-line `Editor` component itself. `GitHubPage.jsx` is untouched.
 
-### S. Security and infrastructure
+### S. Security and infrastructure (shipped 2026-09-09)
 
-Added 2026-09-08. Tracks A through E are all aimed at adoption, which left this
+Added 2026-09-08, shipped 2026-09-09 across PRs #45, #47, #48, #46 and #49, in
+that order. The spec and plan that scoped it have been deleted per the
+`docs/specs/` convention; the maps are the record now. See
+[`../maps/access-control.md`](../maps/access-control.md) for the tenant
+boundary and machine principals,
+[`../maps/data-model.md`](../maps/data-model.md) for the typed token pool and
+`schema_migrations`, [`../maps/build-test-and-ops.md`](../maps/build-test-and-ops.md)
+for the migration runner and the CI gate, and
+[`../../docs/security.md`](../security.md) for the cross-tenant audit queries. Tracks A through E are all aimed at adoption, which left this
 project with no written security track at all while four cross-tenant
 escalations and a credential-flow defect sat in the tree. Scoped in
 [`2026-09-08-security-and-infrastructure.md`](2026-09-08-security-and-infrastructure.md),
@@ -283,7 +291,7 @@ now         A ──────────────────────
 
             C: decided 2026-08-08, no breaking change to execute
 
-            S ────────────────────────────► open, C2-0 gates C2-1..C2-4
+            S ────────────────────────────► shipped 2026-09-09
 ```
 
 Track S runs alongside the rest rather than after them. It does not depend on
