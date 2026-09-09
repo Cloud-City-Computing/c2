@@ -236,8 +236,12 @@ it does not affect the job's own pass or fail conclusion.
 **There are no pre-commit hooks.** Running lint and tests locally is on you.
 `npm ci` means the lockfile must be committed and current.
 
-Note the branch filter: work on `dev` does not trigger CI until it targets
-`main`.
+On **push** the filter is still `main` only, so work on a side branch does not
+burn CI until it becomes a pull request. On **pull_request** there is no branch
+filter: every PR runs, whatever its base. That matters for stacked PRs, whose
+base is another feature branch. Under the old `pull_request: branches: [main]`
+filter they reported no checks at all, and a required status check that never
+reports blocks a merge permanently rather than failing it.
 
 ## 6b. Releases
 

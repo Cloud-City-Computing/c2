@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, not only those targeting main. A stacked PR (one whose
+  # base is another feature branch) reported no checks at all under a
+  # `branches: [main]` filter, and a required status check that never reports
+  # blocks the merge permanently rather than failing it. That combination would
+  # have deadlocked this repo the moment required checks were switched on.
   pull_request:
-    branches: [main]
 
 jobs:
   test:
