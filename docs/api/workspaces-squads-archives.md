@@ -258,7 +258,9 @@ has no workspace (an orphaned squad) fails closed: the check runs and every
 grantee is refused, because an orphaned squad has no tenant to be inside of.
 
 `remove` is deliberately not gated this way, so grants that predate the check
-can still be revoked.
+can still be revoked. The Manage Archive Access UI reaches it from the grant
+rows returned by `GET /api/archives/:id/access`, not from the workspace-scoped
+user search, which cannot return a grantee outside the tenant.
 
 **Body (user grant):**
 ```json

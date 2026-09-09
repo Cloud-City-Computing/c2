@@ -290,6 +290,18 @@ a direct `squads.workspace_id` comparison, not a membership test.
 open to a cross-tenant grantee. Gating removal would make exactly the
 pre-existing cross-tenant grants unrevokable, which is the opposite of the point.
 
+**The UI has to source the revoke id from the grant list, not the picker.** The
+Manage Archive Access modal (`ManageArchiveAccessModal` in `ArchiveBrowser.jsx`)
+puts a Revoke control on each explicit grant returned by
+`GET /api/archives/:id/access` and calls the same handler with that row's id.
+The user search cannot serve this: `/api/users/search` is scoped to the caller's
+workspace, so a cross-tenant grantee never comes back from it, and the picker
+alone left the open `remove` path unreachable for precisely the grants it exists
+to clear. Owner-squad members are listed alongside without a Revoke control:
+they hold no `read_access` / `write_access` row, so a remove for them is a no-op.
+The squad tab has the same shape, because `workspace_squads` in that response is
+scoped the same way.
+
 **The ACL check enters on an orphaned squad rather than skipping it.** The guard
 is `if (owning)`, not `if (owning?.workspace_id)`. An archive with no squad at
 all yields no row from the `JOIN squads` and skips the check, as documented. A

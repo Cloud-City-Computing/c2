@@ -97,7 +97,9 @@ function RenameArchiveModal({ archive, onRenamed }) {
   );
 }
 
-function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
+// Exported for unit tests, following the same convention as LogTreeItem: the
+// revoke path on an already-granted row is the piece worth testing on its own.
+export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
   const [tab, setTab] = useState('users');
   const [accessData, setAccessData] = useState(null);
   const [loadingAccess, setLoadingAccess] = useState(true);
@@ -112,6 +114,7 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
   const [status, setStatus] = useState(null);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingRevoke, setPendingRevoke] = useState(null);
 
   // Squad tab state
   const [squadPerms, setSquadPerms] = useState({ read: true, write: false });
@@ -145,15 +148,18 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
   const togglePerm = (key) => setPerms((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleSquadPerm = (key) => setSquadPerms((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const handleAccessUpdate = async (action) => {
+  // `target` and `permOverride` let an already-granted row revoke itself.
+  // A grantee outside this workspace can never come back from /users/search,
+  // so sourcing the id from the picker alone leaves those grants unrevokable.
+  const handleAccessUpdate = async (action, target = selected, permOverride = null) => {
     setError(null);
     setStatus(null);
-    if (!selected) {
+    if (!target) {
       setError('Please select a user.');
       return;
     }
 
-    const selectedPerms = Object.entries(perms)
+    const selectedPerms = permOverride ?? Object.entries(perms)
       .filter(([, enabled]) => enabled)
       .map(([perm]) => perm);
 
@@ -165,11 +171,11 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
     try {
       setSubmitting(true);
       await Promise.all(
-        selectedPerms.map((perm) => manageArchiveAccess(archive.id, selected.id, perm, action))
+        selectedPerms.map((perm) => manageArchiveAccess(archive.id, target.id, perm, action))
       );
       const verb = action === 'add' ? 'granted' : 'revoked';
       const labels = selectedPerms.join(' + ');
-      const successMessage = `Successfully ${verb} ${labels} access for ${selected.name}.`;
+      const successMessage = `Successfully ${verb} ${labels} access for ${target.name}.`;
       setStatus(successMessage);
       loadAccess();
       await new Promise((resolve) => setTimeout(resolve, 900));
@@ -183,15 +189,16 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
     }
   };
 
-  const handleSquadAccessUpdate = async () => {
+  const handleSquadAccessUpdate = async (action = squadMode, target = null, permOverride = null) => {
     setError(null);
     setStatus(null);
-    if (!selectedSquad) {
+    const squadId = target ? target.id : Number(selectedSquad);
+    if (!squadId) {
       setError('Please select a squad.');
       return;
     }
 
-    const selectedPerms = Object.entries(squadPerms)
+    const selectedPerms = permOverride ?? Object.entries(squadPerms)
       .filter(([, enabled]) => enabled)
       .map(([perm]) => perm);
 
@@ -203,10 +210,12 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
     try {
       setSubmitting(true);
       await Promise.all(
-        selectedPerms.map((perm) => manageArchiveSquadAccess(archive.id, Number(selectedSquad), perm, squadMode))
+        selectedPerms.map((perm) => manageArchiveSquadAccess(archive.id, squadId, perm, action))
       );
-      const squadName = accessData?.workspace_squads?.find(s => s.id === Number(selectedSquad))?.name || `Squad #${selectedSquad}`;
-      const verb = squadMode === 'add' ? 'granted' : 'revoked';
+      const squadName = target?.name
+        || accessData?.workspace_squads?.find(s => s.id === squadId)?.name
+        || `Squad #${squadId}`;
+      const verb = action === 'add' ? 'granted' : 'revoked';
       const labels = selectedPerms.join(' + ');
       const successMessage = `Successfully ${verb} ${labels} access for squad "${squadName}".`;
       setStatus(successMessage);
@@ -238,6 +247,91 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
       setSubmitting(false);
     }
   };
+
+  // Explicit user grants, merged so one row carries both permissions.
+  const grantedUsers = useMemo(() => {
+    if (!accessData) return [];
+    const map = new Map();
+    (accessData.read_users || []).forEach(u => map.set(u.id, { ...u, read: true, write: false }));
+    (accessData.write_users || []).forEach(u => {
+      const existing = map.get(u.id);
+      if (existing) existing.write = true;
+      else map.set(u.id, { ...u, read: false, write: true });
+    });
+    return [...map.values()];
+  }, [accessData]);
+
+  // Owner-squad members hold no row in read_access / write_access, so a
+  // remove for them would be a silent no-op. They are listed for context
+  // only, without a revoke control.
+  const inheritedUsers = useMemo(() => {
+    if (!accessData) return [];
+    const explicit = new Set(grantedUsers.map(u => u.id));
+    return (accessData.owner_squad_members || []).filter(m => !explicit.has(m.user_id));
+  }, [accessData, grantedUsers]);
+
+  // Explicit squad grants. The owning squad is not among them: its access is
+  // inherited from archives.squad_id, not from read_access_squads.
+  const grantedSquads = useMemo(() => {
+    if (!accessData) return [];
+    const map = new Map();
+    (accessData.read_squads || []).forEach(sq => map.set(sq.id, { ...sq, read: true, write: false }));
+    (accessData.write_squads || []).forEach(sq => {
+      const existing = map.get(sq.id);
+      if (existing) existing.write = true;
+      else map.set(sq.id, { ...sq, read: false, write: true });
+    });
+    return [...map.values()];
+  }, [accessData]);
+
+  const handleRevokeUser = (user) => {
+    setError(null);
+    setStatus(null);
+    setPendingRevoke({
+      kind: 'user',
+      user,
+      label: user.name,
+      perms: ['read', 'write'].filter((perm) => user[perm]),
+    });
+  };
+
+  const handleRevokeSquad = (squad) => {
+    setError(null);
+    setStatus(null);
+    setPendingRevoke({
+      kind: 'squad',
+      squad,
+      label: `squad "${squad.name}"`,
+      perms: ['read', 'write'].filter((perm) => squad[perm]),
+    });
+  };
+
+  const handleCancelRevoke = () => setPendingRevoke(null);
+
+  const handleConfirmRevoke = async () => {
+    const pending = pendingRevoke;
+    setPendingRevoke(null);
+    if (pending.kind === 'squad') {
+      await handleSquadAccessUpdate('remove', pending.squad, pending.perms);
+    } else {
+      await handleAccessUpdate('remove', pending.user, pending.perms);
+    }
+  };
+
+  // ConfirmDialog is itself modal content and showModal owns a single slot,
+  // so the confirmation replaces this panel in place instead of stacking on
+  // top of it. Cancelling returns here with the panel state intact.
+  if (pendingRevoke) {
+    return (
+      <ConfirmDialog
+        title="Revoke Archive Access"
+        message={`Revoke ${pendingRevoke.perms.join(' + ')} access to "${archive.name}" for ${pendingRevoke.label}?`}
+        confirmLabel="Revoke"
+        onConfirm={handleConfirmRevoke}
+        onCancel={handleCancelRevoke}
+      />
+    );
+  }
 
   return (
     <div className="modal-content">
@@ -317,6 +411,46 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
               {submitting ? 'Applying Changes...' : (mode === 'add' ? 'Grant Permissions' : 'Revoke Permissions')}
             </button>
           </div>
+
+          <div className="access-grants">
+            <span className="access-section__label">Current User Access</span>
+            {loadingAccess && <p className="text-muted text-sm">Loading current access...</p>}
+            {!loadingAccess && grantedUsers.length === 0 && inheritedUsers.length === 0 && (
+              <p className="text-muted text-sm">No user has been granted access to this archive yet.</p>
+            )}
+            <ul className="access-member-list">
+              {grantedUsers.map((u) => (
+                <li key={`grant-user-${u.id}`} className="access-member access-grant">
+                  <span className="access-member__name">{u.name}</span>
+                  <span className="access-member__badges">
+                    {u.read && <span className="badge badge-info">read</span>}
+                    {u.write && <span className="badge badge-warning">write</span>}
+                  </span>
+                  <button
+                    className="btn btn-danger btn-sm access-grant__revoke"
+                    onClick={() => handleRevokeUser(u)}
+                    disabled={submitting}
+                    aria-label={`Revoke access for ${u.name}`}
+                  >
+                    Revoke
+                  </button>
+                </li>
+              ))}
+              {inheritedUsers.map((m) => (
+                <li key={`inherited-user-${m.user_id}`} className="access-member access-grant">
+                  <span className="access-member__name">{m.name}</span>
+                  <span className="access-member__badges">
+                    {m.role === 'owner' && <span className="badge badge-accent">owner</span>}
+                    {Boolean(m.can_read) && <span className="badge badge-info">read</span>}
+                    {Boolean(m.can_write) && <span className="badge badge-warning">write</span>}
+                  </span>
+                  <span className="access-grant__inherited">
+                    inherited from {accessData?.owner_squad_name || 'the owning squad'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 
@@ -356,9 +490,36 @@ function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
           </select>
 
           <div className="inline-form" style={{ marginTop: 12 }}>
-            <button className="btn btn-primary stretched-button" onClick={handleSquadAccessUpdate} disabled={submitting}>
+            <button className="btn btn-primary stretched-button" onClick={() => handleSquadAccessUpdate()} disabled={submitting}>
               {submitting ? 'Applying Changes...' : (squadMode === 'add' ? 'Grant Squad Permissions' : 'Revoke Squad Permissions')}
             </button>
+          </div>
+
+          <div className="access-grants">
+            <span className="access-section__label">Granted Squads</span>
+            {loadingAccess && <p className="text-muted text-sm">Loading current access...</p>}
+            {!loadingAccess && grantedSquads.length === 0 && (
+              <p className="text-muted text-sm">No squad has been granted access to this archive yet.</p>
+            )}
+            <ul className="access-member-list">
+              {grantedSquads.map((sq) => (
+                <li key={`grant-squad-${sq.id}`} className="access-member access-grant">
+                  <span className="access-member__name">{sq.name}</span>
+                  <span className="access-member__badges">
+                    {sq.read && <span className="badge badge-info">read</span>}
+                    {sq.write && <span className="badge badge-warning">write</span>}
+                  </span>
+                  <button
+                    className="btn btn-danger btn-sm access-grant__revoke"
+                    onClick={() => handleRevokeSquad(sq)}
+                    disabled={submitting}
+                    aria-label={`Revoke access for squad ${sq.name}`}
+                  >
+                    Revoke
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}

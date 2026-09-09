@@ -440,3 +440,10 @@ A `grantee_label` of NULL means the grant names an id that no longer exists.
 Those are harmless (nothing matches them) but they are worth removing through
 `POST /api/archives/:id/access` with `action: 'remove'`, which stays open to
 cross-tenant grantees precisely so pre-existing grants can be revoked.
+
+In the UI, open **Manage Archive Access** on the archive: every explicit user
+and squad grant is listed with a Revoke control, sourced from
+`GET /api/archives/:id/access` rather than from the user search, which is
+workspace-scoped and so cannot find a grantee outside the tenant. Rows inherited
+from the owning squad are shown without a Revoke control, because they hold no
+ACL row to remove.
