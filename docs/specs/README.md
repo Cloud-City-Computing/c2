@@ -11,10 +11,10 @@ are updated to cover it.
 | Document | What it is |
 |---|---|
 | [roadmap.md](roadmap.md) | The tracks the project is decomposed into, the evidence behind each, and the order to do them in. Start here. |
-| [2026-09-08-security-and-infrastructure.md](2026-09-08-security-and-infrastructure.md) | The security and infrastructure track (C2-0 through C2-4): the merge gate, four cross-tenant escalations, token purpose confusion, a migration runner, and one scoped service token. |
 
-Track A shipped and its spec was deleted per the convention below; see
-[roadmap.md](roadmap.md) for what shipped and the maps for how it works now.
+Track A and track S both shipped and their specs were deleted per the
+convention below; see [roadmap.md](roadmap.md) for what shipped and the maps for
+how it works now.
 
 ## Conventions
 

@@ -38,7 +38,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
 ├── migrations/                  ← incremental SQL migrations
 ├── docs/                        ← human-facing architecture docs
 │   └── maps/                    ← file:line-cited deep maps, READ THESE FIRST
-├── .github/workflows/ci.yml     ← lint + test on push/PR to main
+├── .github/workflows/ci.yml     ← lint, test, coverage, build; push to main + every PR
 └── cloudcodex/                  ← the Node application
     ├── app.js                   ← Express app (middleware, route mounting)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
