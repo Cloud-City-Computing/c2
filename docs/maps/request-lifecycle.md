@@ -158,6 +158,32 @@ component that consume it.
 `requireAdmin` (`middleware/auth.js`) is a pure `req.user.is_admin` check and
 must run after `requireAuth`.
 
+`machineOrAuth` (`middleware/auth.js`) is the one alternative to `requireAuth`,
+and it wraps it rather than replacing it:
+
+1. Token from the same `extractSessionToken(req)`. No token at all, straight to
+   `requireAuth`, which 401s.
+2. `verifyMachineCredential(token)` (`services/machine-auth.js`). A match sets
+   `req.user` to a machine principal and calls `next()`, so
+   `validateAndAutoLogin` is never reached and a service token cannot be
+   mistaken for a session row.
+3. Anything else, including every ordinary session token, falls through to
+   `requireAuth` unchanged. A rejected lookup goes to `next(err)` and lands in
+   the router's `errorHandler`, never in a silent pass.
+
+A machine principal is `{ id, name, email, is_admin: false, is_machine: true }`
+and carries **no `req.sessionToken`**: there is no session row, so
+`touchSession` never runs and logout has nothing to revoke. The token
+comparison is `crypto.timingSafeEqual` over two SHA-256 digests, so a session
+token presented on these routes meets a constant-time comparison that cannot
+match it and cannot leak its length, and the `users` lookup happens only after
+the token matches, so a wrong token costs no query.
+
+It is mounted on exactly two routes, `GET /api/search` and `GET /api/browse`
+(`routes/search.js`), and configured by `SERVICE_TOKEN` plus
+`SERVICE_TOKEN_USER`, both required. See
+[access-control.md](access-control.md) section 7 for the never-admin rule.
+
 ### Session tokens
 
 `generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:109-144`) is

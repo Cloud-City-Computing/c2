@@ -10,6 +10,8 @@
 
 Full-text search across all documents the current user has read access to. Built on MySQL's `FULLTEXT` index over the `logs.title` and `logs.plain_content` columns.
 
+**Authentication.** `GET /api/search` and `GET /api/browse` accept either a normal session token or, when the install has configured one, a service token (`Authorization: Bearer <SERVICE_TOKEN>`). They are the only two routes in the app a service token reaches: `GET /api/search/filters` and `GET /api/presence` require a session and answer 401 to a service token. A service token acts as the non-admin user named by `SERVICE_TOKEN_USER` and therefore sees exactly what that user sees. See [../security.md](../security.md) for the rules and [`.env.example`](../../.env.example) for the configuration.
+
 ---
 
 ### `GET /api/search`
@@ -70,6 +72,8 @@ Search documents by keyword query.
 ### `GET /api/browse`
 
 Browse/list documents without a keyword — supports the same filters as `/api/search` but returns documents sorted by recency rather than relevance. Useful for showing "recent documents" or filtered archive views.
+
+Reachable by a service token on the same terms as `/api/search` (see the Authentication note above).
 
 **Query Parameters:** Same filter params as `/api/search` (`page`, `limit`, `favorites`, `workspaceId`, `squadId`, `archiveId`).
 

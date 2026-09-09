@@ -469,10 +469,90 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
 (`server.js:17-21`).
 
-## 7. Checklist for adding a protected route
+## 7. Machine principals: the service token
+
+A non-human caller authenticates through one seam, `services/machine-auth.js`,
+which exports exactly one function:
+
+```js
+export async function verifyMachineCredential(token)
+```
+
+It returns a principal, or `null` when machine auth is unconfigured, when the
+token does not match, or when the configured user does not resolve. A later
+OIDC client-credentials grant replaces the body of that function and no call
+site changes.
+
+Two environment variables, **both required**, so an install that sets neither
+gains no new authentication path:
+
+| Variable | Meaning |
+|---|---|
+| `SERVICE_TOKEN` | the shared secret. Under 32 characters the feature stays off and logs why. |
+| `SERVICE_TOKEN_USER` | the email of an existing, non-admin user whose access the token acts with. |
+
+The credential has **no ACL of its own**. It acts as a real user, so every
+fragment in section 1 applies unchanged and there is no machine-specific
+access-control SQL to get wrong. Grant a machine what it should see the
+ordinary way: squad membership, or an archive grant, on that user.
+
+The comparison is `crypto.timingSafeEqual` over two SHA-256 digests, never
+`===`, so a wrong-length token is rejected without throwing and without the
+comparison leaking the configured length. The `users` lookup runs only after
+the token matches, so a wrong token costs no query.
+
+### The never-admin rule
+
+`is_admin` is the **first bound parameter** of both fragments (`? = TRUE OR
+...`), so a principal carrying it true matches every archive in the install.
+That is guarded twice inside `verifyMachineCredential`:
+
+1. a configured user whose row is admin is refused outright, with a
+   `console.error`, and no principal is issued;
+2. the principal is built with the literal `is_admin: false`, never the column.
+
+Copying `row.is_admin` into the principal to "be faithful to the row" turns a
+scoped read credential into a full-install read credential silently: no error,
+no failing assertion outside `tests/services/machine-auth.test.js`.
+
+### The scope is a scope
+
+`machineOrAuth` (`middleware/auth.js`) tries the credential and otherwise falls
+through to `requireAuth` unchanged. It is applied to exactly two routes:
+
+| Route | Middleware |
+|---|---|
+| `GET /api/search` | `machineOrAuth` |
+| `GET /api/browse` | `machineOrAuth` |
+| `GET /api/search/filters` | `requireAuth` |
+| `GET /api/presence` | `requireAuth` |
+| everything else in the app | `requireAuth` |
+
+Both machine-reachable routes are reads, and both consume the principal only
+through `readAccessParams(req.user)` and `buildFilters(req.query, req.user)`.
+Neither calls `logActivity` nor `createNotification`, so nothing is attributed
+to the machine principal and no watcher is enrolled.
+
+Widening the credential to a route that writes, logs activity, or notifies is a
+decision to take on purpose, not a tidy-up: the principal carries a real user
+id, so an `activity_log` row or a notification would name that user as the
+actor with nothing to tell a reader a machine did it. The principal carries
+`is_machine: true` for any caller that needs to distinguish them.
+
+The refusal paths and the comparison are covered in
+`tests/services/machine-auth.test.js`. The tests that prove the scope is a
+scope are the 401s on `GET /api/search/filters` and `GET /api/presence` in
+`tests/routes/search.test.js`, and they only prove it because each one queues
+the principal row first: without that row a widened route would refuse the
+credential for the wrong reason and the 401 would assert nothing. Mounting
+`machineOrAuth` on either route turns both into `expected 200 to be 401`.
+
+## 8. Checklist for adding a protected route
 
 1. `requireAuth` first, always. There are no internal endpoints; the only
-   surfaces are public HTTP and the two WebSockets.
+   surfaces are public HTTP and the two WebSockets. The single alternative is
+   `machineOrAuth` (7), which wraps `requireAuth` rather than replacing it, and
+   which is deliberately mounted on two read routes and nothing else.
 2. Creation verb, add `requirePermission('<flag>')`. If the route takes a
    workspace or squad id from the caller rather than deriving it from a row the
    caller already reaches, gate it with `isWorkspaceMember` /

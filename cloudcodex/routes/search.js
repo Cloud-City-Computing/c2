@@ -7,7 +7,7 @@
 
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, machineOrAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { asyncHandler, errorHandler } from './helpers/shared.js';
 import { getAllPresence } from '../services/collab.js';
@@ -96,8 +96,14 @@ function buildFilters(query, user) {
  * Filtered to logs in archives where the user has read_access.
  * Uses MySQL FULLTEXT index for fast, relevance-ranked search.
  * Returns paginated results with contextual match snippets.
+ *
+ * machineOrAuth, not requireAuth: this is one of exactly two routes a service
+ * token may reach. The principal is an ordinary non-admin user, so the access
+ * fragment below is unchanged and there is no machine-specific SQL. This is a
+ * read with no logActivity and no notification, so nothing is attributed to
+ * the machine principal.
  */
-router.get('/search', requireAuth, asyncHandler(async (req, res) => {
+router.get('/search', machineOrAuth, asyncHandler(async (req, res) => {
   const { query = '', page: rawPage, limit: rawLimit } = req.query;
 
   const trimmed = query.trim();
@@ -213,8 +219,11 @@ router.get('/search', requireAuth, asyncHandler(async (req, res) => {
  * GET /api/browse?page=<number>&limit=<number>&sort=<string>
  *                 &favorites=true&workspaceId=<id>&squadId=<id>&archiveId=<id>
  * Paginated listing of all accessible logs (no search query required).
+ *
+ * machineOrAuth, not requireAuth: the second and last route a service token
+ * may reach. See GET /api/search above.
  */
-router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
+router.get('/browse', machineOrAuth, asyncHandler(async (req, res) => {
   const { page: rawPage, limit: rawLimit, sort } = req.query;
 
   const limit = Math.min(Math.max(parseInt(rawLimit) || BROWSE_LIMIT, 1), MAX_BROWSE_LIMIT);
@@ -278,6 +287,12 @@ router.get('/browse', requireAuth, asyncHandler(async (req, res) => {
  * GET /api/search/filters
  * Returns the available filter options for the current user:
  * workspaces, squads (grouped by workspace), and archives (grouped by squad).
+ *
+ * Deliberately bare requireAuth. A service token is scoped to /api/search and
+ * /api/browse only, and this route enumerates the workspace, squad and archive
+ * names a principal can see, which is org structure rather than document
+ * content. Widening the machine credential to reach it is a decision, not a
+ * tidy-up.
  */
 router.get('/search/filters', requireAuth, asyncHandler(async (req, res) => {
   const accessWhere = `${readAccessWhere('pr')} AND ${excludeSystemArchives('pr')}`;

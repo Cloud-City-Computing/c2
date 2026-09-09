@@ -6,6 +6,7 @@
  */
 
 import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
+import { verifyMachineCredential } from '../services/machine-auth.js';
 
 /**
  * The session token this request carries, from the Authorization header
@@ -57,6 +58,35 @@ export function requireAuth(req, res, next) {
         // problem (DB latency, connection loss) is worth surfacing in logs.
         console.error(`[${new Date().toISOString()}] auth: touchSession failed:`, err);
       });
+      next();
+    })
+    .catch(next);
+}
+
+/**
+ * Express middleware for routes a machine caller may reach.
+ *
+ * Tries the machine credential first, and otherwise falls through to
+ * requireAuth completely unchanged, so a human session is unaffected. The
+ * order matters both ways: a valid service token never reaches
+ * validateAndAutoLogin, and an ordinary session token only ever meets the
+ * constant-time digest comparison in verifyMachineCredential, which cannot
+ * match it and cannot leak its length.
+ *
+ * Apply it deliberately, one route at a time. It is NOT a drop-in replacement
+ * for requireAuth: the whole value of the credential is that its reach is
+ * enumerable by reading the routers.
+ */
+export function machineOrAuth(req, res, next) {
+  const token = extractSessionToken(req);
+  if (!token) return requireAuth(req, res, next);
+
+  verifyMachineCredential(token)
+    .then(principal => {
+      if (!principal) return requireAuth(req, res, next);
+      // No req.sessionToken: a machine caller holds no session row, so there
+      // is nothing to refresh and nothing for logout to revoke.
+      req.user = principal;
       next();
     })
     .catch(next);
