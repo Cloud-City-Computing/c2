@@ -72,7 +72,14 @@ List all squads within a workspace. User must have some form of access to the wo
 
 ### `POST /api/workspaces/:workspaceId/squads`
 
-Create a squad. Requires the `create_squad` permission or workspace ownership.
+Create a squad. Requires the `create_squad` permission **and** membership of the
+workspace, or workspace ownership, or admin. Membership means owning the
+workspace or belonging to one of its squads.
+
+A caller who is neither returns `404` with the same body as a workspace that
+does not exist, so the route cannot be used to enumerate workspaces. A workspace
+whose owner account was deleted is not a public workspace: membership is still
+required.
 
 **Body**
 
@@ -203,7 +210,11 @@ Each node has: `{ id, title, parent_id, version, created_at, updated_at, created
 
 ### `POST /api/archives`
 
-Create a new archive. Requires the `create_archive` permission.
+Create a new archive. Requires the `create_archive` permission, and when
+`squad_id` is supplied the caller must also be inside that squad's workspace.
+The permission means "may create an archive", not "may create one in any squad".
+A squad that belongs to no workspace has no tenant to check against and is
+refused for everyone but an admin.
 
 **Body:** `{ name, squad_id? }`
 
@@ -238,6 +249,27 @@ Requires read access to view. Returns explicit user grants, squad grants, worksp
 ### `POST /api/archives/:id/access`
 
 Add or remove an access grant. Requires archive ownership.
+
+On `add`, the grantee must be inside the archive's workspace: for a `userId`,
+the workspace owner or a member of one of its squads; for a `squadId`, a squad
+of that same workspace. Otherwise `403`. An archive with no owning squad at all
+has no workspace, so no boundary is applied. An archive whose squad exists but
+has no workspace (an orphaned squad) fails closed: the check runs and every
+grantee is refused, because an orphaned squad has no tenant to be inside of.
+
+`remove` is deliberately not gated this way, so grants that predate the check
+can still be revoked. The Manage Archive Access UI reaches it from the grant
+rows returned by `GET /api/archives/:id/access`, not from the workspace-scoped
+user search, which cannot return a grantee outside the tenant.
+
+**`remove` clears the explicit grant, which is not the same as clearing the
+user's access.** The explicit ACL entry is one of seven clauses in
+`readAccessWhere` / `writeAccessWhere`. If the grantee is also in the owning
+squad, in a granted squad, or covered by the workspace-wide flag, they keep the
+archive after the removal. `GET /api/archives/:id/access` returns
+`owner_squad_members`, `granted_squad_user_ids` and `read_workspace` /
+`write_workspace` so a caller can tell the two cases apart; the UI uses them to
+label such a row **Remove Grant** rather than Revoke.
 
 **Body (user grant):**
 ```json

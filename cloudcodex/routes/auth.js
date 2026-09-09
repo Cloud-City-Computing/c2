@@ -442,7 +442,12 @@ router.post('/get-user', asyncHandler(async (req, res) => {
 
 /**
  * GET /api/users/search?q=...
- * Search for users by name or email (authenticated, min 2 chars)
+ * Search for users by name or email (authenticated, min 2 chars).
+ *
+ * Admins see every account. Every other caller sees themselves, users who
+ * share a workspace with them, the owners of those workspaces, and, only if
+ * the caller can actually invite anyone, accounts that hold no squad
+ * membership at all.
  */
 router.get('/users/search', requireAuth, asyncHandler(async (req, res) => {
   const q = (req.query.q || '').trim();
@@ -451,9 +456,83 @@ router.get('/users/search', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const pattern = `%${q}%`;
+
+  // The workspace is the tenant boundary, so it bounds who is discoverable.
+  // Without this every account on the install, and its email address, is
+  // enumerable by every other account across every workspace.
+  if (req.user.is_admin) {
+    const users = await c2_query(
+      `SELECT id, name, email, avatar_url FROM users
+       WHERE name LIKE ? OR email LIKE ?
+       ORDER BY name ASC LIMIT 10`,
+      [pattern, pattern]
+    );
+    return res.json({ success: true, users });
+  }
+
+  // Membership is not the only way to be legitimately in scope, and scoping on
+  // it alone severs the invite flow. An account with no squad_members row
+  // anywhere matches nothing but itself for every non-admin caller, and that is
+  // where every account starts: Google SSO auto-provisioning and an admin
+  // invitation with no squad both write the users row and nothing else. The
+  // squad invite picker is driven entirely by this endpoint, so such an account
+  // would be unaddable by anyone but a platform admin, with an empty list as
+  // the only symptom. A workspace owner who joined no squad was invisible to
+  // their own members for the same reason.
+  //
+  // So two more disjuncts, and the second one is deliberately not free. Handing
+  // every unattached account to every caller would expose most of the user
+  // table on a young install, which is the enumeration this boundary exists to
+  // stop. It is gated on the caller holding squad-management standing somewhere
+  // or owning a workspace: the people who can act on the result. Note the
+  // parentheses around that gate. An AND slipping under the surrounding OR
+  // would silently widen the whole disjunction instead of erroring.
   const users = await c2_query(
-    `SELECT id, name, email, avatar_url FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY name ASC LIMIT 10`,
-    [pattern, pattern]
+    `WITH my_workspaces AS (
+       SELECT o.id AS workspace_id FROM workspaces o WHERE o.owner_id = ?
+       UNION
+       SELECT t_me.workspace_id FROM squad_members sm_me
+         JOIN squads t_me ON t_me.id = sm_me.squad_id
+         WHERE sm_me.user_id = ? AND t_me.workspace_id IS NOT NULL
+     )
+     SELECT DISTINCT u.id, u.name, u.email, u.avatar_url
+     FROM users u
+     WHERE (u.name LIKE ? OR u.email LIKE ?)
+       AND (
+         u.id = ?
+         OR EXISTS (
+           SELECT 1
+           FROM squad_members sm_them
+           JOIN squads t_them ON t_them.id = sm_them.squad_id
+           WHERE sm_them.user_id = u.id
+             AND t_them.workspace_id IN (SELECT workspace_id FROM my_workspaces)
+         )
+         OR EXISTS (
+           SELECT 1 FROM workspaces o_them
+           WHERE o_them.owner_id = u.id
+             AND o_them.id IN (SELECT workspace_id FROM my_workspaces)
+         )
+         OR (
+           NOT EXISTS (
+             SELECT 1 FROM squad_members sm_none WHERE sm_none.user_id = u.id
+           )
+           AND (
+             EXISTS (
+               SELECT 1 FROM squad_members sm_mgr
+               WHERE sm_mgr.user_id = ?
+                 AND (sm_mgr.role IN ('owner', 'admin') OR sm_mgr.can_manage_members = TRUE)
+             )
+             OR EXISTS (
+               SELECT 1 FROM workspaces o_mine WHERE o_mine.owner_id = ?
+             )
+           )
+         )
+       )
+     ORDER BY u.name ASC LIMIT 10`,
+    // Seven placeholders, seven params, in this order: the two that build the
+    // caller's workspace set, the two LIKE patterns, self, then the two that
+    // ask whether the caller can invite.
+    [req.user.id, req.user.id, pattern, pattern, req.user.id, req.user.id, req.user.id]
   );
 
   res.json({ success: true, users });

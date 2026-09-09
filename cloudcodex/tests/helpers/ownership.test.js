@@ -19,6 +19,8 @@ import {
   writeAccessWhere,
   writeAccessParams,
   isArchiveOwner,
+  isWorkspaceMember,
+  isSquadWorkspaceMember,
 } from '../../routes/helpers/ownership.js';
 
 describe('helpers/ownership', () => {
@@ -152,6 +154,121 @@ describe('helpers/ownership', () => {
       await isArchiveOwner(TEST_USER, '7');
       const [, params] = c2_query.mock.calls[0];
       expect(params[0]).toBe(7);
+      expect(typeof params[0]).toBe('number');
+    });
+  });
+  // ── isWorkspaceMember ─────────────────────────
+
+  describe('isWorkspaceMember', () => {
+    it('returns true for admin without hitting the database', async () => {
+      const admin = { ...TEST_USER, is_admin: true };
+      expect(await isWorkspaceMember(admin, 3)).toBe(true);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('returns true when the caller owns the workspace', async () => {
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]);
+      expect(await isWorkspaceMember(TEST_USER, 3)).toBe(true);
+
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).toMatch(/FROM workspaces o/i);
+      expect(sql).toMatch(/o\.owner_id = \?/i);
+      expect(params).toEqual([3, TEST_USER.id, TEST_USER.id]);
+    });
+
+    it('matches membership through any squad inside the workspace', async () => {
+      // There is no workspace_members table: squad membership is the only
+      // route into a workspace other than owning it.
+      c2_query.mockResolvedValueOnce([{ '1': 1 }]);
+      expect(await isWorkspaceMember(TEST_USER, 3)).toBe(true);
+
+      const [sql] = c2_query.mock.calls[0];
+      expect(sql).toMatch(/FROM squad_members sm/i);
+      expect(sql).toMatch(/JOIN squads t ON t\.id = sm\.squad_id/i);
+      expect(sql).toMatch(/t\.workspace_id = o\.id/i);
+      expect(sql).toMatch(/sm\.user_id = \?/i);
+    });
+
+    it('returns false for a caller with no relationship to the workspace', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      expect(await isWorkspaceMember(TEST_USER, 3)).toBe(false);
+    });
+
+    it('returns false for an unknown workspace', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      expect(await isWorkspaceMember(TEST_USER, 999999)).toBe(false);
+      expect(c2_query).toHaveBeenCalledTimes(1);
+    });
+
+    it('binds the workspace id as a parameter rather than interpolating it', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      await isWorkspaceMember(TEST_USER, '3');
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).not.toContain('3');
+      expect(params[0]).toBe(3);
+      expect(typeof params[0]).toBe('number');
+    });
+  });
+
+  // ── isSquadWorkspaceMember ────────────────────
+
+  describe('isSquadWorkspaceMember', () => {
+    it('returns true for admin without hitting the database', async () => {
+      const admin = { ...TEST_USER, is_admin: true };
+      expect(await isSquadWorkspaceMember(admin, 8)).toBe(true);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('resolves the squad workspace, then delegates to isWorkspaceMember', async () => {
+      c2_query
+        .mockResolvedValueOnce([{ workspace_id: 3 }])
+        .mockResolvedValueOnce([{ '1': 1 }]);
+      expect(await isSquadWorkspaceMember(TEST_USER, 8)).toBe(true);
+
+      expect(c2_query).toHaveBeenCalledTimes(2);
+      const [squadSql, squadParams] = c2_query.mock.calls[0];
+      expect(squadSql).toMatch(/FROM squads t/i);
+      expect(squadSql).toMatch(/t\.id = \?/i);
+      expect(squadParams).toEqual([8]);
+      const [, workspaceParams] = c2_query.mock.calls[1];
+      expect(workspaceParams).toEqual([3, TEST_USER.id, TEST_USER.id]);
+    });
+
+    it('returns false when the caller is outside the squad workspace', async () => {
+      c2_query
+        .mockResolvedValueOnce([{ workspace_id: 3 }])
+        .mockResolvedValueOnce([]);
+      expect(await isSquadWorkspaceMember(TEST_USER, 8)).toBe(false);
+      expect(c2_query).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns false for an unknown squad, without a second query', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      expect(await isSquadWorkspaceMember(TEST_USER, 999999)).toBe(false);
+      expect(c2_query).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns false for a squad whose workspace_id is NULL', async () => {
+      // squads.workspace_id is nullable. A squad that belongs to no workspace
+      // has no tenant boundary to test against, so a non-admin is never inside
+      // it and no membership query is worth issuing.
+      c2_query.mockResolvedValueOnce([{ workspace_id: null }]);
+      expect(await isSquadWorkspaceMember(TEST_USER, 8)).toBe(false);
+      expect(c2_query).toHaveBeenCalledTimes(1);
+    });
+
+    it('still returns true for an admin when the squad has no workspace', async () => {
+      const admin = { ...TEST_USER, is_admin: true };
+      expect(await isSquadWorkspaceMember(admin, 8)).toBe(true);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it('binds the squad id as a parameter rather than interpolating it', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      await isSquadWorkspaceMember(TEST_USER, '8');
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).not.toContain('8');
+      expect(params[0]).toBe(8);
       expect(typeof params[0]).toBe('number');
     });
   });

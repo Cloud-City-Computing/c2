@@ -125,13 +125,35 @@ Separate from access to specific content, users have a row in the `permissions` 
 
 | Permission      | Effect                                       |
 |-----------------|----------------------------------------------|
-| `create_squad`  | Can create new squads in any workspace       |
+| `create_squad`  | Can create new squads                        |
 | `create_archive`| Can create new archives                      |
 | `create_log`    | Can create documents (TRUE by default)       |
 
-These global flags are checked first. If a user lacks the global flag, the system also checks:
+**A global flag means "may create", never "may create anywhere."** The workspace
+is the tenant boundary. A caller who supplies a workspace or squad id has to be
+inside that workspace first: its owner, or a member of one of its squads. Admins
+are exempt. A workspace whose owner account was deleted is not a public
+workspace, and a squad that belongs to no workspace has no tenant to test
+against, so both refuse everyone but an admin.
+
+These global flags are checked next. If a user lacks the global flag, the system also checks:
 - Whether they are the workspace owner (bypasses all)
 - Whether they have the equivalent squad-member permission (`can_create_archive`, `can_create_log`)
+
+User discovery is bounded the same way, with one deliberate widening.
+`GET /api/users/search` shows a non-admin caller themselves, people who share a
+workspace with them, the owners of those workspaces, and, only if the caller can
+actually invite anyone, accounts that hold no `squad_members` row at all. That
+last set is what keeps the squad invite picker working: every account starts
+with no squad membership, so membership-only scoping made an SSO or
+squad-less-invitation account invisible to everyone but a platform admin.
+
+Say the cost out loud rather than inheriting it: **any account holding
+`role IN ('owner','admin')` or `can_manage_members` on any squad, in any
+workspace, or owning any workspace of its own, can retrieve the name and email
+of every account on the install that has no `squad_members` row**, including
+accounts in no workspace of theirs. Everything else stays inside the caller's
+own workspaces.
 
 ---
 

@@ -5971,6 +5971,40 @@ body {
   flex-shrink: 0;
 }
 
+/* Revocable grant rows inside the Manage Archive Access modal. */
+.access-grants {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.access-grant {
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.access-grant:last-child {
+  border-bottom: none;
+}
+
+.access-grant .access-member__name {
+  flex: 1 1 auto;
+}
+
+.access-grant__revoke {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.access-grant__inherited {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* Badges */
 .badge {
   display: inline-block;

@@ -656,6 +656,120 @@ Mutation-checked per attribute, not per file: neutralising `PageTree`'s five
 `div` fails 3; removing the row `onClick`, the comment count, or the sort
 label fails 1 each.
 
+### B16. A global create flag meant "may create anywhere" (FIXED)
+
+**The semantic bug, stated once:** `permissions.create_squad`,
+`create_archive` and `create_log` mean *this account may create this kind of
+thing*. They have never meant *this account may create it in any workspace*,
+but until 2026-09-08 four surfaces read them the second way, and
+`createDefaultPermissions` (`shared.js`) hands every new account all three.
+The workspace is the tenant boundary, and nothing in the codebase could ask
+"is this user inside workspace W?", so there was no check to make.
+
+Four holes, in descending severity:
+
+- **(a) Squad creation.** `POST /api/workspaces/:workspaceId/squads` checked
+  that the workspace row existed and that the caller held `create_squad`, then
+  called `addSquadOwnerMember`. Squad ownership is a live term in clause 5 of
+  both access fragments, so **any authenticated account could give itself
+  owner-level footing inside any workspace** and read and write everything
+  under it.
+- **(b) `requirePermission` returned early on the global flag**
+  (`permissions.js`), so the squad-context branch below it never ran for a
+  normal user. `POST /api/archives` takes `squad_id` from the body and that
+  middleware is its only gate, so any account could plant an archive inside any
+  squad in any workspace.
+- **(c) The archive ACL grantee was never resolved.**
+  `POST /api/archives/:id/access` authorised the caller with `isArchiveOwner`
+  and then wrote the supplied `userId` or `squadId` straight into the ACL JSON,
+  validated as a well-formed id and nothing else.
+- **(d) `GET /api/users/search` was unscoped.** `name LIKE ? OR email LIKE ?`
+  over the whole `users` table for any authenticated caller, returning id, name,
+  email and avatar. Every account on the install, with its email address, was
+  enumerable by every other account across every workspace.
+
+**Fixed 2026-09-08.** `isWorkspaceMember` / `isSquadWorkspaceMember` in
+`ownership.js` supply the missing predicate and all four routes now use it. The
+7-param fragments were not touched. Full write-up, including why the
+archive-derived squad is deliberately *not* validated in the middleware, in 3e
+of [access-control.md](access-control.md).
+
+**Known cost 1, accepted rather than special-cased.** The body-squad check runs
+above the global flag, so a squad with `workspace_id` NULL no longer reaches
+the `squad_members` fallback: a member holding `can_create_archive` on an
+**orphaned** squad now gets `403` where they used to get `201`. An orphaned
+squad has no tenant, so "is this user inside its tenant?" is unanswerable and
+failing closed is the right answer. All four `INSERT INTO squads` sites set
+`workspace_id`, so only legacy or hand-edited rows are affected.
+
+**Two follow-on corrections, same day.** The first cut of (c) guarded the
+grantee check with `if (owning?.workspace_id)`, which skipped it not only for an
+archive with no squad but for an archive whose squad had a NULL `workspace_id`,
+so that one case still failed **open** while the docs said it failed closed. The
+guard is now `if (owning)` and an orphaned squad is refused, matching the rule
+everywhere else. The first cut of (d) scoped on shared membership alone, which
+over-blocked: an account with no `squad_members` row anywhere, which is how
+every SSO and squad-less-invitation account begins, matched nothing but itself
+and so could never be picked in the squad invite modal. It now also returns the
+owners of the caller's workspaces and, only to a caller who can actually invite,
+accounts with no squad membership. See 3e in
+[access-control.md](access-control.md).
+
+**Known cost 2: an empty mention picker for a grantee with no workspace
+footing.** `/api/users/search` is bounded by `my_workspaces`, which is empty for
+an account that owns no workspace and belongs to no squad. Such an account can
+still hold read or write on an archive whose `squad_id` is NULL, because the ACL
+boundary check in `POST /api/archives/:id/access` deliberately skips an archive
+with no squad (there is no tenant to test the grantee against), and squadless
+archives are easy to make: `ArchiveBrowser.jsx` passes `squadId={squadFilter}`
+to `NewArchiveModal`, so creating one from `/archives` with no squad filter
+selected produces an archive with `squad_id` NULL.
+
+Concretely: an admin grants three contractors write access on a squadless
+archive. Each opens a log there, types `@`, and the picker returns only
+themselves, because none of them shares a workspace with anyone and none can
+invite. Before this branch it returned every account on the install. They can
+still read, write and comment; they just cannot address a mention to anyone.
+
+**Not fixed, and widening the query is not the fix.** The natural widening,
+"also return users who share an archive ACL with the caller", would hand a
+single cross-tenant grant back the enumeration this boundary exists to stop, and
+the archives it would key on are the exact rows (c) was written to prevent. The
+honest options are to give the archive a squad, or to put the contractors in a
+squad, either of which restores the picker through the ordinary path. Recorded
+here so the empty picker reads as a known trade-off rather than a new defect.
+
+**The fix is prospective, and there is no cleanup migration on purpose.** Rows
+created through (a), (b) and (c) before the fix still resolve, because each is
+an ordinary row the fragments read correctly. No query can separate one of them
+from an install that used these routes exactly as they behaved, so deleting
+automatically would destroy legitimate data. `docs/security.md` ships three
+read-only enumeration queries instead; the disposition is the operator's.
+
+Those three queries were run, not just written: against MySQL 8 with `init.sql`
+loaded and a synthetic fixture holding one planted squad, a second planted squad
+alibiing the first, a planted archive, a cross-tenant user grant and a
+cross-tenant squad grant, alongside legitimate rows for a workspace owner, a
+genuine member, an admin and a second workspace. Each query reported exactly its
+attack rows and none of the legitimate ones. The first query is the one that
+needs the care: the naive membership test returns **nothing** on that fixture,
+because planting a squad enrols the planter as a member of the very workspace
+under examination.
+
+**A second silencing shape was found on re-run and fixed the same day.**
+Excluding the planter's own squads is not enough: one `squad_members` row from
+any squad they did not create clears every plant they made in that workspace, so
+the planter simply being onboarded properly afterwards, the most likely thing to
+happen next, hid both planted squads and, through the ordering of the three
+queries, the planted archive too. Membership is now read as of the row's
+creation (`sm.joined_at <= s.created_at` in query 1, and against `p.created_at`
+in query 2's extra clauses). Query 3 still under-reports a grantee who holds any
+membership in the workspace, because an ACL grant carries no timestamp to test
+against; that is stated in `docs/security.md` with a `JSON_CONTAINS` follow-up
+for reading the grants held by whoever query 1 named, so an empty query 3 is not
+read as proof of none.
+
+
 ## C. Design tensions, not defects
 
 ### C1. `canWrite` is evaluated once per collab connection

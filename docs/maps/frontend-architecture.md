@@ -157,9 +157,23 @@ one:
   `preventDefault`s `mousedown` because Firefox and Safari do not focus a link
   on click. Removing that one line silently breaks mouse users on those
   browsers and no jsdom test can see it.
-- Two inner components are exported purely so they can be unit-tested without
+- Some inner components are exported purely so they can be unit-tested without
   mounting their data-fetching parent: `ExploreCard` and `Pagination` from
-  `ExploreBrowser.jsx`, and `LogTreeItem` from `ArchiveBrowser.jsx`.
+  `ExploreBrowser.jsx`, and `LogTreeItem` plus `ManageArchiveAccessModal` from
+  `ArchiveBrowser.jsx`.
+- **`ManageArchiveAccessModal` lists the grants it can revoke.** It is modal
+  content rendered through `showModal`, which owns a single slot, so its
+  destructive confirmation swaps `<ConfirmDialog>` in for the panel rather than
+  stacking a second modal on top of it; Cancel returns with the panel's state
+  intact. The Revoke control is on each explicit grant from
+  `GET /api/archives/:id/access`, never on an inherited squad-membership row.
+  See `access-control.md` for why the user search cannot be the source.
+  `inheritedAccessSource()` in the same file reads `owner_squad_members`,
+  `granted_squad_user_ids` and `read_workspace` / `write_workspace` out of that
+  response to spot a grant another access clause also covers. Such a row keeps
+  its control, since the ACL entry is real, but is labelled **Remove Grant**
+  with an `also inherited from ...` note, and its confirmation and toast say the
+  grant was removed rather than that access was revoked.
 - Comment UI is four components: `CommentManager` (orchestration),
   `CommentSidebar`, `CommentForm`, `CommentHighlights` (in-document marks).
 - `RemoteCursors.jsx` exports `RichTextCursors` and `MarkdownCursors`, two

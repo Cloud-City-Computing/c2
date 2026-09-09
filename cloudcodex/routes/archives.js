@@ -9,7 +9,7 @@ import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
-import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner, excludeSystemArchives } from './helpers/ownership.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner, isWorkspaceMember, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
 import { logActivity } from './helpers/activity.js';
 
@@ -249,6 +249,59 @@ router.post('/archives/:id/access', requireAuth, asyncHandler(async (req, res) =
   // Only archive/squad/workspace owners can manage access
   const allowed = await isArchiveOwner(req.user, id);
   if (!allowed) return res.status(403).json({ success: false, message: 'Only a archive or squad owner can manage access' });
+
+  // isArchiveOwner authorises the caller and says nothing about the grantee,
+  // so without this an archive owner could grant read or write on their
+  // tenant's content to an account, or a whole squad, in another workspace.
+  //
+  // Only on 'add'. A remove must stay open: cross-tenant grants made before
+  // this check exist in real data, and gating removal would make them
+  // unrevokable.
+  if (action === 'add' && (hasUser || hasSquad)) {
+    const [owning] = await c2_query(
+      `SELECT t.workspace_id FROM archives p
+       JOIN squads t ON t.id = p.squad_id
+       WHERE p.id = ? LIMIT 1`,
+      [Number(id)]
+    );
+
+    // An archive with no squad has no workspace, so the JOIN yields no row,
+    // there is no boundary to compare against and the grant is left to the
+    // owner's judgement.
+    //
+    // `if (owning)`, not `if (owning?.workspace_id)`: an **orphaned** squad
+    // (row present, `workspace_id` NULL) must enter the check and be refused,
+    // not skip it. Skipping let the owner of an archive in an orphaned squad
+    // grant access to any user or squad in any workspace. Inside the check the
+    // NULL denies on its own: `isWorkspaceMember` binds `Number(null)` as
+    // workspace 0, and `workspace_id = NULL` is NULL rather than true, so
+    // neither branch can match. That is the same fail-closed answer
+    // `isSquadWorkspaceMember` gives an orphaned squad.
+    if (owning) {
+      let ok;
+      if (hasUser) {
+        // is_admin is forced false: isWorkspaceMember short-circuits on it, and
+        // the question here is the grantee's tenancy, not their privilege.
+        // Passing a real admin row would answer true for the wrong reason.
+        ok = await isWorkspaceMember({ id: Number(userId), is_admin: false }, owning.workspace_id);
+      } else {
+        // Not isSquadWorkspaceMember: that asks whether a user is inside a
+        // squad's workspace. The question here is whether the granted squad is
+        // inside the archive's workspace.
+        const [grantee] = await c2_query(
+          `SELECT 1 FROM squads WHERE id = ? AND workspace_id = ? LIMIT 1`,
+          [Number(squadId), owning.workspace_id]
+        );
+        ok = Boolean(grantee);
+      }
+      if (!ok) {
+        return res.status(403).json({
+          success: false,
+          message: 'Cannot grant access to a user or squad outside this workspace',
+        });
+      }
+    }
+  }
 
   if (hasWorkspace) {
     // Toggle the workspace-level boolean
