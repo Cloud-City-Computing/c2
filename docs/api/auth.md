@@ -287,9 +287,23 @@ without changing anything.
 Search for users by name or email (for invite and mention dialogs). Minimum two
 characters. Rate-limited to 60 requests per 15 minutes per IP.
 
-**Scoped to the caller's workspaces.** An admin sees every account. Everyone
-else sees only themselves plus users who share a workspace with them, meaning a
-workspace the caller owns or one holding a squad the caller belongs to. A caller
-who owns no workspace and belongs to no squad therefore finds only themselves.
+**Scoped to the caller's workspaces.** An admin sees every account. Every other
+caller sees four sets unioned: themselves; users who share a workspace with them
+(a workspace the caller owns, or one holding a squad the caller belongs to); the
+owners of those workspaces; and, only if the caller can actually invite anyone,
+every account that holds no `squad_members` row at all.
+
+That fourth disjunct is the invite flow's escape hatch and a signed-off
+trade-off, not an oversight. Every account starts with no squad membership:
+Google SSO auto-provisioning and an admin invitation with no squad both write
+the `users` row and nothing else, so scoping on shared membership alone left
+such an account unaddable by anyone but a platform admin, with an empty invite
+picker as the only symptom. Stated plainly, the cost is that **any account
+holding `role IN ('owner','admin')` or `can_manage_members` on any squad, in
+any workspace, or owning any workspace of its own, can retrieve the name and
+email of every account on the install that has no `squad_members` row**,
+including accounts that share no workspace with them at all. A caller who owns
+no workspace, belongs to no squad and can invite nobody still finds only
+themselves.
 
 **Response:** `{ success: true, users: [{ id, name, email, avatar_url }] }`

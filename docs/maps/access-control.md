@@ -302,6 +302,22 @@ they hold no `read_access` / `write_access` row, so a remove for them is a no-op
 The squad tab has the same shape, because `workspace_squads` in that response is
 scoped the same way.
 
+**A grant another clause shadows is worded as a grant, not as access.** Clause 2
+is one of seven, and three of the others are visible in the same response:
+`owner_squad_members` (clause 5), `granted_squad_user_ids` (clause 6, and it
+folds the owning squad's members in too) and `read_workspace` / `write_workspace`
+(clause 7). A user in `read_access` who is *also* an owning-squad member renders
+as a granted row, not an inherited one, so before this the operator was told
+`Successfully revoked write access for Alice` while clause 5 still resolved for
+her. `inheritedAccessSource()` in `ArchiveBrowser.jsx` names the shadowing route
+from those three fields; the row gains an `also inherited from ...` note, the
+control reads **Remove Grant**, and the confirmation and toast talk about the
+explicit grant being removed. The control stays, because the ACL entry is real
+and clearing it is meaningful. The workspace-flag arm can over-warn (clause 7
+also requires membership of some squad in the workspace, which the response does
+not carry per user), which is the safe direction for a control that used to
+claim the opposite of the truth.
+
 **The ACL check enters on an orphaned squad rather than skipping it.** The guard
 is `if (owning)`, not `if (owning?.workspace_id)`. An archive with no squad at
 all yields no row from the `JOIN squads` and skips the check, as documented. A

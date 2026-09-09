@@ -364,8 +364,10 @@ proof of none.** A grantee who holds any `squad_members` row in the archive's
 workspace clears the user branch, so a grant naming someone who planted a squad
 there, or who was onboarded legitimately afterwards, is not listed. There is no
 "as of" time to test against: an ACL grant carries no timestamp of its own.
-Query 1 is the compensating control. It names those users, and every grant held
-by a user query 1 reports is worth reading directly:
+
+Query 1 covers only the first half of that. It names users whose footing in a
+workspace came from a squad they created themselves, so the follow-up below is
+worth running for each user query 1 reports, and only for those users:
 
 ```sql
 -- substitute the user id query 1 reported for <user_id>
@@ -373,6 +375,18 @@ SELECT id, name, squad_id, read_access, write_access FROM archives
 WHERE JSON_CONTAINS(read_access,  CAST(<user_id> AS JSON))
    OR JSON_CONTAINS(write_access, CAST(<user_id> AS JSON));
 ```
+
+**The other half is not recoverable by any of these three queries.** A grant to
+someone who was onboarded into the archive's workspace legitimately *after* the
+grant was written is invisible to all of them: query 3 skips them because they
+now hold a `squad_members` row there, query 1 never names them because they
+created nothing, query 2 is about archives rather than grants, and the
+`JSON_CONTAINS` follow-up above only runs for the user ids query 1 named. An
+ACL grant carries no timestamp, so there is nothing to compare a `joined_at`
+against, and no rewrite of these queries fixes it. **An empty query 3 therefore
+bounds nothing on its own.** If you need certainty for a particular account,
+read its grants directly with the `JSON_CONTAINS` query above, substituting that
+account's id whether or not query 1 reported it.
 
 ```sql
 WITH acl AS (
@@ -439,11 +453,25 @@ ORDER BY a.workspace_id, a.archive_id, a.acl_column, a.grantee_id;
 A `grantee_label` of NULL means the grant names an id that no longer exists.
 Those are harmless (nothing matches them) but they are worth removing through
 `POST /api/archives/:id/access` with `action: 'remove'`, which stays open to
-cross-tenant grantees precisely so pre-existing grants can be revoked.
+cross-tenant grantees precisely so pre-existing grants can be revoked. **Use
+that API call for them, not the UI.** `GET /api/archives/:id/access` resolves
+each grantee id through a `users` / `squads` lookup and drops the misses, so a
+grant naming a deleted account has no row in the modal at all.
 
 In the UI, open **Manage Archive Access** on the archive: every explicit user
-and squad grant is listed with a Revoke control, sourced from
-`GET /api/archives/:id/access` rather than from the user search, which is
-workspace-scoped and so cannot find a grantee outside the tenant. Rows inherited
-from the owning squad are shown without a Revoke control, because they hold no
-ACL row to remove.
+and squad grant *whose grantee still exists* is listed with a Revoke control,
+sourced from `GET /api/archives/:id/access` rather than from the user search,
+which is workspace-scoped and so cannot find a grantee outside the tenant. Rows
+inherited from the owning squad are shown without a Revoke control, because they
+hold no ACL row to remove.
+
+**Read the row before trusting the word "revoke".** A grantee can hold the
+archive by a second route the ACL entry does not own: membership of the owning
+squad or of a granted squad (clauses 5 and 6 of the access fragments), or the
+workspace-wide flag (clause 7). Removing the ACL row leaves all of those intact.
+Such a row is marked `also inherited from ...`, its control reads **Remove
+Grant** rather than Revoke, and the confirmation and the toast say the grant was
+removed rather than that access was revoked. To actually take that user's access
+away, change the route named on the row: their squad membership or its
+`can_read` / `can_write` flags, the squad grant, or the workspace-wide flag on
+the Workspace tab.

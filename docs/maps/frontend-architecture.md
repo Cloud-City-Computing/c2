@@ -168,6 +168,12 @@ one:
   intact. The Revoke control is on each explicit grant from
   `GET /api/archives/:id/access`, never on an inherited squad-membership row.
   See `access-control.md` for why the user search cannot be the source.
+  `inheritedAccessSource()` in the same file reads `owner_squad_members`,
+  `granted_squad_user_ids` and `read_workspace` / `write_workspace` out of that
+  response to spot a grant another access clause also covers. Such a row keeps
+  its control, since the ACL entry is real, but is labelled **Remove Grant**
+  with an `also inherited from ...` note, and its confirmation and toast say the
+  grant was removed rather than that access was revoked.
 - Comment UI is four components: `CommentManager` (orchestration),
   `CommentSidebar`, `CommentForm`, `CommentHighlights` (in-document marks).
 - `RemoteCursors.jsx` exports `RichTextCursors` and `MarkdownCursors`, two

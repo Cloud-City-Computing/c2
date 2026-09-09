@@ -97,6 +97,40 @@ function RenameArchiveModal({ archive, onRenamed }) {
   );
 }
 
+/**
+ * Name the routes, other than the explicit ACL entry, by which `userId` could
+ * still hold `perms` on this archive once that entry is gone.
+ *
+ * `readAccessWhere` / `writeAccessWhere` in routes/helpers/ownership.js resolve
+ * seven clauses. The explicit grant is clause 2. Three of the others are
+ * visible in the GET /api/archives/:id/access payload:
+ *   - clause 5, membership of the owning squad, via `owner_squad_members`
+ *   - clause 6, membership of a squad in read_access_squads / write_access_squads,
+ *     via `granted_squad_user_ids` (which folds in the owning squad's members too)
+ *   - clause 7, the workspace-wide flag, via `read_workspace` / `write_workspace`
+ *
+ * Removing the ACL row leaves every one of those intact, so a grant one of them
+ * shadows must never be reported as a revoked access. Returns null when the
+ * explicit grant is the only route this response can see.
+ */
+function inheritedAccessSource(accessData, userId, perms) {
+  if (!accessData) return null;
+  const sources = [];
+
+  if ((accessData.owner_squad_members || []).some((m) => m.user_id === userId)) {
+    sources.push(accessData.owner_squad_name || 'the owning squad');
+  } else if ((accessData.granted_squad_user_ids || []).includes(userId)) {
+    sources.push('a granted squad');
+  }
+
+  const workspaceCovers = perms.some((perm) => (
+    (perm === 'read' && accessData.read_workspace) || (perm === 'write' && accessData.write_workspace)
+  ));
+  if (workspaceCovers) sources.push('workspace-wide access');
+
+  return sources.length > 0 ? sources.join(' and ') : null;
+}
+
 // Exported for unit tests, following the same convention as LogTreeItem: the
 // revoke path on an already-granted row is the piece worth testing on its own.
 export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSaved }) {
@@ -173,9 +207,17 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
       await Promise.all(
         selectedPerms.map((perm) => manageArchiveAccess(archive.id, target.id, perm, action))
       );
-      const verb = action === 'add' ? 'granted' : 'revoked';
       const labels = selectedPerms.join(' + ');
-      const successMessage = `Successfully ${verb} ${labels} access for ${target.name}.`;
+      // Only an unshadowed grant actually loses the user their access. Where
+      // another clause still covers them, report the grant we removed rather
+      // than an access we did not take away.
+      const inheritedFrom = action === 'remove'
+        ? inheritedAccessSource(accessData, target.id, selectedPerms)
+        : null;
+      const verb = action === 'add' ? 'granted' : 'revoked';
+      const successMessage = inheritedFrom
+        ? `Removed the explicit ${labels} grant for ${target.name}. Access through ${inheritedFrom} is unchanged.`
+        : `Successfully ${verb} ${labels} access for ${target.name}.`;
       setStatus(successMessage);
       loadAccess();
       await new Promise((resolve) => setTimeout(resolve, 900));
@@ -258,7 +300,14 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
       if (existing) existing.write = true;
       else map.set(u.id, { ...u, read: false, write: true });
     });
-    return [...map.values()];
+    // A grant another clause also covers carries the route it is shadowed by,
+    // so the row, the confirmation and the toast can all say so.
+    return [...map.values()].map((u) => ({
+      ...u,
+      inheritedFrom: inheritedAccessSource(
+        accessData, u.id, ['read', 'write'].filter((perm) => u[perm])
+      ),
+    }));
   }, [accessData]);
 
   // Owner-squad members hold no row in read_access / write_access, so a
@@ -291,6 +340,7 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
       kind: 'user',
       user,
       label: user.name,
+      inheritedFrom: user.inheritedFrom,
       perms: ['read', 'write'].filter((perm) => user[perm]),
     });
   };
@@ -324,9 +374,11 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
   if (pendingRevoke) {
     return (
       <ConfirmDialog
-        title="Revoke Archive Access"
-        message={`Revoke ${pendingRevoke.perms.join(' + ')} access to "${archive.name}" for ${pendingRevoke.label}?`}
-        confirmLabel="Revoke"
+        title={pendingRevoke.inheritedFrom ? 'Remove Explicit Grant' : 'Revoke Archive Access'}
+        message={pendingRevoke.inheritedFrom
+          ? `Remove the explicit ${pendingRevoke.perms.join(' + ')} grant for ${pendingRevoke.label} on "${archive.name}"? This removes the grant only, and ${pendingRevoke.label} may still reach this archive through ${pendingRevoke.inheritedFrom}.`
+          : `Revoke ${pendingRevoke.perms.join(' + ')} access to "${archive.name}" for ${pendingRevoke.label}?`}
+        confirmLabel={pendingRevoke.inheritedFrom ? 'Remove Grant' : 'Revoke'}
         onConfirm={handleConfirmRevoke}
         onCancel={handleCancelRevoke}
       />
@@ -426,13 +478,20 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
                     {u.read && <span className="badge badge-info">read</span>}
                     {u.write && <span className="badge badge-warning">write</span>}
                   </span>
+                  {u.inheritedFrom && (
+                    <span className="access-grant__inherited">
+                      also inherited from {u.inheritedFrom}
+                    </span>
+                  )}
                   <button
                     className="btn btn-danger btn-sm access-grant__revoke"
                     onClick={() => handleRevokeUser(u)}
                     disabled={submitting}
-                    aria-label={`Revoke access for ${u.name}`}
+                    aria-label={u.inheritedFrom
+                      ? `Remove explicit grant for ${u.name}`
+                      : `Revoke access for ${u.name}`}
                   >
-                    Revoke
+                    {u.inheritedFrom ? 'Remove Grant' : 'Revoke'}
                   </button>
                 </li>
               ))}

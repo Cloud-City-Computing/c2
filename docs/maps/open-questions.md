@@ -694,7 +694,7 @@ Four holes, in descending severity:
 archive-derived squad is deliberately *not* validated in the middleware, in 3e
 of [access-control.md](access-control.md).
 
-**Known cost, accepted rather than special-cased.** The body-squad check runs
+**Known cost 1, accepted rather than special-cased.** The body-squad check runs
 above the global flag, so a squad with `workspace_id` NULL no longer reaches
 the `squad_members` fallback: a member holding `can_create_archive` on an
 **orphaned** squad now gets `403` where they used to get `201`. An orphaned
@@ -714,6 +714,30 @@ and so could never be picked in the squad invite modal. It now also returns the
 owners of the caller's workspaces and, only to a caller who can actually invite,
 accounts with no squad membership. See 3e in
 [access-control.md](access-control.md).
+
+**Known cost 2: an empty mention picker for a grantee with no workspace
+footing.** `/api/users/search` is bounded by `my_workspaces`, which is empty for
+an account that owns no workspace and belongs to no squad. Such an account can
+still hold read or write on an archive whose `squad_id` is NULL, because the ACL
+boundary check in `POST /api/archives/:id/access` deliberately skips an archive
+with no squad (there is no tenant to test the grantee against), and squadless
+archives are easy to make: `ArchiveBrowser.jsx` passes `squadId={squadFilter}`
+to `NewArchiveModal`, so creating one from `/archives` with no squad filter
+selected produces an archive with `squad_id` NULL.
+
+Concretely: an admin grants three contractors write access on a squadless
+archive. Each opens a log there, types `@`, and the picker returns only
+themselves, because none of them shares a workspace with anyone and none can
+invite. Before this branch it returned every account on the install. They can
+still read, write and comment; they just cannot address a mention to anyone.
+
+**Not fixed, and widening the query is not the fix.** The natural widening,
+"also return users who share an archive ACL with the caller", would hand a
+single cross-tenant grant back the enumeration this boundary exists to stop, and
+the archives it would key on are the exact rows (c) was written to prevent. The
+honest options are to give the archive a squad, or to put the contractors in a
+squad, either of which restores the picker through the ordinary path. Recorded
+here so the empty picker reads as a known trade-off rather than a new defect.
 
 **The fix is prospective, and there is no cleanup migration on purpose.** Rows
 created through (a), (b) and (c) before the fix still resolve, because each is

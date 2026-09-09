@@ -185,3 +185,113 @@ describe('ManageArchiveAccessModal revoke controls', () => {
     expect(utilMock.manageArchiveSquadAccess).toHaveBeenCalledWith(7, 88, 'write', 'remove');
   });
 });
+
+// A grantee can hold the archive by a second route the ACL entry does not own:
+// clause 5 (owning-squad membership), clause 6 (a granted squad) or clause 7
+// (the workspace-wide flag) of readAccessWhere / writeAccessWhere. Removing the
+// ACL row leaves that route intact, so the row has to say so and the wording
+// has to be about the grant, not about access.
+describe('ManageArchiveAccessModal shadowed grants', () => {
+  it('notes an owning-squad membership on the grant row and does not list the user twice', async () => {
+    utilMock.fetchArchiveAccess.mockResolvedValue({
+      access: access({
+        read_users: [],
+        write_users: [{ id: 9, name: 'Alice Member', email: 'alice@example.com' }],
+      }),
+    });
+    renderModal();
+
+    expect(await screen.findByText('Alice Member')).toBeInTheDocument();
+    expect(screen.getAllByText('Alice Member')).toHaveLength(1);
+    expect(screen.getByText('also inherited from Platform')).toBeInTheDocument();
+
+    // The explicit ACL row is real, so removing it stays available.
+    expect(screen.getByRole('button', { name: 'Remove explicit grant for Alice Member' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revoke access for Alice Member' })).toBeNull();
+  });
+
+  it('words the confirmation and the toast as removing the grant, not as revoking access', async () => {
+    utilMock.fetchArchiveAccess.mockResolvedValue({
+      access: access({
+        read_users: [],
+        write_users: [{ id: 9, name: 'Alice Member', email: 'alice@example.com' }],
+      }),
+    });
+    const user = userEvent.setup();
+    const onAccessSaved = vi.fn();
+    renderModal({ onAccessSaved });
+
+    await user.click(await screen.findByRole('button', { name: 'Remove explicit grant for Alice Member' }));
+
+    expect(await screen.findByText('Remove Explicit Grant')).toBeInTheDocument();
+    expect(screen.getByText(
+      'Remove the explicit write grant for Alice Member on "Ops Runbooks"? This removes the grant only, and Alice Member may still reach this archive through Platform.'
+    )).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Remove Grant' }));
+
+    await waitFor(() => expect(utilMock.manageArchiveAccess).toHaveBeenCalledTimes(1));
+    expect(utilMock.manageArchiveAccess).toHaveBeenCalledWith(7, 9, 'write', 'remove');
+
+    await waitFor(() => expect(onAccessSaved).toHaveBeenCalled(), { timeout: 3000 });
+    expect(onAccessSaved).toHaveBeenCalledWith(
+      'Removed the explicit write grant for Alice Member. Access through Platform is unchanged.'
+    );
+  });
+
+  it('notes a granted squad for a grantee who is not in the owning squad', async () => {
+    utilMock.fetchArchiveAccess.mockResolvedValue({
+      access: access({
+        read_users: [{ id: 55, name: 'Carol Contractor', email: 'carol@example.com' }],
+        read_squads: [{ id: 88, name: 'Contractors' }],
+        granted_squad_user_ids: [9, 55],
+      }),
+    });
+    renderModal();
+
+    expect(await screen.findByText('Carol Contractor')).toBeInTheDocument();
+    expect(screen.getByText('also inherited from a granted squad')).toBeInTheDocument();
+  });
+
+  it('notes the workspace-wide flag for the permission it actually covers', async () => {
+    utilMock.fetchArchiveAccess.mockResolvedValue({
+      access: access({
+        read_users: [],
+        write_users: [{ id: 61, name: 'Wendy Wide', email: 'wendy@example.com' }],
+        write_workspace: true,
+      }),
+    });
+    renderModal();
+
+    expect(await screen.findByText('Wendy Wide')).toBeInTheDocument();
+    expect(screen.getByText('also inherited from workspace-wide access')).toBeInTheDocument();
+  });
+
+  it('leaves a read-only grant unflagged when only the write flag is workspace-wide', async () => {
+    utilMock.fetchArchiveAccess.mockResolvedValue({
+      access: access({
+        read_users: [{ id: 61, name: 'Wendy Wide', email: 'wendy@example.com' }],
+        write_users: [],
+        write_workspace: true,
+      }),
+    });
+    renderModal();
+
+    expect(await screen.findByText('Wendy Wide')).toBeInTheDocument();
+    expect(screen.queryByText(/also inherited from/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Revoke access for Wendy Wide' })).toBeInTheDocument();
+  });
+
+  it('names both routes when a squad and the workspace flag each cover the grant', async () => {
+    utilMock.fetchArchiveAccess.mockResolvedValue({
+      access: access({
+        read_users: [{ id: 9, name: 'Alice Member', email: 'alice@example.com' }],
+        read_workspace: true,
+      }),
+    });
+    renderModal();
+
+    expect(await screen.findByText('Alice Member')).toBeInTheDocument();
+    expect(screen.getByText('also inherited from Platform and workspace-wide access')).toBeInTheDocument();
+  });
+});

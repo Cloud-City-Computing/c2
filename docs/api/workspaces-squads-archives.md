@@ -262,6 +262,15 @@ can still be revoked. The Manage Archive Access UI reaches it from the grant
 rows returned by `GET /api/archives/:id/access`, not from the workspace-scoped
 user search, which cannot return a grantee outside the tenant.
 
+**`remove` clears the explicit grant, which is not the same as clearing the
+user's access.** The explicit ACL entry is one of seven clauses in
+`readAccessWhere` / `writeAccessWhere`. If the grantee is also in the owning
+squad, in a granted squad, or covered by the workspace-wide flag, they keep the
+archive after the removal. `GET /api/archives/:id/access` returns
+`owner_squad_members`, `granted_squad_user_ids` and `read_workspace` /
+`write_workspace` so a caller can tell the two cases apart; the UI uses them to
+label such a row **Remove Grant** rather than Revoke.
+
 **Body (user grant):**
 ```json
 { "userId": 5, "accessType": "read", "action": "add" }

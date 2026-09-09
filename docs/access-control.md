@@ -140,8 +140,20 @@ These global flags are checked next. If a user lacks the global flag, the system
 - Whether they are the workspace owner (bypasses all)
 - Whether they have the equivalent squad-member permission (`can_create_archive`, `can_create_log`)
 
-User discovery is bounded the same way: `GET /api/users/search` shows a
-non-admin caller only themselves plus people who share a workspace with them.
+User discovery is bounded the same way, with one deliberate widening.
+`GET /api/users/search` shows a non-admin caller themselves, people who share a
+workspace with them, the owners of those workspaces, and, only if the caller can
+actually invite anyone, accounts that hold no `squad_members` row at all. That
+last set is what keeps the squad invite picker working: every account starts
+with no squad membership, so membership-only scoping made an SSO or
+squad-less-invitation account invisible to everyone but a platform admin.
+
+Say the cost out loud rather than inheriting it: **any account holding
+`role IN ('owner','admin')` or `can_manage_members` on any squad, in any
+workspace, or owning any workspace of its own, can retrieve the name and email
+of every account on the install that has no `squad_members` row**, including
+accounts in no workspace of theirs. Everything else stays inside the caller's
+own workspaces.
 
 ---
 
