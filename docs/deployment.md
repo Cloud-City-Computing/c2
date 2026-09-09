@@ -197,17 +197,17 @@ Take a dump before starting, and read the release's CHANGELOG entry for schema
 changes.
 
 ```
-   +-----------------+   +------------------------+   +------------------+
-   | git pull main   |-->| npm run migrate        |-->| docker compose   |
-   | (or bump        |   | (see the table below   |   | up -d [--build]  |
-   |  CLOUDCODEX_    |   |  for where to run it)  |   +------------------+
-   |  VERSION)       |   |  - applies pending in  |
-   +-----------------+   |    lexicographic order |
-                         |  - records each in     |
-                         |    schema_migrations   |
-                         |  - init.sql is for new |
-                         |    installs only       |
-                         +------------------------+
+   +------------------+   +------------------+   +------------------------+   +----------------+
+   | 1. pull the new  |-->| 2. stop every    |-->| 3. run the migration   |-->| 4. start the   |
+   |    image, or     |   |    WRITER        |   |    in a ONE-OFF        |   |    new image   |
+   |    git pull main |   |    (the app, not |   |    container           |   |                |
+   |                  |   |     the database)|   |  - applies pending in  |   |  docker        |
+   |  docker compose  |   |                  |   |    lexicographic order |   |  compose up -d |
+   |  ... pull app    |   |  docker compose  |   |  - records each in     |   |  [--build]     |
+   +------------------+   |  ... stop app    |   |    schema_migrations   |   +----------------+
+                          +------------------+   |  - init.sql is for new |
+                                                 |    installs only       |
+                                                 +------------------------+
 ```
 
 **Rule:** `init.sql` and `migrations/*.sql` must stay in sync. Every
@@ -261,6 +261,43 @@ hand; each migration header says what that is.
 the runner would read "nothing applied" and try to replay every shipped delta
 against the schema those deltas are already folded into.
 
+### Stop every writer first
+
+**Order: pull, stop every writer, apply the migrations, start the new image.**
+Not the other way round. The runner does not stop anything for you.
+
+A migration that adds a `NOT NULL` column with no `DEFAULT` makes the schema
+incompatible with the application in *both* directions, and no compose file
+overrides `sql_mode`, so MySQL 8's default `STRICT_TRANS_TABLES` applies:
+
+- **Old code against the new schema** fails every insert that omits the column
+  (error 1364).
+- **New code against the old schema** fails every insert that names it
+  (error 1054).
+
+Either way the affected endpoints 500 for real users for as long as the window
+is open, and 500s are not always harmless: `2026-09-08-token-purpose.sql` would,
+mid-window, make `POST /api/forgot-password` fail for an address that exists
+while still answering 200 for one that does not, which is an account enumeration
+oracle the code goes out of its way to close.
+
+"Every writer", not "the app container": `docker-compose.yaml` (dev) defines a
+single service, `database`. There is **no app container in dev**: the app runs
+on the host under `npm run dev`, and that is the writer to stop. The
+single-process architecture already makes a restart a brief total outage, so a
+planned one costs nothing extra.
+
+Stopping the writers also closes a partial-failure race for any migration that
+deletes rows and then tightens the column: a row inserted in between makes the
+tightening `ALTER` fail (each migration header names the exact error it would
+raise), and MySQL implicitly commits DDL, so the table is left half-migrated.
+The runner records nothing for a file that failed, so `schema_migrations` will
+not paper over it, but nothing undoes the DDL either.
+
+**Assume no rollback.** Reverting the application after applying a migration
+lands you in old-code-against-new-schema. Getting back means undoing the DDL by
+hand; each migration header says what that is.
+
 ### Running the migrations
 
 **Where you run it depends on which compose file you deploy with**, because the
@@ -269,14 +306,38 @@ dependencies, and a reachable MySQL.
 
 | Deployment | Command | Why |
 |---|---|---|
-| `docker-compose-release.yml` (published image) | `docker compose -f docker-compose-release.yml exec app npm run migrate` | 3306 is **not** published to the host, so the runner has to be inside the compose network. The image already carries Node and the dependencies, and the app service mounts `./migrations` at `/migrations` for exactly this. |
-| `docker-compose-prod.yml` (built from source) | `docker compose -f docker-compose-prod.yml exec app npm run migrate` | Same shape. 3306 *is* published here, so `cd cloudcodex && npm run migrate` on the host also works if you have run `npm install` there. |
-| `docker-compose.yaml` (dev) | `cd cloudcodex && npm run migrate` | The app already runs on the host, MySQL publishes 3306, and `node_modules` is installed. |
+| `docker-compose-release.yml` (published image) | `docker compose -f docker-compose-release.yml run --rm app npm run migrate` | 3306 is **not** published to the host, so the runner has to be inside the compose network. `run` builds a one-off container from the **current** compose file and the **new** image, so it has both `scripts/migrate.js` and the `./migrations` mount, and it removes itself afterwards. |
+| `docker-compose-prod.yml` (built from source) | `docker compose -f docker-compose-prod.yml run --rm app npm run migrate` | Same shape, after `docker compose -f docker-compose-prod.yml build app`. 3306 *is* published here, so `cd cloudcodex && npm run migrate` on the host also works if you have run `npm install` there. |
+| `docker-compose.yaml` (dev) | `cd cloudcodex && npm run migrate` | Dev has **no app container**: the writer to stop is `npm run dev` on the host. MySQL publishes 3306 and `node_modules` is installed, so the runner just runs there. |
+
+**`run --rm`, not `exec`.** This matters most on the one upgrade every existing
+operator performs: the one that installs the runner. `exec` runs inside the
+container that is **already running**, which at that moment is the old one, and
+it fails twice over:
+
+- the running image is the previous `CLOUDCODEX_VERSION`, which predates
+  `scripts/migrate.js` and the `migrate` script, so `exec` gets
+  `npm error Missing script: "migrate"`;
+- and even with the new image pulled, the running container was **created**
+  before `./migrations:/migrations` existed in the compose file. `docker compose
+  pull` does not recreate a container, so `/migrations` is simply absent inside
+  it.
+
+`run` has neither problem, because it creates a container from the compose file
+and image you have right now, and it does not disturb the running app. From the
+second upgrade onward `exec` would work, which is exactly why the broken
+instruction reads fine.
 
 The runner reads `DB_HOST`, `DB_USER`, `DB_PASS` and `DB_NAME` from the
-environment, the same variables the app uses. Inside the app container `DB_HOST`
-is already `database`; on the host it comes from `.env`. There is no `DB_PORT`:
+environment, the same variables the app uses. Inside the container `DB_HOST` is
+already `database`; on the host it comes from `.env`. There is no `DB_PORT`:
 the runner uses 3306, matching `mysql_connect.js`.
+
+On an **SELinux** host (Fedora, RHEL, CentOS, Rocky) the `migrations/` bind
+mount carries `:ro,z` in both compose files. Without a relabel flag the
+directory keeps its host label and is unreadable inside the container, and the
+runner would fail on a directory that is plainly there. `z` (shared) rather than
+`Z` (private), because more than one container reads it.
 
 Earlier releases of this document told you to run
 `source /var/lib/mysql/migrations/<file>.sql` inside `make db-shell`. That never
@@ -296,20 +357,34 @@ schema came from, and **they are not interchangeable**:
 
 | Situation | Command | What it records |
 |---|---|---|
-| A brand-new install: `init.sql` has just built this database | `npm run migrate -- --adopt-fresh-install` | **Every** file in `migrations/`. `init.sql` is kept in sync with all of them, so the schema already has every change and none must be replayed. |
-| An install that predates the runner and was migrated by hand | `npm run migrate -- --baseline` | Only the **thirteen** files that shipped before the runner existed. Anything added since is genuinely missing from that database and stays **pending**. |
+| **Upgrading** a database that already existed before this release. This is the usual case, and it includes every install that predates the runner | `npm run migrate -- --baseline` | Only the **thirteen** files that shipped before the runner existed. Anything added since is genuinely missing from that database and stays **pending**, to be applied for real by the next ordinary run. |
+| A database `init.sql` **built minutes ago** and that has never been upgraded | `npm run migrate -- --adopt-fresh-install` | **Every** file in `migrations/`, without running any of them. Correct only because `init.sql` is kept in sync with all of them, so the schema already has every change. |
 
 Both record checksums and apply nothing. After either, `npm run migrate` is the
 only command you need, from then on.
+
+**If you are not sure, it is not a fresh install.** "Brand-new install" means the
+database, not the release: an install you are upgrading to a new version is an
+existing database, however new the image is.
 
 The thirteen are a closed list hardcoded in `scripts/migrate.js`
 (`LEGACY_BASELINE`), deliberately not a scan of the directory. If `--baseline`
 swept the directory, an operator upgrading across a release that adds a
 fourteenth migration would mark it applied without running it, and the app would
 then run against a schema that never got the change while the runner reported
-success. `--adopt-fresh-install` is the only mode that adopts everything, and it
-**refuses** once `schema_migrations` holds a single row, which is what keeps it
-away from a tracked install where it would swallow pending work.
+success.
+
+`--adopt-fresh-install` is the only mode that adopts everything, so it is the
+one that can do that damage on purpose, and it is guarded twice:
+
+- it **refuses** once `schema_migrations` holds a single row, which keeps it away
+  from a tracked install;
+- and for every file that postdates the thirteen, it **checks the live schema
+  first**, through `information_schema`, and refuses unless the table or column
+  that file adds is already there. Empty bookkeeping proves nothing (an install
+  that predates the runner has none **by definition**), so the guard is that
+  positive check rather than the absence of rows. It prints the exact list of
+  files it is adopting before it adopts them.
 
 The runner never bootstraps a schema, and refuses outright against a database
 with no `users` table. Run `init.sql` first (a fresh Docker volume does this for
@@ -319,16 +394,19 @@ So, end to end on a new published-image install:
 
 ```bash
 docker compose -f docker-compose-release.yml up -d        # init.sql builds the schema
-docker compose -f docker-compose-release.yml exec app npm run migrate -- --adopt-fresh-install
+docker compose -f docker-compose-release.yml run --rm app \
+   npm run migrate -- --adopt-fresh-install
 ```
 
-and on every upgrade after that, with the writers stopped as the section above
-requires:
+Nothing is applied there, so the app can stay up for that one. Every upgrade
+after that is the four-step order above:
 
 ```bash
-docker compose -f docker-compose-release.yml stop app
-docker compose -f docker-compose-release.yml run --rm app npm run migrate
-docker compose -f docker-compose-release.yml up -d app
+docker compose -f docker-compose-release.yml pull app       # 1. new image
+docker compose -f docker-compose-release.yml stop app       # 2. stop the writer
+docker compose -f docker-compose-release.yml run --rm app \
+   npm run migrate                                          # 3. migrate
+docker compose -f docker-compose-release.yml up -d          # 4. start it again
 ```
 
 `run --rm` rather than `exec` on the upgrade path: `exec` runs inside the
@@ -339,9 +417,17 @@ compose definition, so it has both.
 
 ### Concurrency
 
-The runner takes a MySQL advisory lock (`GET_LOCK('cloudcodex_migrate')`) for
-the duration of a run and waits up to 10 seconds for it. A second run started
-while the first is working refuses with a clear message instead of racing it.
+The runner takes a MySQL advisory lock for the duration of a run and waits up to
+10 seconds for it. A second run started while the first is working refuses with
+a clear message instead of racing it.
+
+The lock name is `cloudcodex_migrate:<database>`, built server-side with
+`GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`. `GET_LOCK` names are
+scoped to the MySQL **server**, not to a database, so an unqualified name would
+make two Cloud Codex schemas on one server serialise against each other while
+the loser was told the contention was against its own database. The runner also
+distinguishes MySQL's two negative answers: `0` is "someone else holds it" and
+`NULL` is "the attempt itself errored", and they get different messages.
 
 
 ### If a migration fails
@@ -353,6 +439,16 @@ database **partially migrated**, and the runner says exactly that rather than
 promising a rollback it cannot deliver. It stops at the failing file and does
 not continue to the next one. Recovery is to inspect the schema, or restore the
 dump you took before starting, and retry. This is why that dump is not optional.
+
+**One failure means the opposite of that.** If MySQL reports `ER_DUP_FIELDNAME`,
+`ER_TABLE_EXISTS_ERROR` or `ER_DUP_KEYNAME`, the object the file adds is already
+present and the run may have changed nothing at all. The usual cause is a
+starting point recorded with the wrong command: a database `init.sql` built
+contains every migration already, so `--baseline` leaves the newer files pending
+and the next ordinary run dies on their first `ALTER`, on an install minutes old
+with no dump to restore. The runner says so, and prints the `INSERT INTO
+schema_migrations` that records the file as applied by hand once you have
+confirmed the schema really has the change.
 
 
 ---

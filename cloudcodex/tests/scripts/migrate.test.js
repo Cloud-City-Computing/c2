@@ -10,13 +10,16 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   runMigrations,
   listMigrationFiles,
+  describeMigrationsDirError,
+  schemaClaims,
   sha256,
   parseArgs,
   resolveDbConfig,
@@ -25,6 +28,21 @@ import {
   main,
   MIGRATIONS_DIR,
 } from '../../scripts/migrate.js';
+
+/**
+ * A migration that postdates the pre-runner baseline, shaped like the real one
+ * (`2026-09-08-token-purpose.sql`): a long `--` header that quotes the DDL for
+ * reversing it, then the DDL itself. The quoted DROP in the header is the
+ * reason the claim reader strips comments before it parses anything.
+ */
+const NEWER_MIGRATION = `-- Typed purpose for password_reset_tokens.
+--
+-- THERE IS NO ROLLBACK. Getting back means dropping the column by hand:
+--   ALTER TABLE password_reset_tokens DROP COLUMN purpose;
+
+ALTER TABLE password_reset_tokens
+  ADD COLUMN purpose VARCHAR(32) NULL AFTER token;
+`;
 
 // Statements the runner issues itself. Everything else a call carries is a
 // migration file body streamed verbatim, which is how the assertions below
@@ -47,27 +65,39 @@ function makeDir(files) {
 /**
  * A fake query executor with the `c2_query` shape.
  *
- * `tables` decides what `tableExists` sees, `applied` seeds schema_migrations,
- * and `failOnBody` makes any migration body containing that substring throw,
- * which is how the partial-migration case is driven.
+ * `tables` decides what `tableExists` sees and `columns` (as `table.column`)
+ * what `columnExists` sees, `applied` seeds schema_migrations, and `failOnBody`
+ * makes any migration body containing that substring throw, which is how the
+ * partial-migration case is driven. `lockGranted` takes MySQL's three answers:
+ * true (1, held), false (0, timed out) and null (the attempt errored).
+ *
+ * START TRANSACTION / ROLLBACK really do snapshot and restore `rows`, so a test
+ * can assert on what bookkeeping SURVIVES a failure rather than only on the
+ * statements that were issued.
  */
 function fakeDb({
   tables = ['users', 'schema_migrations'],
+  columns = [],
   applied = {},
   failOnBody = null,
+  failCode = null,
   lockGranted = true,
+  database = 'c2',
 } = {}) {
   const calls = [];
   const rows = new Map(Object.entries(applied));
   // Mutable, so a CREATE TABLE really does make the table exist for the next
   // run: the baseline-then-migrate sequence an operator actually performs.
   const present = new Set(tables);
+  const presentColumns = new Set(columns);
+  let snapshot = null;
 
   const query = vi.fn(async (sql, params) => {
     calls.push({ sql, params });
 
     if (sql.startsWith('SELECT GET_LOCK')) {
-      return [{ locked: lockGranted ? 1 : 0 }];
+      const locked = lockGranted === null ? null : lockGranted ? 1 : 0;
+      return [{ locked, db: database }];
     }
     if (sql.startsWith('SELECT RELEASE_LOCK')) {
       return [{ released: 1 }];
@@ -75,6 +105,9 @@ function fakeDb({
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS schema_migrations')) {
       present.add('schema_migrations');
       return [];
+    }
+    if (sql.startsWith('SELECT 1 AS present FROM information_schema.columns')) {
+      return presentColumns.has(`${params[0]}.${params[1]}`) ? [{ present: 1 }] : [];
     }
     if (sql.startsWith('SELECT 1 AS present FROM information_schema')) {
       return present.has(params[0]) ? [{ present: 1 }] : [];
@@ -86,10 +119,28 @@ function fakeDb({
       rows.set(params[0], params[1]);
       return [];
     }
+    if (sql === 'START TRANSACTION') {
+      snapshot = new Map(rows);
+      return [];
+    }
+    if (sql === 'ROLLBACK') {
+      if (snapshot !== null) {
+        rows.clear();
+        for (const [filename, checksum] of snapshot) rows.set(filename, checksum);
+      }
+      snapshot = null;
+      return [];
+    }
+    if (sql === 'COMMIT') {
+      snapshot = null;
+      return [];
+    }
     if (RUNNER_SQL.test(sql)) return [];
 
     if (failOnBody !== null && sql.includes(failOnBody)) {
-      throw new Error('You have an error in your SQL syntax');
+      const err = new Error('You have an error in your SQL syntax');
+      if (failCode !== null) err.code = failCode;
+      throw err;
     }
     return [];
   });
@@ -132,6 +183,80 @@ describe('scripts/migrate', () => {
         'c_third.sql': '-- c',
       });
       expect(listMigrationFiles(dir)).toEqual(['a_first.sql', 'b_second.sql', 'c_third.sql']);
+    });
+  });
+
+  describe('describeMigrationsDirError', () => {
+    it('turns ENOENT into the compose-mount explanation', () => {
+      const explained = describeMigrationsDirError({ code: 'ENOENT' }, '/migrations');
+      expect(explained.message).toMatch(/No migrations directory at \/migrations/);
+      expect(explained.message).toMatch(/compose mounts it/);
+    });
+
+    // Measured on Fedora with SELinux enforcing: a bind mount with no relabel
+    // flag is unreadable inside the container, and the raw error is a bare
+    // `scandir` EACCES that reads as a file-permission problem on a directory
+    // whose permissions are fine.
+    it('names SELinux labeling for EACCES', () => {
+      const explained = describeMigrationsDirError({ code: 'EACCES' }, '/migrations');
+      expect(explained.message).toMatch(/permission denied/);
+      expect(explained.message).toMatch(/SELinux/);
+      expect(explained.message).toContain(':ro,z');
+    });
+
+    it('treats EPERM the same way', () => {
+      expect(describeMigrationsDirError({ code: 'EPERM' }, '/migrations').message).toMatch(
+        /SELinux/
+      );
+    });
+
+    it('has nothing to add for an errno it does not recognise', () => {
+      expect(describeMigrationsDirError({ code: 'EMFILE' }, '/migrations')).toBeNull();
+    });
+  });
+
+  describe('schemaClaims', () => {
+    it('reads the table a file creates', () => {
+      expect(schemaClaims('CREATE TABLE IF NOT EXISTS watches (id INT);')).toEqual([
+        { kind: 'table', table: 'watches' },
+      ]);
+    });
+
+    it('reads every column one ALTER adds, with or without the COLUMN keyword', () => {
+      const claims = schemaClaims(
+        'ALTER TABLE github_links ADD COLUMN base_sha CHAR(40), ADD last_pulled_at DATETIME;'
+      );
+      expect(claims).toEqual([
+        { kind: 'column', table: 'github_links', column: 'base_sha' },
+        { kind: 'column', table: 'github_links', column: 'last_pulled_at' },
+      ]);
+    });
+
+    it('ignores indexes, keys and constraints, which are not columns', () => {
+      const claims = schemaClaims(
+        `ALTER TABLE t ADD COLUMN purpose VARCHAR(32),
+           ADD INDEX idx_purpose (purpose),
+           ADD UNIQUE KEY uq_purpose (purpose),
+           ADD CONSTRAINT chk_purpose CHECK (purpose IN ('a'));`
+      );
+      expect(claims).toEqual([{ kind: 'column', table: 't', column: 'purpose' }]);
+    });
+
+    // The real migration headers quote the DDL that reverses them, so a reader
+    // that did not strip comments would "find" a column the file never adds.
+    it('ignores DDL quoted inside comments', () => {
+      expect(schemaClaims(NEWER_MIGRATION)).toEqual([
+        { kind: 'column', table: 'password_reset_tokens', column: 'purpose' },
+      ]);
+      expect(schemaClaims('-- CREATE TABLE ghost (id INT);\n/* ALTER TABLE t ADD c INT; */')).toEqual(
+        []
+      );
+    });
+
+    it('finds nothing in a file that only drops, modifies or deletes', () => {
+      expect(schemaClaims('ALTER TABLE squad_members DROP COLUMN can_read;')).toEqual([]);
+      expect(schemaClaims('ALTER TABLE logs MODIFY html_content MEDIUMTEXT;')).toEqual([]);
+      expect(schemaClaims('DELETE FROM password_reset_tokens;')).toEqual([]);
     });
   });
 
@@ -261,6 +386,22 @@ describe('scripts/migrate', () => {
       expect(appliedBodies(db.calls)).toEqual([]);
     });
 
+    // An operator upgrading reads "a brand-new install" as "a new install of
+    // the new version", and --adopt-fresh-install is the wrong door for them.
+    // The far more common case goes first, and the text says which is which.
+    it('leads with --baseline, the case an upgrading operator is actually in', async () => {
+      const dir = makeDir({ 'a.sql': '-- a' });
+      const db = fakeDb({ tables: ['users'] });
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      expect(err.message.indexOf('--baseline')).toBeLessThan(
+        err.message.indexOf('--adopt-fresh-install')
+      );
+      expect(err.message).toMatch(/UPGRADING a database that already existed/);
+      expect(err.message).toMatch(/BUILT MINUTES AGO/);
+    });
+
     it('applies normally once bookkeeping exists', async () => {
       const dir = makeDir({ 'a.sql': '-- a' });
       const db = fakeDb();
@@ -343,6 +484,27 @@ describe('scripts/migrate', () => {
       for (const filename of LEGACY_BASELINE) expect(onDisk).toContain(filename);
     });
 
+    // The mutant the test above does NOT kill:
+    //   LEGACY_BASELINE = Object.freeze(listMigrationFiles(MIGRATIONS_DIR))
+    // While migrations/ holds exactly these thirteen names, a directory sweep
+    // produces the identical array and every value assertion passes. It only
+    // starts failing once a fourteenth file lands, which is precisely the
+    // release where the closed list has to already be right. So assert the
+    // property itself, against the source: the manifest is written down, not
+    // swept up. This stays true, and stays a kill, whatever lands next.
+    it('is written down in the source, not swept out of the migrations directory', () => {
+      const source = readFileSync(
+        fileURLToPath(new URL('../../scripts/migrate.js', import.meta.url)),
+        'utf8'
+      );
+      const start = source.indexOf('export const LEGACY_BASELINE');
+      expect(start).toBeGreaterThan(-1);
+
+      const declaration = source.slice(start, source.indexOf(']);', start));
+      expect(declaration).not.toMatch(/listMigrationFiles|readdir|MIGRATIONS_DIR|\.filter|\.map/);
+      for (const filename of LEGACY_BASELINE) expect(declaration).toContain(`'${filename}'`);
+    });
+
     it('creates the bookkeeping table it is adopting into', async () => {
       const dir = makeDir({ 'add_watches.sql': '-- watches' });
       const db = fakeDb({ tables: ['users'] });
@@ -359,6 +521,44 @@ describe('scripts/migrate', () => {
       await expect(
         runMigrations({ query: db.query, dir, baseline: true, log })
       ).rejects.toThrow(/init\.sql/);
+    });
+
+    // Pure DML, so unlike the apply path a transaction here means what it says.
+    // Without it, a run interrupted partway leaves some rows and both adoption
+    // modes then refuse forever over bookkeeping nobody asked for.
+    it('records the whole baseline in a single transaction', async () => {
+      const dir = makeDir({ 'add_watches.sql': '-- watches', 'p0_github_sync.sql': '-- p0' });
+      const db = fakeDb({ tables: ['users'] });
+
+      await runMigrations({ query: db.query, dir, baseline: true, log });
+
+      const shape = db.calls
+        .map(c => c.sql)
+        .filter(sql =>
+          /^(START TRANSACTION|COMMIT|ROLLBACK|INSERT INTO schema_migrations)/.test(sql)
+        )
+        .map(sql => (sql.startsWith('INSERT') ? 'INSERT' : sql));
+      expect(shape).toEqual(['START TRANSACTION', 'INSERT', 'INSERT', 'COMMIT']);
+    });
+
+    it('rolls the whole baseline back when one insert fails', async () => {
+      const dir = makeDir({ 'add_watches.sql': '-- watches', 'p0_github_sync.sql': '-- p0' });
+      const db = fakeDb({ tables: ['users'] });
+      const underlying = db.query.getMockImplementation();
+      let inserts = 0;
+      db.query.mockImplementation(async (sql, params) => {
+        if (sql.startsWith('INSERT INTO schema_migrations') && ++inserts === 2) {
+          throw new Error('Lost connection to MySQL server during query');
+        }
+        return underlying(sql, params);
+      });
+
+      await expect(
+        runMigrations({ query: db.query, dir, baseline: true, log })
+      ).rejects.toThrow(/Lost connection/);
+
+      expect(db.calls.some(c => c.sql === 'ROLLBACK')).toBe(true);
+      expect(db.rows.size).toBe(0);
     });
 
     it('leaves an already-recorded checksum alone rather than rewriting it', async () => {
@@ -493,7 +693,21 @@ describe('scripts/migrate', () => {
   // ── --adopt-fresh-install ───────────────────────────────
 
   describe('--adopt-fresh-install', () => {
-    const freshInstall = () => fakeDb({ tables: ['users'] });
+    const TOKEN_PURPOSE = '2026-09-08-token-purpose.sql';
+
+    /** A database init.sql built: it already HAS the newer migration's column. */
+    const freshInstall = () =>
+      fakeDb({ tables: ['users'], columns: ['password_reset_tokens.purpose'] });
+
+    /**
+     * An install that predates the runner. Bookkeeping is empty here too, which
+     * is exactly why emptiness cannot be the guard: what tells the two apart is
+     * that this one is MISSING what the newer migration adds.
+     */
+    const legacyInstall = () => fakeDb({ tables: ['users'], columns: [] });
+
+    const bothKinds = () =>
+      makeDir({ 'add_watches.sql': '-- watches', [TOKEN_PURPOSE]: NEWER_MIGRATION });
 
     // The dual of the manifest regression test. init.sql is kept in sync with
     // every migration file, so a database it just built already has all of
@@ -502,18 +716,12 @@ describe('scripts/migrate', () => {
     // fails with a duplicate-column error, on a brand-new install, with no
     // dump to restore.
     it('adopts files that postdate the legacy baseline too', async () => {
-      const dir = makeDir({
-        'add_watches.sql': '-- watches',
-        '2026-09-08-add-token-purpose.sql': '-- ALTER TABLE password_reset_tokens ...',
-      });
+      const dir = bothKinds();
       const db = freshInstall();
 
       const result = await runMigrations({ query: db.query, dir, adoptFreshInstall: true, log });
 
-      expect(result.baselined).toEqual([
-        '2026-09-08-add-token-purpose.sql',
-        'add_watches.sql',
-      ]);
+      expect(result.baselined).toEqual([TOKEN_PURPOSE, 'add_watches.sql']);
       expect(result.applied).toEqual([]);
       expect(result.pending).toEqual([]);
       expect(appliedBodies(db.calls)).toEqual([]);
@@ -532,6 +740,179 @@ describe('scripts/migrate', () => {
 
       expect(db.rows.get('add_watches.sql')).toBe(sha256('-- watches'));
     });
+
+    // ── the positive check ────────────────────────────────
+
+    // THE defect this guard exists for. An install that predates the runner has
+    // zero bookkeeping rows by definition, so "schema_migrations is empty" is
+    // not evidence of a fresh install, and it is the population that reaches
+    // for an adoption flag in the first place. Without the schema check every
+    // file here is recorded as applied, nothing is executed, the run exits 0,
+    // and the column is never created: every later run then reports "no pending
+    // migrations" while the app 500s on the missing column, forever.
+    it('refuses when a file that postdates the baseline is not in the schema yet', async () => {
+      const dir = bothKinds();
+      const db = legacyInstall();
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(/does not contain what 2026-09-08-token-purpose\.sql/);
+    });
+
+    it('names the missing column and sends the operator to --baseline', async () => {
+      const dir = bothKinds();
+      const db = legacyInstall();
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(
+        /missing: password_reset_tokens\.purpose[\s\S]*npm run migrate -- --baseline/
+      );
+    });
+
+    it('records NOTHING when one newer file fails the check', async () => {
+      const dir = bothKinds();
+      const db = legacyInstall();
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow();
+
+      expect(db.rows.size).toBe(0);
+      expect(db.calls.some(c => c.sql.startsWith('INSERT INTO schema_migrations'))).toBe(false);
+
+      // ...and the migration is still pending, which is the point: an ordinary
+      // run after --baseline applies it for real.
+      const after = await runMigrations({ query: db.query, dir, baseline: true, log });
+      expect(after.pending).toEqual([TOKEN_PURPOSE]);
+    });
+
+    it('refuses a newer file whose changes it cannot read out of the SQL', async () => {
+      const dir = makeDir({ 'zz_data_only.sql': "DELETE FROM logs WHERE title = 'x';" });
+      const db = freshInstall();
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(/declares no\s+CREATE TABLE or ADD COLUMN to check/);
+    });
+
+    it('gives the by-hand INSERT, with the real checksum, for a file it cannot check', async () => {
+      const body = "DELETE FROM logs WHERE title = 'x';";
+      const dir = makeDir({ 'zz_data_only.sql': body });
+      const db = freshInstall();
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(new RegExp(`VALUES \\('zz_data_only\\.sql', '${sha256(body)}', 0\\)`));
+    });
+
+    // The pre-runner files are exempt on purpose: adopting exactly those is
+    // what --baseline does anyway, and two of them (a DROP and a MODIFY) add
+    // nothing an ADD-shaped check could look for.
+    it('does not demand the check for the pre-runner files themselves', async () => {
+      const dir = makeDir({
+        'drop_squad_permissions.sql': 'ALTER TABLE squad_members DROP COLUMN can_read;',
+        'widen_log_content.sql': 'ALTER TABLE logs MODIFY html_content MEDIUMTEXT;',
+      });
+      const db = fakeDb({ tables: ['users'], columns: [] });
+
+      const lines = [];
+      const result = await runMigrations({
+        query: db.query,
+        dir,
+        adoptFreshInstall: true,
+        log: message => lines.push(message),
+      });
+
+      expect(result.baselined).toEqual([
+        'drop_squad_permissions.sql',
+        'widen_log_content.sql',
+      ]);
+      expect(lines.join('\n')).toContain('Every one of them is a pre-runner file');
+    });
+
+    it('prints every file it is about to adopt, before adopting any of it', async () => {
+      const dir = bothKinds();
+      const db = freshInstall();
+      const lines = [];
+      const spy = message => lines.push({ message, callsSoFar: db.calls.length });
+
+      await runMigrations({ query: db.query, dir, adoptFreshInstall: true, log: spy });
+
+      const firstInsert = db.calls.findIndex(c =>
+        c.sql.startsWith('INSERT INTO schema_migrations')
+      );
+      expect(firstInsert).toBeGreaterThan(0);
+
+      for (const filename of [TOKEN_PURPOSE, 'add_watches.sql']) {
+        const printed = lines.find(
+          line => line.message.includes(filename) && line.callsSoFar <= firstInsert
+        );
+        expect(printed, `${filename} was not printed before the first INSERT`).toBeDefined();
+      }
+    });
+
+    it('does not claim init.sql contains files it never checked', async () => {
+      const dir = bothKinds();
+      const db = freshInstall();
+      const lines = [];
+
+      await runMigrations({
+        query: db.query,
+        dir,
+        adoptFreshInstall: true,
+        log: message => lines.push(message),
+      });
+
+      const summary = lines.join('\n');
+      expect(summary).toContain('1 of them postdate the pre-runner baseline');
+      expect(summary).toMatch(/checked\s+against information_schema/);
+    });
+
+    // ── one transaction ───────────────────────────────────
+
+    it('records the whole adoption in a single transaction', async () => {
+      const dir = bothKinds();
+      const db = freshInstall();
+
+      await runMigrations({ query: db.query, dir, adoptFreshInstall: true, log });
+
+      const shape = db.calls
+        .map(c => c.sql)
+        .filter(sql => /^(START TRANSACTION|COMMIT|ROLLBACK|INSERT INTO schema_migrations)/.test(sql))
+        .map(sql => (sql.startsWith('INSERT') ? 'INSERT' : sql));
+      expect(shape).toEqual(['START TRANSACTION', 'INSERT', 'INSERT', 'COMMIT']);
+    });
+
+    // Measured before the fix: killing the run partway left the rows it had
+    // already inserted, and BOTH adoption modes then refused forever, over
+    // bookkeeping the operator never asked for.
+    it('leaves no rows behind when an insert dies partway', async () => {
+      const dir = makeDir({
+        'add_watches.sql': '-- watches',
+        'p0_github_sync.sql': '-- p0',
+        'p1_github_embeds.sql': '-- p1',
+      });
+      const db = fakeDb({ tables: ['users'] });
+      const underlying = db.query.getMockImplementation();
+      let inserts = 0;
+      db.query.mockImplementation(async (sql, params) => {
+        if (sql.startsWith('INSERT INTO schema_migrations') && ++inserts === 2) {
+          throw new Error('Lost connection to MySQL server during query');
+        }
+        return underlying(sql, params);
+      });
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(/Lost connection/);
+
+      expect(db.calls.some(c => c.sql === 'ROLLBACK')).toBe(true);
+      expect(db.calls.some(c => c.sql === 'COMMIT')).toBe(false);
+      expect(db.rows.size).toBe(0);
+    });
+
+    // ── the guards that were already there ────────────────
 
     // The guard that keeps this flag away from the install it would wreck.
     it('refuses once schema_migrations already records anything', async () => {
@@ -585,6 +966,44 @@ describe('scripts/migrate', () => {
       expect(appliedBodies(db.calls)).toEqual([]);
     });
 
+    // GET_LOCK names are instance-wide in MySQL 8. A bare 'cloudcodex_migrate'
+    // makes two Cloud Codex schemas on one server serialise against each other
+    // while the loser is told the contention is against its own database.
+    it('scopes the lock name to the database, not the whole MySQL server', async () => {
+      const dir = makeDir({ 'a.sql': '-- a' });
+      const db = fakeDb();
+
+      await runMigrations({ query: db.query, dir, log });
+
+      const get = db.calls.find(c => c.sql.startsWith('SELECT GET_LOCK'));
+      const release = db.calls.find(c => c.sql.startsWith('SELECT RELEASE_LOCK'));
+      expect(get.sql).toContain("CONCAT('cloudcodex_migrate:', DATABASE())");
+      expect(release.sql).toContain("CONCAT('cloudcodex_migrate:', DATABASE())");
+    });
+
+    it('names the database it is contending for when the wait times out', async () => {
+      const dir = makeDir({ 'a.sql': '-- a' });
+      const db = fakeDb({ lockGranted: false, database: 'codex_two' });
+
+      await expect(runMigrations({ query: db.query, dir, log })).rejects.toThrow(
+        /lock 'cloudcodex_migrate:codex_two'[\s\S]*`codex_two` database/
+      );
+    });
+
+    // MySQL answers 0 for "someone holds it" and NULL for "the attempt itself
+    // errored". Reporting the second as the first sends the operator looking
+    // for a second run that does not exist.
+    it('tells NULL apart from a timeout', async () => {
+      const dir = makeDir({ 'a.sql': '-- a' });
+      const db = fakeDb({ lockGranted: null });
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      expect(err.message).toMatch(/returned NULL/);
+      expect(err.message).not.toMatch(/Another migration run is in progress/);
+      expect(appliedBodies(db.calls)).toEqual([]);
+    });
+
     it('releases the lock even when a migration fails', async () => {
       const dir = makeDir({ 'a.sql': '-- boom' });
       const db = fakeDb({ failOnBody: 'boom' });
@@ -631,6 +1050,45 @@ describe('scripts/migrate', () => {
       expect(db.calls.some(c => c.sql === 'ROLLBACK')).toBe(true);
       expect(db.calls.some(c => c.sql === 'COMMIT')).toBe(false);
       expect(db.rows.has('a.sql')).toBe(false);
+    });
+
+    // Measured: a fresh install baselined with the wrong command then dies here
+    // on its first ALTER, and the old message told the operator the database
+    // "may be partially migrated" and to restore a dump. Nothing had run, and a
+    // five-minute-old install has no dump. It failed identically forever.
+    it('explains a duplicate-object error instead of sending the operator to a dump', async () => {
+      const body = 'ALTER TABLE password_reset_tokens ADD COLUMN purpose VARCHAR(32);';
+      const dir = makeDir({ 'zz_newer.sql': body });
+      const db = fakeDb({ failOnBody: 'purpose', failCode: 'ER_DUP_FIELDNAME' });
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      expect(err.message).toContain('ER_DUP_FIELDNAME');
+      expect(err.message).toMatch(/already there/);
+      expect(err.message).toMatch(/needs `npm run migrate -- --adopt-fresh-install`, not/);
+      expect(err.message).toContain("VALUES ('zz_newer.sql'");
+      expect(err.message).toContain(sha256(body));
+    });
+
+    it('covers table-exists and duplicate-key the same way', async () => {
+      for (const code of ['ER_TABLE_EXISTS_ERROR', 'ER_DUP_KEYNAME']) {
+        const dir = makeDir({ 'zz_newer.sql': 'CREATE TABLE watches (id INT);' });
+        const db = fakeDb({ failOnBody: 'watches', failCode: code });
+
+        const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+        expect(err.message).toContain(code);
+        expect(err.message).toMatch(/--adopt-fresh-install/);
+      }
+    });
+
+    it('says none of that for an ordinary SQL error', async () => {
+      const dir = makeDir({ 'a.sql': '-- boom' });
+      const db = fakeDb({ failOnBody: 'boom' });
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      expect(err.message).toMatch(/may be partially migrated/);
+      expect(err.message).not.toMatch(/--adopt-fresh-install/);
     });
 
     it('keeps the original error as the cause', async () => {

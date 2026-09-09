@@ -44,9 +44,27 @@
  * `--adopt-fresh-install`, which records EVERY file on disk. That is correct
  * there and only there: `init.sql` is kept in sync with every migration file
  * (the dual-tracking rule), so a database it has just built already has all of
- * them, and applying any would be a duplicate-column error. The flag refuses
- * once schema_migrations holds a row, which is what keeps it away from a
- * tracked install where it would swallow genuinely-pending work.
+ * them, and applying any would be a duplicate-column error.
+ *
+ * That flag is the most dangerous thing in this file, because the population
+ * that reaches for it (an install with no bookkeeping) includes both the fresh
+ * database it is for and the decade-old one it would wreck, and both look
+ * identical from the bookkeeping side: zero rows. "No rows yet" is therefore
+ * not evidence of anything, and emptiness of `logs`/`workspaces` is not either,
+ * since `bootstrapInstance()` seeds a workspace, squad, archive and document on
+ * the first admin boot. So the guard is a POSITIVE check instead: for every
+ * file that postdates LEGACY_BASELINE, the runner asks information_schema
+ * whether the table or column that file adds is ALREADY there, and refuses
+ * unless it is. That is exactly the claim `--adopt-fresh-install` makes on the
+ * operator's behalf, checked rather than assumed, and it is what separates the
+ * safe case (the change is present, adopting it is bookkeeping) from the
+ * catastrophic one (the change is absent, adopting it buries the migration
+ * forever). The pre-runner files are exempt from the check because adopting
+ * exactly those is what `--baseline` does anyway, and because they include a
+ * DROP and a MODIFY that no ADD-shaped check could read.
+ *
+ * The flag also refuses once schema_migrations holds a row, which keeps it away
+ * from a tracked install where it would swallow genuinely-pending work.
  *
  * `schema_migrations` is runner-owned bookkeeping and is deliberately NOT in
  * `init.sql`. If a fresh install arrived with the table already present and
@@ -111,6 +129,51 @@ export function sha256(text) {
 }
 
 /**
+ * The readable error behind a failure to read the migrations directory, or
+ * null when the errno has no story worth telling.
+ *
+ * Split out from `listMigrationFiles` so both branches are testable without
+ * arranging a real unreadable directory, which depends on the uid the suite
+ * happens to run as.
+ * @param { Error & { code?: String } } err
+ * @param { String } dir
+ * @returns { Error | null }
+ */
+export function describeMigrationsDirError(err, dir) {
+  // Both of these happen inside the published app image, and neither is what
+  // the raw errno suggests. The image is built from the cloudcodex/ context
+  // (Dockerfile `COPY . .`), so scripts/ ships but the repo-root migrations/
+  // does not; compose mounts it back in.
+  if (err.code === 'ENOENT') {
+    return new Error(
+      `No migrations directory at ${dir}.\n` +
+        'The runner reads the repo-root migrations/ directory. Inside the app container that\n' +
+        'path exists only because compose mounts it: see the app service in\n' +
+        'docker-compose-release.yml, and "Upgrades" in docs/deployment.md.'
+    );
+  }
+
+  // The mount exists and is unreadable, which on an SELinux host is the default
+  // outcome for a bind mount with no relabel flag: the directory keeps its host
+  // label and the container process cannot read it. A bare EACCES out of
+  // scandir sends an operator hunting file permissions that are already fine.
+  if (err.code === 'EACCES' || err.code === 'EPERM') {
+    return new Error(
+      `Cannot read the migrations directory at ${dir}: ${err.code}, permission denied.\n` +
+        'On a host running SELinux (Fedora, RHEL, CentOS, Rocky) a bind mount is unreadable\n' +
+        'inside the container unless the mount carries a relabel flag. The compose files ship\n' +
+        '`./migrations:/migrations:ro,z` for exactly this. A container created before that\n' +
+        'line was added keeps its old mount, and `docker compose pull` does not recreate it,\n' +
+        'so run the migration through `docker compose ... run --rm app npm run migrate`,\n' +
+        'which builds a one-off container from the current compose file.\n' +
+        'If SELinux is not in play, check the ownership and mode of the directory itself.'
+    );
+  }
+
+  return null;
+}
+
+/**
  * Every `.sql` file in `dir`, sorted lexicographically. Lexicographic order IS
  * the migration order.
  * @param { String } dir
@@ -121,18 +184,7 @@ export function listMigrationFiles(dir) {
   try {
     entries = readdirSync(dir);
   } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-    // Worth naming explicitly, because the one place this happens is inside
-    // the published app image: the image is built from the cloudcodex/ context
-    // (Dockerfile `COPY . .`), so scripts/ ships but the repo-root migrations/
-    // does not. Compose mounts it back in; a bare ENOENT would send an operator
-    // hunting for the wrong problem.
-    throw new Error(
-      `No migrations directory at ${dir}.\n` +
-        'The runner reads the repo-root migrations/ directory. Inside the app container that\n' +
-        'path exists only because compose mounts it: see the app service in\n' +
-        'docker-compose-release.yml, and "Upgrades" in docs/deployment.md.'
-    );
+    throw describeMigrationsDirError(err, dir) ?? err;
   }
 
   return entries
@@ -151,6 +203,22 @@ export async function tableExists(query, tableName) {
     `SELECT 1 AS present FROM information_schema.tables
      WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1`,
     [tableName]
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Whether a column exists on a table in the connected database.
+ * @param { (sql: string, params?: Array) => Promise<Array> } query
+ * @param { String } tableName
+ * @param { String } columnName
+ * @returns { Promise<Boolean> }
+ */
+export async function columnExists(query, tableName, columnName) {
+  const rows = await query(
+    `SELECT 1 AS present FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1`,
+    [tableName, columnName]
   );
   return rows.length > 0;
 }
@@ -183,8 +251,19 @@ export async function readApplied(query) {
   return new Map(rows.map(row => [row.filename, row.checksum]));
 }
 
-/** MySQL advisory lock guarding the apply phase, and how long to wait for it. */
-const LOCK_NAME = 'cloudcodex_migrate';
+/**
+ * MySQL advisory lock guarding the apply phase, and how long to wait for it.
+ *
+ * `GET_LOCK` names live in one namespace per SERVER, not per database, so the
+ * name has to carry the database or two Cloud Codex schemas on the same MySQL
+ * instance serialise against each other for no reason, and the loser is told a
+ * run is in progress against a database nothing is touching. `DATABASE()` is
+ * evaluated server-side rather than interpolated from config, so the name
+ * matches whatever schema this connection is actually pointed at. The prefix is
+ * a source constant, never user input.
+ */
+const LOCK_PREFIX = 'cloudcodex_migrate';
+const LOCK_NAME_SQL = `CONCAT('${LOCK_PREFIX}:', DATABASE())`;
 const LOCK_TIMEOUT_SECONDS = 10;
 
 /**
@@ -196,17 +275,39 @@ const LOCK_TIMEOUT_SECONDS = 10;
  * migrated and to restore a dump. The database is fine; the misleading remedy
  * is the harm. `GET_LOCK` is connection-scoped, which is exactly right here:
  * the CLI holds one dedicated connection for the whole run.
+ *
+ * NULL and 0 are different answers and get different messages: MySQL returns 0
+ * when the wait timed out (someone else holds it) and NULL when the attempt
+ * errored, for example because this connection was killed while it waited.
+ * Reporting an errored attempt as contention sends the operator to look for a
+ * second run that does not exist.
  * @param { (sql: string, params?: Array) => Promise<Array> } query
  * @param { Function } fn
  */
 export async function withMigrationLock(query, fn) {
-  const [row] = await query('SELECT GET_LOCK(?, ?) AS locked', [LOCK_NAME, LOCK_TIMEOUT_SECONDS]);
+  const [row] = await query(`SELECT GET_LOCK(${LOCK_NAME_SQL}, ?) AS locked, DATABASE() AS db`, [
+    LOCK_TIMEOUT_SECONDS,
+  ]);
 
-  if (!row || row.locked !== 1) {
+  const database = row && row.db ? row.db : '<unknown>';
+  const lockName = `${LOCK_PREFIX}:${database}`;
+
+  if (!row || row.locked === null || row.locked === undefined) {
     throw new Error(
-      `Could not acquire the migration lock '${LOCK_NAME}' within ${LOCK_TIMEOUT_SECONDS}s.\n` +
-        'Another migration run is in progress against this database. Wait for it to finish\n' +
-        'and check its output before running again.'
+      `GET_LOCK('${lockName}') returned NULL, so the lock request errored rather than timing\n` +
+        'out. MySQL answers NULL when the attempt itself fails, for example when this\n' +
+        'connection is killed while it waits. Nothing has been migrated. Check the MySQL\n' +
+        'error log and the connection, then run again.'
+    );
+  }
+
+  if (row.locked !== 1) {
+    throw new Error(
+      `Could not acquire the migration lock '${lockName}' within ${LOCK_TIMEOUT_SECONDS}s.\n` +
+        `Another migration run is in progress against the \`${database}\` database. Wait for it\n` +
+        'to finish and check its output before running again.\n' +
+        'The lock name carries the database, so runs against a DIFFERENT Cloud Codex schema on\n' +
+        'the same MySQL server do not contend with this one.'
     );
   }
 
@@ -214,12 +315,157 @@ export async function withMigrationLock(query, fn) {
     return await fn();
   } finally {
     try {
-      await query('SELECT RELEASE_LOCK(?) AS released', [LOCK_NAME]);
+      await query(`SELECT RELEASE_LOCK(${LOCK_NAME_SQL}) AS released`);
     } catch (err) {
       // Never let this replace the real error. The lock is connection-scoped,
       // so it dies with the connection anyway.
       console.error(`[${new Date().toISOString()}] migrate RELEASE_LOCK failed:`, err);
     }
+  }
+}
+
+/**
+ * SQL comments, stripped before anything is parsed out of a migration body.
+ * Every file here opens with a long `--` header, and those headers quote the
+ * DDL they are describing (`2026-09-08-token-purpose.sql` spells out the
+ * ALTER that reverses it), so parsing an uncommented body is not optional.
+ */
+const SQL_COMMENTS = /\/\*[\s\S]*?\*\/|--[^\n]*|#[^\n]*/g;
+
+/** ADD clauses that name something other than a column. */
+const NOT_A_COLUMN = /^(COLUMN|INDEX|KEY|UNIQUE|PRIMARY|FOREIGN|FULLTEXT|SPATIAL|CONSTRAINT|CHECK|PARTITION)$/i;
+
+/**
+ * The tables and columns a migration file claims to create, read straight out
+ * of its SQL.
+ *
+ * Deliberately narrow: `CREATE TABLE x` and `ALTER TABLE x ADD [COLUMN] y`, and
+ * nothing else. This is not a SQL parser and must never grow into one. It backs
+ * exactly one question, asked only of files that postdate LEGACY_BASELINE
+ * before `--adopt-fresh-install` records them: does this database ALREADY have
+ * what this file adds? A file it cannot read anything out of yields an empty
+ * list, and the caller refuses rather than adopting on faith.
+ * @param { String } sql - a migration file body
+ * @returns { Array<{ kind: 'table'|'column', table: String, column?: String }> }
+ */
+export function schemaClaims(sql) {
+  const claims = [];
+
+  for (const statement of sql.replace(SQL_COMMENTS, ' ').split(';')) {
+    const created = /^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([A-Za-z0-9_$]+)`?/i.exec(
+      statement
+    );
+    if (created) {
+      claims.push({ kind: 'table', table: created[1] });
+      continue;
+    }
+
+    const altered = /^\s*ALTER\s+TABLE\s+`?([A-Za-z0-9_$]+)`?/i.exec(statement);
+    if (!altered) continue;
+
+    const adds = statement.matchAll(/\bADD\s+(?:COLUMN\s+)?`?([A-Za-z0-9_$]+)`?/gi);
+    for (const add of adds) {
+      if (NOT_A_COLUMN.test(add[1])) continue;
+      claims.push({ kind: 'column', table: altered[1], column: add[1] });
+    }
+  }
+
+  return claims;
+}
+
+/**
+ * Prove, against information_schema, that this database already contains what
+ * `filename` adds, and return a human list of the evidence.
+ *
+ * Throws with the operator's next command when it cannot. This is the positive
+ * signal `--adopt-fresh-install` rests on: the flag asserts "init.sql already
+ * built all of this", and an install that predates the change cannot produce
+ * the column to back the assertion.
+ * @param { (sql: string, params?: Array) => Promise<Array> } query
+ * @param { String } filename
+ * @param { String } contents
+ * @returns { Promise<String> } the objects found, for the adoption log
+ */
+export async function assertSchemaAlreadyHas(query, filename, contents) {
+  const claims = schemaClaims(contents);
+
+  if (claims.length === 0) {
+    throw new Error(
+      `Refusing to adopt a fresh install: ${filename} postdates the pre-runner baseline and\n` +
+        'the runner cannot tell from it whether this database already has its changes. It\n' +
+        'checks every such file against information_schema first, and this one declares no\n' +
+        'CREATE TABLE or ADD COLUMN to check.\n\n' +
+        'Look at the file and at the schema. If the change is already there, record it by hand:\n\n' +
+        '    INSERT INTO schema_migrations (filename, checksum, applied_ms)\n' +
+        `    VALUES ('${filename}', '${sha256(contents)}', 0);\n\n` +
+        'If it is not there, this is not a fresh install. Run `npm run migrate -- --baseline`\n' +
+        'and then `npm run migrate`, which applies this file for real.'
+    );
+  }
+
+  const present = [];
+  const missing = [];
+
+  for (const claim of claims) {
+    const label = claim.kind === 'table' ? claim.table : `${claim.table}.${claim.column}`;
+    const found =
+      claim.kind === 'table'
+        ? await tableExists(query, claim.table)
+        : await columnExists(query, claim.table, claim.column);
+    (found ? present : missing).push(label);
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Refusing to adopt a fresh install: this database does not contain what ${filename}\n` +
+        `adds (missing: ${missing.join(', ')}), so init.sql did not build it. It is an\n` +
+        'existing install that never got this migration.\n\n' +
+        '--adopt-fresh-install records every file in migrations/ as applied WITHOUT running\n' +
+        'any of it. Doing that here would bury this migration permanently: every later run\n' +
+        'would report "no pending migrations" while the column stayed missing and the app\n' +
+        'kept failing on it.\n\n' +
+        'Record the pre-runner baseline instead, then apply what is genuinely pending, from\n' +
+        'cloudcodex/:\n\n' +
+        '    npm run migrate -- --baseline\n' +
+        '    npm run migrate'
+    );
+  }
+
+  return present.join(', ');
+}
+
+/**
+ * Record adoption rows in ONE transaction.
+ *
+ * Adoption is pure DML, so unlike the apply path a transaction here means what
+ * it says: MySQL has no DDL to implicitly commit. Without it, a run that dies
+ * partway leaves some rows behind, and both adoption modes then refuse forever
+ * ("already records N migration(s)") over bookkeeping the operator never asked
+ * for and is not told how to remove.
+ * @param { (sql: string, params?: Array) => Promise<Array> } query
+ * @param { Array<[String, String]> } rows - [filename, checksum] pairs
+ */
+export async function recordAdoptions(query, rows) {
+  if (rows.length === 0) return;
+
+  await query('START TRANSACTION');
+  try {
+    for (const [filename, checksum] of rows) {
+      await query(
+        `INSERT INTO schema_migrations (filename, checksum, applied_ms) VALUES (?, ?, ?)`,
+        [filename, checksum, 0]
+      );
+    }
+    await query('COMMIT');
+  } catch (err) {
+    try {
+      await query('ROLLBACK');
+    } catch (rollbackErr) {
+      // As in the apply path: never let a failing rollback replace the error
+      // that caused it.
+      console.error(`[${new Date().toISOString()}] migrate ROLLBACK failed:`, rollbackErr);
+    }
+    throw err;
   }
 }
 
@@ -299,6 +545,17 @@ export async function runMigrations({
 }
 
 /**
+ * MySQL errors that mean "the schema already has this", rather than "the
+ * migration broke": duplicate column (1060), table already exists (1050),
+ * duplicate index name (1061).
+ */
+const SCHEMA_ALREADY_HAS_CODES = new Set([
+  'ER_DUP_FIELDNAME',
+  'ER_TABLE_EXISTS_ERROR',
+  'ER_DUP_KEYNAME',
+]);
+
+/**
  * The body of a run, holding the advisory lock.
  * @param { Object } options - as `runMigrations`, with every default resolved
  * @returns { Promise<{ applied: String[], baselined: String[], pending: String[] }> }
@@ -324,19 +581,45 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
       );
     }
 
-    const baselined = [];
+    // The positive check. Zero bookkeeping rows is not evidence of a fresh
+    // install: an install that predates the runner has zero rows BY
+    // DEFINITION, which is the whole reason it is reaching for an adoption
+    // flag. So every file that postdates the pre-runner baseline has to be
+    // shown to be in the schema ALREADY before it is recorded as applied.
+    const checksums = new Map();
+    const evidence = new Map();
     for (const filename of files) {
       const contents = readFileSync(path.join(dir, filename), 'utf8');
-      await query(
-        `INSERT INTO schema_migrations (filename, checksum, applied_ms) VALUES (?, ?, ?)`,
-        [filename, sha256(contents), 0]
-      );
-      baselined.push(filename);
+      checksums.set(filename, sha256(contents));
+      if (LEGACY_BASELINE.includes(filename)) continue;
+      evidence.set(filename, await assertSchemaAlreadyHas(query, filename, contents));
     }
 
+    // Print what is about to be recorded, before recording it. An operator who
+    // reaches for this flag by mistake sees the names of the migrations it is
+    // about to declare applied.
+    log(`adopting ${files.length} migration file(s) as already applied, and applying none:`);
+    for (const filename of files) {
+      log(
+        evidence.has(filename)
+          ? `  ${filename}  (postdates the baseline; already in the schema: ${evidence.get(filename)})`
+          : `  ${filename}`
+      );
+    }
+
+    await recordAdoptions(
+      query,
+      files.map(filename => [filename, checksums.get(filename)])
+    );
+
+    const baselined = [...files];
     log(
-      `adopted ${baselined.length} migration file(s) as already applied, because init.sql ` +
-        'already contains every one of them. Applied none.'
+      `adopted ${baselined.length} migration file(s) as already applied, and applied none. ` +
+        (evidence.size === 0
+          ? 'Every one of them is a pre-runner file that --baseline records too.'
+          : `${evidence.size} of them postdate the pre-runner baseline, and each was checked ` +
+            'against information_schema before it was recorded; the rest are the pre-runner ' +
+            'set that --baseline records too.')
     );
     return { applied: [], baselined, pending: [] };
   }
@@ -344,7 +627,7 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
   if (baseline) {
     await ensureBookkeeping(query);
     const alreadyRecorded = await readApplied(query);
-    const baselined = [];
+    const rows = [];
 
     // Only the closed LEGACY_BASELINE list is adopted, never "whatever .sql
     // files happen to be in the directory". See the constant for why.
@@ -355,12 +638,13 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
       if (alreadyRecorded.has(filename)) continue;
 
       const contents = readFileSync(path.join(dir, filename), 'utf8');
-      await query(
-        `INSERT INTO schema_migrations (filename, checksum, applied_ms) VALUES (?, ?, ?)`,
-        [filename, sha256(contents), 0]
-      );
-      baselined.push(filename);
+      rows.push([filename, sha256(contents)]);
     }
+
+    // One transaction, so an interrupted baseline leaves nothing behind rather
+    // than a partial set that makes every later run refuse.
+    await recordAdoptions(query, rows);
+    const baselined = rows.map(([filename]) => filename);
 
     const pending = files.filter(f => !LEGACY_BASELINE.includes(f) && !alreadyRecorded.has(f));
 
@@ -383,16 +667,21 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
     throw new Error(
       'Refusing to run: this install has a schema but no `schema_migrations` table, so the\n' +
         'runner cannot tell which of the existing migrations it has already had.\n' +
-        'Record a starting point first, from cloudcodex/. Which one depends on where the\n' +
-        'schema came from:\n\n' +
-        '  init.sql just built this database (a brand-new install):\n' +
-        '      npm run migrate -- --adopt-fresh-install\n' +
-        '    init.sql already contains every migration in migrations/, so all of them are\n' +
-        '    recorded as applied and none is run.\n\n' +
-        '  this install predates the runner and was migrated by hand:\n' +
+        'Record a starting point once, from cloudcodex/. Which command depends on where this\n' +
+        'schema came from, and they are NOT interchangeable:\n\n' +
+        '  UPGRADING a database that already existed before this release. This is the usual\n' +
+        '  case, and it includes every install that predates the runner:\n' +
         '      npm run migrate -- --baseline\n' +
-        '    records only the migrations that shipped before the runner existed. Anything\n' +
-        '    added since stays pending and is applied by the next ordinary run.'
+        '    Records only the migrations that shipped before the runner existed. Anything\n' +
+        '    added since stays pending and is applied, for real, by the next ordinary run.\n\n' +
+        '  A database init.sql BUILT MINUTES AGO and that has never been upgraded:\n' +
+        '      npm run migrate -- --adopt-fresh-install\n' +
+        '    Records EVERY file in migrations/ without running any of them, which is correct\n' +
+        '    only because init.sql already contains all of them.\n\n' +
+        'If you are not sure, it is not a fresh install. --baseline never marks a migration\n' +
+        'applied that this database might not have; --adopt-fresh-install does exactly that,\n' +
+        'which is why it checks the schema for each newer migration and refuses when the\n' +
+        'change it would adopt is missing.'
     );
   }
 
@@ -450,13 +739,31 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
         // original names the statement that actually broke.
         console.error(`[${new Date().toISOString()}] migrate ROLLBACK failed:`, rollbackErr);
       }
-      throw new Error(
+      let message =
         `Migration ${filename} failed. MySQL implicitly commits DDL, so any CREATE, ALTER or\n` +
-          'DROP inside this file that ran before the failure is already committed and was NOT\n' +
-          'rolled back: the database may be partially migrated. Inspect the schema, or restore\n' +
-          'the dump you took before upgrading, before running this again.',
-        { cause: err }
-      );
+        'DROP inside this file that ran before the failure is already committed and was NOT\n' +
+        'rolled back: the database may be partially migrated. Inspect the schema, or restore\n' +
+        'the dump you took before upgrading, before running this again.';
+
+      // The one failure that usually means the opposite of partial migration:
+      // the change is already there in full. A database init.sql built has
+      // every migration folded in already, so recording its starting point with
+      // --baseline instead of --adopt-fresh-install leaves the newer files
+      // "pending" and the next run dies on their first ALTER, on an install
+      // minutes old with no dump to restore.
+      if (SCHEMA_ALREADY_HAS_CODES.has(err.code)) {
+        message +=
+          `\n\nMySQL reported ${err.code}, so the object this file adds is already there and\n` +
+          'this run may have changed nothing at all. That usually means the starting point was\n' +
+          'recorded with the wrong command: a database built by init.sql already contains every\n' +
+          'migration and needs `npm run migrate -- --adopt-fresh-install`, not `--baseline`,\n' +
+          'which records only the pre-runner files and leaves anything newer pending.\n' +
+          'Confirm the schema really has this change, then record the file as applied by hand:\n\n' +
+          '    INSERT INTO schema_migrations (filename, checksum, applied_ms)\n' +
+          `    VALUES ('${filename}', '${sha256(contents)}', 0);`;
+      }
+
+      throw new Error(message, { cause: err });
     }
 
     log(`applied ${filename} (${Date.now() - startedAt}ms)`);

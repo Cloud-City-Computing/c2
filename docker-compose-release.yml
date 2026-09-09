@@ -31,8 +31,8 @@ services:
       # init.sql runs only when this volume is created empty. On an existing
       # volume Docker skips docker-entrypoint-initdb.d entirely, so schema
       # changes need a migrations/ file, applied with
-      # `docker compose exec app npm run migrate` (see the app service, which
-      # mounts migrations/ for exactly that).
+      # `docker compose -f docker-compose-release.yml run --rm app npm run migrate`
+      # (see the app service, which mounts migrations/ for exactly that).
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-u${DB_USER}", "-p${DB_PASS}"]
@@ -47,10 +47,23 @@ services:
     #
     # UPGRADING IS NOT JUST THIS NUMBER. init.sql runs only on an empty data
     # directory, so a newer app against an older schema boots cleanly and then
-    # 500s. Run `docker compose exec app npm run migrate` first: see "Upgrades"
-    # in docs/deployment.md, which also covers the one-time adoption step this
-    # database needs before its first ordinary run. 3306 is not published here,
-    # so the runner is run inside the app container, not from the host.
+    # 500s, and old code against a new schema is worse. The order is: pull the
+    # new image, stop the app, migrate, then start it:
+    #
+    #   docker compose -f docker-compose-release.yml pull app
+    #   docker compose -f docker-compose-release.yml stop app
+    #   docker compose -f docker-compose-release.yml run --rm app npm run migrate
+    #   docker compose -f docker-compose-release.yml up -d
+    #
+    # `run --rm`, NOT `exec`. `exec` runs inside the container that is ALREADY
+    # running, which on the upgrade that first ships the runner is the old one:
+    # it has no scripts/migrate.js, no `migrate` script, and no /migrations
+    # mount, because `docker compose pull` does not recreate a container. `run`
+    # builds a one-off from the current compose file and the new image, so it
+    # has all three, and it leaves the running app alone. 3306 is not published
+    # here, so the runner runs in the compose network, not from the host.
+    # See "Upgrades" in docs/deployment.md, which also covers the one-time
+    # adoption step this database needs before its first ordinary run.
     # release.yml fails the build if this default falls behind the tag.
     image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.9.0}
     container_name: cloudcodex-app
@@ -78,11 +91,20 @@ services:
       - app_public:/app/public
       # The migration runner reads this. scripts/migrate.js ships in the image
       # (it is inside the cloudcodex/ build context) but migrations/ is at the
-      # repo root and is not, so without this mount `docker compose exec app
-      # npm run migrate` fails on a missing directory. Read-only: the runner
-      # never writes here. /migrations is where scripts/migrate.js resolves it
+      # repo root and is not, so without this mount `npm run migrate` fails on a
+      # missing directory. /migrations is where scripts/migrate.js resolves it
       # from WORKDIR /app.
-      - ./migrations:/migrations:ro
+      #
+      # `ro,z`: read-only, because the runner never writes here, and `z` because
+      # on an SELinux host (Fedora, RHEL, CentOS, Rocky) a bind mount with no
+      # relabel flag is unreadable inside the container. Measured there:
+      #   docker run --rm -v ./migrations:/migrations:ro node:20-slim ls /migrations
+      #   ls: cannot open directory '/migrations': Permission denied
+      # Lowercase `z` (shared label), not `Z` (private): more than one container
+      # reads this directory, and `Z` would relabel it for one of them only.
+      # docker-compose.linux.yml adds :Z for the DEV file's mounts; it does not
+      # cover this file, so the flag belongs inline here.
+      - ./migrations:/migrations:ro,z
 
 volumes:
   db_data:

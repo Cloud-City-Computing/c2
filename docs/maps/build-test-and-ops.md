@@ -112,8 +112,11 @@ changes nothing; existing databases need the matching file from `migrations/`,
 applied with `npm run migrate` (one-time adoption first, see
 `docs/deployment.md`). No compose file mounts `migrations/` into the **MySQL**
 container, so it is never applied from inside `make db-shell`; the release and
-prod compose files mount it into the **app** container, which is where the
-runner runs.
+prod compose files mount it into the **app** container (`:ro,z`, because an
+unlabelled bind mount is unreadable on an SELinux host), which is where the
+runner runs. Run it with `docker compose ... run --rm app npm run migrate`, not
+`exec`: on the upgrade that first ships the runner, the already-running
+container is the old image, with neither the script nor the mount.
 
 ## 5. Testing
 

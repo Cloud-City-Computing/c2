@@ -19,13 +19,20 @@ initialises an empty data directory.
   order, records each in a new `schema_migrations` table with its sha256, and
   refuses to run when an already-applied file has been edited. Concurrent runs
   are serialised by a MySQL advisory lock. Each database takes one adoption
-  command first: `npm run migrate -- --adopt-fresh-install` for a database
-  `init.sql` has just built, or `npm run migrate -- --baseline` for an install
-  that predates the runner. MySQL implicitly commits DDL, so a failed migration
-  reports that the database may be partially migrated rather than claiming a
-  rollback. The release and prod compose files now mount `migrations/` into the
-  app container, which is where the runner runs when MySQL is not published to
-  the host.
+  command first: `npm run migrate -- --baseline` for a database that already
+  existed before this release (the usual case, and the one an upgrade is in), or
+  `npm run migrate -- --adopt-fresh-install` for one `init.sql` has just built.
+  The second records every file without running any, so it refuses unless the
+  live schema already contains what each post-baseline file adds, and it prints
+  the exact list before adopting it. Both adoption modes write their rows in one
+  transaction. MySQL implicitly commits DDL, so a failed migration reports that
+  the database may be partially migrated rather than claiming a rollback, except
+  for the duplicate-object errors, which say the schema already has the change
+  and how to record it. The release and prod compose files now mount
+  `migrations/` into the app container (`:ro,z`, so the mount is readable on an
+  SELinux host), which is where the runner runs when MySQL is not published to
+  the host: `docker compose ... run --rm app npm run migrate`, in a one-off
+  container, after stopping the app.
 
 ### Fixed
 
@@ -33,6 +40,11 @@ initialises an empty data directory.
   `source /var/lib/mysql/migrations/<file>.sql` inside `make db-shell`. No
   compose file mounts `migrations/` into the MySQL container, so that path does
   not exist there and the documented upgrade path could not work.
+- The upgrade procedure now stops the app before migrating and runs the runner
+  in a one-off container. `docker compose exec app` runs inside the container
+  that is already running, which on the upgrade that first ships the runner is
+  the old image: no `migrate` script, and no `/migrations` mount, because
+  `docker compose pull` does not recreate a container.
 
 ### Security
 

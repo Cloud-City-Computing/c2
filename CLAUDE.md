@@ -248,10 +248,13 @@ Each is expanded, with citations, in the map named after it.
   `docker-entrypoint-initdb.d` on an initialised data dir. Schema changes need a
   `migrations/` file **and** an `init.sql` edit. Apply the migration with
   `npm run migrate`; `schema_migrations` records what ran. Each database needs
-  one adoption command first: `--adopt-fresh-install` if `init.sql` just built
-  it, `--baseline` if it predates the runner. The `LEGACY_BASELINE` list in
+  one adoption command first: `--baseline` if it existed before the runner (the
+  usual case), `--adopt-fresh-install` only if `init.sql` just built it, and
+  that one now verifies each post-baseline file against the live schema and
+  refuses when the change is missing. The `LEGACY_BASELINE` list in
   `scripts/migrate.js` is closed: never append a new migration to it, or
-  `--baseline` will mark it applied without running it.
+  `--baseline` will mark it applied without running it. In containers the runner
+  goes through `docker compose ... run --rm app`, never `exec`.
 - **`make reset-db` is not a clean reset.** `init.sql`'s DROP list omits four
   tables (`github_links`, `activity_log`, `watches`, `notifications`) whose
   CREATEs lack `IF NOT EXISTS`, so it aborts partway on an existing database.

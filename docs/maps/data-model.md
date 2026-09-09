@@ -353,9 +353,25 @@ situations have different correct sets:
 - `--adopt-fresh-install` records **every** file on disk and applies none. For
   a database `init.sql` has just built. Correct there and only there, because
   the dual-tracking rule means `init.sql` already contains every migration, so
-  applying any of them is a duplicate-column error. It **refuses once
-  `schema_migrations` holds a row**, which is what keeps it off a tracked
-  install where it would swallow pending work.
+  applying any of them is a duplicate-column error.
+
+Two guards on that second one, because it is the mode that can bury a migration
+on purpose. It **refuses once `schema_migrations` holds a row**, which keeps it
+off a tracked install. And for every file that postdates `LEGACY_BASELINE` it
+**checks the live schema first**: `schemaClaims()` reads the `CREATE TABLE` and
+`ALTER TABLE ... ADD COLUMN` out of the file (comments stripped, because the
+headers quote the DDL that reverses them), and `assertSchemaAlreadyHas()` asks
+`information_schema` whether each of those is already there, refusing unless it
+is. Emptiness cannot be the guard: an install that predates the runner has zero
+bookkeeping rows **by definition**, which is precisely the population reaching
+for an adoption flag, and `bootstrapInstance()` seeds a workspace, squad,
+archive and document on first admin boot, so "no content yet" is not a signal
+either. The pre-runner thirteen are exempt from the check, because adopting
+exactly those is what `--baseline` does anyway and because two of them (a `DROP`
+and a `MODIFY`) add nothing an ADD-shaped check could look for. The mode prints
+the exact list of files it is about to adopt before adopting them, and both
+adoption modes write their rows in **one transaction**, so an interrupted run
+leaves no partial bookkeeping to refuse over later.
 
 One honest limit on both: an adopted row records the sha256 of the file **as it
 is on disk at adoption time**, not of whatever that install actually ran years
@@ -364,17 +380,31 @@ That is inherent to adopting a baseline rather than a defect, but it means the
 guard's promise is "nothing has changed since adoption", not "this is what ran".
 
 The apply phase is serialised by a MySQL advisory lock
-(`GET_LOCK('cloudcodex_migrate')`, 10s wait). Without it two concurrent runs
-both compute the same pending set, MySQL serialises the DDL, and the loser gets
-a duplicate-column error that the runner would report as "may be partially
-migrated" when the database is in fact correct. The lock is connection-scoped,
-which suits the CLI's single dedicated connection.
+(`GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`). Without it two
+concurrent runs both compute the same pending set, MySQL serialises the DDL, and
+the loser gets a duplicate-column error that the runner would report as "may be
+partially migrated" when the database is in fact correct. The lock is
+connection-scoped, which suits the CLI's single dedicated connection, but the
+NAME is scoped to the MySQL **server**, not to a database, which is why it
+carries `DATABASE()`: without that, two Cloud Codex schemas on one server
+serialise against each other and the loser is told a run is in progress against
+its own database. `0` (someone holds it) and `NULL` (the attempt errored) get
+different messages.
 
 **MySQL implicitly commits DDL**, so a transaction per file cannot make a
 migration atomic the way it can on Postgres. The runner opens one anyway for
 the DML that honours it, and on failure it stops at the failing file and
 reports that the database **may be partially migrated** rather than promising a
 rollback it cannot deliver. Take a dump first.
+
+One failure is the opposite of partial: `ER_DUP_FIELDNAME`,
+`ER_TABLE_EXISTS_ERROR` and `ER_DUP_KEYNAME` mean the object is already there,
+and the run may have changed nothing. The usual cause is a fresh install
+baselined with `--baseline` instead of `--adopt-fresh-install`, which leaves the
+newer files pending and then dies on their first `ALTER`, minutes after install,
+with no dump to restore. The runner names the code, says which flag that
+database wanted, and prints the `INSERT INTO schema_migrations` that records the
+file by hand.
 
 ### Trap 1: `init.sql` only runs on a fresh volume
 
