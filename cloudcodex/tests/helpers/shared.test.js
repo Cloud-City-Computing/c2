@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { c2_query } from '../../mysql_connect.js';
 import { resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 import {
@@ -27,6 +30,7 @@ import {
   addSquadMember,
   isValidEmail,
   DEFAULT_PERMISSIONS,
+  TOKEN_PURPOSE,
   BCRYPT_ROUNDS,
   APP_URL,
 } from '../../routes/helpers/shared.js';
@@ -181,6 +185,24 @@ describe('helpers/shared', () => {
         create_archive: false,
         create_log: true,
       });
+    });
+
+    it('TOKEN_PURPOSE matches the password_reset_tokens.purpose CHECK in init.sql', () => {
+      // Verified on mysql:8 (8.4.8): the column is VARCHAR NOT NULL with no
+      // DEFAULT, so omitting it is error 1364, and the CHECK makes a value
+      // outside this set error 3819. Both mistakes are loud, which is the whole
+      // point. ENUM cannot do this: MySQL gives a NOT NULL ENUM with no DEFAULT
+      // an implicit default of the first value even under STRICT_TRANS_TABLES,
+      // so an omitted purpose would silently become 'password_reset'.
+      const initSql = readFileSync(
+        resolve(dirname(fileURLToPath(import.meta.url)), '../../../init.sql'),
+        'utf8'
+      );
+      const [, checkBody] = initSql.match(/CHECK \(purpose IN \(([^)]+)\)\)/) || [];
+      expect(checkBody).toBeDefined();
+      const declared = checkBody.split(',').map((v) => v.trim().replace(/^'|'$/g, ''));
+
+      expect(Object.values(TOKEN_PURPOSE).sort()).toEqual(declared.sort());
     });
   });
 

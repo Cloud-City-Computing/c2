@@ -328,6 +328,9 @@ router.post('/admin/users/:id/2fa/reset', requireAuth, requireAdmin, asyncHandle
 
   await c2_query(`UPDATE users SET two_factor_method = 'none', totp_secret = NULL WHERE id = ?`, [targetId]);
   await c2_query(`DELETE FROM two_factor_codes WHERE user_id = ?`, [targetId]);
+  // Deliberately purpose-agnostic, unlike every reader in routes/auth.js: this
+  // is the admin recovery path, and it is meant to clear whatever the user is
+  // mid-flow on, including a pending password reset.
   await c2_query(`DELETE FROM password_reset_tokens WHERE user_id = ? AND used = FALSE`, [targetId]);
 
   console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: admin ${req.user.id} reset 2FA for user ${targetId}`);

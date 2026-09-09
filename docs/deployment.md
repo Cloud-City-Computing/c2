@@ -205,14 +205,63 @@ column or table added in a migration also lives in `init.sql` so a fresh
 install converges to the same schema. New migrations are additive — no
 file in `migrations/` is ever rewritten after it ships.
 
-Apply pending migrations against the running DB via `make db-shell`:
+### Stop every writer first
+
+**Order: stop every writer, apply the migration, start the new image.** Not the
+other way round.
+
+A migration that adds a `NOT NULL` column with no `DEFAULT` makes the schema
+incompatible with the application in *both* directions, and no compose file
+overrides `sql_mode`, so MySQL 8's default `STRICT_TRANS_TABLES` applies:
+
+- **Old code against the new schema** fails every insert that omits the column
+  (error 1364).
+- **New code against the old schema** fails every insert that names it
+  (error 1054).
+
+Either way the affected endpoints 500 for real users for as long as the window
+is open, and 500s are not always harmless: `2026-09-08-token-purpose.sql` would,
+mid-window, make `POST /api/forgot-password` fail for an address that exists
+while still answering 200 for one that does not, which is an account enumeration
+oracle the code goes out of its way to close.
+
+"Every writer", not "the app container": `docker-compose.yaml` (dev) defines a
+single service, `database`. There is **no app container in dev**: the app runs
+on the host under `npm run dev`, and that is the writer to stop. The
+single-process architecture already makes a restart a brief total outage, so a
+planned one costs nothing extra.
+
+Stopping the writers also closes a partial-failure race for any migration that
+deletes rows and then tightens the column: a row inserted in between makes the
+`MODIFY` fail (error 1138), and MySQL implicitly commits DDL, so the table is
+left half-migrated with nothing recording it.
+
+**Assume no rollback.** Reverting the application after applying a migration
+lands you in old-code-against-new-schema. Getting back means undoing the DDL by
+hand; each migration header says what that is.
+
+### Applying a migration
 
 ```bash
-make db-shell
-mysql> source /var/lib/mysql/migrations/<file>.sql;
+# 1. Stop every writer.
+docker compose -f docker-compose-release.yml stop app   # or -f docker-compose-prod.yml
+#    In dev there is no app container: stop `npm run dev` on the host instead.
+
+# 2. Apply, piping the file in from the host.
+docker compose -f docker-compose-release.yml exec -T database \
+  mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME" \
+  < migrations/2026-09-08-token-purpose.sql
+
+# 3. Start the new image.
+docker compose -f docker-compose-release.yml up -d app
 ```
 
-(or shell into the MySQL container directly with `docker exec`).
+Redirect the file in from the host rather than `source`-ing it inside the
+container: no compose file mounts `migrations/` into the database container, so
+a path under `/var/lib/mysql/migrations/` does not exist there.
+
+In dev, `make db-shell` opens a MySQL shell in the same container if you want to
+inspect the result afterwards.
 
 ---
 

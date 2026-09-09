@@ -262,12 +262,46 @@ describe('Auth Routes', () => {
       expect(res.body.success).toBe(true);
     });
 
+    it('deletes the session for a bearer-header token with an empty body', async () => {
+      // apiFetch in src/util.jsx sends the session token as a bearer header and
+      // never in the body. Reading only req.body.token made every real logout a
+      // 400 that the caller swallowed, so no session row was ever deleted.
+      c2_query.mockResolvedValueOnce([]); // DELETE session
+
+      const res = await request(app)
+        .post('/api/logout')
+        .set('Authorization', 'Bearer header-token')
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/i.test(sql));
+      expect(del).toBeDefined();
+      expect(del[1]).toEqual(['header-token']);
+    });
+
+    it('deletes the session for a sessionToken cookie with an empty body', async () => {
+      c2_query.mockResolvedValueOnce([]); // DELETE session
+
+      const res = await request(app)
+        .post('/api/logout')
+        .set('Cookie', 'sessionToken=cookie-token')
+        .send({});
+
+      expect(res.status).toBe(200);
+
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/i.test(sql));
+      expect(del[1]).toEqual(['cookie-token']);
+    });
+
     it('rejects missing token', async () => {
       const res = await request(app)
         .post('/api/logout')
         .send({});
 
       expect(res.status).toBe(400);
+      expect(c2_query).not.toHaveBeenCalled();
     });
   });
 
@@ -653,6 +687,24 @@ describe('Auth Routes', () => {
       expect(sendEmail).toHaveBeenCalled();
     });
 
+    it('invalidates only prior reset tokens, not an in-flight 2FA login', async () => {
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])   // user found
+        .mockResolvedValueOnce([])              // invalidate old tokens
+        .mockResolvedValueOnce([]);             // insert token
+
+      await request(app)
+        .post('/api/forgot-password')
+        .send({ email: 'test@example.com' });
+
+      const invalidate = c2_query.mock.calls.find(([sql]) => /UPDATE password_reset_tokens SET used = TRUE WHERE user_id/i.test(sql));
+      expect(invalidate[0]).toMatch(/purpose = \?/);
+      expect(invalidate[1]).toEqual([1, 'password_reset']);
+
+      const insert = c2_query.mock.calls.find(([sql]) => /INSERT INTO password_reset_tokens/i.test(sql));
+      expect(insert[1][2]).toBe('password_reset');
+    });
+
     it('rejects invalid email format', async () => {
       const res = await request(app)
         .post('/api/forgot-password')
@@ -681,6 +733,25 @@ describe('Auth Routes', () => {
   // ── POST /api/reset-password ──────────────────────────────
 
   describe('POST /api/reset-password', () => {
+    it('refuses a token minted by the 2FA challenge path', async () => {
+      // POST /api/login hands its 2FA challenge token straight back to the
+      // caller, and it lives in the same table as a password reset token. The
+      // reader must constrain the purpose, so the purpose-filtered SELECT
+      // finds nothing even though the row exists.
+      c2_query.mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .post('/api/reset-password')
+        .send({ token: 'two-factor-challenge-token', password: 'NewPassword1!' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/invalid or expired reset link/i);
+
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).toMatch(/purpose = \?/);
+      expect(params).toEqual(['two-factor-challenge-token', 'password_reset']);
+    });
+
     it('resets password with valid token', async () => {
       c2_query.mockResolvedValueOnce([{
         id: 1,
@@ -777,6 +848,20 @@ describe('Auth Routes', () => {
       expect(res.body.token).toBe('session-tok');
     });
 
+    it('refuses a token minted by any flow other than the 2FA challenge', async () => {
+      c2_query.mockResolvedValueOnce([]); // purpose-filtered miss
+
+      const res = await request(app)
+        .post('/api/2fa/verify')
+        .send({ twoFactorToken: 'password-reset-token', code: '123456' });
+
+      expect(res.status).toBe(401);
+
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).toMatch(/purpose = \?/);
+      expect(params).toEqual(['password-reset-token', 'two_factor_login']);
+    });
+
     it('rejects invalid email 2FA code', async () => {
       c2_query
         .mockResolvedValueOnce([{ id: 1, user_id: 5, expires_at: new Date(Date.now() + 600000), used: false }])
@@ -833,6 +918,11 @@ describe('Auth Routes', () => {
       expect(res.body.method).toBe('email');
       expect(res.body.twoFactorToken).toBeDefined();
       expect(sendEmail).toHaveBeenCalled();
+
+      // The challenge token is handed back to the caller, so it must be typed
+      // as a 2FA login token and nothing else.
+      const insert = c2_query.mock.calls.find(([sql]) => /INSERT INTO password_reset_tokens/i.test(sql));
+      expect(insert[1][2]).toBe('two_factor_login');
     });
 
     it('triggers TOTP 2FA when enabled', async () => {
@@ -1085,6 +1175,9 @@ describe('Auth Routes', () => {
       expect(sendEmail).toHaveBeenCalled();
       expect(res.body.qr_data_url).toBeUndefined();
       expect(res.body.secret).toBeUndefined();
+
+      const insert = c2_query.mock.calls.find(([sql]) => /INSERT INTO password_reset_tokens/i.test(sql));
+      expect(insert[1][2]).toBe('totp_setup');
     });
 
     it('rejects invalid method', async () => {
@@ -1178,6 +1271,22 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(401);
     });
 
+    it('refuses a token minted by any flow other than TOTP enrolment', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]); // purpose-filtered miss
+
+      const res = await request(app)
+        .post('/api/2fa/totp/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ setupToken: 'password-reset-token', code: '123456' });
+
+      expect(res.status).toBe(401);
+
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).toMatch(/purpose = \?/);
+      expect(params).toEqual(['password-reset-token', 'totp_setup']);
+    });
+
     it('rejects when no TOTP setup in progress', async () => {
       mockAuthenticated();
       c2_query
@@ -1212,6 +1321,9 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.confirmToken).toBeDefined();
       expect(sendEmail).toHaveBeenCalled();
+
+      const insert = c2_query.mock.calls.find(([sql]) => /INSERT INTO password_reset_tokens/i.test(sql));
+      expect(insert[1][2]).toBe('two_factor_disable');
     });
 
     it('returns success when 2FA already disabled', async () => {
@@ -1324,6 +1436,22 @@ describe('Auth Routes', () => {
         .send({ confirmToken: 'valid-tok', code: '000000' });
 
       expect(res.status).toBe(401);
+    });
+
+    it('refuses a token minted by any flow other than the 2FA disable request', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]); // purpose-filtered miss
+
+      const res = await request(app)
+        .post('/api/2fa/disable/confirm')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ confirmToken: 'password-reset-token', code: '123456' });
+
+      expect(res.status).toBe(401);
+
+      const [sql, params] = c2_query.mock.calls[0];
+      expect(sql).toMatch(/purpose = \?/);
+      expect(params).toEqual(['password-reset-token', 'two_factor_disable']);
     });
   });
 

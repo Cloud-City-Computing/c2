@@ -139,12 +139,14 @@ component that consume it.
 
 `middleware/auth.js` is the whole of it.
 
-`requireAuth` (`middleware/auth.js:15-47`):
+`requireAuth`:
 
-1. Token from `Authorization: Bearer <token>` (`auth.js:17`), falling back to a
-   `sessionToken=` cookie parsed by hand out of the raw `Cookie` header
-   (`auth.js:20-25`). The cookie path exists for browser redirects, notably the
-   OAuth callbacks. There is no cookie-parser dependency.
+1. Token from `extractSessionToken(req)`: `Authorization: Bearer <token>`,
+   falling back to a `sessionToken=` cookie parsed by hand out of the raw
+   `Cookie` header. The cookie path exists for browser redirects, notably the
+   OAuth callbacks. There is no cookie-parser dependency. `extractSessionToken`
+   is **exported**, so it is the single definition of "which token is this
+   request carrying" and `POST /api/logout` uses the same one.
 2. No token, 401 `Authentication required`.
 3. `validateAndAutoLogin(token)` (`mysql_connect.js:152-166`) looks the session
    up by primary key, rejects if `expires_at <= now`, then loads the user row.
@@ -173,8 +175,28 @@ Token generation (`mysql_connect.js:95-99`) uses `crypto.getRandomValues` over a
 modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 
 **Consequence:** logging in from a second device silently reuses the first
-device's token, and `POST /api/logout` (`routes/auth.js:371`) therefore logs out
-every device at once.
+device's token, and `POST /api/logout` therefore logs out every device at once.
+
+### Logout actually terminates the session now
+
+`POST /api/logout` used to read its token from `req.body.token` only. No client
+sends one: `apiFetch` in `src/util.jsx` puts the session token in an
+`Authorization: Bearer` header, and `AccountPanel.jsx` posts an empty body, then
+swallows the rejection in a `catch`. Every logout was therefore a 400 nobody
+saw, and **no `sessions` row was ever deleted**: the client cleared its local
+token while the server-side session stayed valid until its 7-day expiry, usable
+by anyone who had the token.
+
+It now resolves the token through the same `extractSessionToken` that
+`requireAuth` uses, with `req.body.token` kept as a fallback for any caller that
+still posts one, and only 400s when the request carries no token at all. The
+route stays unauthenticated: it deletes by token, so presenting a token is the
+authorisation, and an unknown token deletes nothing.
+
+The cookie fallback does not open a cross-site logout: every writer of the
+`sessionToken` cookie sets `SameSite=Strict` (`routes/oauth.js` server-side,
+`src/components/Login.jsx` client-side), so a cross-site POST carries no cookie
+and lands in the 400 branch.
 
 **`POST /api/create-account` generates its session token only after its
 transaction commits.** The user insert, default-permissions insert,

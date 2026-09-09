@@ -117,9 +117,64 @@ index, but **no unique constraint on `user_id`**, even though
 `WHERE user_id = ? LIMIT 1` (`mysql_connect.js:111`). Two rows for one user would
 be tolerated by the schema and half-ignored by the code.
 
-`password_reset_tokens` does double duty: it also stores the short-lived 2FA
-handoff token issued during login (`routes/auth.js:323-326`). A row in that
-table is not necessarily a password reset.
+`password_reset_tokens` is a **four-flow pool**, not a reset table. It also
+stores the short-lived 2FA handoff token issued during login, the TOTP
+enrolment `setupToken`, and the 2FA-disable `confirmToken`. A row in that table
+is not necessarily a password reset.
+
+Which flow minted a row is recorded in `purpose VARCHAR(32) NOT NULL`, with a
+`CHECK` constraint restricting it to `password_reset`, `two_factor_login`,
+`totp_setup`, `two_factor_disable`, added by
+`migrations/2026-09-08-token-purpose.sql`. Before it,
+nothing recorded the flow and **no reader constrained it**, so a token was
+interchangeable across flows. The sharpest pairing: `POST /api/login` mints the
+2FA challenge row and returns that token to the caller in the response body,
+and `POST /api/reset-password` read the same table by token alone, so the login
+endpoint's own token was accepted as a password reset token. Impact was a
+persistent password rewrite plus a full session wipe of the victim, i.e.
+lockout and an integrity defect; reset-password issues no session and does not
+clear `two_factor_method`, and the caller must already hold the victim's
+password to reach the challenge, so it was **not** account takeover. The other
+three readers additionally require `tokenRecord.user_id === req.user.id` behind
+`requireAuth`, so they were lower still.
+
+Four rules follow, and all four are load-bearing:
+
+- The four minters in `routes/auth.js` bind a `TOKEN_PURPOSE` value from
+  `routes/helpers/shared.js`; the four readers all carry `AND purpose = ?`.
+- **No `DEFAULT`, and `VARCHAR` + `CHECK` rather than `ENUM`.** A fifth flow
+  that forgets to name its purpose fails at insert (error 1364) instead of
+  silently minting a password reset token, and a value outside the set fails
+  too (error 3819). `ENUM` cannot deliver that: MySQL gives a `NOT NULL` `ENUM`
+  with no `DEFAULT` an implicit default of the **first** listed value even
+  under `STRICT_TRANS_TABLES`, so an omitted purpose would silently become
+  `password_reset`, which is the exact defect the column exists to close.
+  Measured on `mysql:8` (8.4.8), the shipped image.
+- Forgot-password's `UPDATE ... SET used = TRUE WHERE user_id = ?` is scoped to
+  `purpose = 'password_reset'` too. Unscoped, asking for a password reset
+  silently killed the user's in-flight 2FA login, TOTP enrolment or
+  2FA-disable confirmation.
+- `routes/admin.js`'s `DELETE FROM password_reset_tokens WHERE user_id = ? AND
+  used = FALSE` stays **purpose-agnostic on purpose**. It is the admin recovery
+  path for a user locked out of 2FA, and it is meant to clear whatever the user
+  is mid-flow on.
+
+**The migration fails closed and its order is load-bearing.** Legacy rows
+cannot be classified after the fact and every token here is short-lived (10
+minutes to 1 hour), so the migration deletes them rather than inventing a
+default; in-flight resets and challenges must be restarted. Because the column
+is `NOT NULL` with no default and no compose file overrides `sql_mode` (so
+MySQL 8's `STRICT_TRANS_TABLES` applies), the schema is incompatible with the
+app in **both** directions: old code against the new schema is error 1364 on
+all four minters, new code against the old schema is error 1054. Required
+order is **stop every writer, apply, start the new image** ("every writer",
+because `docker-compose.yaml` defines only a `database` service and in dev the
+writer is `npm run dev` on the host). Stopping the writers also closes a
+partial-failure race where a row inserted between the `DELETE` and the `MODIFY`
+leaves the column a nullable `VARCHAR(32)`, since MySQL implicitly commits DDL.
+There is no rollback: reverting the app lands you in old-code-against-new-schema
+and getting back means dropping the column by hand. See the migration header
+and `docs/deployment.md`.
 
 `two_factor_codes` holds 6-digit email OTPs; TOTP secrets live on
 `users.totp_secret` instead. `users.two_factor_method` is

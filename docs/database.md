@@ -132,16 +132,30 @@ Active login sessions. Tokens are 64-character cryptographically random strings.
 
 ### `password_reset_tokens`
 
-Single-use tokens sent by email for password resets.
+Single-use short-lived tokens. Four flows share this table, so it is not only
+password resets.
 
 | Column       | Type            | Notes                              |
 |--------------|-----------------|------------------------------------|
 | `id`         | INT AUTO_INCREMENT PK |                              |
 | `user_id`    | INT FK → users  | ON DELETE CASCADE                  |
 | `token`      | CHAR(64) UNIQUE | Cryptographically random           |
-| `expires_at` | TIMESTAMP       | Typically 1 hour                   |
+| `purpose`    | VARCHAR(32) NOT NULL | Which flow minted the row, CHECK-constrained |
+| `expires_at` | TIMESTAMP       | 10 minutes to 1 hour by flow       |
 | `used`       | BOOLEAN         | Marked TRUE once consumed          |
 | `created_at` | TIMESTAMP       |                                    |
+
+`purpose` is one of `password_reset`, `two_factor_login`, `totp_setup`,
+`two_factor_disable`, enforced by a `CHECK` constraint and mirrored by
+`TOKEN_PURPOSE` in `cloudcodex/routes/helpers/shared.js`. It has **no
+`DEFAULT`**, deliberately: a new flow that forgets to name its purpose fails at
+insert (error 1364) instead of silently minting a password reset token, and a
+value outside the set fails too (error 3819). It is `VARCHAR` plus `CHECK`
+rather than `ENUM` for exactly that reason: MySQL gives a `NOT NULL` `ENUM`
+with no `DEFAULT` an implicit default of the first listed value even under
+`STRICT_TRANS_TABLES`, so an omitted purpose would silently become
+`password_reset`. Every reader of this table constrains on `purpose`, so a
+token minted by one flow is not accepted by another.
 
 ---
 

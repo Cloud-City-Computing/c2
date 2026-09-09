@@ -80,6 +80,25 @@ Passwords are hashed with **bcrypt** at 12 salt rounds. Comparisons use constant
 
 Session tokens are 64-character cryptographically random strings (Node.js `crypto.randomBytes`) with a 7-day expiry. Sessions are invalidated immediately on password change and on successful password reset. IP address and user-agent are recorded per session.
 
+`POST /api/logout` deletes the `sessions` row. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
+
+---
+
+## Single-purpose Tokens
+
+`password_reset_tokens` is a shared pool: four flows mint into it (password reset, the 2FA login challenge, TOTP enrolment, and the 2FA-disable confirmation) and four flows read out of it.
+
+**Every row records which flow minted it, in a `purpose` column that is `NOT NULL` with no `DEFAULT`, and every reader constrains on it.** The values live in one place, `TOKEN_PURPOSE` in `routes/helpers/shared.js`, and mirror the `CHECK` constraint in `init.sql`. The column is `VARCHAR(32)` plus a `CHECK` rather than an `ENUM` on purpose: MySQL gives a `NOT NULL` `ENUM` with no `DEFAULT` an implicit default of the first listed value even under `STRICT_TRANS_TABLES`, so an omitted purpose would silently become `password_reset`. As written, omitting the column is error 1364 and an unknown value is error 3819.
+
+The rule exists because without it a token was interchangeable across flows. `POST /api/login` mints the 2FA challenge row and hands that token back to the caller in the response body, so an unconstrained `POST /api/reset-password` accepted it. That was a persistent password rewrite plus a full session wipe of the victim, so lockout and an integrity defect, not account takeover: reset-password issues no session and does not clear `two_factor_method`, and the caller must already hold the victim's password to reach the challenge at all.
+
+Consequences for anyone adding a fifth flow:
+
+- Name a new purpose in `TOKEN_PURPOSE`, add it to the `CHECK` constraint in `init.sql`, and ship a migration. Omitting the column fails the insert loudly, which is the point of having no default.
+- A new reader of this table gets `AND purpose = ?`. A token lookup by token alone is a defect.
+- Bulk invalidation is purpose-scoped too. Forgot-password's `UPDATE ... SET used = TRUE` binds `password_reset`; unscoped it silently killed the user's in-flight 2FA login.
+- The one deliberate exception is the admin 2FA reset in `routes/admin.js`, which deletes every unused row for a user regardless of purpose. It is the lockout recovery path and is meant to clear whatever the user is mid-flow on.
+
 ---
 
 ## HTML Sanitization
