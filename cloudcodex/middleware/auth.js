@@ -8,21 +8,37 @@
 import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
 
 /**
+ * The session token this request carries, from the Authorization header
+ * (API calls) or the sessionToken cookie (browser redirects). Returns null
+ * when the request carries neither.
+ *
+ * Exported so there is exactly one definition of "which token is this request
+ * carrying": POST /api/logout used to read req.body.token, which no client
+ * ever sends, so every logout 400d and no session row was ever deleted.
+ */
+export function extractSessionToken(req) {
+  const header = req.headers['authorization'];
+  if (header) {
+    const bearer = header.replace('Bearer ', '');
+    if (bearer) return bearer;
+  }
+
+  const cookieHeader = req.headers['cookie'];
+  if (cookieHeader) {
+    const match = cookieHeader.split('; ').find(c => c.startsWith('sessionToken='));
+    if (match) return match.split('=')[1];
+  }
+
+  return null;
+}
+
+/**
  * Express middleware that validates the session token from either
- * the Authorization header (Bearer) or the request body, attaches
+ * the Authorization header (Bearer) or the sessionToken cookie, attaches
  * req.user, and refreshes session activity tracking.
  */
 export function requireAuth(req, res, next) {
-  // Read token from Authorization header (API calls) or sessionToken cookie (browser redirects)
-  let token = req.headers['authorization']?.replace('Bearer ', '') || null;
-
-  if (!token) {
-    const cookieHeader = req.headers['cookie'];
-    if (cookieHeader) {
-      const match = cookieHeader.split('; ').find(c => c.startsWith('sessionToken='));
-      if (match) token = match.split('=')[1];
-    }
-  }
+  const token = extractSessionToken(req);
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Authentication required' });

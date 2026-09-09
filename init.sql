@@ -101,10 +101,24 @@ CREATE TABLE password_reset_tokens (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   token CHAR(64) NOT NULL UNIQUE,
+  -- Which of the four flows minted this row. NOT NULL with no DEFAULT so a
+  -- fifth flow that forgets to name its purpose fails at insert (error 1364)
+  -- instead of silently minting a password reset token.
+  --
+  -- Deliberately VARCHAR + CHECK and not ENUM: MySQL gives a NOT NULL ENUM
+  -- with no DEFAULT an implicit default of the FIRST enumerated value even
+  -- under STRICT_TRANS_TABLES, so an omitted purpose would silently become
+  -- 'password_reset', which is the exact defect this column exists to close.
+  --
+  -- Keep in sync with TOKEN_PURPOSE in cloudcodex/routes/helpers/shared.js
+  -- and with migrations/2026-09-08-token-purpose.sql.
+  purpose VARCHAR(32) NOT NULL,
   expires_at TIMESTAMP NOT NULL,
   used BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT chk_password_reset_tokens_purpose
+    CHECK (purpose IN ('password_reset','two_factor_login','totp_setup','two_factor_disable')),
   INDEX (token),
   INDEX (expires_at)
 ) ENGINE=InnoDB;

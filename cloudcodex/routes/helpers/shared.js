@@ -47,6 +47,22 @@ export function sanitizeHtml(html) {
 /** Default permission values for users without a row in the permissions table. */
 export const DEFAULT_PERMISSIONS = { create_squad: false, create_archive: false, create_log: true };
 
+// --- Token purpose ---
+
+/**
+ * What a `password_reset_tokens` row is for. Four flows share that table; a
+ * reader that does not constrain the purpose will accept a token minted by a
+ * different flow. Values match the CHECK constraint on
+ * password_reset_tokens.purpose in init.sql; tests/helpers/shared.test.js
+ * asserts the two stay in sync.
+ */
+export const TOKEN_PURPOSE = {
+  PASSWORD_RESET: 'password_reset',
+  TWO_FACTOR_LOGIN: 'two_factor_login',
+  TOTP_SETUP: 'totp_setup',
+  TWO_FACTOR_DISABLE: 'two_factor_disable',
+};
+
 // --- Log-level access checks ---
 
 /**

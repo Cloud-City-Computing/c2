@@ -12,6 +12,33 @@ when MySQL initialises an empty data directory.
 
 ## [Unreleased]
 
+### Security
+
+- **Typed `password_reset_tokens.purpose`.** Four flows mint into that table
+  (password reset, the 2FA login challenge, TOTP enrolment, the 2FA-disable
+  confirmation) and no reader constrained which flow minted the row it found.
+  `POST /api/login` returns its 2FA challenge token to the caller, and
+  `POST /api/reset-password` accepted it. Impact was a persistent password
+  rewrite plus a full session wipe of the victim, so lockout and an integrity
+  defect: reset-password issues no session and does not clear
+  `two_factor_method`, and the caller must already hold the victim's password
+  to reach the challenge. Not account takeover.
+- **`POST /api/logout` terminates the server-side session.** It read
+  `req.body.token`, which no client sends, so every logout was a 400 the caller
+  swallowed and no `sessions` row was ever deleted. It now resolves the token
+  the same way `requireAuth` does.
+
+### Migration
+
+[`migrations/2026-09-08-token-purpose.sql`](migrations/2026-09-08-token-purpose.sql).
+**Stop every writer, apply, then start the new image**, and note there is no
+rollback. The new column is `VARCHAR(32) NOT NULL` with a `CHECK` constraint and
+no `DEFAULT`, which makes the schema incompatible with the application in both
+directions, and the migration deletes existing token rows because they cannot be
+classified after the fact: in-flight password resets and 2FA challenges must be
+restarted. Full reasoning is in the
+migration header and in [`docs/deployment.md`](docs/deployment.md).
+
 ## [0.9.0] - 2026-08-08
 
 The first release since the March alpha. Five months of work, most of it aimed

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { validateAndAutoLogin, touchSession } from '../../mysql_connect.js';
-import { requireAuth } from '../../middleware/auth.js';
+import { requireAuth, extractSessionToken } from '../../middleware/auth.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
 
 /**
@@ -21,6 +21,40 @@ function createMocks(overrides = {}) {
   const next = vi.fn();
   return { req, res, next };
 }
+
+describe('extractSessionToken', () => {
+  it('reads a bearer token from the Authorization header', () => {
+    const { req } = createMocks({ headers: { authorization: 'Bearer header-token' } });
+    expect(extractSessionToken(req)).toBe('header-token');
+  });
+
+  it('reads the sessionToken cookie when there is no Authorization header', () => {
+    const { req } = createMocks({ headers: { cookie: 'theme=dark; sessionToken=cookie-token' } });
+    expect(extractSessionToken(req)).toBe('cookie-token');
+  });
+
+  it('falls through to the cookie when the Authorization header is bearer-only', () => {
+    const { req } = createMocks({
+      headers: { authorization: 'Bearer ', cookie: 'sessionToken=cookie-token' },
+    });
+    expect(extractSessionToken(req)).toBe('cookie-token');
+  });
+
+  it('returns null when the cookie header carries no sessionToken', () => {
+    const { req } = createMocks({ headers: { cookie: 'theme=dark; density=compact' } });
+    expect(extractSessionToken(req)).toBeNull();
+  });
+
+  it('returns null when the request carries neither', () => {
+    const { req } = createMocks();
+    expect(extractSessionToken(req)).toBeNull();
+  });
+
+  it('ignores a token posted in the body', () => {
+    const { req } = createMocks({ body: { token: 'body-token' } });
+    expect(extractSessionToken(req)).toBeNull();
+  });
+});
 
 describe('requireAuth Middleware', () => {
   beforeEach(() => {

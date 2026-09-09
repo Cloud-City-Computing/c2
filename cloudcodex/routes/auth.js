@@ -12,8 +12,8 @@ import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
 import { c2_query, generateSessionToken, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
-import { requireAuth } from '../middleware/auth.js';
-import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
+import { requireAuth, extractSessionToken } from '../middleware/auth.js';
+import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, TOKEN_PURPOSE, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
 
 const router = express.Router();
 
@@ -319,8 +319,8 @@ router.post('/login', asyncHandler(async (req, res) => {
     // Create a short-lived temporary token to tie the 2FA verification back to this login attempt
     const twoFactorToken = crypto.randomBytes(32).toString('hex');
     await c2_query(
-      `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
-      [user.id, twoFactorToken]
+      `INSERT INTO password_reset_tokens (user_id, token, purpose, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
+      [user.id, twoFactorToken, TOKEN_PURPOSE.TWO_FACTOR_LOGIN]
     );
 
     if (two_factor_method === 'email') {
@@ -364,10 +364,15 @@ router.post('/login', asyncHandler(async (req, res) => {
 
 /**
  * POST /api/logout
- * Body: { token }
+ * Reads the session token from the Authorization header or the sessionToken
+ * cookie, with a body fallback.
  */
 router.post('/logout', asyncHandler(async (req, res) => {
-  const { token } = req.body;
+  // The client sends its session token as a bearer header, never in the body
+  // (apiFetch in src/util.jsx). Reading only req.body.token made every logout
+  // a 400 that the caller swallowed, leaving the server-side session alive.
+  // The body fallback stays for any caller that still posts a token.
+  const token = extractSessionToken(req) || req.body?.token || null;
 
   if (!token) {
     return res.status(400).json({ success: false, message: 'Token is required' });
@@ -692,17 +697,20 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
   const [user] = await c2_query(`SELECT id FROM users WHERE email = ? LIMIT 1`, [email]);
 
   if (user) {
-    // Invalidate any existing unused tokens for this user
+    // Invalidate any existing unused reset tokens for this user. Scoped to
+    // the reset purpose: without it, asking for a password reset would
+    // silently kill the user's in-flight 2FA login, TOTP enrolment or
+    // 2FA-disable confirmation, which all live in this table too.
     await c2_query(
-      `UPDATE password_reset_tokens SET used = TRUE WHERE user_id = ? AND used = FALSE`,
-      [user.id]
+      `UPDATE password_reset_tokens SET used = TRUE WHERE user_id = ? AND purpose = ? AND used = FALSE`,
+      [user.id, TOKEN_PURPOSE.PASSWORD_RESET]
     );
 
     const token = generateResetToken();
     await c2_query(
-      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
-       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))`,
-      [user.id, token]
+      `INSERT INTO password_reset_tokens (user_id, token, purpose, expires_at)
+       VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))`,
+      [user.id, token, TOKEN_PURPOSE.PASSWORD_RESET]
     );
 
     const resetUrl = `${APP_URL}/reset-password?token=${token}`;
@@ -753,9 +761,12 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Password does not meet requirements', failures: pwFailures });
   }
 
+  // Purpose-constrained: POST /api/login hands its 2FA challenge token back to
+  // the caller, and it lives in this same table. Without the purpose bind that
+  // token was accepted here.
   const [resetRecord] = await c2_query(
-    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? LIMIT 1`,
-    [token]
+    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? AND purpose = ? LIMIT 1`,
+    [token, TOKEN_PURPOSE.PASSWORD_RESET]
   );
 
   if (!resetRecord || resetRecord.used || resetRecord.expires_at <= new Date()) {
@@ -789,8 +800,8 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
 
   // Validate the temporary token (stored in password_reset_tokens for reuse)
   const [tokenRecord] = await c2_query(
-    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? LIMIT 1`,
-    [twoFactorToken]
+    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? AND purpose = ? LIMIT 1`,
+    [twoFactorToken, TOKEN_PURPOSE.TWO_FACTOR_LOGIN]
   );
 
   if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date()) {
@@ -901,8 +912,8 @@ router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
     // Create a setup token to tie the confirmation back
     const setupToken = crypto.randomBytes(32).toString('hex');
     await c2_query(
-      `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))`,
-      [req.user.id, setupToken]
+      `INSERT INTO password_reset_tokens (user_id, token, purpose, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))`,
+      [req.user.id, setupToken, TOKEN_PURPOSE.TOTP_SETUP]
     );
 
     // Mail off: there is no inbox to deliver the QR to, so hand the setup
@@ -960,8 +971,8 @@ router.post('/2fa/totp/confirm', requireAuth, asyncHandler(async (req, res) => {
 
   // Validate setup token
   const [tokenRecord] = await c2_query(
-    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? LIMIT 1`,
-    [setupToken]
+    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? AND purpose = ? LIMIT 1`,
+    [setupToken, TOKEN_PURPOSE.TOTP_SETUP]
   );
 
   if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date() || tokenRecord.user_id !== req.user.id) {
@@ -1035,8 +1046,8 @@ router.post('/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
 
   const confirmToken = crypto.randomBytes(32).toString('hex');
   await c2_query(
-    `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
-    [req.user.id, confirmToken]
+    `INSERT INTO password_reset_tokens (user_id, token, purpose, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
+    [req.user.id, confirmToken, TOKEN_PURPOSE.TWO_FACTOR_DISABLE]
   );
 
   try {
@@ -1073,8 +1084,8 @@ router.post('/2fa/disable/confirm', requireAuth, asyncHandler(async (req, res) =
 
   // Validate confirm token
   const [tokenRecord] = await c2_query(
-    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? LIMIT 1`,
-    [confirmToken]
+    `SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = ? AND purpose = ? LIMIT 1`,
+    [confirmToken, TOKEN_PURPOSE.TWO_FACTOR_DISABLE]
   );
 
   if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date() || tokenRecord.user_id !== req.user.id) {

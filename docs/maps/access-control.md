@@ -460,7 +460,7 @@ enforced. See [open-questions.md](open-questions.md) A3.
 
 `users.is_admin` short-circuits every layer: clause 1 of both SQL fragments,
 step 1 of `requirePermission`, the first bypass in `canPublish` and
-`isArchiveOwner`, and `requireAdmin` (`middleware/auth.js:53-58`) for the
+`isArchiveOwner`, and `requireAdmin` (`middleware/auth.js`) for the
 `/api/admin/*` surface.
 
 The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
