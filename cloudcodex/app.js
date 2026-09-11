@@ -145,6 +145,16 @@ app.use('/api/2fa/verify', authLimiter);
 app.use('/api/2fa/totp/confirm', authLimiter);
 app.use('/api/2fa/disable/confirm', authLimiter);
 app.use('/api/oauth/google/callback', authLimiter);
+/*
+ * C2-5's reader check. An oracle answering a boolean invites enumeration even
+ * behind a credential -- if the service token ever leaks, an unbounded one
+ * hands the holder a membership map of the whole install at whatever rate they
+ * can issue requests. The same bucket the login surface uses.
+ *
+ * A path pattern rather than an exact path, because the workspace id is a route
+ * parameter: express matches `/api/workspaces/7/reader-check` against this.
+ */
+app.use(/^\/api\/workspaces\/\d+\/reader-check$/, authLimiter);
 
 // Rate limiting for user search (prevents user enumeration)
 const searchLimiter = rateLimit({

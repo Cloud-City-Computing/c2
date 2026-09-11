@@ -7,7 +7,7 @@
 
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireMachine } from '../middleware/auth.js';
 import { isValidId, asyncHandler, errorHandler, addSquadOwnerMember } from './helpers/shared.js';
 
 const router = express.Router();
@@ -154,6 +154,84 @@ router.delete('/workspaces/:id', requireAuth, asyncHandler(async (req, res) => {
 
   await c2_query(`DELETE FROM workspaces WHERE id = ?`, [Number(id)]);
   res.json({ success: true });
+}));
+
+/**
+ * GET /api/workspaces/:workspaceId/reader-check?email=<address>  (C2-5)
+ *
+ * Answers ONE question for the suite: may the person with this email address
+ * read this workspace?
+ *
+ *   200 { canRead: true | false }
+ *
+ * WHY IT EXISTS. Cloud Command stores a `c2_workspace_id` and uses it to narrow
+ * its document picker to one workspace here. That integer was CALLER-ASSERTED:
+ * any account that could create a Cloud Command workspace could point it at any
+ * workspace in this install and read document titles out of it, because the
+ * service token reads across the install and the picker happily answered. Cloud
+ * Command cannot fix that alone -- it can only ask, and the answer has to come
+ * from the system that owns the rules.
+ *
+ * MACHINE-ONLY (requireMachine, NOT machineOrAuth), and that is the security
+ * decision rather than a detail. This answers a question about a THIRD PARTY.
+ * Behind a session, any logged-in user could enumerate which colleagues belong
+ * to which workspaces, and probe which addresses have accounts here at all.
+ *
+ * A MISSING USER AND AN UNAUTHORISED USER ANSWER IDENTICALLY -- `false`, same
+ * status, same body. Distinguishing them would turn this into an
+ * account-existence oracle for whoever holds the service token. For the same
+ * reason a workspace that does not exist answers `false` rather than 404: the
+ * absence of a workspace is not a fact this endpoint should disclose either.
+ *
+ * "CAN READ A WORKSPACE" IS DERIVED FROM THE RULES THIS PRODUCT ALREADY HAS,
+ * not invented: an admin (who reads every archive in the install), the
+ * workspace owner (`workspaces.owner_id`, the top of ownership.js's cascade),
+ * or a member of any squad in that workspace -- which is exactly what that
+ * file's `read_access_workspace` clause already means by "in any squad of the
+ * same workspace".
+ *
+ * IT IS DELIBERATELY NOT "has read access to at least one archive here". That
+ * is a narrower question and the wrong one: a person who belongs to a workspace
+ * but has no archive grants yet should still be able to connect it, and every
+ * search that follows still applies the per-archive grants unchanged. This
+ * gates the MAPPING, not the reads.
+ */
+router.get('/workspaces/:workspaceId/reader-check', requireMachine, asyncHandler(async (req, res) => {
+  const { workspaceId } = req.params;
+  const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+
+  if (!isValidId(workspaceId)) {
+    return res.status(400).json({ success: false, message: 'Invalid workspace id' });
+  }
+  if (!email || email.length > 255) {
+    return res.status(400).json({ success: false, message: 'An email query parameter is required' });
+  }
+
+  /*
+   * LOWER() on both sides. MySQL's default collation is already
+   * case-insensitive, so `=` would work today -- written this way so the intent
+   * survives a future collation change rather than depending on one.
+   */
+  const rows = await c2_query(
+    `SELECT
+       u.is_admin AS isAdmin,
+       EXISTS (SELECT 1 FROM workspaces w WHERE w.id = ? AND w.owner_id = u.id) AS ownsIt,
+       EXISTS (
+         SELECT 1 FROM squad_members sm
+         JOIN squads s ON s.id = sm.squad_id
+         WHERE sm.user_id = u.id AND s.workspace_id = ?
+       ) AS inASquad
+     FROM users u
+     WHERE LOWER(u.email) = LOWER(?)
+     LIMIT 1`,
+    [Number(workspaceId), Number(workspaceId), email]
+  );
+
+  const row = rows[0];
+  // No row at all is the unknown-email case, and it lands on the same answer.
+  const canRead = Boolean(row) && Boolean(row.isAdmin || row.ownsIt || row.inASquad);
+
+  res.json({ canRead });
 }));
 
 router.use(errorHandler);
