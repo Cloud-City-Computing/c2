@@ -524,9 +524,46 @@ through to `requireAuth` unchanged. It is applied to exactly two routes:
 |---|---|
 | `GET /api/search` | `machineOrAuth` |
 | `GET /api/browse` | `machineOrAuth` |
+| `GET /api/workspaces/:workspaceId/reader-check` | **`requireMachine`** |
 | `GET /api/search/filters` | `requireAuth` |
 | `GET /api/presence` | `requireAuth` |
 | everything else in the app | `requireAuth` |
+
+### `requireMachine` is not `machineOrAuth`, and the difference is the point (C2-5)
+
+`machineOrAuth` guards routes that answer **"what may YOU read?"** — the caller asks about
+themselves, so falling through to a session is the natural other half.
+
+`requireMachine` guards the one route that answers **"what may SOMEBODY ELSE read?"**. It refuses a
+session outright, whatever the role, with the same 401 and body an anonymous caller gets.
+
+That asymmetry exists because the reader check is an **oracle about third parties**. Behind a
+session, any logged-in user could enumerate which colleagues belong to which workspaces, and —
+because an unknown address answers exactly as an unauthorised one does — probe which email addresses
+have accounts on this install at all. Behind the machine credential the exposure is bounded to a
+compromised Cloud Command server, which is a system we operate.
+
+**The endpoint answers `{ canRead }` and nothing else.** A missing user, an unauthorised user and a
+workspace that does not exist all produce the identical `{ canRead: false }`: any difference in
+status or body would turn it into an account-existence or id-space oracle.
+
+**What it means by "can read a workspace"** is derived from rules this product already has, not
+invented — an admin, the workspace owner (`workspaces.owner_id`), or a member of any squad in that
+workspace, which is exactly what `ownership.js`'s `read_access_workspace` clause already means. It is
+deliberately NOT "has read access to at least one archive here": a person who belongs to a workspace
+but holds no archive grants yet should still be able to connect it, and every search that follows
+still applies the per-archive grants unchanged. **This gates the MAPPING, not the reads.**
+
+**Why it exists at all** is a suite problem rather than a Cloud Codex one: Cloud Command's
+`c2_workspace_id` was caller-asserted, so any account that could create a Cloud Command workspace
+could point it at any workspace here and read document titles out of it. Cloud Command can only ask;
+the answer has to come from the system that owns the rules. Its consuming half is `S5.1b-f` in that
+repo.
+
+**The test that proves the machine-only property only proves it because it queues a principal row it
+does not use** (`tests/routes/reader-check.test.js`). Without that row the credential lookup finds
+nothing and the request is refused anyway, so the 401 would pass even if the route had been written
+with `machineOrAuth` — the same false-green shape the `search.test.js` 401s were written to avoid.
 
 Both machine-reachable routes are reads, and both consume the principal only
 through `readAccessParams(req.user)` and `buildFilters(req.query, req.user)`.

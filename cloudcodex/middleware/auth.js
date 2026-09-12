@@ -93,6 +93,48 @@ export function machineOrAuth(req, res, next) {
 }
 
 /**
+ * Express middleware for routes ONLY a machine caller may reach (C2-5).
+ *
+ * The sibling of machineOrAuth, and the difference is the whole point: this one
+ * does NOT fall through to a session. A human with a valid login is refused
+ * exactly as an anonymous caller is.
+ *
+ * WHY THAT ASYMMETRY EXISTS. machineOrAuth guards routes that answer "what may
+ * YOU read?" — the caller asks about themselves, so a session is the natural
+ * other half. This guards a route that answers "what may SOMEBODY ELSE read?",
+ * which is an oracle about third parties. Behind a session, any logged-in user
+ * could enumerate which colleagues belong to which workspaces, and — because an
+ * unknown address answers the same as an unauthorised one — probe which email
+ * addresses have accounts on this install at all.
+ *
+ * Behind the machine credential the exposure is bounded to a compromised
+ * Cloud Command server, which is a system we operate. Behind a session it would
+ * be every user who can log in.
+ *
+ * 401 rather than 403, and the same body an unauthenticated caller gets: a
+ * distinct "you are logged in but not a machine" would itself tell a prober
+ * that the route exists and what it wants.
+ */
+export function requireMachine(req, res, next) {
+  const token = extractSessionToken(req);
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  verifyMachineCredential(token)
+    .then(principal => {
+      if (!principal) {
+        return res.status(401).json({ success: false, message: 'Authentication required' });
+      }
+      // No req.sessionToken, for machineOrAuth's reason: a machine caller holds
+      // no session row, so there is nothing to refresh and nothing to revoke.
+      req.user = principal;
+      next();
+    })
+    .catch(next);
+}
+
+/**
  * Express middleware that requires the authenticated user to be a super admin.
  * Must be used after requireAuth.
  */
