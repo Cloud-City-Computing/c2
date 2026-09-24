@@ -261,8 +261,8 @@ See "One session row per user, stored raw" above.
   so a future flow that forgets to name itself fails at insert, as the C2-2 purpose column does.
   W6-CDX-5 widens the CHECK to `oidc`.
 - The same dated migration hashes existing rows in place with `SHA2(id, 256)`, **only for rows that
-  are not already a lowercase hex digest**, so it is idempotent and safe whichever of the new image
-  or the migration runs first. A raw token is 64 characters from `[A-Za-z0-9]`
+  are not already a lowercase hex digest**, so it is idempotent: a re-run, or a digest written by
+  the new image, is left alone. A raw token is 64 characters from `[A-Za-z0-9]`
   (`mysql_connect.js:96-100`), so the chance of one already looking like a digest is
   `(16/62)^64`. `init.sql` gains the column and a comment on `sessions.id`.
 - **Why the hash rides with a column.** `--adopt-fresh-install` refuses any post-baseline file that
@@ -363,9 +363,10 @@ The Google callback's linking ladder is written inline in the route (`oauth.js:2
   (`vitest.config.js:56-65`) include it without a config change.
 - The Google callback delegates to it with a policy that reproduces today clause for clause, the
   `email_verified` refusal first.
-- `AUTH_PROVIDERS` is parsed and validated at boot, failing fast on an unknown value. It accepts
-  `local` and `google` now and `oidc` once W6-CDX-5 lands, and its default is today's derived set
-  (local always, Google when configured).
+- `AUTH_PROVIDERS` is parsed and validated at boot, failing fast on an unknown value or on a
+  listed provider that is not configured. It accepts `local` and `google` now and `oidc` once
+  W6-CDX-5 lands, refuses a list without `local` until W6-CDX-8 can honour one, and defaults to
+  today's derived set (local always, Google when configured).
 - `middleware/auth.js` is untouched.
 
 ### Done means
