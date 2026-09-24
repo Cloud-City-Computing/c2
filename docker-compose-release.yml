@@ -65,7 +65,7 @@ services:
     # See "Upgrades" in docs/deployment.md, which also covers the one-time
     # adoption step this database needs before its first ordinary run.
     # release.yml fails the build if this default falls behind the tag.
-    image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.9.0}
+    image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.10.0}
     container_name: cloudcodex-app
     restart: unless-stopped
     depends_on:
