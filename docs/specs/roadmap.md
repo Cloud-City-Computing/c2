@@ -63,7 +63,7 @@ constraint right now.
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
 | **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token, C2-5 a workspace reader check for the suite | nothing; C2-0 gates the rest |
-| **W** | Wave 6, the suite (**specced 2026-09-24**) | Four sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36), all after the shared live-MySQL test project W6-CDX-10 | S; named Cloud Command and Cloud City ID sessions per sub-track |
+| **W** | Wave 6, the suite (**specced 2026-09-24**) | Four sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36). The shared live-MySQL test project W6-CDX-10 comes before every session that changes schema or needs a real database; W6-CDX-4 and W6-CDX-21 need neither and do not wait for it | S; named Cloud Command and Cloud City ID sessions per sub-track |
 
 ### A. Evaluation path — shipped
 
@@ -282,15 +282,30 @@ C2-0 came first and was a hard gate: before it, `main` required a review but no
 status checks, so a red run was mergeable, and C2-2 rewrote the credential
 reset path. Since C2-0 the `Lint, test and build` check is required on `main`.
 
-The release that carries C2-0 to C2-5 is **0.10.0**: its changelog section is
-written, and the tag is cut through `release.yml` once Kyle authorizes it. Until
-then the only published image, 0.9.0, predates every fix in this track.
+The release that carries C2-0 to C2-5 is **0.10.0**, per Kyle's decision D-H of
+2026-09-24 (the Cloud Command ADR named under track W). It is prepared on its own
+branch, `release/0.10.0`, cut from `main`: the changelog section and the two
+version fields `release.yml` checks, and nothing else. The tag is cut through
+`release.yml` once Kyle authorizes it. Until then the only published image,
+0.9.0, predates every fix in this track.
+
+**Upgrading a 0.9.0 database takes one manual step in 0.10.0**, given in that
+release's changelog entry and in `docs/deployment.md`'s upgrade section: two files
+on the runner's closed pre-runner list, `widen_log_content.sql` and
+`drop_squad_permissions.sql`, shipped after 0.9.0 was tagged, so `--baseline`
+records them as applied on a database that never ran them. **Follow-up, not yet
+scheduled:** the runner should detect that database itself (`logs.html_content`
+still `TEXT`, or a `squad_permissions` table still present) and apply the two
+files or refuse with a sentence, so the step stops being manual. Neither file
+declares a `CREATE TABLE` or `ADD COLUMN`, which is why today's schema check
+cannot see them.
 
 ### W. Wave 6: the suite (specced 2026-09-24)
 
 Cloud City will run Cloud Codex beside Cloud Command as one suite (working name
 "Cloud City"). Kyle's decisions of 2026-09-24, recorded in the Cloud Command ADR
-`wave-6-is-one-sign-in-events-and-a-shared-shell.md`, set the scope and the order:
+`wave-6-is-one-sign-in-events-and-a-shared-shell.md` (Cloud Command is a private
+repository), set the scope and the order:
 
 - **Scope before a test deploy:** one sign-in for both products at Cloud City ID
   (a Zitadel issuer, with both products as OIDC relying parties) and one
@@ -305,6 +320,40 @@ Cloud City will run Cloud Codex beside Cloud Command as one suite (working name
   instance. Cloud Codex keeps its per-instance integer ids; Cloud Command mints
   the instance id. There is no organization above a workspace.
 
+A second round of decisions the same day (D-J to D-P in that ADR) answered the
+questions the four specs raised:
+
+- **Host names (D-J).** `command.cloudcitycomputing.com`;
+  `codex.cloudcitycomputing.com` for the first Cloud Codex instance and
+  `<instance>.codex.cloudcitycomputing.com` for every later one, where
+  `<instance>` is a DNS label the operator assigns when linking it; and
+  `id.cloudcitycomputing.com`, so the issuer is `https://id.cloudcitycomputing.com`.
+  The company domain was chosen because it will not change when the suite is
+  named, and the issuer is half of every identity key.
+- **Accounts (D-K).** Anyone may register at Cloud City ID's login page, with
+  email verification. Each product still gates its own workspaces, so an account
+  there admits nobody to a Codex instance by itself.
+- **Membership sync (D-M)** is automatic and before the test deploy: adding,
+  re-roling or removing a member of a Cloud Command workspace does the same in
+  its Codex instance, and the workspace owner is the instance admin. W6-CDX-9 is
+  on the deploy path.
+- **Tokens and palette (D-L, D-N).** The shared token package lives in the public
+  Apache-2.0 repository `Cloud-City-Computing/cloud-city-design`. Codex adopts
+  the OKLCH accent picker (four of eight hues renamed off reserved semantic
+  arcs, nothing removed, all 40 hue-by-surface pairs at 4.5:1) and Cloud
+  Command's blue-grey tint.
+- **Box size (D-O).** The test box carries one to three workspaces during the
+  beta. W6-CDX-33, the shared-MySQL isolation proof, blocks neither the test
+  deploy nor the beta; it is required before a fourth instance or the
+  containerized service.
+- **Approved defaults (D-P).** A 24-hour ceiling on SSO sessions, renewed by a
+  silent redirect. A deleted linked document stays on its task as a struck
+  "Deleted in Codex" chip with Unlink, and linked-document activity shows on the
+  task, its saga and the workspace Activity feed. Linking a Codex instance to a
+  workspace is an operator action only. **Not approved:** letting W6-CDX-28 and
+  W6-CDX-29, the content and admin burndowns, trail the deploy; both are on its
+  path.
+
 Like track S this is not justified by adoption, and it carries one constraint
 through every sub-track: **everything new is generic and off by default.** An
 install that sets no new variable (no OIDC issuer, no webhook subscription, no
@@ -313,9 +362,9 @@ complete on its own.
 
 **IDs are fresh.** `W6-CDX-n` are this repository's sessions and never collide
 with the shipped C2-0 to C2-5. `W6-CMD-n` are Cloud Command sessions and
-`W6-CCID-n` are sessions in Cloud City ID's own repository; both appear here
-only as dependencies. The 2026-08-24 design's C2-AUTH, F and CC numbers are
-retired.
+`W6-CCID-n` are sessions in Cloud City ID's own repository, which is private like
+Cloud Command's; both appear here only as dependencies. The 2026-08-24 design's
+C2-AUTH, F and CC numbers are retired.
 
 | Sub-track | Spec | Plan | Sessions |
 |---|---|---|---|
@@ -330,7 +379,7 @@ other half, the live-MySQL test project, is the same work as W6-CDX-10 and is
 done once, as W6-CDX-10.
 
 Every session, in the order to do them. "Deploy" marks the sessions the test
-deploy needs; the rest are inside Wave 6 and may land after it.
+deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 
 | ID | Session | Depends on | Deploy |
 |---|---|---|---|
@@ -338,31 +387,31 @@ deploy needs; the rest are inside Wave 6 and may land after it.
 | W6-CDX-2 | One session per sign-in, stored hashed | W6-CDX-10 | yes |
 | W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes | W6-CDX-2 | yes |
 | W6-CDX-4 | An identity-resolution seam, Google moved onto it | nothing | yes |
-| W6-CDX-5 | The OIDC relying party and `user_identities` | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3 | yes |
-| W6-CDX-6 | Sign-out that propagates | W6-CDX-5 | yes |
-| W6-CDX-7 | Machine JWTs through `verifyMachineCredential` | W6-CDX-5 | yes |
-| W6-CDX-8 | Hosted mode: OIDC only, invitations bind on verified email | W6-CDX-5 | yes |
-| W6-CDX-9 | Machine membership endpoints (**contingent**) | W6-CDX-7, W6-CDX-8 | Kyle's call |
+| W6-CDX-5 | The OIDC relying party and `user_identities` | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3, W6-CMD-24 (the `returnTo` corpus) | yes |
+| W6-CDX-6 | Sign-out that propagates | W6-CDX-5; W6-CCID-3 | yes |
+| W6-CDX-7 | Machine JWTs through `verifyMachineCredential` | W6-CDX-5; W6-CCID-2, W6-CCID-3 | yes |
+| W6-CDX-8 | Hosted mode: OIDC only, invitations bind on verified email | W6-CDX-5, W6-CDX-32; W6-CCID-3 | yes |
+| W6-CDX-9 | Machine membership endpoints for the automatic sync | W6-CDX-7, W6-CDX-8 | yes |
 | W6-CDX-12 | Three activity gaps fixed at the source | W6-CDX-10 | yes |
 | W6-CDX-13 | The outbox, subscriptions and the emit hook | W6-CDX-12 | yes |
 | W6-CDX-14 | The delivery worker | W6-CDX-13 | yes |
 | W6-CDX-15 | Webhooks in the admin console | W6-CDX-14 | no |
 | W6-CDX-16 | A machine read for reconciliation | W6-CDX-10 | no |
-| W6-CDX-21 | Vendor the tokens, fonts and gates | W6-CMD-20, W6-CMD-21 | yes |
+| W6-CDX-21 | Vendor the tokens, fonts and gates | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
 | W6-CDX-22 | The palette bridge and the accent picker | W6-CDX-21 | yes |
 | W6-CDX-23 | Focus, buttons and the Toast | W6-CDX-22 | yes |
 | W6-CDX-24 | Dialogs with real semantics | W6-CDX-23 | yes |
 | W6-CDX-25 | Shell chrome and the suite identity cluster | W6-CDX-23, W6-CMD-23 | yes |
 | W6-CDX-26 | The suite front door, deep links in | W6-CDX-24, W6-CDX-25, W6-CDX-8, W6-CMD-24 | yes |
 | W6-CDX-27 | Deep links out: Linked tasks | W6-CDX-25, W6-CMD-25 | yes |
-| W6-CDX-28 | Content surfaces on the tokens | W6-CDX-22 | the cut line |
-| W6-CDX-29 | Admin and settings surfaces, and the UI track retires | W6-CDX-26, W6-CDX-27, W6-CDX-28 | the cut line |
+| W6-CDX-28 | Content surfaces on the tokens | W6-CDX-22 | yes |
+| W6-CDX-29 | Admin and settings surfaces, and the UI track retires | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
 | W6-CDX-31 | Signals, health, readiness, the single-writer lock | W6-CDX-10 | yes |
 | W6-CDX-32 | Production configuration and the per-instance contract | W6-CDX-10 | yes |
-| W6-CDX-33 | The grant recipe and the isolation proof | W6-CDX-32 | before a second instance |
+| W6-CDX-33 | The grant recipe and the isolation proof | W6-CDX-32 | no: before a fourth instance |
 | W6-CDX-34 | Document images for readers only | W6-CDX-10 | yes |
 | W6-CDX-35 | Backup and restore, with a drill | W6-CDX-31 | yes |
-| W6-CDX-36 | The Wave 6 Codex release the test box pins | the deploy-path sessions above | yes |
+| W6-CDX-36 | The Wave 6 Codex release the test box pins | every session marked yes above | yes |
 
 Two releases, deliberately separate: **0.10.0** carries C2-0 to C2-5 and
 exists so the published image stops predating the security fixes; **W6-CDX-36**
@@ -373,11 +422,11 @@ billing, entitlements, the seat taxonomy, hosted per-customer provisioning
 automation, and operator access for Cloud City staff. Each spec lists the
 narrower items it defers and why.
 
-**Open questions for Kyle** live in each spec, and the ones that move a session
-are: whether membership sync to a Codex instance is needed before the test
-deploy (W6-CDX-9), whether a 24-hour ceiling on SSO sessions is acceptable,
-where the shared token package lives and whether Codex's palette may change,
-the test box's host names, and how many instances the beta must carry.
+**Open questions for Kyle** still live in each spec. The round-2 answers above
+closed the ones that moved a session; what remains is the shell placement
+(settled at Cloud Command's W6-CMD-22 shape pass), the final names of the eight
+accents (confirmed in W6-CDX-22's review), and where a member the sync admits
+lands inside a Codex instance (the identity spec).
 
 ## Sequencing
 
@@ -395,8 +444,10 @@ now         A ──────────────────────
             S ────────────────────────────► shipped 2026-09-12 ──► 0.10.0
                                                   │
             W ◄───────────────────────────────────┘  specced 2026-09-24
-                W6-CDX-10 first, then identity, events, UI and hosting
-                in parallel, then W6-CDX-36, the release the test box pins
+                W6-CDX-10 first for every session that needs a real
+                database (W6-CDX-4 and W6-CDX-21 do not), then identity,
+                events, UI and hosting in parallel, then W6-CDX-36, the
+                release the test box pins
 ```
 
 Track S ran alongside the rest rather than after them. It did not depend on
@@ -405,12 +456,15 @@ made a red CI run block a merge, and the PRs that followed it changed access
 control and the credential reset path.
 
 Track W builds on S (the migration runner, the machine-credential seam and the
-reader check are all load-bearing for it) and depends on nothing in A to E. Its
-first session is W6-CDX-10, because no Wave 6 schema change can be verified
-until a test touches a real MySQL; after that its four sub-tracks can run in
+reader check are all load-bearing for it) and depends on nothing in A to E.
+W6-CDX-10 comes first for every session that changes schema or needs a real
+database, because no Wave 6 schema change can be verified until a test touches a
+real MySQL. W6-CDX-4 (a pure refactor) and W6-CDX-21 (vendoring and static
+gates) need neither and can start without it. The four sub-tracks then run in
 parallel, subject to the cross-repo dependencies each spec names. Its size, 29
-sessions in this repository with one active committer, is the reason each spec
-marks which sessions the test deploy needs and which may trail it.
+sessions in this repository with one active committer, is why each spec marks
+which sessions the test deploy needs: after Kyle's round-2 answers, all but
+W6-CDX-15, W6-CDX-16 and W6-CDX-33.
 
 A, B and D have shipped, C is decided, and **E's defect half shipped on
 2026-08-09**. Two of the arguments for E were settled during D rather than

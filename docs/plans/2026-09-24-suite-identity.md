@@ -23,7 +23,9 @@ exactly their sockets. `verifyMachineCredential` gains a JWT branch behind a sub
 `jose` 6, Vitest 4 + Supertest, Docker Compose.
 
 **Order:** one PR per session, merged in this order. PR 3 (W6-CDX-4) has no dependency on PR 2 and
-may run beside it. PR 9 is contingent on Kyle's answer (spec, open question 1).
+may run beside it. PR 8 also needs the hosting plan's PR 2 (W6-CDX-32) merged first, because
+both change `ensureAdminUser` and W6-CDX-32's never-promote rule lands first. Every PR here is on
+the test-deploy path, PR 9 included (Kyle's decision D-M).
 
 | PR | Session | Branch |
 |---|---|---|
@@ -35,7 +37,7 @@ may run beside it. PR 9 is contingent on Kyle's answer (spec, open question 1).
 | 6 | W6-CDX-6, sign-out that propagates | `w6/cdx-6-sign-out` |
 | 7 | W6-CDX-7, machine JWTs | `w6/cdx-7-machine-jwt` |
 | 8 | W6-CDX-8, hosted mode | `w6/cdx-8-hosted-mode` |
-| 9 | W6-CDX-9, machine membership endpoints (contingent) | `w6/cdx-9-machine-members` |
+| 9 | W6-CDX-9, machine membership endpoints for the sync | `w6/cdx-9-machine-members` |
 
 **Baseline**, measured 2026-09-24 in a worktree of `origin/main` `91493a6` after `npm ci`:
 `npm test` reports `Test Files 71 passed (71)` and `Tests 1479 passed (1479)`. CI runs Node 20;
@@ -49,7 +51,8 @@ the measurement ran on Node 22.22.2.
 - [ ] Re-derive every anchor this PR's section names. Anchor on the **named function, route or
       column** and find its line with `grep -n`; the `:line` numbers below are from `91493a6` and
       will have moved.
-- [ ] From PR 5 on: read Cloud City ID's issuer-contract results (W6-CCID-3, in that repository's
+- [ ] For PRs 5 to 8 (W6-CDX-5 to W6-CDX-8, the sessions W6-CCID-3 gates): read Cloud City ID's
+      issuer-contract results (W6-CCID-3, in that private repository's
       `docs/research/issuer-contract-<date>/`). **If a finding contradicts this PR's section, edit
       the section in this plan first, in the same PR**, and say so in the PR body.
 - [ ] `cd cloudcodex && npm ci && npm test`, and record the counts in the PR body.
@@ -81,7 +84,9 @@ Every task's requirements implicitly include this section.
 - **Maps move in the same PR** as the code they describe (CLAUDE.md checklist item 7). New env vars
   go in `.env.example` with a comment (item 3).
 - **The source never names Cloud City, Cloud City ID or Zitadel.** Tests may name Zitadel only
-  when they record a real issuer's behaviour.
+  when they record a real issuer's behaviour. The suite's display name is the `SUITE_NAME`
+  setting (the UI plan's PR 5 adds it and its single-source test), and the company's legal name,
+  `Cloud City Computing, LLC`, in each file header is the only `Cloud City` the source carries.
 - **No em dash characters** in code comments, commit messages or docs.
 
 ---
@@ -1024,8 +1029,9 @@ those answers 404; with it unset every existing test passes unedited.
 LOWER(?)` on `ADMIN_EMAIL` only, create without `password_hash` if absent, set `is_admin`, and
 never write a password. `server.js:17-21` requires `ADMIN_USERNAME` and `ADMIN_PASSWORD` only while
 `local` is enabled; `ADMIN_EMAIL` stays required. The one existing boot assertion that moves is
-named in the PR body. (Hosting track PR W6-CDX-32 separately stops the sync from promoting an
-existing non-admin; if it lands first, keep its refusal here.)
+named in the PR body. The hosting plan's W6-CDX-32 has already landed (it is a precondition of this
+PR) and refuses to promote an existing non-admin; keep that refusal on both branches, local and
+OIDC-only, and its tests unedited.
 
 ### Task 8.3 Invitations bind on verified email
 
@@ -1067,38 +1073,167 @@ builds suite mode and the mixed-provider case on this hook.
 
 ---
 
-## PR 9: W6-CDX-9, machine membership endpoints (contingent)
+## PR 9: W6-CDX-9, machine membership endpoints for the sync
 
-Start only after Kyle answers the spec's first open question. If the answer is "manual invitations
-until after the test deploy", this PR moves after W6-CDX-36 and this section is re-read then.
+On the test-deploy path (Kyle's decision D-M). Cloud Command's W6-CMD-7 calls these routes when a
+member is added, re-roled or removed; the workspace owner arrives as `admin`, everyone else as
+`member`. Squad placement follows the spec's open question 1: until Kyle answers, an invitation
+carries no squad.
 
-### Task 9.1 The routes
+### Task 9.1 The flag the invitation needs, tested on real MySQL first
 
-`routes/machine-members.js`, both behind `requireMachine` and a limiter:
+`migrations/<today>-invitation-grants-admin.sql` and the matching `init.sql` edit to
+`user_invitations`:
 
-- `PUT /api/machine/members` `{ email, role }`: validate with `isValidEmail` and the role set; a
-  deactivated user is reactivated (`deactivated_at = NULL`); otherwise upsert an open invitation
-  `invited_by` the machine principal, `expires_at` a year out, sending no email. Answers
-  `{ success: true }` whatever the prior state.
-- `DELETE /api/machine/members/:email`: set `deactivated_at`, delete the user's sessions, close their
-  sockets with `closeSocketsForSessions`, expire their open invitations. Answers `{ success: true }`
-  whether or not the address was known.
+```sql
+ALTER TABLE user_invitations ADD COLUMN grants_admin BOOLEAN NOT NULL DEFAULT FALSE;
+```
 
-The owner-to-instance-admin mapping follows Kyle's answer and is written into this task before it
-starts.
+`tests/integration/invitation-grants-admin.test.js`: the column exists with default `FALSE` after
+the runner applies the file, `--adopt-fresh-install` still adopts an `init.sql` schema, and a
+second run is a no-op. **Expected:** red before the migration file exists, green after.
 
-### Task 9.2 Tests and docs
+W6-CDX-8's invitation binding (Task 8.3) gains one clause: when the bound invitation has
+`grants_admin`, the `INSERT INTO users` in the same transaction sets `is_admin = TRUE`. Test: an
+invited owner's first OIDC sign-in creates an admin; an invited member's does not.
 
-Creation, refresh, idempotency, deactivation, reactivation; after `DELETE` the user cannot sign in
-and their documents and authorship remain; a session caller gets the same 401 an anonymous caller
-gets (queue a principal row it never uses, the C2-5 false-green guard). `docs/api/`, the
-access-control map, CLAUDE.md "Machine callers". Lint, test, coverage, integration.
+### Task 9.2 The routes, tests first
+
+`routes/machine-members.js`:
+
+```javascript
+/**
+ * Membership sync from a paired product: admit, re-role and remove by email
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
+import crypto from 'node:crypto';
+import express from 'express';
+import { withTransaction } from '../mysql_connect.js';
+import { requireMachine } from '../middleware/auth.js';
+import { asyncHandler, errorHandler, isValidEmail } from './helpers/shared.js';
+import { closeSocketsForSessions as closeCollab } from '../services/collab.js';
+import { closeSocketsForSessions as closeInbox } from '../services/user-channel.js';
+
+const router = express.Router();
+const ROLES = new Set(['admin', 'member']);
+const OK = { success: true };
+
+function readEmail(raw) {
+  const email = typeof raw === 'string' ? raw.trim() : '';
+  return email && email.length <= 255 && isValidEmail(email) ? email : null;
+}
+
+// The boot sync owns the ADMIN_EMAIL row and would undo any change at the next restart.
+const isBootAdmin = (email) =>
+  Boolean(process.env.ADMIN_EMAIL) && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase();
+
+router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => {
+  const email = readEmail(req.body?.email);
+  const role = req.body?.role;
+  if (!email || !ROLES.has(role)) {
+    return res.status(400).json({ success: false, message: 'An email and a role of admin or member are required' });
+  }
+  if (isBootAdmin(email)) {
+    return res.status(409).json({ success: false, message: 'This account is managed by the server configuration' });
+  }
+  const admin = role === 'admin';
+  await withTransaction(async (query) => {
+    const users = await query('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1 FOR UPDATE', [email]);
+    if (users.length > 0) {
+      await query('UPDATE users SET is_admin = ?, deactivated_at = NULL WHERE id = ?', [admin, users[0].id]);
+      return;
+    }
+    const open = await query(
+      `SELECT id FROM user_invitations
+        WHERE LOWER(email) = LOWER(?) AND accepted = FALSE
+        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [email]
+    );
+    if (open.length > 0) {
+      await query(
+        `UPDATE user_invitations
+            SET grants_admin = ?, expires_at = NOW() + INTERVAL 1 YEAR, invited_by = ?
+          WHERE id = ?`,
+        [admin, req.user.id, open[0].id]
+      );
+    } else {
+      await query(
+        `INSERT INTO user_invitations (email, token, invited_by, expires_at, grants_admin)
+         VALUES (?, ?, ?, NOW() + INTERVAL 1 YEAR, ?)`,
+        [email, crypto.randomBytes(32).toString('hex'), req.user.id, admin]
+      );
+    }
+  });
+  res.json(OK);
+}));
+
+router.delete('/machine/members/:email', requireMachine, asyncHandler(async (req, res) => {
+  const email = readEmail(req.params.email);
+  if (!email) return res.status(400).json({ success: false, message: 'A valid email is required' });
+  if (isBootAdmin(email)) {
+    return res.status(409).json({ success: false, message: 'This account is managed by the server configuration' });
+  }
+  const digests = await withTransaction(async (query) => {
+    await query(
+      'UPDATE user_invitations SET expires_at = NOW() WHERE LOWER(email) = LOWER(?) AND accepted = FALSE',
+      [email]
+    );
+    const users = await query('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1 FOR UPDATE', [email]);
+    if (users.length === 0) return [];
+    await query('UPDATE users SET deactivated_at = NOW(), is_admin = FALSE WHERE id = ?', [users[0].id]);
+    const rows = await query('SELECT id FROM sessions WHERE user_id = ?', [users[0].id]);
+    await query('DELETE FROM sessions WHERE user_id = ?', [users[0].id]);
+    return rows.map((row) => row.id);
+  });
+  closeCollab(digests);
+  closeInbox(digests);
+  res.json(OK);
+}));
+
+router.use(errorHandler);
+
+export default router;
+```
+
+The token is minted exactly as `POST /api/admin/invitations` mints one (`routes/admin.js:439`,
+32 random bytes as hex, which `user_invitations.token CHAR(64) NOT NULL UNIQUE` expects,
+`init.sql:141`). `squad_id` stays `NULL` and the permission flags take their column defaults
+(`init.sql:143-150`), so an admitted member sees nothing until the instance admin places them in a
+squad (the spec's open question 1). Re-derive both anchors by name
+at execution. `app.js` mounts the router under `/api` and puts `authLimiter` on both paths,
+the way the reader check is limited (`app.js:157`).
+
+Tests, `tests/routes/machine-members.test.js`, with the mock queue in the order above:
+
+- `PUT` for an unknown address inserts an invitation with `grants_admin` matching the role; for an
+  open invitation it refreshes that row; for a user it sets `is_admin` and clears `deactivated_at`;
+  a re-role from `admin` to `member` writes `is_admin = FALSE`.
+- `DELETE` expires invitations, deactivates, deletes the sessions and passes exactly those digests
+  to both `closeSocketsForSessions`; an unknown address answers the same `{ success: true }`.
+- The `ADMIN_EMAIL` address gets 409 from both routes and issues no write.
+- A bad email or role is 400. A signed-in session gets the same 401 an anonymous caller gets:
+  queue a principal row it never uses, the C2-5 false-green guard.
+
+**Expected:** each test red before the route exists, green after.
+
+### Task 9.3 Proof on real MySQL, then docs
+
+- [ ] `tests/integration/machine-members.test.js`: admit an owner and a member, sign both in through
+      the fake issuer, and assert the owner is an admin and the member is not; `DELETE` the member
+      and assert their next request is 401, their sign-in is refused, and the documents they wrote
+      keep their `created_by`.
+- [ ] `docs/api/` (both routes), the access-control map (the machine surface now writes, and this is
+      the one path that can grant `is_admin`), CLAUDE.md "Machine callers", CHANGELOG. Lint, test,
+      coverage, integration.
 
 ---
 
 ## Retirement
 
-The last PR of this track to merge (PR 9, or PR 8 if PR 9 moves after the deploy) also deletes
+The last PR of this track to merge (normally PR 9) also deletes
 `docs/specs/2026-09-24-suite-identity.md` and this plan, marks the identity row in
 `docs/specs/roadmap.md` shipped with its PR numbers, and removes the spec's rows from
 `docs/specs/README.md` and `docs/README.md`. The maps are the record.

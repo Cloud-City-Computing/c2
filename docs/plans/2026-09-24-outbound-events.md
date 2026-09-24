@@ -383,7 +383,9 @@ for `server.js`. A tick:
      `consecutive_failures = 0` and `paused_until = NULL`.
    - `410`: the subscription `enabled = FALSE`, `disabled_reason = 'receiver answered 410'`; the
      delivery stays `pending` for an admin to redeliver after re-enabling.
-   - `422`: this delivery `dead` with `last_status = 422`; the subscription is not paused.
+   - `422`: this delivery `dead` with `last_status = 422`; the subscription is not paused. This is
+     a generic receiver's rejection: Cloud Command's receiver persists every signed delivery and
+     answers `2xx` instead (the spec's contract section), so the suite never reaches this branch.
    - anything else, including a `3xx`, a timeout or a connection error: `attempts + 1`,
      `last_status`, `last_error` (at most 255 characters, never the body), the lease released, and
      the subscription paused until `now + min(10s * 2^(failures - 1), 1h)`.

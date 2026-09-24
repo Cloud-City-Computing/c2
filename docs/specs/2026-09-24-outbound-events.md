@@ -20,6 +20,12 @@ document's title and archive, and refreshes a title only when the cached one is 
 document keeps its old title on every task forever, and a deleted document keeps a chip that
 looks live. Only Cloud Codex knows either happened.
 
+What Cloud Command does with the events is Kyle's decision D-P (2026-09-24, second round), stated
+here because it is why `log.delete`, `archive.delete` and the actor are in v1: a deleted linked
+document stays on its task as a struck "Deleted in Codex" chip with an Unlink action, rather than
+disappearing, and linked-document activity shows on the task, on its saga and in the workspace's
+Activity feed. None of that changes the contract below; it is all the receiver's.
+
 The capability is built as **a general, open-source outbound webhook subsystem**, off by default,
 with Cloud Command as one subscriber. An install with no subscription writes nothing new and
 sends nothing. The contract never names the suite, so any self-hoster can point it at their own
@@ -152,6 +158,14 @@ and `X-Codex-Delivery` (the delivery row id), the last two for logs only and uns
 Receiver answers: any `2xx` is delivered (a duplicate is a `2xx`); `410` disables the
 subscription; `422` dead-letters that one event; anything else, a timeout or a connection error
 retries on the backoff.
+
+**Cloud Command's receiver (W6-CMD-11) never answers `422` to a correctly signed delivery.** It
+persists every signature-verified delivery before it answers, keyed on the envelope's `id`, parks
+one it cannot parse on its own side, and answers `2xx`, the way its GitHub receiver stores raw
+deliveries first. So between the two products a verified event is always accepted (a duplicate
+is a `2xx` too) and never dead-lettered by the receiver. The `422` rule stays exactly as written
+for any other receiver that genuinely rejects an event, and it is how Codex treats one. Cloud
+Command's documents state the same contract.
 
 ## Ordering constraint
 
@@ -312,7 +326,7 @@ an unreadable id produce identical answers.
 | This session | Needs, from outside this repo | Is needed by |
 |---|---|---|
 | W6-CDX-11 (this spec) | nothing | W6-CMD-10 (the receiver builds against the envelope and vectors) |
-| W6-CDX-13, W6-CDX-14 | the receiver answering 202, 401, 410, 422 (W6-CMD-11) for the end-to-end run only | W6-CMD-18 (the events end-to-end run) and the second Codex release the test box pins |
+| W6-CDX-13, W6-CDX-14 | the receiver persisting then answering `2xx`, or `401` and `410` (W6-CMD-11), for the end-to-end run only | W6-CMD-18 (the events end-to-end run) and the second Codex release the test box pins |
 | W6-CDX-16 | nothing | W6-CMD-17 (reconciliation sweep) |
 
 The signature vectors are defined here and committed in both repositories: this repo's copy in

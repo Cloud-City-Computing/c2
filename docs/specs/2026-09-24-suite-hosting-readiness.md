@@ -10,8 +10,9 @@ editing.
   and run first.
 - **Plan:** [`../plans/2026-09-24-suite-hosting-readiness.md`](../plans/2026-09-24-suite-hosting-readiness.md)
 - **Requested by:** Kyle, in the 2026-09-24 decisions recorded in the Cloud Command ADR
-  `wave-6-is-one-sign-in-events-and-a-shared-shell.md` (a private repository; what binds this
-  spec is restated here).
+  `wave-6-is-one-sign-in-events-and-a-shared-shell.md`, both rounds (a private repository; what
+  binds this spec is restated here). The second round answered this spec's three open questions
+  (D-J, D-O, D-P).
 
 ## Why this spec exists
 
@@ -20,6 +21,18 @@ and Cloud City ID that Kyle performs himself, then the design-partner beta, then
 service for real users.** Every Cloud Command workspace maps to exactly one Codex instance, so the
 test box runs at least one Codex instance from a published image under a supervisor, behind a
 TLS-terminating proxy, beside other services.
+
+Kyle's second round fixed the box's shape:
+
+- **Hosts (D-J).** Cloud Command at `command.cloudcitycomputing.com`, the first Codex instance at
+  `codex.cloudcitycomputing.com` and each later one at `<instance>.codex.cloudcitycomputing.com`
+  (a DNS label the operator assigns when linking it), and Cloud City ID at
+  `id.cloudcitycomputing.com`. Codex learns its own host from `APP_URL` and never from a request.
+- **Size (D-O).** The box carries one to three workspaces, so one to three Codex instances, during
+  the beta. W6-CDX-33's isolation proof blocks neither the test deploy nor the beta; it is required
+  before a fourth instance or the containerized service.
+- **Linking (D-P).** Linking a Codex instance to a workspace is an operator action only, never a
+  workspace admin's.
 
 The published image cannot yet be operated safely that way. It has no stop handling, no health
 endpoint, nothing enforcing the single process CLAUDE.md decision 1 depends on, a production
@@ -84,6 +97,12 @@ the address.
 **Backups are a manual recipe.** `docs/deployment.md:140-175` documents a `mysqldump` plus a tar of
 the `app_public` volume, and no script does either.
 
+**Security headers cover `/api` only.** Helmet, with the CSP and `frame-ancestors 'none'`, is
+mounted on `/api` (`app.js:112-125`), deliberately, so the Vite dev server's inline module scripts
+are not blocked (`docs/maps/request-lifecycle.md`). The single-page app's HTML and its static
+assets therefore carry no CSP and no frame protection. `docs/security.md` said Helmet covered every
+response; this spec's PR corrects that sentence, and W6-CDX-32 closes the gap.
+
 ## Decisions this spec records
 
 1. **`CMD ["node", "server.js"]`**, and a bounded 10-second graceful shutdown that flushes every
@@ -97,28 +116,35 @@ the `app_public` volume, and no script does either.
    per instance on a server, so instances sharing one MySQL never contend.
    `C2_INSTANCE_LOCK=0` is the named escape, for an operator who knows why.
 4. **`APP_URL` is fatal when unset in production**; `TRUST_PROXY` and `DB_POOL_SIZE` become
-   configuration with today's values as defaults.
+   configuration with today's values as defaults. **In production the security headers cover the
+   app, not only `/api`**: one Helmet policy, CSP and frame protection included, on the HTML and
+   static responses too; development keeps today's `/api`-only scope for the Vite dev server.
 5. **MySQL is pinned to an 8.4 patch release** in every compose file.
 6. **The admin sync creates or syncs, and never promotes**: an existing non-admin whose email matches
    is refused loudly instead.
 7. **Document images are served to their readers only**, with `DOC_IMAGES_PUBLIC=1` restoring
    today's behaviour. Avatars stay public, as a documented decision.
 8. **One schema and one DML-only user per instance** is the recipe for several instances on one MySQL
-   server, and it is proved, not asserted.
+   server, and it is proved, not asserted. The proof is required before a fourth instance, not
+   before the test deploy or the beta (D-O).
 9. **Backup and restore are one command each**, with a drill.
-10. **The test box pins a Wave 6 release** (W6-CDX-36), cut after this track and the other tracks'
-    deploy-path sessions merge. It is separate from the release that carries C2-0 to C2-5, which is
-    cut from the changelog this spec's PR prepares.
+10. **The test box pins a Wave 6 release** (W6-CDX-36), cut after this track's deploy-path sessions
+    and the other tracks' merge. It is separate from the release that carries C2-0 to C2-5,
+    0.10.0, which is prepared on its own branch (`release/0.10.0`), not in this spec's PR.
 
 ## Ordering constraint
 
 ```
 W6-CDX-10 (live MySQL, identity plan PR 1)
      ├──► W6-CDX-31 (signals, health, lock) ──► W6-CDX-35 (backup and restore) ──┐
-     ├──► W6-CDX-32 (configuration) ──► W6-CDX-33 (grants and isolation proof) ─┤
+     ├──► W6-CDX-32 (configuration, headers) ───────────────────────────────────┤
+     │         └──► W6-CDX-33 (grants and isolation proof; before a fourth instance, not on the path)
      └──► W6-CDX-34 (document images) ──────────────────────────────────────────┤
                                         the other tracks' deploy-path sessions ──┴──► W6-CDX-36 (the release)
 ```
+
+W6-CDX-32 is also a precondition of the identity track's W6-CDX-8: both change `ensureAdminUser`,
+and this track's never-promote rule lands first.
 
 ---
 
@@ -167,7 +193,15 @@ save, as documented in `docs/maps/documents-and-collab.md`.
 - `TRUST_PROXY` (default `1`) and `DB_POOL_SIZE` (default `10`).
 - `mysql:8.4.x` pinned in `docker-compose.yaml`, `docker-compose-prod.yml` and
   `docker-compose-release.yml`, with the exact patch recorded in the PR.
-- `ensureAdminUser` as Decision 6.
+- `ensureAdminUser` as Decision 6. The identity track's W6-CDX-8 builds its provider-aware admin on
+  this, so it lands first.
+- **Security headers on the app, in production** (Decision 4): Helmet is mounted on the whole app
+  before the static and single-page handlers when `NODE_ENV=production`, and on `/api` only in
+  development. One policy serves both: today's directives, `frame-ancestors 'none'` and
+  `X-Frame-Options: DENY`, with `img-src` widened to `https:` (documents hold remote images, and an
+  image cannot run script) and Helmet's default `upgrade-insecure-requests` turned off, so an
+  install evaluated over plain `http` still loads. `docs/security.md` and the request-lifecycle map
+  describe both scopes.
 - **The configuration contract**: a test that enumerates every `process.env` read under
   `cloudcodex/` (outside `tests/`) and pins, per variable, whether it is required, degrades or
   defaults, and whether it is per-instance. `.env.example` documents each one. A variable a later
@@ -177,7 +211,11 @@ save, as documented in `docs/maps/documents-and-collab.md`.
 
 Tests for the `APP_URL` exit and the development default; `TRUST_PROXY` and `DB_POOL_SIZE` reaching
 Express and the pool; the admin sync creating, syncing and refusing (refusal is the new behaviour);
-the contract pinning every default; and no compose file using a floating `mysql:8`.
+the contract pinning every default; and no compose file using a floating `mysql:8`. In production
+mode the app's HTML response carries `Content-Security-Policy` with `frame-ancestors 'none'` and
+`X-Frame-Options`, the built app loads with no CSP violation in the browser console (home, a
+document with an image and a diagram, the GitHub page), and `npm run dev` still serves the dev
+server.
 
 ### Explicitly deferred
 
@@ -209,8 +247,10 @@ Both suites are green in the integration step. A deliberately widened grant (`GR
 turns `tenancy.test.js` red, confirmed to have landed. The result is recorded as the evidence for
 "one container and one schema per customer".
 
-**Required before a second Codex instance shares the test box's MySQL server.** Whether it blocks
-the beta depends on open question 2.
+**Not on the test-deploy path, and not a blocker for the beta (Kyle's decision D-O: one to three
+workspaces on the box).** It is required before a fourth instance shares the box's MySQL server, and
+before the containerized service. Until it lands, the box's instances share one server on the
+strength of the per-schema design, not a proof, which is the accepted cost of that decision.
 
 ---
 
@@ -263,9 +303,12 @@ document's HTML is intact, and its image is served to its reader.
 
 ### In scope
 
-- Precondition: this track has merged, and so have the other tracks' deploy-path sessions (the
-  identity relying party, the events emitter and worker, and the UI track through W6-CDX-27).
-- Retire this spec and its plan; update the roadmap.
+- Precondition: this track's deploy-path sessions have merged (W6-CDX-31, W6-CDX-32, W6-CDX-34
+  and W6-CDX-35; W6-CDX-33 is not one, per D-O), and so have the other tracks' (identity
+  W6-CDX-10 and W6-CDX-2 to W6-CDX-9, events W6-CDX-12 to W6-CDX-14, and UI W6-CDX-21 to
+  W6-CDX-29).
+- Retire this spec and its plan, or, if W6-CDX-33 is still open (it is not a precondition),
+  trim both to W6-CDX-33 alone and leave its PR to retire them; update the roadmap.
 - Move the changelog's `[Unreleased]` into a version, bump `cloudcodex/package.json`, and move the
   default in `docker-compose-release.yml`, which `release.yml`'s guard checks.
 - Tag through `release.yml`. **Kyle authorizes the tag**, because the release is public.
@@ -286,7 +329,7 @@ deleted and the maps are current.
 |---|---|
 | W6-CDX-31, W6-CDX-32 | W6-CMD-36 (the box's compose file, health checks and smoke test) |
 | W6-CDX-32 (the configuration contract) | W6-CMD-31 (the operator link tool's printed snippet) |
-| W6-CDX-33 | the runbook appendix that adds a second instance by hand |
+| W6-CDX-33 | the runbook appendix that adds a fourth instance, and the containerized service |
 | W6-CDX-35 | W6-CMD-37 (the whole-box backup) |
 | W6-CDX-36 | W6-CMD-38 (the full-box rehearsal and v1.0.0) |
 
@@ -302,15 +345,13 @@ C2-5, before this track starts, and re-measures on the W6-CDX-36 image.
 
 ## Open questions for Kyle
 
-1. **Host names.** Which registrable domain and host names do the three services use on the test
-   box? The choice fixes certificates, OIDC redirect URIs and the issuer URL, and the issuer is half
-   of every user's identity key.
-2. **Beta scale.** How many design-partner workspaces, and so Codex instances, must the single box
-   carry at once? That sizes the machine and decides whether W6-CDX-33 blocks the beta or can wait.
-3. **Who links an instance.** Is linking a Codex instance to a workspace always Cloud City's
-   operator act (assumed here), or may a workspace admin connect a Codex they run themselves?
+None remain. Kyle's second round, 2026-09-24, answered all three: the host names (D-J, above), the
+beta's size, one to three workspaces, so W6-CDX-33 waits for a fourth instance (D-O), and linking
+an instance as an operator action only (D-P).
 
 ## Retirement
 
 W6-CDX-36 deletes this spec and its plan and marks the hosting row in [`roadmap.md`](roadmap.md)
-shipped; the maps updated by each session are the record.
+shipped; the maps updated by each session are the record. If W6-CDX-33 has not merged by then, which
+D-O allows, W6-CDX-36 trims this spec and its plan to W6-CDX-33 instead, and W6-CDX-33's PR does
+the retirement.

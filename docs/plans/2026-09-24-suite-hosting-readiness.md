@@ -22,16 +22,18 @@ authorized handler. Backup and restore are scripts with a drill.
 **Precondition:** W6-CDX-10 has merged (PR 1 of
 [`2026-09-24-suite-identity.md`](2026-09-24-suite-identity.md)).
 
-**Order:** one PR per session. PRs 1, 2 and 4 are independent of each other.
+**Order:** one PR per session. PRs 1, 2 and 4 are independent of each other. PR 2 is also a
+precondition of the identity plan's PR 8 (W6-CDX-8). PR 3 is **not** on the test-deploy path
+(Kyle's decision D-O): it is required before a fourth instance or the containerized service.
 
 | PR | Session | Needs first | Branch |
 |---|---|---|---|
 | 1 | W6-CDX-31, signals, health, readiness, the lock | W6-CDX-10 | `w6/cdx-31-lifecycle` |
 | 2 | W6-CDX-32, production configuration and the contract | W6-CDX-10 | `w6/cdx-32-config` |
-| 3 | W6-CDX-33, grants and the isolation proof | PR 2 | `w6/cdx-33-grants` |
+| 3 | W6-CDX-33, grants and the isolation proof (not on the deploy path) | PR 2 | `w6/cdx-33-grants` |
 | 4 | W6-CDX-34, document images for readers only | W6-CDX-10 | `w6/cdx-34-doc-images` |
 | 5 | W6-CDX-35, backup and restore | PR 1 | `w6/cdx-35-backup` |
-| 6 | W6-CDX-36, the Wave 6 release | PRs 1 to 5, and the other tracks' deploy-path PRs | `release/v0.11.0` (or the next minor) |
+| 6 | W6-CDX-36, the Wave 6 release | PRs 1, 2, 4 and 5, and the other tracks' deploy-path PRs | `release/v0.11.0` (or the next minor) |
 
 ## Before every PR
 
@@ -254,10 +256,70 @@ if (existing && !existing.is_admin) {
 ```
 
 An existing admin is synced as today, and an absent one is created. `bootstrapInstance(null)` already
-copes with no admin id (`routes/admin.js:102-103`). Tests: create, sync, and the new refusal. (If the
-identity track's W6-CDX-8 has landed, keep its provider-aware branch and add this refusal to both.)
+copes with no admin id (`routes/admin.js:102-103`). Tests: create, sync, and the new refusal. This
+lands **before** the identity track's W6-CDX-8, which is sequenced after this PR and makes the sync
+provider-aware while keeping this refusal on both branches.
 
-### Task 2.5 Docs
+### Task 2.5 Security headers on the app, not only `/api`
+
+`app.js` (`:111-125` at `91493a6`): the Helmet options move into one constant, and the mount
+depends on the environment:
+
+```javascript
+// One policy. In production it covers every response, the single-page app's HTML
+// and static files included; in development it stays on /api so the Vite dev
+// server's inline module scripts still load.
+const HELMET_OPTIONS = {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      // Documents may hold any https image (pasted, or imported from GitHub), and
+      // the linked GitHub account's avatar is remote; an image cannot run script.
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      connectSrc: ["'self'", 'ws:', 'wss:'],
+      fontSrc: ["'self'", 'data:'],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      // TLS is the proxy's job. An evaluator on plain http must still load the app.
+      upgradeInsecureRequests: null,
+    },
+  },
+  xFrameOptions: { action: 'deny' },
+};
+app.use(process.env.NODE_ENV === 'production' ? '/' : '/api', helmet(HELMET_OPTIONS));
+```
+
+Helmet 8 (`package.json`) merges these over its default directives, which is why
+`upgradeInsecureRequests` is switched off by name: its default would send the built app's own
+`http://` asset requests to `https://` on an install without TLS, and break the release compose
+file's `http://localhost:3000`. The mount stays where it is in the middleware order, so it runs
+before the `/avatars` and `/doc-images` static mounts and before the handlers `vite-express`
+appends at listen time.
+
+Tests, `tests/app.test.js` (Supertest, with `NODE_ENV` set per case and `app.js` re-imported):
+
+- production: `GET /avatars/<fixture>` and a `404` outside `/api` both carry
+  `Content-Security-Policy` containing `frame-ancestors 'none'`, and `X-Frame-Options: DENY`;
+- development: the same requests carry neither, and `/api` still carries both.
+
+By hand, because `vite-express` serves the built app only in the image:
+
+- [ ] `docker build -t c2:headers ./cloudcodex`, run it with the release compose file, then
+      `curl -sI http://127.0.0.1:3000/ | grep -i -E 'content-security-policy|x-frame-options'`.
+      **Expected:** both headers, on the HTML the browser loads.
+- [ ] In a browser against that container, over plain `http://localhost:3000`: home, a document
+      with a pasted image, a remote `https` image and a draw.io diagram (whose editor opens as a
+      popup, which the CSP does not govern), Account with a linked GitHub avatar, and the GitHub
+      page. **Expected:** every image renders and there is no `Content-Security-Policy` violation
+      in the console. Any violation is fixed by
+      widening one directive with a comment saying why, never by dropping the policy.
+- [ ] `npm run dev`, then load the dev server. **Expected:** it loads as before.
+- [ ] `docs/security.md` "Security Headers" and `docs/maps/request-lifecycle.md` (the middleware
+      stack) state both scopes.
+
+### Task 2.6 Docs
 
 - [ ] `.env.example` comments for `APP_URL` (required in production), `TRUST_PROXY`,
       `DB_POOL_SIZE`. `docs/deployment.md` "Required environment for production" points at
@@ -448,8 +510,9 @@ is backed up separately. CHANGELOG.
 
 ### Task 6.1 The precondition, checked
 
-- [ ] Every PR in this plan has merged, and so have the deploy-path PRs of the identity plan (PRs 1
-      to 8), the events plan (PRs 1 to 3) and the UI plan (PRs 1 to 7).
+- [ ] PRs 1, 2, 4 and 5 of this plan have merged (PR 3 is not a precondition, per D-O), and so have
+      the deploy-path PRs of the identity plan (PRs 1 to 9), the events plan (PRs 1 to 3) and the UI
+      plan (PRs 1 to 9).
 - [ ] `git log --oneline v0.10.0..origin/main` (or the latest tag) lists them.
 
 ### Task 6.2 Prepare the release
@@ -461,7 +524,13 @@ is backed up separately. CHANGELOG.
       `docker-compose-release.yml`'s `${CLOUDCODEX_VERSION:-...}` default; the default quoted in
       `docs/deployment.md`. `release.yml`'s guard checks the first and third.
 - [ ] Delete this spec and plan; mark the hosting row in `docs/specs/roadmap.md` shipped; remove the
-      spec's rows from `docs/specs/README.md` and `docs/README.md`.
+      spec's rows from `docs/specs/README.md` and `docs/README.md`. **If PR 3 (W6-CDX-33) has not
+      merged**, which D-O allows, instead trim the spec and this plan to W6-CDX-33 alone, mark the
+      row "shipped apart from W6-CDX-33", and leave the deletion to PR 3.
+- [ ] Every other quote of the old version moves too:
+      `git grep -n -E 'cloud-codex:0\.[0-9]|CLOUDCODEX_VERSION:-0\.|\(default .0\.' -- docs ':!docs/plans' ':!docs/specs'`.
+      **Expected** at `91493a6`: three lines, `docs/deployment.md:77` and
+      `docs/maps/build-test-and-ops.md:327` and `:331`; each reads the new version afterwards.
 - [ ] Merge the PR.
 
 ### Task 6.3 Tag, with Kyle's authorization

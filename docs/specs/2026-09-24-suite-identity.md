@@ -8,8 +8,9 @@ editing, because `routes/auth.js`, `routes/oauth.js` and `app.js` move under eve
   W6-CDX-10. This document is W6-CDX-1.
 - **Plan:** [`../plans/2026-09-24-suite-identity.md`](../plans/2026-09-24-suite-identity.md)
 - **Requested by:** Kyle, in the 2026-09-24 decisions recorded in the Cloud Command ADR
-  `wave-6-is-one-sign-in-events-and-a-shared-shell.md` (Cloud Command is a private repository;
-  the decisions that bind this spec are restated below so it stands on its own).
+  `wave-6-is-one-sign-in-events-and-a-shared-shell.md`, both rounds (D-A to D-H, then D-J to D-P
+  the same day). Cloud Command and Cloud City ID are private repositories; the decisions that bind
+  this spec are restated below so it stands on its own.
 
 ## Why this spec exists
 
@@ -27,6 +28,19 @@ Kyle's decisions for Wave 6 that bind this track:
 4. **Every Cloud Command workspace maps to exactly one Cloud Codex instance.** Each instance gets
    its own Zitadel project, its own OIDC application and its own service user for machine calls.
    Codex keeps its per-instance integer ids.
+5. **The hosts and the issuer are fixed (D-J).** The issuer is `https://id.cloudcitycomputing.com`.
+   The first Codex instance is `codex.cloudcitycomputing.com`, every later one
+   `<instance>.codex.cloudcitycomputing.com` (a DNS label the operator assigns when linking it),
+   and Cloud Command is `command.cloudcitycomputing.com`. Codex reads each as configuration
+   (`OIDC_ISSUER_URL`, `APP_URL`); nothing in the source names them.
+6. **Anyone may register at Cloud City ID, with email verification, and each product still gates
+   its own workspaces (D-K).** A verified email at this issuer proves control of an address and
+   nothing more, which is why the ladder below never creates a user from one alone.
+7. **Membership sync is automatic, and before the test deploy (D-M).** Adding, re-roling or
+   removing a member of a Cloud Command workspace does the same in its Codex instance, and the
+   workspace owner is the instance admin. That is W6-CDX-9, which is no longer contingent.
+8. **A 24-hour ceiling on SSO sessions, renewed by a silent redirect, is approved (D-P)** as the
+   backstop for deprovisioning.
 
 What that means here: Cloud Codex gains a **generic** OIDC relying party. Nothing in the source
 names Zitadel, Cloud City ID or the suite; the issuer is configuration, and a self-hoster can point
@@ -112,8 +126,9 @@ token (`routes/auth.js:52-66`), then joins the invited squad in the same transac
 1. **Generic OIDC, never named.** New configuration: `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`,
    `OIDC_CLIENT_SECRET`, and `OIDC_PROVIDER_NAME` for the button label (default `SSO`, so the
    button reads "Sign in with SSO"). The redirect URI is derived from `APP_URL`, never taken from
-   a request. The UI track's suite mode may default the label from its single suite-name
-   constant; this track never spells the name.
+   a request. In suite mode the UI track defaults the label from the `SUITE_NAME` setting. The
+   suite's name is configuration in this repository, never a literal in the source, so neither
+   track spells it.
 2. **A new `user_identities` table**, not a third `oauth_accounts` provider value, for the reason
    above: that table has no issuer and carries GitHub token semantics.
 3. **`(issuer, sub)` is the key; verified email is the fallback; invite-only survives.** The
@@ -127,7 +142,8 @@ token (`routes/auth.js:52-66`), then joins the invited squad in the same transac
    3. else, an open invitation for that verified email creates the user with the invitation's
       squad and flags (W6-CDX-8);
    4. else `no_account`. **Auto-provisioning is off**, and there is no setting to turn it on in
-      this track.
+      this track. Because Cloud City ID is open to self-registration (item 6 above), this is the
+      rule that keeps an issuer account from being an admission.
 4. **Hosted instances are OIDC only.** `AUTH_PROVIDERS=oidc` unmounts local login, signup, reset
    and 2FA, so no C2-2 token purpose is ever minted there.
 5. **One session row per sign-in, stored as a SHA-256 digest.** Existing rows are hashed in place,
@@ -162,6 +178,9 @@ config-as-code session (W6-CCID-2) asserts its registered URIs against them:
 | Post-logout redirect URI | `https://<codex-host>/?signedOut=1` |
 | Back-channel logout URI | `https://<codex-host>/api/auth/oidc/backchannel-logout` |
 
+On the test box `<codex-host>` is `codex.cloudcitycomputing.com` for the first instance and
+`<instance>.codex.cloudcitycomputing.com` for each later one (item 5 above).
+
 ## Ordering constraint
 
 ```
@@ -169,8 +188,8 @@ W6-CDX-10 (live MySQL) ──► W6-CDX-2 (sessions) ──► W6-CDX-3 (cookie,
                                   │
 W6-CDX-4 (identity seam) ─────────┴──► W6-CDX-5 (the relying party) ──► W6-CDX-6 (sign-out)
                                                                     ├──► W6-CDX-7 (machine JWT)
-                                                                    └──► W6-CDX-8 (hosted mode)
-                                                     W6-CDX-7 + W6-CDX-8 ──► W6-CDX-9 (contingent)
+                     W6-CDX-32 (hosting track, the admin sync) ─────┴──► W6-CDX-8 (hosted mode)
+                                                     W6-CDX-7 + W6-CDX-8 ──► W6-CDX-9 (membership sync)
 ```
 
 - W6-CDX-4 changes no behaviour and can run any time after this spec.
@@ -181,6 +200,9 @@ W6-CDX-4 (identity seam) ─────────┴──► W6-CDX-5 (the r
   which termination paths send back-channel logout, `end_session` with `client_id` alone, and
   what `aud` a service user can mint. A finding that contradicts an assumption here is written
   into that session's section of the plan before the session starts.
+- **W6-CDX-8 follows the hosting track's W6-CDX-32.** Both change `ensureAdminUser`: W6-CDX-32
+  first (create if absent, by email, never promote), then W6-CDX-8 makes it provider-aware and
+  keeps the refusal.
 - One PR per session. Every fix lands failing-test-first.
 
 ---
@@ -305,10 +327,14 @@ Neither is needed for sign-out to propagate.
 
 ### Current behaviour
 
-See "The cookie is JS-readable by design" and "CSRF rests on an Origin check" above. Under
-sibling hosts (`command.example.com`, `codex.example.com`) script on any sibling can set
-`sessionToken=<its own>; Domain=example.com; Path=/api`, the browser sends the longer path first,
-and both readers take the first match. A `__Host-` cookie cannot carry `Domain` at all.
+See "The cookie is JS-readable by design" and "CSRF rests on an Origin check" above. The test
+box's hosts are siblings on one registrable domain (`command.`, `codex.` and
+`id.cloudcitycomputing.com`, beside every other host the company runs on it), so script on any of
+them can set `sessionToken=<its own>; Domain=cloudcitycomputing.com; Path=/api`, the browser sends
+the longer path first, and both readers take the first match. Later instances sit under the first
+one's host (`<instance>.codex.cloudcitycomputing.com`), so a cookie it sets with
+`Domain=codex.cloudcitycomputing.com` reaches every one of them. A `__Host-` cookie cannot carry
+`Domain` at all, and hosted instances run with the legacy name off.
 
 ### In scope
 
@@ -519,6 +545,9 @@ the only authorization, which is what keeps this safe.
 
 ## W6-CDX-8. Hosted mode: OIDC-only sign-in, a provider-aware admin, and invitations that bind on verified email
 
+Depends on W6-CDX-5 and on the hosting track's W6-CDX-32, which lands the never-promote admin sync
+this session makes provider-aware (see "Ordering constraint").
+
 ### Current behaviour
 
 See "The admin comes from `.env`" and "Admission is invite-only" above. `StdLayout` sends every
@@ -562,29 +591,55 @@ by hand).
 
 ---
 
-## W6-CDX-9. Machine membership endpoints for Cloud Command's admission sync (contingent)
+## W6-CDX-9. Machine membership endpoints for Cloud Command's membership sync
 
-**Contingent on Kyle's answer** to the first open question below. If the answer is "manual Codex
-invitations for the test deploy", this session moves after the deploy and Cloud Command's W6-CMD-7
-moves with it.
+**On the test-deploy path (Kyle's decision D-M).** Adding, re-roling or removing a member of a
+Cloud Command workspace does the same in its Codex instance, through these routes, called by Cloud
+Command's W6-CMD-7 with that workspace's machine credential (W6-CDX-7). The workspace owner is the
+instance admin; everyone else is an ordinary user.
+
+### Current behaviour
+
+The machine surface only reads: `machineOrAuth` on `GET /api/search` and `GET /api/browse`
+(`CLAUDE.md:108-114`), and `requireMachine` on the C2-5 reader check
+(`routes/workspaces.js:216-230`). An invitation carries a squad, a role and the seven permission
+flags, but not instance admin (`init.sql:138-159`). `is_admin` is written only by
+`ensureAdminUser` (`routes/admin.js:37-67`) and the admin console (`routes/admin.js:592`).
 
 ### In scope
 
-- Two `requireMachine` routes. `PUT /api/machine/members { email, role }` creates or refreshes a
-  long-lived invitation owned by the machine principal, sending no email, or reactivates a
-  deactivated user. `DELETE /api/machine/members/:email` deactivates the user, deletes their
-  sessions and closes their sockets.
+- `PUT /api/machine/members { email, role }`, where `role` is `admin` (the Cloud Command workspace
+  owner) or `member`. A re-role is the same call with the new role.
+  - An active user with that email: `is_admin` is set to match the role.
+  - A deactivated user (W6-CDX-8's `deactivated_at`): reactivated, then as above.
+  - No such user: an open invitation for the email is created or refreshed, owned by the machine
+    principal, sending no email. A new `user_invitations.grants_admin BOOLEAN NOT NULL DEFAULT
+    FALSE` column (a dated migration and `init.sql`) is set for `admin`, and W6-CDX-8's
+    invitation binding gives the created user `is_admin` when it is.
+- `DELETE /api/machine/members/:email` deactivates the user and clears `is_admin`, deletes their
+  sessions, closes their sockets and expires their open invitations.
+- **The `ADMIN_EMAIL` user is out of reach.** Both routes answer 409 for it, because the boot sync
+  owns that row and would undo any change at the next restart. W6-CMD-7 records a 409 as a
+  permanent failure, as it does any other.
 - Both are idempotent and rate-limited, and neither reveals anything about an account the caller
-  did not already name.
-- The owner-to-instance-admin mapping follows Kyle's answer.
-- `docs/api/` and the access-control map. This widens the machine surface CLAUDE.md:108-114
+  did not already name: a known and an unknown address get the same answer.
+- **This is the first machine route that writes, and the only one that can grant `is_admin`.** A
+  leaked instance credential could make any address that instance's admin. That is the accepted
+  cost of an automatic owner-to-admin mapping; the credential is per instance and its subject is
+  allowlisted (W6-CDX-7), so the reach is one instance.
+- Where an admitted member lands inside the instance is open question 1 below. Until Kyle answers,
+  the invitation carries no squad, exactly like track B's squad-less invite, and the instance
+  admin places each member.
+- `docs/api/` and the access-control map. This widens the machine surface `CLAUDE.md:108-114`
   describes, and that paragraph is amended in the same PR.
 
 ### Done means
 
-Creation, refresh, idempotency, deactivation and reactivation are tested. After `DELETE` the user
-cannot sign in, and their documents and authorship remain. A human session calling either route
-gets the same 401 an anonymous caller gets.
+Creation, refresh, a re-role in both directions, idempotency, deactivation and reactivation are
+tested, and an invited owner's first OIDC sign-in creates an admin, on live MySQL. After `DELETE`
+the user cannot sign in, and their documents and authorship remain. The `ADMIN_EMAIL` user gets
+409 from both routes and is unchanged. A human session calling either route gets the same 401 an
+anonymous caller gets, and a known and an unknown address produce byte-identical answers.
 
 ---
 
@@ -597,9 +652,9 @@ gets the same 401 an anonymous caller gets.
 | W6-CDX-3 | nothing | W6-CCID-5 (E4, E5, E6) |
 | W6-CDX-5 | W6-CCID-1 and W6-CCID-2 for the recorded real sign-in; W6-CCID-3 findings; the W6-CMD-24 returnTo corpus | W6-CMD-6 (reader check by subject) |
 | W6-CDX-6 | W6-CCID-3 (logout-token shape, termination triggers) | W6-CCID-5 (E3, E7) |
-| W6-CDX-7 | W6-CCID-2 (one service user per instance) | W6-CMD-6 (per-workspace client credentials) |
-| W6-CDX-8 | nothing beyond W6-CDX-5 | W6-CCID-5 (E2); W6-CDX-26 |
-| W6-CDX-9 | Kyle's answer | W6-CMD-7 |
+| W6-CDX-7 | W6-CCID-2 (one service user per instance); W6-CCID-3 (what `aud` a service user can mint) | W6-CMD-6 (per-workspace client credentials) |
+| W6-CDX-8 | W6-CCID-3 findings; in this repo, W6-CDX-5 and W6-CDX-32 | W6-CCID-5 (E2); W6-CDX-26 |
+| W6-CDX-9 | nothing beyond W6-CDX-7 and W6-CDX-8 | W6-CMD-7 (the membership sync) |
 
 ## Lessons carried from Cloud Command's relying party
 
@@ -627,8 +682,8 @@ Each lands in the PR that makes it true, and each is deliberate rather than slid
 - "MySQL 8 + Node 20" (`CLAUDE.md:20`) becomes Node 22 (W6-CDX-5).
 - "Auth & accounts" (`CLAUDE.md:101-106`) gains OIDC, one hashed session row per sign-in, and the
   `__Host-` cookie (W6-CDX-2, W6-CDX-3, W6-CDX-5).
-- "Machine callers" (`CLAUDE.md:108-114`) gains the JWT branch (W6-CDX-7) and, if it ships, the
-  membership routes (W6-CDX-9).
+- "Machine callers" (`CLAUDE.md:108-114`) gains the JWT branch (W6-CDX-7) and the membership
+  routes, the first machine routes that write (W6-CDX-9).
 - Critical decision 4 (`CLAUDE.md:223-224`) says an OIDC flow admits only an existing user or an
   open invitation for the verified email (W6-CDX-5, W6-CDX-8).
 
@@ -644,15 +699,18 @@ Each lands in the PR that makes it true, and each is deliberate rather than slid
 
 ## Open questions for Kyle
 
-1. **Admission sync.** Should adding, re-roling or removing a member in Cloud Command admit to or
-   remove from the paired Codex instance automatically before the test deploy (which puts W6-CDX-9
-   and W6-CMD-7 in pre-deploy scope), or are manual Codex invitations acceptable until after it?
-2. **The 24-hour ceiling.** Is a 24-hour absolute lifetime on SSO sessions, renewed by a silent
-   redirect, acceptable as the backstop for deprovisioning? This spec assumes yes; the cost is at
-   most one full-page bounce per day for an active user.
+1. **Where does a synced member land?** An admitted member needs a squad to see anything. (a) No
+   squad, and the instance admin places them: the default this spec plans to, because it grants
+   nothing Cloud Command did not say. (b) The instance's seeded `General` squad
+   (`bootstrapInstance`, `routes/admin.js:102-152`) as a member with read and write, one more
+   field on the invitation, which saves the owner a step per member for the beta's one to three
+   workspaces.
+
+Answered in Kyle's second round, 2026-09-24: admission sync is automatic and before the test
+deploy, with the owner as instance admin (D-M, W6-CDX-9 above); the 24-hour ceiling renewed by a
+silent redirect is approved (D-P).
 
 ## Retirement
 
-Whichever of W6-CDX-2 to W6-CDX-9 merges last (W6-CDX-9, or W6-CDX-8 if W6-CDX-9 moves after the
-test deploy) updates the maps, deletes this spec and its plan, and marks the identity row in
-[`roadmap.md`](roadmap.md) shipped.
+Whichever of W6-CDX-2 to W6-CDX-9 merges last (normally W6-CDX-9) updates the maps, deletes this
+spec and its plan, and marks the identity row in [`roadmap.md`](roadmap.md) shipped.
