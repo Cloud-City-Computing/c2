@@ -12,9 +12,9 @@ are updated to cover it.
 |---|---|
 | [roadmap.md](roadmap.md) | The tracks the project is decomposed into, the evidence behind each, and the order to do them in. Start here. |
 
-Track A and track S both shipped and their specs were deleted per the
-convention below; see [roadmap.md](roadmap.md) for what shipped and the maps for
-how it works now.
+Track A and track S (C2-0 to C2-5) both shipped, and their specs and plans were
+deleted per the convention below; see [roadmap.md](roadmap.md) for what shipped
+and the maps for how it works now.
 
 ## Conventions
 

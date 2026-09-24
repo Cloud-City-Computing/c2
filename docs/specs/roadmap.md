@@ -62,7 +62,7 @@ constraint right now.
 | **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
-| **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token | nothing; C2-0 gates the rest |
+| **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token, C2-5 a workspace reader check for the suite | nothing; C2-0 gates the rest |
 
 ### A. Evaluation path — shipped
 
@@ -252,31 +252,34 @@ function lives elsewhere and is independently importable.
 Still inside `Editor.jsx`: `TiptapToolbar`, `RichTextEditor`, `MarkdownEditor`,
 and the ~690-line `Editor` component itself. `GitHubPage.jsx` is untouched.
 
-### S. Security and infrastructure (shipped 2026-09-09)
+### S. Security and infrastructure (shipped 2026-09-12)
 
-Added 2026-09-08, shipped 2026-09-09 across PRs #45, #47, #48, #46 and #49, in
-that order. The spec and plan that scoped it have been deleted per the
-`docs/specs/` convention; the maps are the record now. See
+Added 2026-09-08. C2-0 to C2-4 shipped on 2026-09-09 across PRs #45, #47, #48,
+#46 and #49, in that order. C2-5, the workspace reader check, followed as #51
+and merged on 2026-09-12. The specs and plans that scoped the track have been
+deleted per the `docs/specs/` convention (the C2-0 to C2-4 pair in #50, the
+C2-5 pair on 2026-09-24); they remain readable in git history at `3cce3eb` and
+`84de05c`. The maps are the record now. See
 [`../maps/access-control.md`](../maps/access-control.md) for the tenant
-boundary and machine principals,
+boundary and machine principals, including `requireMachine` and the reader
+check (section 7),
 [`../maps/data-model.md`](../maps/data-model.md) for the typed token pool and
 `schema_migrations`, [`../maps/build-test-and-ops.md`](../maps/build-test-and-ops.md)
 for the migration runner and the CI gate, and
-[`../../docs/security.md`](../security.md) for the cross-tenant audit queries. Tracks A through E are all aimed at adoption, which left this
-project with no written security track at all while four cross-tenant
-escalations and a credential-flow defect sat in the tree. Scoped in
-[`2026-09-08-security-and-infrastructure.md`](2026-09-08-security-and-infrastructure.md),
-decomposed in
-[`../plans/2026-09-08-security-and-infrastructure.md`](../plans/2026-09-08-security-and-infrastructure.md).
+[`../../docs/security.md`](../security.md) for the cross-tenant audit queries.
+Tracks A through E are all aimed at adoption, which left this project with no
+written security track at all while four cross-tenant escalations and a
+credential-flow defect sat in the tree.
 
 Unlike the other tracks it is not justified by adoption. Cloud City proposes to
 operate this software for money, and C2-1 through C2-3 are live defects in a
 multi-tenant product, so they are owed on that basis alone. Only C2-4, the
-scoped service token, exists because another product is waiting on it.
+scoped service token, and C2-5, the reader check, exist because another product
+is waiting on them.
 
-C2-0 comes first and is a hard gate: `main` requires a review but requires no
-status checks, so a red run is mergeable today, and C2-2 rewrites the credential
-reset path.
+C2-0 came first and was a hard gate: before it, `main` required a review but no
+status checks, so a red run was mergeable, and C2-2 rewrote the credential
+reset path. Since C2-0 the `Lint, test and build` check is required on `main`.
 
 ## Sequencing
 
@@ -306,8 +309,9 @@ app now has an error boundary, so a render error is no longer unrecoverable.
 
 What remains is **E2**, breaking up `Editor.jsx` and `GitHubPage.jsx` (2652
 lines) so the interface is testable; its first cut landed 2026-08-10 and took
-`Editor.jsx` to 1332 lines. B13 shipped on 2026-08-09, leaving **B15**
-(glyph-only control names) as the open accessibility item.
+`Editor.jsx` to 1332 lines. B13 shipped on 2026-08-09 and **B15** (glyph-only
+control names) on 2026-08-20, so no accessibility item from the defect list is
+open.
 
 The measurement re-read on 2026-08-09, one day after the v0.9.0 release: still
 38 stars, 1 fork, 0 open issues, 0 watchers, 12 unique viewers and 66 unique
