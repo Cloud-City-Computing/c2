@@ -91,8 +91,10 @@ the `app_public` volume, and no script does either.
 2. **`GET /healthz` and `GET /readyz`, both information-free.** `/healthz` touches nothing;
    `/readyz` checks the database, pending migrations and the instance lock, and answers
    `{ ready, reason }` with no version, count or table name.
-3. **A single-writer lock by default**: `GET_LOCK` on the schema name plus a per-instance salt, held
-   on a dedicated connection for the life of the process, named distinctly from the runner's lock.
+3. **A single-writer lock by default**: `GET_LOCK` named for the schema (a fixed prefix plus
+   `DATABASE()`), held on a dedicated connection for the life of the process, and named distinctly
+   from the runner's migration lock. `GET_LOCK` names are server-wide, and a schema name is unique
+   per instance on a server, so instances sharing one MySQL never contend.
    `C2_INSTANCE_LOCK=0` is the named escape, for an operator who knows why.
 4. **`APP_URL` is fatal when unset in production**; `TRUST_PROXY` and `DB_POOL_SIZE` become
    configuration with today's values as defaults.
@@ -197,8 +199,9 @@ A separate `TOKEN_ENCRYPTION_KEY` for GitHub tokens (today derived from `GITHUB_
 - `tests/integration/grants-sufficient.test.js` boots the app as the DML-only user and runs a smoke
   path (login, then workspace, squad, archive and document, a collab edit and a comment) with zero
   `ER_TABLEACCESS_DENIED_ERROR`.
-- The runner runs as the migration user; each instance gets its own lock salt; the maps gain a
-  tenancy section saying what the boundary is and what it is not.
+- The runner runs as the migration user; a test proves two instances' single-writer locks (one
+  per schema) are held at once on one server; the maps gain a tenancy section saying what the
+  boundary is and what it is not.
 
 ### Done means
 

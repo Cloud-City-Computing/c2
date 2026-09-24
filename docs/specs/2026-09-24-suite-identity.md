@@ -250,9 +250,11 @@ See "One session row per user, stored raw" above.
 ### In scope
 
 - `generateSessionToken` always inserts a new row; the reuse and refresh-in-place branches go.
-- One helper, `hashSessionToken(token)`, SHA-256 lowercase hex, used at every lookup and delete:
-  `validateAndAutoLogin` and `touchSession` in `mysql_connect.js`, and `routes/auth.js:265` and
-  `:381`. `sessions.id` stays `CHAR(64)`; a hex SHA-256 digest is also 64 characters.
+- One helper, `hashSessionToken(token)`, SHA-256 lowercase hex, in a small module of its own
+  (`services/session-token.js`) so the global `mysql_connect.js` mock does not have to reproduce
+  it, used at every lookup and delete: `validateAndAutoLogin` and `touchSession` in
+  `mysql_connect.js`, and `routes/auth.js:265` and `:381`. `sessions.id` stays `CHAR(64)`; a hex
+  SHA-256 digest is also 64 characters.
 - Each row records which flow minted it: `sessions.auth_provider VARCHAR(16) NOT NULL`, with a
   `CHECK` over `('local', 'google')` for now (c2's own VARCHAR-plus-CHECK precedent,
   `init.sql:104-121`); existing rows become `local`, and the default is dropped after the backfill
@@ -287,7 +289,8 @@ See "One session row per user, stored raw" above.
 - A local sign-in writes `auth_provider = 'local'` and the Google callback writes `'google'`; an
   insert that omits the column fails, on real MySQL. `--adopt-fresh-install` still adopts a schema
   `init.sql` built.
-- Existing tests change only where they asserted row reuse, and the PR body lists each one.
+- Existing tests change only where they asserted row reuse or bound a raw token into a `sessions`
+  query, and the PR body lists each one.
 - Coverage thresholds hold. `docs/maps/request-lifecycle.md` (session tokens),
   `docs/maps/data-model.md` section 4 and `docs/maps/open-questions.md` C2 move in the same PR.
 

@@ -135,7 +135,7 @@ activity prune (`server.js:132-150`).
 | `occurred_at` | ISO 8601 UTC, millisecond precision, the Codex clock |
 | `workspace_id` | the Codex workspace integer; a receiver stores it and **never lets it decide a tenant** |
 | `actor` | `{ id, name }`; `name` is at most 32 characters (`init.sql:49`) |
-| `data` | per type, below; `title` at most 255 characters |
+| `data` | per type, below. `title` and `name` are sent as stored: both columns are `TEXT` (`init.sql:233`, `:268`), the document routes cap titles at 255, and a receiver clamps |
 
 | Type | `data` |
 |---|---|
@@ -143,7 +143,7 @@ activity prune (`server.js:132-150`).
 | `log.rename` | `log_id`, `archive_id`, `title` |
 | `log.move` | `log_id`, `archive_id`, `parent_id`, `previous_parent_id` |
 | `log.delete` | `log_id`, `archive_id` |
-| `archive.rename` | `archive_id`, `title` |
+| `archive.rename` | `archive_id`, `name` (archives carry a name, not a title) |
 | `archive.delete` | `archive_id` |
 
 Headers: `Content-Type: application/json`, `X-Codex-Signature-256`, and `X-Codex-Event` (the type)
@@ -208,7 +208,8 @@ product change for its own spec.
     `occurred_at DATETIME(3)`, and the body as `MEDIUMBLOB` holding the exact bytes every retry
     sends;
   - `webhook_deliveries`: subscription, event, status, attempts, lease columns (`leased_by`,
-    `lease_expires_at`), `next_attempt_at`, `last_status`, `last_error`.
+    `lease_expires_at`), `last_status`, `last_error`, `delivered_at`. Backoff is per subscription,
+    so its schedule lives on the subscription row, not the delivery.
 - `services/webhooks.js` exports `emitEvent`, which never throws, called from `doLogActivity` as
   Decision 1 describes, for the eight actions only. It builds the envelope, and writes nothing when
   no subscription matches.
