@@ -74,7 +74,7 @@ docker compose -f docker-compose-release.yml up -d
 ```
 
 This pulls `ghcr.io/cloud-city-computing/cloud-codex`, pinned by
-`CLOUDCODEX_VERSION` (default `0.9.0`), so nothing is compiled locally and the
+`CLOUDCODEX_VERSION` (default `0.10.0`), so nothing is compiled locally and the
 version does not move under you on the next publish. The published image is
 `linux/amd64`; Apple Silicon runs it under Docker Desktop's emulation.
 
