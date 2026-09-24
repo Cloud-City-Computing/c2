@@ -132,8 +132,10 @@ requirements the proxy must satisfy:
    `Origin` host check against `Host`. If your proxy rewrites either,
    make sure both end up matching the public hostname.
 
-Helmet's CSP allows `connect-src 'self' ws: wss:` so cross-origin websocket
-connections will be refused at the browser level too — that's deliberate.
+Both WebSocket servers refuse a cross-origin upgrade themselves: each requires
+an `Origin` whose host equals `Host`. Helmet's CSP (`connect-src 'self' ws: wss:`)
+is not what enforces that, because it is sent only on `/api` responses and so
+does not govern the page that opens the sockets.
 
 ---
 

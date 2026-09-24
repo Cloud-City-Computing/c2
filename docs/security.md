@@ -19,7 +19,7 @@ even if the DB is compromised.
       │
       ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  edge:    helmet (CSP, X-Frame, X-CT, Referrer-Policy)   │
+   │  edge:    helmet on /api (CSP, X-Frame, X-CT, Referrer)  │
    │           CORS allowlist (no localhost in prod)          │
    │           express-rate-limit (auth 20/15m, search 60/15m)│
    └──────────────────────────────────────────────────────────┘
@@ -135,7 +135,7 @@ GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key deri
 
 ## Security Headers
 
-**Helmet** middleware applies a strict Content Security Policy and standard security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, etc.) on every response.
+**Helmet** middleware applies a strict Content Security Policy and standard security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, etc.) to every **`/api`** response (`app.js:112-125`). It is scoped to `/api` on purpose, so the Vite dev server's inline module scripts are not blocked, and that scope applies in production too: the single-page app's HTML, its built assets and the `/avatars` and `/doc-images` static files are served **without** a CSP or frame protection today. Extending the policy to the whole app in production is planned in [`specs/2026-09-24-suite-hosting-readiness.md`](specs/2026-09-24-suite-hosting-readiness.md) (W6-CDX-32).
 
 ---
 
