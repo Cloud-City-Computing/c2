@@ -363,6 +363,13 @@ schema came from, and **they are not interchangeable**:
 Both record checksums and apply nothing. After either, `npm run migrate` is the
 only command you need, from then on.
 
+**Upgrading a 0.9.0 install is the one exception.** Two of the thirteen,
+`widen_log_content.sql` and `drop_squad_permissions.sql`, shipped after 0.9.0 was
+tagged, so a database that has only ever run 0.9.0 does not have them, and
+`--baseline` records them anyway. Apply both by hand after `--baseline`; they
+are idempotent. The exact commands are in the 0.10.0 entry of
+[`CHANGELOG.md`](../CHANGELOG.md), under Migration.
+
 **If you are not sure, it is not a fresh install.** "Brand-new install" means the
 database, not the release: an install you are upgrading to a new version is an
 existing database, however new the image is.
