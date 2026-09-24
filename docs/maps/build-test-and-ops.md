@@ -324,11 +324,11 @@ Verify from a logged-out client rather than trusting the workflow:
 
 ```
 docker logout ghcr.io
-docker pull ghcr.io/cloud-city-computing/cloud-codex:0.10.0
+docker pull ghcr.io/cloud-city-computing/cloud-codex:0.9.0
 ```
 
 `docker-compose-release.yml` consumes the published image instead of building,
-pinned to `${CLOUDCODEX_VERSION:-0.10.0}` so an evaluator's install does not
+pinned to `${CLOUDCODEX_VERSION:-0.9.0}` so an evaluator's install does not
 move under them on the next publish. It also differs from
 `docker-compose-prod.yml` in not publishing 3306: the app reaches MySQL over the
 compose network, and Docker's published ports are a DNAT rule that sits in front

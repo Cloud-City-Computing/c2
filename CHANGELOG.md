@@ -12,15 +12,6 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-09-24
-
-The security and infrastructure release. Everything since 0.9.0 closes a
-defect in the shipped image or makes an install upgradable: four places where
-one workspace could reach into another, a credential-flow bug, GitHub link
-routes that checked nothing, a migration runner so an upgrade can actually be
-applied, and the first machine interfaces a paired product (Cloud Command) reads
-through. **Upgrading from 0.9.0 needs one extra step; see Migration below.**
-
 ### Added
 
 - A database migration runner (`cloudcodex/scripts/migrate.js`,
@@ -55,45 +46,8 @@ through. **Upgrading from 0.9.0 needs one extra step; see Migration below.**
   every archive in the install. Rotating the secret is immediate and needs no
   database change, and any caller still holding the old value starts getting
   401s. See [`docs/security.md`](docs/security.md) and `.env.example`.
-- **A workspace reader check, for the product the service token serves.**
-  `GET /api/workspaces/:workspaceId/reader-check?email=<address>` answers
-  `{ "canRead": true | false }` to the service token and to nothing else: a new
-  `requireMachine` guard refuses a signed-in session with the same 401 an
-  anonymous caller gets, because the answer is about someone else's access.
-  "Can read" means an admin, the workspace owner, or a member of any squad in
-  that workspace. An unknown email, an unauthorised user and a workspace that
-  does not exist all answer `false` identically, and the route shares the login
-  rate limit. Cloud Command asks it before letting an admin map a workspace. An
-  install without `SERVICE_TOKEN` is unaffected.
-
-### Changed
-
-- CI builds the production frontend as well as linting, testing and checking
-  coverage, and that check is required on `main`, so a red run can no longer
-  merge.
 
 ### Fixed
-
-- **Documents over 64 KiB save.** `logs.html_content`, the `plain_content`
-  generated from it and `versions.html_content` were `TEXT`, so a save between
-  64 KiB and the application's own 2 MiB ceiling failed with an opaque 500 and
-  the edit was lost. All three are `MEDIUMTEXT`
-  ([`migrations/widen_log_content.sql`](migrations/widen_log_content.sql)).
-- **Squad-to-GitHub-team sync no longer removes members past the first page.**
-  Both routes fetched one page of team members and treated everyone beyond it
-  as removed. They paginate now, and a truncated listing removes nobody.
-- **The `email_squad_invite` preference is honoured.** Squad invitation emails
-  were sent whatever it said.
-- **Committing a file through the browser no longer marks its linked documents
-  clean.** `PUT /api/github/contents/*` set every linked document's merge base
-  to the new commit, so the next push from any of them silently overwrote the
-  change. It now records the new remote version and marks them `remote_ahead`.
-- **Document titles are reachable by keyboard** in the browse grid, the archives
-  page, the editor's page tree and the search dropdown, which closes the 0.9.0
-  known gap.
-- **Glyph-only controls have names.** Twelve controls announced as their glyph
-  (a star, a plus, a cross) rather than their purpose; each now names what it
-  does and to which document, and the version history row is a real button.
 
 - `docs/deployment.md` documented applying migrations with
   `source /var/lib/mysql/migrations/<file>.sql` inside `make db-shell`. No
@@ -120,52 +74,8 @@ through. **Upgrading from 0.9.0 needs one extra step; see Migration below.**
   `req.body.token`, which no client sends, so every logout was a 400 the caller
   swallowed and no `sessions` row was ever deleted. It now resolves the token
   the same way `requireAuth` does.
-- **The workspace is a tenant boundary.** Four surfaces read a global
-  permission flag as "may act in any workspace": squad creation let any account
-  make itself a squad owner inside any workspace; `POST /api/archives` let any
-  account plant an archive in any squad; the archive access-grant route wrote
-  any user or squad id into an archive's grants; and `GET /api/users/search`
-  returned every account and its email address across the install. All four now
-  check workspace membership, and answer 404 where a 403 would confirm that a
-  workspace exists.
-- **GitHub link routes check document access.** `GET`, `PUT` and
-  `DELETE /api/github/link/:logId` checked nothing, so any user could read
-  another document's GitHub binding, repoint that document's next push into a
-  repository of their own, or delete the binding. They now require read, write
-  and write access respectively.
-- **A read-only collaborator can no longer rename a document** through the
-  collaborative-editing socket, the one mutating message that was not gated on
-  write access.
-- **Pull-request discussions are scoped to the pull request.** A PR opened as a
-  document is granted through a hidden archive of its own, and the session route
-  asks GitHub whether the caller can see the pull request before creating one.
-
-### Removed
-
-- The `squad_permissions` table and its two routes. Nothing enforced them, so a
-  value saved there changed no behaviour
-  ([`migrations/drop_squad_permissions.sql`](migrations/drop_squad_permissions.sql)).
 
 ### Migration
-
-**Upgrading from 0.9.0: one extra step.** Two files on the runner's pre-runner
-list, `widen_log_content.sql` and `drop_squad_permissions.sql`, shipped after
-0.9.0 was tagged, so a database that has only ever run 0.9.0 does not have them,
-but `npm run migrate -- --baseline` records them as applied without running
-them. After `--baseline`, and before starting the new image, apply both by hand.
-Both are idempotent, so running them on a database that already has them is
-harmless:
-
-```bash
-for f in widen_log_content drop_squad_permissions; do
-  docker compose -f docker-compose-release.yml exec -T database \
-    sh -c 'exec mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' \
-    < "migrations/$f.sql"
-done
-```
-
-Without the first, documents over 64 KiB still fail to save on the upgraded
-install.
 
 [`migrations/2026-09-08-token-purpose.sql`](migrations/2026-09-08-token-purpose.sql).
 **Stop every writer, apply, then start the new image**, and note there is no
@@ -285,7 +195,6 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...HEAD
-[0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...HEAD
 [0.9.0]: https://github.com/Cloud-City-Computing/c2/compare/alpharelease...v0.9.0
 [0.1.0-alpha]: https://github.com/Cloud-City-Computing/c2/releases/tag/alpharelease
