@@ -96,6 +96,63 @@ function validateOAuthState(state) {
   return Date.now() < expiry;
 }
 
+/*
+ * STATE IS BOUND TO THE BROWSER THAT STARTED THE FLOW, not only to the server's
+ * memory. Each initiation sets a short-lived httpOnly cookie holding the state,
+ * and each callback refuses unless the browser completing it presents that same
+ * value. Without this, a state minted in one browser could be completed in
+ * another: an attacker could start a GitHub link, withhold the authorization
+ * URL, and have a victim complete it, attaching the victim's GitHub token to the
+ * attacker's account. SameSite=Lax, not Strict, because the callback arrives as
+ * a top-level navigation from the provider's site, where a Strict cookie is not
+ * sent. One cookie per provider so two flows in two tabs do not clobber each
+ * other.
+ */
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const OAUTH_STATE_COOKIE = { google: 'oauth_state_google', github: 'oauth_state_github' };
+
+function oauthStateCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: APP_URL.startsWith('https://'),
+    path: '/api/oauth',
+  };
+}
+
+function setOAuthStateCookie(res, provider, state) {
+  res.cookie(OAUTH_STATE_COOKIE[provider], state, { ...oauthStateCookieOptions(), maxAge: OAUTH_STATE_TTL_MS });
+}
+
+function clearOAuthStateCookie(res, provider) {
+  res.clearCookie(OAUTH_STATE_COOKIE[provider], oauthStateCookieOptions());
+}
+
+function readCookie(req, name) {
+  const header = req.headers.cookie;
+  if (typeof header !== 'string') return undefined;
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/** True when the browser completing the callback holds the cookie its own initiation set. */
+function stateBoundToBrowser(req, provider, state) {
+  const held = readCookie(req, OAUTH_STATE_COOKIE[provider]);
+  if (typeof held !== 'string' || typeof state !== 'string') return false;
+  const a = Buffer.from(held);
+  const b = Buffer.from(state);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 // Periodically clean up expired states
 setInterval(() => {
   const now = Date.now();
@@ -161,6 +218,7 @@ router.get('/oauth/google', (req, res) => {
 
   const client = getGoogleClient();
   const state = createOAuthState();
+  setOAuthStateCookie(res, 'google', state);
 
   const authUrl = client.generateAuthUrl({
     access_type: 'offline',
@@ -189,7 +247,11 @@ router.get('/oauth/google/callback', asyncHandler(async (req, res) => {
     return res.redirect('/?oauth_error=missing_params');
   }
 
-  if (!validateOAuthState(state)) {
+  // Both checks run so a refused attempt still consumes the state.
+  const boundToBrowser = stateBoundToBrowser(req, 'google', state);
+  const stateValid = validateOAuthState(state);
+  clearOAuthStateCookie(res, 'google');
+  if (!boundToBrowser || !stateValid) {
     return res.redirect('/?oauth_error=invalid_state');
   }
 
@@ -375,6 +437,7 @@ router.get('/oauth/github', requireAuth, (req, res) => {
   const state = createOAuthState();
   // Stash user ID in the state so the callback knows who to link
   oauthStates.set(`gh_uid_${state}`, req.user.id);
+  setOAuthStateCookie(res, 'github', state);
 
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
@@ -402,12 +465,16 @@ router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
     return res.redirect('/account?github_error=missing_params');
   }
 
-  if (!validateOAuthState(state)) {
+  // Both checks run so a refused attempt still consumes the state and its user.
+  const boundToBrowser = stateBoundToBrowser(req, 'github', state);
+  const stateValid = validateOAuthState(state);
+  clearOAuthStateCookie(res, 'github');
+  const userId = oauthStates.get(`gh_uid_${state}`);
+  oauthStates.delete(`gh_uid_${state}`);
+  if (!boundToBrowser || !stateValid) {
     return res.redirect('/account?github_error=invalid_state');
   }
 
-  const userId = oauthStates.get(`gh_uid_${state}`);
-  oauthStates.delete(`gh_uid_${state}`);
   if (!userId) {
     return res.redirect('/account?github_error=session_expired');
   }
