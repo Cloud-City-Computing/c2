@@ -27,7 +27,7 @@ describe('the default test run', () => {
     expect(declared).toContain('integration');
   });
 
-  for (const script of ['test', 'test:coverage']) {
+  for (const script of ['test', 'test:watch', 'test:coverage']) {
     it(`${script} names every project except the opt-in ones`, () => {
       expect(projectFlags(pkg.scripts[script])).toEqual(declared.filter((n) => !OPT_IN.has(n)).sort());
     });
