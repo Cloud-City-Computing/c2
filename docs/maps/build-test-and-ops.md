@@ -273,7 +273,14 @@ race tests and six mocked pins; the row check loosened from `!== 1` to `=== 0`
 reddened two mocked tests; and the check removed entirely reddened the race
 tests (the seam reported a link it never wrote). The lock-wait poller both race
 modules use is `waitForLockWaits` in `tests/integration/mysql-admin.js`, which
-carries the 100 ms trap described above.
+carries the 100 ms trap described above. **Trap: a gap lock exists only under
+REPEATABLE READ.** The C7 race tests hold their INSERTs with `holdLinkGap`, a
+`FOR UPDATE` over an empty range, and READ COMMITTED takes no gap lock, so on a
+server set to READ-COMMITTED those two tests fail with "only 0 of 2
+transactions were waiting on a lock" (measured 2026-09-25) while the product
+behaves correctly; they need the server default. The two-factor interleaves
+hold the user row itself, which locks at any isolation level, and pass either
+way.
 
 Tests mirror the source tree:
 
