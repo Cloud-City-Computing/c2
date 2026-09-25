@@ -109,17 +109,43 @@ vars in `.env` will not retroactively change MySQL's credentials.
 
 ```
 ┃ ⚠  Symptom
-┃   Google sign-in returns 403 "Domain not allowed".
+┃   Google sign-in lands back on the sign-in form with "Your Google
+┃   account domain is not allowed" (`/?oauth_error=domain_not_allowed`).
 ```
 
-**Cause.** `GOOGLE_OAUTH_DOMAIN` is set and the user's email is on a
-different domain.
+**Cause.** `GOOGLE_OAUTH_DOMAIN` is set and the Google account's hosted
+domain is a different one (or it is a consumer account with none).
 
-**Fix.** Either remove `GOOGLE_OAUTH_DOMAIN` to allow any domain (no
-auto-account-creation outside the original domain — they'd need an
-invitation), or update it to the right domain. Existing users from
-other domains can still **link** Google to their account; the domain
-check only governs SSO sign-up.
+**Fix.** Either set `GOOGLE_OAUTH_DOMAIN` to the right domain, or remove
+it to accept any Google account. Removing it also stops automatic account
+creation for everyone, so a newcomer then needs an invitation first. While
+it is set, the domain check runs before any account lookup, so an
+existing user whose Google account is on another domain is refused too.
+
+---
+
+```
+┃ ⚠  Symptom
+┃   Google sign-in lands back on the sign-in form with "This email is
+┃   already linked to a different Google account"
+┃   (`/?oauth_error=identity_conflict`).
+```
+
+**Cause.** A Cloud Codex user has this email, and already has a Google
+account linked under a different Google identity. That happens when a
+Workspace address is reassigned to a new person, or a Google account is
+deleted and recreated. Sign-in refuses rather than hand the newcomer the
+previous owner's account.
+
+**Fix.** Decide whose account it is. If it really is the same person on a
+new Google account, they sign in with their password and choose **Unlink**
+next to Google in the account menu (it needs a password set), then sign in
+with Google again, which links the new account. Without a password, an
+operator deletes the old link:
+`DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google'`
+(`make db-shell`). If it is a different person, the address has changed
+hands and the old account still holds it; deal with that account first,
+because two users cannot share an email.
 
 ---
 

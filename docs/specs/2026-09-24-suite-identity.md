@@ -398,6 +398,10 @@ The Google callback's linking ladder is written inline in the route (`oauth.js:2
   (`vitest.config.js:56-65`) include it without a config change.
 - The Google callback delegates to it with a policy that reproduces today clause for clause, the
   `email_verified` refusal first.
+- **Added 2026-09-25, on a gate approval:** after the refactor, the Google branch also follows
+  Decision 3's second rung. A user matched by verified email who already holds a different Google
+  subject is refused as `identity_conflict` instead of gaining a second Google row
+  (`docs/maps/open-questions.md` C7).
 - `AUTH_PROVIDERS` is parsed and validated at boot, failing fast on an unknown value or on a
   listed provider that is not configured. It accepts `local` and `google` now and `oidc` once
   W6-CDX-5 lands, refuses a list without `local` until W6-CDX-8 can honour one, and defaults to

@@ -202,13 +202,16 @@ Google (`GET /api/oauth/google/callback` in `routes/oauth.js`) is the only
 caller. Its policy is `requiredHostedDomain: GOOGLE_OAUTH_DOMAIN`,
 `linkByVerifiedEmail: true`, `autoCreate: Boolean(GOOGLE_OAUTH_DOMAIN)`, and the
 Google branch is the ladder the route used to carry inline, with the same SQL in
-the same order: refuse an unverified email, refuse a hosted domain other than
-the required one, look up `oauth_accounts` by `provider_user_id`, else link the
-user whose `email` matches, else create-and-link (username from
+the same order plus one check: refuse an unverified email, refuse a hosted
+domain other than the required one, look up `oauth_accounts` by
+`provider_user_id`, else take the user whose `email` matches, refuse
+`identity_conflict` if that user already holds a Google row (another subject,
+since the subject lookup missed: spec Decision 3's rule, `open-questions.md`
+C7), else link them, else create-and-link (username from
 `deriveUniqueUsername`, also in the seam) only when auto-create is on, else
-`no_account`. A refusal becomes `/?oauth_error=<reason>`, as before. The Google
-branch never answers `identity_conflict` (see `open-questions.md` C7), and a
-provider the seam has no ladder for throws. The route keeps everything around
+`no_account`. A refusal becomes `/?oauth_error=<reason>`, which `Std_Layout.jsx`
+turns into copy in the Login modal, with a generic fallback for a code it does
+not know. A provider the seam has no ladder for throws. The route keeps everything around
 the seam unchanged: the browser-bound state cookie, the token exchange, the
 user fetch and `generateSessionToken`. The OIDC relying party (W6-CDX-5) is the
 seam's second caller.

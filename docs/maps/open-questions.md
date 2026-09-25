@@ -811,7 +811,7 @@ make it slow.
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.
 
-### C7. A Google sign-in can attach a second Google account to one user
+### C7. A Google sign-in could attach a second Google account to one user (FIXED)
 
 Found 2026-09-25 while moving the Google ladder into `services/identity.js`
 (W6-CDX-4), by reading the source; not reproduced against Google. The ladder
@@ -825,6 +825,35 @@ Google account, which is exactly what the OIDC ladder refuses as
 `identity_conflict` (spec Decision 3). The seam moved the Google branch without
 changing it, because W6-CDX-4 is a pure refactor with zero test edits; whether
 Google should also refuse is a behaviour change for its own session.
+
+**Fixed** in the same PR (#56), after its refactor commits, on a gate approval
+of 2026-09-25. `resolveGoogleIdentity` in `services/identity.js` now asks,
+after the email match and before the link insert, whether that user already
+holds a Google row (`SELECT id FROM oauth_accounts WHERE provider = 'google'
+AND user_id = ?`). The subject lookup has just missed, so any row it finds is
+another subject: the answer is `identity_conflict` and nothing is written. The
+callback redirects to `/?oauth_error=identity_conflict`, which `Std_Layout.jsx`
+shows as "This email is already linked to a different Google account. Ask your
+administrator to relink it." (it used to fall through to "Google sign-in
+failed. Please try again.", which invites a retry that cannot succeed).
+Relinking is by hand: the account's owner unlinks Google from the account menu
+(`POST /api/oauth/google/unlink`, which needs a password set), or an operator
+deletes the old row. The check runs only on the link-by-email path, after the
+`email_conflict` refusal, so a linked subject, an unknown person and the
+auto-create path issue the same queries as before. Covered call by call in
+`tests/services/identity.test.js` (both policies, no INSERT) and through the
+route in `tests/routes/oauth-google-seam.test.js` (the redirect, no session),
+each confirmed red against the unfixed seam.
+
+Three limits stand. **It is an application check, not a database fact:**
+`oauth_accounts` still has no key on `(user_id, provider)`, so two different
+Google subjects signing in for one user at the same instant could both pass it.
+A `UNIQUE (user_id, provider)` key would close that, but it needs a migration
+and would fail on any install that already holds a double link, so it is left
+for a schema session. **It does not undo a double link made before the fix**:
+either subject still resolves at the first lookup, and `SELECT user_id FROM
+oauth_accounts WHERE provider = 'google' GROUP BY user_id HAVING COUNT(*) > 1`
+finds any. **It is still not reproduced against Google itself.**
 
 ## D. Stale claims in the root `CLAUDE.md`
 

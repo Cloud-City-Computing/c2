@@ -244,14 +244,19 @@ Section 4 above for the `user_invitations` columns that drive it.
 
 | Table | Key | Written by | Read by |
 |---|---|---|---|
-| `oauth_accounts` | unique `(provider, provider_user_id)` | `services/identity.js` (Google), `routes/oauth.js` (GitHub) | `getGitHubToken` (`github.js:54`), team sync identity match |
+| `oauth_accounts` | unique `(provider, provider_user_id)` | `services/identity.js` (Google), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
 | `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:589` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
 | `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |
 | `github_embed_refs` | index on `(repo_owner, repo_name, embed_type)` | **nothing** | `/api/logs/by-github-ref` |
 
 `github_links` being unique on `log_id` is the reason a document links to at
-most one file. `github_embed_refs` has no writer anywhere in the codebase; see
+most one file. `oauth_accounts` has **no** key on `(user_id, provider)`: the
+unique key says one provider account belongs to at most one user, not that a
+user holds at most one Google account. That second rule is an application
+check in `resolveIdentity`, which refuses a user matched by email who already
+holds another Google subject as `identity_conflict` (see
+[open-questions.md](open-questions.md) C7, including the race it leaves). `github_embed_refs` has no writer anywhere in the codebase; see
 [github-integration.md](github-integration.md).
 
 `oauth_accounts.encrypted_token` holds an AES-256-GCM blob whose key derives

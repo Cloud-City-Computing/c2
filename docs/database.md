@@ -106,7 +106,10 @@ Links a Cloud Codex user to an external OAuth provider (Google or GitHub).
 | `encrypted_token`   | TEXT                          | AES-256-GCM encrypted access token (GitHub only)  |
 | `created_at`        | TIMESTAMP                     |                                                    |
 
-**Unique constraint:** `(provider, provider_user_id)` — one provider account per user.
+**Unique constraint:** `(provider, provider_user_id)`: a provider account belongs to at most one
+user. Nothing in the schema stops one user holding two rows for a provider; for Google, sign-in
+refuses a second Google account for a user matched by email (`identity_conflict`, see
+`docs/maps/open-questions.md` C7).
 
 ---
 

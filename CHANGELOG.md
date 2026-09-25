@@ -12,6 +12,25 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- `AUTH_PROVIDERS`, an optional comma list of the sign-in methods an instance
+  offers (`local`, `google`), validated at boot. Unset keeps today's set: local
+  always, Google when it is configured. A value naming an unknown provider,
+  leaving out `local`, listing an unconfigured Google, or leaving out a
+  configured one stops the boot with a sentence naming the variable.
+
+### Security
+
+- **Google sign-in no longer attaches a second Google account to a user.** A
+  Google account not yet linked to anyone was linked to whichever user held its
+  verified email, even when that user already had a different Google account
+  linked, so a reassigned Workspace address or a deleted and recreated Google
+  account signed straight into the previous owner's account. That case is now
+  refused as `/?oauth_error=identity_conflict` with nothing written, and the
+  sign-in form says so. Relinking is by hand; see `docs/troubleshooting.md`. A
+  double link made before this release is not undone.
+
 ## [0.10.0] - 2026-09-25
 
 The security and infrastructure release. Everything since 0.9.0 closes a

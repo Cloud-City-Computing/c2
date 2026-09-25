@@ -46,7 +46,11 @@ for tokens, verifies the ID token.
 `services/identity.js`):
 1. If a Google OAuth account is already linked → log in that user.
 2. If no linked account but a user with the same email exists → link to
-   that user.
+   that user, unless that user already has a different Google account
+   linked: then redirect to `/?oauth_error=identity_conflict` and link
+   nothing (a recycled address, or a recreated Google account). The account's
+   owner unlinks the old Google account, or an operator removes its
+   `oauth_accounts` row, before the new one can link.
 3. If the domain matches `GOOGLE_OAUTH_DOMAIN` → auto-create a new account
    (no invitation required). Username derived from the email local part.
 4. Otherwise → redirect to `/?oauth_error=no_account` (no invitation flow for

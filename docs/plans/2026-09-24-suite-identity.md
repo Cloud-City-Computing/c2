@@ -581,6 +581,16 @@ unmounting routes. Two characterization files (`tests/routes/oauth-google-seam.t
 `oauth-google-domain-seam.test.js`) drive the callback past the token exchange; they were committed
 green against the inline ladder before the move. No existing test file changed.
 
+**One behaviour change, after the refactor (2026-09-25).** Reading the moved ladder surfaced
+`docs/maps/open-questions.md` C7: Google linked by verified email with no check that the matched user
+already held a different Google subject. A gate approved closing it in this PR, as commits strictly
+after the refactor ones, so the move's zero-edit proof still holds per commit. The Google branch now
+issues one more query on the link-by-email path (`SELECT id FROM oauth_accounts WHERE provider =
+'google' AND user_id = ?`) and answers `identity_conflict`, writing nothing, when it finds a row:
+Decision 3's rule, applied to Google. `Std_Layout.jsx` gained copy for that code. The tests for it
+(`tests/services/identity.test.js`, `tests/routes/oauth-google-seam.test.js`) were committed red
+first; `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` are still unedited.
+
 ---
 
 ## PR 4: W6-CDX-3, the `__Host-` cookie and Origin-required cookie writes
@@ -898,7 +908,10 @@ issuer: exactly one wins, the other refuses `identity_conflict`).
   providerSid: sid })` with `expires_at` from `OIDC_SESSION_TTL_HOURS` (default 24; the function
   takes a `ttlHours` option that local and Google never pass), set the session cookie exactly as the
   Google callback does, and `302` to the sealed `returnTo`. Every refusal redirects to
-  `/?oauth_error=<code>`, the pattern `Std_Layout.jsx:306-311` already reads.
+  `/?oauth_error=<code>`, the pattern `Std_Layout.jsx:306-311` already reads. **Carried from PR 3:**
+  that file's copy names Google in every line, including the `identity_conflict` line C7 added, and
+  its fallback says "Google sign-in failed", so an OIDC refusal needs provider-neutral copy (or a
+  provider hint in the redirect) before it can reuse the map.
 - `app.js`: `app.use('/api/auth/oidc/callback', authLimiter)` beside the Google line
   (`app.js:147`).
 
