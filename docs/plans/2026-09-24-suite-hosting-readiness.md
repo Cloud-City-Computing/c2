@@ -197,9 +197,21 @@ the real `instance-lock.js` against the test schema:
 
 ### Task 2.1 The contract, written first
 
-`cloudcodex/env-contract.js` exports an array, one entry per variable:
+`cloudcodex/env-contract.js` exports an array, one entry per variable. It is data only and imports
+nothing, because Cloud Command's operator link tool (W6-CMD-31) reads a pinned copy of it:
 
 ```javascript
+/**
+ * Every environment variable the server reads, and how each behaves when unset
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
+// Data only, no imports: a paired product pins a copy of this file and reads it.
+// perInstance: linking the instance to its workspace supplies the value (its host,
+// credentials, issuer application, webhook subscription and suite link), not the
+// deployment's env template, the database provisioning step or a default.
 export const ENV_CONTRACT = [
   { name: 'APP_URL', kind: 'required-in-production', perInstance: true,
     why: 'invitation, reset and notification links, and the CORS allow rule' },
@@ -209,12 +221,46 @@ export const ENV_CONTRACT = [
 ];
 ```
 
+An entry's fields: `name`; `kind`, one of `required`, `required-in-production`, `default` (with
+`default`, the value an unset variable behaves as) or `optional`; `requiredWith`, on an `optional`
+entry that boot requires whenever another variable is set (`SUITE_NAME` with
+`SUITE_COMMAND_WORKSPACE_URL`, UI plan PR 5; `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` with
+`OIDC_ISSUER_URL`, identity plan PR 5); `perInstance`, a boolean; and `why`.
+
+**`perInstance` says who supplies the value, not whether it differs.** `true` when linking the
+instance to its workspace decides it: its `APP_URL`, its machine credentials, its application at
+the issuer and the issuer itself, its webhook subscription, its suite link, and `SUITE_NAME`, which
+Cloud Command supplies from its own single definition. `false` when the box's Codex env template
+(W6-CMD-36), the database provisioning step or a default decides it: `DB_NAME` differs between
+instances and is still `false`, `ADMIN_EMAIL` is the operator's address on every box instance
+(D-R) and is `false`, `SUITE_NAME` is the same everywhere and is still `true`. The Wave 6 plans
+give each new variable's flags beside the task that reads it:
+
+| Variable | Plan and PR | `perInstance` |
+|---|---|---|
+| `LEGACY_SESSION_COOKIE`, `AUTH_PROVIDERS` | identity PRs 4 and 3 | `false` |
+| `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | identity PR 5 | `true` |
+| `OIDC_PROVIDER_NAME`, `OIDC_LINK_BY_VERIFIED_EMAIL`, `OIDC_SESSION_TTL_HOURS` | identity PR 5 | `false` |
+| `MACHINE_OIDC_AUDIENCE`, `MACHINE_OIDC_SUBJECTS` | identity PR 7 | `true` |
+| `WEBHOOK_URL`, `WEBHOOK_SECRET`, `WEBHOOK_WORKSPACE_ID` | events PR 2 | `true` |
+| `WEBHOOK_ALLOW_PRIVATE_TARGETS` | events PR 2 | `false` |
+| `SUITE_COMMAND_WORKSPACE_URL`, `SUITE_NAME` | UI PR 5 | `true` |
+| `C2_INSTANCE_LOCK` | this plan's PR 1 | `false` |
+| `TRUST_PROXY`, `DB_POOL_SIZE` | this PR | `false` |
+| `DOC_IMAGES_PUBLIC` | this plan's PR 4 | `false` |
+
+Whichever of a variable's PR and this one lands second writes its entry, from that table.
+
 `tests/env-contract.test.js` scans every `.js` file under `cloudcodex/` except `tests/`, `vendor/`,
 `node_modules/` and `dist/` for `process.env.NAME` and `process.env['NAME']`, and asserts: the set of
 names read equals the set in `ENV_CONTRACT`; every name appears in the repository's `.env.example`;
-every `kind` is one of `required`, `required-in-production`, `default`, `optional`; and no file reads
-`process.env[` with a computed key. **The per-instance entries are the list Cloud Command's operator
-link tool (W6-CMD-31) prints**, so a variable a later track adds without an entry fails here.
+every `kind` is one of the four; every `requiredWith` names another entry; every entry has a boolean
+`perInstance` and a `why`; `env-contract.js` has no `import`; and no file reads `process.env[` with
+a computed key. The scan sees only literal reads, which is why every plan reads a variable as
+`process.env.NAME` and never as `env.NAME` on an object passed in. **The per-instance entries are
+the list Cloud Command's operator link tool (W6-CMD-31) prints**, and its test asserts over every
+one, so a per-instance variable a later track adds without an entry fails here, and one with an
+entry that the tool does not yet supply fails there.
 
 - [ ] Run it before any other change. **Expected:** it fails, listing every variable that has no
       entry yet; add them all, then it passes.
@@ -544,6 +590,10 @@ is backed up separately. CHANGELOG.
 
 - [ ] From a clean clone, logged out of ghcr.io: `docker compose -f docker-compose-release.yml up -d`,
       then `/readyz` answers 200 within 30 seconds.
-- [ ] With the test box's environment (suite mode, OIDC, the webhook subscription, `AUTH_PROVIDERS=oidc`):
-      it boots and reports healthy. Measure idle RSS after 10 minutes with `docker stats --no-stream`.
-- [ ] Hand the digest and the RSS reading to Cloud Command's W6-CMD-38.
+- [ ] With the test box's environment (suite mode, OIDC, the webhook subscription,
+      `AUTH_PROVIDERS=oidc`, `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`, and `ADMIN_EMAIL` set to the
+      operator's address, D-R): it boots and reports healthy. Measure idle RSS after 10 minutes
+      with `docker stats --no-stream`.
+- [ ] Hand the digest and the RSS reading to Cloud Command's W6-CMD-38, and the release's
+      `cloudcodex/env-contract.js` (the tag and the path) to W6-CMD-36, which re-pins its copy and
+      re-runs W6-CMD-31's snippet test against it.

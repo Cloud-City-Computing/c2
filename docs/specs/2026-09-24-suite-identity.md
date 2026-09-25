@@ -8,9 +8,9 @@ editing, because `routes/auth.js`, `routes/oauth.js` and `app.js` move under eve
   W6-CDX-10. This document is W6-CDX-1.
 - **Plan:** [`../plans/2026-09-24-suite-identity.md`](../plans/2026-09-24-suite-identity.md)
 - **Requested by:** Kyle, in the 2026-09-24 decisions recorded in the Cloud Command ADR
-  `wave-6-is-one-sign-in-events-and-a-shared-shell.md`, both rounds (D-A to D-H, then D-J to D-P
-  the same day). Cloud Command and Cloud City ID are private repositories; the decisions that bind
-  this spec are restated below so it stands on its own.
+  `wave-6-is-one-sign-in-events-and-a-shared-shell.md`, all three rounds (D-A to D-H, then D-J to
+  D-P, then D-Q to D-V, the same day). Cloud Command and Cloud City ID are private repositories;
+  the decisions that bind this spec are restated below so it stands on its own.
 
 ## Why this spec exists
 
@@ -41,6 +41,15 @@ Kyle's decisions for Wave 6 that bind this track:
    workspace owner is the instance admin. That is W6-CDX-9, which is no longer contingent.
 8. **A 24-hour ceiling on SSO sessions, renewed by a silent redirect, is approved (D-P)** as the
    backstop for deprovisioning.
+9. **The boot admin on the test box is Cloud City's operator, not a partner (D-R).** Each box
+   instance's `ADMIN_EMAIL` is a Cloud City operator address that belongs to no design partner
+   (`ops@cloudcitycomputing.com`), so Cloud City staff are admin on every partner's instance, and
+   the beta terms disclose that operator access. The workspace owner reaches instance admin through
+   the membership sync's `admin` role (W6-CDX-9), never by being `ADMIN_EMAIL`, so an ownership
+   transfer syncs like any other re-role.
+10. **A synced member lands in the instance's seeded `General` squad with read and write (D-S).**
+    The invitation the sync creates names that squad, so the owner does not place each member by
+    hand.
 
 What that means here: Cloud Codex gains a **generic** OIDC relying party. Nothing in the source
 names Zitadel, Cloud City ID or the suite; the issuer is configuration, and a self-hoster can point
@@ -449,6 +458,11 @@ There is none; see "No OIDC client" above.
 - `GET /api/oauth/providers` gains `oidc: { enabled, name }`, and `Login.jsx` renders the button.
 - The C2-5 reader check accepts an optional `subject` query parameter, matched through
   `user_identities` before the email. The unknown-subject answer is the same `false`.
+- Every `OIDC_*` variable joins the hosting track's configuration contract (`ENV_CONTRACT`,
+  W6-CDX-32) with its per-instance flag, as the plan's Task 5.10 lists them: the issuer and the
+  instance's client id and secret are per instance, because Cloud Command's operator link tool
+  (W6-CMD-31) prints them into each instance's snippet; the label, the linking switch and the TTL
+  are not. An issuer set without both client values fails boot, naming the missing one.
 - `.env.example`, the trust statement in `docs/security.md`, and the request-lifecycle,
   data-model and access-control maps.
 
@@ -527,6 +541,9 @@ See "One machine credential per install" above.
 - The principal stays `SERVICE_TOKEN_USER`'s non-admin user: the admin row is refused and
   `is_admin` is the literal `false`, exactly as today. The static `SERVICE_TOKEN` path is unchanged
   for self-hosters, and **no call site changes**.
+- `MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS` join the configuration contract
+  (`ENV_CONTRACT`, W6-CDX-32), both per instance: each instance has its own Zitadel project and
+  service user, and the operator link tool prints both.
 - The file header and access-control map section 7.
 
 ### Done means
@@ -561,7 +578,11 @@ signed-out path other than `/` and `/404` to `/` and drops the target
 - With local disabled, `ensureAdminUser` resolves by `ADMIN_EMAIL` only (no name match), sets
   `is_admin` and writes no `password_hash`; `server.js:17-21` requires `ADMIN_USERNAME` and
   `ADMIN_PASSWORD` only while local is enabled. That boot assertion is the one existing test
-  expected to move, and the PR says so.
+  expected to move, and the PR says so. Because `ADMIN_USERNAME` may then be unset, a created admin
+  takes a derived username (`deriveUniqueUsername(ADMIN_EMAIL)`), and `bootstrapInstance` names the
+  seeded workspace from the admin row rather than from the variable, so an OIDC-only instance still
+  seeds the `General` squad W6-CDX-9 places synced members in (D-S). On the test box `ADMIN_EMAIL`
+  is the Cloud City operator address (D-R).
 - An OIDC sign-in whose verified email matches an open `user_invitations` row creates the user with
   that invitation's squad and flags, in one transaction, and marks it accepted: track B's path,
   reached by a verified email instead of a token.
@@ -575,8 +596,8 @@ signed-out path other than `/` and `/404` to `/` and drops the target
 
 ### Done means
 
-- A fresh hosted instance boots with no admin password, and the `ADMIN_EMAIL` user signs in through
-  OIDC as the admin.
+- A fresh hosted instance boots with no admin password and no `ADMIN_USERNAME`, seeds its starter
+  workspace and `General` squad, and the `ADMIN_EMAIL` user signs in through OIDC as the admin.
 - An invited email signs in and lands in its squad; an uninvited verified email gets `no_account`;
   a deactivated user is refused everywhere.
 - A signed-out deep link on an OIDC-only instance lands on the document after sign-in, and the
@@ -595,8 +616,10 @@ by hand).
 
 **On the test-deploy path (Kyle's decision D-M).** Adding, re-roling or removing a member of a
 Cloud Command workspace does the same in its Codex instance, through these routes, called by Cloud
-Command's W6-CMD-7 with that workspace's machine credential (W6-CDX-7). The workspace owner is the
-instance admin; everyone else is an ordinary user.
+Command's W6-CMD-7 with that workspace's machine credential (W6-CDX-7). The workspace owner is an
+instance admin through the `admin` role; everyone else is an ordinary user. The instance's other
+admin is its `ADMIN_EMAIL` boot user, which on the test box is Cloud City's operator address and
+belongs to no partner (D-R), so the sync never names it.
 
 ### Current behaviour
 
@@ -610,36 +633,58 @@ flags, but not instance admin (`init.sql:138-159`). `is_admin` is written only b
 
 - `PUT /api/machine/members { email, role }`, where `role` is `admin` (the Cloud Command workspace
   owner) or `member`. A re-role is the same call with the new role.
-  - An active user with that email: `is_admin` is set to match the role.
+  - An active user with that email: `is_admin` is set to match the role. Their squads are left
+    alone: after admission, placement is the instance admin's, and a re-role never undoes it.
   - A deactivated user (W6-CDX-8's `deactivated_at`): reactivated, then as above.
   - No such user: an open invitation for the email is created or refreshed, owned by the machine
     principal, sending no email. A new `user_invitations.grants_admin BOOLEAN NOT NULL DEFAULT
     FALSE` column (a dated migration and `init.sql`) is set for `admin`, and W6-CDX-8's
     invitation binding gives the created user `is_admin` when it is.
+- **Where an admitted member lands (D-S).** The invitation names the instance's seeded `General`
+  squad (`bootstrapInstance`, `routes/admin.js:102-152`, which creates it in the boot admin's
+  starter workspace) in its existing `squad_id`, with `can_write` set and `can_read` at its default,
+  so W6-CDX-8's binding makes the person a `General` member with read and write on first sign-in.
+  No column is added for it. Every synced person lands there, the owner included. An open
+  invitation that already names a squad (one an admin created by hand) keeps it. If an admin has
+  renamed or deleted `General`, the invitation names no squad, exactly like track B's squad-less
+  invite, and the instance admin places the person.
 - `DELETE /api/machine/members/:email` deactivates the user and clears `is_admin`, deletes their
   sessions, closes their sockets and expires their open invitations.
 - **The `ADMIN_EMAIL` user is out of reach.** Both routes answer 409 for it, because the boot sync
-  owns that row and would undo any change at the next restart. W6-CMD-7 records a 409 as a
-  permanent failure, as it does any other.
-- Both are idempotent and rate-limited, and neither reveals anything about an account the caller
-  did not already name: a known and an unknown address get the same answer.
+  owns that row and would undo any change at the next restart. On the test box that address is
+  Cloud City's operator address, which no partner holds (D-R), so the sync never sends it: the
+  owner is synced as `role: admin` on their own row, and an ownership transfer is two ordinary
+  calls, the new owner to `admin` first and then the old owner to `member`, neither touching the
+  boot admin. A 409 is therefore a misconfiguration, never a path the sync expects, and W6-CMD-7
+  records it as a permanent failure, as it does any other.
+- Both are idempotent, and neither reveals anything about an account the caller did not already
+  name: a known and an unknown address get the same answer.
+- **Both are rate-limited by a machine limiter of their own**, IP-keyed and sized for one caller's
+  bursts, as W6-CDX-6's back-channel receiver is, never `authLimiter`. `authLimiter` is one bucket
+  that the login surface and the C2-5 reader check already share at 20 requests per 15 minutes, and
+  linking, adopting or restoring a workspace syncs every current member at once, owner first
+  (W6-CMD-31, W6-CMD-7), so on it a workspace of more than twenty members would be refused partway
+  and would spend the login budget of every request from Cloud Command's address. The limiter
+  answers 429, which W6-CMD-7 treats as retryable, never as a permanent failure.
 - **This is the first machine route that writes, and the only one that can grant `is_admin`.** A
   leaked instance credential could make any address that instance's admin. That is the accepted
   cost of an automatic owner-to-admin mapping; the credential is per instance and its subject is
   allowlisted (W6-CDX-7), so the reach is one instance.
-- Where an admitted member lands inside the instance is open question 1 below. Until Kyle answers,
-  the invitation carries no squad, exactly like track B's squad-less invite, and the instance
-  admin places each member.
 - `docs/api/` and the access-control map. This widens the machine surface `CLAUDE.md:108-114`
   describes, and that paragraph is amended in the same PR.
 
 ### Done means
 
 Creation, refresh, a re-role in both directions, idempotency, deactivation and reactivation are
-tested, and an invited owner's first OIDC sign-in creates an admin, on live MySQL. After `DELETE`
-the user cannot sign in, and their documents and authorship remain. The `ADMIN_EMAIL` user gets
-409 from both routes and is unchanged. A human session calling either route gets the same 401 an
-anonymous caller gets, and a known and an unknown address produce byte-identical answers.
+tested, and an invited owner's first OIDC sign-in creates an admin, on live MySQL. An invited
+member's first sign-in lands them in `General` with read and write, and they can open the seeded
+welcome document; with `General` renamed, the invitation names no squad. An ownership transfer
+(the new owner to `admin`, then the old owner to `member`) leaves the new owner and the boot admin
+as the only admins. After `DELETE` the user cannot sign in, and their documents and authorship
+remain. The `ADMIN_EMAIL` user gets 409 from both routes and is unchanged. A burst of more than
+twenty calls passes the machine limiter and leaves the login surface's budget untouched. A human
+session calling either route gets the same 401 an anonymous caller gets, and a known and an
+unknown address produce byte-identical answers.
 
 ---
 
@@ -695,20 +740,21 @@ Each lands in the PR that makes it true, and each is deliberate rather than slid
   as they are.
 - **Cloud Codex as an issuer.** Decided against.
 - **Commercial machinery** (billing, entitlements, seat taxonomy, hosted provisioning automation,
-  operator access), deferred to the later containerized-service era for the whole suite.
+  and a scoped operator role), deferred to the later containerized-service era for the whole suite.
+  Until then Cloud City staff reach a test-box instance as its `ADMIN_EMAIL` boot admin, which the
+  beta terms disclose (D-R).
 
 ## Open questions for Kyle
 
-1. **Where does a synced member land?** An admitted member needs a squad to see anything. (a) No
-   squad, and the instance admin places them: the default this spec plans to, because it grants
-   nothing Cloud Command did not say. (b) The instance's seeded `General` squad
-   (`bootstrapInstance`, `routes/admin.js:102-152`) as a member with read and write, one more
-   field on the invitation, which saves the owner a step per member for the beta's one to three
-   workspaces.
+None remain in this spec. Kyle's third round, 2026-09-24, answered its last one: a synced member
+lands in the instance's seeded `General` squad with read and write, one more field on the
+invitation (D-S, W6-CDX-9 above), and it set the test box's `ADMIN_EMAIL` to a Cloud City operator
+address that belongs to no partner (D-R). The second round made admission sync automatic and
+before the test deploy, with the owner as instance admin (D-M), and approved the 24-hour ceiling
+renewed by a silent redirect (D-P).
 
-Answered in Kyle's second round, 2026-09-24: admission sync is automatic and before the test
-deploy, with the owner as instance admin (D-M, W6-CDX-9 above); the 24-hour ceiling renewed by a
-silent redirect is approved (D-P).
+The only open question left in Wave 6 is the eight accent names, which Kyle confirms in
+W6-CDX-22's review.
 
 ## Retirement
 

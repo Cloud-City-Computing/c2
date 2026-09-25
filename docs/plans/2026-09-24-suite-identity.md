@@ -83,6 +83,14 @@ Every task's requirements implicitly include this section.
   own threshold entry at the level they achieve minus a small buffer.
 - **Maps move in the same PR** as the code they describe (CLAUDE.md checklist item 7). New env vars
   go in `.env.example` with a comment (item 3).
+- **Every new env var joins the configuration contract in the PR that reads it.** The contract is
+  `cloudcodex/env-contract.js`, the hosting plan's PR 2 (W6-CDX-32), and its test fails on a
+  variable read without an entry. If the file exists, add the entry with the `kind`,
+  `requiredWith` and `perInstance` this plan gives; if it does not yet, the hosting plan's Task 2.1
+  finds the variable on its first run and takes the same values from here. Read each variable as
+  `process.env.NAME`, by literal name, never as `env.NAME` on an object passed in: the contract's
+  scan sees only literal reads, so a parameter would hide the variable from it. Tests set and
+  restore `process.env` instead.
 - **The source never names Cloud City, Cloud City ID or Zitadel.** Tests may name Zitadel only
   when they record a real issuer's behaviour. The suite's display name is the `SUITE_NAME`
   setting (the UI plan's PR 5 adds it and its single-source test), and the company's legal name,
@@ -536,14 +544,16 @@ refusal issues no write.
 
 ### Task 3.3 `AUTH_PROVIDERS`
 
-`services/identity.js` exports `parseAuthProviders(env)`:
+`services/identity.js` exports `parseAuthProviders()`, which reads `process.env.AUTH_PROVIDERS`:
 
 - unset: today's set, `local` plus `google` when Google is configured;
 - set: a comma list of `local`, `google`; an unknown name, a listed provider that is not
   configured, or (until PR 8) a list without `local`, throws with a sentence naming the variable.
 
 `server.js` calls it in the boot block beside the admin check and exits 1 with that sentence.
-Tests for each case; `.env.example` documents the variable as "leave unset".
+Tests for each case; `.env.example` documents the variable as "leave unset". Contract entry:
+`{ name: 'AUTH_PROVIDERS', kind: 'optional', perInstance: false }` (a hosted box sets `oidc` in its
+env template, not per link).
 
 ### Task 3.4 Verify
 
@@ -567,9 +577,12 @@ export function sessionCookieName({ secure }) {
   return secure ? SESSION_COOKIE : LEGACY_SESSION_COOKIE;
 }
 
-/** Legacy fallback is on unless LEGACY_SESSION_COOKIE=0 (hosted instances). */
-export function legacyCookieAllowed(env = process.env) {
-  return env.LEGACY_SESSION_COOKIE !== '0';
+/**
+ * Legacy fallback is on unless LEGACY_SESSION_COOKIE=0 (hosted instances). Read
+ * by literal name so the configuration contract's scan sees it.
+ */
+export function legacyCookieAllowed() {
+  return process.env.LEGACY_SESSION_COOKIE !== '0';
 }
 
 /**
@@ -678,7 +691,9 @@ passes; a GET is untouched.
 
 ### Task 4.6 Verify, including by hand
 
-- [ ] `.env.example` documents `LEGACY_SESSION_COOKIE`; `docs/maps/request-lifecycle.md` and
+- [ ] `.env.example` documents `LEGACY_SESSION_COOKIE`, with the contract entry
+      `{ name: 'LEGACY_SESSION_COOKIE', kind: 'default', default: '1', perInstance: false }` (a
+      hosted box sets `0` in its env template); `docs/maps/request-lifecycle.md` and
       `docs/security.md` describe the cookie and the Origin rule.
 - [ ] Lint, test, coverage, integration, build.
 - [ ] By hand, in a browser over https (or `localhost`), at desktop and mobile widths: log in, open
@@ -758,8 +773,12 @@ schema succeeds.
 A plain-JS port of Cloud Command's relying party. Its public surface:
 
 ```javascript
-/** Reads and validates OIDC_* and APP_URL; returns null when OIDC is not configured. */
-export function getOidcConfig(env = process.env) {}
+/**
+ * Reads and validates OIDC_* and APP_URL, each as process.env.NAME by literal
+ * name (the configuration contract's scan sees only those); returns null when
+ * OIDC is not configured.
+ */
+export function getOidcConfig() {}
 
 /** { url, flowCookie } for a fresh state, nonce and PKCE pair, carrying a validated returnTo. */
 export async function beginLogin(config, { returnTo }) {}
@@ -784,7 +803,8 @@ Load-bearing details, each with a test:
   **only** when the configured issuer is `http:` on a loopback host (`localhost`, `127.0.0.1`,
   `::1` or a `*.localhost` name). Any other `http:` issuer fails config validation at boot.
 - **The redirect URI is `new URL('/api/auth/oidc/callback', APP_URL)`**, never built from a request.
-  OIDC enabled with `APP_URL` unset fails boot.
+  OIDC enabled with `APP_URL` unset fails boot, and so does `OIDC_ISSUER_URL` set without
+  `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET`, naming the missing variable.
 - **The flow cookie** is HMAC-SHA256 over a base64url JSON payload `{ state, nonce, codeVerifier,
   returnTo, exp }` keyed by the client secret, compared with `timingSafeEqual`, 10-minute TTL. Its
   name is `__Secure-oidcFlow` when `NODE_ENV=production` (a `__Host-` name needs `Path=/`, and this
@@ -893,7 +913,22 @@ path and that the answer is identical when the subject matches nobody.
 
 - [ ] `.env.example`: `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
       `OIDC_PROVIDER_NAME`, `OIDC_LINK_BY_VERIFIED_EMAIL`, `OIDC_SESSION_TTL_HOURS`, each commented.
-      `docs/security.md`: what the issuer is trusted for (a verified email and a stable `sub`) and
+- [ ] `cloudcodex/env-contract.js` gains the six (see Global constraints for when the file does
+      not exist yet). `perInstance: true` marks what Cloud Command's operator link tool (W6-CMD-31)
+      prints into each instance's snippet, and its test asserts over every such entry:
+
+      | Variable | `kind` | `requiredWith` | `perInstance` |
+      |---|---|---|---|
+      | `OIDC_ISSUER_URL` | `optional` | | `true` (the issuer the instance's application is registered at) |
+      | `OIDC_CLIENT_ID` | `optional` | `OIDC_ISSUER_URL` | `true` |
+      | `OIDC_CLIENT_SECRET` | `optional` | `OIDC_ISSUER_URL` | `true` |
+      | `OIDC_PROVIDER_NAME` | `default`, `SSO` | | `false` (suite mode labels the button from `SUITE_NAME`) |
+      | `OIDC_LINK_BY_VERIFIED_EMAIL` | `default`, `1` | | `false` |
+      | `OIDC_SESSION_TTL_HOURS` | `default`, `24` | | `false` |
+
+      **Expected:** `npx vitest run tests/env-contract.test.js` green, and red with any one entry
+      removed.
+- [ ] `docs/security.md`: what the issuer is trusted for (a verified email and a stable `sub`) and
       for nothing else. Maps: request-lifecycle section 3, data-model section 4, access-control
       section 7 (the subject path). CLAUDE.md "Auth & accounts" and critical decision 4, per the
       spec. CHANGELOG `[Unreleased]`.
@@ -994,11 +1029,11 @@ if (JWS_SHAPE.test(token) && jwtConfig()) {
 ```
 
 `jwtConfig()` returns `{ issuer, audience, subjects: Set }` only when `OIDC_ISSUER_URL`,
-`MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS` (comma list) are all set. `verifyMachineJwt`
-runs `jose.jwtVerify` against the cached JWKS with `issuer`, `audience` and `clockTolerance: 60`,
-requires `subjects.has(payload.sub)`, then resolves the principal exactly as today: the
-`SERVICE_TOKEN_USER` row, refused if missing or admin, returned with `is_admin: false`. A 64-character
-session token has no dots, so it never enters the branch.
+`MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS` (comma list) are all set, each read as
+`process.env.NAME`. `verifyMachineJwt` runs `jose.jwtVerify` against the cached JWKS with
+`issuer`, `audience` and `clockTolerance: 60`, requires `subjects.has(payload.sub)`, then resolves
+the principal exactly as today: the `SERVICE_TOKEN_USER` row, refused if missing or admin, returned
+with `is_admin: false`. A 64-character session token has no dots, so it never enters the branch.
 
 Tests: a valid token yields the principal; right `aud` and wrong `sub` is null; another instance's
 `aud` is null; expired is null; a session token never reaches `jose`; an admin principal is
@@ -1009,6 +1044,14 @@ refused; with the three variables unset the static path is byte-identical. The e
 
 - [ ] The file header (`machine-auth.js:1-30`) describes both paths. `docs/maps/access-control.md`
       section 7; `.env.example`; CLAUDE.md "Machine callers". CHANGELOG. Lint, test, coverage.
+- [ ] `cloudcodex/env-contract.js` gains
+      `{ name: 'MACHINE_OIDC_AUDIENCE', kind: 'optional', perInstance: true }` (the instance's own
+      Zitadel project id) and
+      `{ name: 'MACHINE_OIDC_SUBJECTS', kind: 'optional', perInstance: true }` (its allowlisted
+      service users), both printed by the operator link tool (W6-CMD-31). Neither is
+      `requiredWith` anything: with one missing, the JWT branch stays off and a JWT is refused,
+      which is the safe degradation. **Expected:** the contract test green, red with either entry
+      removed.
 
 ---
 
@@ -1032,6 +1075,17 @@ never write a password. `server.js:17-21` requires `ADMIN_USERNAME` and `ADMIN_P
 named in the PR body. The hosting plan's W6-CDX-32 has already landed (it is a precondition of this
 PR) and refuses to promote an existing non-admin; keep that refusal on both branches, local and
 OIDC-only, and its tests unedited.
+
+`ADMIN_USERNAME` may now be unset, and two readers assume it is not: the `INSERT INTO users`
+(`users.name` is `NOT NULL UNIQUE`) and `bootstrapInstance`, which names the starter workspace
+`` `${adminName}'s Workspace` `` from the variable (`routes/admin.js:115` and `:123` at
+`91493a6`). The created admin's `name` is `ADMIN_USERNAME` when set, else
+`deriveUniqueUsername(ADMIN_EMAIL)`; `bootstrapInstance` reads the name from the admin's row
+instead of the variable. Test: with `AUTH_PROVIDERS=oidc` and no `ADMIN_USERNAME`, boot seeds a
+workspace named for the derived username, with its `General` squad, which is where PR 9 places
+every synced member (D-S). On the test box `ADMIN_EMAIL` is the Cloud City operator address, which
+belongs to no partner (D-R); that is configuration in the box's env template, never a literal
+here.
 
 ### Task 8.3 Invitations bind on verified email
 
@@ -1064,8 +1118,9 @@ builds suite mode and the mixed-provider case on this hook.
 
 ### Task 8.6 Verify
 
-- [ ] A fresh hosted instance boots with `AUTH_PROVIDERS=oidc`, no `ADMIN_PASSWORD`, and the
-      `ADMIN_EMAIL` user signs in through the local Cloud City ID stack as admin. An invited email
+- [ ] A fresh hosted instance boots with `AUTH_PROVIDERS=oidc`, no `ADMIN_PASSWORD` and no
+      `ADMIN_USERNAME`, seeds its starter workspace and `General` squad, and the `ADMIN_EMAIL` user
+      signs in through the local Cloud City ID stack as admin. An invited email
       lands in its squad; an uninvited one gets `no_account`; a deactivated one is refused; a
       signed-out deep link lands on the document. Record it.
 - [ ] Maps, `.env.example`, `docs/deployment.md` ("Hosted mode"), CHANGELOG. Lint, test, coverage,
@@ -1077,8 +1132,10 @@ builds suite mode and the mixed-provider case on this hook.
 
 On the test-deploy path (Kyle's decision D-M). Cloud Command's W6-CMD-7 calls these routes when a
 member is added, re-roled or removed; the workspace owner arrives as `admin`, everyone else as
-`member`. Squad placement follows the spec's open question 1: until Kyle answers, an invitation
-carries no squad.
+`member`. Squad placement is Kyle's decision D-S: every synced person, the owner included, lands in
+the instance's seeded `General` squad with read and write, through the invitation's existing
+`squad_id` and `can_write`. The `ADMIN_EMAIL` boot admin is never a synced person: on the test box
+it is Cloud City's operator address, which belongs to no partner (D-R).
 
 ### Task 9.1 The flag the invitation needs, tested on real MySQL first
 
@@ -1126,9 +1183,26 @@ function readEmail(raw) {
   return email && email.length <= 255 && isValidEmail(email) ? email : null;
 }
 
-// The boot sync owns the ADMIN_EMAIL row and would undo any change at the next restart.
+// The boot sync owns the ADMIN_EMAIL row and would undo any change at the next
+// restart. A hosted operator sets ADMIN_EMAIL to an address no synced member
+// holds, so a sync that reaches this is misconfigured.
 const isBootAdmin = (email) =>
   Boolean(process.env.ADMIN_EMAIL) && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase();
+
+// Where an admitted member lands: the General squad bootstrapInstance seeds in
+// the boot admin's starter workspace. null when an admin has renamed or deleted
+// it; the invitation then names no squad and the instance admin places them.
+async function generalSquadId(query) {
+  const rows = await query(
+    `SELECT s.id FROM squads s
+       JOIN workspaces w ON w.id = s.workspace_id
+       JOIN users u ON u.id = w.owner_id
+      WHERE s.name = 'General' AND LOWER(u.email) = LOWER(?)
+      ORDER BY s.id LIMIT 1`,
+    [process.env.ADMIN_EMAIL]
+  );
+  return rows.length > 0 ? rows[0].id : null;
+}
 
 router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => {
   const email = readEmail(req.body?.email);
@@ -1143,27 +1217,35 @@ router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => 
   await withTransaction(async (query) => {
     const users = await query('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1 FOR UPDATE', [email]);
     if (users.length > 0) {
+      // Squads are left alone: after admission, placement is the instance admin's.
       await query('UPDATE users SET is_admin = ?, deactivated_at = NULL WHERE id = ?', [admin, users[0].id]);
       return;
     }
     const open = await query(
-      `SELECT id FROM user_invitations
+      `SELECT id, squad_id FROM user_invitations
         WHERE LOWER(email) = LOWER(?) AND accepted = FALSE
         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [email]
     );
+    // An invitation that already names a squad (an admin's, made by hand) keeps it.
+    const keepsSquad = open.length > 0 && open[0].squad_id !== null;
+    const squadId = keepsSquad ? null : await generalSquadId(query);
     if (open.length > 0) {
       await query(
         `UPDATE user_invitations
-            SET grants_admin = ?, expires_at = NOW() + INTERVAL 1 YEAR, invited_by = ?
+            SET grants_admin = ?, expires_at = NOW() + INTERVAL 1 YEAR, invited_by = ?,
+                squad_id = COALESCE(squad_id, ?), can_write = can_write OR ?
           WHERE id = ?`,
-        [admin, req.user.id, open[0].id]
+        [admin, req.user.id, squadId, squadId !== null, open[0].id]
       );
     } else {
+      // can_read defaults to TRUE and role to 'member' (init.sql user_invitations).
       await query(
-        `INSERT INTO user_invitations (email, token, invited_by, expires_at, grants_admin)
-         VALUES (?, ?, ?, NOW() + INTERVAL 1 YEAR, ?)`,
-        [email, crypto.randomBytes(32).toString('hex'), req.user.id, admin]
+        `INSERT INTO user_invitations
+           (email, token, invited_by, expires_at, grants_admin, squad_id, can_write)
+         VALUES (?, ?, ?, NOW() + INTERVAL 1 YEAR, ?, ?, ?)`,
+        [email, crypto.randomBytes(32).toString('hex'), req.user.id, admin, squadId,
+         squadId !== null]
       );
     }
   });
@@ -1200,34 +1282,75 @@ export default router;
 
 The token is minted exactly as `POST /api/admin/invitations` mints one (`routes/admin.js:439`,
 32 random bytes as hex, which `user_invitations.token CHAR(64) NOT NULL UNIQUE` expects,
-`init.sql:141`). `squad_id` stays `NULL` and the permission flags take their column defaults
-(`init.sql:143-150`), so an admitted member sees nothing until the instance admin places them in a
-squad (the spec's open question 1). Re-derive both anchors by name
-at execution. `app.js` mounts the router under `/api` and puts `authLimiter` on both paths,
-the way the reader check is limited (`app.js:157`).
+`init.sql:141`). The invitation names `General` in `squad_id` with `can_write` set; `role`
+(`member`) and the other flags take their column defaults (`init.sql:143-150`), so W6-CDX-8's
+binding (Task 8.3) calls `addSquadMember` and the person lands in `General` with read and write
+(D-S). `generalSquadId` finds the squad the way `bootstrapInstance` made it (`routes/admin.js:128`,
+the squad named `General` in a workspace the boot admin owns), because nothing else marks it;
+re-derive these anchors by name at execution.
+
+**Its own limiter, never `authLimiter`.** `authLimiter` (`app.js:128-135`, 20 requests per 15
+minutes) is one bucket shared by every path it is mounted on, the login routes and the C2-5 reader
+check (`app.js:157`) included. Linking, adopting or restoring a workspace in Cloud Command syncs
+every current member at once, owner first (W6-CMD-31, W6-CMD-7), so on that bucket a workspace of
+more than twenty members would be refused partway and would spend the login budget of every
+request from Cloud Command's address. `app.js` defines, beside `authLimiter`:
+
+```javascript
+// Machine membership sync (routes/machine-members.js). Its own bucket, sized
+// like the back-channel receiver's for one caller's bursts: linking or restoring
+// a workspace syncs every member at once. A 429 here is retryable, and the
+// caller retries it.
+const machineMembersLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: { success: false, message: 'Too many membership requests, please try again later' },
+});
+app.use('/api/machine/members', machineMembersLimiter);
+```
+
+and mounts the router under `/api`. `app.use` matches by prefix, so the one line covers
+`DELETE /api/machine/members/:email` too. Cloud Command's W6-CMD-7 treats a 429 as retryable, never
+as a permanent failure.
 
 Tests, `tests/routes/machine-members.test.js`, with the mock queue in the order above:
 
-- `PUT` for an unknown address inserts an invitation with `grants_admin` matching the role; for an
-  open invitation it refreshes that row; for a user it sets `is_admin` and clears `deactivated_at`;
-  a re-role from `admin` to `member` writes `is_admin = FALSE`.
+- `PUT` for an unknown address inserts an invitation with `grants_admin` matching the role, the
+  `General` squad and `can_write` true; with `General` gone (the squad lookup returns no row) it
+  inserts one with a `NULL` squad and `can_write` false; for an open invitation with no squad it
+  refreshes that row and names `General`; one that already names a squad keeps it; for a user it
+  sets `is_admin` and clears `deactivated_at` and issues no squad query; a re-role from `admin` to
+  `member` writes `is_admin = FALSE`.
+- An ownership transfer, the new owner's `PUT` as `admin` then the old owner's as `member`, writes
+  exactly those two `is_admin` values and nothing for the `ADMIN_EMAIL` row.
 - `DELETE` expires invitations, deactivates, deletes the sessions and passes exactly those digests
   to both `closeSocketsForSessions`; an unknown address answers the same `{ success: true }`.
 - The `ADMIN_EMAIL` address gets 409 from both routes and issues no write.
 - A bad email or role is 400. A signed-in session gets the same 401 an anonymous caller gets:
   queue a principal row it never uses, the C2-5 false-green guard.
+- `tests/app.test.js`, with the limiters not skipped for that case: none of 21 machine `PUT`s in a
+  row answers 429 (`authLimiter` would refuse the 21st), and a login attempt afterwards is not
+  refused either, so the two buckets are separate.
 
 **Expected:** each test red before the route exists, green after.
 
 ### Task 9.3 Proof on real MySQL, then docs
 
-- [ ] `tests/integration/machine-members.test.js`: admit an owner and a member, sign both in through
-      the fake issuer, and assert the owner is an admin and the member is not; `DELETE` the member
-      and assert their next request is 401, their sign-in is refused, and the documents they wrote
-      keep their `created_by`.
-- [ ] `docs/api/` (both routes), the access-control map (the machine surface now writes, and this is
-      the one path that can grant `is_admin`), CLAUDE.md "Machine callers", CHANGELOG. Lint, test,
-      coverage, integration.
+- [ ] `tests/integration/machine-members.test.js`, on a schema `bootstrapInstance` has seeded: admit
+      an owner and a member, sign both in through the fake issuer, and assert the owner is an admin
+      and the member is not, that both are `General` members with `can_read` and `can_write`, and
+      that the member can read the seeded welcome document; transfer ownership (the member to
+      `admin`, then the owner to `member`) and assert exactly the new owner and the boot admin
+      have `is_admin`; rename `General`, admit a third address, and assert their invitation names
+      no squad; `DELETE` the old owner, now a member, and assert their next request is 401, their
+      sign-in is refused, and the documents they wrote keep their `created_by`.
+- [ ] `docs/api/` (both routes, the 409 and the 429), the access-control map (the machine surface
+      now writes, and this is the one path that can grant `is_admin`), `docs/security.md`'s
+      rate-limit list (the machine membership limiter), CLAUDE.md "Machine callers", CHANGELOG.
+      Lint, test, coverage, integration.
 
 ---
 

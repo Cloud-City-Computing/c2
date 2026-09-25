@@ -235,12 +235,14 @@ refused unless `allowPrivate`; a name resolving to one public and one private ad
   paused_until FROM webhook_subscriptions WHERE enabled = TRUE` into module state. It starts
   **empty and unloaded**, so a unit test that never calls it sees zero subscriptions and issues no
   query, which is what keeps every existing `activity.test.js` queue unchanged.
-- `reconcileEnvSubscription(env)`: with `WEBHOOK_URL` and `WEBHOOK_SECRET` set (the secret at least
-  32 characters), create or update the one `source = 'env'` row to match `WEBHOOK_URL` and
+- `reconcileEnvSubscription()`, reading `process.env.WEBHOOK_URL`, `process.env.WEBHOOK_SECRET` and
+  `process.env.WEBHOOK_WORKSPACE_ID` by literal name (the configuration contract's scan sees only
+  literal reads; tests set `process.env`): with `WEBHOOK_URL` and `WEBHOOK_SECRET` set (the secret
+  at least 32 characters), create or update the one `source = 'env'` row to match `WEBHOOK_URL` and
   `WEBHOOK_WORKSPACE_ID`, enabled; with either unset, disable an existing env row with
   `disabled_reason = 'WEBHOOK_URL or WEBHOOK_SECRET is unset'`. A URL the guard refuses disables
   the row and logs the reason once. Runs in one `withTransaction`.
-- `server.js`, after `bootstrapInstance`: `await reconcileEnvSubscription(process.env)` then
+- `server.js`, after `bootstrapInstance`: `await reconcileEnvSubscription()` then
   `await loadSubscriptions()`, each in its own `try` that logs and carries on, and
   `setInterval(loadSubscriptions, 60_000).unref()`.
 
@@ -270,6 +272,25 @@ is resource type `archive` with `metadata.log_id` at `archives.js:597-603`, `dat
 event with an empty body to get its id, serialize the envelope with `sequence` set to that id and
 `id` a `randomUUID()`, `UPDATE webhook_events SET body = ?` with `Buffer.from(json, 'utf8')`, and
 insert one `webhook_deliveries` row per subscription.
+
+`title` and `name` pass through one bound before the envelope is serialized, so no body can reach a
+receiver's size limit (the spec's size bound: 4 KiB at most, against Cloud Command's 64 KiB):
+
+```javascript
+// The contract's bound on title and name. Counted in code points, so a
+// surrogate pair is never split; both columns are TEXT and not every writer caps them.
+export const TEXT_BOUND = 255;
+export const boundText = (value) =>
+  typeof value === 'string' ? Array.from(value).slice(0, TEXT_BOUND).join('') : value;
+```
+
+Tests: a 70,000-character title is emitted as its first 255 code points; a title whose 255th code
+point is astral keeps it whole and has no lone surrogate; a shorter title is unchanged; and the
+worst case serializes to under 4,096 bytes. The worst case is a synthetic envelope larger than any
+real one: the longest type string, every `data` field of every type at once, `title` and `name`
+each 255 code points of U+0001 (which JSON escapes to six bytes), a 32-character actor name of the
+same, `sequence` at the `BIGINT` maximum and every other integer at the `INT` maximum. **Expected**,
+measured 2026-09-24 with Node's `JSON.stringify`: 3,631 bytes.
 
 `routes/helpers/activity.js` `doLogActivity`, directly after the `INSERT INTO activity_log`:
 
@@ -314,7 +335,23 @@ appears in a list or error body; the guard's refusal is a 400 with its sentence.
       the `webhook_events` insert forced to fail (a trigger that `SIGNAL`s, created by the test), the
       activity row, the watcher notification and the HTTP response are all unaffected.
 - [ ] `.env.example`: `WEBHOOK_URL`, `WEBHOOK_SECRET`, `WEBHOOK_WORKSPACE_ID`,
-      `WEBHOOK_ALLOW_PRIVATE_TARGETS`, each commented. `docs/api/admin.md` (the five routes).
+      `WEBHOOK_ALLOW_PRIVATE_TARGETS`, each commented. The last one's comment says it is
+      instance-wide, so it also lets an instance admin's subscription reach private addresses:
+      where the receiver has a public address, reaching it by that address is the narrower choice.
+- [ ] `cloudcodex/env-contract.js` gains the four (the identity plan's Global constraints say
+      what to do when the file does not exist yet):
+
+      | Variable | `kind` | `perInstance` |
+      |---|---|---|
+      | `WEBHOOK_URL` | `optional` | `true` (the receiver URL carries the instance id Cloud Command minted) |
+      | `WEBHOOK_SECRET` | `optional` | `true` (minted per instance by the operator link tool, W6-CMD-31) |
+      | `WEBHOOK_WORKSPACE_ID` | `optional` | `true` (the instance's linked Codex workspace) |
+      | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `optional` | `false` (a deployment setting: the test box's env template sets it, W6-CMD-36) |
+
+      Neither of the first two is `requiredWith` the other: with either unset the env
+      subscription is disabled, not a boot failure. **Expected:** the contract test green, red
+      with any one removed.
+- [ ] `docs/api/admin.md` (the five routes).
       `docs/maps/data-model.md` (the three tables). CHANGELOG `[Unreleased]`.
 - [ ] `npm test` counts only grow. Lint, coverage (a `services/webhooks.js` and
       `services/webhook-target.js` threshold), integration, build.
@@ -392,11 +429,11 @@ for `server.js`. A tick:
 6. Stop the tick after 100 sends or 5 seconds, whichever comes first.
 
 `send` is `node:https`/`node:http` `request` with `method: 'POST'`, the three headers
-(`X-Codex-Signature-256` from the subscription's secret, or `WEBHOOK_SECRET` for the env row;
-`X-Codex-Event`; `X-Codex-Delivery`), `Content-Type: application/json`, a 10-second timeout, and
-`lookup: pinnedLookup(addresses)` from a `checkWebhookTarget` run **at send time**, so DNS cannot be
-rebound between the check and the connect. Redirects are never followed because `node:https` does
-not follow them.
+(`X-Codex-Signature-256` from the subscription's secret, or `process.env.WEBHOOK_SECRET` for the
+env row; `X-Codex-Event`; `X-Codex-Delivery`), `Content-Type: application/json`, a 10-second
+timeout, and `lookup: pinnedLookup(addresses)` from a `checkWebhookTarget` run **at send time**, so
+DNS cannot be rebound between the check and the connect. Redirects are never followed because
+`node:https` does not follow them.
 
 ### Task 3.3 Start it, prune it, redeliver it
 

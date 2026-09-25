@@ -111,7 +111,8 @@ activity prune (`server.js:132-150`).
    their secrets are write-only and only a fingerprint is ever returned.
 8. **An SSRF guard** refuses loopback, link-local (including `169.254.169.254`) and private targets
    unless `WEBHOOK_ALLOW_PRIVATE_TARGETS` is set, checks at creation and again at send time, never
-   follows a redirect, and refuses link-local whatever the flag says.
+   follows a redirect, and refuses link-local whatever the flag says. The flag is instance-wide: it
+   opens private addresses to admin-API subscriptions as well as to the env-declared one.
 9. **The actor is the Codex user id and name only**, with no email. When the identity track lands
    `user_identities`, the envelope may gain `actor.iss` and `actor.sub` as an additive change.
 10. **Reconciliation exists** because capture happens after the mutation and is not awaited, so a
@@ -141,7 +142,7 @@ activity prune (`server.js:132-150`).
 | `occurred_at` | ISO 8601 UTC, millisecond precision, the Codex clock |
 | `workspace_id` | the Codex workspace integer; a receiver stores it and **never lets it decide a tenant** |
 | `actor` | `{ id, name }`; `name` is at most 32 characters (`init.sql:49`) |
-| `data` | per type, below. `title` and `name` are sent as stored: both columns are `TEXT` (`init.sql:233`, `:268`), the document routes cap titles at 255, and a receiver clamps |
+| `data` | per type, below. `title` and `name` are **truncated when the event is built** to at most 255 Unicode code points, never splitting a surrogate pair: both columns are `TEXT` (`init.sql:233`, `:268`) and not every writer caps them (the document routes cap titles at 255), so the bound is applied at emit rather than trusted from storage |
 
 | Type | `data` |
 |---|---|
@@ -151,6 +152,13 @@ activity prune (`server.js:132-150`).
 | `log.delete` | `log_id`, `archive_id` |
 | `archive.rename` | `archive_id`, `name` (archives carry a name, not a title) |
 | `archive.delete` | `archive_id` |
+
+**The size bound.** With `title` and `name` at most 255 code points, `actor.name` at most 32
+characters (its column) and every other field an integer, a UUID, a fixed string or a timestamp,
+**no v1 body exceeds 4 KiB**, however its text escapes (JSON takes at most six bytes for one code
+point). Cloud Command's receiver accepts bodies up to 64 KiB (W6-CMD-11), so no Codex event is ever
+refused for its size. That matters because a `413` is "anything else" below: an oversized event
+would retry at the head of its subscription for 72 hours and hold every later event behind it.
 
 Headers: `Content-Type: application/json`, `X-Codex-Signature-256`, and `X-Codex-Event` (the type)
 and `X-Codex-Delivery` (the delivery row id), the last two for logs only and unsigned.
@@ -225,17 +233,22 @@ product change for its own spec.
     `lease_expires_at`), `last_status`, `last_error`, `delivered_at`. Backoff is per subscription,
     so its schedule lives on the subscription row, not the delivery.
 - `services/webhooks.js` exports `emitEvent`, which never throws, called from `doLogActivity` as
-  Decision 1 describes, for the eight actions only. It builds the envelope, and writes nothing when
-  no subscription matches.
+  Decision 1 describes, for the eight actions only. It builds the envelope, truncating `title` and
+  `name` to the contract's bound, and writes nothing when no subscription matches.
 - The env-declared subscription is reconciled at boot: created, updated or disabled to match env.
 - `/api/admin/webhooks` behind `requireAdmin`: list, create, rotate secret, disable, delete.
 - The SSRF guard as `isAllowedWebhookTarget(url)`, allowing plain `http` only outside production.
+- `WEBHOOK_URL`, `WEBHOOK_SECRET` and `WEBHOOK_WORKSPACE_ID` join the hosting track's
+  configuration contract (`ENV_CONTRACT`, W6-CDX-32) as per-instance entries, because Cloud
+  Command's operator link tool (W6-CMD-31) mints the secret and prints all three for each instance;
+  `WEBHOOK_ALLOW_PRIVATE_TARGETS` joins it as not per-instance, a deployment setting.
 - `.env.example`, `docs/api/admin.md`, and the data-model map.
 
 ### Done means
 
 Live-MySQL tests show each allowlisted action writing exactly one event and one delivery per
-matching subscription; a coalesced `log.update` and a non-allowlisted action writing none; the
+matching subscription; a title of 70,000 characters emitted as 255 code points, and the worst-case
+envelope under 4 KiB; a coalesced `log.update` and a non-allowlisted action writing none; the
 workspace filter narrowing; zero subscriptions writing zero rows; stable stored bytes; and an
 outbox insert that throws leaving the activity row, the watcher notifications and the HTTP
 response untouched. The SSRF guard is tested over a table of cases. The env subscription is

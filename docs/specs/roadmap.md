@@ -57,7 +57,7 @@ constraint right now.
 
 | | Track | Scope | Depends on |
 |---|---|---|---|
-| **A** | Evaluation path — **shipped** | Mail optional, install defects, non-empty first boot | nothing |
+| **A** | Evaluation path (**shipped**) | Mail optional, install defects, non-empty first boot | nothing |
 | **B** | First-run experience (**shipped**) | Real guided onboarding for every user including the admin, invite-carried squad assignment, `/api/setup` retired | A |
 | **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
@@ -65,7 +65,7 @@ constraint right now.
 | **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token, C2-5 a workspace reader check for the suite | nothing; C2-0 gates the rest |
 | **W** | Wave 6, the suite (**specced 2026-09-24**) | Four sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36). The shared live-MySQL test project W6-CDX-10 comes before every session that changes schema or needs a real database; W6-CDX-4 and W6-CDX-21 need neither and do not wait for it | S; named Cloud Command and Cloud City ID sessions per sub-track |
 
-### A. Evaluation path — shipped
+### A. Evaluation path (shipped)
 
 Removed both walls: the app boots with no SMTP configured (`initMail()`
 degrades instead of exiting) and a fresh admin now lands inside a seeded
@@ -354,6 +354,25 @@ questions the four specs raised:
   W6-CDX-29, the content and admin burndowns, trail the deploy; both are on its
   path.
 
+A third round the same day (D-Q to D-V in that ADR) answered what the specs still
+held open. The decisions that bind this repository:
+
+- **The boot admin (D-R).** Each test-box instance's `ADMIN_EMAIL` is a Cloud City
+  operator address that belongs to no design partner (`ops@cloudcitycomputing.com`),
+  so Cloud City staff are admin on every partner's instance, and the beta terms
+  disclose that operator access. The workspace owner is synced as an ordinary
+  instance admin (W6-CDX-9), never as `ADMIN_EMAIL`, so an ownership transfer syncs
+  cleanly.
+- **Where a synced member lands (D-S).** In the instance's seeded `General` squad,
+  with read and write, named on the invitation the sync creates (W6-CDX-9).
+- **The switcher's place (D-U).** Each app's existing top-left identity slot; there
+  is no new suite bar (W6-CDX-25).
+- **The Toast and the theme (D-V).** Codex's Toast is the suite's shared toast
+  primitive, and light mode stays deferred: both apps are dark-only through Wave 6
+  (W6-CDX-23, and the UI spec's Decision 6).
+
+The other two decisions in that round change nothing in this repository.
+
 Like track S this is not justified by adoption, and it carries one constraint
 through every sub-track: **everything new is generic and off by default.** An
 install that sets no new variable (no OIDC issuer, no webhook subscription, no
@@ -419,14 +438,13 @@ is the later release that contains this wave, and it is what the test box pins.
 
 **Deferred to the later containerized-service era, and not planned here:**
 billing, entitlements, the seat taxonomy, hosted per-customer provisioning
-automation, and operator access for Cloud City staff. Each spec lists the
-narrower items it defers and why.
+automation, and a scoped operator role for Cloud City staff (until then, staff
+reach a test-box instance as its boot admin, D-R). Each spec lists the narrower
+items it defers and why.
 
-**Open questions for Kyle** still live in each spec. The round-2 answers above
-closed the ones that moved a session; what remains is the shell placement
-(settled at Cloud Command's W6-CMD-22 shape pass), the final names of the eight
-accents (confirmed in W6-CDX-22's review), and where a member the sync admits
-lands inside a Codex instance (the identity spec).
+**Open questions for Kyle** live in each spec, and the second and third rounds
+answered all but one. The only open question left in Wave 6 is the eight accent
+names, which Kyle confirms in W6-CDX-22's review.
 
 ## Sequencing
 

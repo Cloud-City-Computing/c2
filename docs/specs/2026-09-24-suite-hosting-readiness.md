@@ -10,9 +10,9 @@ editing.
   and run first.
 - **Plan:** [`../plans/2026-09-24-suite-hosting-readiness.md`](../plans/2026-09-24-suite-hosting-readiness.md)
 - **Requested by:** Kyle, in the 2026-09-24 decisions recorded in the Cloud Command ADR
-  `wave-6-is-one-sign-in-events-and-a-shared-shell.md`, both rounds (a private repository; what
-  binds this spec is restated here). The second round answered this spec's three open questions
-  (D-J, D-O, D-P).
+  `wave-6-is-one-sign-in-events-and-a-shared-shell.md`, all three rounds (a private repository;
+  what binds this spec is restated here). The second round answered this spec's three open
+  questions (D-J, D-O, D-P); the third set the box's boot admin (D-R).
 
 ## Why this spec exists
 
@@ -22,7 +22,7 @@ service for real users.** Every Cloud Command workspace maps to exactly one Code
 test box runs at least one Codex instance from a published image under a supervisor, behind a
 TLS-terminating proxy, beside other services.
 
-Kyle's second round fixed the box's shape:
+Kyle's second and third rounds fixed the box's shape:
 
 - **Hosts (D-J).** Cloud Command at `command.cloudcitycomputing.com`, the first Codex instance at
   `codex.cloudcitycomputing.com` and each later one at `<instance>.codex.cloudcitycomputing.com`
@@ -33,6 +33,13 @@ Kyle's second round fixed the box's shape:
   before a fourth instance or the containerized service.
 - **Linking (D-P).** Linking a Codex instance to a workspace is an operator action only, never a
   workspace admin's.
+- **The boot admin (D-R, third round).** Each box instance's `ADMIN_EMAIL` is a Cloud City operator
+  address that belongs to no design partner (`ops@cloudcitycomputing.com`), so Cloud City staff are
+  admin on every partner's instance, and the beta terms disclose that operator access. The
+  workspace owner is made an instance admin by the identity track's membership sync (W6-CDX-9),
+  never by being `ADMIN_EMAIL`, so Decision 6's never-promote rule never stands in a sync's way and
+  an ownership transfer syncs cleanly. Cloud Command's box env template and runbook (W6-CMD-36)
+  carry the value; no source file here names it.
 
 The published image cannot yet be operated safely that way. It has no stop handling, no health
 endpoint, nothing enforcing the single process CLAUDE.md decision 1 depends on, a production
@@ -51,9 +58,10 @@ ids.
 What the decision does require of Codex is small, and it is all in this track:
 
 - **A written per-instance configuration contract** (W6-CDX-32): every environment variable a Codex
-  instance reads, and whether each is required, degrades or defaults. Cloud Command's operator link
-  tool (W6-CMD-31) prints its snippet from this list, so a variable one track adds and the snippet
-  forgets is caught by a test here, not on the box.
+  instance reads, whether each is required, degrades or defaults, and whether linking the instance
+  supplies it. Cloud Command's operator link tool (W6-CMD-31) prints its snippet from a pinned copy
+  of this list, so a variable one track reads without an entry is caught by a test here, and a
+  per-instance entry the snippet forgets by W6-CMD-31's test, not on the box.
 - **Several instances on one MySQL server without seeing each other** (W6-CDX-33): one schema and
   one DML-only user per instance, proved on real MySQL.
 - **A single-writer lock keyed per instance** (W6-CDX-31), so two containers pointed at one schema
@@ -202,16 +210,34 @@ save, as documented in `docs/maps/documents-and-collab.md`.
   image cannot run script) and Helmet's default `upgrade-insecure-requests` turned off, so an
   install evaluated over plain `http` still loads. `docs/security.md` and the request-lifecycle map
   describe both scopes.
-- **The configuration contract**: a test that enumerates every `process.env` read under
-  `cloudcodex/` (outside `tests/`) and pins, per variable, whether it is required, degrades or
-  defaults, and whether it is per-instance. `.env.example` documents each one. A variable a later
-  PR reads without adding it to the contract fails this test.
+- **The configuration contract**: `cloudcodex/env-contract.js`, data only and importing nothing, and
+  a test that enumerates every `process.env` read under `cloudcodex/` (outside `tests/`) and pins,
+  per variable, whether it is required, degrades or defaults, what it is required with when it is
+  required only beside another variable (`SUITE_NAME` beside `SUITE_COMMAND_WORKSPACE_URL`), and
+  whether it is per-instance. `.env.example` documents each one. A variable a later PR reads
+  without adding it to the contract fails this test, so every Wave 6 PR that reads a new variable
+  adds its entry, and one that lands before this session leaves it for this session to add: the
+  identity track's `OIDC_*` (W6-CDX-5) and `MACHINE_OIDC_*` (W6-CDX-7), the events track's
+  `WEBHOOK_*` (W6-CDX-13), the UI track's `SUITE_*` (W6-CDX-25), and this track's own. Each plan
+  gives its variables' flags, so the entry is the same whichever lands first.
+- **Per-instance means the link supplies it.** An entry is per-instance when linking the instance to
+  its workspace decides its value: its host, its machine credentials, its application at the
+  issuer and that issuer, its webhook subscription, its suite link, and the suite's name, which
+  Cloud Command supplies from its own single definition. Everything the box's Codex env template,
+  the database provisioning step or a default decides is not. The flag is about who supplies a
+  value, not whether it differs: `DB_NAME` differs per instance and is not per-instance,
+  `SUITE_NAME` is the same everywhere and is. Cloud Command's operator link tool (W6-CMD-31) reads
+  a pinned copy of this file and prints every per-instance entry into each instance's snippet, and
+  its test asserts over every one, so a per-instance variable a later PR adds fails there until the
+  tool supplies it. Cloud Command's test-box session (W6-CMD-36) re-pins that copy to the W6-CDX-36
+  release and re-runs the test.
 
 ### Done means
 
 Tests for the `APP_URL` exit and the development default; `TRUST_PROXY` and `DB_POOL_SIZE` reaching
 Express and the pool; the admin sync creating, syncing and refusing (refusal is the new behaviour);
-the contract pinning every default; and no compose file using a floating `mysql:8`. In production
+the contract pinning every default, every `requiredWith` naming another entry and every entry
+carrying a `perInstance` boolean; and no compose file using a floating `mysql:8`. In production
 mode the app's HTML response carries `Content-Security-Policy` with `frame-ancestors 'none'` and
 `X-Frame-Options`, the built app loads with no CSP violation in the browser console (home, a
 document with an image and a diagram, the GitHub page), and `npm run dev` still serves the dev
@@ -313,7 +339,9 @@ document's HTML is intact, and its image is served to its reader.
   default in `docker-compose-release.yml`, which `release.yml`'s guard checks.
 - Tag through `release.yml`. **Kyle authorizes the tag**, because the release is public.
 - Verify that the pulled GHCR image boots with the box's environment and reports healthy, and hand
-  its digest and an idle-memory reading to Cloud Command's W6-CMD-38.
+  its digest and an idle-memory reading to Cloud Command's W6-CMD-38, and the release's
+  `env-contract.js` (its tag and path) to W6-CMD-36, which re-pins its copy of the contract and
+  re-runs the link tool's snippet test against it.
 
 ### Done means
 
@@ -328,10 +356,10 @@ deleted and the maps are current.
 | This session | Is needed by (Cloud Command) |
 |---|---|
 | W6-CDX-31, W6-CDX-32 | W6-CMD-36 (the box's compose file, health checks and smoke test) |
-| W6-CDX-32 (the configuration contract) | W6-CMD-31 (the operator link tool's printed snippet) |
+| W6-CDX-32 (the configuration contract) | W6-CMD-31 (the operator link tool reads a pinned copy of `env-contract.js` and prints, and tests, every per-instance entry) |
 | W6-CDX-33 | the runbook appendix that adds a fourth instance, and the containerized service |
 | W6-CDX-35 | W6-CMD-37 (the whole-box backup) |
-| W6-CDX-36 | W6-CMD-38 (the full-box rehearsal and v1.0.0) |
+| W6-CDX-36 | W6-CMD-36 (re-pins the contract copy to the release and re-runs the snippet test); W6-CMD-38 (the full-box rehearsal and v1.0.0) |
 
 Cloud Command's W6-CMD-30 measures idle and warm memory against the release that carries C2-0 to
 C2-5, before this track starts, and re-measures on the W6-CDX-36 image.
@@ -340,14 +368,20 @@ C2-5, before this track starts, and re-measures on the W6-CDX-36 image.
 
 - **Structured logging.** CLAUDE.md rules out a logging library, and nothing here needs one.
 - **Tenant export and erasure**, **a scoped operator role**, and **provisioning automation**: the
-  later containerized-service era, with billing, entitlements and the seat taxonomy.
+  later containerized-service era, with billing, entitlements and the seat taxonomy. Until a scoped
+  role exists, Cloud City staff reach a box instance as its `ADMIN_EMAIL` boot admin, which the
+  beta terms disclose (D-R).
 - **UUIDs.** Per-instance integers stay, by decision.
 
 ## Open questions for Kyle
 
-None remain. Kyle's second round, 2026-09-24, answered all three: the host names (D-J, above), the
-beta's size, one to three workspaces, so W6-CDX-33 waits for a fourth instance (D-O), and linking
-an instance as an operator action only (D-P).
+None remain in this spec. Kyle's second round, 2026-09-24, answered all three: the host names
+(D-J, above), the beta's size, one to three workspaces, so W6-CDX-33 waits for a fourth instance
+(D-O), and linking an instance as an operator action only (D-P). The third round set the box's
+`ADMIN_EMAIL` to a Cloud City operator address (D-R, above).
+
+The only open question left in Wave 6 is the eight accent names, which Kyle confirms in
+W6-CDX-22's review.
 
 ## Retirement
 
