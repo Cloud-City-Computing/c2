@@ -287,7 +287,8 @@ npm test
 npm run test:coverage
 ```
 
-The Vitest config (`vitest.config.js`) defines two projects — a Node
+The Vitest config (`vitest.config.js`) defines two default projects, a Node
 backend project for routes/middleware/services and a jsdom frontend
-project for `src/` components, hooks, and utilities. A single `npm test`
-runs both. See [testing.md](./testing.md) for details.
+project for `src/` components, hooks, and utilities, plus an opt-in
+live-MySQL `integration` project. A single `npm test` runs the two default
+ones. See [testing.md](./testing.md) for details.

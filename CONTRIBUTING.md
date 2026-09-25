@@ -85,11 +85,14 @@ npm run lint          # must be clean — CI fails otherwise
 npm test              # 1128 tests today; both backend and frontend
 npm run test:coverage # if your change touches a glob with a per-glob
                       # threshold (see vitest.config.js)
+npm run test:integration  # if your change touches schema, migrations or SQL
+                          # behaviour; needs a MySQL 8.4 (cloudcodex/tests/README.md)
 ```
 
 There are **no pre-commit hooks** — local lint/test is on you. CI
-(`.github/workflows/ci.yml`) runs `npm ci && npm run lint && npm test`
-on push and PR to `main`.
+(`.github/workflows/ci.yml`) runs `npm ci && npm run lint && npm test`,
+the live-MySQL integration project, coverage and the production build on
+push to `main` and on every PR.
 
 ---
 
@@ -98,7 +101,10 @@ on push and PR to `main`.
 Schema changes are dual-tracked: every column or table added in a
 `migrations/*.sql` file must also appear in `init.sql`. Fresh installs
 use `init.sql`; existing deployments apply migrations with `npm run migrate`,
-in lexicographic order. Both must converge to the same schema.
+in lexicographic order. Both must converge to the same schema, and
+`tests/integration/upgrade-path.test.js` checks that they do: give every new
+migration file an entry in `cloudcodex/tests/integration/pre-runner-state.js`
+(the statement that removes its change from an `init.sql` build).
 
 Migrations are additive: once a file ships, it is never rewritten. The runner
 enforces that: it records a sha256 of every file it applies and refuses to run

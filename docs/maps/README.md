@@ -20,7 +20,7 @@ verify before trusting either.
 | [notifications-and-activity.md](notifications-and-activity.md) | The activity taxonomy, auto-watch rules, watcher fan-out, the notification funnel with its two independent coalescing windows, email preference resolution, the user-scoped WebSocket. |
 | [data-model.md](data-model.md) | All 25 tables, the ACL column families, the generated `plain_content` column that powers FULLTEXT, cascade behaviour, and the `init.sql` vs `migrations/` contract. |
 | [frontend-architecture.md](frontend-architecture.md) | Route table and lazy-chunk boundaries, the `util.jsx` API layer, the six hooks, the Tiptap extension stack, preference plumbing, and the Vite `manualChunks` strategy. |
-| [build-test-and-ops.md](build-test-and-ops.md) | The dual-root quirk, npm scripts, the Docker topologies, `start.sh`, the Vitest two-project setup and every per-glob coverage threshold, CI. |
+| [build-test-and-ops.md](build-test-and-ops.md) | The dual-root quirk, npm scripts, the Docker topologies, `start.sh`, the three Vitest projects (two default, one live-MySQL) and every per-glob coverage threshold, CI. |
 | [open-questions.md](open-questions.md) | **Read before trusting a single citation as gospel.** What is unverified, what looks like a defect, what the root `CLAUDE.md` says that the code does not. |
 
 ## How to use these

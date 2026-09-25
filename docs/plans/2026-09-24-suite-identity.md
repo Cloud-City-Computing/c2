@@ -103,7 +103,7 @@ Every task's requirements implicitly include this section.
 
 ### Task 1.1 Record the baseline
 
-- [ ] Run `cd cloudcodex && npm test 2>&1 | grep -E 'Test Files|Tests '`.
+- [x] Run `cd cloudcodex && npm test 2>&1 | grep -E 'Test Files|Tests '`.
 
 **Expected:** `Test Files  71 passed (71)` and `Tests  1479 passed (1479)` at `91493a6`, or whatever
 `main` reports today. Paste both lines into the PR body; Task 1.7 compares against them.
@@ -155,7 +155,7 @@ describe('the default test run', () => {
 });
 ```
 
-- [ ] Run `npm test`. **Expected:** this file fails (no `integration` project, no flags); nothing
+- [x] Run `npm test`. **Expected:** this file fails (no `integration` project, no flags); nothing
       else changes.
 
 ### Task 1.3 The project, and the scripts
@@ -252,7 +252,10 @@ afterAll(async () => {
 `cloudcodex/tests/integration/global-setup.js` exports `teardown()`, which connects as the admin,
 runs `SHOW DATABASES LIKE 'c2\\_it\\_%'`, drops whatever it finds, and **then throws** naming them
 if the list was non-empty, so a file that crashed before its `afterAll` turns the run red instead of
-leaking a schema onto the developer's server.
+leaking a schema onto the developer's server. **Executed 2026-09-25:** Vitest 4 only logs an error
+thrown from a globalSetup teardown and still exits 0 (found by Task 1.7's mutation), so the
+teardown also sets `process.exitCode = 1` before it throws. The per-file setup also drops its own
+schema when `init.sql` or adoption throws, since that lands before its `afterAll` is registered.
 
 ### Task 1.5 The first real tests
 
@@ -271,10 +274,19 @@ leaking a schema onto the developer's server.
   then expect `runMigrations({ ..., adoptFreshInstall: true })` to reject with a message containing
   `password_reset_tokens.purpose`. Drop that schema in the test's own `finally`.
 
-- [ ] Run, with a MySQL 8.4 on 3306 (the repo's compose file, `make` target or a scratch
+- [x] Run, with a MySQL 8.4 on 3306 (the repo's compose file, `make` target or a scratch
       container): `IT_DB_ROOT_PASSWORD=<pw> npm run test:integration`.
 
 **Expected:** 4 tests pass; `SHOW DATABASES LIKE 'c2\_it\_%'` afterwards returns nothing.
+
+**Executed 2026-09-25, after review:** adoption records every migration file and runs none, so
+these four tests never execute a migration's SQL (a file with invalid SQL whose objects `init.sql`
+already has stayed green). `tests/integration/upgrade-path.test.js` closes that: it undoes every
+post-baseline file on an `init.sql` build with the statements in
+`tests/integration/pre-runner-state.js`, baselines, applies every newer file for real and requires
+the result to match a fresh `init.sql` build, and fails when a post-baseline file has no undo
+entry. **Every later PR that adds a migration file adds its undo there.** The integration project
+is 2 files and 6 tests.
 
 ### Task 1.6 CI, inside the required job
 
@@ -310,18 +322,18 @@ image whose schema changes were never run.
 
 ### Task 1.7 Prove it, then document it
 
-- [ ] `npm test`: **Task 1.1's counts plus exactly one file and four tests**, the ones in
+- [x] `npm test`: **Task 1.1's counts plus exactly one file and four tests**, the ones in
       `test-projects.test.js`, and nothing from `tests/integration/`. Record both runs in the PR
-      body.
-- [ ] Mutations, each confirmed to have **landed** before its red run is trusted: re-add
+      body. (Executed: five tests, since review added `test:watch` to the guard's loop.)
+- [x] Mutations, each confirmed to have **landed** before its red run is trusted: re-add
       `vi.mock('../mysql_connect.js')` to the integration setup (the canary fails); skip the
       `afterAll` drop (the teardown throws); add a migration file that `ALTER`s a table that does
       not exist (the integration step fails); drop `--project frontend` from `test` (the guard
       fails). Revert each.
-- [ ] `docs/maps/build-test-and-ops.md`: section 5 (three projects, what the integration project
+- [x] `docs/maps/build-test-and-ops.md`: section 5 (three projects, what the integration project
       needs, `IT_DB_*`), section 6 (the service and step); `cloudcodex/tests/README.md`; CLAUDE.md's
       Testing section gains one sentence naming the integration project and its opt-in.
-- [ ] `npm run lint`, `npm run test:coverage`, `npm run build` all exit 0.
+- [x] `npm run lint`, `npm run test:coverage`, `npm run build` all exit 0.
 
 ---
 

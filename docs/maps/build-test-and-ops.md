@@ -24,7 +24,7 @@ it with `path.resolve(dirname, '..', '.env')`. Importing `mysql_connect.js` is
 what loads env for the whole process, so any module that needs env must import
 it (directly or transitively) before reading `process.env`.
 
-## 2. npm scripts (`package.json:6-16`)
+## 2. npm scripts (`package.json:6-19`)
 
 | Script | Command | Notes |
 |---|---|---|
@@ -33,9 +33,10 @@ it (directly or transitively) before reading `process.env`.
 | `build` | `vite build` | frontend only; the backend is not bundled |
 | `preview` | `vite preview` | |
 | `lint` | `eslint .` | flat config, whole package |
-| `test` | `vitest run` | both projects |
-| `test:watch` | `vitest` | |
-| `test:coverage` | `vitest run --coverage` | v8 provider, enforces thresholds |
+| `test` | `vitest run --project backend --project frontend` | the two default projects; never `integration` |
+| `test:watch` | `vitest --project backend --project frontend` | |
+| `test:coverage` | `vitest run --coverage --project backend --project frontend` | v8 provider, enforces thresholds |
+| `test:integration` | `vitest run --project integration` | opt-in, needs a live MySQL; see section 5 |
 | `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 
@@ -120,15 +121,88 @@ container is the old image, with neither the script nor the mount.
 
 ## 5. Testing
 
-**Vitest 4, two projects** in one config (`vitest.config.js:18-50`), so a single
-`npm test` runs both:
+**Vitest 4, three projects** in one config (`vitest.config.js:24-70`). A single
+`npm test` runs the two default ones, `backend` and `frontend`; the third,
+`integration`, is opt-in because it needs a MySQL server:
 
 | Project | Environment | Setup file | Includes |
 |---|---|---|---|
 | `backend` | node | `tests/setup.js` | `tests/routes/`, `tests/middleware/`, `tests/services/`, `tests/helpers/`, `tests/extensions/`, `tests/scripts/`, `tests/*.test.js` |
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
+| `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: **68 files, 1347 tests, all passing.**
+Current state: the default run is **76 files, 1545 tests, all passing**; the
+integration project is **2 files, 6 tests**.
+
+**The default run is pinned by name, not by omission.** `test`,
+`test:watch` and `test:coverage` name `--project backend --project frontend`,
+because a bare `vitest run` runs every declared project, integration included.
+`tests/test-projects.test.js` (a backend test) fails if a declared project other
+than `integration` is missing from `test`, `test:watch` or `test:coverage`, or if
+`test:integration` runs anything but `integration`. A fourth project added to
+`vitest.config.js` without joining those scripts turns it red instead of
+silently never running.
+
+### The live-MySQL project (`tests/setup.integration.js`)
+
+The only tests in the repo that touch a real database. The per-file setup runs
+before each test file is imported and **does not** mock `mysql_connect.js`:
+
+1. Opens an admin connection from `IT_DB_HOST` (default `127.0.0.1`),
+   `IT_DB_ROOT_USER` (default `root`) and `IT_DB_ROOT_PASSWORD` (required; the
+   setup throws without it). The server must answer on **3306**, because
+   `mysql_connect.js` reads no `DB_PORT`.
+2. Creates a throwaway schema `c2_it_<12 hex>`, builds `init.sql` into it over a
+   `multipleStatements` connection (`init.sql` has no `USE`, so it builds into
+   the current schema), and adopts it with the runner's exported
+   `runMigrations({ adoptFreshInstall: true })`. If either step throws, it drops
+   the schema before rethrowing.
+3. Sets `DB_HOST`, `DB_USER`, `DB_PASS` and `DB_NAME` to that server and schema,
+   **before** the test file imports any app module, which is what makes the
+   pool in `mysql_connect.js` bind to it. `dotenv` never overrides a variable
+   already set, so a developer's `.env` cannot redirect it.
+4. Drops the schema in `afterAll`.
+
+The admin helpers (`adminConfig`, `buildSchemaFromInitSql`, `queryVia`,
+`dropSchema`, `throwawaySchemaName`) live in `tests/integration/mysql-admin.js`;
+a test that needs a second schema (as the adoption-refusal test does) builds it
+with them and drops it in its own `finally`. `queryVia` wraps **one**
+connection, never a pool, because the runner's advisory lock is per connection.
+
+The global teardown drops every `c2_it_` schema still on the server and fails
+the run naming them. **Trap: Vitest 4 only logs an error thrown from a
+globalSetup teardown ("error during close") and exits 0**, so the teardown sets
+`process.exitCode = 1` before it throws; the throw alone would leave a leak
+green (found by mutation, 2026-09-25). Because it counts every `c2_it_` schema,
+two integration runs sharing one server at once would report each other's; give
+each concurrent run its own server.
+
+`tests/integration/migrate.test.js` holds four tests: a canary that
+fails if `c2_query` is a mock, adoption recorded every migration file, a second
+run is a no-op, and adoption refuses a schema missing a post-baseline column
+(`password_reset_tokens.purpose`). Each was mutation-checked on 2026-09-25:
+reintroducing the mock fails the canary, skipping the `afterAll` drop fails the
+teardown, a migration that `ALTER`s a missing table fails the setup, and
+dropping `--project frontend` from `test` fails the guard.
+
+**Trap: the setup never executes a migration file.** `adoptFreshInstall`
+records every file and applies none (`scripts/migrate.js` `runUnderLock`); its
+only check on a post-baseline file is `schemaClaims`, which asks whether the
+table or column the file adds already exists. A file with broken SQL whose
+objects `init.sql` already has adopts cleanly (reproduced in review,
+2026-09-25). `tests/integration/upgrade-path.test.js` is what runs migration
+SQL: it builds `init.sql` into a second schema, applies the undo statements in
+`tests/integration/pre-runner-state.js` newest first, records the baseline with
+`runMigrations({ baseline: true })`, applies every post-baseline file with a
+plain `runMigrations`, and requires an information_schema fingerprint
+(columns, indexes, table constraints, checks, foreign keys) equal to the
+per-file schema's. A second test fails when a post-baseline file has no undo
+entry or an entry names a file that is gone. Mutation-checked on 2026-09-25:
+invalid SQL in `2026-09-08-token-purpose.sql` (a parse error), `VARCHAR(64)`
+for `VARCHAR(32)` and the `CHECK` dropped (fingerprint mismatch), and the undo
+entry removed (both tests) each turn it red. Its limits: the upgrade runs on
+empty tables, so a migration's handling of existing rows is not exercised, and
+the `LEGACY_BASELINE` files are never run.
 
 Tests mirror the source tree:
 
@@ -174,7 +248,7 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:78-124`. The global floor is deliberately low because
+`vitest.config.js:99-164`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
@@ -213,7 +287,7 @@ treatment or it silently counts for nothing.
 **The practical consequence:** adding an uncovered branch to a high-threshold
 file fails CI even though every test passes. Write the test with the code. When
 you raise real coverage, ratchet the threshold up in the same PR; the comment at
-`vitest.config.js:72-77` explains the "achieved minus a small buffer" policy.
+`vitest.config.js:93-98` explains the "achieved minus a small buffer" policy.
 
 ## 6. CI
 
@@ -221,8 +295,16 @@ you raise real coverage, ratchet the threshold up in the same PR; the comment at
 cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 
 ```
-npm ci -> npm run lint -> npm test -> npm run test:coverage -> npm run build
+npm ci -> npm run lint -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
 ```
+
+The job carries a `mysql:8.4` **service container** (root password
+`ci-root-password`, published on 3306, health-checked with `mysqladmin ping`),
+and the `Integration tests (live MySQL)` step runs `npm run test:integration`
+against it with `IT_DB_HOST=127.0.0.1`. The password is not a secret: it guards
+an ephemeral container that lives only as long as the job. Both sit **inside**
+the existing job, so the check `main` already requires covers the live-MySQL
+project with no branch-protection change.
 
 The job is named `Lint, test and build`, and that name (not the job id `test`)
 is the check run context. Renaming the job renames the check, and would break
@@ -263,8 +345,12 @@ reports blocks a merge permanently rather than failing it.
 
 `.github/workflows/release.yml`, triggered by pushing a `v*` tag. Two jobs:
 
-1. **verify** re-runs `npm ci`, `npm run lint`, `npm test` **and
-   `npm run test:coverage`**. A tag is not evidence the commit is green, because
+1. **verify** re-runs `npm ci`, `npm run lint`, `npm test`,
+   `npm run test:integration` (against the same `mysql:8.4` service CI uses)
+   **and `npm run test:coverage`**. The integration step means a tag cannot
+   publish an image whose `init.sql` does not build on MySQL 8.4, or whose
+   post-baseline migrations do not upgrade a pre-runner schema to exactly what
+   `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
    run is not optional padding: the 30 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
@@ -350,7 +436,11 @@ pointing at them.
 Before calling a change done:
 
 1. `npm run lint` clean, no new warnings.
-2. `npm test` green.
+2. `npm test` green. A schema or migration change also needs
+   `npm run test:integration` green against a live MySQL, and a new migration
+   file needs its undo in `tests/integration/pre-runner-state.js`, or the
+   upgrade-path test is red. That test runs on empty tables: a migration that
+   rewrites existing rows needs its own seeded test.
 3. New env vars in `.env.example` with a comment.
 4. New heavy frontend deps added to `manualChunks` in `vite.config.js`.
 5. New SQL in **both** `migrations/` and `init.sql`. Never add the new file to

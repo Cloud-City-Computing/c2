@@ -1,10 +1,16 @@
 /**
  * Cloud Codex - Vitest Configuration
  *
- * Two projects: a Node backend project for routes/middleware/services tests,
- * and a jsdom frontend project for src/ component, hook, and utility tests.
- * Coverage is configured at the top level so a single `npm run test:coverage`
- * run produces a unified report across both projects.
+ * Three projects: a Node backend project for routes/middleware/services tests
+ * (the database is mocked), a jsdom frontend project for src/ component, hook,
+ * and utility tests, and an opt-in Node integration project that runs
+ * tests/integration/ against a live MySQL server. `npm test` and
+ * `npm run test:coverage` name backend and frontend explicitly, so a
+ * contributor without a MySQL server is unaffected;
+ * `npm run test:integration` runs the third (tests/test-projects.test.js
+ * pins that split). Coverage is configured at the top level so a single
+ * `npm run test:coverage` run produces a unified report across the default
+ * projects.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -46,6 +52,19 @@ export default defineConfig({
           include: ['tests/src/**/*.test.{js,jsx}'],
           testTimeout: 10000,
           hookTimeout: 10000,
+        },
+      },
+      {
+        plugins: [],
+        test: {
+          name: 'integration',
+          globals: true,
+          environment: 'node',
+          setupFiles: ['./tests/setup.integration.js'],
+          globalSetup: ['./tests/integration/global-setup.js'],
+          include: ['tests/integration/**/*.test.js'],
+          testTimeout: 30000,
+          hookTimeout: 60000,
         },
       },
     ],
