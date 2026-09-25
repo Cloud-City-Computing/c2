@@ -104,8 +104,8 @@ CREATE TABLE password_reset_tokens (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   token CHAR(64) NOT NULL UNIQUE,
-  -- Which of the four flows minted this row. NOT NULL with no DEFAULT so a
-  -- fifth flow that forgets to name its purpose fails at insert (error 1364)
+  -- Which of the five flows minted this row. NOT NULL with no DEFAULT so a
+  -- sixth flow that forgets to name its purpose fails at insert (error 1364)
   -- instead of silently minting a password reset token.
   --
   -- Deliberately VARCHAR + CHECK and not ENUM: MySQL gives a NOT NULL ENUM
@@ -114,14 +114,21 @@ CREATE TABLE password_reset_tokens (
   -- 'password_reset', which is the exact defect this column exists to close.
   --
   -- Keep in sync with TOKEN_PURPOSE in cloudcodex/routes/helpers/shared.js
-  -- and with migrations/2026-09-08-token-purpose.sql.
+  -- and with the newest migration that sets the CHECK
+  -- (migrations/2026-09-25-token-purpose-email-change.sql).
   purpose VARCHAR(32) NOT NULL,
+  -- The address an email_change row confirms, and set on no other purpose
+  -- (chk_password_reset_tokens_new_email), so a confirmation applies exactly
+  -- the address its code was sent for.
+  new_email VARCHAR(255) NULL,
   expires_at TIMESTAMP NOT NULL,
   used BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT chk_password_reset_tokens_purpose
-    CHECK (purpose IN ('password_reset','two_factor_login','totp_setup','two_factor_disable')),
+    CHECK (purpose IN ('password_reset','two_factor_login','totp_setup','two_factor_disable','email_change')),
+  CONSTRAINT chk_password_reset_tokens_new_email
+    CHECK ((purpose = 'email_change') = (new_email IS NOT NULL)),
   INDEX (token),
   INDEX (expires_at)
 ) ENGINE=InnoDB;

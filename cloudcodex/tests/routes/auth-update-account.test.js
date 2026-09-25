@@ -362,7 +362,7 @@ describe('POST /api/update-account', () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toMatch(/no password/i);
-      expect(res.body.message).toMatch(/Forgot password/);
+      expect(res.body.message).toMatch(/Forgot Password\?/);
       expect(state.user.password_hash).toBeNull();
       expect(writesTo(state, 'users')).toEqual([]);
       expect(writesTo(state, 'sessions')).toEqual([]);

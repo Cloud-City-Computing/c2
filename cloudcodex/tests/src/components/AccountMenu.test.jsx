@@ -198,7 +198,7 @@ describe('AccountInfoUpdatePanel', () => {
     await user.clear(screen.getByLabelText('Email'));
     await user.type(screen.getByLabelText('Email'), 'new@example.com');
     expect(screen.queryByLabelText(/current password/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/code to test@example\.com/i)).toBeInTheDocument();
+    expect(screen.getByText(/code sent to test@example\.com/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /update info/i }));
 
     const code = await screen.findByLabelText(/confirmation code/i);

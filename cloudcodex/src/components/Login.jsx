@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { destroyModal, serverReq } from '../util';
+import { destroyModal, serverReq, setSessionCookie } from '../util';
 
 /* ─── Password rules (mirrored from server) ─── */
 const PASSWORD_RULES = [
@@ -120,7 +120,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
       return;
     }
     if (res.success) {
-      document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+      setSessionCookie(res.token);
       window.location.reload();
     } else {
       setError(res.message ?? 'Login failed.');
@@ -137,7 +137,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
     try {
       const res = await serverReq('POST', '/api/2fa/verify', { twoFactorToken, code: fields.code });
       if (res.success) {
-        document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+        setSessionCookie(res.token);
         window.location.reload();
       } else {
         setError(res.message ?? 'Verification failed.');
@@ -187,7 +187,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
       return;
     }
     if (res.success) {
-      document.cookie = `sessionToken=${res.token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+      setSessionCookie(res.token);
       destroyModal();
       // The welcome is mounted by Std_Layout for every user, so reloading into
       // the authenticated app is all this needs to do.
