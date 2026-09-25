@@ -40,7 +40,9 @@ import { createDefaultPermissions } from '../routes/helpers/shared.js';
  * writes nothing: spec Decision 3's rule, applied to Google
  * (docs/maps/open-questions.md C7). Relinking is by hand: the account's owner
  * unlinks Google (POST /api/oauth/google/unlink), or an operator deletes the
- * old oauth_accounts row.
+ * old oauth_accounts row. The same answer comes back when the link INSERT hits
+ * UNIQUE (user_id, provider), which is how a second subject linking the same
+ * user at the same instant, past that check, is refused.
  *
  * @param {{ provider: 'google'|'oidc', issuer?: string, subject: string,
  *           email: string, emailVerified: boolean, name?: string,
@@ -57,6 +59,21 @@ export async function resolveIdentity(claims, policy) {
     throw new Error(`resolveIdentity: provider "${claims.provider}" is not implemented`);
   }
   return await resolveGoogleIdentity(claims, policy);
+}
+
+/**
+ * The key that holds a user to one account per provider (init.sql), as MySQL
+ * names it in a duplicate-entry message: `for key 'oauth_accounts.<name>'`.
+ */
+const ONE_LINK_PER_PROVIDER_KEY = "'oauth_accounts.uq_oauth_user_provider'";
+
+/**
+ * Whether an INSERT failed on the one-link-per-provider key, and not on the
+ * subject key uq_provider_user, which the same subject racing itself hits.
+ * @param {Error & { code?: string, sqlMessage?: string }} err
+ */
+function isSecondLinkForProvider(err) {
+  return err.code === 'ER_DUP_ENTRY' && String(err.sqlMessage).includes(ONE_LINK_PER_PROVIDER_KEY);
 }
 
 async function resolveGoogleIdentity(claims, policy) {
@@ -104,11 +121,20 @@ async function resolveGoogleIdentity(claims, policy) {
     if (existingGoogle) {
       return { ok: false, reason: 'identity_conflict' };
     }
-    // Link Google account to existing user
-    await c2_query(
-      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`,
-      [existingUser.id, googleUserId, email]
-    );
+    // Link Google account to existing user. The SELECT above cannot see a
+    // second subject linking this user at the same instant; the key can, and
+    // the INSERT that lands second gets the answer the SELECT would have given.
+    try {
+      await c2_query(
+        `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`,
+        [existingUser.id, googleUserId, email]
+      );
+    } catch (err) {
+      if (isSecondLinkForProvider(err)) {
+        return { ok: false, reason: 'identity_conflict' };
+      }
+      throw err;
+    }
     return { ok: true, userId: existingUser.id, created: false };
   }
 
