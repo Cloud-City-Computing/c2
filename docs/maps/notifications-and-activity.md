@@ -188,7 +188,7 @@ default. `setPrefs` (`services/notifications.js:273-286`) whitelists to exactly 
 known keys and coerces to boolean, so a client cannot inject arbitrary JSON.
 
 **`squad_invite` has a preference key but no email template.** `builders` in
-`services/email-templates.js:59` defines only `mention`,
+`services/email-templates.js:63` defines only `mention`,
 `comment_on_my_doc`, `watched_log_update`, `watched_publish`,
 `watched_comment`. `buildNotificationEmail` returns `null` for anything else
 and `deliverEmail` bails (`services/notifications.js:170`). Squad invites do still send

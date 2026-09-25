@@ -28,14 +28,14 @@ workspaces
 Every nullable parent key is load-bearing:
 
 - `squads.workspace_id` nullable, and `archives.squad_id` is
-  `ON DELETE SET NULL` (`init.sql:246`). Deleting a squad **orphans** its
+  `ON DELETE SET NULL` (`init.sql:253`). Deleting a squad **orphans** its
   archives rather than cascading. An orphaned archive has no squad, so clauses
   4 through 7 of the access fragments all evaluate false and only the creator,
   an explicit grant, or an admin can reach it. See
   [access-control.md](access-control.md).
 - `archives.squad_id NULL` is also how the GitHub PR-session system archive is
   built deliberately (`github.js:1648-1656`), one archive per PR.
-- `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:285`), so deleting an
+- `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:292`), so deleting an
   archive destroys its documents, versions, comments and favourites.
 
 `workspaces.owner_id` is an INT referencing `users(id) ON DELETE SET NULL`.
@@ -58,7 +58,7 @@ because `workspaces` is created before `users` (the same reason
 ## 2. The ACL columns
 
 Only `archives` carries a working ACL. Six columns, in read/write pairs
-(`init.sql:239-244`):
+(`init.sql:246-251`):
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -66,9 +66,9 @@ Only `archives` carries a working ACL. Six columns, in read/write pairs
 | `read_access_squads` / `write_access_squads` | `JSON` array | squad ids |
 | `read_access_workspace` / `write_access_workspace` | `BOOLEAN`, default `FALSE` | workspace-wide flag |
 
-`logs.read_access` and `logs.write_access` (`init.sql:282-283`) exist with the
+`logs.read_access` and `logs.write_access` (`init.sql:289-290`) exist with the
 same shape and are **read by nothing**. `versions.read_access`
-(`init.sql:354`) is likewise never consulted. Treat all three as dead columns;
+(`init.sql:361`) is likewise never consulted. Treat all three as dead columns;
 see [open-questions.md](open-questions.md).
 
 ## 3. `logs`: the document row
@@ -83,7 +83,7 @@ FULLTEXT INDEX ft_logs_search (title, plain_content)
 ```
 
 `plain_content` is computed by MySQL on every `html_content` write and is the
-only body text the FULLTEXT index sees (`init.sql:275`, `init.sql:284`).
+only body text the FULLTEXT index sees (`init.sql:282`, `init.sql:291`).
 Consequences:
 
 - **Never write `plain_content`.** It is generated; an INSERT naming it errors.
@@ -102,7 +102,7 @@ Consequences:
   `versions.html_content`, which publish copies the document into. See B2 in
   [open-questions.md](open-questions.md) and
   `migrations/widen_log_content.sql`.
-- `logs.parent_id` self-references with `ON DELETE SET NULL` (`init.sql:286`),
+- `logs.parent_id` self-references with `ON DELETE SET NULL` (`init.sql:293`),
   giving documents a tree shape rendered by `PageTree.jsx`.
 - `logs.version` is an integer counter bumped on publish and restore; the
   `versions` table holds the snapshots.
@@ -117,15 +117,31 @@ index, but **no unique constraint on `user_id`**, even though
 `WHERE user_id = ? LIMIT 1` (`mysql_connect.js:111`). Two rows for one user would
 be tolerated by the schema and half-ignored by the code.
 
-`password_reset_tokens` is a **four-flow pool**, not a reset table. It also
+`password_reset_tokens` is a **five-flow pool**, not a reset table. It also
 stores the short-lived 2FA handoff token issued during login, the TOTP
-enrolment `setupToken`, and the 2FA-disable `confirmToken`. A row in that table
-is not necessarily a password reset.
+enrolment `setupToken`, the 2FA-disable `confirmToken`, and the email-change
+`confirmToken` that `POST /api/update-account` mints for an account with no
+password. A row in that table is not necessarily a password reset.
 
 Which flow minted a row is recorded in `purpose VARCHAR(32) NOT NULL`, with a
 `CHECK` constraint restricting it to `password_reset`, `two_factor_login`,
-`totp_setup`, `two_factor_disable`, added by
-`migrations/2026-09-08-token-purpose.sql`. Before it,
+`totp_setup`, `two_factor_disable`, `email_change`, added by
+`migrations/2026-09-08-token-purpose.sql` and widened to `email_change` by
+`migrations/2026-09-25-token-purpose-email-change.sql` (the older file is
+applied on existing installs and never edited; the newer one drops and re-adds
+the constraint under the same name in one `ALTER`).
+
+**`new_email VARCHAR(255) NULL`** (same newer migration) is the address an
+`email_change` row confirms, so `POST /api/update-account/confirm-email`
+applies exactly the address the code was sent for, never one the confirming
+request carries. `chk_password_reset_tokens_new_email`,
+`CHECK ((purpose = 'email_change') = (new_email IS NOT NULL))`, holds the two
+together: an `email_change` row without an address, or any other row with one,
+is error 3819 at insert (`tests/integration/update-account-sessions.test.js`
+proves both directions on MySQL 8.4). Because that constraint reads `purpose`,
+dropping the column now needs the constraint dropped in the same statement
+(`tests/integration/migrate.test.js` and `pre-runner-state.js` do). Before the
+purpose column,
 nothing recorded the flow and **no reader constrained it**, so a token was
 interchangeable across flows. The sharpest pairing: `POST /api/login` mints the
 2FA challenge row and returns that token to the caller in the response body,
@@ -148,9 +164,12 @@ names, from an unauthenticated endpoint.
 
 Four rules follow, and all four are load-bearing:
 
-- The four minters in `routes/auth.js` bind a `TOKEN_PURPOSE` value from
-  `routes/helpers/shared.js`; the four readers all carry `AND purpose = ?`.
-- **No `DEFAULT`, and `VARCHAR` + `CHECK` rather than `ENUM`.** A fifth flow
+- The five minters in `routes/auth.js` bind a `TOKEN_PURPOSE` value from
+  `routes/helpers/shared.js`; the five readers all carry `AND purpose = ?`.
+  The email-change minter also invalidates the user's earlier unused
+  `email_change` rows (scoped to that purpose, as forgot-password is), so an
+  older `confirmToken` cannot pair with a newer code and apply its own address.
+- **No `DEFAULT`, and `VARCHAR` + `CHECK` rather than `ENUM`.** A sixth flow
   that forgets to name its purpose fails at insert (error 1364) instead of
   silently minting a password reset token, and a value outside the set fails
   too (error 3819). `ENUM` cannot deliver that: MySQL gives a `NOT NULL` `ENUM`
@@ -222,7 +241,7 @@ saw an onboarding flow at all. `routes/first-run.js` is the only writer.
 
 ## 5. Squads and membership
 
-`squad_members` (`init.sql:193-209`) is unique on `(squad_id, user_id)` and
+`squad_members` (`init.sql:200-216`) is unique on `(squad_id, user_id)` and
 carries `role ENUM('member','admin','owner')` plus seven permission booleans.
 Which of those are actually enforced, and where, is tabulated in
 [access-control.md](access-control.md). Short version: `admin` as a role is
@@ -230,7 +249,7 @@ inert. (A `squad_permissions` table also existed and was enforced by nothing;
 it was removed on 2026-08-09.)
 
 `squad_invitations` is unique on `(squad_id, invited_user_id, status)`
-(`init.sql:230`). Because `status` is part of the key, a user can hold one
+(`init.sql:237`). Because `status` is part of the key, a user can hold one
 pending, one accepted, and one declined invitation to the same squad
 simultaneously; re-inviting after a decline works without cleanup.
 
@@ -279,7 +298,7 @@ is flipped to `revoked` when GitHub rejects the token.
   offsets into the document.
 - External: `external_kind ENUM('pr_file_line','pr_general','issue_thread')`,
   `external_ref`, `external_id`, for comments attached to a GitHub PR or issue
-  through the PR-session mechanism (`init.sql:369-371`).
+  through the PR-session mechanism (`init.sql:376-378`).
 
 `tag` includes `pr_review` alongside the five user-facing tags. `status` is
 `open`/`resolved`/`dismissed`, with `resolved_by` FK `SET NULL`.
@@ -287,7 +306,7 @@ is flipped to `revoked` when GitHub rejects the token.
 
 ## 8. Activity, watches, notifications
 
-`activity_log.id` is `BIGINT` (`init.sql:408`), the only table that expects
+`activity_log.id` is `BIGINT` (`init.sql:415`), the only table that expects
 that volume, and it is pruned at 365 days by `server.js:73-89`. It has four
 composite indexes covering the workspace, squad, resource, and user read paths.
 
@@ -312,8 +331,8 @@ they accumulate and nothing prunes them.
 `migrations/` for existing databases and an edit to `init.sql` for fresh ones.
 As of this writing the two are in sync; the p0 and p3 migration columns are all
 present in `init.sql` (p0: `oauth_accounts` at `init.sql:77-80` and
-`github_links` at `init.sql:329-332`; p3: `squads` at `init.sql:170-175` and
-`versions` at `init.sql:349-351`).
+`github_links` at `init.sql:336-339`; p3: `squads` at `init.sql:177-182` and
+`versions` at `init.sql:356-358`).
 
 ### The runner and `schema_migrations`
 

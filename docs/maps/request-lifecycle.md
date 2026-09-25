@@ -20,7 +20,7 @@ config gates run **before** anything listens.
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` upserts the `.env` admin and returns its `id` (`Promise<number\|null>`). Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
-| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:246`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
+| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:253`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
 | Collab WS | `server.js:64` | `setupCollabServer(server)`, path `/collab`. |
 | Notification WS | `server.js:68` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
@@ -45,10 +45,10 @@ app.set('trust proxy', 1)                    app.js:42
   ├─ CORS, scoped to /api                    app.js:53-109
   ├─ helmet + CSP, scoped to /api            app.js:112-125
   ├─ express.json({ limit: '2mb' })          app.js:137
-  ├─ authLimiter on 8 specific paths         app.js:140-147
-  ├─ searchLimiter on /api/users/search      app.js:158
-  ├─ static /avatars      (7d immutable)     app.js:161-164
-  ├─ static /doc-images   (30d immutable)    app.js:167-170
+  ├─ authLimiter on 9 paths + reader-check   app.js:140-163
+  ├─ searchLimiter on /api/users/search      app.js:174
+  ├─ static /avatars      (7d immutable)     app.js:177-180
+  ├─ static /doc-images   (30d immutable)    app.js:183-186
   └─ 18 routers, all mounted at /api
 ```
 
@@ -104,12 +104,15 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:128-136`) | 15 min / 20 | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`) |
-| `searchLimiter` (`app.js:150-157`) | 15 min / 60 | `/api/users/search` only (`app.js:158`), to blunt user enumeration |
+| `authLimiter` (`app.js:128-135`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:153`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:163`) |
+| `searchLimiter` (`app.js:166-173`) | 15 min / 60 | `/api/users/search` only (`app.js:174`), to blunt user enumeration |
 
 Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
-suite can hammer `/api/login` without tripping them. That also means **no test
-exercises the limiter behaviour itself**.
+suite can hammer `/api/login` without tripping them. One test exercises the
+limiter itself: `tests/app.test.js` sets `NODE_ENV=production` for its duration
+and requires the 21st `/api/update-account` request, then
+`/api/update-account/confirm-email`, to answer 429 while an unmounted route does
+not. The other mounts are not exercised.
 
 ### Router mounting
 
@@ -241,6 +244,49 @@ modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 **Consequence:** logging in from a second device silently reuses the first
 device's token, and `POST /api/logout` therefore logs out every device at once.
 
+### An email or password change rotates every session
+
+`POST /api/update-account` (`routes/auth.js`, the `router.post('/update-account'`
+handler) authenticates by the `token` and `userId` in its body, not
+`requireAuth`. A name change needs nothing more. An email or password change
+also needs `currentPassword`, compared with `bcrypt.compare` against
+`users.password_hash` as `POST /api/login` does: missing is a 400, wrong is a
+401, and neither writes anything. The credential check runs before the
+uniqueness checks, so a session alone cannot ask which addresses are taken. An
+email equal to the one on file is not a change, which is what lets the account
+panel send the form as it stands.
+
+On success the `UPDATE users` and `DELETE FROM sessions WHERE user_id = ?` run in
+one `withTransaction()` (the caller's own row included: the old
+`AND id != ?` "keep this device" delete is gone), and only after the commit
+does the handler call `generateSessionToken`, which finds no row and inserts a
+fresh one. The response is `{ success: true, token }`; the account panel stores
+it with `setSessionCookie` (`src/util.jsx`), the same writer sign-in uses. An
+email change then sends `buildEmailChangedNoticeEmail` to the OLD address when
+`isMailEnabled()`, and a failed send is logged, never answered as a failure.
+
+Why the caller's row goes too: sessions are one per user (above), so the
+caller's token is every other holder's, and keeping it alive kept a stolen
+session alive through the owner's password change. **What it does not fix:**
+until sessions are per sign-in (W6-CDX-2), a later sign-in by anyone with the
+new credentials is handed the caller's new token by `generateSessionToken`,
+exactly as any two sign-ins share one today. Rotation signs out every holder of
+the old token, and that is all it can do on this schema.
+
+An account with **no password** (`password_hash` NULL, made by an external
+sign-in) cannot answer the check. A password change is refused with a pointer
+to Forgot Password. An email change is refused with a 503 when mail is off;
+with mail on, `startEmailChangeByCode` (same file) invalidates the user's
+unused `two_factor_codes` and unused `email_change` tokens, mints a code and an
+`email_change` row carrying `new_email`, sends the code to the CURRENT address
+(`buildEmailChangeCodeEmail`), then applies any name change in the request, and
+answers `{ requires_email_code: true, confirmToken }`. The email itself changes
+only at `POST /api/update-account/confirm-email` (`requireAuth`, modelled on
+`/2fa/disable/confirm`): purpose-bound token lookup, owner check, code check,
+uniqueness re-check, then the same transaction-then-fresh-token rotation and
+notice. Both routes share the auth rate-limit bucket through one mount on
+`/api/update-account`.
+
 ### Logout actually terminates the session now
 
 `POST /api/logout` used to read its token from `req.body.token` only. No client
@@ -275,7 +321,7 @@ half-created account.
 
 The convention is per-router, not app-global. Each router file ends with
 `router.use(errorHandler)` where `errorHandler` comes from
-`routes/helpers/shared.js:198-204`:
+`routes/helpers/shared.js:258-264`:
 
 ```js
 console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);

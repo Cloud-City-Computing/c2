@@ -42,7 +42,7 @@ it (directly or transitively) before reading `process.env`.
 
 `NODE_ENV` matters in three places: CORS localhost allowance
 (`app.js:101`), rate-limiter `skip` when `'test'` (`app.js:133`,
-`app.js:155`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+`app.js:171`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -237,6 +237,23 @@ waiting. Mutation-checked on 2026-09-25: no guard, the runner's guard cleanup
 skipped, and the `identity_conflict` catch removed each turn one of them red;
 the GitHub race and relink tests were red against the callback before its
 `link_conflict` catch and its holder lookup (a 500 each).
+
+`tests/integration/update-account-sessions.test.js` proves the update-account
+session rotation on a real server, where the route tests can only prove the SQL
+text. Each test seeds a user with one session minted by `generateSessionToken`
+and one inserted directly (a second holder), drives `POST /api/update-account`
+over supertest, and reads `sessions` back: a password change and a
+current-password email change each leave exactly one row, the token the caller
+was handed, with both old tokens answering 401 on a `requireAuth` route; a wrong
+current password leaves the hash and both sessions untouched; the password-less
+code flow writes an `email_change` row carrying `new_email`, sends the code to
+the old address, and after `/update-account/confirm-email` leaves one session.
+Mail is the one module stubbed (`vi.mock` of `services/email.js`), so the code
+is read back off the call. A last test inserts rows that break
+`chk_password_reset_tokens_new_email` both ways and requires error 3819.
+Mutation-checked on 2026-09-25: accepting a wrong current password, keeping the
+caller's session (`AND id != ?`), handing back the old token, and keeping the
+caller's session in the confirm step each turn a live test red.
 
 Tests mirror the source tree:
 

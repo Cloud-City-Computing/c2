@@ -27,19 +27,19 @@ These are the highest-confidence items. Each was checked by grepping the whole
   `JSON_ARRAY_APPEND`ed the caller's id here, which is what made that feature
   admin-only (B1); the grant now lands on a per-PR archive instead.
 - **Read by:** nothing. `checkLogReadAccess` / `checkLogWriteAccess`
-  (`routes/helpers/shared.js:56-84`) join `logs` to `archives` and apply the
+  (`routes/helpers/shared.js:76-104`) join `logs` to `archives` and apply the
   access fragment against the **archive** alias.
 - **Verified:** grep for `read_access` across `routes/`, `services/`,
   `middleware/` returns only `archives`-scoped reads plus the github.js writes.
 - **Not verified:** runtime behaviour.
 
-Same story for `versions.read_access` (`init.sql:354`): declared, never read,
+Same story for `versions.read_access` (`init.sql:361`): declared, never read,
 never written.
 
 ### A2. `github_embed_refs` has no writer
 
 `GET /api/logs/by-github-ref` (`github.js:1956-1977`) reads the table.
-`migrations/p1_github_embeds.sql` and `init.sql:291-305` create it. There is no
+`migrations/p1_github_embeds.sql` and `init.sql:298-312` create it. There is no
 `INSERT INTO github_embed_refs` anywhere in the repo.
 
 **Consequence:** the "which documents reference this file / issue / PR"
@@ -253,7 +253,7 @@ service.
 ### B7. Squad-invite emails bypass notification preferences
 
 `DEFAULT_EMAIL_PREFS` includes `email_squad_invite: true`
-(`services/notifications.js:33`), but `services/email-templates.js:59` defines
+(`services/notifications.js:33`), but `services/email-templates.js:63` defines
 builders for only five types, not including `squad_invite`. So
 `deliverEmail` bails at `services/notifications.js:170` and the funnel sends nothing.
 
@@ -785,6 +785,13 @@ signing in on a second device returns the first device's token and `POST
 /api/logout` signs out everywhere. The schema does not enforce the one-row
 assumption with a unique key on `user_id`.
 
+It is also why `POST /api/update-account` deletes the caller's session along
+with every other after an email or password change and mints a fresh one
+([request-lifecycle.md](request-lifecycle.md)): the caller's token is every
+holder's, so sparing it spared a stolen one. The limit that remains is this
+entry's: the next sign-in with the new credentials is handed that fresh token
+too.
+
 ### C3. Rotating `GITHUB_CLIENT_SECRET` invalidates every stored token
 
 The AES key derives from it via scrypt (`getTokenEncryptionKey` in `oauth.js`). There is no key version
@@ -793,7 +800,7 @@ product, worth documenting in the ops runbook.
 
 ### C4. Watch rows outlive their resources
 
-`watches` has a FK on `user_id` only (`init.sql:432`); `resource_id` is
+`watches` has a FK on `user_id` only (`init.sql:439`); `resource_id` is
 polymorphic and unconstrained. Deleting a document orphans its watches. Harmless
 (`routes/helpers/activity.js:180-184` bails when the log is gone) but unbounded.
 
@@ -806,7 +813,7 @@ make it slow.
 ### C6. The `conflict` sync status is unreachable
 
 `github_links.sync_status` is `ENUM('clean','remote_ahead','local_ahead',
-'diverged','conflict')` (`init.sql:332`) but `classifySync`
+'diverged','conflict')` (`init.sql:339`) but `classifySync`
 (`github.js:1085-1091`) returns only the first four. Conflicts are expressed as
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.

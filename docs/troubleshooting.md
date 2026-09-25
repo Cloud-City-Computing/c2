@@ -29,6 +29,9 @@ exiting (the admin-credentials gate below is the only thing that's still
 boot-fatal). Squad invitations still work: the in-app notification is the
 reliable channel and the email was only ever a convenience.
 
+**An email change on an account with no password is refused too,** since
+its confirmation code goes out by email; see the account-page entry below.
+
 **Two-factor authentication is affected, in both directions.** Logging in
 with authenticator-app (TOTP) 2FA works normally, but *both* of these
 refuse with `503` while mail is off, because both deliver a code by email:
@@ -146,6 +149,43 @@ operator deletes the old link:
 (`make db-shell`). If it is a different person, the address has changed
 hands and the old account still holds it; deal with that account first,
 because two users cannot share an email.
+
+---
+
+```
+┃ ⚠  Symptom
+┃   Changing your email on the account page asks for your current
+┃   password, answers "Your current password is incorrect.", or
+┃   refuses with "This account has no password, so an email change is
+┃   confirmed with a code sent to your current address, and this
+┃   instance cannot send email."
+```
+
+**Cause.** A signed-in session is no longer enough to change an account's
+email or password. The account page asks for the current password as soon
+as the email field differs from the saved address; the API
+(`POST /api/update-account`) refuses an email or password change without a
+correct `currentPassword`, with a 400 when it is missing and a 401 when it
+is wrong, and changes nothing either way. A name change needs no password.
+
+An account with no password (one an external sign-in created) confirms an email
+change with a 6-digit code sent to its **current** address instead. That
+needs mail, so with mail disabled the change is refused with the sentence
+above.
+
+After an email change goes through, every other device signed in to the
+account is signed out and has to sign in again; the device that made the
+change keeps working on a new session. The old address gets a notice.
+
+**Fix.**
+- Wrong password: enter the account's current password. Forgotten it? Sign
+  out and use "Forgot Password?" on the sign-in screen, then try again.
+- No password and mail disabled: an administrator can change the address in
+  the database (`UPDATE users SET email = ? WHERE id = ?`) or restore mail
+  (the email-disabled entry above) so the code can be sent.
+- A script or integration calling the API: add `currentPassword` to the
+  body for email and password changes, and store the `token` the response
+  returns, because the one it sent has been deleted. See `docs/api/auth.md`.
 
 ---
 
@@ -291,9 +331,8 @@ something else (a previous container, an unrelated app) is holding the
 port.
 
 **Fix.** `lsof -iTCP:3000 -sTCP:LISTEN` to find the offender and kill
-it. Cloud Codex doesn't currently take a `PORT` env var — port 3000
-is hard-coded in dev. If you really need a different port, search for
-the literal in `server.js` and the docs.
+it, or start this instance on another port with `PORT=<n>` (`server.js`
+honours it, defaulting to 3000); set `APP_URL` to match.
 
 ---
 
