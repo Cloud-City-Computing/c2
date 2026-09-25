@@ -52,7 +52,7 @@ export async function resolveIdentity(claims, policy) {
     // provider it has no ladder for.
     throw new Error(`resolveIdentity: provider "${claims.provider}" is not implemented`);
   }
-  return resolveGoogleIdentity(claims, policy);
+  return await resolveGoogleIdentity(claims, policy);
 }
 
 async function resolveGoogleIdentity(claims, policy) {

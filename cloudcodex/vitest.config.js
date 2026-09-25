@@ -105,6 +105,10 @@ export default defineConfig({
         'services/email.js': { lines: 95, statements: 95, branches: 70, functions: 95 },
         'services/email-templates.js': { lines: 95, statements: 90, branches: 90, functions: 95 },
         'services/notifications.js': { lines: 90, statements: 88, branches: 80, functions: 88 },
+        // The identity-resolution seam: every external sign-in decides its
+        // local user here. Measured at 100% on all four when it landed
+        // (W6-CDX-4); the buffer allows a small uncovered guard, not a branch.
+        'services/identity.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
         // collab.js — was 25%, ratcheted to 65% after the gap-fix pass.
         'services/collab.js': { lines: 65, statements: 65, branches: 50, functions: 75 },
 
