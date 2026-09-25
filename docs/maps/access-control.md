@@ -603,7 +603,7 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
 6. Add the negative test. Every route test file in `tests/routes/` already has
    an access-denied case to copy; `tests/helpers/ownership.test.js` covers the
    fragments themselves, and its glob carries an 88% line threshold
-   (`vitest.config.js:87`).
+   (`vitest.config.js`, the `routes/helpers/**` entry).
 
 ---
 

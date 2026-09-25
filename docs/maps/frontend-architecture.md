@@ -227,7 +227,7 @@ default, so the stylesheet's own defaults win.
 `loadUserPrefs` / `saveUserPrefs` / `applyPrefsToDOM`. A new preference means
 adding its option map here, handling it in `applyPrefsToDOM`, and extending
 `tests/src/userPrefs.test.js`, which carries a 95% line threshold
-(`vitest.config.js:114`).
+(`vitest.config.js`, the `src/userPrefs.js` entry).
 
 ## 6. Styling
 
@@ -261,7 +261,7 @@ quotes in JS, double quotes in JSX attributes, trailing semicolons.
 ## 8. Testing the frontend
 
 The `frontend` Vitest project runs jsdom + Testing Library over
-`tests/src/**` (`vitest.config.js:38-49`). In scope and required by
+`tests/src/**` (`vitest.config.js`, the `frontend` project). In scope and required by
 `CLAUDE.md`: `src/hooks/`, pure-JS utilities under `src/`, and reusable
 components in `src/components/`.
 
