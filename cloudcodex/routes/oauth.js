@@ -3,6 +3,7 @@
  *
  * Supports Google Workspace SSO and GitHub OAuth.
  * Google: If GOOGLE_OAUTH_DOMAIN is set, users from that domain can sign in / auto-create accounts.
+ * Which local user a Google identity is gets decided in services/identity.js, not here.
  * GitHub: Links GitHub accounts for repo browsing and markdown editing. Stores access tokens encrypted.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
@@ -14,7 +15,8 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { c2_query, generateSessionToken } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL, createDefaultPermissions } from './helpers/shared.js';
+import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL } from './helpers/shared.js';
+import { resolveIdentity } from '../services/identity.js';
 
 const router = express.Router();
 
@@ -161,36 +163,6 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-/**
- * Derive a username from the Google profile email.
- * Takes the local part, strips invalid characters, and ensures uniqueness.
- */
-async function deriveUniqueUsername(email) {
-  // Take local part of email, keep only valid chars, truncate to 32
-  let base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 28);
-  if (base.length < 3) base = base.padEnd(3, '_');
-
-  // Check if it's available
-  const [existing] = await c2_query(
-    `SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`,
-    [base]
-  );
-  if (!existing) return base;
-
-  // Append random suffix
-  for (let i = 0; i < 20; i++) {
-    const candidate = `${base}_${crypto.randomBytes(2).toString('hex')}`.slice(0, 32);
-    const [dup] = await c2_query(
-      `SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`,
-      [candidate]
-    );
-    if (!dup) return candidate;
-  }
-
-  // Fallback: fully random
-  return `user_${crypto.randomBytes(4).toString('hex')}`;
-}
-
 // --- Routes ---
 
 /**
@@ -277,70 +249,28 @@ router.get('/oauth/google/callback', asyncHandler(async (req, res) => {
     return res.redirect('/?oauth_error=token_verification_failed');
   }
 
-  const { sub: googleUserId, email, email_verified, hd: hostedDomain } = payload;
-
-  if (!email_verified) {
-    return res.redirect('/?oauth_error=email_not_verified');
-  }
-
-  // If a domain restriction is set, enforce it
-  if (GOOGLE_OAUTH_DOMAIN && hostedDomain !== GOOGLE_OAUTH_DOMAIN) {
-    return res.redirect(`/?oauth_error=domain_not_allowed`);
-  }
-
-  // Check if this Google account is already linked
-  const [existingOAuth] = await c2_query(
-    `SELECT user_id FROM oauth_accounts WHERE provider = 'google' AND provider_user_id = ? LIMIT 1`,
-    [googleUserId]
+  // Which local user this is, or why nobody: the ladder lives in the seam.
+  const identity = await resolveIdentity(
+    {
+      provider: 'google',
+      subject: payload.sub,
+      email: payload.email,
+      emailVerified: Boolean(payload.email_verified),
+      picture: payload.picture,
+      hostedDomain: payload.hd,
+    },
+    {
+      requiredHostedDomain: GOOGLE_OAUTH_DOMAIN || undefined,
+      linkByVerifiedEmail: true,
+      autoCreate: Boolean(GOOGLE_OAUTH_DOMAIN),
+    }
   );
 
-  let userId;
-
-  if (existingOAuth) {
-    // Already linked — log them in
-    userId = existingOAuth.user_id;
-  } else {
-    // Check if a user with this email already exists
-    const [existingUser] = await c2_query(
-      `SELECT id FROM users WHERE email = ? LIMIT 1`,
-      [email]
-    );
-
-    if (existingUser) {
-      // Link Google account to existing user
-      userId = existingUser.id;
-      await c2_query(
-        `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`,
-        [userId, googleUserId, email]
-      );
-    } else {
-      // No existing account — auto-create if domain is allowed, otherwise reject
-      if (!GOOGLE_OAUTH_DOMAIN) {
-        // Without domain restriction, require an existing account to link to
-        return res.redirect('/?oauth_error=no_account');
-      }
-
-      // Auto-create account for users in the allowed domain
-      const username = await deriveUniqueUsername(email);
-
-      const result = await c2_query(
-        `INSERT INTO users (name, password_hash, email, avatar_url, created_at)
-         VALUES (?, NULL, ?, ?, NOW())`,
-        [username, email, payload.picture || null]
-      );
-
-      userId = result.insertId;
-
-      // Create default permissions
-      await createDefaultPermissions(userId);
-
-      // Link the OAuth account
-      await c2_query(
-        `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`,
-        [userId, googleUserId, email]
-      );
-    }
+  if (!identity.ok) {
+    return res.redirect(`/?oauth_error=${identity.reason}`);
   }
+
+  const { userId } = identity;
 
   // Fetch the user for session creation
   const [user] = await c2_query(
