@@ -23,6 +23,7 @@ import {
   getSessStorage,
   removeSessStorage,
   getSessionTokenFromCookie,
+  setSessionCookie,
   clearInner,
   createAndAppend,
   // Sample API wrappers
@@ -190,6 +191,22 @@ describe('getSessionTokenFromCookie', () => {
     document.cookie = 'sessionToken=xyz';
     document.cookie = 'baz=qux';
     expect(getSessionTokenFromCookie()).toBe('xyz');
+  });
+});
+
+describe('setSessionCookie', () => {
+  // The one writer of the session cookie on the client: sign-in and the
+  // account panel's session rotation must set it identically, or a rotated
+  // session would come back with different lifetime or scope rules.
+  it('writes the sessionToken cookie with the attributes sign-in has always used', () => {
+    const set = vi.spyOn(Document.prototype, 'cookie', 'set');
+    try {
+      setSessionCookie('fresh-token');
+      expect(set).toHaveBeenCalledTimes(1);
+      expect(set).toHaveBeenCalledWith('sessionToken=fresh-token; path=/; max-age=604800; secure; samesite=strict');
+    } finally {
+      set.mockRestore();
+    }
   });
 });
 

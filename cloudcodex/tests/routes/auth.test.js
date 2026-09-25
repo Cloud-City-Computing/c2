@@ -377,78 +377,8 @@ describe('Auth Routes', () => {
     });
   });
 
-  // ── POST /api/update-account ──────────────────────────────
-
-  describe('POST /api/update-account', () => {
-    it('updates name for valid user', async () => {
-      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
-      c2_query.mockResolvedValueOnce([]); // UPDATE user
-
-      const res = await request(app)
-        .post('/api/update-account')
-        .send({ token: 'tok', userId: 1, name: 'newname' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-    });
-
-    it('rejects update with no fields', async () => {
-      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
-
-      const res = await request(app)
-        .post('/api/update-account')
-        .send({ token: 'tok', userId: 1 });
-
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/no fields/i);
-    });
-
-    it('rejects weak password on update', async () => {
-      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
-
-      const res = await request(app)
-        .post('/api/update-account')
-        .send({ token: 'tok', userId: 1, password: 'short' });
-
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/password/i);
-    });
-
-    it('rejects invalid email on update', async () => {
-      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
-
-      const res = await request(app)
-        .post('/api/update-account')
-        .send({ token: 'tok', userId: 1, email: 'bad' });
-
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/email/i);
-    });
-
-    it('rejects duplicate email on update', async () => {
-      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
-      c2_query.mockResolvedValueOnce([{ id: 5 }]); // dup email found
-
-      const res = await request(app)
-        .post('/api/update-account')
-        .send({ token: 'tok', userId: 1, email: 'taken@example.com' });
-
-      expect(res.status).toBe(409);
-      expect(res.body.message).toMatch(/already exists/i);
-    });
-
-    it('rejects duplicate username on update', async () => {
-      validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
-      c2_query.mockResolvedValueOnce([{ id: 5 }]); // dup name found
-
-      const res = await request(app)
-        .post('/api/update-account')
-        .send({ token: 'tok', userId: 1, name: 'takenuser' });
-
-      expect(res.status).toBe(409);
-      expect(res.body.message).toMatch(/taken/i);
-    });
-  });
+  // POST /api/update-account and its confirm-email step are covered in
+  // tests/routes/auth-update-account.test.js.
 
   // ── GET /api/users/search ─────────────────────────────────
 

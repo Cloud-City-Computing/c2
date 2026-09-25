@@ -54,8 +54,10 @@ describe('scripts/migrate.js on a database init.sql built', () => {
     const otherConn = await openAdminConnection();
     try {
       await buildSchemaFromInitSql(otherConn, other);
+      // chk_password_reset_tokens_new_email reads purpose too, so it goes with it.
       await otherConn.query(
-        'ALTER TABLE password_reset_tokens DROP CHECK chk_password_reset_tokens_purpose, DROP COLUMN purpose'
+        'ALTER TABLE password_reset_tokens DROP CHECK chk_password_reset_tokens_new_email, ' +
+          'DROP CHECK chk_password_reset_tokens_purpose, DROP COLUMN purpose'
       );
       await expect(
         runMigrations({

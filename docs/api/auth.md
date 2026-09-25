@@ -223,11 +223,68 @@ Returns the current user's profile.
 
 ### `POST /api/update-account`
 
-Update the current user's username, email, and/or password.
+Update the current user's username, email, and/or password. Authenticated by
+the session `token` and `userId` in the body, which must belong together.
+Rate-limited with the sign-in endpoints (20 requests per 15 minutes per IP).
 
-**Body:** `{ token, userId, name?, email?, password? }`
+**Body:** `{ token, userId, name?, email?, password?, currentPassword? }`
 
-All fields are optional — only provided fields are updated. If password is changed, all other sessions for the user are invalidated.
+Only the fields sent are considered, and an `email` equal to the address on
+file is not a change. A **name** change needs nothing more. An **email or
+password** change also needs `currentPassword`, the account's current password,
+checked the way `POST /api/login` checks it. Nothing is written unless every
+check passes.
+
+After an email or password change **every session of the user is deleted,
+including the caller's**, and the response carries a freshly generated session
+token. Store it the way a sign-in token is stored (the web client writes the
+`sessionToken` cookie); the old token is dead. An email change also sends a
+notice to the old address when mail is enabled.
+
+An account with **no password** (created by an external sign-in) cannot supply
+`currentPassword`. Its email change is confirmed by a 6-digit code sent to the
+account's **current** address, completed with
+`POST /api/update-account/confirm-email`; it can set a first password only
+through `POST /api/forgot-password`.
+
+**Responses**
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | `{ success: true }`, a name-only change (or nothing that differs from what is on file) |
+| `200`  | `{ success: true, token }`, an email or password change; `token` replaces the caller's session |
+| `200`  | `{ success: true, requires_email_code: true, confirmToken, message }`, an email change on an account with no password: a code went to the current address and nothing has changed yet (a name change sent alongside has been applied) |
+| `400`  | `token` or `userId` missing or invalid; no field sent; an invalid username, email or password (`failures` lists the password rules missed); `currentPassword` missing for an email or password change; a password change on an account with no password |
+| `401`  | the session does not belong to `userId`, or `currentPassword` is wrong |
+| `409`  | the username or email belongs to another account |
+| `500`  | the confirmation code email could not be sent (nothing changed) |
+| `503`  | an email change on an account with no password while mail is disabled: `This account has no password, so an email change is confirmed with a code sent to your current address, and this instance cannot send email. Ask your administrator to change it.` |
+
+The `401` for a wrong current password is `{ success: false, message: "Your current password is incorrect." }`; the `400` for a missing one is `Enter your current password to change your email or password.`
+
+---
+
+### `POST /api/update-account/confirm-email` *(requires auth)*
+
+Completes an email change that `POST /api/update-account` started with a code.
+Applies the address the `confirmToken` was minted for (the body cannot choose
+another), then deletes every session of the user and returns a fresh token, as
+update-account does, and sends a notice to the old address when mail is
+enabled. Shares the sign-in rate limit.
+
+**Body:** `{ confirmToken, code }`
+
+**Responses**
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | `{ success: true, token, email, message }`; `token` replaces the caller's session |
+| `400`  | `confirmToken` or `code` missing |
+| `401`  | not signed in; the token is unknown, used, expired, minted by another flow or for another user (`This email change has expired. Start it again.`); or the code is wrong or expired |
+| `409`  | another account took the address after the code was sent |
+
+Codes and tokens last 10 minutes. Starting a new email change invalidates any
+earlier unused code and email-change token for the account.
 
 ---
 

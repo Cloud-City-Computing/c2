@@ -22,4 +22,9 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
     'ALTER TABLE password_reset_tokens DROP CHECK chk_password_reset_tokens_purpose, DROP COLUMN purpose',
   '2026-09-25-oauth-one-link-per-provider.sql':
     'ALTER TABLE oauth_accounts DROP INDEX uq_oauth_user_provider',
+  '2026-09-25-token-purpose-email-change.sql':
+    'ALTER TABLE password_reset_tokens DROP CHECK chk_password_reset_tokens_new_email, ' +
+    'DROP CHECK chk_password_reset_tokens_purpose, DROP COLUMN new_email, ' +
+    'ADD CONSTRAINT chk_password_reset_tokens_purpose ' +
+    "CHECK (purpose IN ('password_reset','two_factor_login','totp_setup','two_factor_disable'))",
 });

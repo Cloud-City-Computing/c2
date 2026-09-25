@@ -4091,6 +4091,7 @@ body {
 
 .totp-confirm-form {
   display: flex;
+  flex-wrap: wrap; /* a 375px phone cannot fit the code, Confirm and Cancel on one line */
   align-items: center;
   gap: 10px;
   margin-top: 12px;

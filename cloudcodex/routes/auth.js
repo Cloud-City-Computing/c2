@@ -12,6 +12,7 @@ import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
 import { c2_query, generateSessionToken, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
+import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
 import { requireAuth, extractSessionToken } from '../middleware/auth.js';
 import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, TOKEN_PURPOSE, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
 
@@ -191,12 +192,104 @@ router.get('/check-username/:username', asyncHandler(async (req, res) => {
   res.json({ available: !existing, message: existing ? 'Username is already taken' : 'Username is available' });
 }));
 
+/** update-account's refusals that tell the caller what to do instead. */
+const CURRENT_PASSWORD_REQUIRED = 'Enter your current password to change your email or password.';
+const CURRENT_PASSWORD_WRONG = 'Your current password is incorrect.';
+const PASSWORDLESS_PASSWORD_CHANGE =
+  'This account has no password yet. To set one, sign out and use "Forgot Password?" on the sign-in screen.';
+const PASSWORDLESS_EMAIL_CHANGE_NO_MAIL =
+  'This account has no password, so an email change is confirmed with a code sent to your current address, and this instance cannot send email. Ask your administrator to change it.';
+
+/**
+ * Tell the OLD address that the account's email changed, so the owner hears
+ * about it even when the change was not theirs. The change has already
+ * committed, so a failed send is logged and never reported as a failure.
+ */
+async function sendEmailChangedNotice(req, { oldEmail, recipientName, newEmail }) {
+  if (!isMailEnabled()) return;
+  try {
+    await sendEmail({ to: oldEmail, ...buildEmailChangedNoticeEmail({ recipientName, newEmail }) });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: email change notice failed:`, err);
+  }
+}
+
+/**
+ * Start an email change for an account with no password, which has nothing to
+ * answer a current-password check with. A code goes to the CURRENT address and
+ * the caller gets a confirmToken bound to the new one; the email itself only
+ * changes at POST /api/update-account/confirm-email. Modelled on
+ * POST /api/2fa/disable. A name change sent alongside is applied once the code
+ * is out, so a failed send changes nothing.
+ */
+async function startEmailChangeByCode(req, res, sessionUser, { newEmail, name }) {
+  await c2_query(`UPDATE two_factor_codes SET used = TRUE WHERE user_id = ? AND used = FALSE`, [sessionUser.id]);
+
+  const code = generate2FACode();
+  await c2_query(
+    `INSERT INTO two_factor_codes (user_id, code, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
+    [sessionUser.id, code]
+  );
+
+  // One pending change at a time. An older confirmToken still inside its ten
+  // minutes would otherwise pair with this code and apply ITS address.
+  await c2_query(
+    `UPDATE password_reset_tokens SET used = TRUE WHERE user_id = ? AND purpose = ? AND used = FALSE`,
+    [sessionUser.id, TOKEN_PURPOSE.EMAIL_CHANGE]
+  );
+
+  const confirmToken = crypto.randomBytes(32).toString('hex');
+  await c2_query(
+    `INSERT INTO password_reset_tokens (user_id, token, purpose, new_email, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
+    [sessionUser.id, confirmToken, TOKEN_PURPOSE.EMAIL_CHANGE, newEmail]
+  );
+
+  try {
+    await sendEmail({
+      to: sessionUser.email,
+      ...buildEmailChangeCodeEmail({ recipientName: sessionUser.name, newEmail, code }),
+    });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: email change code email failed:`, err);
+    return res.status(500).json({ success: false, message: 'Failed to send the confirmation code email.' });
+  }
+
+  if (name !== undefined) {
+    await c2_query(`UPDATE users SET name = ? WHERE id = ?`, [name, sessionUser.id]);
+  }
+
+  res.json({
+    success: true,
+    requires_email_code: true,
+    confirmToken,
+    message: 'We sent a 6-digit code to your current email address. Enter it to confirm the change.',
+  });
+}
+
 /**
  * POST /api/update-account
- * Body: { token, userId, name?, email?, password? }
+ * Body: { token, userId, name?, email?, password?, currentPassword? }
+ *
+ * A name change needs only the session. An email or password change also
+ * needs `currentPassword`, compared with bcrypt as POST /api/login compares
+ * it, because a session on its own proves nothing about who is holding it.
+ * An email equal to the one on file is not a change.
+ *
+ * An account with no password (one an external sign-in created) cannot answer
+ * that. Its email change is confirmed by a code sent to its current address
+ * (the answer carries `requires_email_code` and a `confirmToken` for
+ * POST /api/update-account/confirm-email), and only when mail is enabled; it
+ * sets a first password through Forgot Password, never here.
+ *
+ * After a password or email change EVERY session of the user is deleted, the
+ * caller's included, in the same transaction as the write, and the answer
+ * carries a freshly generated `token`. Sessions are one per user
+ * (generateSessionToken hands every sign-in the same live row), so the
+ * caller's token is every other holder's too: keeping it alive kept a stolen
+ * session alive through the owner's password change.
  */
 router.post('/update-account', asyncHandler(async (req, res) => {
-  const { token, userId, name, email, password } = req.body;
+  const { token, userId, name, email, password, currentPassword } = req.body;
 
   if (!token || !userId) {
     return res.status(400).json({ success: false, message: 'Token and userId are required' });
@@ -211,61 +304,170 @@ router.post('/update-account', asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid session token' });
   }
 
-  // Only update fields that were actually provided
-  const fields = [];
-  const params = [];
+  if (name === undefined && email === undefined && password === undefined) {
+    return res.status(400).json({ success: false, message: 'No fields provided to update' });
+  }
 
-  if (name !== undefined) {
-    if (!isValidUsername(name)) {
-      return res.status(400).json({ success: false, message: 'Username must be 3-32 characters: letters, numbers, and underscores only' });
-    }
-    // Check uniqueness if changing name
-    const [dup] = await c2_query(`SELECT id FROM users WHERE LOWER(name) = LOWER(?) AND id != ? LIMIT 1`, [name, Number(userId)]);
-    if (dup) {
-      return res.status(409).json({ success: false, message: 'This username is already taken' });
-    }
-    fields.push('name = ?');
-    params.push(name);
+  // The account panel sends the form as it stands, so the address on file
+  // arriving unchanged must not make a name edit ask for a password.
+  const emailChanging = email !== undefined && email !== sessionUser.email;
+  const passwordChanging = password !== undefined;
+
+  // Shape first. None of these reads anything about another account.
+  if (name !== undefined && !isValidUsername(name)) {
+    return res.status(400).json({ success: false, message: 'Username must be 3-32 characters: letters, numbers, and underscores only' });
   }
-  if (email !== undefined) {
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ success: false, message: 'Invalid email address' });
-    }
-    // Check uniqueness if changing email
-    const [dupEmail] = await c2_query(`SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1`, [email, Number(userId)]);
-    if (dupEmail) {
-      return res.status(409).json({ success: false, message: 'An account with this email already exists' });
-    }
-    fields.push('email = ?');
-    params.push(email);
+  if (emailChanging && !isValidEmail(email)) {
+    return res.status(400).json({ success: false, message: 'Invalid email address' });
   }
-  if (password !== undefined) {
+  if (passwordChanging) {
     const pwFailures = validatePassword(password);
     if (pwFailures.length > 0) {
       return res.status(400).json({ success: false, message: 'Password does not meet requirements', failures: pwFailures });
     }
+  }
+
+  let passwordless = false;
+  if (emailChanging || passwordChanging) {
+    const [account] = await c2_query(`SELECT password_hash FROM users WHERE id = ? LIMIT 1`, [sessionUser.id]);
+    if (account?.password_hash) {
+      if (typeof currentPassword !== 'string' || currentPassword === '') {
+        return res.status(400).json({ success: false, message: CURRENT_PASSWORD_REQUIRED });
+      }
+      if (!(await bcrypt.compare(currentPassword, account.password_hash))) {
+        return res.status(401).json({ success: false, message: CURRENT_PASSWORD_WRONG });
+      }
+    } else {
+      passwordless = true;
+      if (passwordChanging) {
+        return res.status(400).json({ success: false, message: PASSWORDLESS_PASSWORD_CHANGE });
+      }
+      if (!isMailEnabled()) {
+        return res.status(503).json({ success: false, message: PASSWORDLESS_EMAIL_CHANGE_NO_MAIL });
+      }
+    }
+  }
+
+  // Uniqueness only after the credential check: before it, a session alone
+  // would answer which addresses have accounts on this instance.
+  if (name !== undefined) {
+    const [dup] = await c2_query(`SELECT id FROM users WHERE LOWER(name) = LOWER(?) AND id != ? LIMIT 1`, [name, sessionUser.id]);
+    if (dup) {
+      return res.status(409).json({ success: false, message: 'This username is already taken' });
+    }
+  }
+  if (emailChanging) {
+    const [dupEmail] = await c2_query(`SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1`, [email, sessionUser.id]);
+    if (dupEmail) {
+      return res.status(409).json({ success: false, message: 'An account with this email already exists' });
+    }
+  }
+
+  if (passwordless && emailChanging) {
+    return startEmailChangeByCode(req, res, sessionUser, { newEmail: email, name });
+  }
+
+  // Only update fields that actually change
+  const fields = [];
+  const params = [];
+  if (name !== undefined) {
+    fields.push('name = ?');
+    params.push(name);
+  }
+  if (emailChanging) {
+    fields.push('email = ?');
+    params.push(email);
+  }
+  if (passwordChanging) {
     // Hash updated password before storing
     fields.push('password_hash = ?');
     params.push(await bcrypt.hash(password, BCRYPT_ROUNDS));
   }
 
   if (!fields.length) {
-    return res.status(400).json({ success: false, message: 'No fields provided to update' });
+    return res.json({ success: true });
   }
 
-  params.push(Number(userId));
+  const updateSql = `UPDATE users SET ${fields.join(', ')} WHERE id = ?`;
+  params.push(sessionUser.id);
 
-  await c2_query(
-    `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
-    params
+  if (!emailChanging && !passwordChanging) {
+    await c2_query(updateSql, params);
+    return res.json({ success: true });
+  }
+
+  await withTransaction(async (query) => {
+    await query(updateSql, params);
+    await query(`DELETE FROM sessions WHERE user_id = ?`, [sessionUser.id]);
+  });
+
+  // Only after the commit, as create-account does: the token is the caller's
+  // proof that the change landed, and every old one is already gone.
+  const freshToken = await generateSessionToken(sessionUser, req.ip, req.headers['user-agent']);
+
+  if (emailChanging) {
+    await sendEmailChangedNotice(req, { oldEmail: sessionUser.email, recipientName: name ?? sessionUser.name, newEmail: email });
+  }
+
+  res.json({ success: true, token: freshToken });
+}));
+
+/**
+ * POST /api/update-account/confirm-email
+ * Body: { confirmToken, code }
+ *
+ * Completes an email change that POST /api/update-account started with a code
+ * (an account with no password). Applies the address the token was minted
+ * for, never one sent now, then rotates sessions exactly as update-account
+ * does: every session of the user deleted, a fresh `token` in the answer, and
+ * a notice to the old address. Modelled on POST /api/2fa/disable/confirm.
+ */
+router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (req, res) => {
+  const { confirmToken, code } = req.body;
+
+  if (!confirmToken || !code) {
+    return res.status(400).json({ success: false, message: 'Confirmation token and verification code are required' });
+  }
+
+  const [tokenRecord] = await c2_query(
+    `SELECT id, user_id, new_email, expires_at, used FROM password_reset_tokens WHERE token = ? AND purpose = ? LIMIT 1`,
+    [confirmToken, TOKEN_PURPOSE.EMAIL_CHANGE]
   );
 
-  // If password was changed, invalidate all other sessions for this user
-  if (password !== undefined) {
-    await c2_query(`DELETE FROM sessions WHERE user_id = ? AND id != ?`, [Number(userId), token]);
+  if (!tokenRecord || tokenRecord.used || tokenRecord.expires_at <= new Date() || tokenRecord.user_id !== req.user.id) {
+    return res.status(401).json({ success: false, message: 'This email change has expired. Start it again.' });
   }
 
-  res.json({ success: true });
+  const [codeRecord] = await c2_query(
+    `SELECT id, expires_at FROM two_factor_codes WHERE user_id = ? AND code = ? AND used = FALSE ORDER BY created_at DESC LIMIT 1`,
+    [req.user.id, code]
+  );
+
+  if (!codeRecord || codeRecord.expires_at <= new Date()) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired verification code' });
+  }
+
+  // Checked again: another account can take the address while the code is out.
+  const [dupEmail] = await c2_query(
+    `SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1`,
+    [tokenRecord.new_email, req.user.id]
+  );
+  if (dupEmail) {
+    return res.status(409).json({ success: false, message: 'An account with this email already exists' });
+  }
+
+  await withTransaction(async (query) => {
+    await query(`UPDATE two_factor_codes SET used = TRUE WHERE id = ?`, [codeRecord.id]);
+    await query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [tokenRecord.id]);
+    await query(`UPDATE users SET email = ? WHERE id = ?`, [tokenRecord.new_email, req.user.id]);
+    await query(`DELETE FROM sessions WHERE user_id = ?`, [req.user.id]);
+  });
+
+  const freshToken = await generateSessionToken(req.user, req.ip, req.headers['user-agent']);
+
+  await sendEmailChangedNotice(req, { oldEmail: req.user.email, recipientName: req.user.name, newEmail: tokenRecord.new_email });
+
+  res.json({ success: true, token: freshToken, email: tokenRecord.new_email, message: 'Your email address has been changed.' });
 }));
 
 /**

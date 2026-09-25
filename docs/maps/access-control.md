@@ -123,10 +123,10 @@ Never write permission SQL by hand. The wrappers already exist in
 
 | Function | Line | Returns |
 |---|---|---|
-| `checkLogReadAccess(logId, user)` | `shared.js:56-67` | the log row, or `undefined` |
-| `checkLogWriteAccess(logId, user)` | `shared.js:73-84` | the log row, or `undefined` |
-| `checkArchiveReadAccess(archiveId, user)` | `shared.js:154-163` | the archive row, or `undefined` |
-| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:139-148` | the archive row, or `undefined` |
+| `checkLogReadAccess(logId, user)` | `shared.js:76-87` | the log row, or `undefined` |
+| `checkLogWriteAccess(logId, user)` | `shared.js:93-104` | the log row, or `undefined` |
+| `checkArchiveReadAccess(archiveId, user)` | `shared.js:174-183` | the archive row, or `undefined` |
+| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:159-168` | the archive row, or `undefined` |
 
 Routes that need the fragment inline (search, browse, export, GitHub link
 loading) interpolate it directly; see `routes/documents.js:553`,
@@ -134,12 +134,12 @@ loading) interpolate it directly; see `routes/documents.js:553`,
 
 ## 2. The critical subtlety: everything resolves against the ARCHIVE
 
-`checkLogReadAccess` (`shared.js:56-67`) joins `logs` to `archives` and applies
+`checkLogReadAccess` (`shared.js:76-87`) joins `logs` to `archives` and applies
 `readAccessWhere('p')` where **`p` is the `archives` table**. The log's own
 columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
-(`init.sql:282-283`). Grepping the whole backend for reads of them turns up
+(`init.sql:289-290`). Grepping the whole backend for reads of them turns up
 nothing. Since 2026-08-09 the only thing that writes them is the PR-session
 log insert (`routes/github.js:1698`), which sets both to an empty
 `JSON_ARRAY()`.
@@ -183,7 +183,7 @@ Resolution order:
 `{ create_squad: false, create_archive: false, create_log: true }`, applied to
 any user with no `permissions` row. New users created through the normal paths
 get a row with **all three true** via `createDefaultPermissions`
-(`shared.js:168-173`), so the default only applies to rows that predate it or
+(`shared.js:193-198`), so the default only applies to rows that predate it or
 were made outside those paths.
 
 Note step 7 maps only two of the three flags (`permissions.js:114-117`). There
@@ -220,7 +220,7 @@ first. That rule and the middleware's step 3 are two halves of the same boundary
 
 ### 3b. Publish: `canPublish`
 
-`shared.js:98-125`. Ordered bypasses: no squad context at all, allow; admin,
+`shared.js:118-145`. Ordered bypasses: no squad context at all, allow; admin,
 allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
@@ -429,7 +429,7 @@ table below) applies identically regardless of which path created the row.
 
 ## 5. Per-member flags and where each is enforced
 
-`squad_members` (`init.sql:193-209`) carries `role` plus seven booleans. Their
+`squad_members` (`init.sql:200-216`) carries `role` plus seven booleans. Their
 enforcement is uneven, which is worth knowing before you assume a flag does
 something:
 
@@ -440,7 +440,7 @@ something:
 | `can_create_log` | `requirePermission('create_log')` step 7 (`permissions.js:116`) |
 | `can_create_archive` | `requirePermission('create_archive')` step 7 (`permissions.js:115`) |
 | `can_manage_members` | `canManageSquad` (`squads.js`), and `userCanManageSquad` (`github.js`) on the team-sync routes only, where it counts only alongside an `admin` role |
-| `can_publish` | `canPublish` (`shared.js:116-119`) |
+| `can_publish` | `canPublish` (`shared.js:118-145`) |
 | `can_delete_version` | version delete route only (`documents.js:503-515`) |
 
 `role` is an enum of `member`/`admin`/`owner`, but only `owner` is load-bearing

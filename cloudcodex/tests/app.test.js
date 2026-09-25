@@ -188,6 +188,30 @@ describe('app.js — Express configuration', () => {
     expect(lastStatus).not.toBe(429);
   });
 
+  // update-account now checks a password, so a stolen session could otherwise
+  // guess at it without limit. It shares the login bucket (20 per 15 minutes),
+  // and the mount covers its confirm-email step too.
+  it('puts /api/update-account and its confirm-email step in the auth rate-limit bucket', async () => {
+    const prior = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const statuses = [];
+      for (let i = 0; i < 21; i++) {
+        statuses.push((await request(app).post('/api/update-account').send({})).status);
+      }
+      expect(statuses.slice(0, 20)).not.toContain(429);
+      expect(statuses[20]).toBe(429);
+
+      // One bucket: the confirm step is spent too, and a route outside it is not.
+      const confirm = await request(app).post('/api/update-account/confirm-email').send({});
+      expect(confirm.status).toBe(429);
+      const outside = await request(app).get('/api/check-username/someone');
+      expect(outside.status).not.toBe(429);
+    } finally {
+      process.env.NODE_ENV = prior;
+    }
+  });
+
   it('mounts every API route group under /api', async () => {
     // A representative endpoint from each router. None should 404; they
     // should at least reach requireAuth and respond 401, or respond 200

@@ -633,6 +633,17 @@ export function getSessionTokenFromCookie() {
 }
 
 /**
+ * Store a session token in the `sessionToken` cookie. The one client-side
+ * writer of that cookie: signing in and the account panel's session rotation
+ * (after an email or password change) both go through it, so a rotated token
+ * carries exactly the lifetime and scope a fresh sign-in's does.
+ * @param {string} token
+ */
+export function setSessionCookie(token) {
+  document.cookie = `sessionToken=${token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+}
+
+/**
  * Attempt to restore a user session from cache or by validating the token with the server.
  * @param {string} sessionToken
  * @returns {Promise<Object|null>} The user object if valid, otherwise null
