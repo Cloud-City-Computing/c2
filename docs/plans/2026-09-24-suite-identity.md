@@ -591,6 +591,19 @@ Decision 3's rule, applied to Google. `Std_Layout.jsx` gained copy for that code
 (`tests/services/identity.test.js`, `tests/routes/oauth-google-seam.test.js`) were committed red
 first; `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` are still unedited.
 
+**A second refusal on the link-by-email rung (2026-09-25,
+[GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)).**
+The Google branch's refusals are now `email_not_verified`, `domain_not_allowed`, `no_account`,
+`email_conflict`, `two_factor_enabled` and `identity_conflict`. The email lookup reads
+`SELECT id, two_factor_method FROM users WHERE email = ?`, and a match with two-factor on (`email`
+or `totp`, no carve-out) is refused as `two_factor_enabled` with nothing written, after
+`email_conflict` and before the Google row check, so the refusal costs two queries in all. An identity
+already linked is unchanged and never consults two-factor: once linked, Google's own sign-in, its
+MFA included, governs the account. `Std_Layout.jsx` gained copy for the code. Tests were committed
+red first: `tests/services/identity.test.js` (call by call; its pinned email-lookup SQL changed),
+`tests/routes/oauth-google-seam.test.js`, `oauth-google-domain-seam.test.js`, and
+`tests/integration/oauth-google-two-factor.test.js` against MySQL 8.4.
+
 ---
 
 ## PR 4: W6-CDX-3, the `__Host-` cookie and Origin-required cookie writes

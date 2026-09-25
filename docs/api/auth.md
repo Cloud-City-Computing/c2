@@ -111,6 +111,13 @@ Validate an invitation token before showing the sign-up form.
 
 ## Two-Factor Authentication
 
+Local 2FA guards password sign-in. Google sign-in does not ask for the code:
+it refuses to link an account with 2FA on by its email
+(`/?oauth_error=two_factor_enabled`), and a Google account that is already
+linked signs in through Google's own sign-in, its MFA included, even if 2FA
+was turned on after linking. See `GET /api/oauth/google/callback` in
+`docs/api/oauth-github.md`.
+
 ---
 
 ### `POST /api/2fa/verify`

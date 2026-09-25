@@ -230,6 +230,22 @@ skipped, and the `identity_conflict` catch removed each turn one of them red;
 the GitHub race and relink tests were red against the callback before its
 `link_conflict` catch and its holder lookup (a 500 each).
 
+`tests/integration/oauth-google-two-factor.test.js` drives Google sign-in
+through `resolveIdentity` and through the real initiation and callback routes
+(`google-auth-library` is the one thing stubbed, with `vi.mock`), and requires
+an account with two-factor on (`totp` and `email` each) and no Google link to
+be refused as `two_factor_enabled` with no `oauth_accounts` and no `sessions`
+row; an account with two-factor off to link and sign in through the same flow,
+which is the anchor that keeps those refusals from passing on a harness that
+cannot link; an explicit NULL to count as off; and a user linked first who
+turns two-factor on later to still get a session with no challenge minted (no
+`password_reset_tokens` or `two_factor_codes` row). It sets the Google client
+variables in `vi.hoisted`, in its own file, because `routes/oauth.js` reads
+them at import. Mutation-checked on 2026-09-25: with the refusal removed from
+`services/identity.js` its four refusal tests are red (the callback redirects
+to `/` with a session), alongside eight mocked ones: five in
+`tests/services/identity.test.js` and three across the two route seam files.
+
 Tests mirror the source tree:
 
 ```

@@ -39,6 +39,7 @@ tests/
 │   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql
 │   ├── migrate.test.js     ← the migration runner on a real database
 │   ├── oauth-one-link-per-provider.test.js ← a migration's refusal over real rows, and the race it closes
+│   ├── oauth-google-two-factor.test.js ← Google never links a two-factor account by email; linked ones still sign in
 │   └── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests

@@ -41,6 +41,20 @@ initialises an empty data directory.
 
 ### Security
 
+- **Google sign-in no longer links an account that has two-factor
+  authentication on**
+  ([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)).
+  Signing in with Google for the email of an existing account with no Google
+  account linked yet linked the two and signed in, without asking for that
+  account's two-factor code. An account with two-factor on (authenticator app
+  or email code alike) is now never linked by email: the sign-in is refused as
+  `/?oauth_error=two_factor_enabled` with nothing written, and the sign-in form
+  says to sign in with the password and code instead. A Google account that is
+  already linked signs in as before, without the local code, even after its
+  user turns two-factor on: once linked, Google's own sign-in, its MFA
+  included, governs the account. Links made before this release are kept; to
+  review them, list the Google links on accounts with two-factor on and remove
+  any that should not stand (`docs/troubleshooting.md` has the query).
 - **Google sign-in no longer attaches a second Google account to a user.** A
   Google account not yet linked to anyone was linked to whichever user held its
   verified email, even when that user already had a different Google account

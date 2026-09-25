@@ -44,13 +44,18 @@ for tokens, verifies the ID token.
 
 **Account creation behavior** (decided by `resolveIdentity` in
 `services/identity.js`):
-1. If a Google OAuth account is already linked → log in that user.
+1. If a Google OAuth account is already linked → log in that user. No local
+   2FA code is asked for, even if the user turned 2FA on after linking: a
+   linked account signs in through Google's own sign-in, its MFA included.
 2. If no linked account but a user with the same email exists → link to
-   that user, unless that user already has a different Google account
-   linked: then redirect to `/?oauth_error=identity_conflict` and link
-   nothing (a recycled address, or a recreated Google account). The account's
-   owner unlinks the old Google account, or an operator removes its
-   `oauth_accounts` row, before the new one can link.
+   that user, with two exceptions that link nothing. If that user has 2FA on
+   (email or TOTP), redirect to `/?oauth_error=two_factor_enabled`: the
+   account signs in with its password and code instead, because a link made
+   by email would skip that code on every later Google sign-in. If that user
+   already has a different Google account linked, redirect to
+   `/?oauth_error=identity_conflict` (a recycled address, or a recreated
+   Google account); the account's owner unlinks the old Google account, or an
+   operator removes its `oauth_accounts` row, before the new one can link.
 3. If the domain matches `GOOGLE_OAUTH_DOMAIN` → auto-create a new account
    (no invitation required). Username derived from the email local part.
 4. Otherwise → redirect to `/?oauth_error=no_account` (no invitation flow for

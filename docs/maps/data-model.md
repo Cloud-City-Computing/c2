@@ -186,7 +186,12 @@ and `docs/deployment.md`.
 
 `two_factor_codes` holds 6-digit email OTPs; TOTP secrets live on
 `users.totp_secret` instead. `users.two_factor_method` is
-`ENUM('none','email','totp')`.
+`ENUM('none','email','totp')`, nullable with a `'none'` default. Two readers
+decide on it: `POST /api/login` demands a code for `email` or `totp`, and
+`resolveIdentity`'s Google link-by-email rung refuses to link a user with
+either as `two_factor_enabled` and writes no `oauth_accounts` row. A Google
+identity already linked is not asked, even after the user turns two-factor on
+(see [request-lifecycle.md](request-lifecycle.md), the resolution seam).
 
 `user_invitations` is what makes signup invite-only. The `users` table is only
 ever written with a valid invite token, an admin action, or an OAuth flow
@@ -244,7 +249,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 
 | Table | Key | Written by | Read by |
 |---|---|---|---|
-| `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
+| `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google; never links a user with two-factor on by email), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
 | `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:589` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
 | `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |

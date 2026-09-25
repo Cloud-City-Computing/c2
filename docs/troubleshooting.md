@@ -151,6 +151,47 @@ because two users cannot share an email.
 
 ```
 ┃ ⚠  Symptom
+┃   Google sign-in lands back on the sign-in form with "This account has
+┃   two-factor authentication on, so it cannot be linked to Google by
+┃   email" (`/?oauth_error=two_factor_enabled`).
+```
+
+**Cause.** A Cloud Codex user has this email, has two-factor
+authentication on (an authenticator app or an email code, either one), and
+has no Google account linked yet. Google sign-in links an existing account
+by its verified email only when two-factor is off, because a linked Google
+account signs in from then on without the local code. Nothing was written.
+
+**Fix.** Sign in with the username, password and code; the account works
+exactly as before. If its owner also wants Google sign-in on it, they turn
+two-factor off from the account menu, sign in with Google once (which links
+the account), and can then turn two-factor back on. Know the trade-off before
+doing that: a linked Google account signs in through Google's own sign-in,
+its MFA included, and is never asked for the local code, whether two-factor
+is on or off; password sign-in still asks for it. Turning two-factor off
+emails a confirmation code, so on an instance without mail an admin's
+**Reset 2FA** does it instead (see the email entry above).
+
+**Reviewing links made before this check existed.** An operator can list
+every Google link on an account that has two-factor on (`make db-shell`):
+
+```sql
+SELECT u.id, u.name, u.two_factor_method, o.provider_email, o.created_at
+  FROM users u
+  JOIN oauth_accounts o ON o.user_id = u.id AND o.provider = 'google'
+ WHERE u.two_factor_method IN ('email', 'totp');
+```
+
+A row is expected when the owner linked Google first and turned two-factor
+on later. To remove a link that should not stand, the owner chooses
+**Unlink** next to Google in the account menu (it needs a password set), or
+an operator runs
+`DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google'`.
+
+---
+
+```
+┃ ⚠  Symptom
 ┃   GitHub sign-in succeeds but the OAuth callback errors with
 ┃   "redirect_uri_mismatch".
 ```
