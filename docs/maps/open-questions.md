@@ -33,13 +33,13 @@ These are the highest-confidence items. Each was checked by grepping the whole
   `middleware/` returns only `archives`-scoped reads plus the github.js writes.
 - **Not verified:** runtime behaviour.
 
-Same story for `versions.read_access` (`init.sql:316`): declared, never read,
+Same story for `versions.read_access` (`init.sql:354`): declared, never read,
 never written.
 
 ### A2. `github_embed_refs` has no writer
 
 `GET /api/logs/by-github-ref` (`github.js:1956-1977`) reads the table.
-`migrations/p1_github_embeds.sql` and `init.sql:253-267` create it. There is no
+`migrations/p1_github_embeds.sql` and `init.sql:291-305` create it. There is no
 `INSERT INTO github_embed_refs` anywhere in the repo.
 
 **Consequence:** the "which documents reference this file / issue / PR"
@@ -793,7 +793,7 @@ product, worth documenting in the ops runbook.
 
 ### C4. Watch rows outlive their resources
 
-`watches` has a FK on `user_id` only (`init.sql:390`); `resource_id` is
+`watches` has a FK on `user_id` only (`init.sql:432`); `resource_id` is
 polymorphic and unconstrained. Deleting a document orphans its watches. Harmless
 (`routes/helpers/activity.js:180-184` bails when the log is gone) but unbounded.
 
@@ -806,7 +806,7 @@ make it slow.
 ### C6. The `conflict` sync status is unreachable
 
 `github_links.sync_status` is `ENUM('clean','remote_ahead','local_ahead',
-'diverged','conflict')` (`init.sql:294`) but `classifySync`
+'diverged','conflict')` (`init.sql:332`) but `classifySync`
 (`github.js:1085-1091`) returns only the first four. Conflicts are expressed as
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.

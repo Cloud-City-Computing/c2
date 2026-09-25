@@ -63,7 +63,7 @@ response would become an opaque server error.
 
 ## 2. Document to file linking
 
-`github_links` (`init.sql:283-302`) is `UNIQUE (log_id)`, so a document links to
+`github_links` (`init.sql:321-340`) is `UNIQUE (log_id)`, so a document links to
 at most one file. Columns that carry the sync state: `file_sha` (last observed
 remote blob sha), `base_sha` (the merge base), `last_pulled_at`,
 `last_pushed_at`, `sync_status`.
@@ -94,7 +94,7 @@ localChanged  = log.updated_at > max(last_pulled_at, last_pushed_at)
    remote &&  local  ->  diverged
 ```
 
-The schema's `sync_status` enum also has `conflict` (`init.sql:294`), which
+The schema's `sync_status` enum also has `conflict` (`init.sql:332`), which
 `classifySync` never returns; it exists for a manual-resolution state that the
 current code expresses as a 409 response instead.
 
@@ -182,7 +182,7 @@ There is a second, separate TTL cache for CI and release reads,
 
 ### The dead back-link table
 
-`github_embed_refs` (`init.sql:253-267`, created by
+`github_embed_refs` (`init.sql:291-305`, created by
 `migrations/p1_github_embeds.sql`) is intended to answer "which documents embed
 this file / issue / PR". `GET /api/logs/by-github-ref` (`github.js:1956`) reads
 it, correctly gated by the read fragment.
@@ -194,7 +194,7 @@ Recorded in [open-questions.md](open-questions.md).
 
 ## 4. Archive as repo (P1)
 
-`archive_repos` (`init.sql:213-228`) binds an archive to a repo, with a
+`archive_repos` (`init.sql:251-266`) binds an archive to a repo, with a
 `docs_path` prefix (default `docs`) and `auto_link_imports`. Managed through
 `GET`/`POST`/`DELETE /api/archives/:archiveId/repos` (`archives.js:556`, `589`,
 `638`), all gated by `isArchiveOwner`.
@@ -260,7 +260,7 @@ review submission, and issue search straight through, with no local mirror.
 ## 6. Squad to GitHub Team sync (P3)
 
 `squads.github_org` / `github_team_slug` / `team_sync_at`
-(`init.sql:129-131`, unique on the org+slug pair) bind a squad to a GitHub Team.
+(`init.sql:170-175`, unique on the org+slug pair) bind a squad to a GitHub Team.
 
 `GET /api/squads/:squadId/github-team/preview` (`github.js:2168`) and
 `POST .../sync` (`github.js:2248`), both behind `userCanManageSquad`.
