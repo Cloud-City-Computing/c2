@@ -315,6 +315,7 @@ function StdLayout({ children }) {
       domain_not_allowed: 'Your Google account domain is not allowed. Contact your administrator.',
       no_account: 'No account found for this Google email. Ask your administrator for an invitation.',
       email_not_verified: 'Your Google email is not verified.',
+      identity_conflict: 'This email is already linked to a different Google account. Ask your administrator to relink it.',
       token_exchange_failed: 'Google sign-in failed. Please try again.',
       token_verification_failed: 'Google sign-in verification failed. Please try again.',
       invalid_state: 'Sign-in session expired. Please try again.',

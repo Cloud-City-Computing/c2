@@ -9,8 +9,9 @@
  * than growing a second copy with its own mistakes.
  *
  * Google is the only provider wired today, and its branch is the ladder the
- * Google callback used to carry inline, with the same SQL in the same order:
- * route tests queue c2_query mocks in call order, so moving a query is a
+ * Google callback used to carry inline, with the same SQL in the same order,
+ * plus the one check spec Decision 3 requires before linking by email: route
+ * tests queue c2_query mocks in call order, so moving or adding a query is a
  * behaviour change even when the result looks the same.
  *
  * parseAuthProviders() is the boot-time answer to "which sign-in methods does
@@ -33,10 +34,13 @@ import { createDefaultPermissions } from '../routes/helpers/shared.js';
  * identity_conflict, email_conflict. Never throws for a refusal; a thrown
  * error is a database failure and reaches errorHandler.
  *
- * The Google branch never answers identity_conflict: today's ladder links a
- * second Google account to a user who already has one, and this seam moves
- * that ladder without changing it (docs/maps/open-questions.md records it).
- * identity_conflict arrives with the OIDC branch.
+ * The Google branch answers identity_conflict when the user matched by
+ * verified email already holds a Google account under another subject (a
+ * recycled Workspace address, or a deleted and recreated Google account), and
+ * writes nothing: spec Decision 3's rule, applied to Google
+ * (docs/maps/open-questions.md C7). Relinking is by hand: the account's owner
+ * unlinks Google (POST /api/oauth/google/unlink), or an operator deletes the
+ * old oauth_accounts row.
  *
  * @param {{ provider: 'google'|'oidc', issuer?: string, subject: string,
  *           email: string, emailVerified: boolean, name?: string,
@@ -89,6 +93,16 @@ async function resolveGoogleIdentity(claims, policy) {
       // The address belongs to someone this identity may not claim, and
       // creating a second user with it would collide on users.email.
       return { ok: false, reason: 'email_conflict' };
+    }
+    // The subject lookup above missed, so any Google row this user holds is
+    // another subject: the address has changed hands, or the Google account
+    // was recreated. Refuse rather than sign the newcomer into it.
+    const [existingGoogle] = await c2_query(
+      `SELECT id FROM oauth_accounts WHERE provider = 'google' AND user_id = ? LIMIT 1`,
+      [existingUser.id]
+    );
+    if (existingGoogle) {
+      return { ok: false, reason: 'identity_conflict' };
     }
     // Link Google account to existing user
     await c2_query(
