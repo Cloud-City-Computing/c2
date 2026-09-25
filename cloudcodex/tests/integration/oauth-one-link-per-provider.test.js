@@ -338,7 +338,9 @@ describe('two Google subjects linking one user at the same instant (C7)', () => 
 describe('two GitHub accounts linking one user at the same instant (C7)', () => {
   // GitHub is reached only through fetch, so it is the one thing stubbed; the
   // routes, the session, the state and the database are all real.
-  const githubAccountFor = { 'code-a': 7001, 'code-b': 7002 };
+  // Distinct per test: the tests in this file share one schema, and the race
+  // leaves one of 7001 and 7002 linked.
+  const githubAccountFor = { 'code-a': 7001, 'code-b': 7002, 'code-c': 7102 };
 
   beforeEach(() => {
     vi.stubGlobal(
@@ -394,5 +396,33 @@ describe('two GitHub accounts linking one user at the same instant (C7)', () => 
     expect(outcomes).toContain('/account?github_linked=1');
     expect(outcomes).toContain('/account?github_error=link_conflict');
     expect(await linkCount(userId, 'github')).toBe(1);
+  });
+
+  // The relink path, which UPDATEs the caller's row onto whatever account came
+  // back from GitHub, used to run straight into uq_provider_user when another
+  // user held that account.
+  it('refuses a relink to an account another user holds as already_linked_other, not a 500', async () => {
+    const holder = await c2_query(`INSERT INTO users (name, email) VALUES ('ghholder', 'ghholder@example.com')`, []);
+    await c2_query(
+      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'github', '7102', 'h@example.com')`,
+      [holder.insertId]
+    );
+    const relinker = await c2_query(`INSERT INTO users (name, email) VALUES ('ghrelink', 'ghrelink@example.com')`, []);
+    await c2_query(
+      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'github', '7103', 'r@example.com')`,
+      [relinker.insertId]
+    );
+    const before = await c2_query(`SELECT * FROM oauth_accounts WHERE provider = 'github' ORDER BY id`, []);
+    const session = await generateSessionToken({ id: relinker.insertId });
+
+    const started = await request(app).get('/api/oauth/github').set('Authorization', `Bearer ${session}`);
+    const state = new URL(started.headers.location).searchParams.get('state');
+    // code-c comes back from GitHub as account 7102, which the holder has.
+    const res = await request(app)
+      .get(`/api/oauth/github/callback?code=code-c&state=${state}`)
+      .set('Cookie', `oauth_state_github=${state}`);
+
+    expect(res.headers.location ?? `status ${res.status}`).toBe('/account?github_error=already_linked_other');
+    expect(await c2_query(`SELECT * FROM oauth_accounts WHERE provider = 'github' ORDER BY id`, [])).toEqual(before);
   });
 });

@@ -9,6 +9,12 @@
  * makes, instead of reaching errorHandler as a 500. Any other duplicate still
  * reaches errorHandler.
  *
+ * The relink path had the other half of the same defect: a user who already
+ * has a GitHub account linked and links one that another user holds had their
+ * row UPDATEd onto uq_provider_user, which is a 500 too. It now asks who holds
+ * the account first, and refuses as already_linked_other, the answer the
+ * first-link path has always given.
+ *
  * The provider env must exist before routes/oauth.js loads (it reads the client
  * ids at import time), hence vi.hoisted.
  *
@@ -31,6 +37,8 @@ const GITHUB_ID = 4242;
 
 const OWN_ROW_LOOKUP_SQL = `SELECT id FROM oauth_accounts WHERE provider = 'github' AND user_id = ? LIMIT 1`;
 const OTHER_USER_LOOKUP_SQL = `SELECT user_id FROM oauth_accounts WHERE provider = 'github' AND provider_user_id = ? LIMIT 1`;
+const RELINK_UPDATE_SQL =
+  "UPDATE oauth_accounts SET provider_user_id = ?, provider_email = ?, provider_username = ?, provider_avatar_url = ?, encrypted_token = ?, token_status = 'active' WHERE id = ?";
 const LINK_INSERT_SQL =
   "INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email, provider_username, provider_avatar_url, encrypted_token, token_status) VALUES (?, 'github', ?, ?, ?, ?, ?, 'active')";
 
@@ -138,5 +146,68 @@ describe('GitHub linking when another link for this user lands first (C7)', () =
 
     expect(res.status).toBe(500);
     consoleError.mockRestore();
+  });
+});
+
+describe('GitHub relinking to an account another user holds', () => {
+  beforeEach(() => {
+    resetMocks();
+    vi.stubGlobal('fetch', githubFetchMock());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses as already_linked_other and writes nothing, instead of a 500 on the subject key', async () => {
+    const { state, cookie } = await startGithubLink();
+    c2_query.mockClear();
+    c2_query.mockResolvedValueOnce([{ id: 55 }]); // this user already has a GitHub row
+    c2_query.mockResolvedValueOnce([{ user_id: TEST_USER.id + 100 }]); // ...and another user holds this account
+
+    const res = await request(app)
+      .get(`/api/oauth/github/callback?code=good-code&state=${state}`)
+      .set('Cookie', cookie);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/account?github_error=already_linked_other');
+    expect(c2_query.mock.calls.map(([sql, params]) => [squash(sql), params])).toEqual([
+      [OWN_ROW_LOOKUP_SQL, [TEST_USER.id]],
+      [OTHER_USER_LOOKUP_SQL, [String(GITHUB_ID)]],
+    ]);
+  });
+
+  it('replaces the linked account when nobody else holds the new one', async () => {
+    const { state, cookie } = await startGithubLink();
+    c2_query.mockClear();
+    c2_query.mockResolvedValueOnce([{ id: 55 }]); // this user already has a GitHub row
+    c2_query.mockResolvedValueOnce([]); // nobody holds this account
+
+    const res = await request(app)
+      .get(`/api/oauth/github/callback?code=good-code&state=${state}`)
+      .set('Cookie', cookie);
+
+    expect(res.headers.location).toBe('/account?github_linked=1');
+    expect(c2_query.mock.calls.map(([sql, params]) => [squash(sql), params])).toEqual([
+      [OWN_ROW_LOOKUP_SQL, [TEST_USER.id]],
+      [OTHER_USER_LOOKUP_SQL, [String(GITHUB_ID)]],
+      [RELINK_UPDATE_SQL, [String(GITHUB_ID), 'second@example.com', 'second', null, expect.any(String), 55]],
+    ]);
+  });
+
+  // Relinking the account this user already holds is a token refresh, and the
+  // lookup finds this user, which is not "another" user.
+  it('refreshes the token when the account is the one this user already holds', async () => {
+    const { state, cookie } = await startGithubLink();
+    c2_query.mockClear();
+    c2_query.mockResolvedValueOnce([{ id: 55 }]);
+    c2_query.mockResolvedValueOnce([{ user_id: TEST_USER.id }]);
+
+    const res = await request(app)
+      .get(`/api/oauth/github/callback?code=good-code&state=${state}`)
+      .set('Cookie', cookie);
+
+    expect(res.headers.location).toBe('/account?github_linked=1');
+    expect(squash(c2_query.mock.calls[2][0])).toBe(RELINK_UPDATE_SQL);
   });
 });
