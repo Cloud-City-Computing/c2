@@ -38,12 +38,14 @@ import { createDefaultPermissions } from '../routes/helpers/shared.js';
  *
  * The Google branch answers two_factor_enabled when the user matched by
  * verified email has two-factor authentication on (either method), and writes
- * nothing. Password sign-in demands that second factor (POST /api/login), and
- * a link made by email would let every later Google sign-in skip it, so such
- * an account signs in with its password and code instead. The refusal guards
- * only the link: an identity already linked signs in without local two-factor,
- * even when its user turns two-factor on afterwards, because once linked,
- * Google's own sign-in (its MFA included) governs the account.
+ * nothing. The link INSERT repeats that test at insert time, so two-factor
+ * turned on after the lookup gets the same answer. Password sign-in demands
+ * that second factor (POST /api/login), and a link made by email would let
+ * every later Google sign-in skip it, so such an account signs in with its
+ * password and code instead. The refusal guards only the link: an identity
+ * already linked signs in without local two-factor, even when its user turns
+ * two-factor on afterwards, because once linked, Google's own sign-in (its MFA
+ * included) governs the account.
  *
  * The Google branch answers identity_conflict when the user matched by
  * verified email already holds a Google account under another subject (a
@@ -133,13 +135,14 @@ async function resolveGoogleIdentity(claims, policy) {
     // An account with two-factor on is never linked by email: password
     // sign-in demands its second factor, and a link would let every later
     // Google sign-in skip it. Both methods refuse alike; 'none' and NULL are
-    // off, as they are to POST /api/login, and any other value counts as on.
+    // off (GET /api/2fa/status reads the column the same way) and any other
+    // value counts as on, which is exactly the test the link INSERT below
+    // repeats in SQL, so the two can never disagree.
     // It sits after email_conflict, which is the policy's answer before any
     // account's settings matter, and before identity_conflict, because it
     // reads the row already in hand, costs no query, and still holds once a
     // conflicting link is cleared: relinking would not help this account.
-    const twoFactorMethod = existingUser.two_factor_method;
-    if (twoFactorMethod && twoFactorMethod !== 'none') {
+    if ((existingUser.two_factor_method ?? 'none') !== 'none') {
       return { ok: false, reason: 'two_factor_enabled' };
     }
     // The subject lookup above missed, so any Google row this user holds is
@@ -152,19 +155,35 @@ async function resolveGoogleIdentity(claims, policy) {
     if (existingGoogle) {
       return { ok: false, reason: 'identity_conflict' };
     }
-    // Link Google account to existing user. The SELECT above cannot see a
-    // second subject linking this user at the same instant; the key can, and
-    // the INSERT that lands second gets the answer the SELECT would have given.
+    // Link Google account to existing user. Two things can change between the
+    // reads above and this write, and the write itself answers both.
+    //
+    // The owner can turn two-factor on after the lookup saw it off. So the
+    // INSERT copies the user row only while two-factor is still off, a test
+    // made by the INSERT at insert time (under InnoDB's default isolation it
+    // reads the row with a shared lock, so a change still being committed is
+    // waited for, then seen). Zero rows means it came on in between: the
+    // answer is the one the check above would now give, with nothing written.
+    //
+    // A second subject can link this user at the same instant. The SELECT
+    // above cannot see that; the key can, and the INSERT that lands second
+    // gets the answer the SELECT would have given.
+    let linked;
     try {
-      await c2_query(
-        `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`,
-        [existingUser.id, googleUserId, email]
+      linked = await c2_query(
+        `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email)
+         SELECT id, 'google', ?, ? FROM users
+          WHERE id = ? AND (two_factor_method IS NULL OR two_factor_method = 'none')`,
+        [googleUserId, email, existingUser.id]
       );
     } catch (err) {
       if (isSecondLinkForProvider(err)) {
         return { ok: false, reason: 'identity_conflict' };
       }
       throw err;
+    }
+    if (linked.affectedRows === 0) {
+      return { ok: false, reason: 'two_factor_enabled' };
     }
     return { ok: true, userId: existingUser.id, created: false };
   }
