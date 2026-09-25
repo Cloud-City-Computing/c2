@@ -9,7 +9,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildNotificationEmail } from '../../services/email-templates.js';
+import {
+  buildNotificationEmail,
+  buildEmailChangeCodeEmail,
+  buildEmailChangedNoticeEmail,
+} from '../../services/email-templates.js';
 import { APP_URL } from '../../routes/helpers/shared.js';
 
 const baseData = {
@@ -108,5 +112,53 @@ describe('email-templates / buildNotificationEmail', () => {
     const out = buildNotificationEmail('watched_comment', baseData);
     expect(out.subject).toContain('Bob commented on');
     expect(out.html).toContain('Hello world');
+  });
+});
+
+// The two account-security emails an email change sends. Neither is a
+// notification, so neither carries the notification-preferences footer.
+describe('email-templates / email change', () => {
+  const hostile = '<b>x</b>"&@evil.example';
+
+  it('the confirmation code email names the new address and carries the code', () => {
+    const out = buildEmailChangeCodeEmail({ recipientName: 'Alice', newEmail: 'new@example.com', code: '042917' });
+    expect(out.subject).toMatch(/confirm/i);
+    expect(out.text).toContain('042917');
+    expect(out.text).toContain('new@example.com');
+    expect(out.html).toContain('042917');
+    expect(out.html).toContain('new@example.com');
+    expect(out.text).toMatch(/10 minutes/);
+    expect(out.html).not.toContain('/notifications/preferences');
+  });
+
+  it('the notice for the old address names the new one and says what to do if it was not you', () => {
+    const out = buildEmailChangedNoticeEmail({ recipientName: 'Alice', newEmail: 'new@example.com' });
+    expect(out.subject).toMatch(/email address was changed/i);
+    expect(out.text).toContain('new@example.com');
+    expect(out.text).toMatch(/signed out/i);
+    expect(out.text).toMatch(/administrator/i);
+    expect(out.html).toContain('new@example.com');
+    expect(out.html).not.toContain('/notifications/preferences');
+  });
+
+  it('escapes the address and the name in both HTML bodies', () => {
+    // isValidEmail accepts this address: it has no whitespace and one @.
+    for (const out of [
+      buildEmailChangeCodeEmail({ recipientName: '<i>n</i>', newEmail: hostile, code: '123456' }),
+      buildEmailChangedNoticeEmail({ recipientName: '<i>n</i>', newEmail: hostile }),
+    ]) {
+      expect(out.html).not.toContain('<b>x</b>');
+      expect(out.html).not.toContain('<i>n</i>');
+      expect(out.html).toContain('&lt;b&gt;x&lt;/b&gt;&quot;&amp;@evil.example');
+    }
+  });
+
+  it('keeps both subjects on one line and free of em dashes', () => {
+    for (const out of [
+      buildEmailChangeCodeEmail({ recipientName: 'a', newEmail: 'n@example.com', code: '123456' }),
+      buildEmailChangedNoticeEmail({ recipientName: 'a', newEmail: 'n@example.com' }),
+    ]) {
+      expect(out.subject).not.toMatch(/[\r\n\u2014]/);
+    }
   });
 });
