@@ -131,8 +131,8 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **76 files, 1564 tests, all passing**; the
-integration project is **3 files, 10 tests**.
+Current state: the default run is **78 files, 1578 tests, all passing**; the
+integration project is **3 files, 12 tests**.
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
@@ -213,15 +213,22 @@ key, `schema_migrations` and the routine list exactly as they were, then a
 retry after resolving to apply; a clean install to apply and the key to refuse
 a second link per provider (`ER_DUP_ENTRY` naming it, the shape
 `services/identity.js` matches); adoption to refuse a schema missing the key;
-and two Google sign-ins racing for one user to end with one link and one
-`identity_conflict`. The race is held open deterministically: a transaction
-takes a locking read of the user's empty `oauth_accounts` range, which holds
-the gap both INSERTs must enter, and the test waits until
-`information_schema.INNODB_TRX` shows both waiting. **Trap: poll it slower than
-every 100 ms.** InnoDB refreshes that table only after it has gone 100 ms
+two Google sign-ins racing for one user to end with one link and one
+`identity_conflict`; two GitHub links racing through the real initiation and
+callback routes (`app.js` over supertest, a real session, only `fetch` to
+GitHub stubbed) to end with one `github_linked=1` and one `link_conflict`; and
+a GitHub relink to an account another user holds to be refused as
+`already_linked_other`. Each race is held open deterministically: a
+transaction takes a locking read of the user's empty `oauth_accounts` range,
+which holds the gap both INSERTs must enter, and the test waits until
+`information_schema.INNODB_TRX` shows both waiting. The tests share the file's
+schema, so each uses GitHub account ids the others do not. **Trap: poll
+`INNODB_TRX` slower than every 100 ms.** InnoDB refreshes that table only after it has gone 100 ms
 unread, so a 25 ms loop saw zero waiters for ten seconds while two were
 waiting. Mutation-checked on 2026-09-25: no guard, the runner's guard cleanup
-skipped, and the `identity_conflict` catch removed each turn one of them red.
+skipped, and the `identity_conflict` catch removed each turn one of them red;
+the GitHub race and relink tests were red against the callback before its
+`link_conflict` catch and its holder lookup (a 500 each).
 
 Tests mirror the source tree:
 

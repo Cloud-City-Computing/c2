@@ -256,9 +256,12 @@ most one file. `oauth_accounts` carries two keys that say different things.
 to at most one user. `uq_oauth_user_provider (user_id, provider)`: a user holds
 at most one account per provider. The second is also checked in
 `resolveIdentity`, which refuses a user matched by email who already holds
-another Google subject as `identity_conflict`; the key is what closes the race
-that SELECT leaves, and the ladder answers the key's `ER_DUP_ENTRY` with the
-same `identity_conflict` (see [open-questions.md](open-questions.md) C7). It
+another Google subject as `identity_conflict`, and by the GitHub link callback,
+which updates the caller's GitHub row or inserts one only when there is none.
+The key is what closes the race those checks leave: the Google ladder answers
+its `ER_DUP_ENTRY` with the same `identity_conflict`, and the GitHub callback
+with `/account?github_error=link_conflict` (see
+[open-questions.md](open-questions.md) C7). It
 arrived in `migrations/2026-09-25-oauth-one-link-per-provider.sql`, which
 refuses on an install already holding a double link rather than choosing which
 row to delete. `github_embed_refs` has no writer anywhere in the codebase; see

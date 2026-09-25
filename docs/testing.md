@@ -2,14 +2,14 @@
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║                                                                            ║
 ║   TESTING                                                                  ║
-║   Vitest 4 + Supertest + jsdom: 1564 tests across 76 files, no services.   ║
+║   Vitest 4 + Supertest + jsdom: 1578 tests across 78 files, no services.   ║
 ║                                                                            ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 ```
 
 # Testing
 
-Cloud Codex has **1564 tests across 76 files** and runs the entire suite in
+Cloud Codex has **1578 tests across 78 files** and runs the entire suite in
 under 30 seconds with no MySQL, no SMTP, and no network. Backend tests use
 **Vitest 4** + **Supertest** with the database, email transport, and
 filesystem globally mocked. Frontend tests use **Vitest** + **jsdom** +

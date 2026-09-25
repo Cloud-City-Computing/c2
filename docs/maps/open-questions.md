@@ -845,26 +845,36 @@ auto-create path issue the same queries as before. Covered call by call in
 route in `tests/routes/oauth-google-seam.test.js` (the redirect, no session),
 each confirmed red against the unfixed seam.
 
-**The race is closed by a key** (same PR, gate approval of 2026-09-25). The
-check above is a SELECT before an INSERT, so two different Google subjects
-signing in for one user at the same instant could both pass it.
-`oauth_accounts` now carries `UNIQUE KEY uq_oauth_user_provider (user_id,
-provider)` (`init.sql`, and `migrations/2026-09-25-oauth-one-link-per-provider.sql`
-for existing installs), so the INSERT that lands second fails with
-`ER_DUP_ENTRY`, and `resolveGoogleIdentity` answers that error, when it names
-this key, with the same `identity_conflict` (`isSecondLinkForProvider`). A
-duplicate on the subject key `uq_provider_user`, which is the same subject
-racing itself, still throws as before. GitHub linking already kept one row per
-user (the callback updates the caller's row, or inserts only when there is
-none), so for GitHub the key encodes existing behaviour. Its INSERT has the
-same check-then-insert shape and no catch, so two different GitHub accounts
-linking one user at the same instant now get a 500 from the key where they
-used to write a second row (the same account twice already failed on
-`uq_provider_user`). Proven against MySQL 8.4
-in `tests/integration/oauth-one-link-per-provider.test.js`, which holds the race
-open with a gap lock until both sign-ins wait at their INSERT and requires one
-link and one `identity_conflict`; red without the key (both linked) and red
-without the catch (a thrown duplicate).
+**The race is closed by a key, for both providers** (same PR, gate approvals
+of 2026-09-25). The check above is a SELECT before an INSERT, so two different
+Google subjects signing in for one user at the same instant could both pass it,
+and the GitHub link callback has the same shape (it updates the caller's
+GitHub row, or inserts one when there is none). `oauth_accounts` now carries
+`UNIQUE KEY uq_oauth_user_provider (user_id, provider)` (`init.sql`, and
+`migrations/2026-09-25-oauth-one-link-per-provider.sql` for existing
+installs), so the INSERT that lands second fails with `ER_DUP_ENTRY`, and
+both paths answer that error, when it names this key
+(`isSecondLinkForProvider` in `services/identity.js`), with a named refusal
+instead of a 500: `resolveGoogleIdentity` with the same `identity_conflict`,
+the GitHub callback with `/account?github_error=link_conflict`, which the
+account page's Linked Accounts panel explains (it now shows a status line for
+every `github_error` code and for `github_linked=1`; before, it ignored them
+all). A duplicate on the subject key `uq_provider_user`, which is the same
+account racing itself, still throws as before on both. Proven against MySQL
+8.4 in `tests/integration/oauth-one-link-per-provider.test.js`, which holds
+each race open with a gap lock until both attempts wait at their INSERT: two
+Google sign-ins through `resolveIdentity` must end with one link and one
+`identity_conflict`, and two GitHub links through the real initiation and
+callback routes with one `github_linked=1` and one `link_conflict`. Each was
+red without the key (both linked) and red without its catch (a thrown
+duplicate, and a 500 for GitHub).
+
+**Found on the way, and fixed with it:** the GitHub callback's relink path
+(the caller already has a GitHub row) UPDATEd that row onto whichever account
+came back from GitHub without asking who held it, so relinking to an account
+another user holds ran into `uq_provider_user` and a 500. It now looks the
+holder up first and refuses as `already_linked_other`, as the first-link path
+always did; the live test above proves it through the real routes.
 
 Two limits stand. **The fix does not undo a double link made before it**, but
 it no longer lets one pass silently: the migration refuses, deleting nothing,

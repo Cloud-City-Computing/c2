@@ -28,6 +28,16 @@ initialises an empty data directory.
   instead of warning that the database may be partially migrated. And
   `--adopt-fresh-install` now checks a key a newer migration adds against
   `information_schema`, as it already did for tables and columns.
+- The account page says what happened after linking GitHub: the Linked
+  Accounts panel shows "GitHub account linked." or the reason a link was
+  refused (cancelled, expired, already linked to another user, and so on).
+  It used to show nothing either way.
+
+### Fixed
+
+- Relinking GitHub to an account that another user already has linked answered
+  with a server error. It is now refused as `already_linked_other`, as a first
+  link always was, and the account page says so.
 
 ### Security
 
@@ -43,7 +53,9 @@ initialises an empty data directory.
 - **The same rule is now a database key.** `oauth_accounts` gains
   `UNIQUE (user_id, provider)`, so two different Google accounts signing in for
   one user at the same instant can no longer both be linked. The one that lands
-  second gets the same `identity_conflict` answer instead of an error.
+  second gets the same `identity_conflict` answer instead of an error. The same
+  holds for GitHub linking: of two GitHub accounts linking one user at once, the
+  second is refused as `/account?github_error=link_conflict` instead of a 500.
 
 ### Migration
 

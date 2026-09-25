@@ -47,7 +47,7 @@ message mentions credentials, it fire-and-forgets
 message check matters: GitHub also returns 403 for rate limits and missing
 scopes, and flipping the status on those would produce spurious "re-link your
 account" prompts. The frontend reads this through
-`GET /api/github/status` (`oauth.js:564`) and the `useGitHubStatus` hook, which
+`GET /api/github/status` (`oauth.js:585`) and the `useGitHubStatus` hook, which
 is what hides GitHub UI affordances for unlinked users.
 
 ### This router does NOT use the shared error handler

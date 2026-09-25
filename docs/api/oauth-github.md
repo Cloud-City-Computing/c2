@@ -88,7 +88,22 @@ Requests the `repo` scope.
 ### `GET /api/oauth/github/callback`
 
 Exchanges the code for an access token, encrypts it, stores it. If the user
-already has a GitHub link, the token is refreshed. Redirects to `/github`.
+already has a GitHub link, it is replaced by this account and its token,
+unless another user holds this account (`already_linked_other`).
+Redirects to `/account?github_linked=1`, or to `/account?github_error=<code>`
+on a refusal, which the account page's Linked Accounts panel shows as its
+status line:
+
+| Code | Meaning |
+|---|---|
+| `access_denied` | the user cancelled on GitHub |
+| `missing_params` | GitHub sent back no `code` or `state` |
+| `invalid_state` | the state is unknown, expired, or was not started in this browser |
+| `session_expired` | the link flow outlived the user it was started for |
+| `token_exchange_failed` | GitHub did not exchange the code for a token |
+| `user_fetch_failed` | the GitHub profile could not be read |
+| `already_linked_other` | this GitHub account is linked to another Cloud Codex user |
+| `link_conflict` | another GitHub account linked this user at the same instant, and won (`UNIQUE (user_id, provider)`) |
 
 ### `GET /api/github/status` *(requires auth)*
 
