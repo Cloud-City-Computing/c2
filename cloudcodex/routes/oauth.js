@@ -16,7 +16,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { c2_query, generateSessionToken } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL } from './helpers/shared.js';
-import { resolveIdentity } from '../services/identity.js';
+import { resolveIdentity, isSecondLinkForProvider } from '../services/identity.js';
 
 const router = express.Router();
 
@@ -490,12 +490,22 @@ router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
       return res.redirect('/account?github_error=already_linked_other');
     }
 
-    await c2_query(
-      `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email,
-        provider_username, provider_avatar_url, encrypted_token, token_status)
-       VALUES (?, 'github', ?, ?, ?, ?, ?, 'active')`,
-      [userId, githubUserId, ghEmail, ghLogin, ghAvatar, encToken]
-    );
+    // The row lookup above cannot see another GitHub account linking this
+    // user at the same instant; UNIQUE (user_id, provider) can, and the INSERT
+    // that lands second is refused like every other refusal here.
+    try {
+      await c2_query(
+        `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email,
+          provider_username, provider_avatar_url, encrypted_token, token_status)
+         VALUES (?, 'github', ?, ?, ?, ?, ?, 'active')`,
+        [userId, githubUserId, ghEmail, ghLogin, ghAvatar, encToken]
+      );
+    } catch (err) {
+      if (isSecondLinkForProvider(err)) {
+        return res.redirect('/account?github_error=link_conflict');
+      }
+      throw err;
+    }
   }
 
   res.redirect('/account?github_linked=1');

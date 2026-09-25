@@ -70,9 +70,12 @@ const ONE_LINK_PER_PROVIDER_KEY = "'oauth_accounts.uq_oauth_user_provider'";
 /**
  * Whether an INSERT failed on the one-link-per-provider key, and not on the
  * subject key uq_provider_user, which the same subject racing itself hits.
+ * The Google ladder below and the GitHub link callback (routes/oauth.js) both
+ * answer it as a named refusal; any other error is theirs to rethrow.
  * @param {Error & { code?: string, sqlMessage?: string }} err
+ * @returns {boolean}
  */
-function isSecondLinkForProvider(err) {
+export function isSecondLinkForProvider(err) {
   return err.code === 'ER_DUP_ENTRY' && String(err.sqlMessage).includes(ONE_LINK_PER_PROVIDER_KEY);
 }
 
