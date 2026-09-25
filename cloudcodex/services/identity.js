@@ -38,8 +38,10 @@ import { createDefaultPermissions } from '../routes/helpers/shared.js';
  *
  * The Google branch answers two_factor_enabled when the user matched by
  * verified email has two-factor authentication on (either method), and writes
- * nothing. The link INSERT repeats that test at insert time, so two-factor
- * turned on after the lookup gets the same answer. Password sign-in demands
+ * nothing. The link INSERT repeats that test at insert time, reading the user
+ * row FOR SHARE and requiring the email the lookup matched, so two-factor
+ * turned on, or the address given up, after the lookup gets the same answer
+ * at any isolation level. Password sign-in demands
  * that second factor (POST /api/login), and a link made by email would let
  * every later Google sign-in skip it, so such an account signs in with its
  * password and code instead. The refusal guards only the link: an identity
@@ -155,15 +157,18 @@ async function resolveGoogleIdentity(claims, policy) {
     if (existingGoogle) {
       return { ok: false, reason: 'identity_conflict' };
     }
-    // Link Google account to existing user. Two things can change between the
-    // reads above and this write, and the write itself answers both.
+    // Link Google account to existing user. The row can change between the
+    // reads above and this write, and the write itself answers that.
     //
-    // The owner can turn two-factor on after the lookup saw it off. So the
-    // INSERT copies the user row only while two-factor is still off, a test
-    // made by the INSERT at insert time (under InnoDB's default isolation it
-    // reads the row with a shared lock, so a change still being committed is
-    // waited for, then seen). Zero rows means it came on in between: the
-    // answer is the one the check above would now give, with nothing written.
+    // The owner can turn two-factor on after the lookup saw it off, or the
+    // account can give up the email the lookup matched. So the INSERT copies
+    // the user row only while two-factor is still off and the row still holds
+    // that email, and reads it FOR SHARE: a locking read, at any isolation
+    // level, so a change still being committed is waited for and then seen
+    // (without it, READ COMMITTED reads the old row and links over the
+    // change). Anything but exactly one row means the row no longer
+    // qualifies, and the answer is the refusal with nothing written; the next
+    // sign-in looks the address up afresh.
     //
     // A second subject can link this user at the same instant. The SELECT
     // above cannot see that; the key can, and the INSERT that lands second
@@ -173,8 +178,10 @@ async function resolveGoogleIdentity(claims, policy) {
       linked = await c2_query(
         `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email)
          SELECT id, 'google', ?, ? FROM users
-          WHERE id = ? AND (two_factor_method IS NULL OR two_factor_method = 'none')`,
-        [googleUserId, email, existingUser.id]
+          WHERE id = ? AND email = ?
+            AND (two_factor_method IS NULL OR two_factor_method = 'none')
+          FOR SHARE`,
+        [googleUserId, email, existingUser.id, email]
       );
     } catch (err) {
       if (isSecondLinkForProvider(err)) {
@@ -182,7 +189,7 @@ async function resolveGoogleIdentity(claims, policy) {
       }
       throw err;
     }
-    if (linked.affectedRows === 0) {
+    if (linked.affectedRows !== 1) {
       return { ok: false, reason: 'two_factor_enabled' };
     }
     return { ok: true, userId: existingUser.id, created: false };
