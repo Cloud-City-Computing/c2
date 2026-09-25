@@ -7,15 +7,27 @@
  * already breaks the rule, and say how to find the rows that do. Only a real
  * server can prove that: the refusal is a stored-procedure SIGNAL inside a
  * multi-statement batch, and the fake executor in tests/scripts/ runs no SQL.
+ * The same goes for the race the key closes, which is held open here with a
+ * real lock: two Google sign-ins through resolveIdentity, and two GitHub links
+ * through the real routes, for one user at the same instant.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// routes/oauth.js reads the GitHub client settings when it is imported.
+vi.hoisted(() => {
+  process.env.GITHUB_CLIENT_ID = 'it-github-client-id';
+  process.env.GITHUB_CLIENT_SECRET = 'it-github-client-secret-0123456789';
+});
+
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { c2_query } from '../../mysql_connect.js';
+import request from 'supertest';
+import app from '../../app.js';
+import { c2_query, generateSessionToken } from '../../mysql_connect.js';
 import { resolveIdentity } from '../../services/identity.js';
 import {
   runMigrations,
@@ -243,69 +255,144 @@ describe('--adopt-fresh-install and the key', () => {
   });
 });
 
-describe('two Google subjects linking one user at the same instant (C7)', () => {
-  const email = 'race@example.com';
-  const policy = { requiredHostedDomain: undefined, linkByVerifiedEmail: true, autoCreate: false };
-  let blocker;
+/**
+ * Hold open the race the application checks cannot close: a transaction takes
+ * a locking read of this user's (empty) oauth_accounts range, which holds the
+ * gap every link INSERT for the user has to enter. Two sign-ins then pass
+ * their SELECTs, find no row, and wait at the INSERT until `release`.
+ * @param { Number } userId
+ */
+async function holdLinkGap(userId) {
+  const blocker = await openAdminConnection();
+  await blocker.changeUser({ database: process.env.DB_NAME });
+  await blocker.query('START TRANSACTION');
+  await blocker.query('SELECT id FROM oauth_accounts WHERE user_id = ? FOR UPDATE', [userId]);
 
-  afterAll(async () => {
-    if (blocker) await blocker.end();
-  });
-
-  /** Wait until `n` transactions in this file's schema are waiting on a lock. */
-  async function waitForLockWaits(n) {
-    const deadline = Date.now() + 10000;
-    for (;;) {
-      const [rows] = await blocker.query(
-        `SELECT COUNT(*) AS waiting
-           FROM information_schema.INNODB_TRX t
-           JOIN performance_schema.processlist p ON p.ID = t.trx_mysql_thread_id
-          WHERE t.trx_state = 'LOCK WAIT' AND p.DB = ?`,
-        [process.env.DB_NAME]
-      );
-      if (Number(rows[0].waiting) >= n) return;
-      if (Date.now() > deadline) {
-        throw new Error(`only ${rows[0].waiting} of ${n} sign-ins reached their link INSERT`);
+  return {
+    /** Wait until `n` transactions in this file's schema are waiting on a lock. */
+    async waitForLockWaits(n) {
+      const deadline = Date.now() + 10000;
+      for (;;) {
+        const [rows] = await blocker.query(
+          `SELECT COUNT(*) AS waiting
+             FROM information_schema.INNODB_TRX t
+             JOIN performance_schema.processlist p ON p.ID = t.trx_mysql_thread_id
+            WHERE t.trx_state = 'LOCK WAIT' AND p.DB = ?`,
+          [process.env.DB_NAME]
+        );
+        if (Number(rows[0].waiting) >= n) return;
+        if (Date.now() > deadline) {
+          throw new Error(`only ${rows[0].waiting} of ${n} links reached their INSERT`);
+        }
+        // Slower than InnoDB's 100 ms: it refreshes INNODB_TRX only once the
+        // table has gone that long unread, so a tighter loop never sees a change.
+        await new Promise(resolve => setTimeout(resolve, 250));
       }
-      // Slower than InnoDB's 100 ms: it refreshes INNODB_TRX only once the
-      // table has gone that long unread, so a tighter loop never sees a change.
-      await new Promise(resolve => setTimeout(resolve, 250));
-    }
-  }
+    },
+    async release() {
+      try {
+        await blocker.query('COMMIT');
+      } finally {
+        await blocker.end();
+      }
+    },
+  };
+}
 
+/** How many `provider` rows `userId` holds, through the app's own pool. */
+async function linkCount(userId, provider) {
+  const [{ n }] = await c2_query(
+    'SELECT COUNT(*) AS n FROM oauth_accounts WHERE user_id = ? AND provider = ?',
+    [userId, provider]
+  );
+  return Number(n);
+}
+
+describe('two Google subjects linking one user at the same instant (C7)', () => {
   it('links one, and the other gets identity_conflict rather than a thrown duplicate', async () => {
+    const email = 'race@example.com';
+    const policy = { requiredHostedDomain: undefined, linkByVerifiedEmail: true, autoCreate: false };
     const created = await c2_query(`INSERT INTO users (name, email) VALUES ('race', ?)`, [email]);
     const userId = created.insertId;
 
-    blocker = await openAdminConnection();
-    await blocker.changeUser({ database: process.env.DB_NAME });
-    await blocker.query('START TRANSACTION');
-    // A locking read of this user's (empty) oauth_accounts range holds the gap
-    // every link INSERT for the user has to enter. Both sign-ins therefore pass
-    // their SELECTs, find no Google row, and wait at the INSERT: the race the
-    // application check cannot close, held open until COMMIT.
-    await blocker.query('SELECT id FROM oauth_accounts WHERE user_id = ? FOR UPDATE', [userId]);
-
+    const gap = await holdLinkGap(userId);
     const attempts = ['race-subject-a', 'race-subject-b'].map(subject =>
       resolveIdentity({ provider: 'google', subject, email, emailVerified: true }, policy).then(
         value => value,
         err => ({ threw: err.code ?? err.message })
       )
     );
-
     try {
-      await waitForLockWaits(2);
+      await gap.waitForLockWaits(2);
     } finally {
-      await blocker.query('COMMIT');
+      await gap.release();
     }
     const results = await Promise.all(attempts);
 
     expect(results).toContainEqual({ ok: true, userId, created: false });
     expect(results).toContainEqual({ ok: false, reason: 'identity_conflict' });
-    const [{ n }] = await c2_query(
-      `SELECT COUNT(*) AS n FROM oauth_accounts WHERE user_id = ? AND provider = 'google'`,
-      [userId]
+    expect(await linkCount(userId, 'google')).toBe(1);
+  });
+});
+
+describe('two GitHub accounts linking one user at the same instant (C7)', () => {
+  // GitHub is reached only through fetch, so it is the one thing stubbed; the
+  // routes, the session, the state and the database are all real.
+  const githubAccountFor = { 'code-a': 7001, 'code-b': 7002 };
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url, init) => {
+        const u = String(url);
+        if (u.startsWith('https://github.com/login/oauth/access_token')) {
+          const { code } = JSON.parse(init.body);
+          return { ok: true, json: async () => ({ access_token: `token-for-${code}` }) };
+        }
+        if (u === 'https://api.github.com/user') {
+          const code = init.headers.Authorization.replace('Bearer token-for-', '');
+          const id = githubAccountFor[code];
+          return { ok: true, json: async () => ({ id, login: `gh${id}`, avatar_url: null, email: `gh${id}@example.com` }) };
+        }
+        return { ok: true, json: async () => [] };
+      })
     );
-    expect(Number(n)).toBe(1);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('links one, and redirects the other to github_error=link_conflict rather than a 500', async () => {
+    const created = await c2_query(`INSERT INTO users (name, email) VALUES ('ghrace', 'ghrace@example.com')`, []);
+    const userId = created.insertId;
+    const session = await generateSessionToken({ id: userId });
+
+    // Two link flows for one user, as two tabs would start them.
+    const flows = [];
+    for (let i = 0; i < 2; i++) {
+      const started = await request(app).get('/api/oauth/github').set('Authorization', `Bearer ${session}`);
+      expect(started.status).toBe(302);
+      const state = new URL(started.headers.location).searchParams.get('state');
+      flows.push({ state, cookie: `oauth_state_github=${state}` });
+    }
+
+    const gap = await holdLinkGap(userId);
+    const callbacks = ['code-a', 'code-b'].map((code, i) =>
+      request(app)
+        .get(`/api/oauth/github/callback?code=${code}&state=${flows[i].state}`)
+        .set('Cookie', flows[i].cookie)
+        .then(res => res.headers.location ?? `status ${res.status}`)
+    );
+    try {
+      await gap.waitForLockWaits(2);
+    } finally {
+      await gap.release();
+    }
+    const outcomes = await Promise.all(callbacks);
+
+    expect(outcomes).toContain('/account?github_linked=1');
+    expect(outcomes).toContain('/account?github_error=link_conflict');
+    expect(await linkCount(userId, 'github')).toBe(1);
   });
 });
