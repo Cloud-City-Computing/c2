@@ -44,7 +44,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← two projects + 29 per-glob coverage thresholds
+    ├── vitest.config.js         ← three projects + 29 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -292,6 +292,7 @@ npm run lint                 # ESLint over the whole package
 npm test                     # Vitest, single run
 npm run test:watch           # Vitest watch
 npm run test:coverage        # coverage report
+npm run test:integration     # opt-in live-MySQL project (needs IT_DB_ROOT_PASSWORD)
 npm run migrate              # apply pending migrations/*.sql
 npm run migrate -- --adopt-fresh-install  # once, on a database init.sql built
 npm run migrate -- --baseline             # once, on a pre-runner install
@@ -307,8 +308,9 @@ make db-shell                # mysql CLI in the Docker container
 ```
 
 CI (`.github/workflows/ci.yml`) is one job, `Lint, test and build`, which runs
-`npm ci`, `npm run lint`, `npm test`, `npm run test:coverage` (the per-glob
-thresholds are the real gate) and `npm run build`. It runs on push to `main`
+`npm ci`, `npm run lint`, `npm test`, `npm run test:integration` (against a
+`mysql:8.4` service container in the same job), `npm run test:coverage` (the
+per-glob thresholds are the real gate) and `npm run build`. It runs on push to `main`
 and on every pull request whatever its base, and it is the required status
 check on `main`. **There are no pre-commit hooks**, so local lint and test are
 on you.
@@ -438,7 +440,10 @@ New files match this pattern. Update the year only if the file is genuinely new.
 - Framework: **Vitest 4 + Supertest** for backend, **Vitest + jsdom +
   @testing-library/react** for frontend. The two suites run as separate
   Vitest **projects** (configured in `vitest.config.js`); a single
-  `npm test` runs both.
+  `npm test` runs both. A third, opt-in project, `integration`, runs
+  `tests/integration/` against a live MySQL (`npm run test:integration`,
+  `IT_DB_ROOT_PASSWORD` required; see `cloudcodex/tests/README.md`), and
+  it is where a schema or migration change gets proved.
 - Tests mirror the source tree:
   - `routes/foo.js` → `tests/routes/foo.test.js`
   - `services/foo.js` → `tests/services/foo.test.js`

@@ -22,14 +22,16 @@ npm run test:watch     # both projects, watch mode
 npm run test:backend   # backend project only
 npm run test:frontend  # frontend project only
 npm run test:coverage  # both + v8 coverage report (HTML + lcov + text)
+npm run test:integration  # opt-in: the live-MySQL project (needs a server, see below)
 ```
 
 ---
 
-## Two Vitest projects, one command
+## Two default Vitest projects, one command
 
-`vitest.config.js` defines two named projects so a single `npm test` runs
-backend and frontend together with the right environment for each:
+`vitest.config.js` defines three named projects. A single `npm test` runs the
+two default ones, backend and frontend, together with the right environment
+for each; the third, `integration`, is opt-in (next section):
 
 ```
    ┌─────────────────────────────────────────────────────────────┐
@@ -52,6 +54,30 @@ backend and frontend together with the right environment for each:
 
 Both projects share the same coverage config so `npm run test:coverage`
 produces one unified report.
+
+The scripts name `--project backend --project frontend` explicitly, and
+`tests/test-projects.test.js` fails if a project the config declares (other
+than `integration`) is missing from `test` or `test:coverage`, so a new project
+cannot silently drop out of the default run.
+
+## The opt-in live-MySQL project
+
+`npm run test:integration` runs `tests/integration/**` against a real MySQL 8.4
+server, which is how schema and migration changes get proved on the database
+they will run on rather than against a mock. Each test file gets its own
+throwaway `c2_it_<random>` schema built from `init.sql` and adopted by the
+migration runner, and the run fails if any such schema is left behind.
+
+```bash
+# any MySQL 8.4 answering on 3306, for example a scratch container:
+docker run -d --rm --name c2-it-mysql -p 3306:3306 \
+  -e MYSQL_ROOT_PASSWORD=<pw> mysql:8.4
+IT_DB_ROOT_PASSWORD=<pw> npm run test:integration   # IT_DB_HOST defaults to 127.0.0.1
+```
+
+CI runs it inside the required `Lint, test and build` job against a
+`mysql:8.4` service container. See `docs/maps/build-test-and-ops.md` section 5
+for the mechanism.
 
 ---
 

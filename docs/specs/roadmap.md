@@ -402,7 +402,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 
 | ID | Session | Depends on | Deploy |
 |---|---|---|---|
-| W6-CDX-10 | A live-MySQL integration test project | nothing | yes |
+| W6-CDX-10 | A live-MySQL integration test project (**shipped 2026-09-25**; `npm run test:integration`, inside CI's required job) | nothing | yes |
 | W6-CDX-2 | One session per sign-in, stored hashed | W6-CDX-10 | yes |
 | W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes | W6-CDX-2 | yes |
 | W6-CDX-4 | An identity-resolution seam, Google moved onto it | nothing | yes |

@@ -61,7 +61,7 @@
 | [notifications.md](./notifications.md) | Notifications subsystem — funnel, coalescing, triggers, preferences |
 | [frontend.md](./frontend.md) | React app routing, pages, hooks, components, build setup |
 | [security.md](./security.md) | Defense-in-depth model — auth, sanitization, encryption, headers, rate limiting |
-| [testing.md](./testing.md) | Two Vitest projects, 1128 tests across 57 files, per-glob coverage thresholds |
+| [testing.md](./testing.md) | Two default Vitest projects plus an opt-in live-MySQL one, per-glob coverage thresholds |
 | [deployment.md](./deployment.md) | Production operations — Docker Compose, TLS, backups, upgrades, logs |
 | [troubleshooting.md](./troubleshooting.md) | Common setup/runtime failures and the fix for each |
 
@@ -94,7 +94,7 @@ change the code, covering the wiring, the invariants, and the traps.
 | [maps/notifications-and-activity.md](./maps/notifications-and-activity.md) | Activity taxonomy, auto-watch, fan-out, the notification funnel, the inbox WebSocket |
 | [maps/data-model.md](./maps/data-model.md) | All 25 tables, ACL columns, the generated search column, `init.sql` vs `migrations/` |
 | [maps/frontend-architecture.md](./maps/frontend-architecture.md) | Routes, lazy chunks, the `util.jsx` API layer, hooks, preferences, lint rules |
-| [maps/build-test-and-ops.md](./maps/build-test-and-ops.md) | Dual-root layout, Docker topologies, the two Vitest projects, coverage thresholds, CI |
+| [maps/build-test-and-ops.md](./maps/build-test-and-ops.md) | Dual-root layout, Docker topologies, the three Vitest projects (one live-MySQL), coverage thresholds, CI |
 | [maps/open-questions.md](./maps/open-questions.md) | Dead code paths and suspected defects found while writing the maps |
 
 
