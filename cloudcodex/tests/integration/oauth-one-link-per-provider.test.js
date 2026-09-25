@@ -42,6 +42,7 @@ import {
   openAdminConnection,
   queryVia,
   throwawaySchemaName,
+  waitForLockWaits,
 } from './mysql-admin.js';
 
 const MIGRATION = '2026-09-25-oauth-one-link-per-provider.sql';
@@ -270,25 +271,7 @@ async function holdLinkGap(userId) {
 
   return {
     /** Wait until `n` transactions in this file's schema are waiting on a lock. */
-    async waitForLockWaits(n) {
-      const deadline = Date.now() + 10000;
-      for (;;) {
-        const [rows] = await blocker.query(
-          `SELECT COUNT(*) AS waiting
-             FROM information_schema.INNODB_TRX t
-             JOIN performance_schema.processlist p ON p.ID = t.trx_mysql_thread_id
-            WHERE t.trx_state = 'LOCK WAIT' AND p.DB = ?`,
-          [process.env.DB_NAME]
-        );
-        if (Number(rows[0].waiting) >= n) return;
-        if (Date.now() > deadline) {
-          throw new Error(`only ${rows[0].waiting} of ${n} links reached their INSERT`);
-        }
-        // Slower than InnoDB's 100 ms: it refreshes INNODB_TRX only once the
-        // table has gone that long unread, so a tighter loop never sees a change.
-        await new Promise(resolve => setTimeout(resolve, 250));
-      }
-    },
+    waitForLockWaits: n => waitForLockWaits(blocker, process.env.DB_NAME, n),
     async release() {
       try {
         await blocker.query('COMMIT');

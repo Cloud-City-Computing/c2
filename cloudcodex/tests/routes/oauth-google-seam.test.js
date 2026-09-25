@@ -93,14 +93,29 @@ describe('Google callback through the identity seam (no domain restriction)', ()
     c2_query.mockResolvedValueOnce([]); // no link
     c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // user by email
     c2_query.mockResolvedValueOnce([]); // no Google account on that user yet
-    c2_query.mockResolvedValueOnce({ insertId: 1 }); // link
+    c2_query.mockResolvedValueOnce({ affectedRows: 1, insertId: 1 }); // link
     c2_query.mockResolvedValueOnce([{ id: 9, name: 'ada', avatar_url: null, is_admin: 0 }]);
 
     const res = await signIn(payload());
 
     expect(res.headers.location).toBe('/');
     expect(writes()).toHaveLength(1);
-    expect(writes()[0][1]).toEqual([9, 'google-sub-1', 'ada@example.com']);
+    // Subject, email, then the user the row is copied from while two-factor is off.
+    expect(writes()[0][1]).toEqual(['google-sub-1', 'ada@example.com', 9]);
+  });
+
+  it('refuses as two_factor_enabled when two-factor came on before the link INSERT (zero rows)', async () => {
+    c2_query.mockResolvedValueOnce([]); // no link
+    c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // off when looked up
+    c2_query.mockResolvedValueOnce([]); // no Google account on that user
+    c2_query.mockResolvedValueOnce({ affectedRows: 0, insertId: 0 }); // on by the INSERT
+
+    const res = await signIn(payload());
+
+    expect(res.headers.location).toBe('/?oauth_error=two_factor_enabled');
+    expect(sessionCookie(res)).toBeUndefined();
+    expect(generateSessionToken).not.toHaveBeenCalled();
+    expect(c2_query).toHaveBeenCalledTimes(4);
   });
 
   it('refuses an email match that already holds another Google account as identity_conflict', async () => {

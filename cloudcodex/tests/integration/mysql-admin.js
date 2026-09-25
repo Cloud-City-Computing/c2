@@ -83,3 +83,34 @@ export async function buildSchemaFromInitSql(conn, schema) {
 export async function dropSchema(conn, schema) {
   await conn.query(`DROP DATABASE IF EXISTS ${mysql.escapeId(schema)}`);
 }
+
+/**
+ * Wait until `n` transactions in `schema` are waiting on a lock, polling
+ * through `conn`, which must not be one of them. Throws after ten seconds,
+ * saying how many it saw. The race tests use it to know that every attempt
+ * they hold open has reached the statement the held lock blocks.
+ *
+ * **Poll slower than every 100 ms.** InnoDB refreshes INNODB_TRX only once the
+ * table has gone that long unread, so a tighter loop never sees a change: a
+ * 25 ms loop saw zero waiters for ten seconds while two were waiting.
+ * @param { import('mysql2/promise').Connection } conn
+ * @param { String } schema
+ * @param { Number } n
+ */
+export async function waitForLockWaits(conn, schema, n) {
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    const [rows] = await conn.query(
+      `SELECT COUNT(*) AS waiting
+         FROM information_schema.INNODB_TRX t
+         JOIN performance_schema.processlist p ON p.ID = t.trx_mysql_thread_id
+        WHERE t.trx_state = 'LOCK WAIT' AND p.DB = ?`,
+      [schema]
+    );
+    if (Number(rows[0].waiting) >= n) return;
+    if (Date.now() > deadline) {
+      throw new Error(`only ${rows[0].waiting} of ${n} transactions were waiting on a lock after ten seconds`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+}
