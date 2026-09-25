@@ -787,7 +787,7 @@ assumption with a unique key on `user_id`.
 
 ### C3. Rotating `GITHUB_CLIENT_SECRET` invalidates every stored token
 
-The AES key derives from it via scrypt (`oauth.js:56`). There is no key version
+The AES key derives from it via scrypt (`getTokenEncryptionKey` in `oauth.js`). There is no key version
 and no re-encryption path; every user must re-link. Fine for a self-hosted
 product, worth documenting in the ops runbook.
 
@@ -810,6 +810,21 @@ make it slow.
 (`github.js:1085-1091`) returns only the first four. Conflicts are expressed as
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.
+
+### C7. A Google sign-in can attach a second Google account to one user
+
+Found 2026-09-25 while moving the Google ladder into `services/identity.js`
+(W6-CDX-4), by reading the source; not reproduced against Google. The ladder
+looks the identity up by `provider_user_id`, and on a miss links by email with
+no check that the matched user already has a **different** Google subject.
+`oauth_accounts` is unique on `(provider, provider_user_id)` only (`init.sql`,
+`uq_provider_user`), so the insert succeeds and the user ends up with two
+Google rows. The address has to be Google-verified to get that far, so the
+realistic case is a recycled Workspace address or a deleted and recreated
+Google account, which is exactly what the OIDC ladder refuses as
+`identity_conflict` (spec Decision 3). The seam moved the Google branch without
+changing it, because W6-CDX-4 is a pure refactor with zero test edits; whether
+Google should also refuse is a behaviour change for its own session.
 
 ## D. Stale claims in the root `CLAUDE.md`
 

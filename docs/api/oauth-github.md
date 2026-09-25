@@ -33,20 +33,26 @@ organization.
 ### `GET /api/oauth/google`
 
 Redirects the user to Google's OAuth consent screen. Generates a short-lived
-(10 min) CSRF state token stored in memory.
+(10 min) CSRF state token, held in server memory and in an httpOnly
+`oauth_state_google` cookie, so only the browser that started the flow can
+complete it.
 
 ### `GET /api/oauth/google/callback`
 
 OAuth callback. Validates the `state` parameter, exchanges the auth code
 for tokens, verifies the ID token.
 
-**Account creation behavior:**
+**Account creation behavior** (decided by `resolveIdentity` in
+`services/identity.js`):
 1. If a Google OAuth account is already linked → log in that user.
 2. If no linked account but a user with the same email exists → link to
    that user.
 3. If the domain matches `GOOGLE_OAUTH_DOMAIN` → auto-create a new account
    (no invitation required). Username derived from the email local part.
-4. Otherwise → `403` (no invitation flow for outside-domain users).
+4. Otherwise → redirect to `/?oauth_error=no_account` (no invitation flow for
+   outside-domain users). An unverified email redirects with
+   `email_not_verified`, and an account outside `GOOGLE_OAUTH_DOMAIN` with
+   `domain_not_allowed`.
 
 On success, sets a `sessionToken` cookie and redirects to `/`.
 

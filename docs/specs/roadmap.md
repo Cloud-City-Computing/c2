@@ -405,7 +405,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-10 | A live-MySQL integration test project | nothing | yes |
 | W6-CDX-2 | One session per sign-in, stored hashed | W6-CDX-10 | yes |
 | W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes | W6-CDX-2 | yes |
-| W6-CDX-4 | An identity-resolution seam, Google moved onto it | nothing | yes |
+| W6-CDX-4 | An identity-resolution seam, Google moved onto it (**built 2026-09-25**, branch `track/w6-cdx-4-identity-seam`) | nothing | yes |
 | W6-CDX-5 | The OIDC relying party and `user_identities` | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3, W6-CMD-24 (the `returnTo` corpus) | yes |
 | W6-CDX-6 | Sign-out that propagates | W6-CDX-5; W6-CCID-3 | yes |
 | W6-CDX-7 | Machine JWTs through `verifyMachineCredential` | W6-CDX-5; W6-CCID-2, W6-CCID-3 | yes |

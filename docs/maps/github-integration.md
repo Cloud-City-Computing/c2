@@ -15,14 +15,14 @@ the moment they ask.
 ## 1. Auth and the `req.gh` helper
 
 Tokens are stored encrypted in `oauth_accounts.encrypted_token`. The crypto
-lives in `routes/oauth.js:48-81`:
+lives in `routes/oauth.js:50-83` (`TOKEN_CIPHER` to `decryptToken`):
 
 - AES-256-GCM, 12-byte IV, 16-byte auth tag.
 - The key is `scryptSync(GITHUB_CLIENT_SECRET, 'cloudcodex-oauth-token', 32)`
-  (`oauth.js:56`). **Rotating `GITHUB_CLIENT_SECRET` renders every stored token
+  (`getTokenEncryptionKey`, `oauth.js:58`). **Rotating `GITHUB_CLIENT_SECRET` renders every stored token
   undecryptable**; there is no key-version field and no re-encryption path.
   Every user has to re-link.
-- Stored as `ivHex:tagHex:ciphertextHex` (`oauth.js:67`).
+- Stored as `ivHex:tagHex:ciphertextHex` (`encryptToken`, `oauth.js:69`).
 - `encryptToken`/`decryptToken` return `null` when the secret is unset, which is
   how the app degrades gracefully with GitHub unconfigured.
 
@@ -47,7 +47,7 @@ message mentions credentials, it fire-and-forgets
 message check matters: GitHub also returns 403 for rate limits and missing
 scopes, and flipping the status on those would produce spurious "re-link your
 account" prompts. The frontend reads this through
-`GET /api/github/status` (`oauth.js:567`) and the `useGitHubStatus` hook, which
+`GET /api/github/status` (`oauth.js:564`) and the `useGitHubStatus` hook, which
 is what hides GitHub UI affordances for unlinked users.
 
 ### This router does NOT use the shared error handler
