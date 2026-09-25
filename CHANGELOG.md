@@ -94,7 +94,6 @@ through. **Upgrading from 0.9.0 needs one extra step; see Migration below.**
 - **Glyph-only controls have names.** Twelve controls announced as their glyph
   (a star, a plus, a cross) rather than their purpose; each now names what it
   does and to which document, and the version history row is a real button.
-
 - `docs/deployment.md` documented applying migrations with
   `source /var/lib/mysql/migrations/<file>.sql` inside `make db-shell`. No
   compose file mounts `migrations/` into the MySQL container, so that path does
@@ -167,8 +166,9 @@ done
 Without the first, documents over 64 KiB still fail to save on the upgraded
 install.
 
-[`migrations/2026-09-08-token-purpose.sql`](migrations/2026-09-08-token-purpose.sql).
-**Stop every writer, apply, then start the new image**, and note there is no
+**The token-purpose migration,**
+[`migrations/2026-09-08-token-purpose.sql`](migrations/2026-09-08-token-purpose.sql):
+**stop every writer, apply, then start the new image**, and note there is no
 rollback. The new column is `VARCHAR(32) NOT NULL` with a `CHECK` constraint and
 no `DEFAULT`, which makes the schema incompatible with the application in both
 directions, and the migration deletes existing token rows because they cannot be
