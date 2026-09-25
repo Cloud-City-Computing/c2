@@ -1,0 +1,391 @@
+# Suite hosting readiness track: an instance that can be operated
+
+Agreed 2026-09-24. Every `file:line` claim below was re-derived against `origin/main` `91493a6`.
+Every PR in this track re-derives the anchors it touches at the then-current `main` before
+editing.
+
+- **Track:** Wave 6 suite, hosting readiness. Sessions W6-CDX-31 to W6-CDX-36. This document is
+  the documents half of W6-CDX-30; W6-CDX-30's other half, the live-MySQL test project, is the
+  shared W6-CDX-10, specified in [`2026-09-24-suite-identity.md`](2026-09-24-suite-identity.md)
+  and run first.
+- **Plan:** [`../plans/2026-09-24-suite-hosting-readiness.md`](../plans/2026-09-24-suite-hosting-readiness.md)
+- **Requested by:** Kyle, in the 2026-09-24 decisions recorded in the Cloud Command ADR
+  `wave-6-is-one-sign-in-events-and-a-shared-shell.md`, all three rounds (a private repository;
+  what binds this spec is restated here). The second round answered this spec's three open
+  questions (D-J, D-O, D-P); the third set the box's boot admin (D-R).
+
+## Why this spec exists
+
+Kyle's order for the suite: **Wave 6, then a single-EC2 test deploy of Cloud Command, Cloud Codex
+and Cloud City ID that Kyle performs himself, then the design-partner beta, then a containerized
+service for real users.** Every Cloud Command workspace maps to exactly one Codex instance, so the
+test box runs at least one Codex instance from a published image under a supervisor, behind a
+TLS-terminating proxy, beside other services.
+
+Kyle's second and third rounds fixed the box's shape:
+
+- **Hosts (D-J).** Cloud Command at `command.cloudcitycomputing.com`, the first Codex instance at
+  `codex.cloudcitycomputing.com` and each later one at `<instance>.codex.cloudcitycomputing.com`
+  (a DNS label the operator assigns when linking it), and Cloud City ID at
+  `id.cloudcitycomputing.com`. Codex learns its own host from `APP_URL` and never from a request.
+- **Size (D-O).** The box carries one to three workspaces, so one to three Codex instances, during
+  the beta. W6-CDX-33's isolation proof blocks neither the test deploy nor the beta; it is required
+  before a fourth instance or the containerized service.
+- **Linking (D-P).** Linking a Codex instance to a workspace is an operator action only, never a
+  workspace admin's.
+- **The boot admin (D-R, third round).** Each box instance's `ADMIN_EMAIL` is a Cloud City operator
+  address that belongs to no design partner (`ops@cloudcitycomputing.com`), so Cloud City staff are
+  admin on every partner's instance, and the beta terms disclose that operator access. The
+  workspace owner is made an instance admin by the identity track's membership sync (W6-CDX-9),
+  never by being `ADMIN_EMAIL`, so Decision 6's never-promote rule never stands in a sync's way and
+  an ownership transfer syncs cleanly. Cloud Command's box env template and runbook (W6-CMD-36)
+  carry the value; no source file here names it.
+
+The published image cannot yet be operated safely that way. It has no stop handling, no health
+endpoint, nothing enforcing the single process CLAUDE.md decision 1 depends on, a production
+default that points at `localhost`, document images served to anyone with the address, and no
+backup script. None of this is suite-specific: every item here also helps any self-hoster who runs
+the image under Docker, which is why it lives in this repository.
+
+## Does "one Codex instance per workspace" need Codex to know its instance id?
+
+**No.** Cloud Command mints the instance id and keeps, per workspace, that instance's base URL,
+machine credential and event-channel claim. The id reaches the outside world only inside the
+receiver URL the operator configures (the events track) and the names Cloud City ID gives the
+instance's registrations (the identity track). Codex never stores it, and it keeps its own integer
+ids.
+
+What the decision does require of Codex is small, and it is all in this track:
+
+- **A written per-instance configuration contract** (W6-CDX-32): every environment variable a Codex
+  instance reads, whether each is required, degrades or defaults, and whether linking the instance
+  supplies it. Cloud Command's operator link tool (W6-CMD-31) prints its snippet from a pinned copy
+  of this list, so a variable one track reads without an entry is caught by a test here, and a
+  per-instance entry the snippet forgets by W6-CMD-31's test, not on the box.
+- **Several instances on one MySQL server without seeing each other** (W6-CDX-33): one schema and
+  one DML-only user per instance, proved on real MySQL.
+- **A single-writer lock keyed per instance** (W6-CDX-31), so two containers pointed at one schema
+  refuse rather than diverge.
+
+## Current behaviour, the starting point
+
+**Stop signals.** The image runs `CMD ["npm", "run", "start"]` (`cloudcodex/Dockerfile:45`), so
+`npm` stands between the container's stop signal and Node. `server.js` registers no `SIGTERM` or
+`SIGINT` handler (`server.js:1-150`). Collaborative state is an in-memory map per open document
+(`services/collab.js:36`) saved on a 3-second debounce (`collab.js:41`, `scheduleSave` at
+`:110-122`), so a stop inside that window loses the most recent edits' CRDT state.
+
+**Health.** There is no health endpoint. `docs/deployment.md:518-527` recommends probing
+`GET /api/oauth/providers`, which reads no database (`routes/oauth.js:143-151`), so it proves only
+that the process listens. `GET /api/admin/status` requires a session (`routes/admin.js:160`).
+
+**The single process is load-bearing and unenforced.** CLAUDE.md decision 1 says a second replica
+would hold a second, divergent copy of every open document. Nothing stops one from starting. The
+migration runner already takes a `GET_LOCK` named per database (`scripts/migrate.js:266`,
+`:287-322`), which is the pattern, but only for the duration of a migration.
+
+**Production defaults.** `APP_URL` defaults to `http://localhost:3000`
+(`routes/helpers/shared.js:146`), and that default is what invitation, password-reset and
+notification links carry when the variable is unset (`routes/admin.js:449`, `routes/auth.js:716`,
+`services/email-templates.js:24-26`). The CORS rule reads the variable directly and simply loses
+its `APP_URL` arm (`app.js:89`). `trust proxy` is hard-coded to `1` (`app.js:42`) and the pool to
+10 connections (`mysql_connect.js:24`). Every compose file floats
+MySQL at `mysql:8` (`docker-compose.yaml:8`, `docker-compose-prod.yml:3`,
+`docker-compose-release.yml:12`).
+
+**The admin sync promotes.** `ensureAdminUser` (`routes/admin.js:37-54`) finds any row matching
+`ADMIN_USERNAME` by name or `ADMIN_EMAIL` by email, sets `is_admin`, and overwrites its password,
+so an existing member whose email equals `ADMIN_EMAIL` is silently made the admin.
+
+**Document images are public.** `/doc-images` is an `express.static` mount (`app.js:176-180`)
+cached `public, immutable` for 30 days. Names are the first 16 hex characters of the image's
+SHA-256 (`routes/helpers/images.js:40-43`), so the only control is that a stranger does not know
+the address.
+
+**Backups are a manual recipe.** `docs/deployment.md:140-175` documents a `mysqldump` plus a tar of
+the `app_public` volume, and no script does either.
+
+**Security headers cover `/api` only.** Helmet, with the CSP and `frame-ancestors 'none'`, is
+mounted on `/api` (`app.js:112-125`), deliberately, so the Vite dev server's inline module scripts
+are not blocked (`docs/maps/request-lifecycle.md`). The single-page app's HTML and its static
+assets therefore carry no CSP and no frame protection. `docs/security.md` said Helmet covered every
+response; this spec's PR corrects that sentence, and W6-CDX-32 closes the gap.
+
+## Decisions this spec records
+
+1. **`CMD ["node", "server.js"]`**, and a bounded 10-second graceful shutdown that flushes every
+   open document's pending CRDT save before exiting.
+2. **`GET /healthz` and `GET /readyz`, both information-free.** `/healthz` touches nothing;
+   `/readyz` checks the database, pending migrations and the instance lock, and answers
+   `{ ready, reason }` with no version, count or table name.
+3. **A single-writer lock by default**: `GET_LOCK` named for the schema (a fixed prefix plus
+   `DATABASE()`), held on a dedicated connection for the life of the process, and named distinctly
+   from the runner's migration lock. `GET_LOCK` names are server-wide, and a schema name is unique
+   per instance on a server, so instances sharing one MySQL never contend.
+   `C2_INSTANCE_LOCK=0` is the named escape, for an operator who knows why.
+4. **`APP_URL` is fatal when unset in production**; `TRUST_PROXY` and `DB_POOL_SIZE` become
+   configuration with today's values as defaults. **In production the security headers cover the
+   app, not only `/api`**: one Helmet policy, CSP and frame protection included, on the HTML and
+   static responses too; development keeps today's `/api`-only scope for the Vite dev server.
+5. **MySQL is pinned to an 8.4 patch release** in every compose file.
+6. **The admin sync creates or syncs, and never promotes**: an existing non-admin whose email matches
+   is refused loudly instead.
+7. **Document images are served to their readers only**, with `DOC_IMAGES_PUBLIC=1` restoring
+   today's behaviour. Avatars stay public, as a documented decision.
+8. **One schema and one DML-only user per instance** is the recipe for several instances on one MySQL
+   server, and it is proved, not asserted. The proof is required before a fourth instance, not
+   before the test deploy or the beta (D-O).
+9. **Backup and restore are one command each**, with a drill.
+10. **The test box pins a Wave 6 release** (W6-CDX-36), cut after this track's deploy-path sessions
+    and the other tracks' merge. It is separate from the release that carries C2-0 to C2-5,
+    0.10.0, which is prepared on its own branch (`release/0.10.0`), not in this spec's PR.
+
+## Ordering constraint
+
+```
+W6-CDX-10 (live MySQL, identity plan PR 1)
+     ├──► W6-CDX-31 (signals, health, lock) ──► W6-CDX-35 (backup and restore) ──┐
+     ├──► W6-CDX-32 (configuration, headers) ───────────────────────────────────┤
+     │         └──► W6-CDX-33 (grants and isolation proof; before a fourth instance, not on the path)
+     └──► W6-CDX-34 (document images) ──────────────────────────────────────────┤
+                                        the other tracks' deploy-path sessions ──┴──► W6-CDX-36 (the release)
+```
+
+W6-CDX-32 is also a precondition of the identity track's W6-CDX-8: both change `ensureAdminUser`,
+and this track's never-promote rule lands first.
+
+---
+
+## W6-CDX-31. A container that stops cleanly and says when it is ready
+
+### In scope
+
+- `Dockerfile:45` becomes `CMD ["node", "server.js"]`, keeping `NODE_ENV=production` from the
+  image's `ENV`.
+- A `SIGTERM`/`SIGINT` handler, bounded at 10 seconds: stop accepting connections; `/readyz`
+  answers 503; write `ydoc_state` for every collab entry with a pending save; close both WebSocket
+  servers with code 1001; `pool.end()`; exit 0, or non-zero on timeout. It is built as an exported
+  `shutdown(deps)` so it can be tested with fake timers.
+- `GET /healthz` and `GET /readyz` as Decision 2; a Dockerfile `HEALTHCHECK`; `stop_grace_period:
+  20s` in the prod and release compose files.
+- The single-writer lock as Decision 3; its error message names the holder's connection and the
+  escape.
+- `docs/deployment.md`'s health checks section rewritten; the request-lifecycle and
+  build-test-and-ops maps.
+
+### Done means
+
+- `/healthz` issues zero queries. `/readyz` answers 503 with a reason when a migration is pending.
+  Neither body contains a version or a table name.
+- `shutdown(deps)` under fake timers flushes every dirty entry, stays within its bound, and carries
+  on past one flush that throws.
+- On live MySQL: a second process on the same schema exits non-zero and names the holder; after a
+  `kill -9` of the first, a third boots; a `SIGTERM` in the middle of an edit, then a restart,
+  preserves the last edit in `ydoc_state`.
+- The built image reports healthy within 30 seconds and stops within the grace period.
+
+### Explicitly deferred
+
+A client flush handshake before shutdown, and closing the `html_content` divergence after a
+restart: a document edited only over the socket still reads stale to non-editors until an explicit
+save, as documented in `docs/maps/documents-and-collab.md`.
+
+---
+
+## W6-CDX-32. Production configuration that cannot silently point at localhost
+
+### In scope
+
+- `APP_URL` unset with `NODE_ENV=production` exits at boot, naming the variable; development keeps
+  the `shared.js:146` default.
+- `TRUST_PROXY` (default `1`) and `DB_POOL_SIZE` (default `10`).
+- `mysql:8.4.x` pinned in `docker-compose.yaml`, `docker-compose-prod.yml` and
+  `docker-compose-release.yml`, with the exact patch recorded in the PR.
+- `ensureAdminUser` as Decision 6. The identity track's W6-CDX-8 builds its provider-aware admin on
+  this, so it lands first.
+- **Security headers on the app, in production** (Decision 4): Helmet is mounted on the whole app
+  before the static and single-page handlers when `NODE_ENV=production`, and on `/api` only in
+  development. One policy serves both: today's directives, `frame-ancestors 'none'` and
+  `X-Frame-Options: DENY`, with `img-src` widened to `https:` (documents hold remote images, and an
+  image cannot run script) and Helmet's default `upgrade-insecure-requests` turned off, so an
+  install evaluated over plain `http` still loads. `docs/security.md` and the request-lifecycle map
+  describe both scopes.
+- **The configuration contract**: `cloudcodex/env-contract.js`, data only and importing nothing, and
+  a test that enumerates every `process.env` read under `cloudcodex/` (outside `tests/`) and pins,
+  per variable, whether it is required, degrades or defaults, what it is required with when it is
+  required only beside another variable (`SUITE_NAME` beside `SUITE_COMMAND_WORKSPACE_URL`), and
+  whether it is per-instance. `.env.example` documents each one. A variable a later PR reads
+  without adding it to the contract fails this test, so every Wave 6 PR that reads a new variable
+  adds its entry, and one that lands before this session leaves it for this session to add: the
+  identity track's `OIDC_*` (W6-CDX-5) and `MACHINE_OIDC_*` (W6-CDX-7), the events track's
+  `WEBHOOK_*` (W6-CDX-13), the UI track's `SUITE_*` (W6-CDX-25), and this track's own. Each plan
+  gives its variables' flags, so the entry is the same whichever lands first.
+- **Per-instance means the link supplies it.** An entry is per-instance when linking the instance to
+  its workspace decides its value: its host, its machine credentials, its application at the
+  issuer and that issuer, its webhook subscription, its suite link, and the suite's name, which
+  Cloud Command supplies from its own single definition. Everything the box's Codex env template,
+  the database provisioning step or a default decides is not. The flag is about who supplies a
+  value, not whether it differs: `DB_NAME` differs per instance and is not per-instance,
+  `SUITE_NAME` is the same everywhere and is. Cloud Command's operator link tool (W6-CMD-31) reads
+  a pinned copy of this file and prints every per-instance entry into each instance's snippet, and
+  its test asserts over every one, so a per-instance variable a later PR adds fails there until the
+  tool supplies it. Cloud Command's test-box session (W6-CMD-36) re-pins that copy to the W6-CDX-36
+  release and re-runs the test.
+
+### Done means
+
+Tests for the `APP_URL` exit and the development default; `TRUST_PROXY` and `DB_POOL_SIZE` reaching
+Express and the pool; the admin sync creating, syncing and refusing (refusal is the new behaviour);
+the contract pinning every default, every `requiredWith` naming another entry and every entry
+carrying a `perInstance` boolean; and no compose file using a floating `mysql:8`. In production
+mode the app's HTML response carries `Content-Security-Policy` with `frame-ancestors 'none'` and
+`X-Frame-Options`, the built app loads with no CSP violation in the browser console (home, a
+document with an image and a diagram, the GitHub page), and `npm run dev` still serves the dev
+server.
+
+### Explicitly deferred
+
+A separate `TOKEN_ENCRYPTION_KEY` for GitHub tokens (today derived from `GITHUB_CLIENT_SECRET`, see
+`docs/maps/open-questions.md` C3), and structured logging, which CLAUDE.md rules out.
+
+---
+
+## W6-CDX-33. Many instances, one MySQL server: the grant recipe and the isolation proof
+
+### In scope
+
+- The recipe in `docs/deployment.md`: one schema per instance, a DML-only `c2_app` user, a
+  `c2_mig` user for the runner, and no `PROCESS`, `FILE`, `SUPER` or global grant.
+- `tests/integration/tenancy.test.js` runs the 2026-08-24 proof's cross-schema shapes against two
+  schemas and two users: every cross-schema statement fails with error 1142 or 1044, `SHOW
+  DATABASES` and `information_schema` show only the caller's schema, `LOAD_FILE` is blocked, and
+  DDL is denied to the app user.
+- `tests/integration/grants-sufficient.test.js` boots the app as the DML-only user and runs a smoke
+  path (login, then workspace, squad, archive and document, a collab edit and a comment) with zero
+  `ER_TABLEACCESS_DENIED_ERROR`.
+- The runner runs as the migration user; a test proves two instances' single-writer locks (one
+  per schema) are held at once on one server; the maps gain a tenancy section saying what the
+  boundary is and what it is not.
+
+### Done means
+
+Both suites are green in the integration step. A deliberately widened grant (`GRANT SELECT ON *.*`)
+turns `tenancy.test.js` red, confirmed to have landed. The result is recorded as the evidence for
+"one container and one schema per customer".
+
+**Not on the test-deploy path, and not a blocker for the beta (Kyle's decision D-O: one to three
+workspaces on the box).** It is required before a fourth instance shares the box's MySQL server, and
+before the containerized service. Until it lands, the box's instances share one server on the
+strength of the per-schema design, not a proof, which is the accepted cost of that decision.
+
+---
+
+## W6-CDX-34. Document images only for people who can read the document
+
+### In scope
+
+- The `/doc-images` static mount (`app.js:176-180`) becomes an authorized handler. A
+  `doc_images (hash, log_id, uploaded_by)` table is written at upload time (the upload route gains
+  a `logId` and requires write access to it) and at extraction time (`routes/helpers/images.js`).
+- The handler serves the bytes when the requester uploaded the image, or when `checkLogReadAccess`
+  passes for any document that holds it, so live collaborators see an image before an explicit
+  save. Responses are cached privately.
+- `DOC_IMAGES_PUBLIC=1` restores today's behaviour, and is documented.
+- A backfill scans `html_content` for `/doc-images/` references.
+
+### Done means
+
+An unauthenticated request and an authenticated non-reader get the same 404; a reader and the
+uploader get the bytes with the right content type and private caching; the opt-out reproduces
+today; after the backfill every existing image is reachable by its readers (a live-MySQL test on a
+seeded schema); export still inlines images.
+
+### Explicitly deferred
+
+Avatars (public by decision), and deleting an image when its last document stops using it.
+
+---
+
+## W6-CDX-35. Backup and restore as one command, with a drill
+
+### In scope
+
+`scripts/backup.sh` and `scripts/restore.sh`: `mysqldump --single-transaction --routines
+--triggers`, the `schema_migrations` ledger, and a tar of `app_public`, in one archive with a
+manifest; `make backup` and `make restore`; honest notes (consistency holds for InnoDB only, and
+the in-memory CRDT window is lost unless the backup follows a graceful stop); and the backups
+section of `docs/deployment.md` pointing at them. Cloud Command's box script calls these rather
+than duplicating them.
+
+### Done means
+
+A drill on live MySQL: seed a document with a pasted image and a comment; back up; drop the schema
+and wipe the upload directory; restore into a scratch schema and boot; `/readyz` answers 200, the
+document's HTML is intact, and its image is served to its reader.
+
+---
+
+## W6-CDX-36. The Wave 6 Codex release the test box pins
+
+### In scope
+
+- Precondition: this track's deploy-path sessions have merged (W6-CDX-31, W6-CDX-32, W6-CDX-34
+  and W6-CDX-35; W6-CDX-33 is not one, per D-O), and so have the other tracks' (identity
+  W6-CDX-10 and W6-CDX-2 to W6-CDX-9, events W6-CDX-12 to W6-CDX-14, and UI W6-CDX-21 to
+  W6-CDX-29).
+- Retire this spec and its plan, or, if W6-CDX-33 is still open (it is not a precondition),
+  trim both to W6-CDX-33 alone and leave its PR to retire them; update the roadmap.
+- Move the changelog's `[Unreleased]` into a version, bump `cloudcodex/package.json`, and move the
+  default in `docker-compose-release.yml`, which `release.yml`'s guard checks.
+- Tag through `release.yml`. **Kyle authorizes the tag**, because the release is public.
+- Verify that the pulled GHCR image boots with the box's environment and reports healthy, and hand
+  its digest and an idle-memory reading to Cloud Command's W6-CMD-38, and the release's
+  `env-contract.js` (its tag and path) to W6-CMD-36, which re-pins its copy of the contract and
+  re-runs the link tool's snippet test against it.
+
+### Done means
+
+The release workflow is green and the GHCR digest is recorded; `docker compose -f
+docker-compose-release.yml up` from a clean clone reaches `/readyz` 200; the spec and plan are
+deleted and the maps are current.
+
+---
+
+## Cross-repo dependencies
+
+| This session | Is needed by (Cloud Command) |
+|---|---|
+| W6-CDX-31, W6-CDX-32 | W6-CMD-36 (the box's compose file, health checks and smoke test) |
+| W6-CDX-32 (the configuration contract) | W6-CMD-31 (the operator link tool reads a pinned copy of `env-contract.js` and prints, and tests, every per-instance entry) |
+| W6-CDX-33 | the runbook appendix that adds a fourth instance, and the containerized service |
+| W6-CDX-35 | W6-CMD-37 (the whole-box backup) |
+| W6-CDX-36 | W6-CMD-36 (re-pins the contract copy to the release and re-runs the snippet test); W6-CMD-38 (the full-box rehearsal and v1.0.0) |
+
+Cloud Command's W6-CMD-30 measures idle and warm memory against the release that carries C2-0 to
+C2-5, before this track starts, and re-measures on the W6-CDX-36 image.
+
+## Explicitly deferred, track level
+
+- **Structured logging.** CLAUDE.md rules out a logging library, and nothing here needs one.
+- **Tenant export and erasure**, **a scoped operator role**, and **provisioning automation**: the
+  later containerized-service era, with billing, entitlements and the seat taxonomy. Until a scoped
+  role exists, Cloud City staff reach a box instance as its `ADMIN_EMAIL` boot admin, which the
+  beta terms disclose (D-R).
+- **UUIDs.** Per-instance integers stay, by decision.
+
+## Open questions for Kyle
+
+None remain in this spec. Kyle's second round, 2026-09-24, answered all three: the host names
+(D-J, above), the beta's size, one to three workspaces, so W6-CDX-33 waits for a fourth instance
+(D-O), and linking an instance as an operator action only (D-P). The third round set the box's
+`ADMIN_EMAIL` to a Cloud City operator address (D-R, above).
+
+The only open question left in Wave 6 is the eight accent names, which Kyle confirms in
+W6-CDX-22's review.
+
+## Retirement
+
+W6-CDX-36 deletes this spec and its plan and marks the hosting row in [`roadmap.md`](roadmap.md)
+shipped; the maps updated by each session are the record. If W6-CDX-33 has not merged by then, which
+D-O allows, W6-CDX-36 trims this spec and its plan to W6-CDX-33 instead, and W6-CDX-33's PR does
+the retirement.

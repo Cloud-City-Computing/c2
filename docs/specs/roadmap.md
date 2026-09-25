@@ -57,14 +57,15 @@ constraint right now.
 
 | | Track | Scope | Depends on |
 |---|---|---|---|
-| **A** | Evaluation path — **shipped** | Mail optional, install defects, non-empty first boot | nothing |
+| **A** | Evaluation path (**shipped**) | Mail optional, install defects, non-empty first boot | nothing |
 | **B** | First-run experience (**shipped**) | Real guided onboarding for every user including the admin, invite-carried squad assignment, `/api/setup` retired | A |
 | **C** | Vocabulary and hierarchy (**decided**) | Names and level count both stay; day-one users meet Squad → Archive → Log | decided 2026-08-08 |
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
-| **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token | nothing; C2-0 gates the rest |
+| **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token, C2-5 a workspace reader check for the suite | nothing; C2-0 gates the rest |
+| **W** | Wave 6, the suite (**specced 2026-09-24**) | Four sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36). The shared live-MySQL test project W6-CDX-10 comes before every session that changes schema or needs a real database; W6-CDX-4 and W6-CDX-21 need neither and do not wait for it | S; named Cloud Command and Cloud City ID sessions per sub-track |
 
-### A. Evaluation path — shipped
+### A. Evaluation path (shipped)
 
 Removed both walls: the app boots with no SMTP configured (`initMail()`
 degrades instead of exiting) and a fresh admin now lands inside a seeded
@@ -252,31 +253,198 @@ function lives elsewhere and is independently importable.
 Still inside `Editor.jsx`: `TiptapToolbar`, `RichTextEditor`, `MarkdownEditor`,
 and the ~690-line `Editor` component itself. `GitHubPage.jsx` is untouched.
 
-### S. Security and infrastructure (shipped 2026-09-09)
+### S. Security and infrastructure (shipped 2026-09-12)
 
-Added 2026-09-08, shipped 2026-09-09 across PRs #45, #47, #48, #46 and #49, in
-that order. The spec and plan that scoped it have been deleted per the
-`docs/specs/` convention; the maps are the record now. See
+Added 2026-09-08. C2-0 to C2-4 shipped on 2026-09-09 across PRs #45, #47, #48,
+#46 and #49, in that order. C2-5, the workspace reader check, followed as #51
+and merged on 2026-09-12. The specs and plans that scoped the track have been
+deleted per the `docs/specs/` convention (the C2-0 to C2-4 pair in #50, the
+C2-5 pair on 2026-09-24); they remain readable in git history at `3cce3eb` and
+`84de05c`. The maps are the record now. See
 [`../maps/access-control.md`](../maps/access-control.md) for the tenant
-boundary and machine principals,
+boundary and machine principals, including `requireMachine` and the reader
+check (section 7),
 [`../maps/data-model.md`](../maps/data-model.md) for the typed token pool and
 `schema_migrations`, [`../maps/build-test-and-ops.md`](../maps/build-test-and-ops.md)
 for the migration runner and the CI gate, and
-[`../../docs/security.md`](../security.md) for the cross-tenant audit queries. Tracks A through E are all aimed at adoption, which left this
-project with no written security track at all while four cross-tenant
-escalations and a credential-flow defect sat in the tree. Scoped in
-[`2026-09-08-security-and-infrastructure.md`](2026-09-08-security-and-infrastructure.md),
-decomposed in
-[`../plans/2026-09-08-security-and-infrastructure.md`](../plans/2026-09-08-security-and-infrastructure.md).
+[`../../docs/security.md`](../security.md) for the cross-tenant audit queries.
+Tracks A through E are all aimed at adoption, which left this project with no
+written security track at all while four cross-tenant escalations and a
+credential-flow defect sat in the tree.
 
 Unlike the other tracks it is not justified by adoption. Cloud City proposes to
 operate this software for money, and C2-1 through C2-3 are live defects in a
 multi-tenant product, so they are owed on that basis alone. Only C2-4, the
-scoped service token, exists because another product is waiting on it.
+scoped service token, and C2-5, the reader check, exist because another product
+is waiting on them.
 
-C2-0 comes first and is a hard gate: `main` requires a review but requires no
-status checks, so a red run is mergeable today, and C2-2 rewrites the credential
-reset path.
+C2-0 came first and was a hard gate: before it, `main` required a review but no
+status checks, so a red run was mergeable, and C2-2 rewrote the credential
+reset path. Since C2-0 the `Lint, test and build` check is required on `main`.
+
+The release that carries C2-0 to C2-5 is **0.10.0**, per Kyle's decision D-H of
+2026-09-24 (the Cloud Command ADR named under track W). It is prepared on its own
+branch, `release/0.10.0`, cut from `main`: the changelog section and the two
+version fields `release.yml` checks, and nothing else. The tag is cut through
+`release.yml` once Kyle authorizes it. Until then the only published image,
+0.9.0, predates every fix in this track.
+
+**Upgrading a 0.9.0 database takes one manual step in 0.10.0**, given in that
+release's changelog entry and in `docs/deployment.md`'s upgrade section: two files
+on the runner's closed pre-runner list, `widen_log_content.sql` and
+`drop_squad_permissions.sql`, shipped after 0.9.0 was tagged, so `--baseline`
+records them as applied on a database that never ran them. **Follow-up, not yet
+scheduled:** the runner should detect that database itself (`logs.html_content`
+still `TEXT`, or a `squad_permissions` table still present) and apply the two
+files or refuse with a sentence, so the step stops being manual. Neither file
+declares a `CREATE TABLE` or `ADD COLUMN`, which is why today's schema check
+cannot see them.
+
+### W. Wave 6: the suite (specced 2026-09-24)
+
+Cloud City will run Cloud Codex beside Cloud Command as one suite (working name
+"Cloud City"). Kyle's decisions of 2026-09-24, recorded in the Cloud Command ADR
+`wave-6-is-one-sign-in-events-and-a-shared-shell.md` (Cloud Command is a private
+repository), set the scope and the order:
+
+- **Scope before a test deploy:** one sign-in for both products at Cloud City ID
+  (a Zitadel issuer, with both products as OIDC relying parties) and one
+  sign-out; events Cloud Codex emits and Cloud Command consumes, so document
+  changes show on tasks; and a shared suite shell, with Cloud Codex on Cloud
+  Command's design tokens.
+- **Order:** Wave 6, then a single-EC2 test deploy of both products and Cloud
+  City ID that Kyle performs himself, then the design-partner beta, then a
+  containerized service for real users and the commercial work. This replaces
+  the earlier "unification after the beta" framing.
+- **Shape:** every Cloud Command workspace maps to exactly one Cloud Codex
+  instance. Cloud Codex keeps its per-instance integer ids; Cloud Command mints
+  the instance id. There is no organization above a workspace.
+
+A second round of decisions the same day (D-J to D-P in that ADR) answered the
+questions the four specs raised:
+
+- **Host names (D-J).** `command.cloudcitycomputing.com`;
+  `codex.cloudcitycomputing.com` for the first Cloud Codex instance and
+  `<instance>.codex.cloudcitycomputing.com` for every later one, where
+  `<instance>` is a DNS label the operator assigns when linking it; and
+  `id.cloudcitycomputing.com`, so the issuer is `https://id.cloudcitycomputing.com`.
+  The company domain was chosen because it will not change when the suite is
+  named, and the issuer is half of every identity key.
+- **Accounts (D-K).** Anyone may register at Cloud City ID's login page, with
+  email verification. Each product still gates its own workspaces, so an account
+  there admits nobody to a Codex instance by itself.
+- **Membership sync (D-M)** is automatic and before the test deploy: adding,
+  re-roling or removing a member of a Cloud Command workspace does the same in
+  its Codex instance, and the workspace owner is the instance admin. W6-CDX-9 is
+  on the deploy path.
+- **Tokens and palette (D-L, D-N).** The shared token package lives in the public
+  Apache-2.0 repository `Cloud-City-Computing/cloud-city-design`. Codex adopts
+  the OKLCH accent picker (four of eight hues renamed off reserved semantic
+  arcs, nothing removed, all 40 hue-by-surface pairs at 4.5:1) and Cloud
+  Command's blue-grey tint.
+- **Box size (D-O).** The test box carries one to three workspaces during the
+  beta. W6-CDX-33, the shared-MySQL isolation proof, blocks neither the test
+  deploy nor the beta; it is required before a fourth instance or the
+  containerized service.
+- **Approved defaults (D-P).** A 24-hour ceiling on SSO sessions, renewed by a
+  silent redirect. A deleted linked document stays on its task as a struck
+  "Deleted in Codex" chip with Unlink, and linked-document activity shows on the
+  task, its saga and the workspace Activity feed. Linking a Codex instance to a
+  workspace is an operator action only. **Not approved:** letting W6-CDX-28 and
+  W6-CDX-29, the content and admin burndowns, trail the deploy; both are on its
+  path.
+
+A third round the same day (D-Q to D-V in that ADR) answered what the specs still
+held open. The decisions that bind this repository:
+
+- **The boot admin (D-R).** Each test-box instance's `ADMIN_EMAIL` is a Cloud City
+  operator address that belongs to no design partner (`ops@cloudcitycomputing.com`),
+  so Cloud City staff are admin on every partner's instance, and the beta terms
+  disclose that operator access. The workspace owner is synced as an ordinary
+  instance admin (W6-CDX-9), never as `ADMIN_EMAIL`, so an ownership transfer syncs
+  cleanly.
+- **Where a synced member lands (D-S).** In the instance's seeded `General` squad,
+  with read and write, named on the invitation the sync creates (W6-CDX-9).
+- **The switcher's place (D-U).** Each app's existing top-left identity slot; there
+  is no new suite bar (W6-CDX-25).
+- **The Toast and the theme (D-V).** Codex's Toast is the suite's shared toast
+  primitive, and light mode stays deferred for Codex through Wave 6; Cloud Command
+  keeps its existing light theme and toggle (W6-CDX-23, and the UI spec's Decision 6).
+
+The other two decisions in that round change nothing in this repository.
+
+Like track S this is not justified by adoption, and it carries one constraint
+through every sub-track: **everything new is generic and off by default.** An
+install that sets no new variable (no OIDC issuer, no webhook subscription, no
+suite mode) behaves as it does today, so Cloud Codex stays source-available and
+complete on its own.
+
+**IDs are fresh.** `W6-CDX-n` are this repository's sessions and never collide
+with the shipped C2-0 to C2-5. `W6-CMD-n` are Cloud Command sessions and
+`W6-CCID-n` are sessions in Cloud City ID's own repository, which is private like
+Cloud Command's; both appear here only as dependencies. The 2026-08-24 design's
+C2-AUTH, F and CC numbers are retired.
+
+| Sub-track | Spec | Plan | Sessions |
+|---|---|---|---|
+| Identity | [suite identity](2026-09-24-suite-identity.md) | [plan](../plans/2026-09-24-suite-identity.md) | W6-CDX-10 (shared), W6-CDX-2 to W6-CDX-9 |
+| Outbound events | [outbound events](2026-09-24-outbound-events.md) | [plan](../plans/2026-09-24-outbound-events.md) | W6-CDX-12 to W6-CDX-16 |
+| UI and tokens | [suite UI](2026-09-24-suite-ui.md) | [plan](../plans/2026-09-24-suite-ui.md) | W6-CDX-21 to W6-CDX-29 |
+| Hosting readiness | [suite hosting readiness](2026-09-24-suite-hosting-readiness.md) | [plan](../plans/2026-09-24-suite-hosting-readiness.md) | W6-CDX-31 to W6-CDX-36 |
+
+W6-CDX-1, W6-CDX-11 and W6-CDX-20 (the three "write the spec" sessions) and the
+documents half of W6-CDX-30 are the PR that added this section. W6-CDX-30's
+other half, the live-MySQL test project, is the same work as W6-CDX-10 and is
+done once, as W6-CDX-10.
+
+Every session, in the order to do them. "Deploy" marks the sessions the test
+deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
+
+| ID | Session | Depends on | Deploy |
+|---|---|---|---|
+| W6-CDX-10 | A live-MySQL integration test project | nothing | yes |
+| W6-CDX-2 | One session per sign-in, stored hashed | W6-CDX-10 | yes |
+| W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes | W6-CDX-2 | yes |
+| W6-CDX-4 | An identity-resolution seam, Google moved onto it | nothing | yes |
+| W6-CDX-5 | The OIDC relying party and `user_identities` | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3, W6-CMD-24 (the `returnTo` corpus) | yes |
+| W6-CDX-6 | Sign-out that propagates | W6-CDX-5; W6-CCID-3 | yes |
+| W6-CDX-7 | Machine JWTs through `verifyMachineCredential` | W6-CDX-5; W6-CCID-2, W6-CCID-3 | yes |
+| W6-CDX-8 | Hosted mode: OIDC only, invitations bind on verified email | W6-CDX-5, W6-CDX-32; W6-CCID-3 | yes |
+| W6-CDX-9 | Machine membership endpoints for the automatic sync | W6-CDX-7, W6-CDX-8 | yes |
+| W6-CDX-12 | Three activity gaps fixed at the source | W6-CDX-10 | yes |
+| W6-CDX-13 | The outbox, subscriptions and the emit hook | W6-CDX-12 | yes |
+| W6-CDX-14 | The delivery worker | W6-CDX-13 | yes |
+| W6-CDX-15 | Webhooks in the admin console | W6-CDX-14 | no |
+| W6-CDX-16 | A machine read for reconciliation | W6-CDX-10 | no |
+| W6-CDX-21 | Vendor the tokens, fonts and gates | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
+| W6-CDX-22 | The palette bridge and the accent picker | W6-CDX-21 | yes |
+| W6-CDX-23 | Focus, buttons and the Toast | W6-CDX-22 | yes |
+| W6-CDX-24 | Dialogs with real semantics | W6-CDX-23 | yes |
+| W6-CDX-25 | Shell chrome and the suite identity cluster | W6-CDX-23, W6-CMD-23 | yes |
+| W6-CDX-26 | The suite front door, deep links in | W6-CDX-24, W6-CDX-25, W6-CDX-8, W6-CMD-24 | yes |
+| W6-CDX-27 | Deep links out: Linked tasks | W6-CDX-25, W6-CMD-25 | yes |
+| W6-CDX-28 | Content surfaces on the tokens | W6-CDX-22 | yes |
+| W6-CDX-29 | Admin and settings surfaces, and the UI track retires | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
+| W6-CDX-31 | Signals, health, readiness, the single-writer lock | W6-CDX-10 | yes |
+| W6-CDX-32 | Production configuration and the per-instance contract | W6-CDX-10 | yes |
+| W6-CDX-33 | The grant recipe and the isolation proof | W6-CDX-32 | no: before a fourth instance |
+| W6-CDX-34 | Document images for readers only | W6-CDX-10 | yes |
+| W6-CDX-35 | Backup and restore, with a drill | W6-CDX-31 | yes |
+| W6-CDX-36 | The Wave 6 Codex release the test box pins | every session marked yes above | yes |
+
+Two releases, deliberately separate: **0.10.0** carries C2-0 to C2-5 and
+exists so the published image stops predating the security fixes; **W6-CDX-36**
+is the later release that contains this wave, and it is what the test box pins.
+
+**Deferred to the later containerized-service era, and not planned here:**
+billing, entitlements, the seat taxonomy, hosted per-customer provisioning
+automation, and a scoped operator role for Cloud City staff (until then, staff
+reach a test-box instance as its boot admin, D-R). Each spec lists the narrower
+items it defers and why.
+
+**Open questions for Kyle** live in each spec, and the second and third rounds
+answered all but one. The only open question left in Wave 6 is the eight accent
+names, which Kyle confirms in W6-CDX-22's review.
 
 ## Sequencing
 
@@ -291,13 +459,30 @@ now         A ──────────────────────
 
             C: decided 2026-08-08, no breaking change to execute
 
-            S ────────────────────────────► shipped 2026-09-09
+            S ────────────────────────────► shipped 2026-09-12 ──► 0.10.0
+                                                  │
+            W ◄───────────────────────────────────┘  specced 2026-09-24
+                W6-CDX-10 first for every session that needs a real
+                database (W6-CDX-4 and W6-CDX-21 do not), then identity,
+                events, UI and hosting in parallel, then W6-CDX-36, the
+                release the test box pins
 ```
 
-Track S runs alongside the rest rather than after them. It does not depend on
-A through E and they do not depend on it, but C2-0 is a hard gate inside S: it
-makes a red CI run block a merge, and the PRs that follow it change access
+Track S ran alongside the rest rather than after them. It did not depend on
+A through E and they did not depend on it, but C2-0 was a hard gate inside S: it
+made a red CI run block a merge, and the PRs that followed it changed access
 control and the credential reset path.
+
+Track W builds on S (the migration runner, the machine-credential seam and the
+reader check are all load-bearing for it) and depends on nothing in A to E.
+W6-CDX-10 comes first for every session that changes schema or needs a real
+database, because no Wave 6 schema change can be verified until a test touches a
+real MySQL. W6-CDX-4 (a pure refactor) and W6-CDX-21 (vendoring and static
+gates) need neither and can start without it. The four sub-tracks then run in
+parallel, subject to the cross-repo dependencies each spec names. Its size, 29
+sessions in this repository with one active committer, is why each spec marks
+which sessions the test deploy needs: after Kyle's round-2 answers, all but
+W6-CDX-15, W6-CDX-16 and W6-CDX-33.
 
 A, B and D have shipped, C is decided, and **E's defect half shipped on
 2026-08-09**. Two of the arguments for E were settled during D rather than
@@ -306,8 +491,9 @@ app now has an error boundary, so a render error is no longer unrecoverable.
 
 What remains is **E2**, breaking up `Editor.jsx` and `GitHubPage.jsx` (2652
 lines) so the interface is testable; its first cut landed 2026-08-10 and took
-`Editor.jsx` to 1332 lines. B13 shipped on 2026-08-09, leaving **B15**
-(glyph-only control names) as the open accessibility item.
+`Editor.jsx` to 1332 lines. B13 shipped on 2026-08-09 and **B15** (glyph-only
+control names) on 2026-08-20, so no accessibility item from the defect list is
+open.
 
 The measurement re-read on 2026-08-09, one day after the v0.9.0 release: still
 38 stars, 1 fork, 0 open issues, 0 watchers, 12 unique viewers and 66 unique

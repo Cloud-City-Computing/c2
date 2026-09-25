@@ -306,8 +306,11 @@ make db-shell                # mysql CLI in the Docker container
 ./start.sh                   # one-shot bootstrap (deps, Docker, dev)
 ```
 
-CI (`.github/workflows/ci.yml`) runs `npm ci && npm run lint && npm test` on
-push and PR to `main`. **There are no pre-commit hooks** — local lint/test is
+CI (`.github/workflows/ci.yml`) is one job, `Lint, test and build`, which runs
+`npm ci`, `npm run lint`, `npm test`, `npm run test:coverage` (the per-glob
+thresholds are the real gate) and `npm run build`. It runs on push to `main`
+and on every pull request whatever its base, and it is the required status
+check on `main`. **There are no pre-commit hooks**, so local lint and test are
 on you.
 
 ## Rules
