@@ -406,7 +406,9 @@ The Google callback's linking ladder is written inline in the route (`oauth.js:2
   ([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)):**
   the same rung refuses a user matched by verified email who has two-factor authentication on
   (`two_factor_method` `email` or `totp`) as `two_factor_enabled`, writing nothing. It runs after
-  `email_conflict` and before the `identity_conflict` check. An identity already linked still
+  `email_conflict` and before the `identity_conflict` check, and the link INSERT copies the user
+  row only while two-factor is still off, so two-factor turned on between the lookup and the
+  INSERT is refused the same way (zero rows). An identity already linked still
   signs in with no local second factor, including a user who turns two-factor on after linking:
   once linked, Google's own sign-in, its MFA included, governs the account.
 - `AUTH_PROVIDERS` is parsed and validated at boot, failing fast on an unknown value or on a

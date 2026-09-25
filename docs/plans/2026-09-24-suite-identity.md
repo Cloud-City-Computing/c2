@@ -597,7 +597,11 @@ The Google branch's refusals are now `email_not_verified`, `domain_not_allowed`,
 `email_conflict`, `two_factor_enabled` and `identity_conflict`. The email lookup reads
 `SELECT id, two_factor_method FROM users WHERE email = ?`, and a match with two-factor on (`email`
 or `totp`, no carve-out) is refused as `two_factor_enabled` with nothing written, after
-`email_conflict` and before the Google row check, so the refusal costs two queries in all. An identity
+`email_conflict` and before the Google row check, so the refusal costs two queries in all. The
+link itself is `INSERT INTO oauth_accounts (...) SELECT id, 'google', ?, ? FROM users WHERE id = ?
+AND (two_factor_method IS NULL OR two_factor_method = 'none')`, and zero affected rows answers
+`two_factor_enabled` with nothing written: the same test made at insert time, which closes the
+window between the lookup and the write. An identity
 already linked is unchanged and never consults two-factor: once linked, Google's own sign-in, its
 MFA included, governs the account. `Std_Layout.jsx` gained copy for the code. Tests were committed
 red first: `tests/services/identity.test.js` (call by call; its pinned email-lookup SQL changed),

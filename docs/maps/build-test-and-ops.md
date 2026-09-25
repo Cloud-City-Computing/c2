@@ -246,6 +246,24 @@ them at import. Mutation-checked on 2026-09-25: with the refusal removed from
 to `/` with a session), alongside eight mocked ones: five in
 `tests/services/identity.test.js` and three across the two route seam files.
 
+The same file holds open the one interleave a mocked test cannot: two-factor
+turned on between the seam's email lookup and its link INSERT. A transaction
+runs the app's own enable statement (`UPDATE users SET two_factor_method =
+'totp' ...`, and the `email` one) and holds the user row; the seam's lookups
+are plain reads and see two-factor off, and its link INSERT, the only statement
+in the ladder that locks the user row, waits. Reaching that lock wait is the
+proof the lookups already passed. After the commit the answer must be
+`two_factor_enabled` with no `oauth_accounts` row. An anchor holds the same row
+with a change that leaves two-factor off and must link after the same wait. The
+old unconditional `VALUES` INSERT waited too (its foreign-key check locks the
+parent row) and then linked, which is how the race was seen. Mutation-checked
+on 2026-09-25: the INSERT put back to `VALUES` reddened both race tests
+(`ok: true`) and six mocked SQL pins; the conditional INSERT kept but its
+zero-rows check removed reddened both race tests (the seam reported a link it
+never wrote) and three mocked zero-rows tests. The lock-wait poller both race
+files use is `waitForLockWaits` in `tests/integration/mysql-admin.js`, which
+carries the 100 ms trap described above.
+
 Tests mirror the source tree:
 
 ```

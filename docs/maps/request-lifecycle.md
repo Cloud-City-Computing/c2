@@ -214,7 +214,13 @@ C7), else link them, else create-and-link (username from
 `no_account`. With linking by email off, an email match is `email_conflict`
 before either check. The two-factor refusal comes before the Google row check
 because it reads the row already in hand and still holds once a conflicting
-link is cleared.
+link is cleared. The link itself is `INSERT INTO oauth_accounts ... SELECT ...
+FROM users WHERE id = ? AND (two_factor_method IS NULL OR two_factor_method =
+'none')`, so the INSERT repeats the test at insert time: two-factor turned on
+after the lookup inserts zero rows, and zero rows is the same
+`two_factor_enabled` with nothing written. Under InnoDB's default isolation that
+source read takes a shared lock, so an enable still committing is waited for
+and then seen.
 
 **The linked rung never consults local two-factor.** An identity found by
 `provider_user_id` signs in with no second-factor challenge, including a user

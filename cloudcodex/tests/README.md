@@ -35,7 +35,7 @@ tests/
 ├── test-projects.test.js   ← pins which projects the default run names
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
 │   ├── global-setup.js     ← teardown: fails the run if a c2_it_ schema leaked
-│   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers
+│   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers, lock-wait poller
 │   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql
 │   ├── migrate.test.js     ← the migration runner on a real database
 │   ├── oauth-one-link-per-provider.test.js ← a migration's refusal over real rows, and the race it closes
