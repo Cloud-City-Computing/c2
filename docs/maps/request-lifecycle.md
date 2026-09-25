@@ -16,10 +16,11 @@ config gates run **before** anything listens.
 | Load `.env` | `mysql_connect.js:16` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
 | DB pool | `mysql_connect.js:18-26` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. |
 | DB credential gate | `mysql_connect.js:28-32` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. This is now the only boot-fatal config gate besides the DB one above; there is no SMTP gate. |
+| Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the provider gate below and an invalid `PORT`, these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
+| Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` upserts the `.env` admin and returns its `id` (`Promise<number\|null>`). Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
-| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:212`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
+| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:246`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
 | Collab WS | `server.js:64` | `setupCollabServer(server)`, path `/collab`. |
 | Notification WS | `server.js:68` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
@@ -183,6 +184,43 @@ It is mounted on exactly two routes, `GET /api/search` and `GET /api/browse`
 (`routes/search.js`), and configured by `SERVICE_TOKEN` plus
 `SERVICE_TOKEN_USER`, both required. See
 [access-control.md](access-control.md) section 7 for the never-admin rule.
+
+### External identity: the resolution seam
+
+`middleware/auth.js` authenticates a session; deciding **which local user** an
+external sign-in is happens before any session exists, in one place:
+`resolveIdentity(claims, policy)` in `services/identity.js`. A provider route
+does the protocol work (state, code exchange, token verification), hands the
+verified claims and a policy to the seam, and turns the answer into a session
+or a redirect. The answer is `{ ok: true, userId, created }` or
+`{ ok: false, reason }`, `reason` one of `email_not_verified`,
+`domain_not_allowed`, `no_account`, `identity_conflict`, `email_conflict`. A
+refusal never throws and writes nothing; a thrown error is a database failure
+and reaches the router's `errorHandler`.
+
+Google (`GET /api/oauth/google/callback` in `routes/oauth.js`) is the only
+caller. Its policy is `requiredHostedDomain: GOOGLE_OAUTH_DOMAIN`,
+`linkByVerifiedEmail: true`, `autoCreate: Boolean(GOOGLE_OAUTH_DOMAIN)`, and the
+Google branch is the ladder the route used to carry inline, with the same SQL in
+the same order plus one check: refuse an unverified email, refuse a hosted
+domain other than the required one, look up `oauth_accounts` by
+`provider_user_id`, else take the user whose `email` matches, refuse
+`identity_conflict` if that user already holds a Google row (another subject,
+since the subject lookup missed: spec Decision 3's rule, `open-questions.md`
+C7), else link them, else create-and-link (username from
+`deriveUniqueUsername`, also in the seam) only when auto-create is on, else
+`no_account`. A refusal becomes `/?oauth_error=<reason>`, which `Std_Layout.jsx`
+turns into copy in the Login modal, with a generic fallback for a code it does
+not know. A provider the seam has no ladder for throws. The route keeps everything around
+the seam unchanged: the browser-bound state cookie, the token exchange, the
+user fetch and `generateSessionToken`. The OIDC relying party (W6-CDX-5) is the
+seam's second caller.
+
+The query order is load-bearing for tests, not only for behaviour: route tests
+queue `c2_query` mocks in call order, which is why
+`tests/routes/oauth-google-seam.test.js` and
+`oauth-google-domain-seam.test.js` pin it through the route and
+`tests/services/identity.test.js` pins it call by call.
 
 ### Session tokens
 

@@ -16,7 +16,7 @@ generated column:
 | `html_content` | `MEDIUMTEXT` | REST save, publish, restore, explicit WS save, GitHub pull | everything: rendering, export, search (via generated column), GitHub push |
 | `markdown_content` | `MEDIUMTEXT` | REST save when the client sends it, WS save, GitHub pull/resolve/import | GitHub push (`github.js:1035-1043`), markdown-mode editing |
 | `ydoc_state` | `LONGBLOB` | collab autosave and explicit save (`collab.js:114-118`) | collab session restore only (`collab.js:69-76`) |
-| `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:237`) | the FULLTEXT index |
+| `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:275`) | the FULLTEXT index |
 
 `plain_content` is `REGEXP_REPLACE(html_content, '<[^>]+>', '')`, computed by
 MySQL on every write of `html_content`. It is the *only* thing search matches on
@@ -181,7 +181,7 @@ Three read-only accessors feed the admin and presence surfaces:
 ## 3. Versions
 
 `versions` rows are snapshots of `html_content` with an optional title and
-release notes (`init.sql:304-319`). Four operations:
+release notes (`init.sql:342-357`). Four operations:
 
 - **Publish** bumps `logs.version` and inserts a row. Two entry points, REST
   (`documents.js:155`) and WS (`collab.js:531`), sharing `canPublish`.

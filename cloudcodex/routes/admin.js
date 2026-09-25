@@ -89,7 +89,7 @@ const WELCOME_HTML = `
  * The guard is "this database holds no content of its own", not "this
  * instance has never been seeded" (nothing records that). Workspaces alone
  * are not enough: `DELETE /api/workspaces/:id` exists and
- * `archives.squad_id` is `ON DELETE SET NULL` (`init.sql:212`), so deleting
+ * `archives.squad_id` is `ON DELETE SET NULL` (`init.sql:246`), so deleting
  * the last workspace leaves orphaned archives and their logs alive while
  * `COUNT(*) FROM workspaces` reads 0. Checking archives and logs as well
  * keeps the seed off a populated install. It is idempotent across restarts,

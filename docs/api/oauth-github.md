@@ -33,20 +33,30 @@ organization.
 ### `GET /api/oauth/google`
 
 Redirects the user to Google's OAuth consent screen. Generates a short-lived
-(10 min) CSRF state token stored in memory.
+(10 min) CSRF state token, held in server memory and in an httpOnly
+`oauth_state_google` cookie, so only the browser that started the flow can
+complete it.
 
 ### `GET /api/oauth/google/callback`
 
 OAuth callback. Validates the `state` parameter, exchanges the auth code
 for tokens, verifies the ID token.
 
-**Account creation behavior:**
+**Account creation behavior** (decided by `resolveIdentity` in
+`services/identity.js`):
 1. If a Google OAuth account is already linked → log in that user.
 2. If no linked account but a user with the same email exists → link to
-   that user.
+   that user, unless that user already has a different Google account
+   linked: then redirect to `/?oauth_error=identity_conflict` and link
+   nothing (a recycled address, or a recreated Google account). The account's
+   owner unlinks the old Google account, or an operator removes its
+   `oauth_accounts` row, before the new one can link.
 3. If the domain matches `GOOGLE_OAUTH_DOMAIN` → auto-create a new account
    (no invitation required). Username derived from the email local part.
-4. Otherwise → `403` (no invitation flow for outside-domain users).
+4. Otherwise → redirect to `/?oauth_error=no_account` (no invitation flow for
+   outside-domain users). An unverified email redirects with
+   `email_not_verified`, and an account outside `GOOGLE_OAUTH_DOMAIN` with
+   `domain_not_allowed`.
 
 On success, sets a `sessionToken` cookie and redirects to `/`.
 
@@ -78,7 +88,22 @@ Requests the `repo` scope.
 ### `GET /api/oauth/github/callback`
 
 Exchanges the code for an access token, encrypts it, stores it. If the user
-already has a GitHub link, the token is refreshed. Redirects to `/github`.
+already has a GitHub link, it is replaced by this account and its token,
+unless another user holds this account (`already_linked_other`).
+Redirects to `/account?github_linked=1`, or to `/account?github_error=<code>`
+on a refusal, which the account page's Linked Accounts panel shows as its
+status line:
+
+| Code | Meaning |
+|---|---|
+| `access_denied` | the user cancelled on GitHub |
+| `missing_params` | GitHub sent back no `code` or `state` |
+| `invalid_state` | the state is unknown, expired, or was not started in this browser |
+| `session_expired` | the link flow outlived the user it was started for |
+| `token_exchange_failed` | GitHub did not exchange the code for a token |
+| `user_fetch_failed` | the GitHub profile could not be read |
+| `already_linked_other` | this GitHub account is linked to another Cloud Codex user |
+| `link_conflict` | another GitHub account linked this user at the same instant, and won (`UNIQUE (user_id, provider)`) |
 
 ### `GET /api/github/status` *(requires auth)*
 

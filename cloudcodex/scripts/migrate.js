@@ -54,9 +54,9 @@
  * since `bootstrapInstance()` seeds a workspace, squad, archive and document on
  * the first admin boot. So the guard is a POSITIVE check instead: for every
  * file that postdates LEGACY_BASELINE, the runner asks information_schema
- * whether the table or column that file adds is ALREADY there, and refuses
- * unless it is. That is exactly the claim `--adopt-fresh-install` makes on the
- * operator's behalf, checked rather than assumed, and it is what separates the
+ * whether the table, column or named key that file adds is ALREADY there, and
+ * refuses unless it is. That is exactly the claim `--adopt-fresh-install` makes
+ * on the operator's behalf, checked rather than assumed, and it separates the
  * safe case (the change is present, adopting it is bookkeeping) from the
  * catastrophic one (the change is absent, adopting it buries the migration
  * forever). The pre-runner files are exempt from the check because adopting
@@ -224,6 +224,22 @@ export async function columnExists(query, tableName, columnName) {
 }
 
 /**
+ * Whether a named index or key exists on a table in the connected database.
+ * @param { (sql: string, params?: Array) => Promise<Array> } query
+ * @param { String } tableName
+ * @param { String } indexName
+ * @returns { Promise<Boolean> }
+ */
+export async function indexExists(query, tableName, indexName) {
+  const rows = await query(
+    `SELECT 1 AS present FROM information_schema.statistics
+     WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1`,
+    [tableName, indexName]
+  );
+  return rows.length > 0;
+}
+
+/**
  * Create the bookkeeping table if it is not already there.
  *
  * Always outside a transaction, so a freshly baselined database and a
@@ -336,17 +352,26 @@ const SQL_COMMENTS = /\/\*[\s\S]*?\*\/|--[^\n]*|#[^\n]*/g;
 const NOT_A_COLUMN = /^(COLUMN|INDEX|KEY|UNIQUE|PRIMARY|FOREIGN|FULLTEXT|SPATIAL|CONSTRAINT|CHECK|PARTITION)$/i;
 
 /**
- * The tables and columns a migration file claims to create, read straight out
- * of its SQL.
+ * `ADD [UNIQUE] {INDEX|KEY} name`, and `ADD UNIQUE name`. An unnamed key gets a
+ * name MySQL invents, which no claim could look up, so the capture must be a
+ * name and not the keyword that precedes one (NOT_A_KEY_NAME).
+ */
+const ADD_NAMED_KEY = /\bADD\s+(?:UNIQUE\s+(?:INDEX\s+|KEY\s+)?|INDEX\s+|KEY\s+)`?([A-Za-z0-9_$]+)`?/gi;
+const NOT_A_KEY_NAME = /^(INDEX|KEY|USING)$/i;
+
+/**
+ * The tables, columns and named keys a migration file claims to create, read
+ * straight out of its SQL.
  *
- * Deliberately narrow: `CREATE TABLE x` and `ALTER TABLE x ADD [COLUMN] y`, and
- * nothing else. This is not a SQL parser and must never grow into one. It backs
- * exactly one question, asked only of files that postdate LEGACY_BASELINE
- * before `--adopt-fresh-install` records them: does this database ALREADY have
- * what this file adds? A file it cannot read anything out of yields an empty
- * list, and the caller refuses rather than adopting on faith.
+ * Deliberately narrow: `CREATE TABLE x`, `ALTER TABLE x ADD [COLUMN] y` and
+ * `ALTER TABLE x ADD [UNIQUE] {KEY|INDEX} name`, and nothing else. This is not
+ * a SQL parser and must never grow into one. It backs exactly one question,
+ * asked only of files that postdate LEGACY_BASELINE before
+ * `--adopt-fresh-install` records them: does this database ALREADY have what
+ * this file adds? A file it cannot read anything out of yields an empty list,
+ * and the caller refuses rather than adopting on faith.
  * @param { String } sql - a migration file body
- * @returns { Array<{ kind: 'table'|'column', table: String, column?: String }> }
+ * @returns { Array<{ kind: 'table'|'column'|'index', table: String, column?: String, index?: String }> }
  */
 export function schemaClaims(sql) {
   const claims = [];
@@ -368,9 +393,37 @@ export function schemaClaims(sql) {
       if (NOT_A_COLUMN.test(add[1])) continue;
       claims.push({ kind: 'column', table: altered[1], column: add[1] });
     }
+
+    for (const key of statement.matchAll(ADD_NAMED_KEY)) {
+      if (NOT_A_KEY_NAME.test(key[1])) continue;
+      claims.push({ kind: 'index', table: altered[1], index: key[1] });
+    }
   }
 
   return claims;
+}
+
+/**
+ * The stored procedures a migration file creates, read out of its SQL the same
+ * narrow way as `schemaClaims`: `CREATE PROCEDURE name`, comments stripped.
+ *
+ * A migration creates a procedure for one reason, a guard: MySQL has no
+ * conditional error outside a stored program, so a file that must refuse on
+ * the data it finds does it with a throwaway procedure that SIGNALs. These are
+ * the names the runner drops when that guard refuses (`describeRefusal`).
+ * @param { String } sql - a migration file body
+ * @returns { String[] }
+ */
+export function proceduresCreated(sql) {
+  const names = [];
+  for (const statement of sql.replace(SQL_COMMENTS, ' ').split(';')) {
+    const created =
+      /^\s*CREATE\s+(?:DEFINER\s*=\s*\S+\s+)?PROCEDURE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([A-Za-z0-9_$]+)`?/i.exec(
+        statement
+      );
+    if (created) names.push(created[1]);
+  }
+  return names;
 }
 
 /**
@@ -394,7 +447,7 @@ export async function assertSchemaAlreadyHas(query, filename, contents) {
       `Refusing to adopt a fresh install: ${filename} postdates the pre-runner baseline and\n` +
         'the runner cannot tell from it whether this database already has its changes. It\n' +
         'checks every such file against information_schema first, and this one declares no\n' +
-        'CREATE TABLE or ADD COLUMN to check.\n\n' +
+        'CREATE TABLE, ADD COLUMN or named ADD KEY to check.\n\n' +
         'Look at the file and at the schema. If the change is already there, record it by hand:\n\n' +
         '    INSERT INTO schema_migrations (filename, checksum, applied_ms)\n' +
         `    VALUES ('${filename}', '${sha256(contents)}', 0);\n\n` +
@@ -407,11 +460,18 @@ export async function assertSchemaAlreadyHas(query, filename, contents) {
   const missing = [];
 
   for (const claim of claims) {
-    const label = claim.kind === 'table' ? claim.table : `${claim.table}.${claim.column}`;
-    const found =
-      claim.kind === 'table'
-        ? await tableExists(query, claim.table)
-        : await columnExists(query, claim.table, claim.column);
+    let label;
+    let found;
+    if (claim.kind === 'table') {
+      label = claim.table;
+      found = await tableExists(query, claim.table);
+    } else if (claim.kind === 'column') {
+      label = `${claim.table}.${claim.column}`;
+      found = await columnExists(query, claim.table, claim.column);
+    } else {
+      label = `${claim.table}.${claim.index}`;
+      found = await indexExists(query, claim.table, claim.index);
+    }
     (found ? present : missing).push(label);
   }
 
@@ -422,8 +482,8 @@ export async function assertSchemaAlreadyHas(query, filename, contents) {
         'existing install that never got this migration.\n\n' +
         '--adopt-fresh-install records every file in migrations/ as applied WITHOUT running\n' +
         'any of it. Doing that here would bury this migration permanently: every later run\n' +
-        'would report "no pending migrations" while the column stayed missing and the app\n' +
-        'kept failing on it.\n\n' +
+        'would report "no pending migrations" while the change stayed missing and the app\n' +
+        'kept running without it.\n\n' +
         'Record the pre-runner baseline instead, then apply what is genuinely pending, from\n' +
         'cloudcodex/:\n\n' +
         '    npm run migrate -- --baseline\n' +
@@ -554,6 +614,61 @@ const SCHEMA_ALREADY_HAS_CODES = new Set([
   'ER_TABLE_EXISTS_ERROR',
   'ER_DUP_KEYNAME',
 ]);
+
+/**
+ * The error for a migration whose guard refused, after dropping the procedures
+ * the file created for that guard.
+ *
+ * ER_SIGNAL_EXCEPTION comes only from SIGNAL, so this is the file saying no on
+ * purpose, not MySQL failing a statement, and "may be partially migrated,
+ * restore the dump" is the wrong instruction: the guard's own message says
+ * what to fix. The guard is a stored procedure (see `proceduresCreated`), and
+ * a refusal would leave it behind, because CREATE PROCEDURE commits on its
+ * own, MySQL stops the batch at the SIGNAL before the file's own DROP, and a
+ * routine cannot drop itself (ER_SP_NO_DROP_SP, measured on 8.4.11). So the
+ * runner drops what the file created. Only here: after any other failure it
+ * leaves the schema exactly as the failure left it, for the operator to
+ * inspect. A drop that fails is logged and named, never allowed to replace
+ * the refusal.
+ * @param { (sql: string, params?: Array) => Promise<Array> } query
+ * @param { String } filename
+ * @param { String } contents - the file body, for the procedure names
+ * @param { Error & { sqlMessage?: String } } err - the SIGNAL, as mysql2 reports it
+ * @returns { Promise<String> }
+ */
+async function describeRefusal(query, filename, contents, err) {
+  const dropped = [];
+  const stuck = [];
+  for (const name of proceduresCreated(contents)) {
+    try {
+      // The name is out of the repo-controlled file body, [A-Za-z0-9_$] only.
+      await query(`DROP PROCEDURE IF EXISTS \`${name}\``);
+      dropped.push(name);
+    } catch (dropErr) {
+      console.error(`[${new Date().toISOString()}] migrate DROP PROCEDURE ${name} failed:`, dropErr);
+      stuck.push(name);
+    }
+  }
+
+  let message =
+    `Migration ${filename} refused to run: ${err.sqlMessage ?? err.message}\n\n` +
+    'The file raised that itself, from a guard that checks the data before it changes the\n' +
+    'schema (MySQL reports a SIGNAL as ER_SIGNAL_EXCEPTION). Nothing is recorded, so the file\n' +
+    'stays pending. Its header says what the guard checks and how to resolve a refusal; do\n' +
+    'that, then run `npm run migrate` again.';
+
+  if (dropped.length > 0) {
+    message += `\n\nThe runner dropped ${dropped.join(', ')}, created by the file for its guard.`;
+  }
+  if (stuck.length > 0) {
+    message +=
+      '\n\nThe runner could not drop the guard procedure(s) the file created (the error is\n' +
+      'logged above). A retry drops them first, or drop them by hand:\n\n' +
+      stuck.map(name => `    DROP PROCEDURE IF EXISTS ${name};`).join('\n');
+  }
+
+  return message;
+}
 
 /**
  * The body of a run, holding the advisory lock.
@@ -739,6 +854,11 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
         // original names the statement that actually broke.
         console.error(`[${new Date().toISOString()}] migrate ROLLBACK failed:`, rollbackErr);
       }
+
+      if (err.code === 'ER_SIGNAL_EXCEPTION') {
+        throw new Error(await describeRefusal(query, filename, contents, err), { cause: err });
+      }
+
       let message =
         `Migration ${filename} failed. MySQL implicitly commits DDL, so any CREATE, ALTER or\n` +
         'DROP inside this file that ran before the failure is already committed and was NOT\n' +

@@ -549,9 +549,9 @@ refusal issues no write.
 
 ### Task 3.2 Move the route onto it, with zero assertion edits
 
-- [ ] `routes/oauth.js` imports `resolveIdentity` and `deriveUniqueUsername` from
+- [x] `routes/oauth.js` imports `resolveIdentity` and `deriveUniqueUsername` from
       `services/identity.js`; the moved code is deleted from the route.
-- [ ] `npm test`. **Expected:** `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` pass
+- [x] `npm test`. **Expected:** `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` pass
       **with no edits**; `git diff --stat tests/routes` shows nothing.
 
 ### Task 3.3 `AUTH_PROVIDERS`
@@ -569,8 +569,27 @@ env template, not per link).
 
 ### Task 3.4 Verify
 
-- [ ] Lint, `npm test`, coverage (add a `services/identity.js` threshold at achieved minus a small
+- [x] Lint, `npm test`, coverage (add a `services/identity.js` threshold at achieved minus a small
       buffer), build. Map: `docs/maps/request-lifecycle.md` section 3 names the seam.
+
+**As built (2026-09-25).** Two differences from the text above. The route imports only
+`resolveIdentity`: once the ladder moved, nothing in `oauth.js` calls `deriveUniqueUsername`, and an
+unused import fails lint. `parseAuthProviders` also refuses a configured Google that the list leaves
+out (`AUTH_PROVIDERS=local` with both Google variables set), because until W6-CDX-8 the routes do not
+consult the set and Google would still be offered. PR 8 revisits that rule when the set starts
+unmounting routes. Two characterization files (`tests/routes/oauth-google-seam.test.js`,
+`oauth-google-domain-seam.test.js`) drive the callback past the token exchange; they were committed
+green against the inline ladder before the move. No existing test file changed.
+
+**One behaviour change, after the refactor (2026-09-25).** Reading the moved ladder surfaced
+`docs/maps/open-questions.md` C7: Google linked by verified email with no check that the matched user
+already held a different Google subject. A gate approved closing it in this PR, as commits strictly
+after the refactor ones, so the move's zero-edit proof still holds per commit. The Google branch now
+issues one more query on the link-by-email path (`SELECT id FROM oauth_accounts WHERE provider =
+'google' AND user_id = ?`) and answers `identity_conflict`, writing nothing, when it finds a row:
+Decision 3's rule, applied to Google. `Std_Layout.jsx` gained copy for that code. The tests for it
+(`tests/services/identity.test.js`, `tests/routes/oauth-google-seam.test.js`) were committed red
+first; `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` are still unedited.
 
 ---
 
@@ -889,7 +908,10 @@ issuer: exactly one wins, the other refuses `identity_conflict`).
   providerSid: sid })` with `expires_at` from `OIDC_SESSION_TTL_HOURS` (default 24; the function
   takes a `ttlHours` option that local and Google never pass), set the session cookie exactly as the
   Google callback does, and `302` to the sealed `returnTo`. Every refusal redirects to
-  `/?oauth_error=<code>`, the pattern `Std_Layout.jsx:306-311` already reads.
+  `/?oauth_error=<code>`, the pattern `Std_Layout.jsx:306-311` already reads. **Carried from PR 3:**
+  that file's copy names Google in every line, including the `identity_conflict` line C7 added, and
+  its fallback says "Google sign-in failed", so an OIDC refusal needs provider-neutral copy (or a
+  provider hint in the redirect) before it can reuse the map.
 - `app.js`: `app.use('/api/auth/oidc/callback', authLimiter)` beside the Google line
   (`app.js:147`).
 
@@ -1294,8 +1316,8 @@ export default router;
 
 The token is minted exactly as `POST /api/admin/invitations` mints one (`routes/admin.js:439`,
 32 random bytes as hex, which `user_invitations.token CHAR(64) NOT NULL UNIQUE` expects,
-`init.sql:141`). The invitation names `General` in `squad_id` with `can_write` set; `role`
-(`member`) and the other flags take their column defaults (`init.sql:143-150`), so W6-CDX-8's
+`init.sql:144`). The invitation names `General` in `squad_id` with `can_write` set; `role`
+(`member`) and the other flags take their column defaults (`init.sql:147-154`), so W6-CDX-8's
 binding (Task 8.3) calls `addSquadMember` and the person lands in `General` with read and write
 (D-S). `generalSquadId` finds the squad the way `bootstrapInstance` made it (`routes/admin.js:128`,
 the squad named `General` in a workspace the boot admin owns), because nothing else marks it;

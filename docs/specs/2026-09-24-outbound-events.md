@@ -72,10 +72,10 @@ Three of those are gaps at the source, not webhook questions:
   not: `log.rename` is in neither `WATCH_NOTIFICATION_TYPE` nor `AUTO_WATCH_RULES`.
 
 **What does not change a link's truth.** Deleting one document promotes its children rather than
-deleting them (`logs.parent_id ... ON DELETE SET NULL`, `init.sql:283`), so the route comment
+deleting them (`logs.parent_id ... ON DELETE SET NULL`, `init.sql:286`), so the route comment
 "cascades children" (`archives.js:574`) is wrong. An archive delete cascades to every document
-in it (`init.sql:282`). Squad and workspace deletes only detach archives
-(`archives.squad_id ... ON DELETE SET NULL`, `init.sql:243`), so no document stops existing. No
+in it (`init.sql:285`). Squad and workspace deletes only detach archives
+(`archives.squad_id ... ON DELETE SET NULL`, `init.sql:246`), so no document stops existing. No
 user can move a document to another archive: the only `UPDATE logs SET archive_id` sites
 (`github.js:1713`, `:1746`) move PR-session logs between hidden system archives, which search and
 browse exclude.
@@ -142,7 +142,7 @@ activity prune (`server.js:132-150`).
 | `occurred_at` | ISO 8601 UTC, millisecond precision, the Codex clock |
 | `workspace_id` | the Codex workspace integer; a receiver stores it and **never lets it decide a tenant** |
 | `actor` | `{ id, name }`; `name` is at most 32 characters (`init.sql:49`) |
-| `data` | per type, below. `title` and `name` are **truncated when the event is built** to at most 255 Unicode code points, never splitting a surrogate pair: both columns are `TEXT` (`init.sql:233`, `:268`) and not every writer caps them (the document routes cap titles at 255), so the bound is applied at emit rather than trusted from storage |
+| `data` | per type, below. `title` and `name` are **truncated when the event is built** to at most 255 Unicode code points, never splitting a surrogate pair: both columns are `TEXT` (`init.sql:236`, `:271`) and not every writer caps them (the document routes cap titles at 255), so the bound is applied at emit rather than trusted from storage |
 
 | Type | `data` |
 |---|---|

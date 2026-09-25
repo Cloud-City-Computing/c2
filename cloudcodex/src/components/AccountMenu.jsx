@@ -526,12 +526,57 @@ export function UserPreferencesPanel() {
 //  Linked Accounts Panel (OAuth / SSO)
 // ===========================
 
+/**
+ * The status line for each refusal the GitHub link callback redirects with
+ * (`/account?github_error=<code>`, routes/oauth.js).
+ */
+const GITHUB_LINK_ERRORS = {
+  access_denied: 'GitHub linking was cancelled.',
+  missing_params: 'GitHub did not complete the link. Please try again.',
+  invalid_state: 'The GitHub link expired or was started in another browser. Please try again.',
+  session_expired: 'The GitHub link expired. Please try again.',
+  token_exchange_failed: 'GitHub did not accept the link. Please try again.',
+  user_fetch_failed: 'Could not read your GitHub profile. Please try again.',
+  already_linked_other: 'That GitHub account is already linked to another Cloud Codex user.',
+  link_conflict:
+    'Another GitHub account was linked to your account at the same moment, so this one was not. ' +
+    'To use this one instead, unlink the current one and link again.',
+};
+
+/**
+ * The outcome the GitHub link callback left in the URL, as a status line, or
+ * null. Takes `github_error` and `github_linked` off the URL so a reload does
+ * not repeat it, and leaves every other parameter where it is.
+ */
+function takeGitHubLinkOutcome() {
+  const url = new URL(window.location.href);
+  const error = url.searchParams.get('github_error');
+  const linked = url.searchParams.get('github_linked');
+  if (error === null && linked === null) return null;
+
+  url.searchParams.delete('github_error');
+  url.searchParams.delete('github_linked');
+  window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+
+  if (error !== null) {
+    return { type: 'error', message: GITHUB_LINK_ERRORS[error] ?? 'GitHub linking failed. Please try again.' };
+  }
+  return { type: 'success', message: 'GitHub account linked.' };
+}
+
 export function LinkedAccountsPanel() {
   const [accounts, setAccounts] = useState([]);
   const [hasPassword, setHasPassword] = useState(true);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [providers, setProviders] = useState({});
+
+  useEffect(() => {
+    // Only ever sets, so a second run (a remount, or StrictMode if it is ever
+    // turned on) that finds the URL already cleaned cannot erase the message.
+    const outcome = takeGitHubLinkOutcome();
+    if (outcome) setStatus(outcome);
+  }, []);
 
   useEffect(() => {
     Promise.all([

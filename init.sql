@@ -80,7 +80,10 @@ CREATE TABLE oauth_accounts (
   token_status ENUM('active','revoked','unknown') DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  -- A provider account belongs to at most one user, and a user holds at most
+  -- one account per provider (migrations/2026-09-25-oauth-one-link-per-provider.sql).
   UNIQUE KEY uq_provider_user (provider, provider_user_id),
+  UNIQUE KEY uq_oauth_user_provider (user_id, provider),
   INDEX (user_id)
 ) ENGINE=InnoDB;
 

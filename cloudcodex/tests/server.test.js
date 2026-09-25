@@ -414,3 +414,49 @@ describe('server.js: boot ordering and failure handling', () => {
     }
   });
 });
+
+describe('server.js: AUTH_PROVIDERS', () => {
+  const withEnv = async (env, assertions) => {
+    const original = { ...process.env };
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    delete process.env.AUTH_PROVIDERS;
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    Object.assign(process.env, env);
+    try {
+      await import('../server.js');
+      await assertions();
+    } finally {
+      process.env = original;
+    }
+  };
+
+  it('boots when AUTH_PROVIDERS is unset, which is what .env.example ships', async () => {
+    await withEnv({}, () => {
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(listenMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('boots with a valid explicit list', async () => {
+    await withEnv({ AUTH_PROVIDERS: 'local' }, () => {
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  it('exits 1 with the parser\'s sentence on an unknown provider', async () => {
+    await withEnv({ AUTH_PROVIDERS: 'local,saml' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/AUTH_PROVIDERS lists "saml"/);
+    });
+  });
+
+  it('exits 1 when a listed provider is not configured', async () => {
+    await withEnv({ AUTH_PROVIDERS: 'local,google' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/GOOGLE_CLIENT_ID/);
+    });
+  });
+});

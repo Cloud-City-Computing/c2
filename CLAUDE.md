@@ -44,7 +44,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 29 per-glob coverage thresholds
+    ├── vitest.config.js         ← three projects + 30 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -104,6 +104,13 @@ OTP and TOTP with QR), session tokens (DB-backed, auto-refreshing), Google
 Workspace SSO, GitHub OAuth (token AES-256-GCM encrypted at rest). Use
 `requireAuth` and `requireAdmin` from `middleware/auth.js` on any new protected
 route.
+
+**External sign-in** decides its local user in one seam, `resolveIdentity(claims,
+policy)` in `services/identity.js`: a provider route verifies the protocol and
+hands over claims plus a policy, and gets back a user id or a named refusal.
+Google is its only caller today. Do not write a second account ladder in a
+route. `parseAuthProviders()` in the same file validates `AUTH_PROVIDERS` at
+boot (unset means today's set).
 
 **Machine callers**: `services/machine-auth.js` exports the one seam,
 `verifyMachineCredential`, gated on `SERVICE_TOKEN` + `SERVICE_TOKEN_USER`
@@ -334,6 +341,7 @@ existing one.**
 | Check ownership for a destructive action   | `isArchiveOwner` in `routes/helpers/ownership.js`         |
 | Check publish permission                   | `canPublish` in `shared.js`                               |
 | Require authentication on a route          | `requireAuth` in `middleware/auth.js`                     |
+| Map a verified external identity to a user | `resolveIdentity` in `services/identity.js`               |
 | Require admin on a route                   | `requireAdmin` in `middleware/auth.js`                    |
 | Require a permission flag                  | `requirePermission(flag)` in `middleware/permissions.js`  |
 | Run a SQL query                            | `c2_query(sql, params)` in `mysql_connect.js`             |

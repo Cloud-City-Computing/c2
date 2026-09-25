@@ -139,7 +139,7 @@ loading) interpolate it directly; see `routes/documents.js:553`,
 columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
-(`init.sql:265-266`). Grepping the whole backend for reads of them turns up
+(`init.sql:282-283`). Grepping the whole backend for reads of them turns up
 nothing. Since 2026-08-09 the only thing that writes them is the PR-session
 log insert (`routes/github.js:1698`), which sets both to an empty
 `JSON_ARRAY()`.
@@ -331,7 +331,7 @@ squad in any workspace: the one place the boundary failed open.
 **`GET /api/users/search` cannot be scoped on shared membership alone.** An
 account with no `squad_members` row anywhere shares no workspace with anyone,
 and that is where every account starts, since Google SSO auto-provisioning
-(`oauth.js`) and an admin invitation with no squad (`admin.js`) both write the
+(`resolveIdentity` in `services/identity.js`, called from `oauth.js`) and an admin invitation with no squad (`admin.js`) both write the
 `users` row and nothing else. Membership-only scoping made such an account
 invisible to every non-admin caller, which severs the squad invite flow: the
 picker in `InviteMemberModal` is driven entirely by this endpoint, so the
@@ -429,7 +429,7 @@ table below) applies identically regardless of which path created the row.
 
 ## 5. Per-member flags and where each is enforced
 
-`squad_members` (`init.sql:176-192`) carries `role` plus seven booleans. Their
+`squad_members` (`init.sql:193-209`) carries `role` plus seven booleans. Their
 enforcement is uneven, which is worth knowing before you assume a flag does
 something:
 
@@ -603,7 +603,7 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
 6. Add the negative test. Every route test file in `tests/routes/` already has
    an access-denied case to copy; `tests/helpers/ownership.test.js` covers the
    fragments themselves, and its glob carries an 88% line threshold
-   (`vitest.config.js:87`).
+   (`vitest.config.js`, the `routes/helpers/**` entry).
 
 ---
 

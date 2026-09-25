@@ -66,7 +66,7 @@ jobs:
           IT_DB_ROOT_PASSWORD: ci-root-password
         run: npm run test:integration
 
-      # CI's gate is the 29 per-glob thresholds in vitest.config.js, not the
+      # CI's gate is the 30 per-glob thresholds in vitest.config.js, not the
       # plain test run. Without this the release path is a weaker check than
       # the one it claims to be re-proving.
       - run: npm run test:coverage

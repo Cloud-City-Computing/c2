@@ -103,10 +103,22 @@ Links a Cloud Codex user to an external OAuth provider (Google or GitHub).
 | `provider`          | ENUM('google', 'github')      |                                                    |
 | `provider_user_id`  | VARCHAR(255)                  | ID from the OAuth provider                        |
 | `provider_email`    | VARCHAR(255)                  | Email returned by the provider                    |
+| `provider_username` | VARCHAR(255)                  | GitHub login; matched by Squad-to-Team sync       |
+| `provider_avatar_url` | VARCHAR(500)                | Provider avatar                                   |
 | `encrypted_token`   | TEXT                          | AES-256-GCM encrypted access token (GitHub only)  |
+| `token_status`      | ENUM('active','revoked','unknown') | `revoked` once GitHub refuses the token      |
 | `created_at`        | TIMESTAMP                     |                                                    |
 
-**Unique constraint:** `(provider, provider_user_id)` — one provider account per user.
+**Unique constraints:**
+
+- `uq_provider_user (provider, provider_user_id)`: a provider account belongs to at most one user.
+- `uq_oauth_user_provider (user_id, provider)`: a user holds at most one account per provider.
+  Google sign-in also checks this before it links a user matched by email, and answers a second
+  Google account with `identity_conflict`; the key is what refuses the second of two sign-ins that
+  pass that check at the same instant, and the answer is the same (`docs/maps/open-questions.md`
+  C7). Added by `migrations/2026-09-25-oauth-one-link-per-provider.sql`, which refuses to run on
+  an install that already holds a double link; the CHANGELOG's Migration section says how to
+  resolve one.
 
 ---
 
@@ -596,6 +608,12 @@ each compose file. The current set:
 | `p1_github_embeds.sql`          | `github_embed_refs` table                           |
 | `p2_github_collab.sql`          | `github_pr_sessions` table                          |
 | `p3_github_polish.sql`          | indexes / column tweaks for the GitHub stack        |
+| `add_first_run.sql`             | squad grant columns on `user_invitations` + `users.onboarded_at` |
+| `add_workspace_owner_id.sql`    | `workspaces.owner_id` FK, replacing the `owner` email column |
+| `drop_squad_permissions.sql`    | drops the unenforced `squad_permissions` table      |
+| `widen_log_content.sql`         | `MEDIUMTEXT` for the three document content columns |
+| `2026-09-08-token-purpose.sql`  | `password_reset_tokens.purpose` + its `CHECK`       |
+| `2026-09-25-oauth-one-link-per-provider.sql` | `UNIQUE (user_id, provider)` on `oauth_accounts` |
 
 > **Rule:** any column or table added as a migration must also be present
 > in `init.sql`. Both must stay in sync — fresh installs and existing

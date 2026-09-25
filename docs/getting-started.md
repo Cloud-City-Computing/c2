@@ -183,6 +183,7 @@ All seed accounts use the password **`password`**.
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (enables Google SSO) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | — |
 | `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
+| `AUTH_PROVIDERS` | Sign-in methods to offer, a comma list of `local` and `google`. Leave unset: the server derives it (local, plus Google when configured) and refuses to start on a value that disagrees with the Google variables | unset |
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |
 | `NODE_ENV` | `production` tightens CORS to `CORS_ORIGIN` only; anything else also allows localhost origins | — (optional) |

@@ -84,14 +84,14 @@ cut the `verifyMachineCredential` seam (`ab16b79`), and C2-5 is the reader check
 
 **`oauth_accounts` is the wrong home for an OIDC identity.** It is keyed on
 `(provider, provider_user_id)` with `provider ENUM('google', 'github')` and no issuer
-(`init.sql:74`, `:83`), and it carries GitHub token semantics (`encrypted_token`, `token_status`,
+(`init.sql:74`, `:85`), and it carries GitHub token semantics (`encrypted_token`, `token_status`,
 `init.sql:79-80`).
 
 **One session row per user, stored raw.** `generateSessionToken`
 (`cloudcodex/mysql_connect.js:109-144`) reuses the user's existing row, so a second device gets
 the first device's token. Since C2-2 made `POST /api/logout` delete that row
 (`routes/auth.js:370-384`), one logout signs out every device. `sessions.id` is the raw token
-(`init.sql:88`), matched raw at `mysql_connect.js:153-156` and `:174-177`, and deleted raw at
+(`init.sql:91`), matched raw at `mysql_connect.js:153-156` and `:174-177`, and deleted raw at
 `routes/auth.js:265` and `:381`. Nothing reaps expired rows: `server.js:132-150` prunes
 `activity_log` only.
 
@@ -123,7 +123,7 @@ changing (`machine-auth.js:4-7`).
 `server.js:17-21` exits unless `ADMIN_USERNAME`, `ADMIN_PASSWORD` and `ADMIN_EMAIL` are all set.
 
 **Admission is invite-only.** `user_invitations` carries an email, a squad, a role and the seven
-permission flags (`init.sql:138-159`), and `POST /api/create-account` refuses without an invite
+permission flags (`init.sql:141-162`), and `POST /api/create-account` refuses without an invite
 token (`routes/auth.js:52-66`), then joins the invited squad in the same transaction
 (`routes/auth.js:150-177`). CLAUDE.md decision 4 makes that a rule.
 
@@ -288,7 +288,7 @@ See "One session row per user, stored raw" above.
   SHA-256 digest is also 64 characters.
 - Each row records which flow minted it: `sessions.auth_provider VARCHAR(16) NOT NULL`, with a
   `CHECK` over `('local', 'google')` for now (c2's own VARCHAR-plus-CHECK precedent,
-  `init.sql:104-121`); existing rows become `local`, and the default is dropped after the backfill
+  `init.sql:107-124`); existing rows become `local`, and the default is dropped after the backfill
   so a future flow that forgets to name itself fails at insert, as the C2-2 purpose column does.
   W6-CDX-5 widens the CHECK to `oidc`.
 - The same dated migration hashes existing rows in place with `SHA2(id, 256)`, **only for rows that
@@ -398,6 +398,10 @@ The Google callback's linking ladder is written inline in the route (`oauth.js:2
   (`vitest.config.js:56-65`) include it without a config change.
 - The Google callback delegates to it with a policy that reproduces today clause for clause, the
   `email_verified` refusal first.
+- **Added 2026-09-25, on a gate approval:** after the refactor, the Google branch also follows
+  Decision 3's second rung. A user matched by verified email who already holds a different Google
+  subject is refused as `identity_conflict` instead of gaining a second Google row
+  (`docs/maps/open-questions.md` C7).
 - `AUTH_PROVIDERS` is parsed and validated at boot, failing fast on an unknown value or on a
   listed provider that is not configured. It accepts `local` and `google` now and `oidc` once
   W6-CDX-5 lands, refuses a list without `local` until W6-CDX-8 can honour one, and defaults to
@@ -626,7 +630,7 @@ belongs to no partner (D-R), so the sync never names it.
 The machine surface only reads: `machineOrAuth` on `GET /api/search` and `GET /api/browse`
 (`CLAUDE.md:108-114`), and `requireMachine` on the C2-5 reader check
 (`routes/workspaces.js:216-230`). An invitation carries a squad, a role and the seven permission
-flags, but not instance admin (`init.sql:138-159`). `is_admin` is written only by
+flags, but not instance admin (`init.sql:141-162`). `is_admin` is written only by
 `ensureAdminUser` (`routes/admin.js:37-67`) and the admin console (`routes/admin.js:592`).
 
 ### In scope

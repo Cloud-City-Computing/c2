@@ -15,14 +15,14 @@ the moment they ask.
 ## 1. Auth and the `req.gh` helper
 
 Tokens are stored encrypted in `oauth_accounts.encrypted_token`. The crypto
-lives in `routes/oauth.js:48-81`:
+lives in `routes/oauth.js:50-83` (`TOKEN_CIPHER` to `decryptToken`):
 
 - AES-256-GCM, 12-byte IV, 16-byte auth tag.
 - The key is `scryptSync(GITHUB_CLIENT_SECRET, 'cloudcodex-oauth-token', 32)`
-  (`oauth.js:56`). **Rotating `GITHUB_CLIENT_SECRET` renders every stored token
+  (`getTokenEncryptionKey`, `oauth.js:58`). **Rotating `GITHUB_CLIENT_SECRET` renders every stored token
   undecryptable**; there is no key-version field and no re-encryption path.
   Every user has to re-link.
-- Stored as `ivHex:tagHex:ciphertextHex` (`oauth.js:67`).
+- Stored as `ivHex:tagHex:ciphertextHex` (`encryptToken`, `oauth.js:69`).
 - `encryptToken`/`decryptToken` return `null` when the secret is unset, which is
   how the app degrades gracefully with GitHub unconfigured.
 
@@ -47,7 +47,7 @@ message mentions credentials, it fire-and-forgets
 message check matters: GitHub also returns 403 for rate limits and missing
 scopes, and flipping the status on those would produce spurious "re-link your
 account" prompts. The frontend reads this through
-`GET /api/github/status` (`oauth.js:567`) and the `useGitHubStatus` hook, which
+`GET /api/github/status` (`oauth.js:585`) and the `useGitHubStatus` hook, which
 is what hides GitHub UI affordances for unlinked users.
 
 ### This router does NOT use the shared error handler
@@ -63,7 +63,7 @@ response would become an opaque server error.
 
 ## 2. Document to file linking
 
-`github_links` (`init.sql:283-302`) is `UNIQUE (log_id)`, so a document links to
+`github_links` (`init.sql:321-340`) is `UNIQUE (log_id)`, so a document links to
 at most one file. Columns that carry the sync state: `file_sha` (last observed
 remote blob sha), `base_sha` (the merge base), `last_pulled_at`,
 `last_pushed_at`, `sync_status`.
@@ -94,7 +94,7 @@ localChanged  = log.updated_at > max(last_pulled_at, last_pushed_at)
    remote &&  local  ->  diverged
 ```
 
-The schema's `sync_status` enum also has `conflict` (`init.sql:294`), which
+The schema's `sync_status` enum also has `conflict` (`init.sql:332`), which
 `classifySync` never returns; it exists for a manual-resolution state that the
 current code expresses as a 409 response instead.
 
@@ -182,7 +182,7 @@ There is a second, separate TTL cache for CI and release reads,
 
 ### The dead back-link table
 
-`github_embed_refs` (`init.sql:253-267`, created by
+`github_embed_refs` (`init.sql:291-305`, created by
 `migrations/p1_github_embeds.sql`) is intended to answer "which documents embed
 this file / issue / PR". `GET /api/logs/by-github-ref` (`github.js:1956`) reads
 it, correctly gated by the read fragment.
@@ -194,7 +194,7 @@ Recorded in [open-questions.md](open-questions.md).
 
 ## 4. Archive as repo (P1)
 
-`archive_repos` (`init.sql:213-228`) binds an archive to a repo, with a
+`archive_repos` (`init.sql:251-266`) binds an archive to a repo, with a
 `docs_path` prefix (default `docs`) and `auto_link_imports`. Managed through
 `GET`/`POST`/`DELETE /api/archives/:archiveId/repos` (`archives.js:556`, `589`,
 `638`), all gated by `isArchiveOwner`.
@@ -260,7 +260,7 @@ review submission, and issue search straight through, with no local mirror.
 ## 6. Squad to GitHub Team sync (P3)
 
 `squads.github_org` / `github_team_slug` / `team_sync_at`
-(`init.sql:129-131`, unique on the org+slug pair) bind a squad to a GitHub Team.
+(`init.sql:170-175`, unique on the org+slug pair) bind a squad to a GitHub Team.
 
 `GET /api/squads/:squadId/github-team/preview` (`github.js:2168`) and
 `POST .../sync` (`github.js:2248`), both behind `userCanManageSquad`.

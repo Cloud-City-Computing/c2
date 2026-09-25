@@ -20,6 +20,7 @@ import {
   listMigrationFiles,
   describeMigrationsDirError,
   schemaClaims,
+  proceduresCreated,
   sha256,
   parseArgs,
   resolveDbConfig,
@@ -44,11 +45,40 @@ ALTER TABLE password_reset_tokens
   ADD COLUMN purpose VARCHAR(32) NULL AFTER token;
 `;
 
+/** The repo's own one-link-per-provider migration, read from disk. */
+const ONE_LINK_MIGRATION = '2026-09-25-oauth-one-link-per-provider.sql';
+const readShipped = filename => readFileSync(path.join(MIGRATIONS_DIR, filename), 'utf8');
+
+/**
+ * A migration shaped like the one-link file: a throwaway guard procedure that
+ * SIGNALs when the data would break the change, dropped before the ALTER.
+ */
+const GUARDED_MIGRATION = `-- guarded
+DROP PROCEDURE IF EXISTS guard_x;
+CREATE PROCEDURE guard_x()
+BEGIN
+  IF EXISTS (SELECT 1 FROM t GROUP BY a HAVING COUNT(*) > 1) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Duplicates exist. Find them: SELECT a FROM t';
+  END IF;
+END;
+CALL guard_x();
+DROP PROCEDURE guard_x;
+ALTER TABLE t ADD UNIQUE KEY uq_t_a (a);
+`;
+
+/** The error mysql2 hands back for a SIGNAL, as measured on 8.4.11. */
+const GUARD_REFUSAL = {
+  failOnBody: 'CALL guard_x',
+  failCode: 'ER_SIGNAL_EXCEPTION',
+  failSqlState: '45000',
+  failSqlMessage: 'Duplicates exist. Find them: SELECT a FROM t',
+};
+
 // Statements the runner issues itself. Everything else a call carries is a
 // migration file body streamed verbatim, which is how the assertions below
 // tell "the runner did bookkeeping" from "the runner applied a migration".
 const RUNNER_SQL =
-  /^(CREATE TABLE IF NOT EXISTS schema_migrations|SELECT 1 AS present FROM information_schema|SELECT filename, checksum|INSERT INTO schema_migrations|SELECT GET_LOCK|SELECT RELEASE_LOCK|START TRANSACTION|COMMIT|ROLLBACK)/;
+  /^(CREATE TABLE IF NOT EXISTS schema_migrations|SELECT 1 AS present FROM information_schema|SELECT filename, checksum|INSERT INTO schema_migrations|SELECT GET_LOCK|SELECT RELEASE_LOCK|START TRANSACTION|COMMIT|ROLLBACK|DROP PROCEDURE IF EXISTS `)/;
 
 const tempDirs = [];
 
@@ -65,10 +95,12 @@ function makeDir(files) {
 /**
  * A fake query executor with the `c2_query` shape.
  *
- * `tables` decides what `tableExists` sees and `columns` (as `table.column`)
- * what `columnExists` sees, `applied` seeds schema_migrations, and `failOnBody`
- * makes any migration body containing that substring throw, which is how the
- * partial-migration case is driven. `lockGranted` takes MySQL's three answers:
+ * `tables` decides what `tableExists` sees, `columns` (as `table.column`)
+ * what `columnExists` sees and `indexes` (as `table.index`) what `indexExists`
+ * sees, `applied` seeds schema_migrations, and `failOnBody` makes any
+ * migration body containing that substring throw, which is how the
+ * partial-migration case is driven. `failCode`, `failSqlState` and
+ * `failSqlMessage` give that error mysql2's fields. `lockGranted` takes MySQL's three answers:
  * true (1, held), false (0, timed out) and null (the attempt errored).
  *
  * START TRANSACTION / ROLLBACK really do snapshot and restore `rows`, so a test
@@ -78,9 +110,12 @@ function makeDir(files) {
 function fakeDb({
   tables = ['users', 'schema_migrations'],
   columns = [],
+  indexes = [],
   applied = {},
   failOnBody = null,
   failCode = null,
+  failSqlState = null,
+  failSqlMessage = null,
   lockGranted = true,
   database = 'c2',
 } = {}) {
@@ -90,6 +125,7 @@ function fakeDb({
   // run: the baseline-then-migrate sequence an operator actually performs.
   const present = new Set(tables);
   const presentColumns = new Set(columns);
+  const presentIndexes = new Set(indexes);
   let snapshot = null;
 
   const query = vi.fn(async (sql, params) => {
@@ -108,6 +144,9 @@ function fakeDb({
     }
     if (sql.startsWith('SELECT 1 AS present FROM information_schema.columns')) {
       return presentColumns.has(`${params[0]}.${params[1]}`) ? [{ present: 1 }] : [];
+    }
+    if (sql.startsWith('SELECT 1 AS present FROM information_schema.statistics')) {
+      return presentIndexes.has(`${params[0]}.${params[1]}`) ? [{ present: 1 }] : [];
     }
     if (sql.startsWith('SELECT 1 AS present FROM information_schema')) {
       return present.has(params[0]) ? [{ present: 1 }] : [];
@@ -138,8 +177,10 @@ function fakeDb({
     if (RUNNER_SQL.test(sql)) return [];
 
     if (failOnBody !== null && sql.includes(failOnBody)) {
-      const err = new Error('You have an error in your SQL syntax');
+      const err = new Error(failSqlMessage ?? 'You have an error in your SQL syntax');
       if (failCode !== null) err.code = failCode;
+      if (failSqlState !== null) err.sqlState = failSqlState;
+      if (failSqlMessage !== null) err.sqlMessage = failSqlMessage;
       throw err;
     }
     return [];
@@ -232,14 +273,39 @@ describe('scripts/migrate', () => {
       ]);
     });
 
-    it('ignores indexes, keys and constraints, which are not columns', () => {
+    it('reads every named key or index an ALTER adds, and no constraint', () => {
       const claims = schemaClaims(
         `ALTER TABLE t ADD COLUMN purpose VARCHAR(32),
            ADD INDEX idx_purpose (purpose),
            ADD UNIQUE KEY uq_purpose (purpose),
            ADD CONSTRAINT chk_purpose CHECK (purpose IN ('a'));`
       );
-      expect(claims).toEqual([{ kind: 'column', table: 't', column: 'purpose' }]);
+      expect(claims).toEqual([
+        { kind: 'column', table: 't', column: 'purpose' },
+        { kind: 'index', table: 't', index: 'idx_purpose' },
+        { kind: 'index', table: 't', index: 'uq_purpose' },
+      ]);
+    });
+
+    it('reads the UNIQUE INDEX and bare KEY spellings too', () => {
+      expect(schemaClaims('ALTER TABLE t ADD UNIQUE INDEX uq_a (a), ADD KEY k_b (b);')).toEqual([
+        { kind: 'index', table: 't', index: 'uq_a' },
+        { kind: 'index', table: 't', index: 'k_b' },
+      ]);
+    });
+
+    // information_schema can only be asked about a key by name, and MySQL
+    // invents the name of an unnamed one, so there is nothing to look up.
+    it('claims nothing for an unnamed key', () => {
+      expect(schemaClaims('ALTER TABLE t ADD UNIQUE (a), ADD UNIQUE KEY (b), ADD INDEX (c);')).toEqual([]);
+    });
+
+    // The guard's body is SQL too, split on its semicolons like everything
+    // else, and it must not read as a claim of its own.
+    it('reads the one-link migration as exactly its key, and nothing in its guard', () => {
+      expect(schemaClaims(readShipped(ONE_LINK_MIGRATION))).toEqual([
+        { kind: 'index', table: 'oauth_accounts', index: 'uq_oauth_user_provider' },
+      ]);
     });
 
     // The real migration headers quote the DDL that reverses them, so a reader
@@ -257,6 +323,24 @@ describe('scripts/migrate', () => {
       expect(schemaClaims('ALTER TABLE squad_members DROP COLUMN can_read;')).toEqual([]);
       expect(schemaClaims('ALTER TABLE logs MODIFY html_content MEDIUMTEXT;')).toEqual([]);
       expect(schemaClaims('DELETE FROM password_reset_tokens;')).toEqual([]);
+    });
+  });
+
+  describe('proceduresCreated', () => {
+    it('reads the procedures a file creates', () => {
+      expect(proceduresCreated(GUARDED_MIGRATION)).toEqual(['guard_x']);
+    });
+
+    it('ignores a CREATE quoted in a comment, and a CALL or DROP of one', () => {
+      expect(
+        proceduresCreated('-- CREATE PROCEDURE ghost() BEGIN END;\nCALL other();\nDROP PROCEDURE IF EXISTS other;')
+      ).toEqual([]);
+    });
+
+    it('reads the one-link migration\'s guard', () => {
+      expect(proceduresCreated(readShipped(ONE_LINK_MIGRATION))).toEqual([
+        'migration_guard_oauth_one_link_per_provider',
+      ]);
     });
   });
 
@@ -793,7 +877,7 @@ describe('scripts/migrate', () => {
 
       await expect(
         runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
-      ).rejects.toThrow(/declares no\s+CREATE TABLE or ADD COLUMN to check/);
+      ).rejects.toThrow(/declares no\s+CREATE TABLE, ADD COLUMN or named ADD KEY to check/);
     });
 
     it('gives the by-hand INSERT, with the real checksum, for a file it cannot check', async () => {
@@ -804,6 +888,36 @@ describe('scripts/migrate', () => {
       await expect(
         runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
       ).rejects.toThrow(new RegExp(`VALUES \\('zz_data_only\\.sql', '${sha256(body)}', 0\\)`));
+    });
+
+    // A key is the whole change in some files (the one-link migration adds
+    // nothing else), so the check has to be able to see one.
+    it('adopts a newer file that adds a key once information_schema shows the key', async () => {
+      const dir = makeDir({ 'zz_key.sql': 'ALTER TABLE oauth_accounts ADD UNIQUE KEY uq_x (a, b);' });
+      const db = fakeDb({ tables: ['users'], indexes: ['oauth_accounts.uq_x'] });
+      const lines = [];
+
+      const result = await runMigrations({
+        query: db.query,
+        dir,
+        adoptFreshInstall: true,
+        log: message => lines.push(message),
+      });
+
+      expect(result.baselined).toEqual(['zz_key.sql']);
+      expect(lines.join('\n')).toContain('already in the schema: oauth_accounts.uq_x');
+      const asked = db.calls.find(c => c.sql.startsWith('SELECT 1 AS present FROM information_schema.statistics'));
+      expect(asked.params).toEqual(['oauth_accounts', 'uq_x']);
+    });
+
+    it('refuses a newer file whose key is missing, naming the key', async () => {
+      const dir = makeDir({ 'zz_key.sql': 'ALTER TABLE oauth_accounts ADD UNIQUE KEY uq_x (a, b);' });
+      const db = fakeDb({ tables: ['users'] });
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(/missing: oauth_accounts\.uq_x/);
+      expect(db.rows.size).toBe(0);
     });
 
     // The pre-runner files are exempt on purpose: adopting exactly those is
@@ -1089,6 +1203,72 @@ describe('scripts/migrate', () => {
 
       expect(err.message).toMatch(/may be partially migrated/);
       expect(err.message).not.toMatch(/--adopt-fresh-install/);
+    });
+
+    // A guard's SIGNAL is the file refusing on purpose, not MySQL reporting a
+    // broken statement. "May be partially migrated, restore the dump" is the
+    // wrong instruction for it; what the operator needs is the guard's own
+    // sentence, which says what to fix.
+    it('reports a guard\'s refusal as a refusal, leading with the guard\'s own message', async () => {
+      const dir = makeDir({ 'zz_guarded.sql': GUARDED_MIGRATION });
+      const db = fakeDb(GUARD_REFUSAL);
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      expect(err.message).toMatch(
+        /^Migration zz_guarded\.sql refused to run: Duplicates exist\. Find them: SELECT a FROM t\n/
+      );
+      expect(err.message).toMatch(/stays pending/);
+      expect(err.message).not.toMatch(/partially migrated/);
+      expect(err.message).not.toMatch(/restore/);
+      expect(err.cause.code).toBe('ER_SIGNAL_EXCEPTION');
+      expect(db.rows.has('zz_guarded.sql')).toBe(false);
+    });
+
+    // CREATE PROCEDURE commits on its own, MySQL stops the batch at the
+    // SIGNAL, and a routine cannot drop itself (ER_SP_NO_DROP_SP, measured on
+    // 8.4.11), so the file's own trailing DROP never runs on a refusal.
+    it('drops the procedures the refused file created, after the rollback', async () => {
+      const dir = makeDir({ 'zz_guarded.sql': GUARDED_MIGRATION });
+      const db = fakeDb(GUARD_REFUSAL);
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      const sqls = db.calls.map(c => c.sql);
+      const drop = sqls.indexOf('DROP PROCEDURE IF EXISTS `guard_x`');
+      expect(drop).toBeGreaterThan(sqls.indexOf('ROLLBACK'));
+      expect(err.message).toContain('dropped guard_x');
+    });
+
+    it('names a guard it could not drop, and keeps the refusal as the error', async () => {
+      const dir = makeDir({ 'zz_guarded.sql': GUARDED_MIGRATION });
+      const db = fakeDb(GUARD_REFUSAL);
+      const underlying = db.query.getMockImplementation();
+      db.query.mockImplementation(async (sql, params) => {
+        if (sql.startsWith('DROP PROCEDURE IF EXISTS `')) throw new Error('connection lost');
+        return underlying(sql, params);
+      });
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      expect(err.message).toMatch(/^Migration zz_guarded\.sql refused to run/);
+      expect(err.message).toContain('DROP PROCEDURE IF EXISTS guard_x;');
+      expect(err.cause.code).toBe('ER_SIGNAL_EXCEPTION');
+      expect(consoleError).toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+
+    // The cleanup is for a refusal only. After any other failure the runner
+    // leaves the schema exactly as the failure left it, for inspection.
+    it('drops nothing after an ordinary failure', async () => {
+      const dir = makeDir({ 'zz_guarded.sql': GUARDED_MIGRATION });
+      const db = fakeDb({ failOnBody: 'CALL guard_x', failCode: 'ER_PARSE_ERROR' });
+
+      const err = await runMigrations({ query: db.query, dir, log }).catch(e => e);
+
+      expect(err.message).toMatch(/may be partially migrated/);
+      expect(db.calls.some(c => c.sql.startsWith('DROP PROCEDURE IF EXISTS `'))).toBe(false);
     });
 
     it('keeps the original error as the cause', async () => {

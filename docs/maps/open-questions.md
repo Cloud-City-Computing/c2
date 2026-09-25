@@ -33,13 +33,13 @@ These are the highest-confidence items. Each was checked by grepping the whole
   `middleware/` returns only `archives`-scoped reads plus the github.js writes.
 - **Not verified:** runtime behaviour.
 
-Same story for `versions.read_access` (`init.sql:316`): declared, never read,
+Same story for `versions.read_access` (`init.sql:354`): declared, never read,
 never written.
 
 ### A2. `github_embed_refs` has no writer
 
 `GET /api/logs/by-github-ref` (`github.js:1956-1977`) reads the table.
-`migrations/p1_github_embeds.sql` and `init.sql:253-267` create it. There is no
+`migrations/p1_github_embeds.sql` and `init.sql:291-305` create it. There is no
 `INSERT INTO github_embed_refs` anywhere in the repo.
 
 **Consequence:** the "which documents reference this file / issue / PR"
@@ -787,13 +787,13 @@ assumption with a unique key on `user_id`.
 
 ### C3. Rotating `GITHUB_CLIENT_SECRET` invalidates every stored token
 
-The AES key derives from it via scrypt (`oauth.js:56`). There is no key version
+The AES key derives from it via scrypt (`getTokenEncryptionKey` in `oauth.js`). There is no key version
 and no re-encryption path; every user must re-link. Fine for a self-hosted
 product, worth documenting in the ops runbook.
 
 ### C4. Watch rows outlive their resources
 
-`watches` has a FK on `user_id` only (`init.sql:390`); `resource_id` is
+`watches` has a FK on `user_id` only (`init.sql:432`); `resource_id` is
 polymorphic and unconstrained. Deleting a document orphans its watches. Harmless
 (`routes/helpers/activity.js:180-184` bails when the log is gone) but unbounded.
 
@@ -806,10 +806,83 @@ make it slow.
 ### C6. The `conflict` sync status is unreachable
 
 `github_links.sync_status` is `ENUM('clean','remote_ahead','local_ahead',
-'diverged','conflict')` (`init.sql:294`) but `classifySync`
+'diverged','conflict')` (`init.sql:332`) but `classifySync`
 (`github.js:1085-1091`) returns only the first four. Conflicts are expressed as
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.
+
+### C7. A Google sign-in could attach a second Google account to one user (FIXED)
+
+Found 2026-09-25 while moving the Google ladder into `services/identity.js`
+(W6-CDX-4), by reading the source; not reproduced against Google. The ladder
+looks the identity up by `provider_user_id`, and on a miss links by email with
+no check that the matched user already has a **different** Google subject.
+`oauth_accounts` was unique on `(provider, provider_user_id)` only (`init.sql`,
+`uq_provider_user`), so the insert succeeds and the user ends up with two
+Google rows. The address has to be Google-verified to get that far, so the
+realistic case is a recycled Workspace address or a deleted and recreated
+Google account, which is exactly what the OIDC ladder refuses as
+`identity_conflict` (spec Decision 3). The seam moved the Google branch without
+changing it, because W6-CDX-4 is a pure refactor with zero test edits; whether
+Google should also refuse is a behaviour change for its own session.
+
+**Fixed** in the same PR (#56), after its refactor commits, on a gate approval
+of 2026-09-25. `resolveGoogleIdentity` in `services/identity.js` now asks,
+after the email match and before the link insert, whether that user already
+holds a Google row (`SELECT id FROM oauth_accounts WHERE provider = 'google'
+AND user_id = ?`). The subject lookup has just missed, so any row it finds is
+another subject: the answer is `identity_conflict` and nothing is written. The
+callback redirects to `/?oauth_error=identity_conflict`, which `Std_Layout.jsx`
+shows as "This email is already linked to a different Google account. Ask your
+administrator to relink it." (it used to fall through to "Google sign-in
+failed. Please try again.", which invites a retry that cannot succeed).
+Relinking is by hand: the account's owner unlinks Google from the account menu
+(`POST /api/oauth/google/unlink`, which needs a password set), or an operator
+deletes the old row. The check runs only on the link-by-email path, after the
+`email_conflict` refusal, so a linked subject, an unknown person and the
+auto-create path issue the same queries as before. Covered call by call in
+`tests/services/identity.test.js` (both policies, no INSERT) and through the
+route in `tests/routes/oauth-google-seam.test.js` (the redirect, no session),
+each confirmed red against the unfixed seam.
+
+**The race is closed by a key, for both providers** (same PR, gate approvals
+of 2026-09-25). The check above is a SELECT before an INSERT, so two different
+Google subjects signing in for one user at the same instant could both pass it,
+and the GitHub link callback has the same shape (it updates the caller's
+GitHub row, or inserts one when there is none). `oauth_accounts` now carries
+`UNIQUE KEY uq_oauth_user_provider (user_id, provider)` (`init.sql`, and
+`migrations/2026-09-25-oauth-one-link-per-provider.sql` for existing
+installs), so the INSERT that lands second fails with `ER_DUP_ENTRY`, and
+both paths answer that error, when it names this key
+(`isSecondLinkForProvider` in `services/identity.js`), with a named refusal
+instead of a 500: `resolveGoogleIdentity` with the same `identity_conflict`,
+the GitHub callback with `/account?github_error=link_conflict`, which the
+account page's Linked Accounts panel explains (it now shows a status line for
+every `github_error` code and for `github_linked=1`; before, it ignored them
+all). A duplicate on the subject key `uq_provider_user`, which is the same
+account racing itself, still throws as before on both. Proven against MySQL
+8.4 in `tests/integration/oauth-one-link-per-provider.test.js`, which holds
+each race open with a gap lock until both attempts wait at their INSERT: two
+Google sign-ins through `resolveIdentity` must end with one link and one
+`identity_conflict`, and two GitHub links through the real initiation and
+callback routes with one `github_linked=1` and one `link_conflict`. Each was
+red without the key (both linked) and red without its catch (a thrown
+duplicate, and a 500 for GitHub).
+
+**Found on the way, and fixed with it:** the GitHub callback's relink path
+(the caller already has a GitHub row) UPDATEd that row onto whichever account
+came back from GitHub without asking who held it, so relinking to an account
+another user holds ran into `uq_provider_user` and a 500. It now looks the
+holder up first and refuses as `already_linked_other`, as the first-link path
+always did; the live test above proves it through the real routes.
+
+Two limits stand. **The fix does not undo a double link made before it**, but
+it no longer lets one pass silently: the migration refuses, deleting nothing,
+while any user holds two links to one provider, naming the query that finds
+them, `SELECT user_id, provider FROM oauth_accounts GROUP BY user_id, provider
+HAVING COUNT(*) > 1`. The operator resolves each pair by hand (the CHANGELOG's
+Migration section says how) and re-runs it. **It is still not reproduced
+against Google itself.**
 
 ## D. Stale claims in the root `CLAUDE.md`
 

@@ -131,8 +131,8 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **73 files, 1492 tests, all passing**; the
-integration project is **2 files, 6 tests**.
+Current state: the default run is **78 files, 1578 tests, all passing**; the
+integration project is **3 files, 12 tests**.
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
@@ -188,7 +188,7 @@ dropping `--project frontend` from `test` fails the guard.
 **Trap: the setup never executes a migration file.** `adoptFreshInstall`
 records every file and applies none (`scripts/migrate.js` `runUnderLock`); its
 only check on a post-baseline file is `schemaClaims`, which asks whether the
-table or column the file adds already exists. A file with broken SQL whose
+table, column or named key the file adds already exists. A file with broken SQL whose
 objects `init.sql` already has adopts cleanly (reproduced in review,
 2026-09-25). `tests/integration/upgrade-path.test.js` is what runs migration
 SQL: it builds `init.sql` into a second schema, applies the undo statements in
@@ -203,6 +203,32 @@ for `VARCHAR(32)` and the `CHECK` dropped (fingerprint mismatch), and the undo
 entry removed (both tests) each turn it red. Its limits: the upgrade runs on
 empty tables, so a migration's handling of existing rows is not exercised, and
 the `LEGACY_BASELINE` files are never run.
+
+`tests/integration/oauth-one-link-per-provider.test.js` is the first test that
+runs a migration over rows. It builds an install from the release before
+`2026-09-25-oauth-one-link-per-provider.sql` (an `init.sql` build with the key
+dropped and every other file recorded), seeds a double link, and requires the
+guard's refusal to name the duplicate-finding query and leave the rows, the
+key, `schema_migrations` and the routine list exactly as they were, then a
+retry after resolving to apply; a clean install to apply and the key to refuse
+a second link per provider (`ER_DUP_ENTRY` naming it, the shape
+`services/identity.js` matches); adoption to refuse a schema missing the key;
+two Google sign-ins racing for one user to end with one link and one
+`identity_conflict`; two GitHub links racing through the real initiation and
+callback routes (`app.js` over supertest, a real session, only `fetch` to
+GitHub stubbed) to end with one `github_linked=1` and one `link_conflict`; and
+a GitHub relink to an account another user holds to be refused as
+`already_linked_other`. Each race is held open deterministically: a
+transaction takes a locking read of the user's empty `oauth_accounts` range,
+which holds the gap both INSERTs must enter, and the test waits until
+`information_schema.INNODB_TRX` shows both waiting. The tests share the file's
+schema, so each uses GitHub account ids the others do not. **Trap: poll
+`INNODB_TRX` slower than every 100 ms.** InnoDB refreshes that table only after it has gone 100 ms
+unread, so a 25 ms loop saw zero waiters for ten seconds while two were
+waiting. Mutation-checked on 2026-09-25: no guard, the runner's guard cleanup
+skipped, and the `identity_conflict` catch removed each turn one of them red;
+the GitHub race and relink tests were red against the callback before its
+`link_conflict` catch and its holder lookup (a 500 each).
 
 Tests mirror the source tree:
 
@@ -248,15 +274,16 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:99-160`. The global floor is deliberately low because
+`vitest.config.js:99-164`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **29 per-glob thresholds** (this map and the root `CLAUDE.md`
-both used to say 26; that was a miscount). The security-critical and
+Above that sit **30 per-glob thresholds** (this map and the root `CLAUDE.md`
+both used to say 26, which was a miscount). The 30th, `services/identity.js`,
+arrived with the identity seam. The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -266,6 +293,7 @@ well-covered modules are ratcheted high:
 | `routes/comments.js` | 92 |
 | `routes/admin.js`, `routes/archives.js` | 90 |
 | `services/notifications.js` | 90 |
+| `services/identity.js` | 95 |
 | `routes/helpers/**` | 88 |
 | `routes/auth.js`, `routes/squads.js`, `routes/watches.js`, `mysql_connect.js` | 85 |
 | `middleware/**` | 80 |
@@ -350,7 +378,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 29 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 30 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
