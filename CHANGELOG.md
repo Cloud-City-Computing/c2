@@ -12,12 +12,13 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-09-24
+## [0.10.0] - 2026-09-25
 
 The security and infrastructure release. Everything since 0.9.0 closes a
 defect in the shipped image or makes an install upgradable: four places where
-one workspace could reach into another, a credential-flow bug, GitHub link
-routes that checked nothing, a migration runner so an upgrade can actually be
+one workspace could reach into another, a credential-flow bug, a GitHub
+account link that a second person could complete, GitHub link routes that
+checked nothing, a migration runner so an upgrade can actually be
 applied, and the first machine interfaces a paired product (Cloud Command) reads
 through. **Upgrading from 0.9.0 needs one extra step; see Migration below.**
 
@@ -106,6 +107,16 @@ through. **Upgrading from 0.9.0 needs one extra step; see Migration below.**
 
 ### Security
 
+- **OAuth state is bound to the browser that started the flow**
+  ([GHSA-34pj-8475-rqwf](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-34pj-8475-rqwf)).
+  The GitHub link callback trusted a state value for whichever browser
+  completed it, so a link one user started could be completed by another, and
+  the second person's GitHub token was stored against the first person's Codex
+  account. Each initiation now sets a short-lived httpOnly, SameSite=Lax cookie
+  holding the state, one per provider, and each callback refuses, before any
+  token exchange or write, unless the completing browser presents the same
+  value. A refused attempt still consumes the state. Google sign-in gets the
+  same binding.
 - **Typed `password_reset_tokens.purpose`.** Four flows mint into that table
   (password reset, the 2FA login challenge, TOTP enrolment, the 2FA-disable
   confirmation) and no reader constrained which flow minted the row it found.
