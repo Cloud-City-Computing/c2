@@ -26,8 +26,16 @@ const admin = adminConfig();
 export const schema = throwawaySchemaName();
 
 const conn = await openAdminConnection();
-await buildSchemaFromInitSql(conn, schema);
-await runMigrations({ query: queryVia(conn), dir: MIGRATIONS_DIR, adoptFreshInstall: true, log: () => {} });
+try {
+  await buildSchemaFromInitSql(conn, schema);
+  await runMigrations({ query: queryVia(conn), dir: MIGRATIONS_DIR, adoptFreshInstall: true, log: () => {} });
+} catch (err) {
+  // A throw here fails the file before its afterAll is registered, so clean
+  // up now; the global teardown is for leaks nobody saw coming.
+  await dropSchema(conn, schema);
+  await conn.end();
+  throw err;
+}
 
 // Bound before any test file imports an app module. dotenv (which
 // mysql_connect.js calls) never overrides a variable already set, so a
