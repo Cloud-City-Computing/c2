@@ -460,6 +460,17 @@ with no dump to restore. The runner says so, and prints the `INSERT INTO
 schema_migrations` that records the file as applied by hand once you have
 confirmed the schema really has the change.
 
+**A refusal is a third case.** Some migrations check the data before they
+change the schema and refuse when it would break the change, for example
+`2026-09-25-oauth-one-link-per-provider.sql` on a user linked twice to one
+provider. The runner then reports `Migration <file> refused to run:` followed
+by the file's own message, which names what to look for; it records nothing,
+drops the throwaway guard procedure the file created, and the file stays
+pending. Resolve what the message names (the file's header and the CHANGELOG
+say how), then run `npm run migrate` again. Such a file needs the runner: the
+`mysql` client cannot run it, because it splits the guard's body on its
+semicolons.
+
 
 ---
 

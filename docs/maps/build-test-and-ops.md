@@ -131,8 +131,8 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **76 files, 1549 tests, all passing**; the
-integration project is **2 files, 6 tests**.
+Current state: the default run is **76 files, 1564 tests, all passing**; the
+integration project is **3 files, 10 tests**.
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
@@ -188,7 +188,7 @@ dropping `--project frontend` from `test` fails the guard.
 **Trap: the setup never executes a migration file.** `adoptFreshInstall`
 records every file and applies none (`scripts/migrate.js` `runUnderLock`); its
 only check on a post-baseline file is `schemaClaims`, which asks whether the
-table or column the file adds already exists. A file with broken SQL whose
+table, column or named key the file adds already exists. A file with broken SQL whose
 objects `init.sql` already has adopts cleanly (reproduced in review,
 2026-09-25). `tests/integration/upgrade-path.test.js` is what runs migration
 SQL: it builds `init.sql` into a second schema, applies the undo statements in
@@ -203,6 +203,25 @@ for `VARCHAR(32)` and the `CHECK` dropped (fingerprint mismatch), and the undo
 entry removed (both tests) each turn it red. Its limits: the upgrade runs on
 empty tables, so a migration's handling of existing rows is not exercised, and
 the `LEGACY_BASELINE` files are never run.
+
+`tests/integration/oauth-one-link-per-provider.test.js` is the first test that
+runs a migration over rows. It builds an install from the release before
+`2026-09-25-oauth-one-link-per-provider.sql` (an `init.sql` build with the key
+dropped and every other file recorded), seeds a double link, and requires the
+guard's refusal to name the duplicate-finding query and leave the rows, the
+key, `schema_migrations` and the routine list exactly as they were, then a
+retry after resolving to apply; a clean install to apply and the key to refuse
+a second link per provider (`ER_DUP_ENTRY` naming it, the shape
+`services/identity.js` matches); adoption to refuse a schema missing the key;
+and two Google sign-ins racing for one user to end with one link and one
+`identity_conflict`. The race is held open deterministically: a transaction
+takes a locking read of the user's empty `oauth_accounts` range, which holds
+the gap both INSERTs must enter, and the test waits until
+`information_schema.INNODB_TRX` shows both waiting. **Trap: poll it slower than
+every 100 ms.** InnoDB refreshes that table only after it has gone 100 ms
+unread, so a 25 ms loop saw zero waiters for ten seconds while two were
+waiting. Mutation-checked on 2026-09-25: no guard, the runner's guard cleanup
+skipped, and the `identity_conflict` catch removed each turn one of them red.
 
 Tests mirror the source tree:
 

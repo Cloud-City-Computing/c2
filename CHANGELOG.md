@@ -20,6 +20,15 @@ initialises an empty data directory.
   leaving out `local`, listing an unconfigured Google, or leaving out a
   configured one stops the boot with a sentence naming the variable.
 
+### Changed
+
+- `npm run migrate` reports a migration that refuses on purpose (a guard in the
+  file raising `SIGNAL`) as a refusal: it leads with the guard's own message,
+  says the file stays pending, and drops the guard procedure the file created,
+  instead of warning that the database may be partially migrated. And
+  `--adopt-fresh-install` now checks a key a newer migration adds against
+  `information_schema`, as it already did for tables and columns.
+
 ### Security
 
 - **Google sign-in no longer attaches a second Google account to a user.** A
@@ -29,7 +38,49 @@ initialises an empty data directory.
   account signed straight into the previous owner's account. That case is now
   refused as `/?oauth_error=identity_conflict` with nothing written, and the
   sign-in form says so. Relinking is by hand; see `docs/troubleshooting.md`. A
-  double link made before this release is not undone.
+  double link made before this release is not undone automatically: the
+  migration below refuses to run until an operator resolves it.
+- **The same rule is now a database key.** `oauth_accounts` gains
+  `UNIQUE (user_id, provider)`, so two different Google accounts signing in for
+  one user at the same instant can no longer both be linked. The one that lands
+  second gets the same `identity_conflict` answer instead of an error.
+
+### Migration
+
+**The one-link-per-provider migration,**
+[`migrations/2026-09-25-oauth-one-link-per-provider.sql`](migrations/2026-09-25-oauth-one-link-per-provider.sql),
+adds `UNIQUE KEY uq_oauth_user_provider (user_id, provider)` to
+`oauth_accounts`. Apply it with `npm run migrate` from `cloudcodex/`, not by
+piping it into the `mysql` client, which splits the file's guard procedure on
+its semicolons. Stopping writers is not required: new code against the old
+schema only carries a catch that never fires, and old code against the new
+schema gets an error, not a second row, where it would have written a double
+link.
+
+**It refuses, and deletes nothing, on an install where some user already holds
+two links to one provider.** The refusal names the query that lists every
+offending `(user_id, provider)` pair, which you can run yourself before
+upgrading:
+
+```sql
+SELECT user_id, provider FROM oauth_accounts GROUP BY user_id, provider HAVING COUNT(*) > 1
+```
+
+To resolve a pair it lists, take a dump, look at the rows, and decide which
+link the person really signs in with:
+
+```sql
+SELECT id, provider_user_id, provider_email, provider_username, created_at
+  FROM oauth_accounts WHERE user_id = <user_id> AND provider = '<provider>';
+DELETE FROM oauth_accounts WHERE id = <id of the link to remove>;
+```
+
+Then run `npm run migrate` again; the refused file is still pending and applies
+once the query returns no rows. Deleting a Google link stops that Google account
+signing in to the user; deleting a GitHub link drops its stored token, and the
+user relinks GitHub from the account menu. A refused run leaves the schema as it
+found it: nothing is recorded, and the runner drops the throwaway guard
+procedure (`migration_guard_oauth_one_link_per_provider`) the file creates.
 
 ## [0.10.0] - 2026-09-25
 

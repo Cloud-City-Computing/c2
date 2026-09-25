@@ -82,7 +82,7 @@ scope for unit tests today.
 cd cloudcodex
 
 npm run lint          # must be clean — CI fails otherwise
-npm test              # 1549 tests today; both backend and frontend
+npm test              # 1564 tests today; both backend and frontend
 npm run test:coverage # if your change touches a glob with a per-glob
                       # threshold (see vitest.config.js)
 npm run test:integration  # if your change touches schema, migrations or SQL

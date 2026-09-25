@@ -817,7 +817,7 @@ Found 2026-09-25 while moving the Google ladder into `services/identity.js`
 (W6-CDX-4), by reading the source; not reproduced against Google. The ladder
 looks the identity up by `provider_user_id`, and on a miss links by email with
 no check that the matched user already has a **different** Google subject.
-`oauth_accounts` is unique on `(provider, provider_user_id)` only (`init.sql`,
+`oauth_accounts` was unique on `(provider, provider_user_id)` only (`init.sql`,
 `uq_provider_user`), so the insert succeeds and the user ends up with two
 Google rows. The address has to be Google-verified to get that far, so the
 realistic case is a recycled Workspace address or a deleted and recreated
@@ -845,15 +845,34 @@ auto-create path issue the same queries as before. Covered call by call in
 route in `tests/routes/oauth-google-seam.test.js` (the redirect, no session),
 each confirmed red against the unfixed seam.
 
-Three limits stand. **It is an application check, not a database fact:**
-`oauth_accounts` still has no key on `(user_id, provider)`, so two different
-Google subjects signing in for one user at the same instant could both pass it.
-A `UNIQUE (user_id, provider)` key would close that, but it needs a migration
-and would fail on any install that already holds a double link, so it is left
-for a schema session. **It does not undo a double link made before the fix**:
-either subject still resolves at the first lookup, and `SELECT user_id FROM
-oauth_accounts WHERE provider = 'google' GROUP BY user_id HAVING COUNT(*) > 1`
-finds any. **It is still not reproduced against Google itself.**
+**The race is closed by a key** (same PR, gate approval of 2026-09-25). The
+check above is a SELECT before an INSERT, so two different Google subjects
+signing in for one user at the same instant could both pass it.
+`oauth_accounts` now carries `UNIQUE KEY uq_oauth_user_provider (user_id,
+provider)` (`init.sql`, and `migrations/2026-09-25-oauth-one-link-per-provider.sql`
+for existing installs), so the INSERT that lands second fails with
+`ER_DUP_ENTRY`, and `resolveGoogleIdentity` answers that error, when it names
+this key, with the same `identity_conflict` (`isSecondLinkForProvider`). A
+duplicate on the subject key `uq_provider_user`, which is the same subject
+racing itself, still throws as before. GitHub linking already kept one row per
+user (the callback updates the caller's row, or inserts only when there is
+none), so for GitHub the key encodes existing behaviour. Its INSERT has the
+same check-then-insert shape and no catch, so two different GitHub accounts
+linking one user at the same instant now get a 500 from the key where they
+used to write a second row (the same account twice already failed on
+`uq_provider_user`). Proven against MySQL 8.4
+in `tests/integration/oauth-one-link-per-provider.test.js`, which holds the race
+open with a gap lock until both sign-ins wait at their INSERT and requires one
+link and one `identity_conflict`; red without the key (both linked) and red
+without the catch (a thrown duplicate).
+
+Two limits stand. **The fix does not undo a double link made before it**, but
+it no longer lets one pass silently: the migration refuses, deleting nothing,
+while any user holds two links to one provider, naming the query that finds
+them, `SELECT user_id, provider FROM oauth_accounts GROUP BY user_id, provider
+HAVING COUNT(*) > 1`. The operator resolves each pair by hand (the CHANGELOG's
+Migration section says how) and re-runs it. **It is still not reproduced
+against Google itself.**
 
 ## D. Stale claims in the root `CLAUDE.md`
 

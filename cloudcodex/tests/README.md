@@ -38,6 +38,7 @@ tests/
 │   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers
 │   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql
 │   ├── migrate.test.js     ← the migration runner on a real database
+│   ├── oauth-one-link-per-provider.test.js ← a migration's refusal over real rows, and the race it closes
 │   └── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests
@@ -249,8 +250,9 @@ the runner apply every newer file for real, and compares the result with a
 fresh `init.sql` build. **A new migration file needs an entry in
 `pre-runner-state.js`**, the statement that removes its change from an
 `init.sql` build; the test names any file that lacks one. The upgrade runs on
-empty tables, so if a migration transforms existing rows, write a test that
-seeds them.
+empty tables, so if a migration transforms or refuses on existing rows, write
+a test that seeds them; `oauth-one-link-per-provider.test.js` shows how to
+build the install from the release before a migration and run just that file.
 
 **Writing one.** Name it `tests/integration/<area>.test.js`. Import app modules
 normally; they bind to the file's schema. If a test needs a second schema (for
