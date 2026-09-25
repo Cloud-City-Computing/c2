@@ -181,8 +181,9 @@ empties `document.body`.
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **29 per-glob thresholds** (this map and the root `CLAUDE.md`
-both used to say 26; that was a miscount). The security-critical and
+Above that sit **30 per-glob thresholds** (this map and the root `CLAUDE.md`
+both used to say 26, which was a miscount). The 30th, `services/identity.js`,
+arrived with the identity seam. The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -192,6 +193,7 @@ well-covered modules are ratcheted high:
 | `routes/comments.js` | 92 |
 | `routes/admin.js`, `routes/archives.js` | 90 |
 | `services/notifications.js` | 90 |
+| `services/identity.js` | 95 |
 | `routes/helpers/**` | 88 |
 | `routes/auth.js`, `routes/squads.js`, `routes/watches.js`, `mysql_connect.js` | 85 |
 | `middleware/**` | 80 |
@@ -264,7 +266,7 @@ reports blocks a merge permanently rather than failing it.
 1. **verify** re-runs `npm ci`, `npm run lint`, `npm test` **and
    `npm run test:coverage`**. A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 29 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 30 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and

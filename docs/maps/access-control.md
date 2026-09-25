@@ -331,7 +331,7 @@ squad in any workspace: the one place the boundary failed open.
 **`GET /api/users/search` cannot be scoped on shared membership alone.** An
 account with no `squad_members` row anywhere shares no workspace with anyone,
 and that is where every account starts, since Google SSO auto-provisioning
-(`oauth.js`) and an admin invitation with no squad (`admin.js`) both write the
+(`resolveIdentity` in `services/identity.js`, called from `oauth.js`) and an admin invitation with no squad (`admin.js`) both write the
 `users` row and nothing else. Membership-only scoping made such an account
 invisible to every non-admin caller, which severs the squad invite flow: the
 picker in `InviteMemberModal` is driven entirely by this endpoint, so the
