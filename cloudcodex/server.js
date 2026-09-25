@@ -11,12 +11,25 @@ import { setupCollabServer } from './services/collab.js';
 import { setupUserChannelServer } from './services/user-channel.js';
 import { c2_query } from './mysql_connect.js';
 import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
+import { parseAuthProviders } from './services/identity.js';
 import app from './app.js';
 
 // ─── Require Admin credentials before starting ──────────────
 if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_EMAIL) {
   console.error('✖ Missing required admin configuration: ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_EMAIL');
   console.error('  Copy .env.example to .env and fill in your admin credentials.');
+  process.exit(1);
+}
+
+// ─── Validate the sign-in provider list ─────────────────────
+//
+// AUTH_PROVIDERS is optional and unset means today's set. A value that names
+// an unknown provider, or one that is not configured, stops the boot here
+// rather than starting an instance whose sign-in page disagrees with it.
+try {
+  parseAuthProviders();
+} catch (err) {
+  console.error(`✖ ${err.message}`);
   process.exit(1);
 }
 
