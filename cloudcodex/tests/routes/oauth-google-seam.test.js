@@ -90,6 +90,7 @@ describe('Google callback through the identity seam (no domain restriction)', ()
   it('links an existing user by verified email, then signs them in', async () => {
     c2_query.mockResolvedValueOnce([]); // no link
     c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+    c2_query.mockResolvedValueOnce([]); // no Google account on that user yet
     c2_query.mockResolvedValueOnce({ insertId: 1 }); // link
     c2_query.mockResolvedValueOnce([{ id: 9, name: 'ada', avatar_url: null, is_admin: 0 }]);
 
@@ -98,6 +99,19 @@ describe('Google callback through the identity seam (no domain restriction)', ()
     expect(res.headers.location).toBe('/');
     expect(writes()).toHaveLength(1);
     expect(writes()[0][1]).toEqual([9, 'google-sub-1', 'ada@example.com']);
+  });
+
+  it('refuses an email match that already holds another Google account as identity_conflict', async () => {
+    c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
+    c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+    c2_query.mockResolvedValueOnce([{ id: 31 }]); // that user's Google account, another subject
+
+    const res = await signIn(payload());
+
+    expect(res.headers.location).toBe('/?oauth_error=identity_conflict');
+    expect(sessionCookie(res)).toBeUndefined();
+    expect(writes()).toEqual([]);
+    expect(generateSessionToken).not.toHaveBeenCalled();
   });
 
   it('refuses an unknown person as no_account, because auto-create is off without a domain', async () => {

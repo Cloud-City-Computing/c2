@@ -2,11 +2,13 @@
  * Tests for services/identity.js, the identity-resolution seam
  *
  * resolveIdentity() is the one place a verified external identity becomes a
- * local user. For Google it must issue exactly the queries the callback used
- * to issue inline, in the same order, because every route test that drives
- * the callback queues c2_query mocks in call order. The assertions below pin
- * the SQL and its parameters call by call, and every refusal is checked to
- * have written nothing.
+ * local user. For Google it issues the queries the callback used to issue
+ * inline, in the same order, plus one: before linking an email match it asks
+ * whether that user already holds a Google account (spec Decision 3,
+ * docs/maps/open-questions.md C7). Every route test that drives the callback
+ * queues c2_query mocks in call order, so the assertions below pin the SQL and
+ * its parameters call by call, and every refusal is checked to have written
+ * nothing.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -20,6 +22,7 @@ import { resetMocks } from '../helpers.js';
 const LINK_LOOKUP_SQL = `SELECT user_id FROM oauth_accounts WHERE provider = 'google' AND provider_user_id = ? LIMIT 1`;
 const EMAIL_LOOKUP_SQL = `SELECT id FROM users WHERE email = ? LIMIT 1`;
 const LINK_INSERT_SQL = `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`;
+const GOOGLE_ROW_LOOKUP_SQL = `SELECT id FROM oauth_accounts WHERE provider = 'google' AND user_id = ? LIMIT 1`;
 const USERNAME_LOOKUP_SQL = `SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`;
 const PERMISSIONS_INSERT_SQL = `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`;
 
@@ -121,9 +124,10 @@ describe('resolveIdentity (google)', () => {
   });
 
   describe('linking by verified email', () => {
-    it('links the existing user whose email matches, then returns them', async () => {
+    it('links the existing user whose email matches and who has no Google account yet', async () => {
       c2_query.mockResolvedValueOnce([]); // no link
       c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+      c2_query.mockResolvedValueOnce([]); // no Google account on that user
       c2_query.mockResolvedValueOnce({ insertId: 1 }); // link insert
 
       const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
@@ -132,6 +136,7 @@ describe('resolveIdentity (google)', () => {
       expect(sqlCalls()).toEqual([
         [LINK_LOOKUP_SQL, ['google-sub-123']],
         [EMAIL_LOOKUP_SQL, ['ada@example.com']],
+        [GOOGLE_ROW_LOOKUP_SQL, [9]],
         [LINK_INSERT_SQL, [9, 'google-sub-123', 'ada@example.com']],
       ]);
     });
@@ -151,6 +156,45 @@ describe('resolveIdentity (google)', () => {
         [EMAIL_LOOKUP_SQL, ['ada@example.com']],
       ]);
       expect(writes()).toEqual([]);
+    });
+  });
+
+  describe('an email match that already holds a different Google account (open-questions C7)', () => {
+    it('refuses as identity_conflict and issues no INSERT', async () => {
+      c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
+      c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+      c2_query.mockResolvedValueOnce([{ id: 31 }]); // that user's Google account, another subject
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'identity_conflict' });
+      expect(sqlCalls()).toEqual([
+        [LINK_LOOKUP_SQL, ['google-sub-123']],
+        [EMAIL_LOOKUP_SQL, ['ada@example.com']],
+        [GOOGLE_ROW_LOOKUP_SQL, [9]],
+      ]);
+      expect(writes()).toEqual([]);
+    });
+
+    it('refuses the same way under the domain policy, so auto-create never runs', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9 }]);
+      c2_query.mockResolvedValueOnce([{ id: 31 }]);
+
+      const result = await resolveIdentity(googleClaims(), DOMAIN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'identity_conflict' });
+      expect(c2_query).toHaveBeenCalledTimes(3);
+      expect(writes()).toEqual([]);
+    });
+
+    it('still signs in the subject that is already linked, before any email or conflict check', async () => {
+      c2_query.mockResolvedValueOnce([{ user_id: 9 }]);
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: true, userId: 9, created: false });
+      expect(sqlCalls()).toEqual([[LINK_LOOKUP_SQL, ['google-sub-123']]]);
     });
   });
 
