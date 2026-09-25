@@ -100,8 +100,9 @@ describe('Google callback through the identity seam (no domain restriction)', ()
 
     expect(res.headers.location).toBe('/');
     expect(writes()).toHaveLength(1);
-    // Subject, email, then the user the row is copied from while two-factor is off.
-    expect(writes()[0][1]).toEqual(['google-sub-1', 'ada@example.com', 9]);
+    // Subject and email, then the user the row is copied from, while it still
+    // holds that email and two-factor is off.
+    expect(writes()[0][1]).toEqual(['google-sub-1', 'ada@example.com', 9, 'ada@example.com']);
   });
 
   it('refuses as two_factor_enabled when two-factor came on before the link INSERT (zero rows)', async () => {

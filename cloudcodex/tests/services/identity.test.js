@@ -27,11 +27,14 @@ const EMAIL_LOOKUP_SQL = `SELECT id, two_factor_method FROM users WHERE email = 
 const LINK_INSERT_SQL = `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`;
 /**
  * The link-by-email INSERT copies the user row only while its two-factor is
- * still off, so the setting is decided at insert time, not only at the lookup.
+ * still off and it still holds the email the lookup matched, read FOR SHARE,
+ * so both are decided at insert time at any isolation level, not only at the
+ * lookup.
  */
 const LINK_BY_EMAIL_INSERT_SQL =
   `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) ` +
-  `SELECT id, 'google', ?, ? FROM users WHERE id = ? AND (two_factor_method IS NULL OR two_factor_method = 'none')`;
+  `SELECT id, 'google', ?, ? FROM users WHERE id = ? AND email = ? ` +
+  `AND (two_factor_method IS NULL OR two_factor_method = 'none') FOR SHARE`;
 const GOOGLE_ROW_LOOKUP_SQL = `SELECT id FROM oauth_accounts WHERE provider = 'google' AND user_id = ? LIMIT 1`;
 const USERNAME_LOOKUP_SQL = `SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`;
 const PERMISSIONS_INSERT_SQL = `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`;
@@ -177,7 +180,7 @@ describe('resolveIdentity (google)', () => {
         [LINK_LOOKUP_SQL, ['google-sub-123']],
         [EMAIL_LOOKUP_SQL, ['ada@example.com']],
         [GOOGLE_ROW_LOOKUP_SQL, [9]],
-        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9]],
+        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']],
       ]);
     });
 
@@ -279,7 +282,7 @@ describe('resolveIdentity (google)', () => {
       const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
 
       expect(result).toEqual({ ok: true, userId: 9, created: false });
-      expect(writes()).toEqual([[LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9]]]);
+      expect(writes()).toEqual([[LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']]]);
     });
   });
 
@@ -302,7 +305,7 @@ describe('resolveIdentity (google)', () => {
         [LINK_LOOKUP_SQL, ['google-sub-123']],
         [EMAIL_LOOKUP_SQL, ['ada@example.com']],
         [GOOGLE_ROW_LOOKUP_SQL, [9]],
-        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9]],
+        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']],
       ]);
     });
 
@@ -316,6 +319,44 @@ describe('resolveIdentity (google)', () => {
 
       expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
       expect(c2_query).toHaveBeenCalledTimes(4);
+    });
+
+    // Exactly one row is the only success: the INSERT copies at most one user
+    // row by primary key, so any other count is refused, never reported as a
+    // link.
+    it.each([
+      ['two rows', { affectedRows: 2, insertId: 5 }],
+      ['a header with no affectedRows', { insertId: 0 }],
+    ])('answers two_factor_enabled for %s, not a link', async (_label, header) => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce(header);
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+    });
+  });
+
+  // The account can also give up this address between the lookup and the
+  // link. The INSERT copies the row only while it still holds the email the
+  // lookup matched, so an address changed in between links nobody, and zero
+  // rows is the same refusal with nothing written; the next sign-in looks the
+  // address up afresh.
+  describe('an email changed between the lookup and the link', () => {
+    it('binds the INSERT to the looked-up email and refuses on zero rows', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // holds ada@ when looked up
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ affectedRows: 0, insertId: 0 }); // no longer does
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+      const [insertSql, insertParams] = sqlCalls()[3];
+      expect(insertSql).toContain('WHERE id = ? AND email = ?');
+      expect(insertParams).toEqual(['google-sub-123', 'ada@example.com', 9, 'ada@example.com']);
     });
   });
 
@@ -378,7 +419,7 @@ describe('resolveIdentity (google)', () => {
         [LINK_LOOKUP_SQL, ['google-sub-123']],
         [EMAIL_LOOKUP_SQL, ['ada@example.com']],
         [GOOGLE_ROW_LOOKUP_SQL, [9]],
-        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9]],
+        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']],
       ]);
     });
 
