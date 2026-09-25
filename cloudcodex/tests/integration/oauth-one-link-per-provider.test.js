@@ -257,16 +257,26 @@ describe('--adopt-fresh-install and the key', () => {
 
 /**
  * Hold open the race the application checks cannot close: a transaction takes
- * a locking read of this user's (empty) oauth_accounts range, which holds the
- * gap every link INSERT for the user has to enter. Two sign-ins then pass
- * their SELECTs, find no row, and wait at the INSERT until `release`.
+ * an exclusive lock on this user's own `users` row. Every link INSERT for the
+ * user has to take a shared lock on that row to check its foreign key, so two
+ * sign-ins pass their SELECTs (plain reads, which never wait on a lock), find
+ * no row, and wait at the INSERT until `release`.
+ *
+ * A record lock on the parent row, not a gap lock on the child's empty range:
+ * InnoDB takes foreign-key check locks at every isolation level, while READ
+ * COMMITTED takes no gap locks at all, so a `FOR UPDATE` over the empty
+ * oauth_accounts range held nothing there and neither INSERT ever waited.
  * @param { Number } userId
  */
-async function holdLinkGap(userId) {
+async function holdUserRow(userId) {
   const blocker = await openAdminConnection();
   await blocker.changeUser({ database: process.env.DB_NAME });
   await blocker.query('START TRANSACTION');
-  await blocker.query('SELECT id FROM oauth_accounts WHERE user_id = ? FOR UPDATE', [userId]);
+  const [locked] = await blocker.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+  if (locked.length !== 1) {
+    await blocker.end();
+    throw new Error(`no users row ${userId} to hold`);
+  }
 
   return {
     /** Wait until `n` transactions in this file's schema are waiting on a lock. */
@@ -315,7 +325,7 @@ describe('two Google subjects linking one user at the same instant (C7)', () => 
     const created = await c2_query(`INSERT INTO users (name, email) VALUES ('race', ?)`, [email]);
     const userId = created.insertId;
 
-    const gap = await holdLinkGap(userId);
+    const held = await holdUserRow(userId);
     const attempts = ['race-subject-a', 'race-subject-b'].map(subject =>
       resolveIdentity({ provider: 'google', subject, email, emailVerified: true }, policy).then(
         value => value,
@@ -323,9 +333,9 @@ describe('two Google subjects linking one user at the same instant (C7)', () => 
       )
     );
     try {
-      await gap.waitForLockWaits(2);
+      await held.waitForLockWaits(2);
     } finally {
-      await gap.release();
+      await held.release();
     }
     const results = await Promise.all(attempts);
 
@@ -379,7 +389,7 @@ describe('two GitHub accounts linking one user at the same instant (C7)', () => 
       flows.push({ state, cookie: `oauth_state_github=${state}` });
     }
 
-    const gap = await holdLinkGap(userId);
+    const held = await holdUserRow(userId);
     const callbacks = ['code-a', 'code-b'].map((code, i) =>
       request(app)
         .get(`/api/oauth/github/callback?code=${code}&state=${flows[i].state}`)
@@ -387,9 +397,9 @@ describe('two GitHub accounts linking one user at the same instant (C7)', () => 
         .then(res => res.headers.location ?? `status ${res.status}`)
     );
     try {
-      await gap.waitForLockWaits(2);
+      await held.waitForLockWaits(2);
     } finally {
-      await gap.release();
+      await held.release();
     }
     const outcomes = await Promise.all(callbacks);
 

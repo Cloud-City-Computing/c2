@@ -219,9 +219,17 @@ callback routes (`app.js` over supertest, a real session, only `fetch` to
 GitHub stubbed) to end with one `github_linked=1` and one `link_conflict`; and
 a GitHub relink to an account another user holds to be refused as
 `already_linked_other`. Each race is held open deterministically: a
-transaction takes a locking read of the user's empty `oauth_accounts` range,
-which holds the gap both INSERTs must enter, and the test waits until
-`information_schema.INNODB_TRX` shows both waiting. The tests share the file's
+transaction takes `SELECT ... FOR UPDATE` on the user's own `users` row
+(`holdUserRow`), every link INSERT needs a shared lock on that row to check
+its foreign key, and the test waits until `information_schema.INNODB_TRX`
+shows both waiting. It is a record lock on the parent row, not a gap lock on
+the child's empty range, because InnoDB takes foreign-key check locks at every
+isolation level and takes no gap locks at `READ-COMMITTED`, so the file does
+not depend on the server's isolation setting. Run on 2026-09-25 with the
+server at `SET GLOBAL transaction_isolation = 'READ-COMMITTED'` and at the
+default `REPEATABLE-READ`: all six tests pass at both, and removing the
+`identity_conflict` catch still turns the Google race red at
+`READ-COMMITTED`. The tests share the file's
 schema, so each uses GitHub account ids the others do not. **Trap: poll
 `INNODB_TRX` slower than every 100 ms.** InnoDB refreshes that table only after it has gone 100 ms
 unread, so a 25 ms loop saw zero waiters for ten seconds while two were

@@ -862,7 +862,8 @@ every `github_error` code and for `github_linked=1`; before, it ignored them
 all). A duplicate on the subject key `uq_provider_user`, which is the same
 account racing itself, still throws as before on both. Proven against MySQL
 8.4 in `tests/integration/oauth-one-link-per-provider.test.js`, which holds
-each race open with a gap lock until both attempts wait at their INSERT: two
+each race open with a lock on the user's own row until both attempts wait at
+their INSERT's foreign-key check (at any isolation level): two
 Google sign-ins through `resolveIdentity` must end with one link and one
 `identity_conflict`, and two GitHub links through the real initiation and
 callback routes with one `github_linked=1` and one `link_conflict`. Each was
