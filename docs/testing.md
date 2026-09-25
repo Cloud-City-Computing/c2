@@ -22,14 +22,16 @@ npm run test:watch     # both projects, watch mode
 npm run test:backend   # backend project only
 npm run test:frontend  # frontend project only
 npm run test:coverage  # both + v8 coverage report (HTML + lcov + text)
+npm run test:integration  # opt-in: the live-MySQL project (needs a server, see below)
 ```
 
 ---
 
-## Two Vitest projects, one command
+## Two default Vitest projects, one command
 
-`vitest.config.js` defines two named projects so a single `npm test` runs
-backend and frontend together with the right environment for each:
+`vitest.config.js` defines three named projects. A single `npm test` runs the
+two default ones, backend and frontend, together with the right environment
+for each; the third, `integration`, is opt-in (next section):
 
 ```
    ┌─────────────────────────────────────────────────────────────┐
@@ -52,6 +54,41 @@ backend and frontend together with the right environment for each:
 
 Both projects share the same coverage config so `npm run test:coverage`
 produces one unified report.
+
+The scripts name `--project backend --project frontend` explicitly, and
+`tests/test-projects.test.js` fails if a project the config declares (other
+than `integration`) is missing from `test`, `test:watch` or `test:coverage`, so a new project
+cannot silently drop out of the default run.
+
+## The opt-in live-MySQL project
+
+`npm run test:integration` runs `tests/integration/**` against a real MySQL 8.4
+server rather than a mock. Each test file gets its own throwaway
+`c2_it_<random>` schema built from `init.sql` and adopted by the migration
+runner, and the run fails if any such schema is left behind.
+
+Adoption records every migration file and runs none, so the per-file setup
+alone proves only that `init.sql` builds on MySQL 8.4 and that the runner's
+adoption check agrees with it. Migration SQL is executed by one file,
+`tests/integration/upgrade-path.test.js`: it takes an `init.sql` build back to
+the pre-runner state with the undo statements in
+`tests/integration/pre-runner-state.js`, records the pre-runner baseline, lets
+the runner apply every newer file for real, and requires the result to match a
+fresh `init.sql` build (columns, indexes, constraints, checks and foreign
+keys). A new migration file fails that test until it has an undo entry. The
+upgrade runs on empty tables, so a migration's handling of existing rows is
+not exercised, and the pre-runner files in `LEGACY_BASELINE` are never run.
+
+```bash
+# any MySQL 8.4 answering on 3306, for example a scratch container:
+docker run -d --rm --name c2-it-mysql -p 3306:3306 \
+  -e MYSQL_ROOT_PASSWORD=<pw> mysql:8.4
+IT_DB_ROOT_PASSWORD=<pw> npm run test:integration   # IT_DB_HOST defaults to 127.0.0.1
+```
+
+CI runs it inside the required `Lint, test and build` job against a
+`mysql:8.4` service container. See `docs/maps/build-test-and-ops.md` section 5
+for the mechanism.
 
 ---
 

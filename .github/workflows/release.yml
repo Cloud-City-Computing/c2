@@ -24,6 +24,22 @@ jobs:
   verify:
     runs-on: ubuntu-latest
 
+    # The same throwaway MySQL CI's required job runs, so a tag cannot
+    # publish an image whose init.sql does not build, or whose post-baseline
+    # migrations do not upgrade a pre-runner schema to what init.sql builds.
+    # The root password is not a secret: it guards an ephemeral service
+    # container that exists only for the length of this job.
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+
     defaults:
       run:
         working-directory: cloudcodex
@@ -42,6 +58,13 @@ jobs:
       - run: npm run lint
 
       - run: npm test
+
+      # mysql_connect.js reads no DB_PORT, so the service must answer on 3306.
+      - name: Integration tests (live MySQL)
+        env:
+          IT_DB_HOST: 127.0.0.1
+          IT_DB_ROOT_PASSWORD: ci-root-password
+        run: npm run test:integration
 
       # CI's gate is the 29 per-glob thresholds in vitest.config.js, not the
       # plain test run. Without this the release path is a weaker check than

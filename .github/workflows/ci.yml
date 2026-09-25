@@ -15,6 +15,22 @@ jobs:
     name: Lint, test and build
     runs-on: ubuntu-latest
 
+    # A throwaway MySQL for the live-MySQL integration project. It lives
+    # inside this job, the check main already requires, so no
+    # branch-protection change is needed to gate on it. The root password is
+    # not a secret: it guards an ephemeral service container that exists only
+    # for the length of this job.
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+
     defaults:
       run:
         working-directory: cloudcodex
@@ -33,6 +49,13 @@ jobs:
       - run: npm run lint
 
       - run: npm test
+
+      # mysql_connect.js reads no DB_PORT, so the service must answer on 3306.
+      - name: Integration tests (live MySQL)
+        env:
+          IT_DB_HOST: 127.0.0.1
+          IT_DB_ROOT_PASSWORD: ci-root-password
+        run: npm run test:integration
 
       - name: Run coverage
         run: npm run test:coverage

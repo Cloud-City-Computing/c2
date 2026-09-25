@@ -10,9 +10,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test": "vitest run --project backend --project frontend",
+    "test:watch": "vitest --project backend --project frontend",
+    "test:coverage": "vitest run --coverage --project backend --project frontend",
+    "test:integration": "vitest run --project integration",
     "test:backend": "vitest run --project backend",
     "test:frontend": "vitest run --project frontend"
   },
