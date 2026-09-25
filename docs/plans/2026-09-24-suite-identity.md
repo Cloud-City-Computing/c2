@@ -599,9 +599,11 @@ The Google branch's refusals are now `email_not_verified`, `domain_not_allowed`,
 or `totp`, no carve-out) is refused as `two_factor_enabled` with nothing written, after
 `email_conflict` and before the Google row check, so the refusal costs two queries in all. The
 link itself is `INSERT INTO oauth_accounts (...) SELECT id, 'google', ?, ? FROM users WHERE id = ?
-AND (two_factor_method IS NULL OR two_factor_method = 'none')`, and zero affected rows answers
-`two_factor_enabled` with nothing written: the same test made at insert time, which closes the
-window between the lookup and the write. An identity
+AND email = ? AND (two_factor_method IS NULL OR two_factor_method = 'none') FOR SHARE`, and
+anything but exactly one affected row answers `two_factor_enabled` with nothing written: the same
+test made at insert time, on a locking read at any isolation level (without `FOR SHARE`, READ
+COMMITTED reads the old row unlocked and links over an enable still being committed), and bound
+to the looked-up email, which closes the window between the lookup and the write. An identity
 already linked is unchanged and never consults two-factor: once linked, Google's own sign-in, its
 MFA included, governs the account. `Std_Layout.jsx` gained copy for the code. Tests were committed
 red first: `tests/services/identity.test.js` (call by call; its pinned email-lookup SQL changed),
@@ -910,9 +912,12 @@ maps to `/` and every benign one to itself. If W6-CMD-24 has not landed, write t
    `email_conflict` and before `identity_conflict`). A hit that already has an identity at this
    issuer (`SELECT 1 FROM user_identities WHERE user_id = ? AND issuer = ?`) refuses
    `identity_conflict`. Otherwise link with `INSERT INTO user_identities (user_id, issuer, subject,
-   email_at_link) SELECT id, ?, ?, ? FROM users WHERE id = ? AND (two_factor_method IS NULL OR
-   two_factor_method = 'none')`: zero affected rows means two-factor came on after the lookup and
-   refuses `two_factor_enabled` with nothing written; one row returns the user.
+   email_at_link) SELECT id, ?, ?, ? FROM users WHERE id = ? AND LOWER(email) = LOWER(?) AND
+   (two_factor_method IS NULL OR two_factor_method = 'none') FOR SHARE`, the email being the one
+   the lookup matched: `FOR SHARE` makes it a locking read at any isolation level, so a change to
+   the row still being committed is waited for and then seen. Anything but exactly one affected
+   row means two-factor came on, or the address was given up, after the lookup, and refuses
+   `two_factor_enabled` with nothing written; one row returns the user.
 3. (PR 8 adds the invitation step here.)
 4. Refuse `no_account`.
 
@@ -926,9 +931,12 @@ own tests, the same set the Google rung has:
 - [ ] The same for `'email'`.
 - [ ] `'none'` links, through the conditional INSERT.
 - [ ] NULL links, through the conditional INSERT.
-- [ ] The conditional INSERT's zero affected rows refuses `two_factor_enabled`; on real MySQL, a
-      transaction turns two-factor on and holds the user row between the lookup and the INSERT, and
-      the answer is the refusal with no row (an anchor with a change that leaves it off links).
+- [ ] The conditional INSERT's zero affected rows (and any count but one) refuses
+      `two_factor_enabled`; on real MySQL, a transaction turns two-factor on, or changes the email,
+      and holds the user row between the lookup and the INSERT, and the answer is the refusal with
+      no row (an anchor with a change that touches neither links). The same interleaves run with
+      the app's connections on READ COMMITTED, which is what pins `FOR SHARE`
+      (`tests/integration/google-link-races.js` is the Google rung's harness to reuse).
 - [ ] An already-linked `(issuer, sub)` whose user has two-factor on signs in with a session and
       no challenge minted.
 - [ ] `two_factor_enabled` comes after `email_conflict` and before `identity_conflict`.

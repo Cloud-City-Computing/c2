@@ -215,12 +215,14 @@ C7), else link them, else create-and-link (username from
 before either check. The two-factor refusal comes before the Google row check
 because it reads the row already in hand and still holds once a conflicting
 link is cleared. The link itself is `INSERT INTO oauth_accounts ... SELECT ...
-FROM users WHERE id = ? AND (two_factor_method IS NULL OR two_factor_method =
-'none')`, so the INSERT repeats the test at insert time: two-factor turned on
-after the lookup inserts zero rows, and zero rows is the same
-`two_factor_enabled` with nothing written. Under InnoDB's default isolation that
-source read takes a shared lock, so an enable still committing is waited for
-and then seen.
+FROM users WHERE id = ? AND email = ? AND (two_factor_method IS NULL OR
+two_factor_method = 'none') FOR SHARE`, so the INSERT repeats the test at
+insert time, on a locking read, at any isolation level: a change to the user
+row still being committed is waited for and then seen. Two-factor turned on
+after the lookup, or the account giving up the looked-up email, inserts no
+row, and anything but exactly one row is the same `two_factor_enabled` with
+nothing written. Without `FOR SHARE`, READ COMMITTED would read the old row
+without a lock and link over the change.
 
 **The linked rung never consults local two-factor.** An identity found by
 `provider_user_id` signs in with no second-factor challenge, including a user

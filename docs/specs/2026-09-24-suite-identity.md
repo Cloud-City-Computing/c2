@@ -151,9 +151,11 @@ token (`routes/auth.js:52-66`), then joins the invited squad in the same transac
       with nothing written**: the Google rung's rule
       ([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)),
       added on a gate approval of 2026-09-25. It is checked after any `email_conflict` answer and
-      before `identity_conflict`, and the `user_identities` INSERT repeats it, copying the user
-      row only while two-factor is still off, so two-factor turned on between the lookup and the
-      INSERT inserts zero rows and gets the same refusal. A user who already has a different
+      before `identity_conflict`, and the `user_identities` INSERT repeats it: it reads the user
+      row `FOR SHARE`, a locking read at any isolation level, and copies it only while two-factor
+      is still off and the row still holds the verified email the lookup matched, so two-factor
+      turned on, or the address given up, between the lookup and the INSERT gets the same refusal
+      (anything but exactly one row inserted is refused). A user who already has a different
       `sub` at this issuer is refused as `identity_conflict` (a recycled address, or a deleted and
       recreated IdP account), and an operator relinks by hand;
    3. else, an open invitation for that verified email creates the user with the invitation's
@@ -416,9 +418,11 @@ The Google callback's linking ladder is written inline in the route (`oauth.js:2
   ([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)):**
   the same rung refuses a user matched by verified email who has two-factor authentication on
   (`two_factor_method` `email` or `totp`) as `two_factor_enabled`, writing nothing. It runs after
-  `email_conflict` and before the `identity_conflict` check, and the link INSERT copies the user
-  row only while two-factor is still off, so two-factor turned on between the lookup and the
-  INSERT is refused the same way (zero rows). An identity already linked still
+  `email_conflict` and before the `identity_conflict` check, and the link INSERT reads the user
+  row `FOR SHARE` (a locking read at any isolation level) and copies it only while two-factor is
+  still off and the row still holds the looked-up email, so two-factor turned on, or the address
+  given up, between the lookup and the INSERT is refused the same way (anything but exactly one
+  row). An identity already linked still
   signs in with no local second factor, including a user who turns two-factor on after linking:
   once linked, Google's own sign-in, its MFA included, governs the account.
 - `AUTH_PROVIDERS` is parsed and validated at boot, failing fast on an unknown value or on a
@@ -476,7 +480,8 @@ There is none; see "No OIDC client" above.
   email replaces `users.email` when it has changed, unless another row holds that address, which
   refuses as `email_conflict` and changes nothing. The link-by-email rung refuses an account with
   two-factor on as `two_factor_enabled`, in Decision 3's order, and its `user_identities` INSERT
-  is conditional on two-factor still being off, zero rows answering the same refusal.
+  is conditional in the same way as the Google rung's (read `FOR SHARE`, two-factor still off, the
+  looked-up email still held), anything but exactly one row answering the same refusal.
 - An OIDC sign-in for an identity already linked skips local 2FA (the user's `totp_secret` is
   kept), and `GET /api/2fa/status` reports `managed_by` so the account page can say who owns the
   factor.
@@ -501,9 +506,10 @@ There is none; see "No OIDC client" above.
   unverified email is refused; an issuer-side email change is followed; a collision is refused.
 - Two-factor tests: an email match with `totp`, and one with `email`, is refused as
   `two_factor_enabled` with no `user_identities` row; `'none'` and NULL link; the conditional
-  INSERT's zero rows gets the same refusal, including on real MySQL with two-factor turned on
-  between the lookup and the INSERT; and an already-linked identity whose user has two-factor on
-  signs in with no local challenge.
+  INSERT's zero rows gets the same refusal, including on real MySQL with two-factor turned on, and
+  with the email changed, between the lookup and the INSERT, under both REPEATABLE READ and READ
+  COMMITTED; and an already-linked identity whose user has two-factor on signs in with no local
+  challenge.
 - The migration is verified on real MySQL, including `--adopt-fresh-install` on an `init.sql`
   schema. All pre-existing tests pass unmodified, and coverage thresholds hold.
 

@@ -190,8 +190,9 @@ and `docs/deployment.md`.
 decide on it: `POST /api/login` demands a code for `email` or `totp`, and
 `resolveIdentity`'s Google link-by-email rung refuses to link a user with
 either as `two_factor_enabled` and writes no `oauth_accounts` row; its link is
-an `INSERT ... SELECT` from `users` that copies the row only while the column
-is NULL or `'none'`, so the test is made again at insert time. A Google
+an `INSERT ... SELECT` from `users` that copies the row `FOR SHARE`, only while
+the column is NULL or `'none'` and the row still holds the looked-up email, so
+the test is made again at insert time at any isolation level. A Google
 identity already linked is not asked, even after the user turns two-factor on
 (see [request-lifecycle.md](request-lifecycle.md), the resolution seam).
 

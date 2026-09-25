@@ -52,9 +52,24 @@ initialises an empty data directory.
   says to sign in with the password and code instead. A Google account that is
   already linked signs in as before, without the local code, even after its
   user turns two-factor on: once linked, Google's own sign-in, its MFA
-  included, governs the account. Links made before this release are kept; to
-  review them, list the Google links on accounts with two-factor on and remove
-  any that should not stand (`docs/troubleshooting.md` has the query).
+  included, governs the account. Links made before this release are kept, and
+  the database cannot tell one the owner made from one made without their
+  second factor. `docs/troubleshooting.md` has a query listing every Google
+  link made by email. Ask each owner whether they linked Google themselves;
+  where that cannot be confirmed, delete the link (the owner can link again
+  deliberately) and the account's session:
+
+  ```sql
+  DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google';
+  DELETE FROM sessions WHERE user_id = <id>;
+  ```
+
+  The session goes too because an account has one session, shared by every
+  sign-in to it, so removing the link alone leaves whoever used it signed in,
+  and a password change from the account menu keeps that session. A password
+  reset through Forgot password ends every session and does the same job as
+  the second statement. Then have the owner confirm that the account's email
+  address, password and two-factor setting are theirs.
 - **Google sign-in no longer attaches a second Google account to a user.** A
   Google account not yet linked to anyone was linked to whichever user held its
   verified email, even when that user already had a different Google account

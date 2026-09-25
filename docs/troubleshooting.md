@@ -161,6 +161,8 @@ authentication on (an authenticator app or an email code, either one), and
 has no Google account linked yet. Google sign-in links an existing account
 by its verified email only when two-factor is off, because a linked Google
 account signs in from then on without the local code. Nothing was written.
+Rarely, the same answer comes back when the account's email address changed
+while the sign-in was under way; signing in again then gets the right answer.
 
 **Fix.** Sign in with the username, password and code; the account works
 exactly as before. If its owner also wants Google sign-in on it, they turn
@@ -172,21 +174,47 @@ is on or off; password sign-in still asks for it. Turning two-factor off
 emails a confirmation code, so on an instance without mail an admin's
 **Reset 2FA** does it instead (see the email entry above).
 
-**Reviewing links made before this check existed.** An operator can list
-every Google link on an account that has two-factor on (`make db-shell`):
+**Reviewing Google links made before this release.** The database cannot
+tell a link the owner made from one made without their second factor: a link
+made by email records the account's own address as `provider_email`, and
+nothing records when two-factor was turned on or off. Two-factor may also have
+been turned off since a link was made, so an account showing `none` today is
+not cleared by that alone. List every Google link made by email, that is,
+made more than a minute after its account (a Google sign-in that creates an
+account links it in the same moment), accounts with two-factor on now first
+(`make db-shell`):
 
 ```sql
-SELECT u.id, u.name, u.two_factor_method, o.provider_email, o.created_at
+SELECT u.id, u.name, u.email, u.two_factor_method,
+       u.created_at AS account_created, o.created_at AS google_linked
   FROM users u
   JOIN oauth_accounts o ON o.user_id = u.id AND o.provider = 'google'
- WHERE u.two_factor_method IN ('email', 'totp');
+ WHERE o.created_at > u.created_at + INTERVAL 1 MINUTE
+ ORDER BY u.two_factor_method IN ('email', 'totp') DESC, o.created_at;
 ```
 
-A row is expected when the owner linked Google first and turned two-factor
-on later. To remove a link that should not stand, the owner chooses
-**Unlink** next to Google in the account menu (it needs a password set), or
-an operator runs
-`DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google'`.
+For each row, ask the owner whether they linked Google themselves. Where that
+cannot be confirmed, delete the link (the owner can link again deliberately,
+as the Fix above describes) and the account's session:
+
+```sql
+DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google';
+DELETE FROM sessions WHERE user_id = <id>;
+```
+
+The second statement is not optional. An account has one session, shared by
+every sign-in to it: a new sign-in is handed the live session the account
+already has (`generateSessionToken` in `mysql_connect.js`), so whoever signed
+in through the link holds the owner's own session token, and deleting the link
+leaves them signed in. Changing the password from the account menu does not
+end that session either, because the change keeps the session it was made
+from. A password reset through **Forgot password** deletes every session, so
+it can stand in for the second statement. Once the sessions are gone, have the
+owner sign in again and check that the account's email address, password and
+two-factor setting are theirs, since whoever held the session could change
+them; if the email address is not theirs, an operator restores it before the
+owner resets the password. One shared session per account is what the planned
+W6-CDX-2 (one session per sign-in, stored hashed) replaces.
 
 ---
 

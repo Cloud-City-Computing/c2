@@ -40,6 +40,8 @@ tests/
 │   ├── migrate.test.js     ← the migration runner on a real database
 │   ├── oauth-one-link-per-provider.test.js ← a migration's refusal over real rows, and the race it closes
 │   ├── oauth-google-two-factor.test.js ← Google never links a two-factor account by email; linked ones still sign in
+│   ├── oauth-google-two-factor-read-committed.test.js ← the same link interleaves with the app pool on READ COMMITTED
+│   ├── google-link-races.js ← (not a test file) the lookup-then-INSERT interleaves both files above run
 │   └── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests
