@@ -142,12 +142,20 @@ token (`routes/auth.js:52-66`), then joins the invited squad in the same transac
    above: that table has no issuer and carries GitHub token semantics.
 3. **`(issuer, sub)` is the key; verified email is the fallback; invite-only survives.** The
    sign-in ladder, in order:
-   1. an identity row for `(issuer, sub)` exists: that user;
+   1. an identity row for `(issuer, sub)` exists: that user, signed in as before with no local
+      second factor, because the issuer's own MFA governs an identity once it is linked (item 9);
    2. else, with `OIDC_LINK_BY_VERIFIED_EMAIL` on (the default), an existing user whose email
       matches the issuer's **verified** email and who has **no identity at this issuer yet** is
-      linked. A user who already has a different `sub` at this issuer is refused as
-      `identity_conflict` (a recycled address, or a deleted and recreated IdP account), and an
-      operator relinks by hand;
+      linked. **A user with two-factor authentication on** (`two_factor_method` anything but NULL
+      or `'none'`, with no carve-out for either method) **is refused as `two_factor_enabled`,
+      with nothing written**: the Google rung's rule
+      ([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)),
+      added on a gate approval of 2026-09-25. It is checked after any `email_conflict` answer and
+      before `identity_conflict`, and the `user_identities` INSERT repeats it, copying the user
+      row only while two-factor is still off, so two-factor turned on between the lookup and the
+      INSERT inserts zero rows and gets the same refusal. A user who already has a different
+      `sub` at this issuer is refused as `identity_conflict` (a recycled address, or a deleted and
+      recreated IdP account), and an operator relinks by hand;
    3. else, an open invitation for that verified email creates the user with the invitation's
       squad and flags (W6-CDX-8);
    4. else `no_account`. **Auto-provisioning is off**, and there is no setting to turn it on in
@@ -167,7 +175,9 @@ token (`routes/auth.js:52-66`), then joins the invited squad in the same transac
    lets a client request any project's audience, so `aud` is checked but is never the tenant
    boundary.
 9. **OIDC sessions last at most `OIDC_SESSION_TTL_HOURS` (default 24)** and skip local 2FA, because
-   the issuer owns the second factor. Local and Google sessions keep their 7 days.
+   the issuer owns the second factor. That holds for an identity already linked; item 3's
+   `two_factor_enabled` rule is what stops an account with local 2FA on being linked by email in
+   the first place. Local and Google sessions keep their 7 days.
 10. **Node 22.** Node 20 is past end of life and Cloud Command's relying party already runs on 22.
     Neither `openid-client` 6.8.8 nor `jose` 6.2.12 declares an `engines` range (`npm view`,
     2026-09-24), so the bump is a deliberate choice rather than a forced one, and it lands as its
@@ -464,9 +474,12 @@ There is none; see "No OIDC client" above.
   copied verbatim.
 - The ladder in Decision 3, through `resolveIdentity`. On an identity hit, the issuer's verified
   email replaces `users.email` when it has changed, unless another row holds that address, which
-  refuses as `email_conflict` and changes nothing.
-- OIDC sessions skip local 2FA (the user's `totp_secret` is kept), and `GET /api/2fa/status`
-  reports `managed_by` so the account page can say who owns the factor.
+  refuses as `email_conflict` and changes nothing. The link-by-email rung refuses an account with
+  two-factor on as `two_factor_enabled`, in Decision 3's order, and its `user_identities` INSERT
+  is conditional on two-factor still being off, zero rows answering the same refusal.
+- An OIDC sign-in for an identity already linked skips local 2FA (the user's `totp_secret` is
+  kept), and `GET /api/2fa/status` reports `managed_by` so the account page can say who owns the
+  factor.
 - `OIDC_SESSION_TTL_HOURS`, default 24, sets an OIDC session's absolute expiry.
 - `GET /api/oauth/providers` gains `oidc: { enabled, name }`, and `Login.jsx` renders the button.
 - The C2-5 reader check accepts an optional `subject` query parameter, matched through
@@ -486,6 +499,11 @@ There is none; see "No OIDC client" above.
   recorded in `docs/research/`.
 - Linking tests: an existing local user links; a same-issuer different `sub` is refused; an
   unverified email is refused; an issuer-side email change is followed; a collision is refused.
+- Two-factor tests: an email match with `totp`, and one with `email`, is refused as
+  `two_factor_enabled` with no `user_identities` row; `'none'` and NULL link; the conditional
+  INSERT's zero rows gets the same refusal, including on real MySQL with two-factor turned on
+  between the lookup and the INSERT; and an already-linked identity whose user has two-factor on
+  signs in with no local challenge.
 - The migration is verified on real MySQL, including `--adopt-fresh-install` on an `init.sql`
   schema. All pre-existing tests pass unmodified, and coverage thresholds hold.
 
@@ -601,6 +619,12 @@ signed-out path other than `/` and `/404` to `/` and drops the target
   reached by a verified email instead of a token.
 - `users.deactivated_at`, refused by `validateAndAutoLogin` and by every sign-in path, so a removed
   member keeps their authorship and loses their access.
+- **A pre-existing account with local 2FA on, on an instance switched to OIDC only**, cannot turn
+  it off itself because the `/2fa/*` routes are unmounted, so its first OIDC sign-in is refused as
+  `two_factor_enabled`, and the remedy is by an operator's hand, as for an `identity_conflict`
+  relink: `UPDATE users SET two_factor_method = 'none', totp_secret = NULL WHERE id = <id>;` (the
+  statement the admin console's Reset 2FA runs on the user row), after which the next OIDC sign-in
+  links the account.
 - **The deep-link bounce for OIDC-only instances.** `StdLayout` keeps a signed-out target instead of
   discarding it, and when OIDC is the only provider it sends the browser once per tab to
   `/api/auth/oidc/start?returnTo=<target>`, with a loop guard so an error return renders the
