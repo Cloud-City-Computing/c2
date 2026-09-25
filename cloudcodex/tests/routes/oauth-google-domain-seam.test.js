@@ -4,7 +4,8 @@
  * A separate file from oauth-google-seam.test.js because routes/oauth.js reads
  * GOOGLE_OAUTH_DOMAIN at import time. With a domain set, the route's policy
  * must require that hosted domain and auto-create members of it, exactly as
- * the inline ladder did.
+ * the inline ladder did, and still never link an existing account with
+ * two-factor on by its email.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -103,5 +104,16 @@ describe('Google callback through the identity seam (GOOGLE_OAUTH_DOMAIN set)', 
       ['INSERT INTO oauth_accounts', [88, 'google-sub-2', 'grace@example.com']],
     ]);
     expect(c2_query.mock.calls[6][1]).toEqual([88]);
+  });
+
+  it('refuses a domain member whose account has two-factor on as two_factor_enabled, creating nothing', async () => {
+    c2_query.mockResolvedValueOnce([]); // no link
+    c2_query.mockResolvedValueOnce([{ id: 12, two_factor_method: 'totp' }]); // user by email
+
+    const res = await signIn(payload());
+
+    expect(res.headers.location).toBe('/?oauth_error=two_factor_enabled');
+    expect(writes()).toEqual([]);
+    expect(c2_query).toHaveBeenCalledTimes(2);
   });
 });
