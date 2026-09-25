@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-latest
 
     # The same throwaway MySQL CI's required job runs, so a tag cannot
-    # publish an image whose schema changes never ran on a real database.
+    # publish an image whose init.sql does not build, or whose post-baseline
+    # migrations do not upgrade a pre-runner schema to what init.sql builds.
     # The root password is not a secret: it guards an ephemeral service
     # container that exists only for the length of this job.
     services:

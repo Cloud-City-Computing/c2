@@ -101,7 +101,10 @@ push to `main` and on every PR.
 Schema changes are dual-tracked: every column or table added in a
 `migrations/*.sql` file must also appear in `init.sql`. Fresh installs
 use `init.sql`; existing deployments apply migrations with `npm run migrate`,
-in lexicographic order. Both must converge to the same schema.
+in lexicographic order. Both must converge to the same schema, and
+`tests/integration/upgrade-path.test.js` checks that they do: give every new
+migration file an entry in `cloudcodex/tests/integration/pre-runner-state.js`
+(the statement that removes its change from an `init.sql` build).
 
 Migrations are additive: once a file ships, it is never rewritten. The runner
 enforces that: it records a sha256 of every file it applies and refuses to run

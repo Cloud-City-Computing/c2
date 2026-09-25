@@ -279,6 +279,15 @@ schema when `init.sql` or adoption throws, since that lands before its `afterAll
 
 **Expected:** 4 tests pass; `SHOW DATABASES LIKE 'c2\_it\_%'` afterwards returns nothing.
 
+**Executed 2026-09-25, after review:** adoption records every migration file and runs none, so
+these four tests never execute a migration's SQL (a file with invalid SQL whose objects `init.sql`
+already has stayed green). `tests/integration/upgrade-path.test.js` closes that: it undoes every
+post-baseline file on an `init.sql` build with the statements in
+`tests/integration/pre-runner-state.js`, baselines, applies every newer file for real and requires
+the result to match a fresh `init.sql` build, and fails when a post-baseline file has no undo
+entry. **Every later PR that adds a migration file adds its undo there.** The integration project
+is 2 files and 6 tests.
+
 ### Task 1.6 CI, inside the required job
 
 `.github/workflows/ci.yml`, on the existing `test` job (`name: Lint, test and build`), so the check
@@ -315,7 +324,7 @@ image whose schema changes were never run.
 
 - [x] `npm test`: **Task 1.1's counts plus exactly one file and four tests**, the ones in
       `test-projects.test.js`, and nothing from `tests/integration/`. Record both runs in the PR
-      body.
+      body. (Executed: five tests, since review added `test:watch` to the guard's loop.)
 - [x] Mutations, each confirmed to have **landed** before its red run is trusted: re-add
       `vi.mock('../mysql_connect.js')` to the integration setup (the canary fails); skip the
       `afterAll` drop (the teardown throws); add a migration file that `ALTER`s a table that does

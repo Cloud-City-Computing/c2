@@ -57,16 +57,27 @@ produces one unified report.
 
 The scripts name `--project backend --project frontend` explicitly, and
 `tests/test-projects.test.js` fails if a project the config declares (other
-than `integration`) is missing from `test` or `test:coverage`, so a new project
+than `integration`) is missing from `test`, `test:watch` or `test:coverage`, so a new project
 cannot silently drop out of the default run.
 
 ## The opt-in live-MySQL project
 
 `npm run test:integration` runs `tests/integration/**` against a real MySQL 8.4
-server, which is how schema and migration changes get proved on the database
-they will run on rather than against a mock. Each test file gets its own
-throwaway `c2_it_<random>` schema built from `init.sql` and adopted by the
-migration runner, and the run fails if any such schema is left behind.
+server rather than a mock. Each test file gets its own throwaway
+`c2_it_<random>` schema built from `init.sql` and adopted by the migration
+runner, and the run fails if any such schema is left behind.
+
+Adoption records every migration file and runs none, so the per-file setup
+alone proves only that `init.sql` builds on MySQL 8.4 and that the runner's
+adoption check agrees with it. Migration SQL is executed by one file,
+`tests/integration/upgrade-path.test.js`: it takes an `init.sql` build back to
+the pre-runner state with the undo statements in
+`tests/integration/pre-runner-state.js`, records the pre-runner baseline, lets
+the runner apply every newer file for real, and requires the result to match a
+fresh `init.sql` build (columns, indexes, constraints, checks and foreign
+keys). A new migration file fails that test until it has an undo entry. The
+upgrade runs on empty tables, so a migration's handling of existing rows is
+not exercised, and the pre-runner files in `LEGACY_BASELINE` are never run.
 
 ```bash
 # any MySQL 8.4 answering on 3306, for example a scratch container:

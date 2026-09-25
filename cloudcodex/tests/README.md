@@ -22,7 +22,7 @@ Threshold violations fail the build.
 
 `test`, `test:watch` and `test:coverage` name `--project backend --project frontend`
 explicitly; a bare `vitest run` would run the integration project too.
-`tests/test-projects.test.js` pins that split.
+`tests/test-projects.test.js` pins that split for all three.
 
 ## Layout
 
@@ -36,7 +36,9 @@ tests/
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
 │   ├── global-setup.js     ← teardown: fails the run if a c2_it_ schema leaked
 │   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers
-│   └── migrate.test.js     ← the migration runner on a real database
+│   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql
+│   ├── migrate.test.js     ← the migration runner on a real database
+│   └── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests
 ├── services/               ← service-layer tests (email, notifications, collab)
@@ -210,8 +212,9 @@ new threshold is required; the global floor still applies.
 ## Live-MySQL integration tests
 
 `tests/integration/` is the one place tests reach a real database. Use it for
-anything a mocked `c2_query` cannot prove: schema changes, migrations, and SQL
-whose behaviour depends on MySQL itself.
+anything a mocked `c2_query` cannot prove: that `init.sql` builds, that a
+migration file's SQL runs and converges on `init.sql`, and SQL whose behaviour
+depends on MySQL itself.
 
 **Running it.** Any MySQL 8.4 answering on **3306** (`mysql_connect.js` reads no
 `DB_PORT`). A scratch container is simplest:
@@ -237,6 +240,17 @@ and points `DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME` at it, so importing
 `mysql_connect.js` (or `app.js`) gives you a real pool on a real, fully migrated
 schema. Nothing is mocked. The schema is dropped in `afterAll`, and the global
 teardown fails the run if any `c2_it_` schema survives.
+
+**What it does not run.** Adoption records every migration file and executes
+none, so the setup never runs a migration's SQL. `upgrade-path.test.js` is what
+does: it builds `init.sql`, undoes every post-baseline file with the statements
+in `pre-runner-state.js` (newest first), records the pre-runner baseline, lets
+the runner apply every newer file for real, and compares the result with a
+fresh `init.sql` build. **A new migration file needs an entry in
+`pre-runner-state.js`**, the statement that removes its change from an
+`init.sql` build; the test names any file that lacks one. The upgrade runs on
+empty tables, so if a migration transforms existing rows, write a test that
+seeds them.
 
 **Writing one.** Name it `tests/integration/<area>.test.js`. Import app modules
 normally; they bind to the file's schema. If a test needs a second schema (for

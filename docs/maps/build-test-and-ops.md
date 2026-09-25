@@ -131,14 +131,14 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **73 files, 1491 tests, all passing**; the
-integration project is **1 file, 4 tests**.
+Current state: the default run is **73 files, 1492 tests, all passing**; the
+integration project is **2 files, 6 tests**.
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
 because a bare `vitest run` runs every declared project, integration included.
 `tests/test-projects.test.js` (a backend test) fails if a declared project other
-than `integration` is missing from `test` or `test:coverage`, or if
+than `integration` is missing from `test`, `test:watch` or `test:coverage`, or if
 `test:integration` runs anything but `integration`. A fourth project added to
 `vitest.config.js` without joining those scripts turns it red instead of
 silently never running.
@@ -177,13 +177,32 @@ green (found by mutation, 2026-09-25). Because it counts every `c2_it_` schema,
 two integration runs sharing one server at once would report each other's; give
 each concurrent run its own server.
 
-`tests/integration/migrate.test.js` holds the first four tests: a canary that
+`tests/integration/migrate.test.js` holds four tests: a canary that
 fails if `c2_query` is a mock, adoption recorded every migration file, a second
 run is a no-op, and adoption refuses a schema missing a post-baseline column
 (`password_reset_tokens.purpose`). Each was mutation-checked on 2026-09-25:
 reintroducing the mock fails the canary, skipping the `afterAll` drop fails the
 teardown, a migration that `ALTER`s a missing table fails the setup, and
 dropping `--project frontend` from `test` fails the guard.
+
+**Trap: the setup never executes a migration file.** `adoptFreshInstall`
+records every file and applies none (`scripts/migrate.js` `runUnderLock`); its
+only check on a post-baseline file is `schemaClaims`, which asks whether the
+table or column the file adds already exists. A file with broken SQL whose
+objects `init.sql` already has adopts cleanly (reproduced in review,
+2026-09-25). `tests/integration/upgrade-path.test.js` is what runs migration
+SQL: it builds `init.sql` into a second schema, applies the undo statements in
+`tests/integration/pre-runner-state.js` newest first, records the baseline with
+`runMigrations({ baseline: true })`, applies every post-baseline file with a
+plain `runMigrations`, and requires an information_schema fingerprint
+(columns, indexes, table constraints, checks, foreign keys) equal to the
+per-file schema's. A second test fails when a post-baseline file has no undo
+entry or an entry names a file that is gone. Mutation-checked on 2026-09-25:
+invalid SQL in `2026-09-08-token-purpose.sql` (a parse error), `VARCHAR(64)`
+for `VARCHAR(32)` and the `CHECK` dropped (fingerprint mismatch), and the undo
+entry removed (both tests) each turn it red. Its limits: the upgrade runs on
+empty tables, so a migration's handling of existing rows is not exercised, and
+the `LEGACY_BASELINE` files are never run.
 
 Tests mirror the source tree:
 
@@ -327,7 +346,9 @@ reports blocks a merge permanently rather than failing it.
 1. **verify** re-runs `npm ci`, `npm run lint`, `npm test`,
    `npm run test:integration` (against the same `mysql:8.4` service CI uses)
    **and `npm run test:coverage`**. The integration step means a tag cannot
-   publish an image whose schema changes never ran on a real database. A tag is not evidence the commit is green, because
+   publish an image whose `init.sql` does not build on MySQL 8.4, or whose
+   post-baseline migrations do not upgrade a pre-runner schema to exactly what
+   `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
    run is not optional padding: the 29 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
@@ -414,7 +435,10 @@ Before calling a change done:
 
 1. `npm run lint` clean, no new warnings.
 2. `npm test` green. A schema or migration change also needs
-   `npm run test:integration` green against a live MySQL.
+   `npm run test:integration` green against a live MySQL, and a new migration
+   file needs its undo in `tests/integration/pre-runner-state.js`, or the
+   upgrade-path test is red. That test runs on empty tables: a migration that
+   rewrites existing rows needs its own seeded test.
 3. New env vars in `.env.example` with a comment.
 4. New heavy frontend deps added to `manualChunks` in `vite.config.js`.
 5. New SQL in **both** `migrations/` and `init.sql`. Never add the new file to

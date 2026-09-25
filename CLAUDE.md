@@ -442,8 +442,13 @@ New files match this pattern. Update the year only if the file is genuinely new.
   Vitest **projects** (configured in `vitest.config.js`); a single
   `npm test` runs both. A third, opt-in project, `integration`, runs
   `tests/integration/` against a live MySQL (`npm run test:integration`,
-  `IT_DB_ROOT_PASSWORD` required; see `cloudcodex/tests/README.md`), and
-  it is where a schema or migration change gets proved.
+  `IT_DB_ROOT_PASSWORD` required; see `cloudcodex/tests/README.md`). It
+  proves `init.sql` builds on MySQL 8.4, adoption agrees with it, app SQL
+  runs against the result, and (`upgrade-path.test.js`) every post-baseline
+  migration file's SQL runs from the pre-runner state and lands on exactly
+  the schema `init.sql` builds. A new migration needs its undo in
+  `tests/integration/pre-runner-state.js`. Rows are never present during
+  that upgrade, so a migration's data handling is not exercised.
 - Tests mirror the source tree:
   - `routes/foo.js` → `tests/routes/foo.test.js`
   - `services/foo.js` → `tests/services/foo.test.js`
