@@ -537,9 +537,9 @@ refusal issues no write.
 
 ### Task 3.2 Move the route onto it, with zero assertion edits
 
-- [ ] `routes/oauth.js` imports `resolveIdentity` and `deriveUniqueUsername` from
+- [x] `routes/oauth.js` imports `resolveIdentity` and `deriveUniqueUsername` from
       `services/identity.js`; the moved code is deleted from the route.
-- [ ] `npm test`. **Expected:** `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` pass
+- [x] `npm test`. **Expected:** `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` pass
       **with no edits**; `git diff --stat tests/routes` shows nothing.
 
 ### Task 3.3 `AUTH_PROVIDERS`
@@ -557,8 +557,17 @@ env template, not per link).
 
 ### Task 3.4 Verify
 
-- [ ] Lint, `npm test`, coverage (add a `services/identity.js` threshold at achieved minus a small
+- [x] Lint, `npm test`, coverage (add a `services/identity.js` threshold at achieved minus a small
       buffer), build. Map: `docs/maps/request-lifecycle.md` section 3 names the seam.
+
+**As built (2026-09-25).** Two differences from the text above. The route imports only
+`resolveIdentity`: once the ladder moved, nothing in `oauth.js` calls `deriveUniqueUsername`, and an
+unused import fails lint. `parseAuthProviders` also refuses a configured Google that the list leaves
+out (`AUTH_PROVIDERS=local` with both Google variables set), because until W6-CDX-8 the routes do not
+consult the set and Google would still be offered. PR 8 revisits that rule when the set starts
+unmounting routes. Two characterization files (`tests/routes/oauth-google-seam.test.js`,
+`oauth-google-domain-seam.test.js`) drive the callback past the token exchange; they were committed
+green against the inline ladder before the move. No existing test file changed.
 
 ---
 
