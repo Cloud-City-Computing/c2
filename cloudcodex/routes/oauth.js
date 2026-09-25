@@ -472,6 +472,17 @@ router.get('/oauth/github/callback', asyncHandler(async (req, res) => {
   );
 
   if (existingLink) {
+    // Relinking replaces this user's GitHub account with whichever one came
+    // back, so refuse, as the first-link path does, when another user holds
+    // it: the UPDATE would otherwise run into uq_provider_user.
+    const [holder] = await c2_query(
+      `SELECT user_id FROM oauth_accounts WHERE provider = 'github' AND provider_user_id = ? LIMIT 1`,
+      [githubUserId]
+    );
+    if (holder && holder.user_id !== userId) {
+      return res.redirect('/account?github_error=already_linked_other');
+    }
+
     // Update the token and provider info; clear any prior 'revoked' state.
     await c2_query(
       `UPDATE oauth_accounts
