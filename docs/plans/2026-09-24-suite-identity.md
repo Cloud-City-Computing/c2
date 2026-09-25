@@ -1317,12 +1317,12 @@ router.use(errorHandler);
 export default router;
 ```
 
-The token is minted exactly as `POST /api/admin/invitations` mints one (`routes/admin.js:439`,
+The token is minted exactly as `POST /api/admin/invitations` mints one (`routes/admin.js:473`,
 32 random bytes as hex, which `user_invitations.token CHAR(64) NOT NULL UNIQUE` expects,
 `init.sql:144`). The invitation names `General` in `squad_id` with `can_write` set; `role`
 (`member`) and the other flags take their column defaults (`init.sql:147-154`), so W6-CDX-8's
 binding (Task 8.3) calls `addSquadMember` and the person lands in `General` with read and write
-(D-S). `generalSquadId` finds the squad the way `bootstrapInstance` made it (`routes/admin.js:128`,
+(D-S). `generalSquadId` finds the squad the way `bootstrapInstance` made it (`routes/admin.js:162`,
 the squad named `General` in a workspace the boot admin owns), because nothing else marks it;
 re-derive these anchors by name at execution.
 

@@ -74,16 +74,36 @@ unreachable SMTP host delays startup by seconds, not minutes.
 
 ```
 ┃ ⚠  Symptom
-┃   Server exits at startup with "Admin credentials missing".
+┃   Server exits at startup with "Missing required admin configuration".
 ```
 
 **Cause.** `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` are not
 all set. The admin super-user is synced from `.env` on every boot — there
 is no way to bootstrap the system without one.
 
-**Fix.** Set all three in `.env`. You can change them later through the
-admin panel; subsequent boots will sync any changes you make to `.env`
-back into the user record.
+**Fix.** Set all three in `.env`. Change them later in `.env`, not in the
+app: every boot resets the admin's email and password from `ADMIN_EMAIL` and
+`ADMIN_PASSWORD`.
+
+---
+
+```
+┃ ⚠  Symptom
+┃   "admin sync: ... matches an existing non-admin account (user N),
+┃   refusing to promote it" in the server log at startup.
+```
+
+**Cause.** An account that is not an admin holds the name in `ADMIN_USERNAME`
+or the address in `ADMIN_EMAIL`, usually because the admin renamed or changed
+email and a member took the old one. The boot sync never promotes an account,
+so it changed nothing and carried on starting.
+
+**Fix.** If account `N` should be the admin, promote it in the admin console
+(Users, click its **User** badge); from the next boot on its email and password
+are reset from `.env` like any admin's. Otherwise set `ADMIN_USERNAME` and
+`ADMIN_EMAIL` to the admin's current name and address, or to unused ones to
+have boot create a fresh admin, and restart. See
+[deployment.md, The boot admin](./deployment.md#the-boot-admin).
 
 ---
 

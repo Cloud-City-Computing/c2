@@ -389,7 +389,7 @@ rather than special-cased: an orphaned squad has no tenant, so "is this user
 inside its tenant?" is unanswerable, and failing closed is the right answer to
 an unanswerable question. It is also consistent with the orphaned-workspace
 rule above. All four `INSERT INTO squads` sites set `workspace_id`
-(`squads.js:116`, `workspaces.js:80`, `admin.js:127`, `admin.js:218`), so only
+(`squads.js:116`, `workspaces.js:80`, `admin.js:161`, `admin.js:252`), so only
 legacy or hand-edited rows can be in this state.
 
 **The fix is prospective.** It stops new cross-tenant rows and removes none of
@@ -467,7 +467,32 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 (`server.js`, a top-level `await` before the port opens; defined in
 `routes/admin.js`), which
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
-(`server.js:17-21`).
+(`server.js:17-22`).
+
+**The boot sync creates or syncs, and never promotes** (GHSA-w8q3-r34w-3pjh).
+It reads every row matching `LOWER(name) = LOWER(ADMIN_USERNAME)` or
+`email = ADMIN_EMAIL`, with no `LIMIT`: `users.name` and `users.email` are each
+`UNIQUE` (`init.sql`, `CREATE TABLE users`), so the two can be two different
+rows, as when the admin renamed or changed address and a member took the old
+one. Then, in `ensureAdminUser`:
+
+| Rows matched | What boot does | Returns |
+|---|---|---|
+| none | `INSERT` the admin (`is_admin = TRUE`) and its `permissions` row | the new id |
+| any row with `is_admin` false | nothing: no `UPDATE`, no `INSERT`, no hash; one `console.error` line naming the account, "refusing to promote it" | `null` |
+| only admins | `UPDATE users SET password_hash, email` on the lowest id: `.env` resets the admin's password and email at every boot. `is_admin` is not in the `SET`, so this `UPDATE` cannot promote | that id |
+
+Every outcome logs one `admin sync:` line (`created`, `synced`, or the
+refusal) and none logs the password. `null` flows into
+`bootstrapInstance(null)`, which returns `false` before any query, so a refused
+boot seeds nothing. **In application code the only way to make an existing
+account an admin is `PUT /api/admin/users/:id/admin`**, the admin console's
+toggle, and an account promoted that way is synced from `.env` from the next
+boot on. Two admins matching (one by name, one by email) is not refused: the
+lower id is synced, and when the other holds `ADMIN_EMAIL` the `UPDATE` fails
+on the unique key, which `server.js` logs as `admin user sync failed` and boots
+on. The refusal is proved on MySQL, in both row orders, by
+`tests/integration/admin-sync.test.js`.
 
 ## 7. Machine principals: the service token
 
