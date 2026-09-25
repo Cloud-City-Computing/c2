@@ -57,6 +57,22 @@ function writes() {
   return sqlCalls().filter(([sql]) => /^(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql));
 }
 
+/**
+ * The error mysql2 raises when an INSERT hits a unique key, field for field as
+ * measured on MySQL 8.4.11 through pool.execute (the path c2_query takes).
+ * tests/integration/oauth-one-link-per-provider.test.js pins the same shape
+ * against a real server, so this mock cannot carry a field the server never sends.
+ */
+function duplicateKeyError(entry, key) {
+  const message = `Duplicate entry '${entry}' for key '${key}'`;
+  return Object.assign(new Error(message), {
+    code: 'ER_DUP_ENTRY',
+    errno: 1062,
+    sqlState: '23000',
+    sqlMessage: message,
+  });
+}
+
 describe('resolveIdentity (google)', () => {
   beforeEach(() => {
     resetMocks();
@@ -195,6 +211,53 @@ describe('resolveIdentity (google)', () => {
 
       expect(result).toEqual({ ok: true, userId: 9, created: false });
       expect(sqlCalls()).toEqual([[LINK_LOOKUP_SQL, ['google-sub-123']]]);
+    });
+  });
+
+  // The check above is a SELECT, so two different subjects signing in for one
+  // user at the same instant can both pass it. UNIQUE (user_id, provider)
+  // refuses the second INSERT, and the race loser gets the answer the check
+  // would have given it, not a 500.
+  describe('a second Google subject that races past the check (the one-link key)', () => {
+    it('answers identity_conflict when the link INSERT hits uq_oauth_user_provider', async () => {
+      c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
+      c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+      c2_query.mockResolvedValueOnce([]); // no Google row yet: the other subject's has not landed
+      c2_query.mockRejectedValueOnce(
+        duplicateKeyError('9-google', 'oauth_accounts.uq_oauth_user_provider'),
+      ); // ...and now it has
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'identity_conflict' });
+      expect(sqlCalls()).toEqual([
+        [LINK_LOOKUP_SQL, ['google-sub-123']],
+        [EMAIL_LOOKUP_SQL, ['ada@example.com']],
+        [GOOGLE_ROW_LOOKUP_SQL, [9]],
+        [LINK_INSERT_SQL, [9, 'google-sub-123', 'ada@example.com']],
+      ]);
+    });
+
+    // The same subject racing itself (a double submit) violates the subject
+    // key first, which is not this race, and still throws as it always has.
+    it('still throws a duplicate on the subject key, uq_provider_user', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9 }]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockRejectedValueOnce(
+        duplicateKeyError('google-google-sub-123', 'oauth_accounts.uq_provider_user'),
+      );
+
+      await expect(resolveIdentity(googleClaims(), OPEN_POLICY)).rejects.toThrow(/uq_provider_user/);
+    });
+
+    it('still throws any other failure of the link INSERT', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9 }]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockRejectedValueOnce(new Error('connection lost'));
+
+      await expect(resolveIdentity(googleClaims(), OPEN_POLICY)).rejects.toThrow('connection lost');
     });
   });
 

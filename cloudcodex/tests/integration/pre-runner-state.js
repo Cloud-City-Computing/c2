@@ -20,4 +20,6 @@
 export const UNDO_ON_INIT_SQL = Object.freeze({
   '2026-09-08-token-purpose.sql':
     'ALTER TABLE password_reset_tokens DROP CHECK chk_password_reset_tokens_purpose, DROP COLUMN purpose',
+  '2026-09-25-oauth-one-link-per-provider.sql':
+    'ALTER TABLE oauth_accounts DROP INDEX uq_oauth_user_provider',
 });
