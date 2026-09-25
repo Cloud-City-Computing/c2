@@ -1291,16 +1291,17 @@ re-derive these anchors by name at execution.
 
 **Its own limiter, never `authLimiter`.** `authLimiter` (`app.js:128-135`, 20 requests per 15
 minutes) is one bucket shared by every path it is mounted on, the login routes and the C2-5 reader
-check (`app.js:157`) included. Linking, adopting or restoring a workspace in Cloud Command syncs
-every current member at once, owner first (W6-CMD-31, W6-CMD-7), so on that bucket a workspace of
-more than twenty members would be refused partway and would spend the login budget of every
-request from Cloud Command's address. `app.js` defines, beside `authLimiter`:
+check (`app.js:157`) included. Linking or adopting a workspace (a restored one included, when it
+is linked) in Cloud Command syncs every current member at once, owner first (W6-CMD-31,
+W6-CMD-7), so on that bucket a workspace of more than twenty members would be refused partway and
+would spend the login budget of every request from Cloud Command's address. `app.js` defines,
+beside `authLimiter`:
 
 ```javascript
 // Machine membership sync (routes/machine-members.js). Its own bucket, sized
-// like the back-channel receiver's for one caller's bursts: linking or restoring
-// a workspace syncs every member at once. A 429 here is retryable, and the
-// caller retries it.
+// like the back-channel receiver's for one caller's bursts: linking or adopting
+// a workspace (a restored one included, when it is linked) syncs every member
+// at once. A 429 here is retryable, and the caller retries it.
 const machineMembersLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 300,

@@ -662,9 +662,10 @@ flags, but not instance admin (`init.sql:138-159`). `is_admin` is written only b
 - **Both are rate-limited by a machine limiter of their own**, IP-keyed and sized for one caller's
   bursts, as W6-CDX-6's back-channel receiver is, never `authLimiter`. `authLimiter` is one bucket
   that the login surface and the C2-5 reader check already share at 20 requests per 15 minutes, and
-  linking, adopting or restoring a workspace syncs every current member at once, owner first
-  (W6-CMD-31, W6-CMD-7), so on it a workspace of more than twenty members would be refused partway
-  and would spend the login budget of every request from Cloud Command's address. The limiter
+  linking or adopting a workspace (a restored one included, when it is linked) syncs every current
+  member at once, owner first (W6-CMD-31, W6-CMD-7), so on it a workspace of more than twenty
+  members would be refused partway and would spend the login budget of every request from Cloud
+  Command's address. The limiter
   answers 429, which W6-CMD-7 treats as retryable, never as a permanent failure.
 - **This is the first machine route that writes, and the only one that can grant `is_admin`.** A
   leaked instance credential could make any address that instance's admin. That is the accepted

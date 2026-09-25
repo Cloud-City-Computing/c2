@@ -368,8 +368,8 @@ held open. The decisions that bind this repository:
 - **The switcher's place (D-U).** Each app's existing top-left identity slot; there
   is no new suite bar (W6-CDX-25).
 - **The Toast and the theme (D-V).** Codex's Toast is the suite's shared toast
-  primitive, and light mode stays deferred: both apps are dark-only through Wave 6
-  (W6-CDX-23, and the UI spec's Decision 6).
+  primitive, and light mode stays deferred for Codex through Wave 6; Cloud Command
+  keeps its existing light theme and toggle (W6-CDX-23, and the UI spec's Decision 6).
 
 The other two decisions in that round change nothing in this repository.
 
