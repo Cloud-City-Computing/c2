@@ -9,8 +9,10 @@
  * than growing a second copy with its own mistakes.
  *
  * Google is the only provider wired today, and its branch is the ladder the
- * Google callback used to carry inline, with the same SQL in the same order,
- * plus the one check spec Decision 3 requires before linking by email: route
+ * Google callback used to carry inline, in the same order, plus two checks
+ * before linking by email: the matched account must not have two-factor
+ * authentication on (read by the same email lookup), and it must not already
+ * hold another Google subject (the query spec Decision 3 requires). Route
  * tests queue c2_query mocks in call order, so moving or adding a query is a
  * behaviour change even when the result looks the same.
  *
@@ -31,8 +33,17 @@ import { createDefaultPermissions } from '../routes/helpers/shared.js';
  *
  * Returns { ok: true, userId, created } or { ok: false, reason } where reason is
  * one of: email_not_verified, domain_not_allowed, no_account,
- * identity_conflict, email_conflict. Never throws for a refusal; a thrown
- * error is a database failure and reaches errorHandler.
+ * identity_conflict, email_conflict, two_factor_enabled. Never throws for a
+ * refusal; a thrown error is a database failure and reaches errorHandler.
+ *
+ * The Google branch answers two_factor_enabled when the user matched by
+ * verified email has two-factor authentication on (either method), and writes
+ * nothing. Password sign-in demands that second factor (POST /api/login), and
+ * a link made by email would let every later Google sign-in skip it, so such
+ * an account signs in with its password and code instead. The refusal guards
+ * only the link: an identity already linked signs in without local two-factor,
+ * even when its user turns two-factor on afterwards, because once linked,
+ * Google's own sign-in (its MFA included) governs the account.
  *
  * The Google branch answers identity_conflict when the user matched by
  * verified email already holds a Google account under another subject (a
@@ -98,13 +109,18 @@ async function resolveGoogleIdentity(claims, policy) {
   );
 
   if (existingOAuth) {
-    // Already linked, log them in
+    // Already linked, log them in. No local two-factor here, deliberately, and
+    // that includes a user who turned it on after linking: a linked account
+    // signs in on Google's own sign-in, its MFA included. What keeps this from
+    // bypassing a local second factor is the two_factor_enabled refusal below,
+    // which stops such an account being linked by email in the first place.
     return { ok: true, userId: existingOAuth.user_id, created: false };
   }
 
-  // Check if a user with this email already exists
+  // Check if a user with this email already exists, and whether it has
+  // two-factor on (the link-by-email refusals below need both).
   const [existingUser] = await c2_query(
-    `SELECT id FROM users WHERE email = ? LIMIT 1`,
+    `SELECT id, two_factor_method FROM users WHERE email = ? LIMIT 1`,
     [email]
   );
 
@@ -113,6 +129,18 @@ async function resolveGoogleIdentity(claims, policy) {
       // The address belongs to someone this identity may not claim, and
       // creating a second user with it would collide on users.email.
       return { ok: false, reason: 'email_conflict' };
+    }
+    // An account with two-factor on is never linked by email: password
+    // sign-in demands its second factor, and a link would let every later
+    // Google sign-in skip it. Both methods refuse alike; 'none' and NULL are
+    // off, as they are to POST /api/login, and any other value counts as on.
+    // It sits after email_conflict, which is the policy's answer before any
+    // account's settings matter, and before identity_conflict, because it
+    // reads the row already in hand, costs no query, and still holds once a
+    // conflicting link is cleared: relinking would not help this account.
+    const twoFactorMethod = existingUser.two_factor_method;
+    if (twoFactorMethod && twoFactorMethod !== 'none') {
+      return { ok: false, reason: 'two_factor_enabled' };
     }
     // The subject lookup above missed, so any Google row this user holds is
     // another subject: the address has changed hands, or the Google account
