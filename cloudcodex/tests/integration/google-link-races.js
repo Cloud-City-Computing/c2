@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest';
 import { c2_query } from '../../mysql_connect.js';
 import { resolveIdentity } from '../../services/identity.js';
-import { openAdminConnection, waitForLockWaits } from './mysql-admin.js';
+import { holdInTransaction } from './mysql-admin.js';
 
 /** The policy routes/oauth.js builds when GOOGLE_OAUTH_DOMAIN is unset. */
 export const OPEN_POLICY = { requiredHostedDomain: undefined, linkByVerifiedEmail: true, autoCreate: false };
@@ -53,31 +53,6 @@ export async function rowsFor(table, userId) {
   return Number(n);
 }
 
-/**
- * Run `sql` against the users table in a transaction left open, the way
- * POST /api/2fa/enable, /api/2fa/totp/confirm and /api/update-account write
- * the row, so it stays locked until `commit`. A plain SELECT of the row still
- * reads the committed value without waiting; anything that locks it waits.
- * @param { String } sql
- * @param { Array } params
- */
-async function holdUserRow(sql, params) {
-  const blocker = await openAdminConnection();
-  await blocker.changeUser({ database: process.env.DB_NAME });
-  await blocker.query('START TRANSACTION');
-  await blocker.query(sql, params);
-  return {
-    waitForLockWaits: n => waitForLockWaits(blocker, process.env.DB_NAME, n),
-    async commit() {
-      try {
-        await blocker.query('COMMIT');
-      } finally {
-        await blocker.end();
-      }
-    },
-  };
-}
-
 /** A Google sign-in for `user` through the seam, settled rather than thrown. */
 function linkAttempt(user, subject) {
   return resolveIdentity(
@@ -90,19 +65,23 @@ function linkAttempt(user, subject) {
 }
 
 /**
- * Hold `sql` open on the user row, start a link for `user`, wait until the
- * link's INSERT is waiting on the row, then commit, and return the answer.
+ * Run `sql`, a change to the user row, in a transaction left open (the way
+ * POST /api/2fa/enable, /api/2fa/totp/confirm and /api/update-account write the
+ * row, each in its own transaction), start a link for `user`, wait until the
+ * link's INSERT is waiting on the row, then commit, and return the answer. A
+ * plain SELECT of the row still reads the committed value without waiting;
+ * anything that locks it waits.
  * Reaching the lock wait is the proof the lookups already ran and matched:
  * a lookup that refuses returns without locking anything, so the wait would
  * never come and this throws after ten seconds instead.
  */
 async function linkAcross(user, subject, sql, params) {
-  const hold = await holdUserRow(sql, params);
+  const hold = await holdInTransaction(sql, params);
   const attempt = linkAttempt(user, subject);
   try {
     await hold.waitForLockWaits(1);
   } finally {
-    await hold.commit();
+    await hold.release();
   }
   return attempt;
 }
@@ -128,10 +107,10 @@ export function describeLinkRaces(label) {
       expect(row.two_factor_method).toBe(method);
     });
 
-    // POST /api/update-account changes an address with one UPDATE. The link
-    // must not land on an account that no longer holds the email Google
-    // verified; the answer is the same refusal, and the next sign-in looks
-    // the address up afresh.
+    // POST /api/update-account (and /update-account/confirm-email) changes an
+    // address with an UPDATE inside a transaction. The link must not land on an
+    // account that no longer holds the email Google verified; the answer is
+    // the same refusal, and the next sign-in looks the address up afresh.
     it('refuses and writes no row when the account gives up the email first', async () => {
       const user = await createUser('race_moved', 'none');
 

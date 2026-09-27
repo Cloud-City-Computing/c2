@@ -39,10 +39,10 @@ import {
 import {
   buildSchemaFromInitSql,
   dropSchema,
+  holdInTransaction,
   openAdminConnection,
   queryVia,
   throwawaySchemaName,
-  waitForLockWaits,
 } from './mysql-admin.js';
 
 const MIGRATION = '2026-09-25-oauth-one-link-per-provider.sql';
@@ -270,26 +270,12 @@ describe('--adopt-fresh-install and the key', () => {
  * @param { Number } userId
  */
 async function holdUserRow(userId) {
-  const blocker = await openAdminConnection();
-  await blocker.changeUser({ database: process.env.DB_NAME });
-  await blocker.query('START TRANSACTION');
-  const [locked] = await blocker.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
-  if (locked.length !== 1) {
-    await blocker.end();
+  const held = await holdInTransaction('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+  if (held.rows.length !== 1) {
+    await held.release();
     throw new Error(`no users row ${userId} to hold`);
   }
-
-  return {
-    /** Wait until `n` transactions in this file's schema are waiting on a lock. */
-    waitForLockWaits: n => waitForLockWaits(blocker, process.env.DB_NAME, n),
-    async release() {
-      try {
-        await blocker.query('COMMIT');
-      } finally {
-        await blocker.end();
-      }
-    },
-  };
+  return held;
 }
 
 /** How many `provider` rows `userId` holds, through the app's own pool. */

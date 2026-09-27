@@ -114,3 +114,38 @@ export async function waitForLockWaits(conn, schema, n) {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
 }
+
+/**
+ * Run `sql` in a transaction on this file's schema, through a connection of
+ * its own, and leave the transaction open, so whatever `sql` locked stays
+ * locked until `release`. The race tests hold a row this way while an attempt
+ * reaches the statement that row blocks, then wait for it with
+ * `waitForLockWaits` and release. A record lock holds at every isolation
+ * level, which a gap lock does not (READ COMMITTED takes none).
+ * @param { String } sql
+ * @param { Array } params
+ * @returns { Promise<{ rows: Array, waitForLockWaits: (n: Number) => Promise<void>, release: () => Promise<void> }> }
+ */
+export async function holdInTransaction(sql, params) {
+  const conn = await openAdminConnection();
+  let rows;
+  try {
+    await conn.changeUser({ database: process.env.DB_NAME });
+    await conn.query('START TRANSACTION');
+    [rows] = await conn.query(sql, params);
+  } catch (err) {
+    await conn.end();
+    throw err;
+  }
+  return {
+    rows,
+    waitForLockWaits: n => waitForLockWaits(conn, process.env.DB_NAME, n),
+    async release() {
+      try {
+        await conn.query('COMMIT');
+      } finally {
+        await conn.end();
+      }
+    },
+  };
+}

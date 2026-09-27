@@ -220,7 +220,7 @@ GitHub stubbed) to end with one `github_linked=1` and one `link_conflict`; and
 a GitHub relink to an account another user holds to be refused as
 `already_linked_other`. Each race is held open deterministically: a
 transaction takes `SELECT ... FOR UPDATE` on the user's own `users` row
-(`holdUserRow`), every link INSERT needs a shared lock on that row to check
+(`holdUserRow`, over `holdInTransaction`), every link INSERT needs a shared lock on that row to check
 its foreign key, and the test waits until `information_schema.INNODB_TRX`
 shows both waiting. It is a record lock on the parent row, not a gap lock on
 the child's empty range, because InnoDB takes foreign-key check locks at every
@@ -280,11 +280,11 @@ seven mocked pins; the INSERT put back to `VALUES` reddened the default-isolatio
 race tests and six mocked pins; the row check loosened from `!== 1` to `=== 0`
 reddened two mocked tests; and the check removed entirely reddened the race
 tests (the seam reported a link it never wrote). Every race file holds the user
-row (the C7 races lock it `FOR UPDATE`, these run the change itself) and waits
-through `waitForLockWaits` in `tests/integration/mysql-admin.js`, which carries
-the 100 ms trap described above. A record lock on the user row holds at every
-isolation level, so all of them pass with the server at `READ-COMMITTED` as
-well.
+row through one helper, `holdInTransaction` in `tests/integration/mysql-admin.js`
+(the C7 races lock it `FOR UPDATE`, these run the change itself), and waits
+through `waitForLockWaits` beside it, which carries the 100 ms trap described
+above. A record lock on the user row holds at every isolation level, so all of
+them pass with the server at `READ-COMMITTED` as well.
 
 `tests/integration/update-account-sessions.test.js` proves the update-account
 session rotation on a real server, where the route tests can only prove the SQL
