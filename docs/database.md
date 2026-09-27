@@ -404,8 +404,9 @@ image only to its uploader and to users who can read a document named here
 | `created_at`  | TIMESTAMP        |                                                              |
 
 **Primary key:** `(hash, log_id)`. **Index:** `idx_doc_images_log (log_id)`.
-Written by the upload route, after each document save that stores images, and
-once by `npm run backfill:doc-images` on an install upgraded to it.
+Written by the upload route, by a document write that adds a reference (only
+from a writer who can see the image), and once by `npm run backfill:doc-images`
+on an install upgraded to it.
 
 ---
 

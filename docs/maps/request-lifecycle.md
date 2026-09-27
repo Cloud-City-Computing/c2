@@ -129,7 +129,7 @@ inline module scripts are not blocked. `frameAncestors: 'none'`,
 `imgSrc` allows `data:` and `blob:` for pasted images.
 
 **Body limit is 2 MB** (`app.js:138`). The collab WebSocket has its own, larger
-limits (5 MB frame, 2 MB HTML) in `services/collab.js:43-44`, so a document that
+limits (5 MB frame, 2 MB HTML) in `services/collab.js:50-51`, so a document that
 saves fine over WS can 413 over REST.
 
 ### Rate limiters
@@ -405,7 +405,7 @@ handler.
 
 Both WS servers attach to the same `http.Server` returned by
 `ViteExpress.listen`, and both use `noServer: true` plus
-`server.prependListener('upgrade', ...)` (`services/collab.js:211`,
+`server.prependListener('upgrade', ...)` (`services/collab.js:269`,
 `services/user-channel.js:86`). `prependListener` is used so these handlers run
 before Vite's own HMR upgrade handler, and each returns early when the path is
 not its own, letting the next listener try.
@@ -413,20 +413,20 @@ not its own, letting the next listener try.
 | | `/collab` | `/notifications-ws` |
 |---|---|---|
 | File | `services/collab.js` | `services/user-channel.js` |
-| Path guard | `collab.js:215` | `user-channel.js:88` |
-| Origin check | `collab.js:218-238` | `user-channel.js:91-109` |
-| Query params | `?logId=<int>` (`collab.js:240-246`) | none |
-| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:257-276`) | same, 5s (`user-channel.js:117-135`) |
-| Max payload | 5 MB (`collab.js:208`) | default |
-| Per-user cap | 10 across all docs (`collab.js:45,292-296`) | 10 (`user-channel.js:23,150-153`) |
+| Path guard | `collab.js:273` | `user-channel.js:88` |
+| Origin check | `collab.js:276-296` | `user-channel.js:91-109` |
+| Query params | `?logId=<int>` (`collab.js:298-304`) | none |
+| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:315-334`) | same, 5s (`user-channel.js:117-135`) |
+| Max payload | 5 MB (`collab.js:266`) | default |
+| Per-user cap | 10 across all docs (`collab.js:52,350-354`) | 10 (`user-channel.js:23,150-153`) |
 
 **Origin handling is strict in both:** a *missing* `Origin` header is rejected
-with a raw `403` on the socket (`collab.js:220-224`), as is any origin whose
+with a raw `403` on the socket (`collab.js:278-282`), as is any origin whose
 host differs from the request `Host`. This is CSWSH protection, and it means a
 non-browser client must send an `Origin` matching the host.
 
 **Auth is post-upgrade, not pre-upgrade.** The handshake completes first
-(`collab.js:249-251`), then the first frame must be the auth message. An
+(`collab.js:307-309`), then the first frame must be the auth message. An
 unauthenticated client can therefore hold an open socket for up to 5 seconds.
 Close codes are meaningful: 4001 auth timeout, 4002 malformed auth, 4003
 unauthorized or access denied, 4004 too many connections.

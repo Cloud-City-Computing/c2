@@ -522,13 +522,18 @@ migration and before starting the new image, the same way as the runner:
 | `docker-compose.yaml` (dev) | `cd cloudcodex && npm run backfill:doc-images` |
 
 It records a row for every `/doc-images/` image in `logs.html_content` and
-`versions.html_content`, prints `backfill-doc-images: recorded N image
-reference(s) from D document(s) and V version(s)`, and is idempotent, so a
-second run records 0. It trusts every reference already stored, which is why it
-belongs before the app starts: run later, it also trusts whatever was saved in
-between. If the app has to start first, set `DOC_IMAGES_PUBLIC=1` (images served
-to anyone with the address, as before), run the backfill, then unset it and
-restart. A fresh install needs none of this.
+`versions.html_content` and prints `backfill-doc-images: recorded N image
+reference(s) from D document(s) and V version(s)`. It trusts every reference
+already stored, which is why it belongs before the app starts: run later, it
+also trusts whatever was saved in between, including references pasted by
+people who cannot see the image. So it refuses to run over a `doc_images` table
+that already has rows. If an interrupted first run needs finishing before
+go-live, add `--again` (`npm run backfill:doc-images -- --again`, or the same
+after `run --rm app`); it is idempotent, so the rerun records only what was
+missed. Do not rerun it after go-live. If the app has to start first, set
+`DOC_IMAGES_PUBLIC=1` (images served to anyone with the address, as before),
+run the backfill (it runs without `--again` while that is set), then unset it
+and restart. A fresh install needs none of this.
 
 ---
 

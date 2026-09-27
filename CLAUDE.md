@@ -362,7 +362,7 @@ existing one.**
 | Send an email                              | `sendEmail` in `services/email.js`                        |
 | Build a notification email body            | `buildNotificationEmail` in `services/email-templates.js` |
 | Extract / inline images for export         | `routes/helpers/images.js`                                |
-| Record the images a saved document shows   | `recordDocImages` in `routes/helpers/images.js`           |
+| Record the images a write adds to a document | `recordDocImages` (with `introducedDocImages`) in `routes/helpers/images.js` |
 | Check who may see a document image         | `readableDocImageHashes` in `routes/helpers/images.js`    |
 | Three-way merge two markdown revisions     | `diff3Merge` in `src/lib/githubDiff.js`                   |
 

@@ -158,16 +158,25 @@ checked too:
 
 - The upload (`POST /api/doc-images/upload`) needs a `logId` the caller can
   write, and processes nothing without one.
-- A save records an image against the document only if the writer supplied its
-  bytes in that save, or can already see it. Pasting someone else's image URL
-  into a document you can write stores the reference and grants nothing.
+- A reference is recorded against a document only by the write that adds it,
+  and only if that writer supplied the image's bytes or can already see it. So
+  pasting someone else's image URL into a document you can write stores the
+  reference and grants nothing, and a later save, publish or restore by
+  someone who can see the image (an owner fixing a typo, an admin publishing)
+  does not grant it either, because that write did not add it. In the live
+  editor, where every client saves the whole shared document, a reference is
+  credited to the writer whose own edit put it there, not to whoever's client
+  sent the save.
 - Export (HTML, DOCX, markdown) inlines only the images the exporting user can
   see, so it cannot be used to read an image file the handler would refuse.
 
 `DOC_IMAGES_PUBLIC=1` turns all of this off and serves every image to anyone
 with its address, which is how every earlier release behaved. It exists for the
 upgrade window before `npm run backfill:doc-images` has run, and should be
-unset afterwards. Avatars stay public by decision.
+unset afterwards. The backfill trusts every reference already stored, so it
+runs once, before the new release serves anyone, and refuses to run over a
+table that already has rows unless told `--again`. Avatars stay public by
+decision.
 
 ---
 

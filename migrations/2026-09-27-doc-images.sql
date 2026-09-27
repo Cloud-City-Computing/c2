@@ -5,7 +5,7 @@
 -- serves an image to its uploader and to anyone who can read a document that
 -- holds it, and this table is how it knows which documents those are: one row
 -- per (image, document), written when an image is uploaded into a document
--- and whenever a save stores HTML that shows one.
+-- and when a write adds a reference to one, from a writer who can see it.
 --
 -- hash is the file's name without .webp: the first 16 hex digits of the
 -- SHA-256 of the uploaded bytes (routes/helpers/images.js). uploaded_by is set
@@ -23,7 +23,9 @@
 --   npm run backfill:doc-images
 --
 -- It scans logs.html_content and versions.html_content for /doc-images/ and
--- is idempotent. Until it has run, DOC_IMAGES_PUBLIC=1 keeps the old public
+-- is idempotent, but it trusts every stored reference, so it refuses to run
+-- over a table that already has rows unless told --again (an interrupted
+-- first run). Until it has run, DOC_IMAGES_PUBLIC=1 keeps the old public
 -- mount.
 --
 -- Additive, so neither direction breaks the application, and not idempotent

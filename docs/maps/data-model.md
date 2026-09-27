@@ -93,7 +93,7 @@ Consequences:
 - The tag-strip is a regex, not a parser, so entities such as `&amp;` survive
   into the index verbatim.
 - **All three content columns are `MEDIUMTEXT` (16 MiB)** since 2026-08-09, so
-  the app's own 2 MiB ceiling (`documents.js:22`, `collab.js:44`) is now the
+  the app's own 2 MiB ceiling (`documents.js:29`, `collab.js:51`) is now the
   real limit. Until then `html_content` and `plain_content` were `TEXT`
   (64 KiB) and the column was the true ceiling: measured, a 40 KiB save
   returned 200 and a 70 KiB save returned an opaque 500 with the edit lost,
@@ -122,9 +122,10 @@ the upload's SHA-256), and a document's HTML names them by URL; this table is
 the only thing that says which documents hold an image, and the
 `/doc-images` handler serves an image only through it (who counts is
 [access-control.md](access-control.md) section 3f). Rows are written three
-ways: the upload route, with `uploaded_by` set; `recordDocImages` after an
+ways: the upload route, with `uploaded_by` set; `recordDocImages` for an
 `html_content` write, `uploaded_by` set only for images whose bytes that write
-supplied; and the one-time `npm run backfill:doc-images`, with `uploaded_by`
+supplied, and a reference recorded only by the write that adds it; and the
+one-time `npm run backfill:doc-images`, with `uploaded_by`
 NULL, from `logs.html_content` and `versions.html_content`. Everything uses
 `INSERT IGNORE`, so a repeat is free. Nothing deletes a row except the
 cascade: an image a document stops showing stays readable to that document's
@@ -134,8 +135,9 @@ spec).
 **The upgrade gap.** The migration creates the table empty, so on an existing
 install every image is hidden from its readers until the backfill runs. The
 backfill trusts every reference already stored, so it belongs right after the
-migration and before the app starts; `DOC_IMAGES_PUBLIC=1` bridges the gap
-when that order is not possible.
+migration and before the app starts, and it refuses to run over a table that
+already has rows unless `--again` or `DOC_IMAGES_PUBLIC=1`;
+`DOC_IMAGES_PUBLIC=1` bridges the gap when that order is not possible.
 
 ## 4. Sessions and auth tables
 

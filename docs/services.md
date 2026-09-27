@@ -556,10 +556,15 @@ Shared utilities used across all route files:
   `src` with a served URL. This prevents large binary blobs from being
   stored in MySQL and speeds up document loads. The optional `saved` set
   receives the hash of each image it decoded.
-- **`recordDocImages(logId, html, user, saved)`**: After a write, records the
-  images the stored HTML shows in `doc_images`, so the document's readers can
-  see them: as the writer's own when `saved` holds the hash, otherwise only if
-  the writer can already see the image.
+- **`recordDocImages(logId, html, writer, { saved, introduced })`**: Records in
+  `doc_images` the images a write stores, so the document's readers can see
+  them: as the writer's own when `saved` holds the hash, a reference only when
+  `introduced` holds it (this write added it) and the writer can already see
+  the image, and nothing else. `introducedDocImages(logId, html, previousHtml,
+  writer)` computes `introduced` for a save (limited, while a live session is
+  open, to what that session credits to the writer), and
+  `recordCreditedDocImages(logId, html, credits)` records the live editor's
+  saves per credited writer (`DocImageCredits`).
 - **`readableDocImageHashes(hashes, user)`**: The one answer to "may this user
   see these images": uploader, or reader of a document holding them. The
   `/doc-images` handler (`routes/doc-images-serve.js`) and export ask it.

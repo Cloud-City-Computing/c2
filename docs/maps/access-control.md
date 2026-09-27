@@ -129,7 +129,7 @@ Never write permission SQL by hand. The wrappers already exist in
 | `checkArchiveWriteAccess(archiveId, user)` | `shared.js:159-168` | the archive row, or `undefined` |
 
 Routes that need the fragment inline (search, browse, export, GitHub link
-loading) interpolate it directly; see `routes/documents.js:553`,
+loading) interpolate it directly; see `routes/documents.js:581`,
 `routes/search.js`, `routes/github.js:1023`.
 
 ## 2. The critical subtlety: everything resolves against the ARCHIVE
@@ -225,7 +225,7 @@ allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
 Called from the REST publish route and from the collab WebSocket publish message
-(`services/collab.js:547`), so both paths share one policy.
+(`services/collab.js:601`), so both paths share one policy.
 
 ### 3c. Archive ownership: `isArchiveOwner`
 
@@ -422,31 +422,71 @@ nothing else may read an image file for a user:
 |---|---|
 | `docImagesHandler` (`routes/doc-images-serve.js`), the `/doc-images` mount | the empty 404 ([request-lifecycle.md](request-lifecycle.md) section 2) |
 | `inlineImagesForExport` / `inlineImagesForMarkdownExport` (HTML, DOCX, markdown export) | the reference stays a URL instead of becoming a data URI |
-| `recordDocImages`, after every `html_content` write that extracts images | the reference is stored but gets no row for this document |
+| `recordDocImages`, for every `html_content` write that extracts images | the reference is stored but gets no row for this document |
 
 **The write-path gate is the part that is easy to lose.** `doc_images` rows
 are how a document grants its readers an image, so whoever can write a
-document can grant. `recordDocImages(logId, html, user, saved)` therefore
-records a hash as the writer's own (`uploaded_by = user.id`) only when this
-write decoded its bytes (the `saved` set `extractImagesFromHtml` fills), and
-records any other reference (with `uploaded_by` NULL) only when the writer can
-already see that image. Without the second rule, knowing an image's address is
-enough to read it: paste the URL into any document you can write, and the
-handler serves it to you as that document's reader. Holding the bytes is not a
-leak, because they hash to the same name. The upload route
-(`POST /api/doc-images/upload`) is the other writer: it requires a `logId` the
-caller can write (`checkLogWriteAccess`) before it processes anything, and
-records each image as the uploader's.
+document can grant. `recordDocImages(logId, html, writer, { saved, introduced })`
+therefore records a hash as the writer's own (`uploaded_by = writer.id`) only
+when this write decoded its bytes (the `saved` set `extractImagesFromHtml`
+fills), and records a reference (with `uploaded_by` NULL) only when it is in
+`introduced`, the references this write put there, and the writer can already
+see that image. Every other reference in the HTML is left alone, however much
+the writer can see. Holding the bytes is not a leak, because they hash to the
+same name.
+
+Both halves matter. Without the readability check, knowing an image's address
+is enough to read it: paste the URL into any document you can write, and the
+handler serves it to you as that document's reader. Without the "introduced"
+limit, that planted reference is granted anyway by the next save, publish or
+restore from anyone who can see the image (the owner fixing a typo, any
+admin), a confused deputy. What each write may vouch for:
+
+| Write | `introduced` |
+|---|---|
+| `POST /api/save-document` | `introducedDocImages`: the references the new HTML adds over `old_content`; with a live session open on the document, only those the session credits to this writer |
+| `POST .../publish`, `POST .../restore` | none: they store what the document already held |
+| `POST /api/archives/:id/logs/upload` (import) | every reference: the document is new |
+| live editor save and publish | per writer, the references `DocImageCredits` credits to them (below) |
+
+In the live editor every client's save carries the whole shared document, so
+the sender is not the one to ask. `services/collab.js` keeps a
+`DocImageCredits` per open document (registered by `openDocImageCredits`, so
+the REST save can ask it too) that credits a reference to the writer whose own
+sync frame first put it in: the frame's bytes named it, it was not in the
+shared document before and is after, and the stored HTML does not already show
+it. So the first client filling the shared document from stored HTML, or an
+edit that recreates a node, claims nothing, and a reference typed a character
+at a time is nobody's. REST save and restore tell the session what they stored
+(`noteStoredDocImages`), so what the restoring editor then pushes in is not
+credited either. The REST routes record before they write, so a failure fails
+the request (and a retry, whose previous HTML is unchanged, still sees what it
+adds); the live editor records after its ack, in its own try/catch.
+
+The upload route (`POST /api/doc-images/upload`) is the other writer: it
+requires a `logId` the caller can write (`checkLogWriteAccess`) before it
+processes anything, and records each image as the uploader's.
+
+**What the credits do not cover.** A writer who can see an image and moves a
+planted reference (cut, then paste after a save) vouches for it, as they would
+by pasting it themselves. If the server restarts before a planted edit reaches
+the database, a client re-sending its copy of the shared document on reconnect
+is credited with it. Both need the victim writer's own action or a restart
+inside a few seconds; they are accepted, and noted here so they are not
+forgotten.
 
 **What is not gated.** `insertDocImageRows` writes whatever it is handed; only
 the upload route (after its write check) and the one-time backfill
 (`scripts/backfill-doc-images.js`, which trusts what existing documents
 already show, since those images were public until this change) call it
-directly. The GitHub import and pull paths store remote markdown without
-recording rows, so an image reference arriving that way shows to its readers
-only after the next explicit save by someone who can see it. With
-`DOC_IMAGES_PUBLIC=1` the handler and export ask nothing; recording still
-happens.
+directly. The backfill refuses to run over a table that already has rows unless
+`DOC_IMAGES_PUBLIC=1` or `--again`, because run after go-live it would trust
+every reference saved since. The GitHub import and pull paths store remote
+markdown without recording rows, and no later save records a reference it
+did not add, so an image reference arriving that way stays hidden (fails
+closed) until someone who can see the image puts it in again: removes it and
+saves, then adds it back. With `DOC_IMAGES_PUBLIC=1` the handler and export ask
+nothing; recording still happens.
 
 ## 4. How membership itself is granted
 
@@ -488,7 +528,7 @@ something:
 | `can_create_archive` | `requirePermission('create_archive')` step 7 (`permissions.js:115`) |
 | `can_manage_members` | `canManageSquad` (`squads.js`), and `userCanManageSquad` (`github.js`) on the team-sync routes only, where it counts only alongside an `admin` role |
 | `can_publish` | `canPublish` (`shared.js:118-145`) |
-| `can_delete_version` | version delete route only (`documents.js:503-515`) |
+| `can_delete_version` | version delete route only (`documents.js:531-543`) |
 
 `role` is an enum of `member`/`admin`/`owner`, but only `owner` is load-bearing
 in the SQL fragments (`ownership.js:31`, `ownership.js:57`). `admin` is treated
@@ -671,8 +711,9 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
    `check*Access` helpers, or interpolate the fragment with the matching
    `*Params` spread. Never hand-roll the SQL. A new path that writes
    `html_content` through `extractImagesFromHtml` calls `recordDocImages`
-   after the write with the same `saved` set, and one that reads image files
-   for a user asks `readableDocImageHashes` first (3f).
+   with the same `saved` set and, as `introduced`, only the references that
+   write adds (3f), and one that reads image files for a user asks
+   `readableDocImageHashes` first.
 4. Destructive or ACL-changing, use `isArchiveOwner`, not write access.
 5. Wrap in `asyncHandler`, end the router with `router.use(errorHandler)`.
 6. Add the negative test. Every route test file in `tests/routes/` already has

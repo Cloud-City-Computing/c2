@@ -226,9 +226,9 @@ Mentions are `<span data-mention-user-id="42">` nodes emitted by the Tiptap
 `extractContextSnippet` (`mentions.js:71-93`) produces ~160 characters of
 plain-text context around the mention for the inbox preview and email body.
 
-Called from four places: REST save (`documents.js:129`), version restore
-(`documents.js:449`), WS save (`collab.js:481`), WS publish
-(`collab.js:580`). The comment path does its own extraction inline rather than
+Called from four places: REST save (`documents.js:148`), version restore
+(`documents.js:477`), WS save (`collab.js:535`), WS publish
+(`collab.js:637`). The comment path does its own extraction inline rather than
 reusing `processMentionsOnSave`, because comment content is plain text with a
 different link target (`comments.js:186-209`).
 

@@ -445,15 +445,25 @@ single-writer lock (PR 1) is acquired, since `GET_LOCK` needs no privilege.
 **Status: shipped 2026-09-27** on `track/w6-cdx-34-image-readers` (tasks 4.1 to 4.5 done; these
 tasks carry no checkboxes). Where the build goes past the text below, and why:
 
-- `recordDocImages(logId, html, user, saved)` records a reference to an image the writer did not
-  supply the bytes for only when the writer can already see it; recording every reference would
-  let anyone who knows an address read it by pasting it into a document they can write.
+- `recordDocImages(logId, html, writer, { saved, introduced })` records a reference to an image
+  the writer did not supply the bytes for only when this write introduced it and the writer can
+  already see it. Recording every reference would let anyone who knows an address read it by
+  pasting it into a document they can write; recording every readable reference would let the next
+  save, publish or restore by an owner or admin grant a reference somebody else planted. A save
+  vouches for what it adds over the stored HTML, publish and restore for nothing, an import for
+  everything, and the live editor per writer whose own edit added the reference
+  (`DocImageCredits`), since any client's save carries the whole shared document.
 - Export (`inlineImagesForExport`, `inlineImagesForMarkdownExport`) asks the same question before
   it inlines a file off disk, since it would otherwise bypass the handler.
 - The backfill also reads `versions.html_content`, so restoring an old version does not bring back
-  images nobody can see.
-- The GitHub import and pull paths are not hooked: an image reference arriving that way is
-  recorded on the next explicit save by someone who can see it.
+  images nobody can see, and it refuses to run over a table that already has rows unless
+  `--again` or `DOC_IMAGES_PUBLIC=1`, since run after go-live it would trust every reference
+  saved since.
+- The GitHub import and pull paths are not hooked, and no later save records a reference it did
+  not add, so an image reference arriving that way stays hidden (fails closed) until someone who
+  can see the image puts it in again.
+- `POST /api/save-document` checks write access before it decodes any embedded image, as the
+  upload route does.
 
 ### Task 4.1 The table
 

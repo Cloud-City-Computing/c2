@@ -37,9 +37,11 @@ initialises an empty data directory.
   days, so anyone with an image's address could fetch it. It now serves an
   image to its uploader and to users who can read a document that holds it,
   cached `private` for a day; everyone else, signed in or not, gets the same
-  empty `404`. Pasting another document's image URL into a document you can
-  write grants nothing, and export inlines only the images the exporting user
-  can see. `DOC_IMAGES_PUBLIC=1` restores the old public mount. Avatars stay
+  empty `404`. A reference is recorded for a document only by the write that
+  adds it, from a writer who can see the image, so pasting another document's
+  image URL into a document you can write grants nothing, and neither does a
+  later save, publish or restore of that document by someone who can see it.
+  Export inlines only the images the exporting user can see. `DOC_IMAGES_PUBLIC=1` restores the old public mount. Avatars stay
   public.
 
 ### Migration
@@ -57,8 +59,12 @@ docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-i
 ```
 
 It records every image that a document's current HTML or any of its versions
-shows, prints how many, and is safe to run again. If the app has to start
-before it runs, set `DOC_IMAGES_PUBLIC=1` for that window and unset it after.
+shows, and prints how many. It trusts every reference already stored, so run it
+once, before the new image serves anyone, and not again after go-live: it
+refuses to run over a table that already has rows, and
+`npm run backfill:doc-images -- --again` is only for rerunning an interrupted
+first run. If the app has to start before it runs, set `DOC_IMAGES_PUBLIC=1`
+for that window (the backfill then runs without `--again`) and unset it after.
 A fresh install needs neither. See `docs/deployment.md`, "The document-images
 backfill, once".
 

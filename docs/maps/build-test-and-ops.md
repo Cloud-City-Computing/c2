@@ -39,7 +39,7 @@ it (directly or transitively) before reading `process.env`.
 | `test:integration` | `vitest run --project integration` | opt-in, needs a live MySQL; see section 5 |
 | `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
-| `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent. In containers it runs like `migrate`, through `run --rm app`. |
+| `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
 `NODE_ENV` matters in three places: CORS localhost allowance
 (`app.js:102`), rate-limiter `skip` when `'test'` (`app.js:134`,
