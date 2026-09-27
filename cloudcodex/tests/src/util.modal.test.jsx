@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act } from '@testing-library/react';
 import {
   showModal,
   destroyModal,
@@ -37,9 +38,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function flush() {
-  await new Promise((r) => setTimeout(r, 0));
-}
 
 describe('hideModalDimmer / showModalDimmer / destroyModal', () => {
   it('hideModalDimmer is a no-op when there is no dimmer', () => {
@@ -63,8 +61,7 @@ describe('hideModalDimmer / showModalDimmer / destroyModal', () => {
   });
 
   it('destroyModal clears the modal root and hides the dimmer', async () => {
-    showModal(<div data-testid="content">hi</div>);
-    await flush();
+    await act(async () => { showModal(<div data-testid="content">hi</div>); });
     expect(modalRoot.children.length).toBeGreaterThan(0);
 
     destroyModal();
@@ -80,23 +77,19 @@ describe('hideModalDimmer / showModalDimmer / destroyModal', () => {
 
 describe('showModal', () => {
   it('renders content into #modal-root and shows the dimmer', async () => {
-    showModal(<div data-testid="m">hello</div>);
-    await flush();
+    await act(async () => { showModal(<div data-testid="m">hello</div>); });
     expect(modalRoot.querySelector('[data-testid="m"]')).not.toBeNull();
     expect(dimmer.style.display).toBe('block');
   });
 
   it('applies the extra class to the wrapper', async () => {
-    showModal(<div>x</div>, 'big-modal');
-    await flush();
+    await act(async () => { showModal(<div>x</div>, 'big-modal'); });
     expect(modalRoot.querySelector('.modal-content-wrapper.big-modal')).not.toBeNull();
   });
 
   it('Escape key closes the modal', async () => {
-    showModal(<div data-testid="m">hi</div>);
-    await flush();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    await flush();
+    await act(async () => { showModal(<div data-testid="m">hi</div>); });
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
     expect(modalRoot.children.length).toBe(0);
   });
 
@@ -108,16 +101,14 @@ describe('showModal', () => {
 
 describe('showDropdownMenu', () => {
   it('renders content into #dropdown-root and shows the dimmer', async () => {
-    showDropdownMenu(<button>menu item</button>);
-    await flush();
+    await act(async () => { showDropdownMenu(<button>menu item</button>); });
     expect(dropdownRoot.querySelector('.dropdown-content-wrapper')).not.toBeNull();
     expect(dropdownRoot.style.display).toBe('block');
     expect(dimmer.style.display).toBe('block');
   });
 
   it('clicking the dimmer hides the dropdown', async () => {
-    showDropdownMenu(<button>menu</button>);
-    await flush();
+    await act(async () => { showDropdownMenu(<button>menu</button>); });
     dimmer.click();
     expect(dropdownRoot.style.display).toBe('none');
   });
