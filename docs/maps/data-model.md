@@ -466,11 +466,19 @@ the procedure body.
 
 ### Trap 1: `init.sql` only runs on a fresh volume
 
-Both compose files mount it into `/docker-entrypoint-initdb.d/`
-(`docker-compose.yaml:22`, `docker-compose-prod.yml:19`). The MySQL entrypoint
+The compose files mount it into `/docker-entrypoint-initdb.d/`
+(`docker-compose.yaml:22`, `docker-compose-prod.yml:17`,
+`docker-compose-release.yml:36`). The MySQL entrypoint
 **skips that directory entirely when the data directory is already
 initialised.** Editing `init.sql` and restarting the container does nothing.
 Dev volume is the bind mount `./db-data/`; prod is the named volume `db_data`.
+
+The same skip turns an unreadable `init.sql` into an empty database: on an
+SELinux-enforcing host a mount with no relabel fails the first boot with
+"Permission denied", MySQL restarts on a now non-empty data directory, and the
+app finds no tables. The prod and release files mount it `:ro,z` (the dev base
+gets `:Z` from `docker-compose.linux.yml`), and `tests/compose-mounts.test.js`
+fails if any host bind mount in the prod or release file loses its label.
 
 ### Trap 2 (fixed): `make reset-db` used to be an incomplete reset
 

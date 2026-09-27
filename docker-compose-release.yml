@@ -33,7 +33,7 @@ services:
       # changes need a migrations/ file, applied with
       # `docker compose -f docker-compose-release.yml run --rm app npm run migrate`
       # (see the app service, which mounts migrations/ for exactly that).
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro,z
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-u${DB_USER}", "-p${DB_PASS}"]
       interval: 7s

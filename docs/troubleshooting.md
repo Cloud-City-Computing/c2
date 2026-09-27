@@ -132,6 +132,29 @@ vars in `.env` will not retroactively change MySQL's credentials.
 
 ```
 ┃ ⚠  Symptom
+┃   On a fresh install, every request fails and the app's log shows
+┃   "Table 'c2.users' doesn't exist". The MySQL container's log shows
+┃   "/docker-entrypoint-initdb.d/init.sql: Permission denied".
+```
+
+**Cause.** The host enforces SELinux (Fedora, RHEL and their relatives), and
+the compose file mounted `init.sql` without a relabel, so the MySQL container
+could not read it. The first boot's initialisation then failed, MySQL
+restarted on a data directory that was no longer empty, skipped
+initialisation, and came up with no tables. `docker-compose-release.yml` and
+`docker-compose-prod.yml` up to and including 0.11.0 mount it this way; later
+versions mount it `:ro,z`.
+
+**Fix.** On a version that still has the old line, change the `init.sql`
+mount in the compose file you run to end in `:ro,z`, then start again from an
+empty data directory: `docker compose -f <file> down -v` (this **destroys**
+the database, which on a fresh install holds nothing yet) and `docker compose
+-f <file> up -d`. The app's log then shows `admin sync: created ...`.
+
+---
+
+```
+┃ ⚠  Symptom
 ┃   Google sign-in lands back on the sign-in form with "Your Google
 ┃   account domain is not allowed" (`/?oauth_error=domain_not_allowed`).
 ```
