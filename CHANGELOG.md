@@ -23,6 +23,46 @@ initialises an empty data directory.
   every host bind mount in the two files. An install that already hit this
   starts again from an empty data directory; see `docs/troubleshooting.md`.
 
+### Security
+
+- **Session tokens are stored only as a SHA-256 digest, and every sign-in is
+  its own session.** `sessions.id` held the raw token, so a copy of the table
+  (a backup, a dump) was a list of working sign-ins; it now holds
+  `hashSessionToken(token)`, and every lookup and delete hashes the presented
+  token first. Each sign-in also gets a row of its own: a second device used to
+  be handed the first device's token, so signing out anywhere signed out
+  everywhere, and a sign-in after a password change was handed the caller's
+  fresh token. Now `POST /api/logout` signs out only the device that sent it; a
+  password reset, and an email or password change, still sign out every device.
+  Each row records the flow that minted it (`sessions.auth_provider`, `local`
+  or `google`), and expired sessions are deleted daily.
+
+### Migration
+
+**The session migration,**
+[`migrations/2026-09-27-session-per-sign-in.sql`](migrations/2026-09-27-session-per-sign-in.sql),
+adds `sessions.auth_provider` (existing rows become `local`, then the default is
+dropped) with `CHECK (auth_provider IN ('local', 'google'))`, and hashes every
+stored session id in place, so nobody is signed out by the upgrade. **Stop every
+writer, apply it, then start the new image**, from `cloudcodex/`:
+
+```sh
+npm run migrate
+```
+
+In containers, `docker compose ... run --rm app npm run migrate` with the app
+stopped. The schema is incompatible with the app in both directions: the old
+image against it fails every sign-in (error 1364) and cannot find any existing
+session, and the new image against the old schema fails every sign-in (error
+1054) and cannot find any either. The hash step is idempotent (it skips any id
+that is already a lowercase hex digest), so a re-run changes nothing it already
+changed; if a run is interrupted partway, drop the column
+(`ALTER TABLE sessions DROP COLUMN auth_provider;`) and run it again. There is
+no rollback of the hash: going back to an older image means dropping the column
+and every user signing in again. On an install that `init.sql` builds fresh,
+`--adopt-fresh-install` checks that `auth_provider` is already there before it
+records the file.
+
 ## [0.11.0] - 2026-09-27
 
 The account-security release. Three security fixes: Google sign-in no longer

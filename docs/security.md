@@ -78,7 +78,9 @@ Passwords are hashed with **bcrypt** at 12 salt rounds. Comparisons use constant
 
 ## Session Management
 
-Session tokens are 64-character cryptographically random strings (Node.js `crypto.randomBytes`) with a 7-day expiry. IP address and user-agent are recorded per session.
+Session tokens are 64-character cryptographically random strings (`crypto.getRandomValues`) with a 7-day expiry. IP address and user-agent are recorded per session.
+
+**Every sign-in is its own session**, so each device holds its own token and signing out of one leaves the others signed in. **The database stores only a SHA-256 digest of each token** (`sessions.id`), and every lookup and delete hashes the presented token first, so a copy of the `sessions` table, from a backup or a dump, yields nothing a browser can present. Expired sessions are deleted daily.
 
 A successful password reset deletes every session of the user.
 
@@ -89,11 +91,11 @@ A successful password reset deletes every session of the user.
 `POST /api/update-account` changes a user's name, email or password. A session on its own is enough for the name and for nothing else:
 
 - **An email or password change needs the current password** (`currentPassword`), compared with bcrypt exactly as sign-in compares it. Missing is a 400 and wrong is a 401, and neither changes anything. The check runs before the new address is tested for uniqueness, so a session alone cannot probe which addresses have accounts. The route shares the sign-in rate limit (20 requests per 15 minutes per IP).
-- **After an email or password change, every session of the user is deleted, the caller's included**, in the same transaction as the write, and the caller is handed a freshly generated session token. Sessions are one per user today, so every device signed in to the account holds the same token; deleting all but the caller's, as this route used to, deleted nothing that mattered and left a stolen session working after the owner changed their password. Now every holder of the old token is signed out. Until sessions become one per sign-in, the next sign-in with the new credentials is handed the same fresh token, as any two sign-ins share one today.
+- **After an email or password change, every session of the user is deleted, the caller's included**, in the same transaction as the write, and the caller is handed a freshly generated session token. Every other device is signed out, a stolen session included, and the caller continues on its new one. (While sessions were one per user this route's older "delete all but the caller's" rule deleted nothing that mattered, because every device held the caller's token.)
 - **After an email change, a notice goes to the old address** when mail is enabled, so the owner hears about a change that was not theirs.
 - **An account with no password** (one an external sign-in created) has no current password to give. Its email change is confirmed with a 6-digit code emailed to its **current** address (ten minutes, one pending change at a time, the new address bound to the confirmation token so the code applies exactly the address it was sent for), completed at `POST /api/update-account/confirm-email`, which rotates sessions the same way. With mail disabled that change is refused with a sentence saying why. Such an account sets a first password only through Forgot Password.
 
-`POST /api/logout` deletes the `sessions` row. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
+`POST /api/logout` deletes the `sessions` row for the presented token, and only that one: other devices stay signed in. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
 
 ---
 

@@ -778,19 +778,23 @@ read as proof of none.
 until the user reconnects. Deliberate (re-checking per message would be a query
 per keystroke), but worth stating.
 
-### C2. One session row per user
+### C2. One session row per user (RESOLVED)
 
-`generateSessionToken` (`mysql_connect.js:109-144`) reuses the existing row, so
-signing in on a second device returns the first device's token and `POST
-/api/logout` signs out everywhere. The schema does not enforce the one-row
-assumption with a unique key on `user_id`.
+`generateSessionToken` used to reuse the user's existing row, so signing in on
+a second device returned the first device's token and `POST /api/logout`
+signed out everywhere; the row also held the raw token. It was also why
+`POST /api/update-account` deletes the caller's session along with every other
+after an email or password change: the caller's token was every holder's, so
+sparing it spared a stolen one, and the next sign-in with the new credentials
+was handed that fresh token too.
 
-It is also why `POST /api/update-account` deletes the caller's session along
-with every other after an email or password change and mints a fresh one
-([request-lifecycle.md](request-lifecycle.md)): the caller's token is every
-holder's, so sparing it spared a stolen one. The limit that remains is this
-entry's: the next sign-in with the new credentials is handed that fresh token
-too.
+**Resolved** by W6-CDX-2 (branch `track/w6-cdx-2-hashed-sessions`): every
+sign-in inserts its own row, stored as `hashSessionToken(token)`, a SHA-256
+digest, with the minting flow in `sessions.auth_provider`, and a daily prune
+reaps expired rows. Logout signs out one device; update-account's delete by
+`user_id` still signs out every other device, and a later sign-in gets a row
+of its own. The mechanism is in [request-lifecycle.md](request-lifecycle.md)
+("Session tokens") and [data-model.md](data-model.md) section 4.
 
 ### C3. Rotating `GITHUB_CLIENT_SECRET` invalidates every stored token
 

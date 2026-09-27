@@ -403,7 +403,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | ID | Session | Depends on | Deploy |
 |---|---|---|---|
 | W6-CDX-10 | A live-MySQL integration test project (**shipped 2026-09-25**; `npm run test:integration`, inside CI's required job) | nothing | yes |
-| W6-CDX-2 | One session per sign-in, stored hashed | W6-CDX-10 | yes |
+| W6-CDX-2 | One session per sign-in, stored hashed (**shipped 2026-09-27** on `track/w6-cdx-2-hashed-sessions`; `sessions.id` holds a SHA-256 digest, one row per sign-in, `sessions.auth_provider`, a daily prune, closing open question C2) | W6-CDX-10 | yes |
 | W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes | W6-CDX-2 | yes |
 | W6-CDX-4 | An identity-resolution seam, Google moved onto it (**shipped 2026-09-25** in #56, released in 0.11.0; Google now refuses a second Google subject as `identity_conflict`, closing open question C7) | nothing | yes |
 | W6-CDX-5 | The OIDC relying party and `user_identities` | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3, W6-CMD-24 (the `returnTo` corpus) | yes |
