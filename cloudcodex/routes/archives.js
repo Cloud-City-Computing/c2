@@ -589,10 +589,12 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
   );
   if (!current) return res.status(404).json({ success: false, message: 'Log not found' });
 
-  // A new parent must be a log in this archive that is not below this one,
-  // or the tree loses the documents (GET /archives/:archiveId/logs roots only
-  // what it can reach). UNION, not UNION ALL, so a cycle already in the data
-  // ends the walk instead of running it to the recursion limit.
+  // A new parent must be a log in this archive that is not below this one.
+  // A log under itself or its own descendant drops out of the tree
+  // (GET /archives/:archiveId/logs roots only what it can reach), and a
+  // parent in another archive is one the tree does not have. UNION, not
+  // UNION ALL, so a cycle already in the data ends the walk instead of
+  // running it to the recursion limit.
   if (pid !== undefined && pid !== null && pid !== current.parent_id) {
     const ancestry = await c2_query(
       `WITH RECURSIVE chain (id, parent_id) AS (

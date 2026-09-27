@@ -272,7 +272,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 | Table | Key | Written by | Read by |
 |---|---|---|---|
 | `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google; never links a user with two-factor on by email), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
-| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:715` | bulk import |
+| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:742` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
 | `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |
 | `github_embed_refs` | index on `(repo_owner, repo_name, embed_type)` | **nothing** | `/api/logs/by-github-ref` |

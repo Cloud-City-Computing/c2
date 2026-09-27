@@ -28,6 +28,11 @@ initialises an empty data directory.
   same 400 responses), where it used to accept any length and answer a
   non-string title with a 500, and it answers 404 for a document that is not
   in the archive instead of reporting success.
+- **The archive tree no longer loses documents to a bad move.** The same
+  route wrote any `parent_id` it was given. A document put under itself or
+  under one of its own descendants dropped out of the tree with everything
+  below it, and one could also be put under a document in another archive.
+  Each is now a 400.
 
 - **A fresh install on an SELinux-enforcing host gets its schema.**
   `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`

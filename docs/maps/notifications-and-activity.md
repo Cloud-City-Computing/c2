@@ -84,7 +84,11 @@ squad.invite_create   squad.member_join   squad.member_leave
 (`routes/archives.js:538`). The tree route is the only source of `log.move`,
 with `parent_id` and `previous_parent_id` in its metadata. It reads the row
 first and logs each event only when the value actually changes
-(`routes/archives.js:583-612`). Neither action auto-watches or notifies.
+(`routes/archives.js:586-639`). A new parent must be a log in the same archive
+and not the log itself or one of its descendants, checked by a recursive walk
+up the new parent's ancestry (`routes/archives.js:598-614`), so a `log.move`
+never names a parent outside the tree. Neither action auto-watches or
+notifies.
 
 `archive.delete` lands in `activity_log` but is invisible to both read paths:
 the workspace feed's access clause needs an `EXISTS` on the `archives` row

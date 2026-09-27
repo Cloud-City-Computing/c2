@@ -119,7 +119,8 @@ otherwise).
 **Body:** `{ title?, parent_id? }`, at least one. `title` follows the rules of
 `PUT /api/document/:logId/title`: required when present, trimmed, at most 255
 characters, with the same `400` bodies. `parent_id` is a log id or `null` for
-the top of the tree.
+the top of the tree. A new parent must be another log in the same archive and
+must not be the document itself or one of its descendants; otherwise `400`.
 
 A changed title records `log.rename`, and a changed parent records `log.move`
 with `parent_id` and `previous_parent_id` in its metadata. Sending the values

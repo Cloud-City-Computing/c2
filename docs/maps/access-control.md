@@ -236,8 +236,8 @@ destructive and administrative verbs. Admin, archive creator, workspace owner
 archive still cannot delete it or change its ACLs.
 
 Callers: delete archive (`archives.js:198`), manage access
-(`archives.js:259`), link and unlink archive repos (`archives.js:700`,
-`archives.js:749`).
+(`archives.js:259`), link and unlink archive repos (`archives.js:727`,
+`archives.js:776`).
 
 ### 3d. Squad management: `canManageSquad`, and its GitHub-only twin
 
