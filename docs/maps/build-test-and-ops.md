@@ -314,9 +314,14 @@ are absent (with an admin session seeing the admin-only one, so the absence is
 not vacuous), that a deleted id and an unreadable id answer byte-identically
 (body, length and ETag), that a title is bounded to 255 code points with a
 trailing astral character kept whole, and that an id past the `INT` range is a
-200 with no row. Mutation-checked on 2026-09-27: dropping the workspace join,
-the system-archive predicate or the title bound, binding `is_admin` true, or
-mounting `requireAuth` instead of `machineOrAuth` each turn a live test red.
+200 with no row, and that the answer is in ascending id order read unsorted.
+Mutation-checked on 2026-09-27: making the workspace join a no-op
+(`_fs.workspace_id = ? OR TRUE`, which keeps the bound param), dropping the
+system-archive predicate or the title bound, binding `is_admin` true, mounting
+`requireAuth` instead of `machineOrAuth`, or ordering `DESC` each turn a live
+test red. Dropping `ORDER BY l.id` does not: MySQL returns id order on this
+data anyway, so that mutation is caught only by the SQL-shape pin in
+`tests/routes/documents.test.js`.
 
 `tests/integration/admin-sync.test.js` proves the boot admin sync never
 promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the

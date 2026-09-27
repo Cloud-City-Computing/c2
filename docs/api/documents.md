@@ -76,7 +76,9 @@ is simply absent, and the answer does not say which. `title` is bounded to 255 c
 bound the outbound event envelope applies. Ordered by `id`.
 
 Returns `400` with `A workspaceId is required` or `Between 1 and 100 document ids are required`.
-Rate-limited to 120 requests per 15 minutes per client address, counted before authentication.
+Rate-limited to 120 requests per 15 minutes per client address, counted before authentication, and
+every caller at one address shares that budget. A `429` means retry later: it says nothing about
+which documents exist or are readable, and only an id missing from a `200` answer is absent.
 
 ---
 

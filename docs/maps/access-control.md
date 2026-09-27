@@ -548,9 +548,9 @@ through to `requireAuth` unchanged. It is applied to exactly three routes:
 
 | Route | Middleware |
 |---|---|
-| `GET /api/search` | `machineOrAuth` (`routes/search.js:106`) |
-| `GET /api/browse` | `machineOrAuth` (`routes/search.js:227`) |
-| `GET /api/documents/state` | `machineOrAuth` (`routes/documents.js:636`), W6-CDX-16 |
+| `GET /api/search` | `machineOrAuth` |
+| `GET /api/browse` | `machineOrAuth` |
+| `GET /api/documents/state` | `machineOrAuth` (`routes/documents.js`), W6-CDX-16 |
 | `GET /api/workspaces/:workspaceId/reader-check` | **`requireMachine`** |
 | `GET /api/search/filters` | `requireAuth` |
 | `GET /api/presence` | `requireAuth` |
@@ -604,13 +604,22 @@ watcher is enrolled.
 outbound event stream captures after the mutation and does not await it, so a
 crash between the two loses an event; Cloud Command sweeps its linked documents
 through this route to repair that. For each id it returns
-`{ id, title, archive_id, updated_at }` only when the caller can read it, and
-it asks nothing the other two routes do not already answer:
+`{ id, title, archive_id, updated_at }` only when the caller can read it. The
+existing route it is closest to is `GET /api/browse`: the same
+`readAccessWhere`, `excludeSystemArchives` and workspace join, and like browse
+it keeps a document whose creator was deleted (browse's join on `users` is a
+`LEFT JOIN`). The one field it adds for the machine principal is `updated_at`,
+which browse does not select:
 
 - **Who may call it.** The machine principal or any session, like search and
   browse: it answers "which of these may YOU read?", never a question about a
-  third party, so it is `machineOrAuth` and not `requireMachine`. A session
-  learns nothing it could not already open with `GET /api/document`.
+  third party, so it is `machineOrAuth` and not `requireMachine`. Its set is
+  the set `GET /api/browse` already lists for that caller, narrowed to one
+  workspace, so neither a session nor the machine principal can reach a
+  document it could not already list; the only new fact is `updated_at`.
+  (`GET /api/document` is not the comparison: it joins `users` with an
+  `INNER JOIN`, so a document whose creator was deleted answers 404 there and
+  appears here.)
 - **What it can enumerate.** Nothing beyond the caller's own reach. The access
   check is `readAccessWhere('p')` with the caller's own seven params, plus
   `excludeSystemArchives('p')`, narrowed to the workspace by the same
@@ -622,7 +631,11 @@ it asks nothing the other two routes do not already answer:
   admin could read is absent too.
 - **How fast.** `stateLimiter` (`app.js`, 120 requests per 15 minutes, mounted
   before the routers) bounds it per client address, authenticated or not; at
-  100 ids a request that is 12,000 ids per window.
+  100 ids a request that is 12,000 ids per window. The bucket is keyed on
+  `req.ip` alone, so every caller that resolves to one address, anonymous or
+  not, spends the same budget as Cloud Command's sweep there. A caller of this
+  route (W6-CMD-17) must read a 429 as "retry later", never as absence: only
+  a 200 whose `documents` omits an id says that id is unavailable.
 - **The SQL.** The `IN (...)` placeholders are generated from the id count
   only, never from the values, and every id is bound. `title` is
   `LEFT(l.title, 255)`, the event envelope's bound, so a reconciler compares
