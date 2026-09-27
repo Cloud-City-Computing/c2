@@ -513,7 +513,7 @@ As built: the test is in `tests/routes/oauth-google-seam.test.js`, the file that
       session now"; `docs/maps/data-model.md` section 4; `docs/maps/open-questions.md` C2 marked
       resolved with the PR number; `CHANGELOG.md` `[Unreleased]`: a Security entry (digests at rest,
       one session per device) and a Migration entry with the stop, migrate, start order.
-- [ ] `npm run lint`, `npm test`, `npm run test:coverage`, `npm run test:integration`,
+- [x] `npm run lint`, `npm test`, `npm run test:coverage`, `npm run test:integration`,
       `npm run build`. Coverage for `mysql_connect.js` stays at or above its 85/85/80/90 floor.
 
 ---
