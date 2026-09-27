@@ -62,21 +62,29 @@ let logSpy;
 
 // server.js installs SIGTERM and SIGINT handlers on every import. Capture them
 // instead, so a test can deliver a signal, and so twenty imports do not stack
-// twenty real handlers on the test worker.
+// twenty real handlers on the test worker. Both `on` and `once` are captured,
+// so a handler installed either way is found; `signalInstalledAt` is the
+// invocation order of the first install, for the boot-order test.
+let onSpy;
 let onceSpy;
 let signalHandlers;
+let signalInstalledAt;
 
 beforeEach(() => {
   vi.resetModules();
   signalHandlers = {};
-  const realOnce = process.once.bind(process);
-  onceSpy = vi.spyOn(process, 'once').mockImplementation((event, handler) => {
+  signalInstalledAt = undefined;
+  const capture = (real) => (event, handler) => {
     if (event === 'SIGTERM' || event === 'SIGINT') {
       signalHandlers[event] = handler;
+      signalInstalledAt ??= onSpy.mock.invocationCallOrder.concat(onceSpy.mock.invocationCallOrder)
+        .sort((a, b) => a - b).at(-1);
       return process;
     }
-    return realOnce(event, handler);
-  });
+    return real(event, handler);
+  };
+  onSpy = vi.spyOn(process, 'on').mockImplementation(capture(process.on.bind(process)));
+  onceSpy = vi.spyOn(process, 'once').mockImplementation(capture(process.once.bind(process)));
   fakeServer.close.mockClear();
   heldLock.release.mockClear();
   exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
@@ -91,6 +99,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  onSpy.mockRestore();
   onceSpy.mockRestore();
   exitSpy.mockRestore();
   errorSpy.mockRestore();
@@ -557,13 +566,13 @@ describe('server.js: stop signals', () => {
     delete process.env.AUTH_PROVIDERS;
   };
 
-  it('installs one shutdown for SIGTERM and SIGINT', async () => {
+  it('installs a handler for SIGTERM and for SIGINT', async () => {
     const original = { ...process.env };
     try {
       bootEnv();
       await import('../server.js');
       expect(signalHandlers.SIGTERM).toEqual(expect.any(Function));
-      expect(signalHandlers.SIGINT).toBe(signalHandlers.SIGTERM);
+      expect(signalHandlers.SIGINT).toEqual(expect.any(Function));
     } finally {
       process.env = original;
     }
@@ -597,6 +606,130 @@ describe('server.js: stop signals', () => {
       // The flush comes before the sockets close, and the pool ends last.
       expect(collab.flushPendingSaves.mock.invocationCallOrder[0]).toBeLessThan(collab.closeAll.mock.invocationCallOrder[0]);
       expect(heldLock.release.mock.invocationCallOrder[0]).toBeLessThan(endPool.mock.invocationCallOrder[0]);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('installs the handlers before the boot awaits anything, so a stop during boot is not dropped', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const { acquireInstanceLock } = await import('../services/instance-lock.js');
+      acquireInstanceLock.mockClear();
+
+      await import('../server.js');
+
+      // Node is PID 1 in the image, and the kernel drops a signal PID 1 has no
+      // handler for: a docker stop during boot would then wait for SIGKILL.
+      expect(signalInstalledAt).toBeLessThan(acquireInstanceLock.mock.invocationCallOrder[0]);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('a signal during boot ends the process at once, with 0', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const { initMail } = await import('../services/email.js');
+      initMail.mockImplementationOnce(() => new Promise(() => {}));   // an SMTP verify that never answers
+      const collab = await import('../services/collab.js');
+      collab.flushPendingSaves.mockClear();
+
+      import('../server.js');
+      await vi.waitFor(() => expect(initMail).toHaveBeenCalled());
+      signalHandlers.SIGTERM('SIGTERM');
+
+      expect(exitSpy).toHaveBeenCalledWith(0);
+      expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/stopped on SIGTERM during boot/);
+      expect(collab.flushPendingSaves).not.toHaveBeenCalled();
+      expect(listenMock).not.toHaveBeenCalled();
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('a second signal ends the process at once, with 1, instead of waiting for the first stop', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const collab = await import('../services/collab.js');
+      collab.flushPendingSaves.mockImplementationOnce(() => new Promise(() => {}));
+
+      await import('../server.js');
+      signalHandlers.SIGINT('SIGINT');
+      await vi.waitFor(() => expect(collab.flushPendingSaves).toHaveBeenCalled());
+      expect(exitSpy).not.toHaveBeenCalled();
+
+      signalHandlers.SIGINT('SIGINT');
+
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/second SIGINT/);
+    } finally {
+      process.env = original;
+    }
+  });
+});
+
+describe('server.js: a lock taken over by another process', () => {
+  const bootEnv = () => {
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    delete process.env.AUTH_PROVIDERS;
+  };
+
+  it('stops through the whole graceful shutdown and exits 1', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const { acquireInstanceLock } = await import('../services/instance-lock.js');
+      acquireInstanceLock.mockClear();
+      const collab = await import('../services/collab.js');
+      const { endPool } = await import('../mysql_connect.js');
+      collab.flushPendingSaves.mockClear();
+      endPool.mockClear();
+
+      await import('../server.js');
+      const { onSuperseded } = acquireInstanceLock.mock.calls[0][0];
+      expect(onSuperseded).toEqual(expect.any(Function));
+      const { readiness } = await import('../routes/health.js');
+
+      await onSuperseded(new Error('Another Cloud Codex process (MySQL connection 29) already serves this database.'));
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalled());
+
+      // Two live writers on one schema is what the lock prevents; the one that
+      // lost it stops, and its supervisor restarts it into a clean refusal.
+      expect(readiness.shuttingDown).toBe(true);
+      expect(collab.flushPendingSaves).toHaveBeenCalledTimes(1);
+      expect(heldLock.release).toHaveBeenCalledTimes(1);
+      expect(endPool).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const logged = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(logged).toMatch(/another process took the instance lock/i);
+      expect(logged).not.toMatch(/stopped cleanly/);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('during boot, exits 1 at once', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const { acquireInstanceLock } = await import('../services/instance-lock.js');
+      acquireInstanceLock.mockClear();
+      const { initMail } = await import('../services/email.js');
+      initMail.mockImplementationOnce(() => new Promise(() => {}));
+
+      import('../server.js');
+      await vi.waitFor(() => expect(initMail).toHaveBeenCalled());
+      acquireInstanceLock.mock.calls[0][0].onSuperseded(new Error('Another Cloud Codex process (MySQL connection 29) already serves this database.'));
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(listenMock).not.toHaveBeenCalled();
     } finally {
       process.env = original;
     }

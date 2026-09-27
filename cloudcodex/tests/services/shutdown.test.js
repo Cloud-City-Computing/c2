@@ -155,4 +155,49 @@ describe('createShutdown', () => {
     expect(logged()).toMatch(/stopped cleanly on SIGTERM/);
     expect(logged()).not.toMatch(/SIGINT/);
   });
+
+  it('says how many pending documents it wrote', async () => {
+    deps.flushPendingSaves = step('flushPendingSaves', async () => ({ saved: 2, failed: 0 }));
+
+    await createShutdown(deps)('SIGTERM');
+
+    expect(logged()).toMatch(/wrote 2 pending documents/);
+    expect(logged()).toMatch(/stopped cleanly on SIGTERM/);
+    expect(deps.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('does not call a stop clean when a document could not be saved', async () => {
+    deps.flushPendingSaves = step('flushPendingSaves', async () => ({ saved: 1, failed: 1 }));
+
+    await createShutdown(deps)('SIGTERM');
+
+    // deployment.md tells operators to look for "stopped cleanly"; a stop that
+    // lost the last seconds of a document's edits must not print it.
+    expect(logged()).toMatch(/wrote 1 pending document, 1 failed/);
+    expect(logged()).toMatch(/stopped on SIGTERM with 1 document not saved/);
+    expect(logged()).not.toMatch(/cleanly/);
+    expect(calls).toEqual(['server.close', 'flushPendingSaves', 'closeSockets', 'releaseLock', 'endPool', 'exit']);
+    expect(deps.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('does not call a stop clean when a step failed', async () => {
+    deps.flushPendingSaves = step('flushPendingSaves', async () => { throw new Error('disk on fire'); });
+    deps.endPool = step('endPool', async () => { throw new Error('pool boom'); });
+
+    await createShutdown(deps)('SIGTERM');
+
+    expect(logged()).toMatch(/stopped on SIGTERM with 2 failed steps/);
+    expect(logged()).not.toMatch(/cleanly/);
+    expect(deps.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('runs every step and exits with the code it is given, for a stop that is not a signal', async () => {
+    await createShutdown(deps)('the lost instance lock', { code: 1 });
+
+    expect(calls).toEqual(['server.close', 'flushPendingSaves', 'closeSockets', 'releaseLock', 'endPool', 'exit']);
+    expect(deps.exit).toHaveBeenCalledTimes(1);
+    expect(deps.exit).toHaveBeenCalledWith(1);
+    expect(logged()).toMatch(/stopped on the lost instance lock/);
+    expect(logged()).not.toMatch(/cleanly/);
+  });
 });

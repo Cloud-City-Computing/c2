@@ -24,8 +24,9 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import mysql from 'mysql2/promise';
-import { c2_query } from '../../mysql_connect.js';
-import { dropSchema, openAdminConnection, throwawaySchemaName } from './mysql-admin.js';
+import { c2_query, openConnection } from '../../mysql_connect.js';
+import { INSTANCE_LOCK_NAME_SQL } from '../../services/instance-lock.js';
+import { SCHEMA_PREFIX, dropSchema, openAdminConnection, throwawaySchemaName } from './mysql-admin.js';
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const LOCK_HOLDER = path.join(APP, 'tests', 'integration', 'lock-holder.js');
@@ -134,12 +135,39 @@ describe('the single-writer lock, across processes', () => {
       await admin.end();
     }
   });
+
+  it('a schema name as long as MySQL allows still gets a lock of its own', async () => {
+    const admin = await openAdminConnection();
+    // 64 characters, MySQL's limit for a schema name and for a lock name alike,
+    // so the lock cannot simply be the prefix and the schema.
+    const long = `${SCHEMA_PREFIX}${'l'.repeat(64 - SCHEMA_PREFIX.length - 12)}${randomHex(12)}`;
+    expect(long).toHaveLength(64);
+    try {
+      await admin.query(`CREATE DATABASE ${mysql.escapeId(long)}`);
+
+      const holding = await holdLock(long).outcome;
+      expect(holding.held, holding.stderr).toBe(true);
+      // And it is exclusive there too.
+      const second = await holdLock(long).outcome;
+      expect(second.held).toBe(false);
+      expect(second.stderr).toContain(`MySQL connection ${holding.connectionId}`);
+    } finally {
+      for (const child of children) child.kill('SIGKILL');
+      await dropSchema(admin, long);
+      await admin.end();
+    }
+  });
 });
 
 // ── the edit survives a stop ────────────────────────────────
 
 const ADMIN = { username: 'lcadmin', password: 'Lifecycle-Passw0rd!', email: 'lcadmin@example.com' };
 const MARKER = 'typed two hundred milliseconds before SIGTERM';
+
+/** `n` random lowercase hex characters. */
+function randomHex(n) {
+  return Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+}
 
 /** A port nothing is listening on, from the OS. */
 async function freePort() {
@@ -262,5 +290,39 @@ describe('a stop in the middle of an edit', () => {
     ws2.terminate();
     const again = await kill(second, 'SIGTERM');
     expect(again.code, again.stderr).toBe(0);
+  });
+});
+
+describe('a lock lost to another process', () => {
+  it('the server that lost it stops through its shutdown and exits 1, naming the new holder', { timeout: 120_000 }, async () => {
+    const port = await freePort();
+    const server = await startServer(port);
+    const [{ holder }] = await c2_query(`SELECT IS_USED_LOCK(${INSTANCE_LOCK_NAME_SQL}) AS holder`, []);
+    expect(holder).toEqual(expect.any(Number));
+
+    // KILL stands in for a MySQL restart: the lock goes with its connection.
+    // This test's own connection then takes it, the way a duplicate process
+    // that reconnects first after the restart would.
+    const admin = await openAdminConnection();
+    const rival = await openConnection();
+    try {
+      await admin.query('KILL ?', [holder]);
+      const [[taken]] = await rival.query(`SELECT GET_LOCK(${INSTANCE_LOCK_NAME_SQL}, 5) AS got, CONNECTION_ID() AS id`);
+      expect(taken.got).toBe(1);
+
+      const stopped = await Promise.race([
+        server.closed,
+        new Promise((resolve) => setTimeout(() => resolve({ code: 'still running' }), 15_000)),
+      ]);
+
+      expect(stopped.code, server.out.stderr).toBe(1);
+      expect(stopped.stderr).toContain(`MySQL connection ${taken.id}`);
+      expect(stopped.stderr).toMatch(/another process took the instance lock/i);
+      expect(stopped.stderr).toMatch(/stopped on/);
+      expect(stopped.stderr).not.toMatch(/stopped cleanly/);
+    } finally {
+      await rival.end();
+      await admin.end();
+    }
   });
 });

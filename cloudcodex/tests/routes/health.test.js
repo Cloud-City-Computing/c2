@@ -49,6 +49,8 @@ beforeEach(() => {
   readiness.shuttingDown = false;
   readiness.lock = { held: true, disabled: false };
   readiness.migrations = null;
+  readiness.database = null;
+  readiness.reported = new Set();
   database();
 });
 
@@ -190,8 +192,75 @@ describe('GET /readyz', () => {
     vi.setSystemTime(new Date('2026-09-27T12:00:10.001Z'));
     await request(app).get('/readyz');
     expect(queriesMatching(/schema_migrations/)).toBe(2);
-    // The database check is never cached: it is the live signal.
-    expect(queriesMatching(/^SELECT 1$/)).toBe(3);
+    // The database answer is cached for one second only, and the third probe
+    // came two milliseconds after the second.
+    expect(queriesMatching(/^SELECT 1$/)).toBe(2);
+  });
+
+  it('reuses the database answer for one second, then asks again', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+
+    await request(app).get('/readyz');
+    vi.setSystemTime(new Date('2026-09-27T12:00:00.999Z'));
+    await request(app).get('/readyz');
+    expect(queriesMatching(/^SELECT 1$/)).toBe(1);
+
+    vi.setSystemTime(new Date('2026-09-27T12:00:01.001Z'));
+    await request(app).get('/readyz');
+    expect(queriesMatching(/^SELECT 1$/)).toBe(2);
+  });
+
+  it('never caches past a stop or a lost lock: those are read on every probe', async () => {
+    expect((await request(app).get('/readyz')).status).toBe(200);
+
+    readiness.lock = { held: false, disabled: false };
+    expect((await request(app).get('/readyz')).body).toEqual({ ready: false, reason: 'lock' });
+    readiness.lock = { held: true, disabled: false };
+    readiness.shuttingDown = true;
+    expect((await request(app).get('/readyz')).body).toEqual({ ready: false, reason: 'shutting_down' });
+  });
+
+  it('concurrent probes share one check instead of each querying the pool', async () => {
+    const answers = await Promise.all(Array.from({ length: 8 }, () => request(app).get('/readyz')));
+
+    expect(answers.map((res) => res.status)).toEqual(Array(8).fill(200));
+    expect(queriesMatching(/^SELECT 1$/)).toBe(1);
+    expect(queriesMatching(/schema_migrations/)).toBe(1);
+  });
+
+  it('never has more than one SELECT 1 outstanding, however long it hangs', async () => {
+    vi.useFakeTimers();
+    database({ select1: 'hang' });
+
+    const first = notReadyReason();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(first).resolves.toBe('database');
+
+    await vi.advanceTimersByTimeAsync(1_500);          // past the one-second reuse
+    const second = notReadyReason();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(second).resolves.toBe('database');
+
+    // A timed-out probe's query still holds a pooled connection; a second one
+    // queued behind it would hold another, and so on until the pool is full.
+    expect(queriesMatching(/^SELECT 1$/)).toBe(1);
+  });
+
+  it('says once, in the log, how to adopt a database nobody has adopted', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    database({ applied: Object.assign(new Error("Table 'c2.schema_migrations' doesn't exist"), { code: 'ER_NO_SUCH_TABLE' }) });
+
+    await request(app).get('/readyz');
+    vi.setSystemTime(new Date('2026-09-27T12:01:00Z'));
+    await request(app).get('/readyz');
+
+    const lines = errorSpy.mock.calls.flat().map(String).filter((line) => /--adopt-fresh-install/.test(line));
+    expect(lines).toHaveLength(1);
+    expect(queriesMatching(/schema_migrations/)).toBe(2);
+    errorSpy.mockRestore();
   });
 
   it('notices the migration being applied within the cache window', async () => {

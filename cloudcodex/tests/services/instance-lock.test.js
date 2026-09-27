@@ -56,7 +56,12 @@ describe('acquireInstanceLock: taking the lock', () => {
     const [sql] = conn.query.mock.calls[0];
     // Named server-side from DATABASE(), with a zero wait: a second process
     // refuses at once rather than queueing behind the first.
-    expect(sql).toContain("GET_LOCK(CONCAT('cloudcodex-instance:', DATABASE()), 0)");
+    expect(sql).toMatch(/^SELECT GET_LOCK\(.*CONCAT\('cloudcodex-instance:', DATABASE\(\)\).*, 0\) AS got/);
+    // MySQL caps a lock name at 64 characters, so a schema name too long to
+    // fit after the prefix is named by a digest instead
+    // (tests/integration/lifecycle.test.js proves both on a live server).
+    expect(sql).toContain('CHAR_LENGTH(DATABASE()) <= 44');
+    expect(sql).toContain("CONCAT('cloudcodex-instance#', LEFT(SHA2(DATABASE(), 256), 40))");
     // Distinct from the migration runner's lock, so `npm run migrate` in a
     // one-off container never contends with the running app.
     expect(sql).not.toContain('cloudcodex_migrate');
@@ -199,20 +204,140 @@ describe('acquireInstanceLock: for the life of the process', () => {
     expect(second.end).toHaveBeenCalled();
   });
 
-  it('stays not held, and says who holds it once, when another process took it meanwhile', async () => {
+  it('when another process took it meanwhile, says who holds it once, hands over to onSuperseded, and tries no more', async () => {
     vi.useFakeTimers();
     const first = fakeConnection({ holder: 17 });
     const connect = vi.fn()
       .mockResolvedValueOnce(first)
       .mockImplementation(async () => fakeConnection({ got: 0, holder: 99 }));
-    const lock = await acquireInstanceLock({ connect, log, pingMs: 1_000 });
+    const onSuperseded = vi.fn();
+    const lock = await acquireInstanceLock({ connect, log, onSuperseded, pingMs: 1_000, retakeMs: 500 });
+
+    first.emit('error', new Error('PROTOCOL_CONNECTION_LOST'));
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(lock.held).toBe(false);
+    // Two live writers on one schema is what the lock exists to prevent, so
+    // the process that lost it must stop rather than serve on: it is told once.
+    expect(onSuperseded).toHaveBeenCalledTimes(1);
+    expect(onSuperseded.mock.calls[0][0].message).toMatch(/MySQL connection 99/);
+    expect(connect).toHaveBeenCalledTimes(2);
+    const holderLines = log.mock.calls.flat().filter((line) => /MySQL connection 99/.test(line));
+    expect(holderLines).toHaveLength(1);
+    await lock.release();
+  });
+
+  it('tries to take it back within retakeMs of losing it, not at the next keepalive', async () => {
+    vi.useFakeTimers();
+    const first = fakeConnection({ holder: 17 });
+    const second = fakeConnection({ holder: 18 });
+    const connect = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const lock = await acquireInstanceLock({ connect, log, pingMs: 60_000, retakeMs: 1_000 });
+
+    first.emit('error', new Error('PROTOCOL_CONNECTION_LOST'));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(connect).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(lock).toMatchObject({ held: true, connectionId: 18 });
+    await lock.release();
+  });
+
+  it('retakes every second by default', async () => {
+    vi.useFakeTimers();
+    const first = fakeConnection({ holder: 17 });
+    const connect = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(fakeConnection({ holder: 18 }));
+    const lock = await acquireInstanceLock({ connect, log });
+
+    first.emit('error', new Error('PROTOCOL_CONNECTION_LOST'));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(lock.held).toBe(true);
+    await lock.release();
+  });
+
+  it('keeps retrying while MySQL is down, says why once, and never calls onSuperseded', async () => {
+    vi.useFakeTimers();
+    const first = fakeConnection({ holder: 17 });
+    const refused = () => { throw new Error('ECONNREFUSED 127.0.0.1:3306'); };
+    const connect = vi.fn()
+      .mockResolvedValueOnce(first)
+      .mockImplementationOnce(refused)
+      .mockImplementationOnce(refused)
+      .mockResolvedValueOnce(fakeConnection({ holder: 21 }));
+    const onSuperseded = vi.fn();
+    const lock = await acquireInstanceLock({ connect, log, onSuperseded, pingMs: 60_000, retakeMs: 1_000 });
 
     first.emit('error', new Error('PROTOCOL_CONNECTION_LOST'));
     await vi.advanceTimersByTimeAsync(3_000);
 
+    expect(connect).toHaveBeenCalledTimes(4);
+    expect(lock).toMatchObject({ held: true, connectionId: 21 });
+    expect(onSuperseded).not.toHaveBeenCalled();
+    expect(log.mock.calls.flat().filter((line) => /ECONNREFUSED/.test(line))).toHaveLength(1);
+    await lock.release();
+  });
+});
+
+describe('acquireInstanceLock: the retake guards', () => {
+  it('a late error from the connection it replaced does not mark the new lock lost', async () => {
+    vi.useFakeTimers();
+    const first = fakeConnection({ holder: 17 });
+    const second = fakeConnection({ holder: 18 });
+    const connect = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const lock = await acquireInstanceLock({ connect, log, pingMs: 60_000, retakeMs: 1_000 });
+
+    first.emit('error', new Error('PROTOCOL_CONNECTION_LOST'));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(lock.connectionId).toBe(18);
+
+    // The destroyed socket reports once more, after the retake.
+    first.emit('error', new Error('read ECONNRESET'));
+    expect(lock.held).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(second.destroy).not.toHaveBeenCalled();
+    await lock.release();
+  });
+
+  it('a release while a retake is in flight ends the connection that retake opens', async () => {
+    vi.useFakeTimers();
+    const first = fakeConnection({ holder: 17 });
+    const second = fakeConnection({ holder: 18 });
+    let answer;
+    const connect = vi.fn()
+      .mockResolvedValueOnce(first)
+      .mockImplementationOnce(() => new Promise((resolve) => { answer = () => resolve(second); }));
+    const lock = await acquireInstanceLock({ connect, log, pingMs: 60_000, retakeMs: 1_000 });
+
+    first.emit('error', new Error('PROTOCOL_CONNECTION_LOST'));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(connect).toHaveBeenCalledTimes(2);
+
+    await lock.release();
+    answer();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Otherwise a connection nobody will ever end holds GET_LOCK after the
+    // shutdown said it released it.
+    expect(second.end).toHaveBeenCalledTimes(1);
     expect(lock.held).toBe(false);
-    const holderLines = log.mock.calls.flat().filter((line) => /MySQL connection 99/.test(line));
-    expect(holderLines).toHaveLength(1);
+  });
+
+  it('overlapping attempts open one connection, not one per tick', async () => {
+    vi.useFakeTimers();
+    const first = fakeConnection({ holder: 17 });
+    const connect = vi.fn()
+      .mockResolvedValueOnce(first)
+      .mockImplementationOnce(() => new Promise(() => {}));   // a connect that never answers
+    const lock = await acquireInstanceLock({ connect, log, pingMs: 1_000, retakeMs: 1_000 });
+
+    first.emit('error', new Error('PROTOCOL_CONNECTION_LOST'));
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(connect).toHaveBeenCalledTimes(2);
     await lock.release();
   });
 });

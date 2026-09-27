@@ -609,6 +609,48 @@ describe('services/collab: flushPendingSaves', () => {
     b.terminate();
   });
 
+  it('waits for a debounced write already in flight before it writes again', { timeout: 10_000 }, async () => {
+    const ws = await authenticatedClient(308);
+    const events = [];
+    let writes = 0;
+    let finishFirst;
+    c2_query.mockImplementation(async (sql, params) => {
+      if (/^UPDATE logs SET ydoc_state/.test(sql) && params[1] === 308) {
+        const n = ++writes;
+        events.push(`write ${n}`);
+        if (n === 1) {
+          await new Promise((resolve) => { finishFirst = resolve; });
+          events.push('write 1 landed');
+        }
+      }
+      return [];
+    });
+
+    try {
+      sendEdit(ws, 'older');
+      // Let the three-second debounce fire on its own; its write then hangs.
+      const deadline = Date.now() + 5_000;
+      while (!events.includes('write 1') && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+      expect(events).toEqual(['write 1']);
+
+      sendEdit(ws, 'newer');
+      await new Promise((r) => setTimeout(r, 50));
+      const flushed = flushPendingSaves();
+      await new Promise((r) => setTimeout(r, 50));
+      // Two writes of one row on two pooled connections land in either order,
+      // and the older landing second would undo the newer one.
+      expect(events).toEqual(['write 1']);
+
+      finishFirst();
+      await expect(flushed).resolves.toEqual({ saved: 1, failed: 0 });
+      expect(events).toEqual(['write 1', 'write 1 landed', 'write 2']);
+      expect(textOf(ydocWritesFor(308).at(-1)[1][0])).toContain('newer');
+    } finally {
+      finishFirst?.();
+      ws.terminate();
+    }
+  });
+
   it('leaves a document with nothing pending alone', async () => {
     const ws = await authenticatedClient(305);
 
