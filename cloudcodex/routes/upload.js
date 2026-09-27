@@ -20,7 +20,7 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
-import { isValidId, asyncHandler, sanitizeHtml, errorHandler } from './helpers/shared.js';
+import { isValidId, asyncHandler, sanitizeHtml, errorHandler, isLogInArchive } from './helpers/shared.js';
 import { extractImagesFromHtml } from './helpers/images.js';
 
 const ALLOWED_EXTENSIONS = ['html', 'htm', 'md', 'markdown', 'txt', 'pdf', 'docx'];
@@ -118,6 +118,16 @@ router.post(
       return res.status(403).json({ success: false, message: 'Write access denied' });
     }
 
+    // The parent is checked before the file is converted, so a refused upload
+    // leaves no extracted images behind.
+    const parentId = req.body.parent_id ? Number(req.body.parent_id) : null;
+    if (parentId !== null && !isValidId(parentId)) {
+      return res.status(400).json({ success: false, message: 'Invalid parent_id' });
+    }
+    if (parentId !== null && !(await isLogInArchive(parentId, Number(archiveId)))) {
+      return res.status(400).json({ success: false, message: 'parent_id must be a log in this archive' });
+    }
+
     // Convert file content to HTML and sanitize
     const rawHtml = await convertToHtml(req.file.buffer, req.file.originalname);
     const cleanHtml = sanitizeHtml(rawHtml);
@@ -127,11 +137,6 @@ router.post(
 
     // Derive log title from filename (strip extension)
     const title = req.file.originalname.replace(/\.[^.]+$/, '').trim() || 'Uploaded Document';
-
-    const parentId = req.body.parent_id ? Number(req.body.parent_id) : null;
-    if (parentId !== null && !isValidId(parentId)) {
-      return res.status(400).json({ success: false, message: 'Invalid parent_id' });
-    }
 
     const result = await c2_query(
       `INSERT INTO logs (archive_id, title, html_content, parent_id, created_by, updated_by)

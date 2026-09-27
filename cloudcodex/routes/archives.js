@@ -6,11 +6,11 @@
  */
 
 import express from 'express';
-import { c2_query } from '../mysql_connect.js';
+import { c2_query, withTransaction } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner, isWorkspaceMember, excludeSystemArchives } from './helpers/ownership.js';
-import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
+import { isValidId, asyncHandler, errorHandler, isLogInArchive } from './helpers/shared.js';
 import { logActivity, resolveActivityScope } from './helpers/activity.js';
 
 const router = express.Router();
@@ -513,6 +513,9 @@ router.post('/archives/:archiveId/logs', requireAuth, requirePermission('create_
   );
 
   if (!archive) return res.status(403).json({ success: false, message: 'Write access denied' });
+  if (parentId !== null && !(await isLogInArchive(parentId, Number(archiveId)))) {
+    return res.status(400).json({ success: false, message: 'parent_id must be a log in this archive' });
+  }
 
   const result = await c2_query(
     `INSERT INTO logs (archive_id, title, html_content, parent_id, created_by, updated_by)
@@ -581,43 +584,57 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
     return res.status(400).json({ success: false, message: 'No fields to update' });
   }
 
-  // The row as it stands, to tell a real rename or move from a re-save of
-  // the same values.
-  const [current] = await c2_query(
-    `SELECT title, parent_id FROM logs WHERE id = ? AND archive_id = ?`,
-    [Number(logId), Number(archiveId)]
-  );
-  if (!current) return res.status(404).json({ success: false, message: 'Log not found' });
+  // The lock, the read, the ancestry walk and the UPDATE are one transaction
+  // behind a lock on the archive row, so moves in one archive take turns.
+  // Unserialised, a move of A under B and one of B under A each walk an
+  // ancestry the other has not written yet, both pass and commit a cycle,
+  // and two moves of one log both read the same previous parent.
+  const outcome = await withTransaction(async (query) => {
+    await query(`SELECT id FROM archives WHERE id = ? FOR UPDATE`, [Number(archiveId)]);
 
-  // A new parent must be a log in this archive that is not below this one.
-  // A log under itself or its own descendant drops out of the tree
-  // (GET /archives/:archiveId/logs roots only what it can reach), and a
-  // parent in another archive is one the tree does not have. UNION, not
-  // UNION ALL, so a cycle already in the data ends the walk instead of
-  // running it to the recursion limit.
-  if (pid !== undefined && pid !== null && pid !== current.parent_id) {
-    const ancestry = await c2_query(
-      `WITH RECURSIVE chain (id, parent_id) AS (
-         SELECT id, parent_id FROM logs WHERE id = ? AND archive_id = ?
-         UNION
-         SELECT l.id, l.parent_id FROM logs l INNER JOIN chain c ON l.id = c.parent_id WHERE l.archive_id = ?
-       )
-       SELECT id FROM chain`,
-      [pid, Number(archiveId), Number(archiveId)]
+    // The row as it stands, to tell a real rename or move from a re-save of
+    // the same values.
+    const [row] = await query(
+      `SELECT title, parent_id FROM logs WHERE id = ? AND archive_id = ?`,
+      [Number(logId), Number(archiveId)]
     );
-    if (ancestry.length === 0) {
-      return res.status(400).json({ success: false, message: 'parent_id must be a log in this archive' });
-    }
-    if (ancestry.some((row) => row.id === Number(logId))) {
-      return res.status(400).json({ success: false, message: 'A log cannot be moved under itself or its own descendant' });
-    }
-  }
+    if (!row) return { status: 404, message: 'Log not found' };
 
-  params.push(Number(logId), Number(archiveId));
-  await c2_query(
-    `UPDATE logs SET ${fields.join(', ')} WHERE id = ? AND archive_id = ?`,
-    params
-  );
+    // A new parent must be a log in this archive that is not below this one.
+    // A log under itself or its own descendant drops out of the tree
+    // (GET /archives/:archiveId/logs roots only what it can reach), and a
+    // parent in another archive is one the tree does not have. The walk stays
+    // in the archive, as the tree does. UNION, not UNION ALL, so a cycle
+    // already in the data ends the walk instead of running it to the
+    // recursion limit.
+    if (pid !== undefined && pid !== null && pid !== row.parent_id) {
+      const ancestry = await query(
+        `WITH RECURSIVE chain (id, parent_id) AS (
+           SELECT id, parent_id FROM logs WHERE id = ? AND archive_id = ?
+           UNION
+           SELECT l.id, l.parent_id FROM logs l INNER JOIN chain c ON l.id = c.parent_id WHERE l.archive_id = ?
+         )
+         SELECT id FROM chain`,
+        [pid, Number(archiveId), Number(archiveId)]
+      );
+      if (ancestry.length === 0) {
+        return { status: 400, message: 'parent_id must be a log in this archive' };
+      }
+      if (ancestry.some((ancestor) => ancestor.id === Number(logId))) {
+        return { status: 400, message: 'A log cannot be moved under itself or its own descendant' };
+      }
+    }
+
+    await query(
+      `UPDATE logs SET ${fields.join(', ')} WHERE id = ? AND archive_id = ?`,
+      [...params, Number(logId), Number(archiveId)]
+    );
+    return { current: row };
+  });
+  if (outcome.status) {
+    return res.status(outcome.status).json({ success: false, message: outcome.message });
+  }
+  const { current } = outcome;
 
   if (newTitle !== undefined && newTitle !== current.title) {
     logActivity({
@@ -634,7 +651,8 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
       action: 'log.move',
       resourceType: 'log',
       resourceId: Number(logId),
-      metadata: { parent_id: pid, previous_parent_id: current.parent_id },
+      // The title names the document in the activity feed.
+      metadata: { title: newTitle ?? current.title, parent_id: pid, previous_parent_id: current.parent_id },
     });
   }
 

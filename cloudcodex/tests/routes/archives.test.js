@@ -780,7 +780,7 @@ describe('Archive Routes', () => {
       expect(c2_query.mock.calls[2][0]).toMatch(/SELECT id FROM logs WHERE id = \? AND archive_id = \?/);
       expect(c2_query.mock.calls[2][1]).toEqual([5, 1]);
       expect(c2_query.mock.calls[3][0]).toMatch(/INSERT INTO logs/);
-      expect(c2_query.mock.calls[3][1][3]).toBe(5);
+      expect(c2_query.mock.calls[3][1][2]).toBe(5); // archive_id, title, parent_id
     });
 
     it('refuses a parent that is not a log in this archive, and inserts nothing', async () => {

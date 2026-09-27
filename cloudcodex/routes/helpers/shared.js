@@ -103,6 +103,20 @@ export async function checkLogWriteAccess(logId, user) {
   return log;
 }
 
+/**
+ * Whether `parentId` names a log in `archiveId`. A new log may only hang
+ * under a document in its own archive: GET /archives/:archiveId/logs builds
+ * the tree from that archive's rows alone, so a parent anywhere else is one
+ * the tree does not have. The caller checks write access to the archive first.
+ */
+export async function isLogInArchive(parentId, archiveId) {
+  const rows = await c2_query(
+    `SELECT id FROM logs WHERE id = ? AND archive_id = ? LIMIT 1`,
+    [parentId, archiveId]
+  );
+  return rows.length > 0;
+}
+
 // --- Publish permission check ---
 
 /**
