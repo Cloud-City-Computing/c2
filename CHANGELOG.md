@@ -35,7 +35,9 @@ initialises an empty data directory.
   fresh token. Now `POST /api/logout` signs out only the device that sent it; a
   password reset, and an email or password change, still sign out every device.
   Each row records the flow that minted it (`sessions.auth_provider`, `local`
-  or `google`), and expired sessions are deleted daily.
+  or `google`), and the replacement an email or password change hands the
+  caller keeps the tag of the session it replaces. Expired sessions are
+  deleted daily.
 
 ### Migration
 

@@ -439,6 +439,13 @@ Looks up a session by the digest of its token, checks expiry, and returns the as
 object (`id`, `name`, `email`, `avatar_url`, `is_admin`) or `null`. Called
 on every authenticated request by the `requireAuth` middleware.
 
+#### `getSessionProvider(sessionToken)`
+
+Returns the session's `auth_provider` (`'local'` or `'google'`), looked up by
+the digest of its token, or `'local'` when the session is gone or the value
+cannot be a token. update-account and confirm-email read it before they delete
+the caller's session, so the replacement they mint keeps its tag.
+
 #### `touchSession(sessionToken)`
 
 Updates `last_active_at` on the session row. Called asynchronously on every

@@ -22,8 +22,8 @@ config gates run **before** anything listens.
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
 | Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:253`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
-| Collab WS | `server.js:64` | `setupCollabServer(server)`, path `/collab`. |
-| Notification WS | `server.js:68` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Collab WS | `server.js`, `setupCollabServer(server)` | `setupCollabServer(server)`, path `/collab`. |
+| Notification WS | `server.js`, `setupUserChannelServer(server)` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
 | Activity prune | `server.js`, `pruneOldActivity` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 | Session prune | `server.js`, `pruneExpiredSessions` | Deletes `sessions` rows whose `expires_at` has passed, on the same two timers. Every sign-in adds a row and nothing refreshes one in place, so without it the table only grows; `validateAndAutoLogin` already refuses an expired row, so this reclaims space and changes no answer. |
 
@@ -276,10 +276,12 @@ is how `migrations/2026-09-27-session-per-sign-in.sql` hashed the rows already
 stored.
 
 `provider` records the flow that minted the row in `sessions.auth_provider`:
-`'local'` by default (password sign-in, 2FA completion, account creation,
-update-account's replacement), `'google'` from the Google callback. The column
-has no default, so a new flow that forgets to name itself fails at insert
-([data-model.md](data-model.md) section 4).
+`'local'` by default (password sign-in, 2FA completion, account creation),
+`'google'` from the Google callback. The column has no default, so a new flow
+that forgets to name itself fails at insert ([data-model.md](data-model.md)
+section 4). A rotation (update-account, confirm-email, below) keeps the tag of
+the session it replaces: `getSessionProvider(token)` (`mysql_connect.js`)
+reads it by digest, and answers `'local'` for a session that is gone.
 
 Token generation (`createNewSessionToken`, `mysql_connect.js:96-100`) uses
 `crypto.getRandomValues` over a 62-character alphabet, default length 64. The
@@ -302,7 +304,10 @@ panel send the form as it stands.
 On success the `UPDATE users` and `DELETE FROM sessions WHERE user_id = ?` run in
 one `withTransaction()` (the caller's own row included: the old
 `AND id != ?` "keep this device" delete is gone), and only after the commit
-does the handler call `generateSessionToken`, which inserts a fresh row. The response is `{ success: true, token }`; the account panel stores
+does the handler call `generateSessionToken`, which inserts a fresh row. The
+handler reads the caller's `getSessionProvider(token)` before the transaction,
+because the delete removes that row, and passes it as `{ provider }`, so a
+Google session is replaced by a Google one. The response is `{ success: true, token }`; the account panel stores
 it with `setSessionCookie` (`src/util.jsx`), the same writer sign-in uses. An
 email change then sends `buildEmailChangedNoticeEmail` to the OLD address when
 `isMailEnabled()`, and a failed send is logged, never answered as a failure.

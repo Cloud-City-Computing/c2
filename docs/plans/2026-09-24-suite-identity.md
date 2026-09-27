@@ -427,6 +427,14 @@ Test edits, listed in the PR body: the two logout assertions at `tests/routes/au
 and `:294-295` expect `[hashSessionToken('header-token')]` and `[hashSessionToken('cookie-token')]`.
 New: the Google callback passes `{ provider: 'google' }`.
 
+As built: the two rotations keep the caller's provenance. With only the default, a Google session
+rotated by update-account or confirm-email came back tagged `'local'`, and confirm-email is the path
+for exactly the password-less accounts an external sign-in creates. `getSessionProvider(token)`
+(`mysql_connect.js`) reads `sessions.auth_provider` by the token's digest, and each route reads it
+before its transaction deletes the row and passes `{ provider }` to `generateSessionToken`. A
+session that is gone answers `'local'`. Tests in `tests/routes/auth-update-account.test.js` (the
+provider is read before the delete) and, live, `tests/integration/update-account-sessions.test.js`.
+
 ### Task 2.4 The migration and `init.sql`
 
 `migrations/<today>-session-per-sign-in.sql`, with a header in the style of
@@ -978,6 +986,14 @@ only by the ladder's link-by-email rung (Task 5.6), which refuses to link an acc
 beside the Google button.
 
 `parseAuthProviders` (PR 3) now accepts `oidc`, still requiring `local` until PR 8.
+
+**Carried from PR 2:** update-account and `/update-account/confirm-email` rotate the caller's session
+by deleting every row of the user and minting one replacement, tagged through
+`getSessionProvider(token)` so its `auth_provider` survives. That carries the provider only. An OIDC
+session rotated this way would lose `identity_id`, `provider_sid` and its `OIDC_SESSION_TTL_HOURS`
+expiry, and so fall outside `revokeForLogoutToken`'s `provider_sid` match (PR 6). This PR widens
+the read to every provenance field the OIDC row carries and passes them all to the replacement,
+with a route test per field and a live test that rotates an OIDC session and reads the row back.
 
 ### Task 5.8 The reader check by subject
 

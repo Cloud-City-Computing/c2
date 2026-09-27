@@ -281,8 +281,8 @@ change the arity of `readAccessParams`, this query is the one most likely to
 break silently. See [access-control.md](access-control.md).
 
 `GET /api/activity/log/:logId` (`routes/helpers/activity.js:145`) is the per-document
-variant. Retention is 365 days, enforced by the daily prune in
-`server.js:73-89`.
+variant. Retention is 365 days, enforced by the daily prune `pruneOldActivity` in
+`server.js`.
 
 ---
 
