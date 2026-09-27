@@ -15,13 +15,44 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env from the archive root (one level up from cloudcodex/)
 dotenv.config({ path: path.resolve(dirname, '..', '.env') });
 
+const DEFAULT_POOL_SIZE = 10;
+const MAX_POOL_SIZE = 100;
+
+/**
+ * The pool's connectionLimit from DB_POOL_SIZE: unset or blank is 10, and
+ * anything but a whole number from 1 to 100 throws a sentence naming the
+ * variable, because a typo that silently fell back would hide the setting.
+ * @param { String | undefined } value
+ * @returns { Number }
+ */
+export function poolSize(value) {
+  if (value === undefined || value.trim() === '') return DEFAULT_POOL_SIZE;
+  const trimmed = value.trim();
+  const parsed = Number(trimmed);
+  if (!/^\d+$/.test(trimmed) || parsed < 1 || parsed > MAX_POOL_SIZE) {
+    throw new Error(
+      `DB_POOL_SIZE "${value}" is not a whole number from 1 to ${MAX_POOL_SIZE}. ` +
+      `Leave it unset for ${DEFAULT_POOL_SIZE}.`
+    );
+  }
+  return parsed;
+}
+
+let connectionLimit = DEFAULT_POOL_SIZE;
+try {
+  connectionLimit = poolSize(process.env.DB_POOL_SIZE);
+} catch (err) {
+  console.error(`✖ ${err.message}`);
+  process.exit(1);
+}
+
 const pool = mysql.createPool({
   host:             process.env.DB_HOST ?? 'localhost',
   user:             process.env.DB_USER,
   password:         process.env.DB_PASS,
   database:         process.env.DB_NAME ?? 'c2',
   waitForConnections: true,
-  connectionLimit:  10,
+  connectionLimit,
   queueLimit:       0,
 });
 

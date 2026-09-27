@@ -37,9 +37,34 @@ import firstRunRouter from './routes/first-run.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// Trust the first proxy in a request (required for correct client IP behind Docker/reverse proxies)
-// Needed for rate limiting, sessions, and req.ip to work properly
-app.set('trust proxy', 1);
+/**
+ * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is 1 (trust
+ * the one proxy in front of the app: the reverse proxy, or Docker's port
+ * forward), digits are a hop count, `true`/`false` are booleans, and anything
+ * else (`loopback`, an address or CIDR list) is passed to Express, which
+ * validates it.
+ * @param { String | undefined } value
+ * @returns { Number | Boolean | String }
+ */
+export function parseTrustProxy(value) {
+  if (value === undefined || value.trim() === '') return 1;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  return trimmed;
+}
+
+// Decides req.ip, which is what the rate limiters count. Express compiles the
+// value here and throws on one it cannot parse, so a typo stops the boot
+// instead of leaving every client behind one shared address.
+try {
+  app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
+} catch (err) {
+  console.error(`✖ TRUST_PROXY "${process.env.TRUST_PROXY}" is not valid: ${err.message}.`);
+  console.error('  Leave it unset for 1, or see TRUST_PROXY in .env.example.');
+  process.exit(1);
+}
 
 // CORS: restrict the API to same-origin requests, plus an explicit allowlist.
 //
@@ -108,21 +133,43 @@ app.use('/api', cors((req, cb) => {
   cb(new Error('Not allowed by CORS'));
 }));
 
-// Security headers (scoped to API routes so Vite dev server isn't affected)
-app.use('/api', helmet({
+// Security headers. One policy. In production it covers every response, the
+// single-page app's HTML and static files included, because this mount comes
+// before the /avatars and /doc-images mounts and before the handlers
+// vite-express appends at listen time. In development it stays on /api so the
+// Vite dev server's inline module scripts still load.
+//
+// Helmet 8 merges these over its default directives, so a default that must
+// not apply is switched off by name (null).
+const HELMET_OPTIONS = {
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", "ws:", "wss:"],
-      fontSrc: ["'self'", "data:"],
+      // Documents may hold any https image (pasted, or imported from GitHub),
+      // and the linked GitHub account's avatar is remote; an image cannot run
+      // script.
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      connectSrc: ["'self'", 'ws:', 'wss:'],
+      fontSrc: ["'self'", 'data:'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
+      // TLS is the proxy's job. The default would send the built app's own
+      // http:// asset requests to https:// on an install without TLS, and the
+      // release compose file serves http://localhost:3000.
+      upgradeInsecureRequests: null,
     },
   },
-}));
+  // The draw.io editor is a popup on embed.diagrams.net that talks back
+  // through window.opener. Helmet's default, same-origin, severs that link for
+  // a cross-origin popup the page opens, so the editor would never receive the
+  // diagram or return it. This keeps the link for popups the page opens and
+  // still isolates the page from any window that opens it.
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  xFrameOptions: { action: 'deny' },
+};
+app.use(process.env.NODE_ENV === 'production' ? '/' : '/api', helmet(HELMET_OPTIONS));
 
 // Rate limiting for auth endpoints
 const authLimiter = rateLimit({

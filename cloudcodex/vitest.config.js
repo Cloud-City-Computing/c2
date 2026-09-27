@@ -86,6 +86,7 @@ export default defineConfig({
         'mysql_connect.js',
         'app.js',
         'server.js',
+        'env-contract.js',
       ],
       exclude: [
         'tests/**',
@@ -146,6 +147,8 @@ export default defineConfig({
         // Framework files (newly tested in the gap-fix pass).
         'mysql_connect.js': { lines: 85, statements: 85, branches: 80, functions: 90 },
         'app.js': { lines: 75, statements: 75, branches: 5, functions: 90 },
+        // The configuration contract is data only; importing it covers all of it.
+        'env-contract.js': { lines: 100, statements: 100, branches: 100, functions: 100 },
 
         // Frontend pure logic.
         'src/editorUtils.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
