@@ -424,6 +424,74 @@ describe('services/collab — authenticated session', () => {
     await new Promise((r) => ws.once('close', r));
   });
 
+  // The live editor's explicit save and publish are html_content writes like
+  // any other, so the images they store get doc_images rows for this log, and
+  // a referenced image only when the writer can already see it.
+  describe('records the images an explicit save or publish stores', () => {
+    const HASH = '9999999999999999';
+    const html = `<p>pic</p><img src="/doc-images/${HASH}.webp">`;
+
+    /** Answer by SQL once the handshake's queued answers are spent. */
+    const answerBySql = () => c2_query.mockImplementation(async (sql) => {
+      if (/FROM doc_images di/.test(sql)) return [{ hash: HASH }];
+      if (/INSERT IGNORE INTO doc_images/.test(sql)) return { affectedRows: 1 };
+      if (/SELECT p\.squad_id, p\.created_by AS archive_creator/.test(sql)) return [{ squad_id: null, archive_creator: TEST_USER.id }];
+      if (/SELECT version, title, archive_id FROM logs/.test(sql)) return [{ version: 1, title: 'T', archive_id: 5 }];
+      return [];
+    });
+
+    const inserts = () => c2_query.mock.calls.filter(([sql]) => /INSERT IGNORE INTO doc_images/.test(sql));
+
+    /** Resolve on the first JSON frame of `type`. */
+    const frame = (ws, type) => new Promise((resolve) => {
+      ws.on('message', (data, isBinary) => {
+        if (isBinary) return;
+        try {
+          if (JSON.parse(data.toString()).type === type) resolve();
+        } catch { /* ignore */ }
+      });
+    });
+
+    it('on save', async () => {
+      const ws = await authenticatedClient(120);
+      answerBySql();
+      const saved = frame(ws, 'saved');
+      ws.send(JSON.stringify({ type: 'save', html }));
+      await saved;
+      await new Promise((r) => setTimeout(r, 50));
+
+      const asked = c2_query.mock.calls.find(([sql]) => /FROM doc_images di/.test(sql));
+      expect(asked[1].slice(0, 2)).toEqual([HASH, TEST_USER.id]);
+      expect(inserts()).toHaveLength(1);
+      expect(inserts()[0][1]).toEqual([HASH, 120, null]);
+      ws.close();
+      await new Promise((r) => ws.once('close', r));
+    });
+
+    it('on publish', async () => {
+      const ws = await authenticatedClient(121);
+      answerBySql();
+      const published = frame(ws, 'published');
+      ws.send(JSON.stringify({ type: 'publish', title: 'v2', html }));
+      await published;
+
+      expect(inserts()).toHaveLength(1);
+      expect(inserts()[0][1]).toEqual([HASH, 121, null]);
+      ws.close();
+      await new Promise((r) => ws.once('close', r));
+    });
+
+    it('not from a read-only participant', async () => {
+      const ws = await readOnlyClient(122);
+      answerBySql();
+      ws.send(JSON.stringify({ type: 'save', html }));
+      await new Promise((r) => setTimeout(r, 100));
+      expect(inserts()).toHaveLength(0);
+      ws.close();
+      await new Promise((r) => ws.once('close', r));
+    });
+  });
+
   it('rejects HTML payloads larger than MAX_HTML_SIZE on save (no error)', async () => {
     const ws = await authenticatedClient(109);
     const huge = 'x'.repeat(3 * 1024 * 1024); // 3 MB, over the 2 MB cap
