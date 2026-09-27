@@ -1,8 +1,9 @@
 /**
  * Cloud Codex — Tests for app.js (Express setup)
  *
- * Verifies CORS scoping, security headers, body size limits, rate limiter
- * skip-in-test behaviour, static file mounts, and the API route prefix.
+ * Verifies the trust proxy setting and the address the rate limiters key on,
+ * CORS scoping, security headers, body size limits, rate limiter skip-in-test
+ * behaviour, static file mounts, and the API route prefix.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -10,6 +11,7 @@
 
 import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
+import http from 'node:http';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,54 +46,210 @@ async function importAppWith(env) {
 describe('app.js — Express configuration', () => {
   beforeEach(() => resetMocks());
 
-  it('trusts the first proxy (req.ip honours X-Forwarded-For)', () => {
-    expect(app.get('trust proxy')).toBe(1);
-  });
-
+  // GHSA-9fmx-frrf-xxmq. A hop count believes the X-Forwarded-For of whoever
+  // connects, and the compose files published the app port on every
+  // interface, so a client reaching the port directly chose its own address
+  // and got a fresh rate-limit bucket per request. The default now trusts a
+  // peer only when it is on loopback, link-local or a private range, which is
+  // where a reverse proxy on the same host (over the Docker bridge) or a cloud
+  // load balancer's private address connects from.
   describe('TRUST_PROXY', () => {
+    const UNSET = { TRUST_PROXY: undefined, TRUST_PROXY_ALLOW_HOP_COUNT: undefined };
+
+    // Boot-path cases: importing app.js with the value set, with process.exit
+    // stubbed so the refusal can be observed rather than ending the run.
+    async function bootWith(env) {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const configured = await importAppWith({ ...UNSET, ...env });
+        return { configured, exited: exitSpy.mock.calls, said: errorSpy.mock.calls.flat().join(' ') };
+      } finally {
+        exitSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
+    }
+
+    it('defaults to what the contract says an unset TRUST_PROXY behaves as', async () => {
+      const { configured, exited } = await bootWith({});
+      expect(exited).toEqual([]);
+      expect(configured.get('trust proxy')).toBe(contractDefault('TRUST_PROXY'));
+      expect(parseTrustProxy(undefined)).toBe(contractDefault('TRUST_PROXY'));
+    });
+
+    it('the default is the trusted-subnet form, not a hop count', () => {
+      expect(contractDefault('TRUST_PROXY')).toBe('loopback, linklocal, uniquelocal');
+    });
+
     it.each([
-      [undefined, 1],
-      ['', 1],
-      ['   ', 1],
-      ['0', 0],
-      ['2', 2],
-      [' 3 ', 3],
-      ['true', true],
+      [undefined, 'loopback, linklocal, uniquelocal'],
+      ['', 'loopback, linklocal, uniquelocal'],
+      ['   ', 'loopback, linklocal, uniquelocal'],
       ['false', false],
+      [' false ', false],
       ['loopback', 'loopback'],
       ['10.0.0.0/8, 127.0.0.1', '10.0.0.0/8, 127.0.0.1'],
-    ])('parses %j as %j', (value, expected) => {
+    ])('accepts %j as %j', (value, expected) => {
       expect(parseTrustProxy(value)).toBe(expected);
     });
 
-    it('defaults to what the contract says an unset TRUST_PROXY behaves as', () => {
-      expect(parseTrustProxy(undefined)).toBe(Number(contractDefault('TRUST_PROXY')));
+    // The peers the default must believe, and the ones it must not. A
+    // dual-stack socket (Node's default listen, and so the Docker image)
+    // reports an IPv4 peer in its IPv4-mapped form.
+    describe('the default trust function', () => {
+      const trust = () => app.get('trust proxy fn');
+
+      it.each([
+        ['127.0.0.1', 'loopback'],
+        ['::1', 'IPv6 loopback'],
+        ['::ffff:127.0.0.1', 'loopback on a dual-stack socket'],
+        ['172.18.0.1', 'the Docker bridge gateway, where nginx on the host arrives from'],
+        ['::ffff:172.18.0.1', 'the same gateway on the container\'s dual-stack socket'],
+        ['10.0.1.25', 'a cloud load balancer\'s private address'],
+        ['192.168.1.10', 'a private LAN address'],
+        ['169.254.10.1', 'IPv4 link-local'],
+        ['fe80::1', 'IPv6 link-local'],
+        ['fd12:3456::1', 'IPv6 unique local'],
+      ])('trusts %s (%s)', (peer) => {
+        expect(trust()(peer, 0)).toBe(true);
+      });
+
+      it.each([
+        ['203.0.113.9', 'a public IPv4 client'],
+        ['::ffff:203.0.113.9', 'the same client on a dual-stack socket'],
+        ['8.8.8.8', 'a public IPv4 address'],
+        ['2001:db8::1', 'a public IPv6 address'],
+        ['172.32.0.1', 'just outside 172.16.0.0/12'],
+      ])('does not trust %s (%s)', (peer) => {
+        expect(trust()(peer, 0)).toBe(false);
+      });
     });
 
-    it('reaches Express: a hop count', async () => {
-      const configured = await importAppWith({ TRUST_PROXY: '2' });
+    // A hop count (any number, 0 included, whose meaning is spelled `false`)
+    // or `true` believes the X-Forwarded-For of whoever connects.
+    it.each(['1', '2', '0', ' 3 ', 'true'])('refuses %j unless TRUST_PROXY_ALLOW_HOP_COUNT=true', (value) => {
+      expect(() => parseTrustProxy(value)).toThrow(`TRUST_PROXY "${value}"`);
+      expect(() => parseTrustProxy(value)).toThrow('TRUST_PROXY_ALLOW_HOP_COUNT=true');
+      expect(() => parseTrustProxy(value, 'false')).toThrow(`TRUST_PROXY "${value}"`);
+      expect(() => parseTrustProxy(value, '')).toThrow(`TRUST_PROXY "${value}"`);
+    });
+
+    it.each([
+      ['1', 1],
+      ['2', 2],
+      [' 3 ', 3],
+      ['0', 0],
+      ['true', true],
+    ])('accepts %j as %j when TRUST_PROXY_ALLOW_HOP_COUNT=true', (value, expected) => {
+      expect(parseTrustProxy(value, 'true')).toBe(expected);
+    });
+
+    it.each(['yes', 'TRUE', '1', 'on'])('refuses TRUST_PROXY_ALLOW_HOP_COUNT=%j, which is neither true nor false', (allow) => {
+      expect(() => parseTrustProxy('1', allow)).toThrow(`TRUST_PROXY_ALLOW_HOP_COUNT "${allow}"`);
+      // Even with TRUST_PROXY unset: a typo in the opt-in is never silent.
+      expect(() => parseTrustProxy(undefined, allow)).toThrow(`TRUST_PROXY_ALLOW_HOP_COUNT "${allow}"`);
+    });
+
+    it('boot exits naming both variables when TRUST_PROXY is a hop count', async () => {
+      const { exited, said } = await bootWith({ TRUST_PROXY: '1' });
+      expect(exited).toEqual([[1]]);
+      expect(said).toContain('TRUST_PROXY "1"');
+      expect(said).toContain('TRUST_PROXY_ALLOW_HOP_COUNT=true');
+    });
+
+    it('boot exits naming the opt-in when it is neither true nor false', async () => {
+      const { exited, said } = await bootWith({ TRUST_PROXY_ALLOW_HOP_COUNT: 'yes' });
+      expect(exited).toEqual([[1]]);
+      expect(said).toContain('TRUST_PROXY_ALLOW_HOP_COUNT "yes"');
+    });
+
+    it('reaches Express: a hop count the operator opted into', async () => {
+      const { configured, exited } = await bootWith({ TRUST_PROXY: '2', TRUST_PROXY_ALLOW_HOP_COUNT: 'true' });
+      expect(exited).toEqual([]);
       expect(configured.get('trust proxy')).toBe(2);
     });
 
+    it('reaches Express: false', async () => {
+      const { configured, exited } = await bootWith({ TRUST_PROXY: 'false' });
+      expect(exited).toEqual([]);
+      expect(configured.get('trust proxy')).toBe(false);
+      expect(configured.get('trust proxy fn')('127.0.0.1', 0)).toBe(false);
+    });
+
     it('reaches Express: a named range, which Express compiles', async () => {
-      const configured = await importAppWith({ TRUST_PROXY: 'loopback' });
+      const { configured } = await bootWith({ TRUST_PROXY: 'loopback' });
       expect(configured.get('trust proxy')).toBe('loopback');
       expect(configured.get('trust proxy fn')('127.0.0.1', 0)).toBe(true);
       expect(configured.get('trust proxy fn')('203.0.113.9', 0)).toBe(false);
     });
 
     it('exits naming the variable when Express rejects the value', async () => {
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
-      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      try {
-        await importAppWith({ TRUST_PROXY: 'not-an-address' });
-        expect(exitSpy).toHaveBeenCalledWith(1);
-        expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/TRUST_PROXY "not-an-address"/);
-      } finally {
-        exitSpy.mockRestore();
-        errorSpy.mockRestore();
-      }
+      const { exited, said } = await bootWith({ TRUST_PROXY: 'not-an-address' });
+      expect(exited).toEqual([[1]]);
+      expect(said).toMatch(/TRUST_PROXY "not-an-address" is not valid/);
     });
+  });
+
+  // What the setting is for: the limiter's key. Supertest always connects from
+  // 127.0.0.1, which the default trusts, so it cannot play a client arriving
+  // from a public address, and the test host has none to connect from. These
+  // serve the app on a real loopback socket and give each connection the peer
+  // address under test before Express sees the request: req.ip, the limiter
+  // and its store are the real code, and only the address the kernel reported
+  // is replaced. Each case imports a fresh app, so it gets a fresh store.
+  describe('the auth limiter key', () => {
+    function servedFrom(peer, target) {
+      return http.createServer((req, res) => {
+        Object.defineProperty(req.socket, 'remoteAddress', { value: peer, configurable: true });
+        target(req, res);
+      });
+    }
+
+    // One POST /api/login per X-Forwarded-For value, from `peer`, with the
+    // limiters armed (they skip under NODE_ENV=test). Returns the statuses.
+    async function loginsFrom(target, peer, forwardedFor) {
+      const server = servedFrom(peer, target);
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const url = `http://127.0.0.1:${server.address().port}`;
+      const prior = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const statuses = [];
+        for (const xff of forwardedFor) {
+          statuses.push((await request(url).post('/api/login').set('X-Forwarded-For', xff).send({})).status);
+        }
+        return statuses;
+      } finally {
+        process.env.NODE_ENV = prior;
+        await new Promise((resolve) => server.close(resolve));
+      }
+    }
+
+    const freshApp = () => importAppWith({ TRUST_PROXY: undefined, TRUST_PROXY_ALLOW_HOP_COUNT: undefined });
+    const rotating = (n) => Array.from({ length: n }, (_, i) => `198.51.100.${i + 1}`);
+
+    it.each(['203.0.113.9', '::ffff:203.0.113.9'])(
+      'counts a public peer (%s) by its socket address, whatever X-Forwarded-For it sends',
+      async (peer) => {
+        const statuses = await loginsFrom(await freshApp(), peer, rotating(21));
+        expect(statuses.slice(0, 20)).not.toContain(429);
+        expect(statuses[20]).toBe(429);
+      },
+    );
+
+    it.each(['172.18.0.1', '::ffff:10.0.1.25'])(
+      'believes a private peer\'s (%s) X-Forwarded-For: two clients behind it get separate buckets',
+      async (peer) => {
+        const target = await freshApp();
+        const first = await loginsFrom(target, peer, Array(21).fill('198.51.100.1'));
+        expect(first.slice(0, 20)).not.toContain(429);
+        expect(first[20]).toBe(429);
+        // Same proxy, another client: its own bucket, so the key is the
+        // forwarded address and not the proxy's.
+        const second = await loginsFrom(target, peer, ['198.51.100.2']);
+        expect(second[0]).not.toBe(429);
+      },
+    );
   });
 
   // One Helmet policy, mounted on the whole app in production and on /api only
