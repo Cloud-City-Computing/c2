@@ -47,6 +47,7 @@ const {
   touchSession,
   withTransaction,
 } = await import('../mysql_connect.js');
+const { hashSessionToken } = await import('../services/session-token.js');
 
 beforeEach(() => {
   executeMock.mockReset();
@@ -79,45 +80,53 @@ describe('c2_query', () => {
 describe('generateSessionToken', () => {
   const user = { id: 7 };
 
-  it('reuses an existing non-expired session and updates metadata', async () => {
-    const future = new Date(Date.now() + 60_000);
-    executeMock
-      .mockResolvedValueOnce([[{ id: 'existing-token', expires_at: future }], []]) // SELECT
-      .mockResolvedValueOnce([{ affectedRows: 1 }, []]);                            // UPDATE
-
-    const token = await generateSessionToken(user, '1.2.3.4', 'agent');
-    expect(token).toBe('existing-token');
-
-    const updateCall = executeMock.mock.calls[1];
-    expect(updateCall[0]).toMatch(/UPDATE sessions SET ip_address/i);
-    expect(updateCall[1]).toEqual(['1.2.3.4', 'agent', 'existing-token']);
-  });
-
-  it('refreshes an expired session in place with a new random token', async () => {
-    const past = new Date(Date.now() - 1000);
-    executeMock
-      .mockResolvedValueOnce([[{ id: 'expired-token', expires_at: past }], []])
-      .mockResolvedValueOnce([{ affectedRows: 1 }, []]);
-
-    const token = await generateSessionToken(user, '1.1.1.1', 'agent');
-    expect(token).not.toBe('expired-token');
-    expect(token).toMatch(/^[A-Za-z0-9]{64}$/);
-
-    const updateCall = executeMock.mock.calls[1];
-    expect(updateCall[0]).toMatch(/UPDATE sessions SET id = \?/i);
-    expect(updateCall[1][0]).toBe(token);
-  });
-
-  it('inserts a new session when none exists', async () => {
-    executeMock
-      .mockResolvedValueOnce([[], []])
-      .mockResolvedValueOnce([{ insertId: 99 }, []]);
+  // One row per sign-in (W6-CDX-2). These replace the two reuse tests
+  // ("reuses an existing non-expired session and updates metadata", "refreshes
+  // an expired session in place with a new random token"): a second device no
+  // longer gets the first device's token, so there is no row to reuse.
+  it('issues exactly one statement, an INSERT binding the digest, and returns the raw token', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 99 }, []]);
 
     const token = await generateSessionToken(user);
+
     expect(token).toMatch(/^[A-Za-z0-9]{64}$/);
-    const insertCall = executeMock.mock.calls[1];
-    expect(insertCall[0]).toMatch(/INSERT INTO sessions/i);
-    expect(insertCall[1]).toEqual([7, token, null, null]);
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = executeMock.mock.calls[0];
+    expect(sql).toMatch(/^\s*INSERT INTO sessions/i);
+    expect(params).toEqual([7, hashSessionToken(token), 'local', null, null]);
+    // What the database holds is never what the browser presents.
+    expect(params[1]).not.toBe(token);
+  });
+
+  it('binds the ip and user agent it is given', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 99 }, []]);
+
+    const token = await generateSessionToken(user, '1.2.3.4', 'agent');
+
+    expect(executeMock.mock.calls[0][1]).toEqual([7, hashSessionToken(token), 'local', '1.2.3.4', 'agent']);
+  });
+
+  it('gives two sign-ins for the same user two tokens and two rows', async () => {
+    executeMock
+      .mockResolvedValueOnce([{ insertId: 1 }, []])
+      .mockResolvedValueOnce([{ insertId: 2 }, []]);
+
+    const first = await generateSessionToken(user);
+    const second = await generateSessionToken(user);
+
+    expect(first).not.toBe(second);
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    for (const [sql] of executeMock.mock.calls) expect(sql).toMatch(/^\s*INSERT INTO sessions/i);
+    expect(executeMock.mock.calls[0][1][1]).toBe(hashSessionToken(first));
+    expect(executeMock.mock.calls[1][1][1]).toBe(hashSessionToken(second));
+  });
+
+  it('records the flow that minted the session', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 99 }, []]);
+
+    const token = await generateSessionToken(user, null, null, { provider: 'google' });
+
+    expect(executeMock.mock.calls[0][1]).toEqual([7, hashSessionToken(token), 'google', null, null]);
   });
 });
 
@@ -143,6 +152,16 @@ describe('validateAndAutoLogin', () => {
     expect(user).toEqual({ id: 1, name: 'Alice', email: 'a@b.c', avatar_url: null, is_admin: 0 });
   });
 
+  it('looks the session up by the digest of the token, never the token', async () => {
+    executeMock.mockResolvedValueOnce([[], []]);
+
+    await validateAndAutoLogin('raw');
+
+    const [sql, params] = executeMock.mock.calls[0];
+    expect(sql).toMatch(/FROM sessions WHERE id = \?/i);
+    expect(params).toEqual([hashSessionToken('raw')]);
+  });
+
   it('returns null when the user row is gone (orphaned session)', async () => {
     const future = new Date(Date.now() + 60_000);
     executeMock
@@ -165,7 +184,7 @@ describe('touchSession', () => {
     await touchSession('tok');
     const [sql, params] = executeMock.mock.calls[0];
     expect(sql).toMatch(/UPDATE sessions SET last_active_at = NOW\(\)/i);
-    expect(params).toEqual(['tok']);
+    expect(params).toEqual([hashSessionToken('tok')]);
   });
 });
 
