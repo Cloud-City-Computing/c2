@@ -20,15 +20,15 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 | DB credential gate | `mysql_connect.js:34-38` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the provider gate below and an invalid `PORT`, these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
-| Instance lock | `server.js:39-54`, top-level `await` | `acquireInstanceLock()` (`services/instance-lock.js`) runs `SELECT GET_LOCK(CONCAT('cloudcodex-instance:', DATABASE()), 0)` on a connection of its own (`openConnection()`, `mysql_connect.js:47-49`), never the pool, and holds it for the life of the process. **Before anything writes**, so a second process on the same schema refuses before its admin sync or seed can race the first's. A refusal exits 1 with `Another Cloud Codex process (MySQL connection <id>) already serves this database.`, naming the holder and the escape; so does a failure to open the connection at all, which under a supervisor is a restart rather than an outage. `C2_INSTANCE_LOCK=0`, and only `0`, takes no lock and logs that a second process will diverge. The lock object is handed to `/readyz` (`readiness.lock`, `routes/health.js`). The name differs from the migration runner's `cloudcodex_migrate:<db>` (`scripts/migrate.js`), so `npm run migrate` in a one-off container never contends with the running app, and it carries the schema, so instances sharing one MySQL server never contend with each other. |
+| Instance lock | `server.js:69-93`, top-level `await` | `acquireInstanceLock()` (`services/instance-lock.js`) runs `SELECT GET_LOCK(<name>, 0)` on a connection of its own (`openConnection()`, `mysql_connect.js:47-49`), never the pool, and holds it for the life of the process. **Before anything writes**, so a second process on the same schema refuses before its admin sync or seed can race the first's. A refusal exits 1 with `Another Cloud Codex process (MySQL connection <id>) already serves this database.`, naming the holder and the escape; so does a failure to open the connection at all, which under a supervisor is a restart rather than an outage. `C2_INSTANCE_LOCK=0`, and only `0`, takes no lock and logs that a second process will diverge. The lock object is handed to `/readyz` (`readiness.lock`, `routes/health.js`). The name, built server side as `INSTANCE_LOCK_NAME_SQL`, is `cloudcodex-instance:<db>`, or `cloudcodex-instance#` and the first 40 hex characters of the schema's SHA-256 when the schema name is longer than 44 characters, since MySQL refuses a lock name over 64 (ER 4163). It differs from the migration runner's `cloudcodex_migrate:<db>` (`scripts/migrate.js`, capped the same way past 45), so `npm run migrate` in a one-off container never contends with the running app, and it carries the schema, so instances sharing one MySQL server never contend with each other. `server.js` passes `onSuperseded`, which stops the process if another one takes the lock after this one lost it (section 7). |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
 | Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:253`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
-| Collab WS | `server.js:158` | `setupCollabServer(server)`, path `/collab`. |
-| Notification WS | `server.js:162` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
-| Stop signals | `server.js:171-185` | `process.once('SIGTERM')` and `process.once('SIGINT')` run one `createShutdown(...)` handler, section 7. `once`, so a second Ctrl-C in a terminal falls through to Node's default and ends the process at once. |
-| Activity prune | `server.js:187-205` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
+| Collab WS | `server.js:197` | `setupCollabServer(server)`, path `/collab`. |
+| Notification WS | `server.js:201` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Stop signals | `server.js:20-48`, before every other step; `server.js:209-221` | `process.on('SIGTERM')` and `process.on('SIGINT')` go in **first**, ahead of the config gates and the boot awaits. Node is PID 1 in the image, and the kernel drops a signal PID 1 has no handler for, so a `docker stop` during the lock, SMTP verify or admin sync would otherwise wait for SIGKILL. Until `createShutdown(...)` is assigned, after the listen and the socket servers, a signal logs `stopped on <signal> during boot` and exits 0 at once: nothing is pending and the lock goes with the process. From then on the first signal runs the shutdown (section 7) and a second one logs and exits 1 at once. |
+| Activity prune | `server.js:223-241` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 
 Two consequences worth knowing:
 
@@ -36,7 +36,7 @@ Two consequences worth knowing:
   out of `server.js` precisely so Supertest can mount the app without a
   listener (`app.js:4-5`). Tests import `app.js`; they never import `server.js`
   except `tests/server.test.js`.
-- **The daily prune is single-process by design.** `server.js:188` says so
+- **The daily prune is single-process by design.** `server.js:224` says so
   explicitly. The instance lock now enforces one process per schema, so a
   second replica does not start rather than pruning twice.
 
@@ -449,7 +449,7 @@ every outcome.
 2. `lock`: `readiness.lock` is absent, or neither `held` nor `disabled`
    (`services/instance-lock.js`).
 3. `database`: `SELECT 1` through the pool rejects or takes longer than two
-   seconds. Never cached.
+   seconds. The answer is reused for one second (`readiness.database`).
 4. `migrations`: some file in `migrations/` (`listMigrationFiles`) has no
    `schema_migrations` row (`readApplied`), both reused from
    `scripts/migrate.js`. A missing table (a database nobody adopted) and an
@@ -462,7 +462,17 @@ every outcome.
 
 A **fresh** install therefore reads `migrations` until the one-time
 `npm run migrate -- --adopt-fresh-install` records its starting point, which is
-the documented first-run step (`docs/deployment.md`, "First run").
+the documented first-run step (`docs/deployment.md`, "First run"); the first
+probe that finds no `schema_migrations` table logs that command once.
+
+The probes are unauthenticated and ahead of every limiter, so a burst of them
+must not become a burst of queries. Concurrent callers share the migrations
+read that is out (`migrationsCheck`) and the `SELECT 1` that is out
+(`readiness.probe`). A `SELECT 1` that outlives the two-second bound still
+holds a pooled connection until MySQL answers, so the next probe waits on that
+same query rather than queueing another behind it, for up to ten seconds, after
+which a query that may never answer is left behind and a new one is sent. At
+most one probe query per ten seconds can therefore be stuck in the pool.
 
 The image's `HEALTHCHECK` (`cloudcodex/Dockerfile`) probes `/readyz` every 10 s
 with Node's own `fetch` (`node:20-slim` has no curl), a 3 s timeout, a 20 s
@@ -475,18 +485,35 @@ Taken at boot (section 1), on a connection of its own, and pinged with
 connection carries an `'error'` listener, because a mysql2 connection error
 with no listener is thrown by the EventEmitter and would take the process down
 with every open document's unsaved state. When the connection is lost (a MySQL
-restart), `held` goes false, `/readyz` answers `lock`, and each ping tick tries
-to take the lock back on a new connection; if another process took it in the
-meantime this one stays not-ready and logs the holder once. GET_LOCK belongs to
+restart), `held` goes false, `/readyz` answers `lock`, and a retake on a new
+connection is tried every second (`retakeMs`) until one succeeds; a reason it
+keeps failing for, MySQL still down say, is logged once. Only the connection
+currently holding the lock can mark it lost, attempts never overlap (`busy`),
+and a retake that completes after `release()` ends its own connection.
+
+**If another process took the lock meanwhile**, two live processes now serve
+one schema, which is the divergence the lock exists to prevent. The retake's
+refusal (`heldElsewhere`) is logged, retrying stops, and `onSuperseded` runs
+once: `server.js` logs `another process took the instance lock while this one
+had lost it` and runs the shutdown below with exit code 1 (or exits 1 at once
+during boot). Under `restart: unless-stopped` the supervisor restarts it into an
+ordinary refusal that names the holder. The one-second retake keeps that
+window short: a duplicate that reconnects first after a MySQL restart wins it,
+and this process stops within about a second of MySQL coming back.
+`tests/integration/lifecycle.test.js` KILLs a real server's lock connection,
+takes the lock from the test, and requires the server to exit 1 naming the
+test's connection. GET_LOCK belongs to
 a connection, so a process killed with SIGKILL releases it as soon as MySQL
 sees the socket close: `tests/integration/lifecycle.test.js` measures the next
 process taking it within two seconds.
 
 ### Shutdown
 
-`services/shutdown.js` exports `createShutdown(deps)`; `server.js` wires it to
-`SIGTERM` and `SIGINT` (section 1). A second signal to the same handler is
-ignored. In order:
+`services/shutdown.js` exports `createShutdown(deps)`, which returns
+`shutdown(cause, { code = 0 })`. `server.js` calls it for the first `SIGTERM`
+or `SIGINT` once it is serving (section 1; a second signal exits 1 at once
+there), and with `('the lost instance lock', { code: 1 })` from
+`onSuperseded`. A second call is ignored. In order:
 
 1. `readiness.shuttingDown = true`, so `/readyz` answers 503 from here on.
 2. `server.close()`: no new connections.
@@ -500,10 +527,19 @@ ignored. In order:
    whatever it has that the server does not.
 5. The instance lock's connection ends, then `endPool()`
    (`mysql_connect.js:56-58`).
-6. `stopped cleanly on <signal>` on stderr, `exit(0)`.
+6. `exit(code)`. The last line is `stopped cleanly on <cause>` only when the
+   code is 0, every step ran and every pending document was written; otherwise
+   it is `stopped on <cause>`, with `N documents not saved` and `N failed
+   steps` when there were any. The flush's own line says `wrote N pending
+   documents` and how many failed. A failed document or step does not change
+   the exit code: the plan fixes a rejecting flush at `exit(0)`, and the line
+   is what an operator is told to read.
 
-Every step runs even when an earlier one throws. The whole thing is bounded at
-10 s: past that it logs `shutdown timed out after 10000 ms` and exits 1. The
+Every step runs even when an earlier one throws, and the flush still runs for
+a lost-lock stop: the process that took over has no editors on these
+documents in the realistic case (it is the duplicate), so the flush is what
+keeps the last seconds of edits. The whole thing is bounded at 10 s: past that
+it logs `shutdown timed out after 10000 ms` and exits 1. The
 compose files give the app `stop_grace_period: 20s`, so the bound finishes
 before Docker's SIGKILL (its default grace, 10 s, would tie).
 

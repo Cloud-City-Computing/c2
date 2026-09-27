@@ -315,7 +315,7 @@ is flipped to `revoked` when GitHub rejects the token.
 ## 8. Activity, watches, notifications
 
 `activity_log.id` is `BIGINT` (`init.sql:415`), the only table that expects
-that volume, and it is pruned at 365 days by `server.js:187-205`. It has four
+that volume, and it is pruned at 365 days by `server.js:223-241`. It has four
 composite indexes covering the workspace, squad, resource, and user read paths.
 
 **It has a foreign key on `user_id` only.** `workspace_id`, `squad_id`,
@@ -423,7 +423,10 @@ That is inherent to adopting a baseline rather than a defect, but it means the
 guard's promise is "nothing has changed since adoption", not "this is what ran".
 
 The apply phase is serialised by a MySQL advisory lock
-(`GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`). Without it two
+(`GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`; for a schema name
+longer than 45 characters, which would push the name past MySQL's 64,
+`cloudcodex_migrate#` and the first 40 hex characters of its SHA-256
+instead, so every name that fits is the one earlier releases used). Without it two
 concurrent runs both compute the same pending set, MySQL serialises the DDL, and
 the loser gets a duplicate-column error that the runner would report as "may be
 partially migrated" when the database is in fact correct. The lock is

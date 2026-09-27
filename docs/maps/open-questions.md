@@ -907,7 +907,7 @@ Corrected in this pass, listed here so the drift pattern is visible:
   The doc's "filesystem globally" reads as more complete than it is.
 - **`useGitHubStatus` is `.jsx`, not `.js`.**
 - **The comment "no external job queue"** is accurate in spirit, but
-  `server.js:187-205` does run an in-process daily prune, which is a scheduled job
+  `server.js:223-241` does run an in-process daily prune, which is a scheduled job
   by another name.
 
 ## E. Things not investigated

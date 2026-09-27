@@ -107,7 +107,12 @@ bind mount `./db-data/`, `init.sql` mounted into
   `--adopt-fresh-install`. Measured 2026-09-27 on the release compose file with
   a local build: `docker stop` returned in 0.45 s with exit 0 and `stopped
   cleanly on SIGTERM`, and the restarted container reported `healthy` 6 s after
-  `docker start`.
+  `docker start`. Re-measured after the review round with `docker run` of a
+  local build: a stop during the boot's SMTP verify took 0.28 s with exit 0
+  and `stopped on SIGTERM during boot`, where the previous image ignored the
+  signal (Node as PID 1 with no handler yet) and was SIGKILLed at 10.3 s with
+  exit 137; KILLing the lock's MySQL connection and taking the lock from
+  another session stopped the container with exit 1 about a second later.
 - The prod and release compose files give the app `stop_grace_period: 20s`,
   twice the shutdown's own 10 s bound, so it finishes before Docker's SIGKILL.
   `tests/image-lifecycle.test.js` pins the `CMD`, the `HEALTHCHECK` and the
@@ -149,21 +154,27 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **84 files, 1731 tests, all passing**; the
-integration project is **8 files, 46 tests** (measured 2026-09-27 on the
+Current state: the default run is **84 files, 1754 tests, all passing**; the
+integration project is **8 files, 49 tests** (measured 2026-09-27 on the
 W6-CDX-31 branch).
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
 real processes rather than a real server alone: it forks
 `tests/integration/lock-holder.js` against the file's schema to prove the
 instance lock (a second process exits 1 naming the holder's connection id, a
 SIGKILLed holder frees it within two seconds, two schemas hold their own at
-once), then boots `server.js` itself (`NODE_ENV=production`, a free port, the
-boot admin), signs in through `/api/login`, sends one Yjs update over
+once, a 64-character schema name gets an exclusive lock of its own), then
+boots `server.js` itself (`NODE_ENV=production`, a free port, the boot admin), signs in through `/api/login`, sends one Yjs update over
 `/collab`, delivers SIGTERM 200 ms later, inside the three-second debounce, and
 requires exit 0, close code 1001, the edit in `logs.ydoc_state` and the edit
-served by a restarted server. Mutation-checked on 2026-09-27: a
-`flushPendingSaves` that skips every document leaves `ydoc_state` NULL, and a
-lock that ignores GET_LOCK's answer lets the second process in.
+served by a restarted server. Its last test boots `server.js`, KILLs the lock's
+connection the way a MySQL restart would, takes the lock from the test's own
+connection, and requires the server to exit 1 within 15 s naming that
+connection and without `stopped cleanly`. `tests/integration/migrate.test.js`
+adopts a 64-character schema under the runner's lock. Mutation-checked on
+2026-09-27: a `flushPendingSaves` that skips every document leaves
+`ydoc_state` NULL, a lock that ignores GET_LOCK's answer lets the second
+process in, and a lost lock that never reaches `onSuperseded`, or a `server.js`
+that ignores it, leaves the server running.
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,

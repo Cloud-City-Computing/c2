@@ -467,7 +467,7 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 (`server.js`, a top-level `await` before the port opens; defined in
 `routes/admin.js`), which
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
-(`server.js:20-25`).
+(`server.js:50-55`).
 
 **The boot sync creates or syncs, and never promotes** (GHSA-w8q3-r34w-3pjh).
 It reads every row matching `LOWER(name) = LOWER(ADMIN_USERNAME)` or

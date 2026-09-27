@@ -19,14 +19,18 @@ initialises an empty data directory.
   `{"ready":true}`, or 503 with one reason: `shutting_down`, `lock`,
   `database` (`SELECT 1` failed or took over two seconds) or `migrations` (a
   file in `migrations/` is not applied, or the database was never adopted).
-  Neither carries a version, a count or a name. The image has a Docker
-  `HEALTHCHECK` on `/readyz`. See "Health checks" in `docs/deployment.md`.
+  Neither carries a version, a count or a name. However many probes arrive at
+  once, `/readyz` has at most one `SELECT 1` and one migrations read out. The
+  image has a Docker `HEALTHCHECK` on `/readyz`. See "Health checks" in
+  `docs/deployment.md`.
 - **One process per database.** At boot the app takes a MySQL lock named for
   its schema and holds it until it stops, so a second process pointed at the
   same database refuses to start and names the connection that holds it,
   instead of both keeping their own diverging copy of every open document.
   `C2_INSTANCE_LOCK=0` turns it off. Instances on different schemas of one
-  server, and `npm run migrate`, never contend with it.
+  server, and `npm run migrate`, never contend with it. If MySQL restarts, the
+  app takes the lock back within a second; if another process got it first,
+  the app that lost it stops and exits 1 rather than keep serving beside it.
 
 ### Changed
 
@@ -35,16 +39,24 @@ initialises an empty data directory.
   reports `shutting_down`, writes every open document's not-yet-saved live
   edits to the database (previously the last three seconds were lost), closes
   both WebSockets with code 1001, releases the lock and the pool, and exits 0,
-  within ten seconds or exits 1. The production compose files give it
+  within ten seconds or exits 1. It says `stopped cleanly` only when every
+  pending document was written. A stop signal during startup, or a second
+  Ctrl-C, ends it at once. The production compose files give it
   `stop_grace_period: 20s`.
 - **Nothing to run on upgrade**, no migration. Two things read differently: a
   brand-new install reports `unhealthy` until its one-time
   `npm run migrate -- --adopt-fresh-install`, which was already the documented
-  first-run step, and a container started without the `./migrations` mount the
-  compose files provide reports `migrations`, because it cannot check.
+  first-run step (the log says so once), and a container started without the
+  `./migrations` mount the compose files provide reports `migrations`, because
+  it cannot check.
 
 ### Fixed
 
+- **The migration lock fits any schema name.** `npm run migrate` against a
+  schema whose name is longer than 45 characters failed with MySQL's
+  `User-level lock name ... should not exceed 64 characters`. Such a schema
+  now gets a lock named by a digest; every shorter name keeps the lock it had,
+  so an older runner and this one still exclude each other.
 - **A fresh install on an SELinux-enforcing host gets its schema.**
   `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`
   read-only with no SELinux relabel, so on Fedora, RHEL and their relatives the

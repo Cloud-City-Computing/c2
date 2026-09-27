@@ -126,6 +126,12 @@ Only if you know exactly why two processes must share one schema, set
 `C2_INSTANCE_LOCK=0`. See
 [deployment.md, One process per database](./deployment.md#one-process-per-database).
 
+If the same message appears in a process that was already running, followed by
+`another process took the instance lock while this one had lost it`, MySQL
+restarted while a second process was waiting to start, and that one reconnected
+first. The first process stopped on purpose, so that only one keeps serving.
+The fix is the same: stop the one you did not mean to run.
+
 ---
 
 ```
