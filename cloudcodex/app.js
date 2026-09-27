@@ -55,8 +55,8 @@ export function parseTrustProxy(value) {
 }
 
 // Decides req.ip, which is what the rate limiters count. Express compiles the
-// value here and throws on one it cannot parse, so a typo stops the boot
-// instead of leaving every client behind one shared address.
+// value here and throws on one it cannot parse; the boot stops with a
+// sentence naming the variable rather than a stack trace.
 try {
   app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 } catch (err) {
