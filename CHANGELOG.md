@@ -12,6 +12,21 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-27
+
+The account-security release. Three security fixes: Google sign-in no longer
+links an account that has two-factor authentication on
+([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)),
+the boot admin sync no longer promotes an existing account
+([GHSA-w8q3-r34w-3pjh](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-w8q3-r34w-3pjh)),
+and changing an account's email or password now needs its current password and
+signs every device out. Google sign-in also no longer attaches a second Google
+account to a user, which a database key now enforces for every provider.
+Alongside them: an identity seam that sign-in methods resolve through, and
+`AUTH_PROVIDERS` to choose which ones an instance offers. **Upgrading from 0.10.0
+applies two migrations with `npm run migrate`, and the first refuses on an
+install that already holds a double link; see Migration below.**
+
 ### Added
 
 - `AUTH_PROVIDERS`, an optional comma list of the sign-in methods an instance
@@ -490,7 +505,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Cloud-City-Computing/c2/compare/alpharelease...v0.9.0
 [0.1.0-alpha]: https://github.com/Cloud-City-Computing/c2/releases/tag/alpharelease
