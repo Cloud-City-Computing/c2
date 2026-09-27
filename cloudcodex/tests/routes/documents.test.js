@@ -907,6 +907,8 @@ describe('Document Routes', () => {
       expect(sql).toContain('NOT COALESCE(p.`system`, FALSE)');
       // The same bound on a title the event envelope applies.
       expect(sql).toContain('LEFT(l.title, 255) AS title');
+      // docs/api promises the answer is ordered by id; this is that promise.
+      expect(sql).toMatch(/\bORDER BY l\.id\s*$/);
     });
 
     it('accepts exactly 100 ids, with 100 placeholders', async () => {

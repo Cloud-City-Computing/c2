@@ -195,6 +195,21 @@ describe('GET /api/documents/state, on a real server', () => {
     expect(answered(res)).toEqual([ids.readable[0]]);
   });
 
+  it('orders the answer by id, whatever order the ids were asked in', async () => {
+    // The promise in docs/api is ascending id, across two archives here.
+    // Deliberately not through answered(), which sorts. On this data MySQL
+    // happens to return id order even without the clause, so a dropped ORDER BY
+    // is caught by the SQL-shape pin in tests/routes/documents.test.js; this
+    // catches a changed one (another column, or DESC) on a real server.
+    const token = await generateSessionToken({ id: ids.admin });
+    const asked = [...ids.readable, ids.adminOnly, ids.longTitle].sort((a, b) => b - a);
+
+    const res = await state(ids.w1, asked, token);
+
+    expect(res.status).toBe(200);
+    expect(res.body.documents.map((d) => d.id)).toEqual([...asked].reverse());
+  });
+
   it('answers a human session with what that person can read', async () => {
     const token = await generateSessionToken({ id: ids.member });
 
