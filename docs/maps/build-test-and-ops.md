@@ -131,8 +131,9 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **78 files, 1578 tests, all passing**; the
-integration project is **3 files, 12 tests**.
+Current state: the default run is **79 files, 1661 tests, all passing**; the
+integration project is **7 files, 42 tests** (measured 2026-09-27 on the merged
+tree, at the server's default isolation and at `READ-COMMITTED`).
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
