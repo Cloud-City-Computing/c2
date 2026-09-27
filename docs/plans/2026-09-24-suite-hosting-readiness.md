@@ -306,8 +306,8 @@ copes with no admin id (`routes/admin.js:102-103` at `91493a6`). Tests: create, 
 lands **before** the identity track's W6-CDX-8, which is sequenced after this PR and makes the sync
 provider-aware while keeping this refusal on both branches.
 
-- [x] **Done 2026-09-25, ahead of the rest of this PR**, in its own PR (branch
-      `track/w6-cdx-32-never-promote`) so the fix ships in the next release
+- [x] **Done 2026-09-25, ahead of the rest of this PR**, in its own PR, #58,
+      released in 0.11.0 with the fix for
       (GHSA-w8q3-r34w-3pjh). Tasks 2.1 to 2.3, 2.5 and 2.6 are unchanged and still to do. What shipped
       goes past the draft in three ways, which W6-CDX-8 builds on: the lookup reads **every** row
       matching by name or email (no `LIMIT`), because the two can be two different rows, and any
