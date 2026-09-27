@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcrypt';
 import app from '../../app.js';
 import { c2_query, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
@@ -1413,48 +1414,153 @@ describe('bootstrapInstance', () => {
 });
 
 // --- ensureAdminUser ---
-// Not a route handler either. Its return value is the Step 3 deliverable
-// server.js now depends on (server.js passes it straight into
-// bootstrapInstance), so both branches — existing admin found vs. admin
-// created fresh — need direct coverage of what id comes back, not just
-// that a UPDATE/INSERT happened.
+// Not a route handler either. server.js passes its return value straight into
+// bootstrapInstance, so every branch needs direct coverage of what comes back,
+// not just that an UPDATE or INSERT happened.
+//
+// The sync creates or syncs, and never promotes (GHSA-w8q3-r34w-3pjh). A row
+// matched by ADMIN_USERNAME or ADMIN_EMAIL that is not already an admin is
+// refused with nothing written. users.name and users.email are each UNIQUE, so
+// the two can match two different rows: an admin who renamed while a member
+// took the old name, or changed address while a member took the old one. The
+// mock cannot say which row matched which way (that is the server's job, and
+// tests/integration/admin-sync.test.js proves it on MySQL); what these tests
+// pin is that every row the lookup returns is checked, in either order.
 describe('ensureAdminUser', () => {
   const originalEnv = { ...process.env };
+  const PASSWORD = 'correct horse battery staple';
+  let errorSpy;
 
   beforeEach(() => {
     resetMocks();
     process.env.ADMIN_USERNAME = 'Admin';
-    process.env.ADMIN_PASSWORD = 'correct horse battery staple';
+    process.env.ADMIN_PASSWORD = PASSWORD;
     process.env.ADMIN_EMAIL = 'admin@example.com';
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
+    errorSpy.mockRestore();
     process.env = { ...originalEnv };
   });
 
-  it('returns the existing user id and syncs credentials when the admin already exists', async () => {
-    c2_query.mockResolvedValueOnce([{ id: 5, is_admin: true }]); // SELECT existing
-    c2_query.mockResolvedValueOnce({ affectedRows: 1 });          // UPDATE
+  /** Every line the sync logged. */
+  const logLines = () => errorSpy.mock.calls.map((args) => args.join(' '));
 
-    const id = await ensureAdminUser();
+  /** Every call that could change a row. */
+  const writes = () => c2_query.mock.calls.filter(([sql]) => /^\s*(UPDATE|INSERT|DELETE|REPLACE)\b/i.test(sql));
 
-    expect(id).toBe(5);
-    const updateCall = c2_query.mock.calls.find(([sql]) => sql.includes('UPDATE users'));
-    expect(updateCall).toBeDefined();
-    expect(updateCall[1][1]).toBe('admin@example.com'); // email
-    expect(updateCall[1][2]).toBe(5);                     // WHERE id = ?
-  });
-
-  it('creates the admin user, seeds default permissions, and returns the new id when none exists', async () => {
-    c2_query.mockResolvedValueOnce([]);                 // SELECT: no existing admin
+  it('creates the admin user, seeds default permissions, and returns the new id when no account matches', async () => {
+    c2_query.mockResolvedValueOnce([]);                 // SELECT: no account matches
     c2_query.mockResolvedValueOnce({ insertId: 42 });   // INSERT users
     c2_query.mockResolvedValueOnce({ insertId: 1 });    // createDefaultPermissions INSERT
 
     const id = await ensureAdminUser();
 
     expect(id).toBe(42);
+    const insertCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO users'));
+    expect(insertCall[0]).toMatch(/is_admin/);
+    expect(insertCall[1][0]).toBe('Admin');
+    expect(insertCall[1][2]).toBe('admin@example.com');
+    expect(await bcrypt.compare(PASSWORD, insertCall[1][1])).toBe(true);
     const permissionsCall = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO permissions'));
     expect(permissionsCall).toBeDefined();
     expect(permissionsCall[1]).toEqual([42]);
+
+    // One boot line saying what the sync did, and never the password.
+    expect(logLines()).toHaveLength(1);
+    expect(logLines()[0]).toMatch(/admin sync: created Admin \/ admin@example\.com .*user 42/);
+    expect(logLines()[0]).not.toContain(PASSWORD);
+  });
+
+  it('syncs an existing admin: .env resets its email and password, and is_admin is not written', async () => {
+    c2_query.mockResolvedValueOnce([{ id: 5, is_admin: 1 }]); // SELECT: the admin
+    c2_query.mockResolvedValueOnce({ affectedRows: 1 });       // UPDATE
+
+    const id = await ensureAdminUser();
+
+    expect(id).toBe(5);
+    const updates = writes();
+    expect(updates).toHaveLength(1);
+    const [sql, params] = updates[0];
+    expect(sql).toMatch(/^\s*UPDATE users SET/);
+    // The row is already an admin, so the sync has no reason to write the flag,
+    // and an UPDATE that cannot set it cannot promote anyone.
+    expect(sql).not.toMatch(/is_admin/);
+    expect(await bcrypt.compare(PASSWORD, params[0])).toBe(true); // password_hash
+    expect(params[1]).toBe('admin@example.com');                  // email
+    expect(params[2]).toBe(5);                                    // WHERE id = ?
+
+    expect(logLines()).toHaveLength(1);
+    expect(logLines()[0]).toMatch(/admin sync: synced Admin \/ admin@example\.com .*user 5/);
+    expect(logLines()[0]).not.toContain(PASSWORD);
+  });
+
+  it('asks for every account matching by name or by email, not only the first', async () => {
+    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockResolvedValueOnce({ insertId: 42 });
+    c2_query.mockResolvedValueOnce({ insertId: 1 });
+
+    await ensureAdminUser();
+
+    const [sql, params] = c2_query.mock.calls[0];
+    expect(sql).toMatch(/^\s*SELECT id, is_admin FROM users WHERE LOWER\(name\) = LOWER\(\?\) OR email = \?/);
+    // A LIMIT here would let the server hand back the admin row and hide a
+    // member who holds the other identifier.
+    expect(sql).not.toMatch(/LIMIT/i);
+    expect(params).toEqual(['Admin', 'admin@example.com']);
+  });
+
+  it('refuses a non-admin matched by name: returns null and logs one line naming it', async () => {
+    // A member whose name is ADMIN_USERNAME, and no admin row matching at all.
+    c2_query.mockResolvedValueOnce([{ id: 9, is_admin: 0 }]);
+
+    const id = await ensureAdminUser();
+
+    expect(id).toBeNull();
+    expect(logLines()).toHaveLength(1);
+    expect(logLines()[0]).toContain(
+      'admin sync: Admin / admin@example.com matches an existing non-admin account (user 9), ' +
+      'refusing to promote it. Promote it in the admin console if that is intended.'
+    );
+    expect(logLines()[0]).not.toContain(PASSWORD);
+  });
+
+  it('refuses a non-admin matched by email even while the admin still holds the name', async () => {
+    // The admin changed address and a member took the old one: the admin row
+    // matches by name, the member by email, and the admin row comes back first.
+    c2_query.mockResolvedValueOnce([{ id: 2, is_admin: 1 }, { id: 9, is_admin: 0 }]);
+
+    const id = await ensureAdminUser();
+
+    expect(id).toBeNull();
+    expect(logLines()).toHaveLength(1);
+    expect(logLines()[0]).toContain('matches an existing non-admin account (user 9), refusing to promote it.');
+    expect(logLines()[0]).not.toContain(PASSWORD);
+  });
+
+  it.each([
+    ['a member holds the name, nothing else matches', [{ id: 9, is_admin: 0 }]],
+    ['the admin holds the name, a member the email', [{ id: 2, is_admin: 1 }, { id: 9, is_admin: 0 }]],
+    ['a member holds the name and comes back first, the admin holds the email', [{ id: 4, is_admin: 0 }, { id: 7, is_admin: 1 }]],
+  ])('a refusal writes nothing: %s', async (_label, rows) => {
+    c2_query.mockResolvedValueOnce(rows);
+    const hashSpy = vi.spyOn(bcrypt, 'hash');
+    let result;
+    let hashes;
+    try {
+      result = await ensureAdminUser();
+      // Read before mockRestore, which clears the spy's call history.
+      hashes = hashSpy.mock.calls.length;
+    } finally {
+      hashSpy.mockRestore();
+    }
+
+    expect(result).toBeNull();
+    // The lookup is the only query: no UPDATE of either row, no INSERT of a
+    // new admin beside them, and no password hashed for either.
+    expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(writes()).toEqual([]);
+    expect(hashes).toBe(0);
   });
 });

@@ -255,6 +255,24 @@ Mutation-checked on 2026-09-25: accepting a wrong current password, keeping the
 caller's session (`AND id != ?`), handing back the old token, and keeping the
 caller's session in the confirm step each turn a live test red.
 
+`tests/integration/admin-sync.test.js` proves the boot admin sync never
+promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
+lookup returns first, and how `LOWER(name)` and the email collation compare,
+are MySQL's. Each test creates the admin with a real first-boot
+`ensureAdminUser()`, lets the admin give up its name, its email or both, has a
+member (own password, two sessions) take the freed name or address, and boots
+again: the member is still not an admin with its row and sessions unchanged,
+the admin's row is unchanged, the call returns `null`, and exactly one refusal
+line is logged. All four shapes run with the member's row older and newer than
+the admin's, because a lookup that read only the first row passes one order and
+fails the other. A last test proves `.env` still resets an existing admin's
+email and password. Before the fix, five of the eight takeovers promoted the
+member, two crashed on the `users.email` unique key and one synced the admin.
+Mutation-checked on 2026-09-25: removing the refusal turns 8 of 9 red (five
+with the member's password and email overwritten, two on the unique-key crash,
+one with the admin synced), and checking only the first matched row turns the
+two two-row cases red in the admin-older order.
+
 Tests mirror the source tree:
 
 ```

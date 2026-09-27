@@ -63,6 +63,35 @@ initialises an empty data directory.
 
 ### Security
 
+- **The boot admin sync no longer promotes an existing account**
+  ([GHSA-w8q3-r34w-3pjh](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-w8q3-r34w-3pjh)).
+  At every boot the server makes sure the admin named in `.env` exists. It
+  looked for an account whose name was `ADMIN_USERNAME` or whose email was
+  `ADMIN_EMAIL`, took whichever it found first, made it an admin, and replaced
+  its password and email with `ADMIN_PASSWORD` and `ADMIN_EMAIL`. So an
+  ordinary member who held that name or that address became the instance admin
+  at the next restart, and any session they already had was an admin session
+  from then on. The simplest way there was for a member to change their own
+  name or email to the one the admin had just given up. Boot now does one of
+  three things and logs one line saying which, never the password: it
+  **creates** the admin when no account matches; it **syncs** an account that
+  is already an admin, whose email and password `.env` still resets at every
+  boot, as before; and when a matching account is not an admin it **refuses**,
+  changing nothing (not that account, and not the admin's either), and logs:
+
+  ```
+  admin sync: <ADMIN_USERNAME> / <ADMIN_EMAIL> matches an existing non-admin account (user <id>), refusing to promote it. Promote it in the admin console if that is intended.
+  ```
+
+  If that line appears, decide whose name or address it is. If that account is
+  meant to be the admin, promote it in the admin console (Users, click its
+  **User** badge); from the next boot on it is synced like any admin, so its
+  email and password become `ADMIN_EMAIL` and `ADMIN_PASSWORD`. If it is not,
+  set `ADMIN_USERNAME` and `ADMIN_EMAIL` to the admin's current name and
+  address, or to a name and address no account uses to have boot create a
+  fresh admin, and restart. If you ran an earlier release, look in the Users
+  panel for an admin you did not make: revoke it there (boot no longer puts it
+  back), and treat that account as one that had admin access.
 - **Changing an account's email or password now needs its current password,
   and signs every other device out.** Before, anyone holding a signed-in
   session could change the account's email and password with nothing else, and

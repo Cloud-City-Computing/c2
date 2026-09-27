@@ -208,7 +208,9 @@ UI hides GitHub affordances when the user hasn't linked, use `useGitHubStatus`.
 ### Admin console: `routes/admin.js`, `src/pages/AdminPage.jsx`
 Platform stats, workspace/user/invitation/squad management, live presence
 telemetry, permission flag toggles. Admin user is auto-synced from `.env` on
-startup (see `server.js`).
+startup (see `server.js`): created, or an existing admin's email and password
+reset, and **never promoted** from an existing non-admin account, which boot
+refuses and logs (`docs/maps/access-control.md` section 6).
 
 ### User preferences: `src/userPrefs.js`
 Editor mode (WYSIWYG vs Markdown), accent color, font size, layout density.
