@@ -239,6 +239,29 @@ describe('env-contract.js', () => {
     expect(contractProblems(ENV_CONTRACT)).toEqual([]);
   });
 
+  // Each stated default is proven against the code by a test elsewhere, which
+  // reads the expected value through contractDefault('<NAME>'). A new default
+  // entry fails here until such a test exists, and so does a listed file that
+  // stops calling it.
+  const DEFAULT_PROVEN_IN = {
+    DB_HOST: 'tests/mysql_connect.test.js',
+    DB_NAME: 'tests/mysql_connect.test.js',
+    DB_POOL_SIZE: 'tests/mysql_connect.test.js',
+    PORT: 'tests/server.test.js',
+    TRUST_PROXY: 'tests/app.test.js',
+    SMTP_PORT: 'tests/services/email.test.js',
+    SMTP_FROM: 'tests/services/email.test.js',
+  };
+
+  it('has a test proving every stated default against the code', () => {
+    const defaults = ENV_CONTRACT.filter((e) => e.kind === 'default').map((e) => e.name).sort();
+    expect(Object.keys(DEFAULT_PROVEN_IN).sort()).toEqual(defaults);
+    for (const [name, file] of Object.entries(DEFAULT_PROVEN_IN)) {
+      const source = readFileSync(path.join(APP, file), 'utf8');
+      expect(source, `${file} proves ${name}`).toContain(`contractDefault('${name}')`);
+    }
+  });
+
   it('documents every variable in the repository .env.example', () => {
     const example = readFileSync(path.join(REPO, '.env.example'), 'utf8');
     const undocumented = ENV_CONTRACT

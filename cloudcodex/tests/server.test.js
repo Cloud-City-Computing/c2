@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { contractDefault } from './contract-default.js';
 
 // server.js registers an 'error' handler on the returned server and reads
 // `server.listening` and `server.address()` inside listen's callback, so the
@@ -91,7 +92,7 @@ describe('server.js — startup env validation', () => {
       // ViteExpress.listen called with the app and a port number
       expect(listenMock).toHaveBeenCalled();
       const [, port] = listenMock.mock.calls[0];
-      expect(port).toBe(3000);
+      expect(port).toBe(Number(contractDefault('PORT')));
     } finally {
       process.env = original;
     }
@@ -520,6 +521,36 @@ describe('server.js: APP_URL', () => {
       });
     }
   );
+
+  // .env.example ships http://localhost:3000, which the gate accepts because
+  // the release compose file's evaluation run on one machine is legitimate.
+  // Copied to a public host it would still email links to the reader's own
+  // machine, so production boots but says so.
+  it.each(['http://localhost:3000', 'https://LOCALHOST', 'http://127.0.0.1:8080/', 'http://[::1]:3000', 'http://docs.localhost'])(
+    'boots in production with APP_URL %j but warns that links will point at this machine',
+    async (value) => {
+      await withEnv({ NODE_ENV: 'production', APP_URL: value }, () => {
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(listenMock).toHaveBeenCalledTimes(1);
+        expect(logged()).toContain(`⚠ APP_URL "${value}" points at this machine`);
+      });
+    }
+  );
+
+  it.each(['https://codex.example.com', 'http://10.0.0.5:3000', 'https://localhost.example.com'])(
+    'does not warn in production for APP_URL %j',
+    async (value) => {
+      await withEnv({ NODE_ENV: 'production', APP_URL: value }, () => {
+        expect(logged()).not.toMatch(/APP_URL/);
+      });
+    }
+  );
+
+  it('does not warn outside production, where localhost is the default', async () => {
+    await withEnv({ NODE_ENV: 'development', APP_URL: 'http://localhost:3000' }, () => {
+      expect(logged()).not.toMatch(/APP_URL/);
+    });
+  });
 
   it.each(['development', 'test', undefined])(
     'boots with APP_URL unset when NODE_ENV is %j, keeping the localhost default',

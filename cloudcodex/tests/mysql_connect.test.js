@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ENV_CONTRACT } from '../env-contract.js';
+import { contractDefault } from './contract-default.js';
 
 vi.unmock('../mysql_connect.js');
 
@@ -253,9 +253,7 @@ describe('DB_POOL_SIZE', () => {
   });
 
   it('defaults to what the contract says an unset DB_POOL_SIZE behaves as', () => {
-    const entry = ENV_CONTRACT.find((e) => e.name === 'DB_POOL_SIZE');
-    expect(entry.kind).toBe('default');
-    expect(poolSize(undefined)).toBe(Number(entry.default));
+    expect(poolSize(undefined)).toBe(Number(contractDefault('DB_POOL_SIZE')));
   });
 
   // The pool is built at import, so each case re-imports a fresh copy.
@@ -293,5 +291,43 @@ describe('DB_POOL_SIZE', () => {
       exitSpy.mockRestore();
       errorSpy.mockRestore();
     }
+  });
+});
+
+// The contract states what an unset DB_HOST and DB_NAME behave as; a blank
+// one (a generated env file writes `KEY=` for a default it leaves alone)
+// must behave the same, not connect with no database selected.
+describe('DB_HOST and DB_NAME defaults', () => {
+  const poolConfigWith = async (env) => {
+    const saved = { ...process.env };
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    // A deleted key would otherwise be refilled from a developer's real .env.
+    vi.doMock('dotenv', () => ({ default: { config: vi.fn() } }));
+    try {
+      vi.resetModules();
+      createPoolMock.mockClear();
+      await import('../mysql_connect.js');
+      return createPoolMock.mock.calls[0][0];
+    } finally {
+      vi.doUnmock('dotenv');
+      process.env = saved;
+    }
+  };
+
+  it.each([undefined, '', '  '])('DB_HOST %j is the contract default', async (value) => {
+    expect((await poolConfigWith({ DB_HOST: value })).host).toBe(contractDefault('DB_HOST'));
+  });
+
+  it.each([undefined, '', '  '])('DB_NAME %j is the contract default', async (value) => {
+    expect((await poolConfigWith({ DB_NAME: value })).database).toBe(contractDefault('DB_NAME'));
+  });
+
+  it('honours both when set', async () => {
+    const config = await poolConfigWith({ DB_HOST: 'database', DB_NAME: 'codex' });
+    expect(config.host).toBe('database');
+    expect(config.database).toBe('codex');
   });
 });

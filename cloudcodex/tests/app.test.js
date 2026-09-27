@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import app, { parseTrustProxy } from '../app.js';
-import { ENV_CONTRACT } from '../env-contract.js';
+import { contractDefault } from './contract-default.js';
 import { resetMocks } from './helpers.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,9 +65,7 @@ describe('app.js — Express configuration', () => {
     });
 
     it('defaults to what the contract says an unset TRUST_PROXY behaves as', () => {
-      const entry = ENV_CONTRACT.find((e) => e.name === 'TRUST_PROXY');
-      expect(entry.kind).toBe('default');
-      expect(parseTrustProxy(undefined)).toBe(Number(entry.default));
+      expect(parseTrustProxy(undefined)).toBe(Number(contractDefault('TRUST_PROXY')));
     });
 
     it('reaches Express: a hop count', async () => {
