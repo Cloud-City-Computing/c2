@@ -287,7 +287,7 @@ router.put('/document/:logId/title', requireAuth, asyncHandler(async (req, res) 
   }
 
   const { title } = req.body;
-  if (!title?.trim()) {
+  if (typeof title !== 'string' || !title.trim()) {
     return res.status(400).json({ success: false, message: 'Title is required' });
   }
   if (title.trim().length > 255) {

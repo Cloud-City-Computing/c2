@@ -67,12 +67,12 @@ dashes). In addition:
 
 ### Task 1.1 `archive.delete` is recorded (test first)
 
-- [ ] Export `resolveScope` from `routes/helpers/activity.js` as `resolveActivityScope` (the
+- [x] Export `resolveScope` from `routes/helpers/activity.js` as `resolveActivityScope` (the
       function at `activity.js:219`, unchanged).
-- [ ] In `tests/routes/archives.test.js`, a new test: `DELETE /api/archives/:id` calls `logActivity`
+- [x] In `tests/routes/archives.test.js`, a new test: `DELETE /api/archives/:id` calls `logActivity`
       with `workspaceId` and `squadId` resolved **before** the delete. It fails today because the
       call carries neither.
-- [ ] `routes/archives.js` `DELETE /archives/:id`: after the `isArchiveOwner` check and before the
+- [x] `routes/archives.js` `DELETE /archives/:id`: after the `isArchiveOwner` check and before the
       `DELETE`, `const scope = await resolveActivityScope('archive', Number(id));`, then
       `logActivity({ ..., workspaceId: scope?.workspace_id, squadId: scope?.squad_id })`. An orphaned
       archive (no squad) resolves to `null` and stays unrecorded, as every activity row needs a
@@ -112,11 +112,11 @@ deleted: logs.parent_id is ON DELETE SET NULL."
 
 ### Task 1.5 Live-MySQL proof and docs
 
-- [ ] `tests/integration/activity-gaps.test.js`: seed a workspace, squad, archive and two documents;
+- [x] `tests/integration/activity-gaps.test.js`: seed a workspace, squad, archive and two documents;
       drive the three routes through Supertest with a real session; assert each `activity_log` row
       (action, resource type and id, workspace, squad). `logActivity` is asynchronous, so poll the
       table for up to 2 seconds rather than sleeping.
-- [ ] `docs/maps/notifications-and-activity.md` (the action taxonomy gains `log.move`, and the
+- [x] `docs/maps/notifications-and-activity.md` (the action taxonomy gains `log.move`, and the
       archive-delete scope). Lint, test, coverage, integration, build.
 
 ---
