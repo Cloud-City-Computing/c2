@@ -405,7 +405,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-10 | A live-MySQL integration test project (**shipped 2026-09-25**; `npm run test:integration`, inside CI's required job) | nothing | yes |
 | W6-CDX-2 | One session per sign-in, stored hashed | W6-CDX-10 | yes |
 | W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes | W6-CDX-2 | yes |
-| W6-CDX-4 | An identity-resolution seam, Google moved onto it (**built 2026-09-25**, branch `track/w6-cdx-4-identity-seam`; Google now refuses a second Google subject as `identity_conflict`, closing open question C7) | nothing | yes |
+| W6-CDX-4 | An identity-resolution seam, Google moved onto it (**shipped 2026-09-25** in #56, released in 0.11.0; Google now refuses a second Google subject as `identity_conflict`, closing open question C7) | nothing | yes |
 | W6-CDX-5 | The OIDC relying party and `user_identities` | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3, W6-CMD-24 (the `returnTo` corpus) | yes |
 | W6-CDX-6 | Sign-out that propagates | W6-CDX-5; W6-CCID-3 | yes |
 | W6-CDX-7 | Machine JWTs through `verifyMachineCredential` | W6-CDX-5; W6-CCID-2, W6-CCID-3 | yes |
@@ -426,7 +426,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-28 | Content surfaces on the tokens | W6-CDX-22 | yes |
 | W6-CDX-29 | Admin and settings surfaces, and the UI track retires | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
 | W6-CDX-31 | Signals, health, readiness, the single-writer lock | W6-CDX-10 | yes |
-| W6-CDX-32 | Production configuration and the per-instance contract (Task 2.4, the admin sync never promotes, **landed early 2026-09-25** in its own PR, branch `track/w6-cdx-32-never-promote`, so GHSA-w8q3-r34w-3pjh's fix ships in the next release; the rest of the session is unchanged and still to do) | W6-CDX-10 | yes |
+| W6-CDX-32 | Production configuration and the per-instance contract (Task 2.4, the admin sync never promotes, **landed early 2026-09-25** in its own PR, #58, and released in 0.11.0 with GHSA-w8q3-r34w-3pjh; the rest of the session is unchanged and still to do) | W6-CDX-10 | yes |
 | W6-CDX-33 | The grant recipe and the isolation proof | W6-CDX-32 | no: before a fourth instance |
 | W6-CDX-34 | Document images for readers only | W6-CDX-10 | yes |
 | W6-CDX-35 | Backup and restore, with a drill | W6-CDX-31 | yes |
