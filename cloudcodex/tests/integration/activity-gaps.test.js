@@ -44,6 +44,9 @@ async function activityRows(action, resourceType, resourceId) {
   }
 }
 
+/** Long enough for the rest of a fire-and-forget logActivity to land. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 300));
+
 /** A user row, returned as its id. */
 async function insertUser(name) {
   const created = await c2_query('INSERT INTO users (name, email, password_hash) VALUES (?, ?, NULL)', [
@@ -115,6 +118,9 @@ describe('the tree route, on a real server', () => {
     ]);
     const [stored] = await c2_query('SELECT title FROM logs WHERE id = ?', [childLogId]);
     expect(stored.title).toBe('Renamed child');
+    // Auto-watch and fan-out run after the insert this just saw, so give them
+    // time to land before asserting that they did nothing.
+    await settle();
     expect(await c2_query('SELECT id FROM notifications WHERE user_id = ?', [watcherId])).toEqual([]);
     expect(await c2_query('SELECT id FROM watches WHERE user_id = ?', [userId])).toEqual([]);
   });
@@ -149,7 +155,7 @@ describe('the tree route, on a real server', () => {
       .send({ title: 'Renamed child', parent_id: parentLogId });
     expect(res.status).toBe(200);
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await settle();
     expect(await activityRows('log.rename', 'log', childLogId)).toHaveLength(1);
     expect(await activityRows('log.move', 'log', childLogId)).toHaveLength(1);
   });

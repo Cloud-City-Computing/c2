@@ -191,7 +191,7 @@ is no squad-level fallback for `create_squad`, which is correct: squads are
 created in a workspace, not in a squad.
 
 Currently applied on exactly two routes: `routes/archives.js:117`
-(`create_archive`) and `routes/archives.js:470` (`create_log`), plus the upload
+(`create_archive`) and `routes/archives.js:489` (`create_log`), plus the upload
 route `routes/upload.js:95` (`create_log`).
 
 Step 3 is what makes the global flag mean "may create" rather than "may create
@@ -225,7 +225,7 @@ allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
 Called from the REST publish route and from the collab WebSocket publish message
-(`services/collab.js:547`), so both paths share one policy.
+(`services/collab.js:548`), so both paths share one policy.
 
 ### 3c. Archive ownership: `isArchiveOwner`
 
@@ -235,9 +235,9 @@ destructive and administrative verbs. Admin, archive creator, workspace owner
 `can_write` or the JSON grant arrays: someone with full write access on an
 archive still cannot delete it or change its ACLs.
 
-Callers: delete archive (`archives.js:195`), manage access
-(`archives.js:247`), link and unlink archive repos (`archives.js:595`,
-`archives.js:644`).
+Callers: delete archive (`archives.js:198`), manage access
+(`archives.js:259`), link and unlink archive repos (`archives.js:700`,
+`archives.js:749`).
 
 ### 3d. Squad management: `canManageSquad`, and its GitHub-only twin
 
@@ -357,7 +357,7 @@ and a rewrite of every caller, for a check most of those callers do not need.
 stays exactly where it is, below the global flag, and is not hoisted into step 3:
 
 - Both `create_log` routes re-check with `writeAccessWhere` immediately after
-  the middleware (`archives.js:486-496`, `upload.js:107-119`), so the
+  the middleware (`archives.js:505-515`, `upload.js:107-119`), so the
   archive-derived path was never open the way the body path was.
 - Checking it in the middleware would be a behaviour regression. A caller
   holding the global `create_log` flag plus an explicit `write_access` JSON

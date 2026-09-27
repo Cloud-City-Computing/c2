@@ -14,6 +14,21 @@ initialises an empty data directory.
 
 ### Fixed
 
+- **Deleting an archive is recorded in the activity log.** The route looked
+  up the archive's workspace only after deleting the row that led to it, so
+  every `archive.delete` event was dropped. It now reads the workspace and
+  squad first. An archive with no squad has no workspace and stays
+  unrecorded, as before.
+- **Renaming or moving a document in the archive tree is recorded.**
+  `PUT /api/archives/:archiveId/logs/:logId` now logs `log.rename` when the
+  title changes and `log.move`, with the previous and new parent, when the
+  parent changes; re-sending the stored values logs nothing, and neither
+  event notifies watchers. It also applies the title rules of
+  `PUT /api/document/:logId/title` (required, at most 255 characters, the
+  same 400 responses), where it used to accept any length and answer a
+  non-string title with a 500, and it answers 404 for a document that is not
+  in the archive instead of reporting success.
+
 - **A fresh install on an SELinux-enforcing host gets its schema.**
   `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`
   read-only with no SELinux relabel, so on Fedora, RHEL and their relatives the
