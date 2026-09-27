@@ -140,6 +140,37 @@ The whole surface is one function, `verifyMachineCredential` in `services/machin
 
 ---
 
+## Document Images
+
+An image pasted or uploaded into a document is stored as a file named by the
+first 16 hex digits of its SHA-256 and shown through its `/doc-images/<hash>.webp`
+URL. **Knowing that URL is not access.** `GET /doc-images/:file` serves the
+image only to the user who uploaded it and to users who can read a document
+that holds it, through the same archive read check as the document itself;
+everyone else (anonymous, signed in without access, a missing file, a
+malformed name) gets one identical empty `404` with `Cache-Control: no-store`.
+A served image is `Cache-Control: private, max-age=86400`, so no shared cache
+keeps it, though a browser may keep it for a day, including after its user
+signs out.
+
+Which documents hold an image is the `doc_images` table. The ways into it are
+checked too:
+
+- The upload (`POST /api/doc-images/upload`) needs a `logId` the caller can
+  write, and processes nothing without one.
+- A save records an image against the document only if the writer supplied its
+  bytes in that save, or can already see it. Pasting someone else's image URL
+  into a document you can write stores the reference and grants nothing.
+- Export (HTML, DOCX, markdown) inlines only the images the exporting user can
+  see, so it cannot be used to read an image file the handler would refuse.
+
+`DOC_IMAGES_PUBLIC=1` turns all of this off and serves every image to anyone
+with its address, which is how every earlier release behaved. It exists for the
+upgrade window before `npm run backfill:doc-images` has run, and should be
+unset afterwards. Avatars stay public by decision.
+
+---
+
 ## OAuth Token Encryption
 
 GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key derived from `GITHUB_CLIENT_SECRET` via scrypt. OAuth state tokens are single-use and expire after 10 minutes.
@@ -148,7 +179,7 @@ GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key deri
 
 ## Security Headers
 
-**Helmet** middleware applies a strict Content Security Policy and standard security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, etc.) to every **`/api`** response (`app.js:112-125`). It is scoped to `/api` on purpose, so the Vite dev server's inline module scripts are not blocked, and that scope applies in production too: the single-page app's HTML, its built assets and the `/avatars` and `/doc-images` static files are served **without** a CSP or frame protection today. Extending the policy to the whole app in production is planned in [`specs/2026-09-24-suite-hosting-readiness.md`](specs/2026-09-24-suite-hosting-readiness.md) (W6-CDX-32).
+**Helmet** middleware applies a strict Content Security Policy and standard security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, etc.) to every **`/api`** response (`app.js:113-126`). It is scoped to `/api` on purpose, so the Vite dev server's inline module scripts are not blocked, and that scope applies in production too: the single-page app's HTML, its built assets, the `/avatars` static files and `/doc-images` responses are served **without** a CSP or frame protection today (a served document image does carry `X-Content-Type-Options: nosniff`). Extending the policy to the whole app in production is planned in [`specs/2026-09-24-suite-hosting-readiness.md`](specs/2026-09-24-suite-hosting-readiness.md) (W6-CDX-32).
 
 ---
 

@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import request from 'supertest';
@@ -246,12 +246,16 @@ describe('document images on live MySQL', () => {
 
     it('is refused into a document the uploader cannot write, and nothing is written', async () => {
       const png = await sharp({ create: { width: 3, height: 3, channels: 3, background: { r: 1, g: 2, b: 3 } } }).png().toBuffer();
+      // Cleaned up even if a regression writes it, so a failure leaves nothing behind.
+      const file = path.join(DOC_IMAGES_DIR, `${createHash('sha256').update(png).digest('hex').slice(0, 16)}.webp`);
+      filesWritten.push(file);
       const res = await request(app)
         .post('/api/doc-images/upload')
         .set('Authorization', `Bearer ${tokens.stranger}`)
         .field('logId', String(ids.docA))
         .attach('files', png, 'nope.png');
       expect(res.status).toBe(403);
+      expect(existsSync(file)).toBe(false);
       const [{ n }] = await c2_query('SELECT COUNT(*) AS n FROM doc_images WHERE uploaded_by = ?', [ids.stranger]);
       expect(n).toBe(0);
     });

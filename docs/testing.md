@@ -155,6 +155,7 @@ modules** are locked at higher floors:
 | `routes/notifications.js` |  95   |  95        |  88      |  95       |
 | `routes/squads.js`        |  85   |  75        |  65      |  95       |
 | `routes/watches.js`       |  85   |  85        |  73      |  95       |
+| `routes/doc-images-serve.js` | 95 | 95 | 92 | 95 |
 | `services/email.js`       |  95   |  95        |  70      |  95       |
 | `services/email-templates.js` | 95 | 90 | 90 | 95 |
 | `services/notifications.js` | 90 | 88 | 80 | 88 |

@@ -40,17 +40,49 @@ Two consequences worth knowing:
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', 1)                    app.js:42
+app.set('trust proxy', 1)                    app.js:43
   │
-  ├─ CORS, scoped to /api                    app.js:53-109
-  ├─ helmet + CSP, scoped to /api            app.js:112-125
-  ├─ express.json({ limit: '2mb' })          app.js:137
-  ├─ authLimiter on 9 paths + reader-check   app.js:140-163
-  ├─ searchLimiter on /api/users/search      app.js:174
-  ├─ static /avatars      (7d immutable)     app.js:177-180
-  ├─ static /doc-images   (30d immutable)    app.js:183-186
+  ├─ CORS, scoped to /api                    app.js:54-110
+  ├─ helmet + CSP, scoped to /api            app.js:113-126
+  ├─ express.json({ limit: '2mb' })          app.js:138
+  ├─ authLimiter on 9 paths + reader-check   app.js:141-164
+  ├─ searchLimiter on /api/users/search      app.js:175
+  ├─ static /avatars      (7d immutable)     app.js:178-181
+  ├─ /doc-images, authorized (private, 1d)   app.js:185
   └─ 18 routers, all mounted at /api
 ```
+
+**`/doc-images` is an authorized handler, not a static mount** (W6-CDX-34).
+`docImagesHandler()` in `routes/doc-images-serve.js` is built once when
+`app.js` loads. With `DOC_IMAGES_PUBLIC=1` it returns the old
+`express.static` mount (30 days, `public, immutable`) and logs one line saying
+so; otherwise it returns a router with one route, `GET /:file`:
+
+```
+/^[0-9a-f]{16}\.webp$/ ?  ── no ──────────────────────────────┐
+  │ yes                                                        │
+extractSessionToken(req) → validateAndAutoLogin(token)         │
+  │ (no touchSession: an image load is not activity)           │
+  │ no user ───────────────────────────────────────────────────┤
+readableDocImageHashes([hash], user)   (routes/helpers/images.js)
+  │ uploader, or a reader of a document holding it?            │
+  │ no ────────────────────────────────────────────────────────┤
+res.sendFile(<hash>.webp, root = DOC_IMAGES_DIR)               │
+  │ 200 image/webp, Cache-Control: private, max-age=86400,     │
+  │     X-Content-Type-Options: nosniff                        │
+  │ missing file (send's 404) ─────────────────────────────────┤
+  │ any other read error → errorHandler (JSON 500)             │
+                                                               ▼
+              404, empty body, Cache-Control: no-store (one response for every reason)
+```
+
+A catch-all after the route sends the same 404 for anything else under
+`/doc-images` (a nested path, another method), so nothing falls through to the
+SPA. The session comes from the same `extractSessionToken` as `requireAuth`,
+so an `<img>` request is authorized by its cookie, which `SameSite=Strict`
+still sends for a same-origin subresource. Who counts as a reader is
+[access-control.md](access-control.md) section 3f; the table is
+[data-model.md](data-model.md) section 3.
 
 **CORS** (`app.js`, the `cors((req, cb) => ...)` block) allows, in order: a
 request with no `Origin` header at all; a **same-origin** request, decided by
@@ -91,12 +123,12 @@ honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
 app's port directly, so an attacker could set that header themselves and turn
 the same-origin clause into "allow any origin".
 
-**CSP** (`app.js:113-124`) is scoped to `/api` on purpose so the Vite dev server's
+**CSP** (`app.js:114-125`) is scoped to `/api` on purpose so the Vite dev server's
 inline module scripts are not blocked. `frameAncestors: 'none'`,
 `objectSrc: 'none'`, `connectSrc` allows `ws:`/`wss:` for the two WebSockets,
 `imgSrc` allows `data:` and `blob:` for pasted images.
 
-**Body limit is 2 MB** (`app.js:137`). The collab WebSocket has its own, larger
+**Body limit is 2 MB** (`app.js:138`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:43-44`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -104,8 +136,8 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:128-135`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:153`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:163`) |
-| `searchLimiter` (`app.js:166-173`) | 15 min / 60 | `/api/users/search` only (`app.js:174`), to blunt user enumeration |
+| `authLimiter` (`app.js:129-136`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:141-148`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:154`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:164`) |
+| `searchLimiter` (`app.js:167-174`) | 15 min / 60 | `/api/users/search` only (`app.js:175`), to blunt user enumeration |
 
 Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. One test exercises the

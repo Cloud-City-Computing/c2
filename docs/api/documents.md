@@ -190,15 +190,46 @@ Delete a version snapshot. Requires the `can_delete_version` squad permission or
 
 ---
 
-### `GET /api/document/:logId/export/markdown`
+### `GET /api/document/:logId/export?format=<html|md|txt|docx>`
 
-Export the document as a Markdown (`.md`) file download. Converts HTML to Markdown via Turndown, with embedded images inlined as base64.
+Export the document as a file download: `html` (a standalone page), `md`
+(Markdown via Turndown), `txt` (tags stripped) or `docx` (via `html-to-docx`).
+Requires read access; `404` otherwise. `html`, `md` and `docx` inline the
+document's images as base64, **only the images the caller may see** (see
+Images below); any other image reference is left as its URL.
 
 ---
 
-### `GET /api/document/:logId/export/docx`
+## Images
 
-Export the document as a Word (`.docx`) file download via `html-to-docx`.
+---
+
+### `POST /api/doc-images/upload`
+
+Multipart form: `logId` (the document the images go into) and `files`
+(1 to 10 images, JPEG, PNG, WebP, GIF or BMP, 10 MB each). Requires write
+access to `logId`.
+
+Each image is resized to fit 2048 px, converted to WebP, named by its content
+hash, and recorded against `logId` as the caller's upload, so the document's
+readers can see it at once.
+
+**Response:** `{ success: true, urls: ["/doc-images/<hash>.webp"], data: { files, isImages, baseurl } }`
+
+**Errors:** `400` no files, or `Invalid or missing logId`; `403` `Document not
+found or write access denied` (nothing is processed); `422` no image could be
+processed.
+
+---
+
+### `GET /doc-images/<hash>.webp`
+
+Not under `/api`. Serves a stored image as `image/webp` with
+`Cache-Control: private, max-age=86400` to its uploader and to anyone who can
+read a document that holds it, authenticated by the session cookie (as an
+`<img>` sends it) or a Bearer token. Every other request, including an
+anonymous one, gets the same empty `404` with `Cache-Control: no-store`.
+`DOC_IMAGES_PUBLIC=1` serves every image to anyone instead.
 
 ---
 

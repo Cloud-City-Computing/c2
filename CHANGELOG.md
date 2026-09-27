@@ -23,6 +23,45 @@ initialises an empty data directory.
   every host bind mount in the two files. An install that already hit this
   starts again from an empty data directory; see `docs/troubleshooting.md`.
 
+### Changed
+
+- `POST /api/doc-images/upload` needs a `logId` form field naming the document
+  the images go into, and write access to it: without one it answers `400`,
+  without access `403`, and nothing is processed either way. The editor sends
+  it. `DOC_IMAGES_PUBLIC` is new in `.env.example` (see Security).
+
+### Security
+
+- **Document images are served only to people who can read the document.**
+  `/doc-images/<hash>.webp` was a public static mount, cached `public` for 30
+  days, so anyone with an image's address could fetch it. It now serves an
+  image to its uploader and to users who can read a document that holds it,
+  cached `private` for a day; everyone else, signed in or not, gets the same
+  empty `404`. Pasting another document's image URL into a document you can
+  write grants nothing, and export inlines only the images the exporting user
+  can see. `DOC_IMAGES_PUBLIC=1` restores the old public mount. Avatars stay
+  public.
+
+### Migration
+
+**The document-images migration,**
+[`migrations/2026-09-27-doc-images.sql`](migrations/2026-09-27-doc-images.sql),
+adds the `doc_images` table: which documents hold which image. Apply it with
+`npm run migrate` as usual. **Then run the backfill once, before starting the
+new image,** or every image in an existing document is hidden from its readers:
+
+```bash
+docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images
+# built from source: docker compose -f docker-compose-prod.yml run --rm app npm run backfill:doc-images
+# dev: cd cloudcodex && npm run backfill:doc-images
+```
+
+It records every image that a document's current HTML or any of its versions
+shows, prints how many, and is safe to run again. If the app has to start
+before it runs, set `DOC_IMAGES_PUBLIC=1` for that window and unset it after.
+A fresh install needs neither. See `docs/deployment.md`, "The document-images
+backfill, once".
+
 ## [0.11.0] - 2026-09-27
 
 The account-security release. Three security fixes: Google sign-in no longer

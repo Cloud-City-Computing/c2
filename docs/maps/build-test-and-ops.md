@@ -39,10 +39,11 @@ it (directly or transitively) before reading `process.env`.
 | `test:integration` | `vitest run --project integration` | opt-in, needs a live MySQL; see section 5 |
 | `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
+| `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent. In containers it runs like `migrate`, through `run --rm app`. |
 
 `NODE_ENV` matters in three places: CORS localhost allowance
-(`app.js:101`), rate-limiter `skip` when `'test'` (`app.js:133`,
-`app.js:171`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+(`app.js:102`), rate-limiter `skip` when `'test'` (`app.js:134`,
+`app.js:172`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -373,9 +374,10 @@ empties `document.body`.
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **30 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **31 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
-arrived with the identity seam. The security-critical and
+arrived with the identity seam; the 31st, `routes/doc-images-serve.js` (95
+lines, 92 branches), with the authorized image handler. The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -386,6 +388,7 @@ well-covered modules are ratcheted high:
 | `routes/admin.js`, `routes/archives.js` | 90 |
 | `services/notifications.js` | 90 |
 | `services/identity.js` | 95 |
+| `routes/doc-images-serve.js` | 95 |
 | `routes/helpers/**` | 88 |
 | `routes/auth.js`, `routes/squads.js`, `routes/watches.js`, `mysql_connect.js` | 85 |
 | `middleware/**` | 80 |
@@ -470,7 +473,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 30 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 31 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and

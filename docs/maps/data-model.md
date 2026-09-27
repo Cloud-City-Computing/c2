@@ -1,6 +1,6 @@
 # Data Model Map
 
-24 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
+25 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
 definition; `migrations/` is the incremental path for databases that already
 exist. Both must be kept in sync, and there is a live trap in how `init.sql` is
 re-applied.
@@ -106,6 +106,36 @@ Consequences:
   giving documents a tree shape rendered by `PageTree.jsx`.
 - `logs.version` is an integer counter bumped on publish and restore; the
   `versions` table holds the snapshots.
+
+### `doc_images`: which documents hold which image (W6-CDX-34)
+
+```sql
+hash        CHAR(16) NOT NULL      -- the file name without .webp
+log_id      INT NOT NULL           -- FK logs ON DELETE CASCADE
+uploaded_by INT NULL               -- FK users ON DELETE SET NULL
+PRIMARY KEY (hash, log_id), INDEX idx_doc_images_log (log_id)
+```
+
+`init.sql:370`, `migrations/2026-09-27-doc-images.sql`. Image files stay on
+disk (`public/doc-images/`, content-addressed by the first 16 hex digits of
+the upload's SHA-256), and a document's HTML names them by URL; this table is
+the only thing that says which documents hold an image, and the
+`/doc-images` handler serves an image only through it (who counts is
+[access-control.md](access-control.md) section 3f). Rows are written three
+ways: the upload route, with `uploaded_by` set; `recordDocImages` after an
+`html_content` write, `uploaded_by` set only for images whose bytes that write
+supplied; and the one-time `npm run backfill:doc-images`, with `uploaded_by`
+NULL, from `logs.html_content` and `versions.html_content`. Everything uses
+`INSERT IGNORE`, so a repeat is free. Nothing deletes a row except the
+cascade: an image a document stops showing stays readable to that document's
+readers, and a file no document holds is never removed (both deferred by the
+spec).
+
+**The upgrade gap.** The migration creates the table empty, so on an existing
+install every image is hidden from its readers until the backfill runs. The
+backfill trusts every reference already stored, so it belongs right after the
+migration and before the app starts; `DOC_IMAGES_PUBLIC=1` bridges the gap
+when that order is not possible.
 
 ## 4. Sessions and auth tables
 
@@ -483,8 +513,8 @@ fails if any host bind mount in the prod or release file loses its label.
 ### Trap 2 (fixed): `make reset-db` used to be an incomplete reset
 
 `make reset-db` (`Makefile:21-24`) pipes `init.sql` then `seed.sql` into the
-running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-36`)
-now covers all 24 tables. It used to omit `github_links`, `activity_log`,
+running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-37`)
+now covers all 25 tables (`doc_images` joined it with its table). It used to omit `github_links`, `activity_log`,
 `watches` and `notifications`, whose `CREATE TABLE` statements don't use
 `IF NOT EXISTS`, so `reset-db` failed partway through with a duplicate-table
 error on a database that already had those four. Fixed by adding them to the

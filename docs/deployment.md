@@ -506,6 +506,29 @@ say how), then run `npm run migrate` again. Such a file needs the runner: the
 `mysql` client cannot run it, because it splits the guard's body on its
 semicolons.
 
+### The document-images backfill, once
+
+`2026-09-27-doc-images.sql` creates `doc_images`, the table that says which
+documents hold which image, and the `/doc-images` handler now serves an image
+only to its uploader and to readers of a document named there. The table starts
+empty, so **on an install that already has documents with images, every image
+is hidden from its readers until the backfill runs.** Run it once, after the
+migration and before starting the new image, the same way as the runner:
+
+| Deployment | Command |
+|---|---|
+| `docker-compose-release.yml` | `docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images` |
+| `docker-compose-prod.yml` | `docker compose -f docker-compose-prod.yml run --rm app npm run backfill:doc-images` |
+| `docker-compose.yaml` (dev) | `cd cloudcodex && npm run backfill:doc-images` |
+
+It records a row for every `/doc-images/` image in `logs.html_content` and
+`versions.html_content`, prints `backfill-doc-images: recorded N image
+reference(s) from D document(s) and V version(s)`, and is idempotent, so a
+second run records 0. It trusts every reference already stored, which is why it
+belongs before the app starts: run later, it also trusts whatever was saved in
+between. If the app has to start first, set `DOC_IMAGES_PUBLIC=1` (images served
+to anyone with the address, as before), run the backfill, then unset it and
+restart. A fresh install needs none of this.
 
 ---
 
@@ -543,11 +566,13 @@ container. The single-process story is load-bearing for self-hosting.
 | Path                  | Cache headers              |
 |-----------------------|-----------------------------|
 | `/avatars/*`          | `max-age=604800, immutable` (7 days)  |
-| `/doc-images/*`       | `max-age=2592000, immutable` (30 days) |
+| `/doc-images/*`       | `private, max-age=86400` (1 day); a refusal is `no-store`. With `DOC_IMAGES_PUBLIC=1`, `public, max-age=2592000, immutable` (30 days) |
 | Vite-built assets     | hashed filenames + long max-age (Vite default) |
 
-Avatars and doc images are content-addressed by SHA — a new upload
-gets a new URL, so long cache windows are safe.
+Avatars and doc images are content-addressed by SHA, so a new upload gets a new
+URL and long cache windows are safe. Document images are `private` because they
+are served per user: a reverse proxy or CDN in front of the app must not cache
+`/doc-images/`, and `private` tells a standards-following one not to.
 
 ---
 

@@ -442,6 +442,19 @@ single-writer lock (PR 1) is acquired, since `GET_LOCK` needs no privilege.
 
 ## PR 4: W6-CDX-34, document images only for people who can read the document
 
+**Status: shipped 2026-09-27** on `track/w6-cdx-34-image-readers` (tasks 4.1 to 4.5 done; these
+tasks carry no checkboxes). Where the build goes past the text below, and why:
+
+- `recordDocImages(logId, html, user, saved)` records a reference to an image the writer did not
+  supply the bytes for only when the writer can already see it; recording every reference would
+  let anyone who knows an address read it by pasting it into a document they can write.
+- Export (`inlineImagesForExport`, `inlineImagesForMarkdownExport`) asks the same question before
+  it inlines a file off disk, since it would otherwise bypass the handler.
+- The backfill also reads `versions.html_content`, so restoring an old version does not bring back
+  images nobody can see.
+- The GitHub import and pull paths are not hooked: an image reference arriving that way is
+  recorded on the next explicit save by someone who can see it.
+
 ### Task 4.1 The table
 
 `migrations/<today>-doc-images.sql` and `init.sql`:

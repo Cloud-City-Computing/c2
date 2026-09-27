@@ -428,7 +428,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-31 | Signals, health, readiness, the single-writer lock | W6-CDX-10 | yes |
 | W6-CDX-32 | Production configuration and the per-instance contract (Task 2.4, the admin sync never promotes, **landed early 2026-09-25** in its own PR, #58, and released in 0.11.0 with GHSA-w8q3-r34w-3pjh; the rest of the session is unchanged and still to do) | W6-CDX-10 | yes |
 | W6-CDX-33 | The grant recipe and the isolation proof | W6-CDX-32 | no: before a fourth instance |
-| W6-CDX-34 | Document images for readers only | W6-CDX-10 | yes |
+| W6-CDX-34 | Document images for readers only (**shipped 2026-09-27** on `track/w6-cdx-34-image-readers`) | W6-CDX-10 | yes |
 | W6-CDX-35 | Backup and restore, with a drill | W6-CDX-31 | yes |
 | W6-CDX-36 | The Wave 6 Codex release the test box pins | every session marked yes above | yes |
 

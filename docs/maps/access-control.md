@@ -155,7 +155,7 @@ now grants on a per-PR archive instead. See
 The practical rule: **the archive is the ACL boundary.** Per-document
 permissions do not exist.
 
-## 3. The five secondary systems
+## 3. The six secondary systems
 
 ### 3a. Global feature permissions: `requirePermission(flag)`
 
@@ -401,6 +401,53 @@ and ships no cleanup migration on purpose, because no query separates an attack
 row from an install that used these routes exactly as they behaved. See B16 in
 [open-questions.md](open-questions.md).
 
+### 3f. Document images: `readableDocImageHashes` (W6-CDX-34)
+
+`routes/helpers/images.js`. A stored image (`public/doc-images/<hash>.webp`,
+the first 16 hex digits of the uploaded bytes' SHA-256) is visible to a user
+when either holds:
+
+1. **they uploaded it**: some `doc_images` row for the hash has
+   `uploaded_by = user.id`. This survives the uploader losing access to the
+   document, but not the document being deleted (the row cascades away);
+2. **they can read a document that holds it**: some `doc_images` row for the
+   hash names a log whose archive passes `readAccessWhere('p')`, the same
+   fragment `checkLogReadAccess` uses, so an admin sees every image.
+
+One query answers both, for a batch of hashes: the `IN (...)` list first, then
+`user.id`, then the seven `readAccessParams(user)`. Three callers ask it, and
+nothing else may read an image file for a user:
+
+| Caller | What a "no" does |
+|---|---|
+| `docImagesHandler` (`routes/doc-images-serve.js`), the `/doc-images` mount | the empty 404 ([request-lifecycle.md](request-lifecycle.md) section 2) |
+| `inlineImagesForExport` / `inlineImagesForMarkdownExport` (HTML, DOCX, markdown export) | the reference stays a URL instead of becoming a data URI |
+| `recordDocImages`, after every `html_content` write that extracts images | the reference is stored but gets no row for this document |
+
+**The write-path gate is the part that is easy to lose.** `doc_images` rows
+are how a document grants its readers an image, so whoever can write a
+document can grant. `recordDocImages(logId, html, user, saved)` therefore
+records a hash as the writer's own (`uploaded_by = user.id`) only when this
+write decoded its bytes (the `saved` set `extractImagesFromHtml` fills), and
+records any other reference (with `uploaded_by` NULL) only when the writer can
+already see that image. Without the second rule, knowing an image's address is
+enough to read it: paste the URL into any document you can write, and the
+handler serves it to you as that document's reader. Holding the bytes is not a
+leak, because they hash to the same name. The upload route
+(`POST /api/doc-images/upload`) is the other writer: it requires a `logId` the
+caller can write (`checkLogWriteAccess`) before it processes anything, and
+records each image as the uploader's.
+
+**What is not gated.** `insertDocImageRows` writes whatever it is handed; only
+the upload route (after its write check) and the one-time backfill
+(`scripts/backfill-doc-images.js`, which trusts what existing documents
+already show, since those images were public until this change) call it
+directly. The GitHub import and pull paths store remote markdown without
+recording rows, so an image reference arriving that way shows to its readers
+only after the next explicit save by someone who can see it. With
+`DOC_IMAGES_PUBLIC=1` the handler and export ask nothing; recording still
+happens.
+
 ## 4. How membership itself is granted
 
 The checks above all assume a `squad_members` row already exists; this
@@ -622,7 +669,10 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
    create anywhere" (3e).
 3. Reading or writing an existing document or archive, call one of the four
    `check*Access` helpers, or interpolate the fragment with the matching
-   `*Params` spread. Never hand-roll the SQL.
+   `*Params` spread. Never hand-roll the SQL. A new path that writes
+   `html_content` through `extractImagesFromHtml` calls `recordDocImages`
+   after the write with the same `saved` set, and one that reads image files
+   for a user asks `readableDocImageHashes` first (3f).
 4. Destructive or ACL-changing, use `isArchiveOwner`, not write access.
 5. Wrap in `asyncHandler`, end the router with `router.use(errorHandler)`.
 6. Add the negative test. Every route test file in `tests/routes/` already has
