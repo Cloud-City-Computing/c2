@@ -121,7 +121,7 @@ container is the old image, with neither the script nor the mount.
 
 ## 5. Testing
 
-**Vitest 4, three projects** in one config (`vitest.config.js:24-70`). A single
+**Vitest 4, three projects** in one config (`vitest.config.js:24-75`). A single
 `npm test` runs the two default ones, `backend` and `frontend`; the third,
 `integration`, is opt-in because it needs a MySQL server:
 
@@ -366,7 +366,7 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:99-164`. The global floor is deliberately low because
+`vitest.config.js:104-169`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
@@ -405,7 +405,7 @@ treatment or it silently counts for nothing.
 **The practical consequence:** adding an uncovered branch to a high-threshold
 file fails CI even though every test passes. Write the test with the code. When
 you raise real coverage, ratchet the threshold up in the same PR; the comment at
-`vitest.config.js:93-98` explains the "achieved minus a small buffer" policy.
+`vitest.config.js:98-103` explains the "achieved minus a small buffer" policy.
 
 ## 6. CI
 
