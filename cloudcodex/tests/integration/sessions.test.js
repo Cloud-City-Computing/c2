@@ -158,6 +158,14 @@ describe(`${MIGRATION} applied for real`, () => {
         'INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))',
         [token, userId]
       );
+      // A raw token whose letters all fall in A-F: only case separates it
+      // from a digest, and the column's collation ignores case, which is what
+      // the migration's 'c' flag is for.
+      const upperHexToken = hashSessionToken(rawToken()).toUpperCase();
+      await query(
+        'INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))',
+        [upperHexToken, userId]
+      );
       // A row that is already a digest (as the new image would write) must be
       // left alone, which is what makes the file safe to meet twice.
       const alreadyDigest = hashSessionToken(rawToken());
@@ -177,9 +185,10 @@ describe(`${MIGRATION} applied for real`, () => {
       expect(column).toEqual({ IS_NULLABLE: 'NO', COLUMN_DEFAULT: null });
 
       const ids = (await rowsOf(userId)).map(r => r.id).sort();
-      expect(ids).toEqual([alreadyDigest, hashSessionToken(token)].sort());
-      expect((await rowsOf(userId)).map(r => r.auth_provider)).toEqual(['local', 'local']);
+      expect(ids).toEqual([alreadyDigest, hashSessionToken(token), hashSessionToken(upperHexToken)].sort());
+      expect((await rowsOf(userId)).map(r => r.auth_provider)).toEqual(['local', 'local', 'local']);
       expect(await validateAndAutoLogin(token)).toMatchObject({ id: userId });
+      expect(await validateAndAutoLogin(upperHexToken)).toMatchObject({ id: userId });
 
       // The file's UPDATE, a second time: nothing left to hash.
       const update = readFileSync(path.join(MIGRATIONS_DIR, MIGRATION), 'utf8')

@@ -29,15 +29,16 @@ import bcrypt from 'bcrypt';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query, generateSessionToken } from '../../mysql_connect.js';
+import { hashSessionToken } from '../../services/session-token.js';
 import { sendEmail } from '../../services/email.js';
 
 const OLD_PASSWORD = 'OldPassw0rd!';
 const NEW_PASSWORD = 'NewPassw0rd!';
 
 /**
- * A user with `sessions` live session rows: the first minted the way sign-in
- * mints one, the rest inserted directly, as a second device's row will be once
- * sessions are per sign-in. Returns the user id and the tokens.
+ * A user with `sessions` live session rows, each minted the way sign-in mints
+ * one: one row per sign-in, so each is a separate device. Returns the user id
+ * and the tokens.
  * @param { String } name
  * @param { { password?: String|null, extraSessions?: Number } } [opts]
  */
@@ -49,23 +50,22 @@ async function userWithSessions(name, { password = OLD_PASSWORD, extraSessions =
     hash,
   ]);
   const userId = created.insertId;
-  const tokens = [await generateSessionToken({ id: userId })];
-  for (let i = 0; i < extraSessions; i++) {
-    const token = randomBytes(32).toString('hex');
-    await c2_query(
-      'INSERT INTO sessions (user_id, id, created_at, expires_at) VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))',
-      [userId, token]
-    );
-    tokens.push(token);
-  }
+  const tokens = [];
+  for (let i = 0; i <= extraSessions; i++) tokens.push(await generateSessionToken({ id: userId }));
   return { userId, tokens };
 }
 
-/** Every session id the user holds, sorted in JS (the column's collation ignores case). */
+/**
+ * Every session id the user holds, sorted in JS. sessions.id is the digest of
+ * a token, so compare against `digests(tokens)`, never the tokens.
+ */
 async function sessionsOf(userId) {
   const rows = await c2_query('SELECT id FROM sessions WHERE user_id = ?', [userId]);
   return rows.map(row => row.id).sort();
 }
+
+/** The stored ids for these tokens, sorted like sessionsOf. */
+const digests = (tokens) => tokens.map(hashSessionToken).sort();
 
 /** The status a requireAuth route answers for `token`. */
 async function statusFor(token) {
@@ -89,7 +89,7 @@ describe('a password change through update-account, on a real server', () => {
     expect(res.status).toBe(200);
     expect(res.body.token).toMatch(/^[A-Za-z0-9]{64}$/);
     expect(tokens).not.toContain(res.body.token);
-    expect(await sessionsOf(userId)).toEqual([res.body.token]);
+    expect(await sessionsOf(userId)).toEqual(digests([res.body.token]));
 
     for (const old of tokens) expect(await statusFor(old)).toBe(401);
     expect(await statusFor(res.body.token)).toBe(200);
@@ -111,7 +111,7 @@ describe('a password change through update-account, on a real server', () => {
     expect(res.status).toBe(401);
     const [after] = await c2_query('SELECT password_hash FROM users WHERE id = ?', [userId]);
     expect(after.password_hash).toBe(before.password_hash);
-    expect(await sessionsOf(userId)).toEqual([...tokens].sort());
+    expect(await sessionsOf(userId)).toEqual(digests(tokens));
   });
 });
 
@@ -126,7 +126,7 @@ describe('an email change through update-account, on a real server', () => {
     expect(res.status).toBe(200);
     const [row] = await c2_query('SELECT email FROM users WHERE id = ?', [userId]);
     expect(row.email).toBe('emchange-new@example.com');
-    expect(await sessionsOf(userId)).toEqual([res.body.token]);
+    expect(await sessionsOf(userId)).toEqual(digests([res.body.token]));
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail.mock.calls[0][0].to).toBe('emchange@example.com');
   });
@@ -153,7 +153,7 @@ describe('an email change through update-account, on a real server', () => {
     expect(sendEmail.mock.calls[0][0].text).toContain(code);
     // Nothing has changed yet.
     expect((await c2_query('SELECT email FROM users WHERE id = ?', [userId]))[0].email).toBe('emnopass@example.com');
-    expect(await sessionsOf(userId)).toEqual([...tokens].sort());
+    expect(await sessionsOf(userId)).toEqual(digests(tokens));
 
     const done = await request(app)
       .post('/api/update-account/confirm-email')
@@ -162,7 +162,7 @@ describe('an email change through update-account, on a real server', () => {
 
     expect(done.status).toBe(200);
     expect((await c2_query('SELECT email FROM users WHERE id = ?', [userId]))[0].email).toBe('emnopass-new@example.com');
-    expect(await sessionsOf(userId)).toEqual([done.body.token]);
+    expect(await sessionsOf(userId)).toEqual(digests([done.body.token]));
     for (const old of tokens) expect(await statusFor(old)).toBe(401);
     // The notice went to the address the account had before.
     expect(sendEmail).toHaveBeenCalledTimes(2);

@@ -61,7 +61,7 @@ async function insertMember(name) {
   );
   for (let i = 0; i < 2; i++) {
     await c2_query(
-      'INSERT INTO sessions (user_id, id, created_at, expires_at) VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))',
+      "INSERT INTO sessions (user_id, id, auth_provider, created_at, expires_at) VALUES (?, ?, 'local', NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))",
       [created.insertId, randomBytes(32).toString('hex')]
     );
   }
