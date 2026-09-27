@@ -12,6 +12,21 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-27
+
+The account-security release. Three security fixes: Google sign-in no longer
+links an account that has two-factor authentication on
+([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)),
+the boot admin sync no longer promotes an existing account
+([GHSA-w8q3-r34w-3pjh](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-w8q3-r34w-3pjh)),
+and changing an account's email or password now needs its current password and
+signs every device out. Google sign-in also no longer attaches a second Google
+account to a user, which a database key now enforces for every provider.
+Alongside them: an identity seam that sign-in methods resolve through, and
+`AUTH_PROVIDERS` to choose which ones an instance offers. **Upgrading from 0.10.0
+applies two migrations with `npm run migrate`, and the first refuses on an
+install that already holds a double link; see Migration below.**
+
 ### Added
 
 - `AUTH_PROVIDERS`, an optional comma list of the sign-in methods an instance
@@ -63,6 +78,36 @@ initialises an empty data directory.
 
 ### Security
 
+- **Google sign-in no longer links an account that has two-factor
+  authentication on**
+  ([GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)).
+  Signing in with Google for the email of an existing account with no Google
+  account linked yet linked the two and signed in, without asking for that
+  account's two-factor code. An account with two-factor on (authenticator app
+  or email code alike) is now never linked by email: the sign-in is refused as
+  `/?oauth_error=two_factor_enabled` with nothing written, and the sign-in form
+  says to sign in with the password and code instead. A Google account that is
+  already linked signs in as before, without the local code, even after its
+  user turns two-factor on: once linked, Google's own sign-in, its MFA
+  included, governs the account. Links made before this release are kept, and
+  the database cannot tell one the owner made from one made without their
+  second factor. `docs/troubleshooting.md` has a query listing every Google
+  link made by email. Ask each owner whether they linked Google themselves;
+  where that cannot be confirmed, delete the link (the owner can link again
+  deliberately) and the account's session:
+
+  ```sql
+  DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google';
+  DELETE FROM sessions WHERE user_id = <id>;
+  ```
+
+  The session goes too because an account has one session, shared by every
+  sign-in to it, so removing the link alone leaves whoever used it signed in.
+  A password reset through Forgot password also ends every session, and so,
+  from this release, does an email or password change (below), so either does
+  the same job as the second statement. Then have the owner confirm that the
+  account's email address, password and two-factor setting are theirs: before
+  this release a session alone was enough to change the first two.
 - **The boot admin sync no longer promotes an existing account**
   ([GHSA-w8q3-r34w-3pjh](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-w8q3-r34w-3pjh)).
   At every boot the server makes sure the admin named in `.env` exists. It
@@ -460,7 +505,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Cloud-City-Computing/c2/compare/alpharelease...v0.9.0
 [0.1.0-alpha]: https://github.com/Cloud-City-Computing/c2/releases/tag/alpharelease

@@ -316,6 +316,7 @@ function StdLayout({ children }) {
       no_account: 'No account found for this Google email. Ask your administrator for an invitation.',
       email_not_verified: 'Your Google email is not verified.',
       identity_conflict: 'This email is already linked to a different Google account. Ask your administrator to relink it.',
+      two_factor_enabled: 'This account has two-factor authentication on, so it cannot be linked to Google by email. Sign in with your password and code instead.',
       token_exchange_failed: 'Google sign-in failed. Please try again.',
       token_verification_failed: 'Google sign-in verification failed. Please try again.',
       invalid_state: 'Sign-in session expired. Please try again.',

@@ -5,10 +5,13 @@
  * local user. For Google it issues the queries the callback used to issue
  * inline, in the same order, plus one: before linking an email match it asks
  * whether that user already holds a Google account (spec Decision 3,
- * docs/maps/open-questions.md C7). Every route test that drives the callback
- * queues c2_query mocks in call order, so the assertions below pin the SQL and
- * its parameters call by call, and every refusal is checked to have written
- * nothing.
+ * docs/maps/open-questions.md C7). The email lookup also reads the matched
+ * user's two_factor_method, and an account with two-factor authentication on
+ * is never linked by email (two_factor_enabled); the link INSERT repeats that
+ * test in SQL, so two-factor turned on after the lookup still stops it. Every
+ * route test that drives the callback queues c2_query mocks in call order, so
+ * the assertions below pin the SQL and its parameters call by call, and every
+ * refusal is checked to have written nothing.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -20,8 +23,18 @@ import { resolveIdentity, deriveUniqueUsername, parseAuthProviders } from '../..
 import { resetMocks } from '../helpers.js';
 
 const LINK_LOOKUP_SQL = `SELECT user_id FROM oauth_accounts WHERE provider = 'google' AND provider_user_id = ? LIMIT 1`;
-const EMAIL_LOOKUP_SQL = `SELECT id FROM users WHERE email = ? LIMIT 1`;
+const EMAIL_LOOKUP_SQL = `SELECT id, two_factor_method FROM users WHERE email = ? LIMIT 1`;
 const LINK_INSERT_SQL = `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`;
+/**
+ * The link-by-email INSERT copies the user row only while its two-factor is
+ * still off and it still holds the email the lookup matched, read FOR SHARE,
+ * so both are decided at insert time at any isolation level, not only at the
+ * lookup.
+ */
+const LINK_BY_EMAIL_INSERT_SQL =
+  `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) ` +
+  `SELECT id, 'google', ?, ? FROM users WHERE id = ? AND email = ? ` +
+  `AND (two_factor_method IS NULL OR two_factor_method = 'none') FOR SHARE`;
 const GOOGLE_ROW_LOOKUP_SQL = `SELECT id FROM oauth_accounts WHERE provider = 'google' AND user_id = ? LIMIT 1`;
 const USERNAME_LOOKUP_SQL = `SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`;
 const PERMISSIONS_INSERT_SQL = `INSERT INTO permissions (user_id, create_squad, create_archive, create_log) VALUES (?, TRUE, TRUE, TRUE)`;
@@ -137,14 +150,28 @@ describe('resolveIdentity (google)', () => {
 
       expect(c2_query).toHaveBeenCalledTimes(1);
     });
+
+    // The trade-off the two_factor_enabled refusal leaves in place on purpose:
+    // once linked, Google's own sign-in (its MFA included) governs the account,
+    // even for a user who turns local two-factor on after linking. The linked
+    // path reads nothing about two-factor, so it cannot refuse or challenge.
+    it('signs a linked identity in without consulting two_factor_method', async () => {
+      c2_query.mockResolvedValueOnce([{ user_id: 42 }]);
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: true, userId: 42, created: false });
+      expect(sqlCalls()).toEqual([[LINK_LOOKUP_SQL, ['google-sub-123']]]);
+      expect(sqlCalls().filter(([sql]) => sql.includes('two_factor'))).toEqual([]);
+    });
   });
 
   describe('linking by verified email', () => {
     it('links the existing user whose email matches and who has no Google account yet', async () => {
       c2_query.mockResolvedValueOnce([]); // no link
-      c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // user by email
       c2_query.mockResolvedValueOnce([]); // no Google account on that user
-      c2_query.mockResolvedValueOnce({ insertId: 1 }); // link insert
+      c2_query.mockResolvedValueOnce({ affectedRows: 1, insertId: 1 }); // link insert
 
       const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
 
@@ -153,13 +180,13 @@ describe('resolveIdentity (google)', () => {
         [LINK_LOOKUP_SQL, ['google-sub-123']],
         [EMAIL_LOOKUP_SQL, ['ada@example.com']],
         [GOOGLE_ROW_LOOKUP_SQL, [9]],
-        [LINK_INSERT_SQL, [9, 'google-sub-123', 'ada@example.com']],
+        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']],
       ]);
     });
 
     it('refuses as email_conflict, writing nothing, when linking by email is off', async () => {
       c2_query.mockResolvedValueOnce([]);
-      c2_query.mockResolvedValueOnce([{ id: 9 }]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]);
 
       const result = await resolveIdentity(
         googleClaims(),
@@ -175,10 +202,168 @@ describe('resolveIdentity (google)', () => {
     });
   });
 
+  // Password sign-in demands the second factor (POST /api/login); linking by
+  // email would skip it for good, so an account with two-factor on is never
+  // linked that way, whichever method it uses.
+  describe('an email match with two-factor authentication on', () => {
+    it.each(['totp', 'email'])(
+      'refuses as two_factor_enabled (%s), writing no oauth_accounts row',
+      async (method) => {
+        c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
+        c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: method }]); // user by email
+
+        const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+        expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+        expect(sqlCalls()).toEqual([
+          [LINK_LOOKUP_SQL, ['google-sub-123']],
+          [EMAIL_LOOKUP_SQL, ['ada@example.com']],
+        ]);
+        expect(writes()).toEqual([]);
+        expect(sqlCalls().filter(([sql]) => sql.startsWith('INSERT INTO oauth_accounts'))).toEqual([]);
+      },
+    );
+
+    it.each(['totp', 'email'])(
+      'refuses the same way under the domain policy (%s), so nothing is created either',
+      async (method) => {
+        c2_query.mockResolvedValueOnce([]);
+        c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: method }]);
+
+        const result = await resolveIdentity(googleClaims(), DOMAIN_POLICY);
+
+        expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+        expect(c2_query).toHaveBeenCalledTimes(2);
+        expect(writes()).toEqual([]);
+      },
+    );
+
+    it('answers two_factor_enabled before the Google row check, so identity_conflict never runs', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'totp' }]);
+      c2_query.mockResolvedValueOnce([{ id: 31 }]); // another subject's Google row, never asked for
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+      expect(sqlCalls().map(([sql]) => sql)).toEqual([LINK_LOOKUP_SQL, EMAIL_LOOKUP_SQL]);
+    });
+
+    // The same test the link INSERT applies in SQL (IS NULL OR = 'none'), so
+    // the check here and the write below can never disagree about a value.
+    it('counts any value other than none or NULL as on, the empty ENUM error value included', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: '' }]);
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+      expect(c2_query).toHaveBeenCalledTimes(2);
+    });
+
+    it('still answers email_conflict first when linking by email is off', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'totp' }]);
+
+      const result = await resolveIdentity(googleClaims(), { ...DOMAIN_POLICY, linkByVerifiedEmail: false });
+
+      expect(result).toEqual({ ok: false, reason: 'email_conflict' });
+      expect(writes()).toEqual([]);
+    });
+
+    // 'none' is the column default; NULL is what an explicit NULL write leaves.
+    // POST /api/login asks for no code for either, so neither refuses here.
+    it.each([['none'], [null]])('links a user whose two_factor_method is %s', async (method) => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: method }]);
+      c2_query.mockResolvedValueOnce([]); // no Google account on that user
+      c2_query.mockResolvedValueOnce({ affectedRows: 1, insertId: 1 });
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: true, userId: 9, created: false });
+      expect(writes()).toEqual([[LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']]]);
+    });
+  });
+
+  // The lookup can see two-factor off and the owner turn it on before the
+  // link lands. The INSERT copies the user row only while two-factor is still
+  // off, so it inserts nothing then, and zero rows is the same refusal.
+  // tests/integration/oauth-google-two-factor.test.js holds that interleave
+  // open against a real server.
+  describe('two-factor turned on between the lookup and the link', () => {
+    it('answers two_factor_enabled when the conditional INSERT affects no row, and stops there', async () => {
+      c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // off when looked up
+      c2_query.mockResolvedValueOnce([]); // no Google account on that user
+      c2_query.mockResolvedValueOnce({ affectedRows: 0, insertId: 0 }); // on by the time of the INSERT
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+      expect(sqlCalls()).toEqual([
+        [LINK_LOOKUP_SQL, ['google-sub-123']],
+        [EMAIL_LOOKUP_SQL, ['ada@example.com']],
+        [GOOGLE_ROW_LOOKUP_SQL, [9]],
+        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']],
+      ]);
+    });
+
+    it('answers the same under the domain policy, so nothing is created instead', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ affectedRows: 0, insertId: 0 });
+
+      const result = await resolveIdentity(googleClaims(), DOMAIN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+      expect(c2_query).toHaveBeenCalledTimes(4);
+    });
+
+    // Exactly one row is the only success: the INSERT copies at most one user
+    // row by primary key, so any other count is refused, never reported as a
+    // link.
+    it.each([
+      ['two rows', { affectedRows: 2, insertId: 5 }],
+      ['a header with no affectedRows', { insertId: 0 }],
+    ])('answers two_factor_enabled for %s, not a link', async (_label, header) => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]);
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce(header);
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+    });
+  });
+
+  // The account can also give up this address between the lookup and the
+  // link. The INSERT copies the row only while it still holds the email the
+  // lookup matched, so an address changed in between links nobody, and zero
+  // rows is the same refusal with nothing written; the next sign-in looks the
+  // address up afresh.
+  describe('an email changed between the lookup and the link', () => {
+    it('binds the INSERT to the looked-up email and refuses on zero rows', async () => {
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // holds ada@ when looked up
+      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce({ affectedRows: 0, insertId: 0 }); // no longer does
+
+      const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
+
+      expect(result).toEqual({ ok: false, reason: 'two_factor_enabled' });
+      const [insertSql, insertParams] = sqlCalls()[3];
+      expect(insertSql).toContain('WHERE id = ? AND email = ?');
+      expect(insertParams).toEqual(['google-sub-123', 'ada@example.com', 9, 'ada@example.com']);
+    });
+  });
+
   describe('an email match that already holds a different Google account (open-questions C7)', () => {
     it('refuses as identity_conflict and issues no INSERT', async () => {
       c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
-      c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // user by email
       c2_query.mockResolvedValueOnce([{ id: 31 }]); // that user's Google account, another subject
 
       const result = await resolveIdentity(googleClaims(), OPEN_POLICY);
@@ -194,7 +379,7 @@ describe('resolveIdentity (google)', () => {
 
     it('refuses the same way under the domain policy, so auto-create never runs', async () => {
       c2_query.mockResolvedValueOnce([]);
-      c2_query.mockResolvedValueOnce([{ id: 9 }]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]);
       c2_query.mockResolvedValueOnce([{ id: 31 }]);
 
       const result = await resolveIdentity(googleClaims(), DOMAIN_POLICY);
@@ -221,7 +406,7 @@ describe('resolveIdentity (google)', () => {
   describe('a second Google subject that races past the check (the one-link key)', () => {
     it('answers identity_conflict when the link INSERT hits uq_oauth_user_provider', async () => {
       c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
-      c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // user by email
       c2_query.mockResolvedValueOnce([]); // no Google row yet: the other subject's has not landed
       c2_query.mockRejectedValueOnce(
         duplicateKeyError('9-google', 'oauth_accounts.uq_oauth_user_provider'),
@@ -234,7 +419,7 @@ describe('resolveIdentity (google)', () => {
         [LINK_LOOKUP_SQL, ['google-sub-123']],
         [EMAIL_LOOKUP_SQL, ['ada@example.com']],
         [GOOGLE_ROW_LOOKUP_SQL, [9]],
-        [LINK_INSERT_SQL, [9, 'google-sub-123', 'ada@example.com']],
+        [LINK_BY_EMAIL_INSERT_SQL, ['google-sub-123', 'ada@example.com', 9, 'ada@example.com']],
       ]);
     });
 
@@ -242,7 +427,7 @@ describe('resolveIdentity (google)', () => {
     // key first, which is not this race, and still throws as it always has.
     it('still throws a duplicate on the subject key, uq_provider_user', async () => {
       c2_query.mockResolvedValueOnce([]);
-      c2_query.mockResolvedValueOnce([{ id: 9 }]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]);
       c2_query.mockResolvedValueOnce([]);
       c2_query.mockRejectedValueOnce(
         duplicateKeyError('google-google-sub-123', 'oauth_accounts.uq_provider_user'),
@@ -253,7 +438,7 @@ describe('resolveIdentity (google)', () => {
 
     it('still throws any other failure of the link INSERT', async () => {
       c2_query.mockResolvedValueOnce([]);
-      c2_query.mockResolvedValueOnce([{ id: 9 }]);
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]);
       c2_query.mockResolvedValueOnce([]);
       c2_query.mockRejectedValueOnce(new Error('connection lost'));
 

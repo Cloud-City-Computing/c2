@@ -65,6 +65,11 @@ export default defineConfig({
           include: ['tests/integration/**/*.test.js'],
           testTimeout: 30000,
           hookTimeout: 60000,
+          // One file at a time: the race tests poll INNODB_TRX, which is
+          // server-wide, so a lock wait from another file running at the same
+          // moment could release a held change before its sign-in reached the
+          // insert (seen in CI on the email-change interleave).
+          fileParallelism: false,
         },
       },
     ],

@@ -197,22 +197,45 @@ does the protocol work (state, code exchange, token verification), hands the
 verified claims and a policy to the seam, and turns the answer into a session
 or a redirect. The answer is `{ ok: true, userId, created }` or
 `{ ok: false, reason }`, `reason` one of `email_not_verified`,
-`domain_not_allowed`, `no_account`, `identity_conflict`, `email_conflict`. A
-refusal never throws and writes nothing; a thrown error is a database failure
-and reaches the router's `errorHandler`.
+`domain_not_allowed`, `no_account`, `identity_conflict`, `email_conflict`,
+`two_factor_enabled`. A refusal never throws and writes nothing; a thrown
+error is a database failure and reaches the router's `errorHandler`.
 
 Google (`GET /api/oauth/google/callback` in `routes/oauth.js`) is the only
 caller. Its policy is `requiredHostedDomain: GOOGLE_OAUTH_DOMAIN`,
 `linkByVerifiedEmail: true`, `autoCreate: Boolean(GOOGLE_OAUTH_DOMAIN)`, and the
-Google branch is the ladder the route used to carry inline, with the same SQL in
-the same order plus one check: refuse an unverified email, refuse a hosted
-domain other than the required one, look up `oauth_accounts` by
-`provider_user_id`, else take the user whose `email` matches, refuse
+Google branch is the ladder the route used to carry inline, in the same order
+plus two checks: refuse an unverified email, refuse a hosted domain other than
+the required one, look up `oauth_accounts` by `provider_user_id`, else take the
+user whose `email` matches (that lookup also reads `two_factor_method`),
+refuse `two_factor_enabled` if that user has two-factor on (`email` or
+`totp`; `none` and NULL are off, as they are to `POST /api/login`), refuse
 `identity_conflict` if that user already holds a Google row (another subject,
 since the subject lookup missed: spec Decision 3's rule, `open-questions.md`
 C7), else link them, else create-and-link (username from
 `deriveUniqueUsername`, also in the seam) only when auto-create is on, else
-`no_account`. A refusal becomes `/?oauth_error=<reason>`, which `Std_Layout.jsx`
+`no_account`. With linking by email off, an email match is `email_conflict`
+before either check. The two-factor refusal comes before the Google row check
+because it reads the row already in hand and still holds once a conflicting
+link is cleared. The link itself is `INSERT INTO oauth_accounts ... SELECT ...
+FROM users WHERE id = ? AND email = ? AND (two_factor_method IS NULL OR
+two_factor_method = 'none') FOR SHARE`, so the INSERT repeats the test at
+insert time, on a locking read, at any isolation level: a change to the user
+row still being committed is waited for and then seen. Two-factor turned on
+after the lookup, or the account giving up the looked-up email, inserts no
+row, and anything but exactly one row is the same `two_factor_enabled` with
+nothing written. Without `FOR SHARE`, READ COMMITTED would read the old row
+without a lock and link over the change.
+
+**The linked rung never consults local two-factor.** An identity found by
+`provider_user_id` signs in with no second-factor challenge, including a user
+who turned two-factor on after linking: once linked, Google's own sign-in, its
+MFA included, governs the account. That is a deliberate trade-off, and the
+`two_factor_enabled` refusal is what keeps it from reaching an account whose
+owner never linked Google, because password sign-in (`POST /api/login`)
+demands the code and a link by email would skip it for good.
+
+A refusal becomes `/?oauth_error=<reason>`, which `Std_Layout.jsx`
 turns into copy in the Login modal, with a generic fallback for a code it does
 not know. A provider the seam has no ladder for throws. The route keeps everything around
 the seam unchanged: the browser-bound state cookie, the token exchange, the
@@ -224,6 +247,8 @@ queue `c2_query` mocks in call order, which is why
 `tests/routes/oauth-google-seam.test.js` and
 `oauth-google-domain-seam.test.js` pin it through the route and
 `tests/services/identity.test.js` pins it call by call.
+`tests/integration/oauth-google-two-factor.test.js` proves the two-factor
+refusal and the linked rung's trade-off against MySQL 8.4.
 
 ### Session tokens
 

@@ -121,7 +121,7 @@ container is the old image, with neither the script nor the mount.
 
 ## 5. Testing
 
-**Vitest 4, three projects** in one config (`vitest.config.js:24-70`). A single
+**Vitest 4, three projects** in one config (`vitest.config.js:24-75`). A single
 `npm test` runs the two default ones, `backend` and `frontend`; the third,
 `integration`, is opt-in because it needs a MySQL server:
 
@@ -131,8 +131,9 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **78 files, 1578 tests, all passing**; the
-integration project is **3 files, 12 tests**.
+Current state: the default run is **79 files, 1661 tests, all passing**; the
+integration project is **7 files, 42 tests** (measured 2026-09-27 on the merged
+tree, at the server's default isolation and at `READ-COMMITTED`).
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
@@ -220,7 +221,7 @@ GitHub stubbed) to end with one `github_linked=1` and one `link_conflict`; and
 a GitHub relink to an account another user holds to be refused as
 `already_linked_other`. Each race is held open deterministically: a
 transaction takes `SELECT ... FOR UPDATE` on the user's own `users` row
-(`holdUserRow`), every link INSERT needs a shared lock on that row to check
+(`holdUserRow`, over `holdInTransaction`), every link INSERT needs a shared lock on that row to check
 its foreign key, and the test waits until `information_schema.INNODB_TRX`
 shows both waiting. It is a record lock on the parent row, not a gap lock on
 the child's empty range, because InnoDB takes foreign-key check locks at every
@@ -237,6 +238,54 @@ waiting. Mutation-checked on 2026-09-25: no guard, the runner's guard cleanup
 skipped, and the `identity_conflict` catch removed each turn one of them red;
 the GitHub race and relink tests were red against the callback before its
 `link_conflict` catch and its holder lookup (a 500 each).
+
+`tests/integration/oauth-google-two-factor.test.js` drives Google sign-in
+through `resolveIdentity` and through the real initiation and callback routes
+(`google-auth-library` is the one thing stubbed, with `vi.mock`), and requires
+an account with two-factor on (`totp` and `email` each) and no Google link to
+be refused as `two_factor_enabled` with no `oauth_accounts` and no `sessions`
+row; an account with two-factor off to link and sign in through the same flow,
+which is the anchor that keeps those refusals from passing on a harness that
+cannot link; an explicit NULL to count as off; and a user linked first who
+turns two-factor on later to still get a session with no challenge minted (no
+`password_reset_tokens` or `two_factor_codes` row). It sets the Google client
+variables in `vi.hoisted`, in its own file, because `routes/oauth.js` reads
+them at import. Mutation-checked on 2026-09-25: with the refusal removed from
+`services/identity.js` its four refusal tests are red (the callback redirects
+to `/` with a session), alongside eight mocked ones: five in
+`tests/services/identity.test.js` and three across the two route seam files.
+
+The interleaves a mocked test cannot hold open live in
+`tests/integration/google-link-races.js`, a shared module (not itself a test
+file) that two files run: `oauth-google-two-factor.test.js` at the server's
+default isolation, and `oauth-google-two-factor-read-committed.test.js` with
+every connection the app's pool opens set to READ COMMITTED (mysql2's
+`createPool` is wrapped, through `vi.mock`, to add one `connection` listener
+that runs `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED`; that file's
+first test proves it took on five concurrent connections). Each interleave
+changes the user row between the seam's email lookup and its link INSERT: a
+transaction runs the change and holds the row, the seam's lookups are plain
+reads and go past it, and its link INSERT, the only statement in the ladder
+that locks the user row, waits. Reaching that lock wait is the proof the
+lookups already passed. The changes are the app's own enable statements
+(`totp`, `email`) and an email change, and after the commit each must answer
+`two_factor_enabled` with no `oauth_accounts` row; an anchor holds the row with
+a change that touches neither and must link after the same wait. The old
+unconditional `VALUES` INSERT waited too (its foreign-key check locks the
+parent row) and then linked, which is how the race was seen; under READ
+COMMITTED the conditional INSERT without `FOR SHARE` did not wait at all and
+linked. Mutation-checked on 2026-09-25: `FOR SHARE` removed reddened exactly
+the three READ COMMITTED refusals while the default-isolation run stayed green;
+`AND email = ?` removed reddened the email-change interleave in both files and
+seven mocked pins; the INSERT put back to `VALUES` reddened the default-isolation
+race tests and six mocked pins; the row check loosened from `!== 1` to `=== 0`
+reddened two mocked tests; and the check removed entirely reddened the race
+tests (the seam reported a link it never wrote). Every race file holds the user
+row through one helper, `holdInTransaction` in `tests/integration/mysql-admin.js`
+(the C7 races lock it `FOR UPDATE`, these run the change itself), and waits
+through `waitForLockWaits` beside it, which carries the 100 ms trap described
+above. A record lock on the user row holds at every isolation level, so all of
+them pass with the server at `READ-COMMITTED` as well.
 
 `tests/integration/update-account-sessions.test.js` proves the update-account
 session rotation on a real server, where the route tests can only prove the SQL
@@ -317,7 +366,7 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:99-164`. The global floor is deliberately low because
+`vitest.config.js:104-169`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
@@ -356,7 +405,7 @@ treatment or it silently counts for nothing.
 **The practical consequence:** adding an uncovered branch to a high-threshold
 file fails CI even though every test passes. Write the test with the code. When
 you raise real coverage, ratchet the threshold up in the same PR; the comment at
-`vitest.config.js:93-98` explains the "achieved minus a small buffer" policy.
+`vitest.config.js:98-103` explains the "achieved minus a small buffer" policy.
 
 ## 6. CI
 
@@ -481,11 +530,11 @@ Verify from a logged-out client rather than trusting the workflow:
 
 ```
 docker logout ghcr.io
-docker pull ghcr.io/cloud-city-computing/cloud-codex:0.10.0
+docker pull ghcr.io/cloud-city-computing/cloud-codex:0.11.0
 ```
 
 `docker-compose-release.yml` consumes the published image instead of building,
-pinned to `${CLOUDCODEX_VERSION:-0.10.0}` so an evaluator's install does not
+pinned to `${CLOUDCODEX_VERSION:-0.11.0}` so an evaluator's install does not
 move under them on the next publish. It also differs from
 `docker-compose-prod.yml` in not publishing 3306: the app reaches MySQL over the
 compose network, and Docker's published ports are a DNAT rule that sits in front

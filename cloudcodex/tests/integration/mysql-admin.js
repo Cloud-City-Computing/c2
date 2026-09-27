@@ -83,3 +83,69 @@ export async function buildSchemaFromInitSql(conn, schema) {
 export async function dropSchema(conn, schema) {
   await conn.query(`DROP DATABASE IF EXISTS ${mysql.escapeId(schema)}`);
 }
+
+/**
+ * Wait until `n` transactions in `schema` are waiting on a lock, polling
+ * through `conn`, which must not be one of them. Throws after ten seconds,
+ * saying how many it saw. The race tests use it to know that every attempt
+ * they hold open has reached the statement the held lock blocks.
+ *
+ * **Poll slower than every 100 ms.** InnoDB refreshes INNODB_TRX only once the
+ * table has gone that long unread, so a tighter loop never sees a change: a
+ * 25 ms loop saw zero waiters for ten seconds while two were waiting.
+ * @param { import('mysql2/promise').Connection } conn
+ * @param { String } schema
+ * @param { Number } n
+ */
+export async function waitForLockWaits(conn, schema, n) {
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    const [rows] = await conn.query(
+      `SELECT COUNT(*) AS waiting
+         FROM information_schema.INNODB_TRX t
+         JOIN performance_schema.processlist p ON p.ID = t.trx_mysql_thread_id
+        WHERE t.trx_state = 'LOCK WAIT' AND p.DB = ?`,
+      [schema]
+    );
+    if (Number(rows[0].waiting) >= n) return;
+    if (Date.now() > deadline) {
+      throw new Error(`only ${rows[0].waiting} of ${n} transactions were waiting on a lock after ten seconds`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+}
+
+/**
+ * Run `sql` in a transaction on this file's schema, through a connection of
+ * its own, and leave the transaction open, so whatever `sql` locked stays
+ * locked until `release`. The race tests hold a row this way while an attempt
+ * reaches the statement that row blocks, then wait for it with
+ * `waitForLockWaits` and release. A record lock holds at every isolation
+ * level, which a gap lock does not (READ COMMITTED takes none).
+ * @param { String } sql
+ * @param { Array } params
+ * @returns { Promise<{ rows: Array, waitForLockWaits: (n: Number) => Promise<void>, release: () => Promise<void> }> }
+ */
+export async function holdInTransaction(sql, params) {
+  const conn = await openAdminConnection();
+  let rows;
+  try {
+    await conn.changeUser({ database: process.env.DB_NAME });
+    await conn.query('START TRANSACTION');
+    [rows] = await conn.query(sql, params);
+  } catch (err) {
+    await conn.end();
+    throw err;
+  }
+  return {
+    rows,
+    waitForLockWaits: n => waitForLockWaits(conn, process.env.DB_NAME, n),
+    async release() {
+      try {
+        await conn.query('COMMIT');
+      } finally {
+        await conn.end();
+      }
+    },
+  };
+}

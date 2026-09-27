@@ -39,6 +39,7 @@ import {
 import {
   buildSchemaFromInitSql,
   dropSchema,
+  holdInTransaction,
   openAdminConnection,
   queryVia,
   throwawaySchemaName,
@@ -269,44 +270,12 @@ describe('--adopt-fresh-install and the key', () => {
  * @param { Number } userId
  */
 async function holdUserRow(userId) {
-  const blocker = await openAdminConnection();
-  await blocker.changeUser({ database: process.env.DB_NAME });
-  await blocker.query('START TRANSACTION');
-  const [locked] = await blocker.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
-  if (locked.length !== 1) {
-    await blocker.end();
+  const held = await holdInTransaction('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+  if (held.rows.length !== 1) {
+    await held.release();
     throw new Error(`no users row ${userId} to hold`);
   }
-
-  return {
-    /** Wait until `n` transactions in this file's schema are waiting on a lock. */
-    async waitForLockWaits(n) {
-      const deadline = Date.now() + 10000;
-      for (;;) {
-        const [rows] = await blocker.query(
-          `SELECT COUNT(*) AS waiting
-             FROM information_schema.INNODB_TRX t
-             JOIN performance_schema.processlist p ON p.ID = t.trx_mysql_thread_id
-            WHERE t.trx_state = 'LOCK WAIT' AND p.DB = ?`,
-          [process.env.DB_NAME]
-        );
-        if (Number(rows[0].waiting) >= n) return;
-        if (Date.now() > deadline) {
-          throw new Error(`only ${rows[0].waiting} of ${n} links reached their INSERT`);
-        }
-        // Slower than InnoDB's 100 ms: it refreshes INNODB_TRX only once the
-        // table has gone that long unread, so a tighter loop never sees a change.
-        await new Promise(resolve => setTimeout(resolve, 250));
-      }
-    },
-    async release() {
-      try {
-        await blocker.query('COMMIT');
-      } finally {
-        await blocker.end();
-      }
-    },
-  };
+  return held;
 }
 
 /** How many `provider` rows `userId` holds, through the app's own pool. */

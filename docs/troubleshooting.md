@@ -174,6 +174,75 @@ because two users cannot share an email.
 
 ```
 ┃ ⚠  Symptom
+┃   Google sign-in lands back on the sign-in form with "This account has
+┃   two-factor authentication on, so it cannot be linked to Google by
+┃   email" (`/?oauth_error=two_factor_enabled`).
+```
+
+**Cause.** A Cloud Codex user has this email, has two-factor
+authentication on (an authenticator app or an email code, either one), and
+has no Google account linked yet. Google sign-in links an existing account
+by its verified email only when two-factor is off, because a linked Google
+account signs in from then on without the local code. Nothing was written.
+Rarely, the same answer comes back when the account's email address changed
+while the sign-in was under way; signing in again then gets the right answer.
+
+**Fix.** Sign in with the username, password and code; the account works
+exactly as before. If its owner also wants Google sign-in on it, they turn
+two-factor off from the account menu, sign in with Google once (which links
+the account), and can then turn two-factor back on. Know the trade-off before
+doing that: a linked Google account signs in through Google's own sign-in,
+its MFA included, and is never asked for the local code, whether two-factor
+is on or off; password sign-in still asks for it. Turning two-factor off
+emails a confirmation code, so on an instance without mail an admin's
+**Reset 2FA** does it instead (see the email entry above).
+
+**Reviewing Google links made before this release.** The database cannot
+tell a link the owner made from one made without their second factor: a link
+made by email records the account's own address as `provider_email`, and
+nothing records when two-factor was turned on or off. Two-factor may also have
+been turned off since a link was made, so an account showing `none` today is
+not cleared by that alone. List every Google link made by email, that is,
+made more than a minute after its account (a Google sign-in that creates an
+account links it in the same moment), accounts with two-factor on now first
+(`make db-shell`):
+
+```sql
+SELECT u.id, u.name, u.email, u.two_factor_method,
+       u.created_at AS account_created, o.created_at AS google_linked
+  FROM users u
+  JOIN oauth_accounts o ON o.user_id = u.id AND o.provider = 'google'
+ WHERE o.created_at > u.created_at + INTERVAL 1 MINUTE
+ ORDER BY u.two_factor_method IN ('email', 'totp') DESC, o.created_at;
+```
+
+For each row, ask the owner whether they linked Google themselves. Where that
+cannot be confirmed, delete the link (the owner can link again deliberately,
+as the Fix above describes) and the account's session:
+
+```sql
+DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google';
+DELETE FROM sessions WHERE user_id = <id>;
+```
+
+The second statement is not optional. An account has one session, shared by
+every sign-in to it: a new sign-in is handed the live session the account
+already has (`generateSessionToken` in `mysql_connect.js`), so whoever signed
+in through the link holds the owner's own session token, and deleting the link
+leaves them signed in. A password reset through **Forgot password** deletes
+every session, and from this release so does an email or password change (the
+next entry), so either can stand in for the second statement. Once the
+sessions are gone, have the owner sign in again and check that the account's
+email address, password and two-factor setting are theirs: before this
+release a session alone was enough to change the email and the password. If
+the email address is not theirs, an operator restores it before the owner
+resets the password. One shared session per account is what the planned
+W6-CDX-2 (one session per sign-in, stored hashed) replaces.
+
+---
+
+```
+┃ ⚠  Symptom
 ┃   Changing your email on the account page asks for your current
 ┃   password, answers "Your current password is incorrect.", or
 ┃   refuses with "This account has no password, so an email change is

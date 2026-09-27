@@ -594,6 +594,25 @@ Decision 3's rule, applied to Google. `Std_Layout.jsx` gained copy for that code
 (`tests/services/identity.test.js`, `tests/routes/oauth-google-seam.test.js`) were committed red
 first; `tests/routes/oauth.test.js` and `tests/routes/auth.test.js` are still unedited.
 
+**A second refusal on the link-by-email rung (2026-09-25,
+[GHSA-6q9j-5qr9-7f2p](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-6q9j-5qr9-7f2p)).**
+The Google branch's refusals are now `email_not_verified`, `domain_not_allowed`, `no_account`,
+`email_conflict`, `two_factor_enabled` and `identity_conflict`. The email lookup reads
+`SELECT id, two_factor_method FROM users WHERE email = ?`, and a match with two-factor on (`email`
+or `totp`, no carve-out) is refused as `two_factor_enabled` with nothing written, after
+`email_conflict` and before the Google row check, so the refusal costs two queries in all. The
+link itself is `INSERT INTO oauth_accounts (...) SELECT id, 'google', ?, ? FROM users WHERE id = ?
+AND email = ? AND (two_factor_method IS NULL OR two_factor_method = 'none') FOR SHARE`, and
+anything but exactly one affected row answers `two_factor_enabled` with nothing written: the same
+test made at insert time, on a locking read at any isolation level (without `FOR SHARE`, READ
+COMMITTED reads the old row unlocked and links over an enable still being committed), and bound
+to the looked-up email, which closes the window between the lookup and the write. An identity
+already linked is unchanged and never consults two-factor: once linked, Google's own sign-in, its
+MFA included, governs the account. `Std_Layout.jsx` gained copy for the code. Tests were committed
+red first: `tests/services/identity.test.js` (call by call; its pinned email-lookup SQL changed),
+`tests/routes/oauth-google-seam.test.js`, `oauth-google-domain-seam.test.js`, and
+`tests/integration/oauth-google-two-factor.test.js` against MySQL 8.4.
+
 ---
 
 ## PR 4: W6-CDX-3, the `__Host-` cookie and Origin-required cookie writes
@@ -888,16 +907,42 @@ maps to `/` and every benign one to itself. If W6-CMD-24 has not landed, write t
 1. `SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ?`. A hit: update
    `last_login_at`; if the verified email differs from `users.email`, update it unless another row
    holds that address (`SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id <> ?`), which
-   refuses `email_conflict` and changes nothing. Return the user.
-2. With `linkByVerifiedEmail`: `SELECT id FROM users WHERE LOWER(email) = LOWER(?)`. A hit that
-   already has an identity at this issuer (`SELECT 1 FROM user_identities WHERE user_id = ? AND
-   issuer = ?`) refuses `identity_conflict`; otherwise insert the identity and return the user.
+   refuses `email_conflict` and changes nothing. Return the user. No local second factor is asked
+   for, whatever `two_factor_method` holds: the issuer's own MFA governs a linked identity.
+2. With `linkByVerifiedEmail`: `SELECT id, two_factor_method FROM users WHERE LOWER(email) =
+   LOWER(?)`. A hit with two-factor on, `(two_factor_method ?? 'none') !== 'none'`, refuses
+   `two_factor_enabled` and writes nothing (spec Decision 3; the Google rung's rule, after any
+   `email_conflict` and before `identity_conflict`). A hit that already has an identity at this
+   issuer (`SELECT 1 FROM user_identities WHERE user_id = ? AND issuer = ?`) refuses
+   `identity_conflict`. Otherwise link with `INSERT INTO user_identities (user_id, issuer, subject,
+   email_at_link) SELECT id, ?, ?, ? FROM users WHERE id = ? AND LOWER(email) = LOWER(?) AND
+   (two_factor_method IS NULL OR two_factor_method = 'none') FOR SHARE`, the email being the one
+   the lookup matched: `FOR SHARE` makes it a locking read at any isolation level, so a change to
+   the row still being committed is waited for and then seen. Anything but exactly one affected
+   row means two-factor came on, or the address was given up, after the lookup, and refuses
+   `two_factor_enabled` with nothing written; one row returns the user.
 3. (PR 8 adds the invitation step here.)
 4. Refuse `no_account`.
 
 Unit tests for every step with the `c2_query` mock, and the live-MySQL identity test extended to
 drive the ladder end to end, including the unique-key race (two concurrent links of one user at one
-issuer: exactly one wins, the other refuses `identity_conflict`).
+issuer: exactly one wins, the other refuses `identity_conflict`). The two-factor rule carries its
+own tests, the same set the Google rung has:
+
+- [ ] An email match with `two_factor_method = 'totp'` refuses `two_factor_enabled`, SQL pinned in
+      call order, with no `user_identities` INSERT issued.
+- [ ] The same for `'email'`.
+- [ ] `'none'` links, through the conditional INSERT.
+- [ ] NULL links, through the conditional INSERT.
+- [ ] The conditional INSERT's zero affected rows (and any count but one) refuses
+      `two_factor_enabled`; on real MySQL, a transaction turns two-factor on, or changes the email,
+      and holds the user row between the lookup and the INSERT, and the answer is the refusal with
+      no row (an anchor with a change that touches neither links). The same interleaves run with
+      the app's connections on READ COMMITTED, which is what pins `FOR SHARE`
+      (`tests/integration/google-link-races.js` is the Google rung's harness to reuse).
+- [ ] An already-linked `(issuer, sub)` whose user has two-factor on signs in with a session and
+      no challenge minted.
+- [ ] `two_factor_enabled` comes after `email_conflict` and before `identity_conflict`.
 
 ### Task 5.7 The routes
 
@@ -914,11 +959,14 @@ issuer: exactly one wins, the other refuses `identity_conflict`).
   `/?oauth_error=<code>`, the pattern `Std_Layout.jsx:306-311` already reads. **Carried from PR 3:**
   that file's copy names Google in every line, including the `identity_conflict` line C7 added, and
   its fallback says "Google sign-in failed", so an OIDC refusal needs provider-neutral copy (or a
-  provider hint in the redirect) before it can reuse the map.
+  provider hint in the redirect) before it can reuse the map. The `two_factor_enabled` line the
+  GHSA-6q9j-5qr9-7f2p fix added names Google too ("cannot be linked to Google by email").
 - `app.js`: `app.use('/api/auth/oidc/callback', authLimiter)` beside the Google line
   (`app.js:147`).
 
-OIDC sessions skip local 2FA: the callback never consults `two_factor_method`. `GET
+OIDC sessions skip local 2FA: the callback never challenges for a second factor, and an identity
+already linked signs in as before, the issuer's own MFA governing it. `two_factor_method` is read
+only by the ladder's link-by-email rung (Task 5.6), which refuses to link an account with it on. `GET
 /api/2fa/status` adds `managed_by: 'oidc' | null` from the caller's session's `auth_provider`.
 `GET /api/oauth/providers` adds `oidc: { enabled, name }`, with `name` from `OIDC_PROVIDER_NAME`
 (default `SSO`). `Login.jsx` renders "Sign in with {name}" linking to `/api/auth/oidc/start`,
@@ -1102,6 +1150,13 @@ the local routes: `routes/auth.js` exports the local-only handlers (`/login`, `/
 branch, and every `/2fa/*`) behind one `if (providers.has('local'))` in the router, and the matching
 `authLimiter` lines in `app.js` follow the same guard. Tests: with `AUTH_PROVIDERS=oidc` each of
 those answers 404; with it unset every existing test passes unedited.
+
+An account that had local 2FA on before the switch cannot turn it off itself once `/2fa/*` is
+unmounted, so its first OIDC sign-in is refused as `two_factor_enabled` (Task 5.6), and the remedy
+is by an operator's hand, as for an `identity_conflict` relink: `UPDATE users SET two_factor_method
+= 'none', totp_secret = NULL WHERE id = <id>;`, the statement the admin console's Reset 2FA runs on
+the user row, after which the next OIDC sign-in links the account. `docs/deployment.md`'s "Hosted
+mode" section (Task 8.6) carries it.
 
 ### Task 8.2 A provider-aware admin
 

@@ -6,7 +6,9 @@
  * replaced, to prove the route builds the policy today's behaviour needs
  * (link by verified email, no auto-create when GOOGLE_OAUTH_DOMAIN is unset),
  * maps every refusal to the redirect it always issued, and still binds state
- * to the initiating browser. The domain-restricted policy has its own file,
+ * to the initiating browser. An email match with two-factor authentication on
+ * is refused as two_factor_enabled, while an identity already linked keeps
+ * signing in with no second-factor challenge. The domain-restricted policy has its own file,
  * because routes/oauth.js reads GOOGLE_OAUTH_DOMAIN at import time.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
@@ -89,21 +91,37 @@ describe('Google callback through the identity seam (no domain restriction)', ()
 
   it('links an existing user by verified email, then signs them in', async () => {
     c2_query.mockResolvedValueOnce([]); // no link
-    c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+    c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // user by email
     c2_query.mockResolvedValueOnce([]); // no Google account on that user yet
-    c2_query.mockResolvedValueOnce({ insertId: 1 }); // link
+    c2_query.mockResolvedValueOnce({ affectedRows: 1, insertId: 1 }); // link
     c2_query.mockResolvedValueOnce([{ id: 9, name: 'ada', avatar_url: null, is_admin: 0 }]);
 
     const res = await signIn(payload());
 
     expect(res.headers.location).toBe('/');
     expect(writes()).toHaveLength(1);
-    expect(writes()[0][1]).toEqual([9, 'google-sub-1', 'ada@example.com']);
+    // Subject and email, then the user the row is copied from, while it still
+    // holds that email and two-factor is off.
+    expect(writes()[0][1]).toEqual(['google-sub-1', 'ada@example.com', 9, 'ada@example.com']);
+  });
+
+  it('refuses as two_factor_enabled when two-factor came on before the link INSERT (zero rows)', async () => {
+    c2_query.mockResolvedValueOnce([]); // no link
+    c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // off when looked up
+    c2_query.mockResolvedValueOnce([]); // no Google account on that user
+    c2_query.mockResolvedValueOnce({ affectedRows: 0, insertId: 0 }); // on by the INSERT
+
+    const res = await signIn(payload());
+
+    expect(res.headers.location).toBe('/?oauth_error=two_factor_enabled');
+    expect(sessionCookie(res)).toBeUndefined();
+    expect(generateSessionToken).not.toHaveBeenCalled();
+    expect(c2_query).toHaveBeenCalledTimes(4);
   });
 
   it('refuses an email match that already holds another Google account as identity_conflict', async () => {
     c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
-    c2_query.mockResolvedValueOnce([{ id: 9 }]); // user by email
+    c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: 'none' }]); // user by email
     c2_query.mockResolvedValueOnce([{ id: 31 }]); // that user's Google account, another subject
 
     const res = await signIn(payload());
@@ -112,6 +130,42 @@ describe('Google callback through the identity seam (no domain restriction)', ()
     expect(sessionCookie(res)).toBeUndefined();
     expect(writes()).toEqual([]);
     expect(generateSessionToken).not.toHaveBeenCalled();
+  });
+
+  it.each(['totp', 'email'])(
+    'refuses an email match with %s two-factor on as two_factor_enabled: no link, no session',
+    async (method) => {
+      c2_query.mockResolvedValueOnce([]); // this subject is linked to nobody
+      c2_query.mockResolvedValueOnce([{ id: 9, two_factor_method: method }]); // user by email
+
+      const res = await signIn(payload());
+
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('/?oauth_error=two_factor_enabled');
+      expect(sessionCookie(res)).toBeUndefined();
+      expect(writes()).toEqual([]);
+      expect(generateSessionToken).not.toHaveBeenCalled();
+      expect(c2_query).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  // Kept on purpose: a linked identity signs in on Google's own sign-in (its
+  // MFA included), with no local second factor, even for a user who turned
+  // two-factor on after linking. The linked path never reads two_factor_method
+  // and mints no challenge; tests/integration/oauth-google-two-factor.test.js
+  // proves the same against a real row that has it set.
+  it('signs an already-linked identity in with no second-factor challenge', async () => {
+    c2_query.mockResolvedValueOnce([{ user_id: 42 }]);
+    c2_query.mockResolvedValueOnce([{ id: 42, name: 'ada', avatar_url: null, is_admin: 0 }]);
+
+    const res = await signIn(payload());
+
+    expect(res.headers.location).toBe('/');
+    expect(sessionCookie(res)).toMatch(/^sessionToken=mock-session-token/);
+    expect(generateSessionToken).toHaveBeenCalledTimes(1);
+    const touched = c2_query.mock.calls.map(([sql]) => sql).join('\n');
+    expect(touched).not.toMatch(/two_factor|password_reset_tokens/);
+    expect(writes()).toEqual([]);
   });
 
   it('refuses an unknown person as no_account, because auto-create is off without a domain', async () => {

@@ -109,5 +109,5 @@ describe('upgrading from the pre-runner state', () => {
       await dropSchema(conn, other);
       await conn.end();
     }
-  });
+  }, 120_000); // DDL-heavy: 16 to 19 s beside the other integration files, over 30 s on a cold server
 });
