@@ -9,8 +9,8 @@ import express from 'express';
 import TurndownService from 'turndown';
 import HTMLtoDOCX from 'html-to-docx';
 import { c2_query } from '../mysql_connect.js';
-import { requireAuth } from '../middleware/auth.js';
-import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+import { requireAuth, machineOrAuth } from '../middleware/auth.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
 import { extractImagesFromHtml, inlineImagesForExport, inlineImagesForMarkdownExport } from './helpers/images.js';
 import { processMentionsOnSave } from './helpers/mentions.js';
@@ -608,6 +608,56 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
       return res.send(Buffer.from(docxBuffer));
     }
   }
+}));
+
+/** The most ids one GET /api/documents/state answers. */
+const STATE_MAX_IDS = 100;
+
+/**
+ * GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>
+ * The reconciliation read (W6-CDX-16): for each id the caller can read in
+ * that workspace, { id, title, archive_id, updated_at }. Cloud Command uses it
+ * to repair what the outbound event stream missed.
+ *
+ * machineOrAuth, the third and last route a service token may reach (the
+ * other two are GET /api/search and GET /api/browse). It answers "which of
+ * these may YOU read?", so a session is the natural other half, and it is
+ * never an oracle: an id that is unreadable, deleted, in another workspace or
+ * in a system archive is simply absent, and those cases cannot be told apart.
+ * The access check is the shared read fragment with the caller's own params,
+ * narrowed by workspace through the archive's squad exactly as GET
+ * /api/search narrows. A read, with no logActivity and no notification.
+ * Rate-limited in app.js (stateLimiter), ahead of authentication.
+ *
+ * The title carries the event envelope's bound, 255 characters (MySQL counts
+ * code points, so a surrogate pair is never split), so a reconciler comparing
+ * the two sees the same string and the answer stays small.
+ */
+router.get('/documents/state', machineOrAuth, asyncHandler(async (req, res) => {
+  const { workspaceId } = req.query;
+  const ids = String(req.query.ids ?? '').split(',').filter(Boolean);
+
+  if (!isValidId(workspaceId)) {
+    return res.status(400).json({ success: false, message: 'A workspaceId is required' });
+  }
+  if (ids.length === 0 || ids.length > STATE_MAX_IDS || !ids.every(isValidId)) {
+    return res.status(400).json({ success: false, message: 'Between 1 and 100 document ids are required' });
+  }
+
+  // The placeholders are generated from the count only, never from the values.
+  const documents = await c2_query(
+    `SELECT l.id, LEFT(l.title, 255) AS title, l.archive_id, l.updated_at
+       FROM logs l
+ INNER JOIN archives p ON l.archive_id = p.id
+ INNER JOIN squads _fs ON _fs.id = p.squad_id AND _fs.workspace_id = ?
+      WHERE l.id IN (${ids.map(() => '?').join(', ')})
+        AND ${readAccessWhere('p')}
+        AND ${excludeSystemArchives('p')}
+      ORDER BY l.id`,
+    [Number(workspaceId), ...ids.map(Number), ...readAccessParams(req.user)]
+  );
+
+  res.json({ success: true, documents });
 }));
 
 router.use(errorHandler);

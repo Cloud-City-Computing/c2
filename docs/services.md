@@ -470,7 +470,8 @@ unchanged, so a human session is unaffected. On a match it attaches a machine
 principal (`{ id, name, email, is_admin: false, is_machine: true }`) and sets no
 `req.sessionToken`, because a machine caller holds no session row.
 
-Mounted on exactly two routes, `GET /api/search` and `GET /api/browse`. It is
+Mounted on exactly three routes, `GET /api/search`, `GET /api/browse` and
+`GET /api/documents/state` (the reconciliation read). It is
 not a drop-in replacement for `requireAuth`: the value of the credential is
 that its reach stays enumerable by reading the routers.
 

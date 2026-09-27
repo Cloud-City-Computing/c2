@@ -415,7 +415,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-13 | The outbox, subscriptions and the emit hook | W6-CDX-12 | yes |
 | W6-CDX-14 | The delivery worker | W6-CDX-13 | yes |
 | W6-CDX-15 | Webhooks in the admin console | W6-CDX-14 | no |
-| W6-CDX-16 | A machine read for reconciliation | W6-CDX-10 | no |
+| W6-CDX-16 | A machine read for reconciliation (**shipped 2026-09-27** on `track/w6-cdx-16-reconciliation-read`; `GET /api/documents/state`, the third `machineOrAuth` route) | W6-CDX-10 | no |
 | W6-CDX-21 | Vendor the tokens, fonts and gates | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
 | W6-CDX-22 | The palette bridge and the accent picker | W6-CDX-21 | yes |
 | W6-CDX-23 | Focus, buttons and the Toast | W6-CDX-22 | yes |

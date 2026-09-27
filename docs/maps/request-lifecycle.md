@@ -47,8 +47,9 @@ app.set('trust proxy', 1)                    app.js:42
   ├─ express.json({ limit: '2mb' })          app.js:137
   ├─ authLimiter on 9 paths + reader-check   app.js:140-163
   ├─ searchLimiter on /api/users/search      app.js:174
-  ├─ static /avatars      (7d immutable)     app.js:177-180
-  ├─ static /doc-images   (30d immutable)    app.js:183-186
+  ├─ stateLimiter on /api/documents/state    app.js:188
+  ├─ static /avatars      (7d immutable)     app.js:191-194
+  ├─ static /doc-images   (30d immutable)    app.js:197-200
   └─ 18 routers, all mounted at /api
 ```
 
@@ -106,13 +107,16 @@ saves fine over WS can 413 over REST.
 |---|---|---|
 | `authLimiter` (`app.js:128-135`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:153`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:163`) |
 | `searchLimiter` (`app.js:166-173`) | 15 min / 60 | `/api/users/search` only (`app.js:174`), to blunt user enumeration |
+| `stateLimiter` (`app.js:180-187`) | 15 min / 120 | `/api/documents/state` only (`app.js:188`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
-Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
+All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. One test exercises the
 limiter itself: `tests/app.test.js` sets `NODE_ENV=production` for its duration
 and requires the 21st `/api/update-account` request, then
 `/api/update-account/confirm-email`, to answer 429 while an unmounted route does
-not. The other mounts are not exercised.
+not; a second requires the 121st `/api/documents/state` request to answer 429,
+while the first 120 reach `machineOrAuth` (401) and `/api/search` and
+`/api/document` stay unspent. The other mounts are not exercised.
 
 ### Router mounting
 
@@ -183,8 +187,9 @@ token presented on these routes meets a constant-time comparison that cannot
 match it and cannot leak its length, and the `users` lookup happens only after
 the token matches, so a wrong token costs no query.
 
-It is mounted on exactly two routes, `GET /api/search` and `GET /api/browse`
-(`routes/search.js`), and configured by `SERVICE_TOKEN` plus
+It is mounted on exactly three routes, `GET /api/search` and `GET /api/browse`
+(`routes/search.js`) and `GET /api/documents/state` (`routes/documents.js`, the
+reconciliation read), and configured by `SERVICE_TOKEN` plus
 `SERVICE_TOKEN_USER`, both required. See
 [access-control.md](access-control.md) section 7 for the never-admin rule.
 

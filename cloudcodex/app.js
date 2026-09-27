@@ -173,6 +173,20 @@ const searchLimiter = rateLimit({
 });
 app.use('/api/users/search', searchLimiter);
 
+// The reconciliation read (W6-CDX-16) answers up to 100 document ids a
+// request, under the machine credential or a session. Its own bucket, mounted
+// before any router so an unauthenticated caller spends it too: a sweep of 100
+// ids a request fits well inside it, and a caller probing ids is bounded.
+const stateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: { success: false, message: 'Too many state requests, please try again later' },
+});
+app.use('/api/documents/state', stateLimiter);
+
 // Serve uploaded avatars as static files
 app.use('/avatars', express.static(path.join(__dirname, 'public', 'avatars'), {
   maxAge: '7d',

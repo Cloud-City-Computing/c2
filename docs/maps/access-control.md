@@ -64,6 +64,7 @@ Applied in:
 |---|---|
 | `routes/archives.js` | listing, log listing, rename, ACL read and write, log create/update/delete, repos |
 | `routes/search.js` | search, browse, filters |
+| `routes/documents.js` | `GET /documents/state`, the reconciliation read (a document in a system archive is absent) |
 | `routes/upload.js` | `POST /archives/:archiveId/logs/upload` |
 | `routes/github.js` | `POST /github/import-to-codex` |
 
@@ -543,12 +544,13 @@ no failing assertion outside `tests/services/machine-auth.test.js`.
 ### The scope is a scope
 
 `machineOrAuth` (`middleware/auth.js`) tries the credential and otherwise falls
-through to `requireAuth` unchanged. It is applied to exactly two routes:
+through to `requireAuth` unchanged. It is applied to exactly three routes:
 
 | Route | Middleware |
 |---|---|
-| `GET /api/search` | `machineOrAuth` |
-| `GET /api/browse` | `machineOrAuth` |
+| `GET /api/search` | `machineOrAuth` (`routes/search.js:106`) |
+| `GET /api/browse` | `machineOrAuth` (`routes/search.js:227`) |
+| `GET /api/documents/state` | `machineOrAuth` (`routes/documents.js:636`), W6-CDX-16 |
 | `GET /api/workspaces/:workspaceId/reader-check` | **`requireMachine`** |
 | `GET /api/search/filters` | `requireAuth` |
 | `GET /api/presence` | `requireAuth` |
@@ -590,10 +592,45 @@ does not use** (`tests/routes/reader-check.test.js`). Without that row the crede
 nothing and the request is refused anyway, so the 401 would pass even if the route had been written
 with `machineOrAuth` — the same false-green shape the `search.test.js` 401s were written to avoid.
 
-Both machine-reachable routes are reads, and both consume the principal only
-through `readAccessParams(req.user)` and `buildFilters(req.query, req.user)`.
-Neither calls `logActivity` nor `createNotification`, so nothing is attributed
-to the machine principal and no watcher is enrolled.
+All three `machineOrAuth` routes are reads, and they consume the principal only
+through `readAccessParams(req.user)` and, for search and browse,
+`buildFilters(req.query, req.user)`. None calls `logActivity` nor
+`createNotification`, so nothing is attributed to the machine principal and no
+watcher is enrolled.
+
+### The reconciliation read is safe for the same reason (W6-CDX-16)
+
+`GET /api/documents/state?workspaceId=<id>&ids=<1..100 ids>` exists because the
+outbound event stream captures after the mutation and does not await it, so a
+crash between the two loses an event; Cloud Command sweeps its linked documents
+through this route to repair that. For each id it returns
+`{ id, title, archive_id, updated_at }` only when the caller can read it, and
+it asks nothing the other two routes do not already answer:
+
+- **Who may call it.** The machine principal or any session, like search and
+  browse: it answers "which of these may YOU read?", never a question about a
+  third party, so it is `machineOrAuth` and not `requireMachine`. A session
+  learns nothing it could not already open with `GET /api/document`.
+- **What it can enumerate.** Nothing beyond the caller's own reach. The access
+  check is `readAccessWhere('p')` with the caller's own seven params, plus
+  `excludeSystemArchives('p')`, narrowed to the workspace by the same
+  `INNER JOIN squads _fs ON _fs.id = p.squad_id AND _fs.workspace_id = ?` that
+  search's `buildFilters` uses. An id that is deleted, unreadable, in another
+  workspace, in a system archive or never existed is **absent**, and those
+  cases answer byte-identically, so the route is not an existence oracle. The
+  machine principal's `is_admin` is forced false (above), so an archive only an
+  admin could read is absent too.
+- **How fast.** `stateLimiter` (`app.js`, 120 requests per 15 minutes, mounted
+  before the routers) bounds it per client address, authenticated or not; at
+  100 ids a request that is 12,000 ids per window.
+- **The SQL.** The `IN (...)` placeholders are generated from the id count
+  only, never from the values, and every id is bound. `title` is
+  `LEFT(l.title, 255)`, the event envelope's bound, so a reconciler compares
+  the same string the stream carried.
+
+`tests/integration/documents-state.test.js` proves the narrowing, the ACL, the
+system-archive exclusion and the byte-identical absence on a real server, with
+a non-vacuity anchor (an admin session does see the admin-only document).
 
 Widening the credential to a route that writes, logs activity, or notifies is a
 decision to take on purpose, not a tidy-up: the principal carries a real user
@@ -614,7 +651,7 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
 1. `requireAuth` first, always. There are no internal endpoints; the only
    surfaces are public HTTP and the two WebSockets. The single alternative is
    `machineOrAuth` (7), which wraps `requireAuth` rather than replacing it, and
-   which is deliberately mounted on two read routes and nothing else.
+   which is deliberately mounted on three read routes and nothing else.
 2. Creation verb, add `requirePermission('<flag>')`. If the route takes a
    workspace or squad id from the caller rather than deriving it from a row the
    caller already reaches, gate it with `isWorkspaceMember` /

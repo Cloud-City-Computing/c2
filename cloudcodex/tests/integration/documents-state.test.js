@@ -188,6 +188,13 @@ describe('GET /api/documents/state, on a real server', () => {
     expect(doc.title).toBe(ids.longTitlePrefix);
   });
 
+  it('answers an id past the INT range like any other absent id, not with a 500', async () => {
+    const res = await state(ids.w1, [ids.readable[0], 99999999999, 2147483648]);
+
+    expect(res.status).toBe(200);
+    expect(answered(res)).toEqual([ids.readable[0]]);
+  });
+
   it('answers a human session with what that person can read', async () => {
     const token = await generateSessionToken({ id: ids.member });
 

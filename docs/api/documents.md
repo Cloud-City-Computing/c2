@@ -47,6 +47,39 @@ Returns `404` if not found or the user does not have read access.
 
 ---
 
+### `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`
+
+The reconciliation read: which of these documents the caller can read in one workspace, and their
+current title and archive. Cloud Command calls it to repair what the outbound event stream missed.
+It accepts a session token or, when the install configures one, the service token
+(`Authorization: Bearer <SERVICE_TOKEN>`); it is one of the three routes a service token reaches.
+
+| Param | Description |
+|---|---|
+| `workspaceId` | Required. The workspace to answer about. |
+| `ids` | Required. 1 to 100 comma-separated document ids. |
+
+**Response**
+
+```json
+{
+  "success": true,
+  "documents": [
+    { "id": 113, "title": "Release checklist", "archive_id": 29, "updated_at": "2026-09-24T15:04:05.000Z" }
+  ]
+}
+```
+
+A document appears only when the caller can read it, it lives in that workspace, and its archive is
+not a system archive. Every other id, deleted, unreadable, in another workspace or never existing,
+is simply absent, and the answer does not say which. `title` is bounded to 255 characters, the same
+bound the outbound event envelope applies. Ordered by `id`.
+
+Returns `400` with `A workspaceId is required` or `Between 1 and 100 document ids are required`.
+Rate-limited to 120 requests per 15 minutes per client address, counted before authentication.
+
+---
+
 ## Creating Documents
 
 ---
