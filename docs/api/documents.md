@@ -95,13 +95,17 @@ Create a new document inside an archive.
 ```json
 {
   "title": "New Document",
-  "parent_id": null,           // optional — nest under another log
+  "parent_id": null,           // optional, nest under another log in this archive
   "html_content": "<p></p>",   // optional initial content
   "markdown_content": null     // optional
 }
 ```
 
 Requires the `create_log` permission (global, squad-level, or via workspace ownership).
+A `parent_id` must be a log in the same archive; otherwise `400`
+(`parent_id must be a log in this archive`). The upload route,
+`POST /api/archives/:archiveId/logs/upload`, applies the same rule to its
+`parent_id` field.
 
 **Response:** `{ success: true, logId }`
 
@@ -139,21 +143,38 @@ When `markdown_content` is a string, it is saved alongside the HTML (markdown-so
 
 Update a document's title. Requires write access.
 
-**Body:** `{ title }` — max 255 characters.
+**Body:** `{ title }`, a non-blank string of at most 255 characters after trimming; otherwise `400`.
+
+Records a `log.rename` activity event.
 
 ---
 
-### `PUT /api/document/:logId/parent`
+### `PUT /api/archives/:archiveId/logs/:logId`
 
-Move a document to a different parent (or to the root by passing `null`). Requires write access.
+Rename a document, move it under another parent, or both. Requires write
+access to the archive, and the document must be in that archive (`404`
+otherwise).
 
-**Body:** `{ parent_id: <id> | null }`
+**Body:** `{ title?, parent_id? }`, at least one. `title` follows the rules of
+`PUT /api/document/:logId/title`: required when present, trimmed, at most 255
+characters, with the same `400` bodies. `parent_id` is a log id or `null` for
+the top of the tree. A new parent must be another log in the same archive and
+must not be the document itself or one of its descendants; otherwise `400`.
+
+A changed title records `log.rename`, and a changed parent records `log.move`
+with `title`, `parent_id` and `previous_parent_id` in its metadata. Sending the
+values already stored records nothing. Neither event notifies watchers. This
+is the only route that moves a document. Moves in one archive are applied one
+at a time.
 
 ---
 
-### `DELETE /api/document/:logId`
+### `DELETE /api/archives/:archiveId/logs/:logId`
 
-Delete a document and all its versions, comments, and favorites. Requires write access.
+Delete a document. Requires write access to the archive. Its versions,
+comments, favorites and GitHub links go with it; its child documents move to
+the top of the tree (`logs.parent_id` is `ON DELETE SET NULL`). Records a
+`log.delete` activity event.
 
 ---
 

@@ -313,6 +313,19 @@ describe('Document Routes', () => {
       expect(res.status).toBe(400);
     });
 
+    it('refuses a title that is not a string with a 400, not a 500', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .put('/api/document/1/title')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 42 });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'Title is required' });
+      expect(c2_query).not.toHaveBeenCalledWith(expect.stringMatching(/UPDATE logs/), expect.anything());
+    });
+
     it('rejects invalid log ID', async () => {
       mockAuthenticated();
 
