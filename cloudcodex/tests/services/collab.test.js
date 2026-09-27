@@ -15,17 +15,22 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
 import WebSocket from 'ws';
 import { c2_query, validateAndAutoLogin } from '../../mysql_connect.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
+import * as Y from 'yjs';
+import * as syncProtocol from 'y-protocols/sync';
+import * as encoding from 'lib0/encoding';
 import {
   setupCollabServer,
   broadcastToDoc,
   getActiveDocCount,
   getActiveUsers,
   getAllPresence,
+  flushPendingSaves,
+  closeAll,
 } from '../../services/collab.js';
 
 // Spin up a fresh HTTP server + WS upgrade handler per test so the in-memory
@@ -525,5 +530,106 @@ describe('services/collab — authenticated session', () => {
     // Wait briefly for the close handler to run.
     await new Promise((r) => setTimeout(r, 50));
     expect(getActiveUsers(112).length).toBe(0);
+  });
+});
+
+// ── Shutdown: flushing pending saves and closing every socket ──
+
+/** Send one Yjs update inserting `text`, the way an editor's keystroke arrives. */
+function sendEdit(ws, text) {
+  const local = new Y.Doc();
+  local.getText('body').insert(0, text);
+  const encoder = encoding.createEncoder();
+  syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(local));
+  ws.send(encoding.toUint8Array(encoder));
+}
+
+/** The debounced-save UPDATEs issued so far for one log. */
+function ydocWritesFor(logId) {
+  return c2_query.mock.calls.filter(
+    ([sql, params]) => /^UPDATE logs SET ydoc_state = \?, updated_at = NOW\(\) WHERE id = \?$/.test(sql) && params[1] === logId
+  );
+}
+
+/** What a written ydoc_state buffer decodes to. */
+function textOf(buffer) {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, new Uint8Array(buffer));
+  return doc.getText('body').toString();
+}
+
+describe('services/collab: flushPendingSaves', () => {
+  it('writes a pending save now, inside the debounce window, with the latest edit in it', async () => {
+    const ws = await authenticatedClient(301);
+    sendEdit(ws, 'edited just before the stop');
+    await new Promise((r) => setTimeout(r, 50));
+    // Non-vacuity: the debounce has not fired on its own yet.
+    expect(ydocWritesFor(301)).toHaveLength(0);
+
+    await flushPendingSaves();
+
+    const writes = ydocWritesFor(301);
+    expect(writes).toHaveLength(1);
+    expect(textOf(writes[0][1][0])).toBe('edited just before the stop');
+    ws.terminate();
+  });
+
+  it('clears the timer it flushed, so a second flush writes nothing more', async () => {
+    const ws = await authenticatedClient(302);
+    sendEdit(ws, 'once');
+    await new Promise((r) => setTimeout(r, 50));
+
+    await flushPendingSaves();
+    await flushPendingSaves();
+
+    expect(ydocWritesFor(302)).toHaveLength(1);
+    ws.terminate();
+  });
+
+  it('carries on past a document whose write throws, and does not reject', async () => {
+    const a = await authenticatedClient(303);
+    const b = await authenticatedClient(304);
+    sendEdit(a, 'first');
+    sendEdit(b, 'second');
+    await new Promise((r) => setTimeout(r, 50));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    c2_query.mockImplementation(async (sql, params) => {
+      if (/^UPDATE logs SET ydoc_state/.test(sql) && params[1] === 303) throw new Error('lost the row lock');
+      return [];
+    });
+
+    await expect(flushPendingSaves()).resolves.toMatchObject({ failed: 1 });
+
+    expect(ydocWritesFor(303)).toHaveLength(1);
+    expect(ydocWritesFor(304)).toHaveLength(1);
+    expect(textOf(ydocWritesFor(304)[0][1][0])).toBe('second');
+    expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/lost the row lock/);
+    errorSpy.mockRestore();
+    a.terminate();
+    b.terminate();
+  });
+
+  it('leaves a document with nothing pending alone', async () => {
+    const ws = await authenticatedClient(305);
+
+    await flushPendingSaves();
+
+    expect(ydocWritesFor(305)).toHaveLength(0);
+    ws.terminate();
+  });
+});
+
+describe('services/collab: closeAll', () => {
+  it('closes every open socket, authenticated or not, with the code and reason given', async () => {
+    const authed = await authenticatedClient(306);
+    const pendingAuth = new WebSocket(url(307), { headers: { Origin: origin() } });
+    await new Promise((r) => pendingAuth.once('open', r));
+
+    const closes = [authed, pendingAuth].map((ws) => awaitTerminal(ws));
+    closeAll(1001, 'Server shutting down');
+
+    for (const result of await Promise.all(closes)) {
+      expect(result).toEqual({ type: 'close', code: 1001, reason: 'Server shutting down' });
+    }
   });
 });

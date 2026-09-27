@@ -26,6 +26,7 @@ let listenCallback;
 const fakeServer = {
   listening: true,
   on: vi.fn((event, handler) => { serverHandlers[event] = handler; }),
+  close: vi.fn(),
   // The real server reports the port it actually bound, which differs from the
   // requested one when PORT is 0. Tests override this to drive that case.
   address: vi.fn(() => ({ port: 4100 })),
@@ -35,8 +36,15 @@ const listenMock = vi.fn((_app, _port, callback) => {
   return fakeServer;
 });
 vi.mock('vite-express', () => ({ default: { listen: listenMock } }));
-vi.mock('../services/collab.js', () => ({ setupCollabServer: vi.fn() }));
-vi.mock('../services/user-channel.js', () => ({ setupUserChannelServer: vi.fn() }));
+vi.mock('../services/collab.js', () => ({
+  setupCollabServer: vi.fn(),
+  flushPendingSaves: vi.fn(async () => ({ saved: 0, failed: 0 })),
+  closeAll: vi.fn(),
+}));
+vi.mock('../services/user-channel.js', () => ({ setupUserChannelServer: vi.fn(), closeAll: vi.fn() }));
+// The lock opens a real MySQL connection; here it is a double that holds.
+const heldLock = { held: true, disabled: false, connectionId: 7, release: vi.fn(async () => {}) };
+vi.mock('../services/instance-lock.js', () => ({ acquireInstanceLock: vi.fn(async () => heldLock) }));
 vi.mock('../routes/admin.js', () => ({ default: {}, ensureAdminUser: vi.fn(), bootstrapInstance: vi.fn() }));
 vi.mock('../app.js', () => ({ default: {} }));
 vi.mock('../services/email.js', () => ({
@@ -52,8 +60,25 @@ let errorSpy;
 
 let logSpy;
 
+// server.js installs SIGTERM and SIGINT handlers on every import. Capture them
+// instead, so a test can deliver a signal, and so twenty imports do not stack
+// twenty real handlers on the test worker.
+let onceSpy;
+let signalHandlers;
+
 beforeEach(() => {
   vi.resetModules();
+  signalHandlers = {};
+  const realOnce = process.once.bind(process);
+  onceSpy = vi.spyOn(process, 'once').mockImplementation((event, handler) => {
+    if (event === 'SIGTERM' || event === 'SIGINT') {
+      signalHandlers[event] = handler;
+      return process;
+    }
+    return realOnce(event, handler);
+  });
+  fakeServer.close.mockClear();
+  heldLock.release.mockClear();
   exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -66,6 +91,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  onceSpy.mockRestore();
   exitSpy.mockRestore();
   errorSpy.mockRestore();
   logSpy.mockRestore();
@@ -458,5 +484,121 @@ describe('server.js: AUTH_PROVIDERS', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/GOOGLE_CLIENT_ID/);
     });
+  });
+});
+
+describe('server.js: the single-writer lock', () => {
+  const bootEnv = () => {
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    delete process.env.AUTH_PROVIDERS;
+  };
+
+  it('takes the lock before anything writes and before the port opens', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const { acquireInstanceLock } = await import('../services/instance-lock.js');
+      acquireInstanceLock.mockClear();
+      const { ensureAdminUser } = await import('../routes/admin.js');
+      const { openConnection } = await import('../mysql_connect.js');
+
+      await import('../server.js');
+
+      expect(acquireInstanceLock).toHaveBeenCalledTimes(1);
+      // Its own connection, never the pool: GET_LOCK belongs to a connection.
+      expect(acquireInstanceLock.mock.calls[0][0].connect).toBe(openConnection);
+      const lockOrder = acquireInstanceLock.mock.invocationCallOrder[0];
+      expect(lockOrder).toBeLessThan(ensureAdminUser.mock.invocationCallOrder.at(-1));
+      expect(lockOrder).toBeLessThan(listenMock.mock.invocationCallOrder[0]);
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('hands the lock to /readyz', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      await import('../server.js');
+      const { readiness } = await import('../routes/health.js');
+      expect(readiness.lock).toBe(heldLock);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('exits 1 with the lock\'s sentence, before the admin sync, when another process holds it', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const { acquireInstanceLock } = await import('../services/instance-lock.js');
+      acquireInstanceLock.mockRejectedValueOnce(new Error('Another Cloud Codex process (MySQL connection 9) already serves this database.'));
+      const { ensureAdminUser } = await import('../routes/admin.js');
+
+      await import('../server.js');
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/MySQL connection 9/);
+      expect(exitSpy.mock.invocationCallOrder[0]).toBeLessThan(ensureAdminUser.mock.invocationCallOrder.at(-1));
+    } finally {
+      process.env = original;
+    }
+  });
+});
+
+describe('server.js: stop signals', () => {
+  const bootEnv = () => {
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    delete process.env.AUTH_PROVIDERS;
+  };
+
+  it('installs one shutdown for SIGTERM and SIGINT', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      await import('../server.js');
+      expect(signalHandlers.SIGTERM).toEqual(expect.any(Function));
+      expect(signalHandlers.SIGINT).toBe(signalHandlers.SIGTERM);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it('on SIGTERM: readiness goes 503, saves flush, both socket servers close with 1001, the lock and the pool are released, exit 0', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const collab = await import('../services/collab.js');
+      const userChannel = await import('../services/user-channel.js');
+      const { endPool } = await import('../mysql_connect.js');
+      collab.flushPendingSaves.mockClear();
+      collab.closeAll.mockClear();
+      userChannel.closeAll.mockClear();
+      endPool.mockClear();
+
+      await import('../server.js');
+      const { readiness } = await import('../routes/health.js');
+      await signalHandlers.SIGTERM('SIGTERM');
+
+      expect(readiness.shuttingDown).toBe(true);
+      expect(fakeServer.close).toHaveBeenCalledTimes(1);
+      expect(collab.flushPendingSaves).toHaveBeenCalledTimes(1);
+      expect(collab.closeAll).toHaveBeenCalledWith(1001, 'Server shutting down');
+      expect(userChannel.closeAll).toHaveBeenCalledWith(1001, 'Server shutting down');
+      expect(heldLock.release).toHaveBeenCalledTimes(1);
+      expect(endPool).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(0);
+      expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/stopped cleanly on SIGTERM/);
+      // The flush comes before the sockets close, and the pool ends last.
+      expect(collab.flushPendingSaves.mock.invocationCallOrder[0]).toBeLessThan(collab.closeAll.mock.invocationCallOrder[0]);
+      expect(heldLock.release.mock.invocationCallOrder[0]).toBeLessThan(endPool.mock.invocationCallOrder[0]);
+    } finally {
+      process.env = original;
+    }
   });
 });

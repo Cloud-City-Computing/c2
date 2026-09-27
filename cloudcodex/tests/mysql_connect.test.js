@@ -31,8 +31,13 @@ const getConnectionMock = vi.fn(async () => ({
   release: releaseMock,
 }));
 
+const poolEndMock = vi.fn(async () => {});
+const createPoolMock = vi.fn(() => ({ execute: executeMock, getConnection: getConnectionMock, end: poolEndMock }));
+const dedicatedConnection = { query: vi.fn(), end: vi.fn() };
+const createConnectionMock = vi.fn(async () => dedicatedConnection);
+
 vi.mock('mysql2/promise', () => ({
-  default: { createPool: () => ({ execute: executeMock, getConnection: getConnectionMock }) },
+  default: { createPool: createPoolMock, createConnection: createConnectionMock },
 }));
 
 // Ensure the env vars exist so the require-vars guard at module load does
@@ -46,6 +51,8 @@ const {
   validateAndAutoLogin,
   touchSession,
   withTransaction,
+  endPool,
+  openConnection,
 } = await import('../mysql_connect.js');
 
 beforeEach(() => {
@@ -227,5 +234,31 @@ describe('withTransaction', () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+});
+
+describe('endPool', () => {
+  it('ends the shared pool, so shutdown releases every connection it holds', async () => {
+    poolEndMock.mockClear();
+    await endPool();
+    expect(poolEndMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('openConnection', () => {
+  it('opens a connection of its own, outside the pool, to the same server, user and schema', async () => {
+    createConnectionMock.mockClear();
+
+    const conn = await openConnection();
+
+    expect(conn).toBe(dedicatedConnection);
+    const [poolOptions] = createPoolMock.mock.calls[0];
+    const [options] = createConnectionMock.mock.calls[0];
+    for (const key of ['host', 'user', 'password', 'database']) {
+      expect(options[key]).toBe(poolOptions[key]);
+    }
+    // Non-vacuity: the pool really was configured from the environment.
+    expect(poolOptions.user).toBe(process.env.DB_USER);
+    expect(getConnectionMock).not.toHaveBeenCalled();
   });
 });
