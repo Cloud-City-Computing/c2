@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
-import { c2_query } from '../../mysql_connect.js';
+import { c2_query, withTransaction } from '../../mysql_connect.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 const flush = () => new Promise((r) => setImmediate(r));
@@ -763,6 +763,59 @@ describe('Archive Routes', () => {
       expect(c2_query.mock.calls[1][0]).toMatch(/JSON_CONTAINS\(p\.write_access/);
     });
 
+    it('creates a log under a parent after checking the parent is in this archive', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }])
+        .mockResolvedValueOnce([{ id: 1 }])          // write access
+        .mockResolvedValueOnce([{ id: 5 }])          // the parent, in this archive
+        .mockResolvedValueOnce({ insertId: 10 });   // INSERT log
+
+      const res = await request(app)
+        .post('/api/archives/1/logs')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Log', parent_id: 5 });
+
+      expect(res.status).toBe(201);
+      expect(c2_query.mock.calls[2][0]).toMatch(/SELECT id FROM logs WHERE id = \? AND archive_id = \?/);
+      expect(c2_query.mock.calls[2][1]).toEqual([5, 1]);
+      expect(c2_query.mock.calls[3][0]).toMatch(/INSERT INTO logs/);
+      expect(c2_query.mock.calls[3][1][3]).toBe(5);
+    });
+
+    it('refuses a parent that is not a log in this archive, and inserts nothing', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }])
+        .mockResolvedValueOnce([{ id: 1 }])  // write access
+        .mockResolvedValueOnce([]);           // no such log in this archive
+
+      const res = await request(app)
+        .post('/api/archives/1/logs')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Log', parent_id: 99 });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'parent_id must be a log in this archive' });
+      expect(callIndex(/INSERT INTO logs/)).toBe(-1);
+    });
+
+    it('checks no parent for a log created at the top of the tree', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ create_squad: true, create_archive: true, create_log: true }])
+        .mockResolvedValueOnce([{ id: 1 }])
+        .mockResolvedValueOnce({ insertId: 10 });
+
+      const res = await request(app)
+        .post('/api/archives/1/logs')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Log' });
+
+      expect(res.status).toBe(201);
+      expect(callIndex(/SELECT id FROM logs WHERE id = \?/)).toBe(-1);
+    });
+
     it('requires authentication', async () => {
       mockUnauthenticated();
 
@@ -786,18 +839,20 @@ describe('Archive Routes', () => {
         /FROM logs l\s+INNER JOIN archives p/.test(sql) ? [{ workspace_id: 7, squad_id: 3 }] : []);
     };
 
-    /** Queue the write-access check and the current row, then the UPDATE. */
+    /** Queue the write-access check, the archive lock and the current row, then the UPDATE. */
     const queueTreeWrite = (current) => {
       c2_query
         .mockResolvedValueOnce([{ id: 1 }])          // write access
+        .mockResolvedValueOnce([{ id: 1 }])          // the archive row, locked
         .mockResolvedValueOnce(current)               // the current row
         .mockResolvedValueOnce({ affectedRows: 1 }); // UPDATE logs
     };
 
-    /** Queue the write-access check, the current row, the new parent's ancestry, then the UPDATE. */
+    /** Queue the write-access check, the archive lock, the current row, the new parent's ancestry, then the UPDATE. */
     const queueTreeMove = (current, ancestry) => {
       c2_query
         .mockResolvedValueOnce([{ id: 1 }])          // write access
+        .mockResolvedValueOnce([{ id: 1 }])          // the archive row, locked
         .mockResolvedValueOnce(current)               // the current row
         .mockResolvedValueOnce(ancestry)              // the new parent and its ancestors, in this archive
         .mockResolvedValueOnce({ affectedRows: 1 }); // UPDATE logs
@@ -829,7 +884,7 @@ describe('Archive Routes', () => {
       expect(res.body.success).toBe(true);
     });
 
-    it('reads the current row inside the archive after the write-access check', async () => {
+    it('locks the archive row, then reads the current row inside the archive, after the write-access check', async () => {
       mockAuthenticated();
       queueTreeWrite([{ title: 'Old Title', parent_id: null }]);
 
@@ -838,9 +893,38 @@ describe('Archive Routes', () => {
         .set('Authorization', 'Bearer valid-token')
         .send({ title: 'New Title' });
 
-      expect(c2_query.mock.calls[1][0]).toMatch(/SELECT title, parent_id FROM logs WHERE id = \? AND archive_id = \?/);
-      expect(c2_query.mock.calls[1][1]).toEqual([10, 1]);
-      expect(c2_query.mock.calls[2][0]).toMatch(/UPDATE logs SET title = \?/);
+      expect(c2_query.mock.calls[1][0]).toMatch(/SELECT id FROM archives WHERE id = \? FOR UPDATE/);
+      expect(c2_query.mock.calls[1][1]).toEqual([1]);
+      expect(c2_query.mock.calls[2][0]).toMatch(/SELECT title, parent_id FROM logs WHERE id = \? AND archive_id = \?/);
+      expect(c2_query.mock.calls[2][1]).toEqual([10, 1]);
+      expect(c2_query.mock.calls[3][0]).toMatch(/UPDATE logs SET title = \?/);
+    });
+
+    // Two moves at once, of A under B and of B under A, would each walk an
+    // ancestry the other has not written yet, pass, and commit a cycle. The
+    // lock, the read, the walk and the UPDATE share one transaction so that
+    // moves in one archive take turns.
+    it('runs the lock, the read, the ancestry walk and the UPDATE in one transaction', async () => {
+      mockAuthenticated();
+      queueTreeMove([{ title: 'Doc', parent_id: null }], [{ id: 5 }]);
+      const inTransaction = [];
+      withTransaction.mockImplementation(async (fn) => fn(async (sql, params) => {
+        inTransaction.push(sql);
+        return c2_query(sql, params);
+      }));
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 5 });
+
+      expect(res.status).toBe(200);
+      expect(withTransaction).toHaveBeenCalledTimes(1);
+      expect(inTransaction).toHaveLength(4);
+      expect(inTransaction[0]).toMatch(/SELECT id FROM archives WHERE id = \? FOR UPDATE/);
+      expect(inTransaction[1]).toMatch(/SELECT title, parent_id FROM logs/);
+      expect(inTransaction[2]).toMatch(/WITH RECURSIVE/);
+      expect(inTransaction[3]).toMatch(/UPDATE logs SET parent_id = \?/);
     });
 
     it('logs log.rename with the new title when the title changes', async () => {
@@ -886,9 +970,9 @@ describe('Archive Routes', () => {
         .send({ parent_id: 5 });
 
       expect(res.status).toBe(200);
-      expect(c2_query.mock.calls[2][0]).toMatch(/WITH RECURSIVE/);
-      expect(c2_query.mock.calls[2][1]).toEqual([5, 1, 1]);
-      expect(c2_query.mock.calls[3][0]).toMatch(/UPDATE logs SET parent_id = \?/);
+      expect(c2_query.mock.calls[3][0]).toMatch(/WITH RECURSIVE/);
+      expect(c2_query.mock.calls[3][1]).toEqual([5, 1, 1]);
+      expect(c2_query.mock.calls[4][0]).toMatch(/UPDATE logs SET parent_id = \?/);
     });
 
     it('refuses a parent that is not in this archive, and writes nothing', async () => {
@@ -963,7 +1047,8 @@ describe('Archive Routes', () => {
       expect(res.status).toBe(200);
       await vi.waitFor(() => expect(activityInserts()).toHaveLength(1), { timeout: 500 });
       expect(activityInserts()[0]).toEqual([
-        7, 3, TEST_USER.id, 'log.move', 'log', 10, JSON.stringify({ parent_id: 5, previous_parent_id: 4 }),
+        7, 3, TEST_USER.id, 'log.move', 'log', 10,
+        JSON.stringify({ title: 'Doc', parent_id: 5, previous_parent_id: 4 }),
       ]);
     });
 
@@ -979,7 +1064,7 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(200);
       await vi.waitFor(() => expect(activityInserts()).toHaveLength(1), { timeout: 500 });
-      expect(JSON.parse(activityInserts()[0][6])).toEqual({ parent_id: null, previous_parent_id: 4 });
+      expect(JSON.parse(activityInserts()[0][6])).toEqual({ title: 'Doc', parent_id: null, previous_parent_id: 4 });
     });
 
     it('logs both events when one request renames and re-parents', async () => {
@@ -997,7 +1082,8 @@ describe('Archive Routes', () => {
       const byAction = Object.fromEntries(activityInserts().map((p) => [p[3], JSON.parse(p[6])]));
       expect(byAction).toEqual({
         'log.rename': { title: 'New Title' },
-        'log.move': { parent_id: 5, previous_parent_id: null },
+        // The feed names the document by the title it has after the request.
+        'log.move': { title: 'New Title', parent_id: 5, previous_parent_id: null },
       });
     });
 
@@ -1062,6 +1148,7 @@ describe('Archive Routes', () => {
       mockAuthenticated();
       c2_query
         .mockResolvedValueOnce([{ id: 1 }])  // write access
+        .mockResolvedValueOnce([{ id: 1 }])  // the archive row, locked
         .mockResolvedValueOnce([]);           // no such log in this archive
 
       const res = await request(app)

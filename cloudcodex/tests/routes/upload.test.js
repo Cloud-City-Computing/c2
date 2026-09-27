@@ -127,6 +127,45 @@ describe('Upload Routes', () => {
       expect(res.status).toBe(401);
     });
 
+    it('uploads under a parent after checking the parent is in this archive', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ create_log: true }])  // permissions
+        .mockResolvedValueOnce([{ id: 1 }])               // archive write access
+        .mockResolvedValueOnce([{ id: 5 }])               // the parent, in this archive
+        .mockResolvedValueOnce({ insertId: 45 });          // INSERT log
+
+      const res = await request(app)
+        .post('/api/archives/1/logs/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('file', Buffer.from('<p>hi</p>'), 'test.html')
+        .field('parent_id', '5');
+
+      expect(res.status).toBe(201);
+      expect(c2_query.mock.calls[2][0]).toMatch(/SELECT id FROM logs WHERE id = \? AND archive_id = \?/);
+      expect(c2_query.mock.calls[2][1]).toEqual([5, 1]);
+      expect(c2_query.mock.calls[3][0]).toMatch(/INSERT INTO logs/);
+      expect(c2_query.mock.calls[3][1][3]).toBe(5);
+    });
+
+    it('refuses a parent that is not a log in this archive, and inserts nothing', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ create_log: true }])  // permissions
+        .mockResolvedValueOnce([{ id: 1 }])               // archive write access
+        .mockResolvedValueOnce([]);                        // no such log in this archive
+
+      const res = await request(app)
+        .post('/api/archives/1/logs/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('file', Buffer.from('<p>hi</p>'), 'test.html')
+        .field('parent_id', '99');
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'parent_id must be a log in this archive' });
+      expect(c2_query.mock.calls.some(([sql]) => /INSERT INTO logs/.test(sql))).toBe(false);
+    });
+
     it('rejects non-numeric parent_id', async () => {
       mockAuthenticated();
       c2_query

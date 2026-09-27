@@ -141,7 +141,7 @@ describe('the tree route, on a real server', () => {
         action: 'log.move',
         resource_type: 'log',
         resource_id: childLogId,
-        metadata: { parent_id: parentLogId, previous_parent_id: null },
+        metadata: { title: 'Renamed child', parent_id: parentLogId, previous_parent_id: null },
       },
     ]);
   });
@@ -199,6 +199,46 @@ describe('the tree route, on a real server', () => {
     expect(res.status).toBe(200);
   });
 
+  it('walks only this archive\'s part of an ancestry that leaves it', async () => {
+    // Older data can hold a chain that crosses archives: here P's parent is Q
+    // in another archive, and Q's parent is L back in this one. This archive's
+    // tree ends at P (its parent is not in the archive), so L under P is no
+    // cycle in it, and the walk must not follow Q out of the archive to find L.
+    const l = await insertLog(archiveId, 'Crossing L');
+    const q = await insertLog(await insertArchive('Crossing elsewhere'), 'Crossing Q');
+    const p = await insertLog(archiveId, 'Crossing P');
+    await c2_query('UPDATE logs SET parent_id = ? WHERE id = ?', [l, q]);
+    await c2_query('UPDATE logs SET parent_id = ? WHERE id = ?', [q, p]);
+
+    const res = await request(app)
+      .put(`/api/archives/${archiveId}/logs/${l}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ parent_id: p });
+    expect(res.status).toBe(200);
+  });
+
+  it('lets two opposite moves sent at once commit no cycle', async () => {
+    // Each move checks the other log's ancestry. Unserialised, both checks
+    // see two roots, both pass, and A and B end up each other's parent.
+    for (let round = 0; round < 10; round += 1) {
+      const a = await insertLog(archiveId, `Race A ${round}`);
+      const b = await insertLog(archiveId, `Race B ${round}`);
+      const [aUnderB, bUnderA] = await Promise.all([
+        request(app)
+          .put(`/api/archives/${archiveId}/logs/${a}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ parent_id: b }),
+        request(app)
+          .put(`/api/archives/${archiveId}/logs/${b}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ parent_id: a }),
+      ]);
+      expect([aUnderB.status, bUnderA.status].sort()).toEqual([200, 400]);
+      const rows = await c2_query('SELECT id, parent_id FROM logs WHERE id IN (?, ?) ORDER BY id', [a, b]);
+      expect(rows.filter((row) => row.parent_id !== null)).toHaveLength(1);
+    }
+  });
+
   it('refuses a 256-character title and leaves the stored one alone', async () => {
     const res = await request(app)
       .put(`/api/archives/${archiveId}/logs/${parentLogId}`)
@@ -208,6 +248,38 @@ describe('the tree route, on a real server', () => {
 
     const [stored] = await c2_query('SELECT title FROM logs WHERE id = ?', [parentLogId]);
     expect(stored.title).toBe('Parent');
+  });
+});
+
+describe('creating a log under a parent, on a real server', () => {
+  it('refuses a parent in another archive on the create and the upload routes', async () => {
+    const foreign = await insertLog(await insertArchive('Foreign parents'), 'Not yours');
+
+    const created = await request(app)
+      .post(`/api/archives/${archiveId}/logs`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'Stray child', parent_id: foreign });
+    expect(created.status).toBe(400);
+
+    const uploaded = await request(app)
+      .post(`/api/archives/${archiveId}/logs/upload`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', Buffer.from('<p>stray</p>'), 'Stray upload.html')
+      .field('parent_id', String(foreign));
+    expect(uploaded.status).toBe(400);
+
+    expect(await c2_query('SELECT id FROM logs WHERE parent_id = ?', [foreign])).toEqual([]);
+  });
+
+  it('creates a log under a parent in the same archive', async () => {
+    const res = await request(app)
+      .post(`/api/archives/${archiveId}/logs`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'Kept child', parent_id: parentLogId });
+    expect(res.status).toBe(201);
+
+    const [stored] = await c2_query('SELECT parent_id FROM logs WHERE id = ?', [res.body.logId]);
+    expect(stored.parent_id).toBe(parentLogId);
   });
 });
 
