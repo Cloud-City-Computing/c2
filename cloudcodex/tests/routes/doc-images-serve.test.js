@@ -65,7 +65,7 @@ async function withPublicFlag(value, fn) {
 
 /** Everything a caller can observe about a response, minus the clock. */
 function observable(res) {
-  const { date, ...headers } = res.headers;
+  const { date: _date, ...headers } = res.headers;
   return { status: res.status, headers, body: res.text ?? '' };
 }
 

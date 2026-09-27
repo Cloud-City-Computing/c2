@@ -124,6 +124,10 @@ export default defineConfig({
         'routes/notifications.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
         'routes/squads.js': { lines: 85, statements: 75, branches: 65, functions: 95 },
         'routes/watches.js': { lines: 85, statements: 85, branches: 73, functions: 95 },
+        // The /doc-images authorization boundary (W6-CDX-34). Measured at 100%
+        // on all four when it landed; the buffer allows a small guard, not a
+        // refusal path.
+        'routes/doc-images-serve.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
 
         // Services.
         'services/email.js': { lines: 95, statements: 95, branches: 70, functions: 95 },

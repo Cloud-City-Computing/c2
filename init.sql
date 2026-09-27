@@ -9,6 +9,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS doc_images;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS watches;
 DROP TABLE IF EXISTS activity_log;
@@ -361,6 +362,20 @@ CREATE TABLE versions (
   read_access JSON DEFAULT (JSON_ARRAY()),
   FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Who may see a document image: one row per (image, document holding it).
+-- hash is the file name without .webp. uploaded_by is set only when the
+-- writer supplied the bytes. See migrations/2026-09-27-doc-images.sql.
+CREATE TABLE doc_images (
+  hash CHAR(16) NOT NULL,
+  log_id INT NOT NULL,
+  uploaded_by INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (hash, log_id),
+  INDEX idx_doc_images_log (log_id),
+  FOREIGN KEY (log_id) REFERENCES logs(id) ON DELETE CASCADE,
+  FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE comments (

@@ -20,7 +20,7 @@ import * as decoding from 'lib0/decoding';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
 import { sanitizeHtml, canPublish, checkLogReadAccess, checkLogWriteAccess } from '../routes/helpers/shared.js';
-import { extractImagesFromHtml } from '../routes/helpers/images.js';
+import { extractImagesFromHtml, recordDocImages } from '../routes/helpers/images.js';
 import { processMentionsOnSave } from '../routes/helpers/mentions.js';
 import { logActivity } from '../routes/helpers/activity.js';
 
@@ -443,10 +443,11 @@ async function setupDocSession(ws, user, logId, canWrite) {
             const state = Y.encodeStateAsUpdate(entry.doc);
             const prevHtml = entry.lastSavedHtml;
             let storedHtml = entry.lastSavedHtml;
+            const savedImages = new Set();
 
             if (typeof msg.html === 'string' && msg.html.length <= MAX_HTML_SIZE) {
               const safeHtml = sanitizeHtml(msg.html);
-              storedHtml = await extractImagesFromHtml(safeHtml);
+              storedHtml = await extractImagesFromHtml(safeHtml, savedImages);
             }
 
             // Determine markdown_content: explicit string keeps it, explicit null clears it, undefined leaves it unchanged
@@ -476,6 +477,8 @@ async function setupDocSession(ws, user, logId, canWrite) {
             ws.send(JSON.stringify({ type: 'saved' }));
 
             if (htmlChanged) {
+              // After the ack: the content is saved whether or not this works.
+              await recordDocImages(entry.logId, storedHtml, user, savedImages);
               const meta = await fetchDocMeta(entry.logId);
               if (meta) {
                 await processMentionsOnSave({
@@ -557,8 +560,9 @@ async function setupDocSession(ws, user, logId, canWrite) {
 
             // Use client-provided HTML (preferred) or fall back to last saved HTML
             let currentHtml = entry.lastSavedHtml || '';
+            const savedImages = new Set();
             if (pubHtml && pubHtml.length <= MAX_HTML_SIZE) {
-              currentHtml = await extractImagesFromHtml(sanitizeHtml(pubHtml));
+              currentHtml = await extractImagesFromHtml(sanitizeHtml(pubHtml), savedImages);
             }
 
             const [log] = await c2_query(
@@ -576,6 +580,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
               [entry.logId, newVersion, pubTitle || null, pubNotes || null, currentHtml, user.id]
             );
             entry.lastSavedHtml = currentHtml;
+            await recordDocImages(entry.logId, currentHtml, user, savedImages);
 
             await processMentionsOnSave({
               logId: entry.logId,
