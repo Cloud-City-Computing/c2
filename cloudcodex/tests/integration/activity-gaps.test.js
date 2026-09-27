@@ -182,6 +182,23 @@ describe('the tree route, on a real server', () => {
     expect(await activityRows('log.move', 'log', parentLogId)).toEqual([]);
   });
 
+  it('still answers when the new parent already sits in a cycle', async () => {
+    // Two logs that are each other's parent, written directly as a damaged
+    // tree would be. The ancestry walk must end rather than recurse to
+    // MySQL's limit and fail the request.
+    const x = await insertLog(archiveId, 'Cycle X');
+    const y = await insertLog(archiveId, 'Cycle Y');
+    await c2_query('UPDATE logs SET parent_id = ? WHERE id = ?', [y, x]);
+    await c2_query('UPDATE logs SET parent_id = ? WHERE id = ?', [x, y]);
+    const z = await insertLog(archiveId, 'Joins the cycle');
+
+    const res = await request(app)
+      .put(`/api/archives/${archiveId}/logs/${z}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ parent_id: x });
+    expect(res.status).toBe(200);
+  });
+
   it('refuses a 256-character title and leaves the stored one alone', async () => {
     const res = await request(app)
       .put(`/api/archives/${archiveId}/logs/${parentLogId}`)

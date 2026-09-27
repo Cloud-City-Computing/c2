@@ -570,6 +570,9 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
     if (pid !== null && !isValidId(pid)) {
       return res.status(400).json({ success: false, message: 'Invalid parent_id' });
     }
+    if (pid === Number(logId)) {
+      return res.status(400).json({ success: false, message: 'A log cannot be moved under itself or its own descendant' });
+    }
     fields.push('parent_id = ?');
     params.push(pid);
   }
@@ -585,6 +588,28 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
     [Number(logId), Number(archiveId)]
   );
   if (!current) return res.status(404).json({ success: false, message: 'Log not found' });
+
+  // A new parent must be a log in this archive that is not below this one,
+  // or the tree loses the documents (GET /archives/:archiveId/logs roots only
+  // what it can reach). UNION, not UNION ALL, so a cycle already in the data
+  // ends the walk instead of running it to the recursion limit.
+  if (pid !== undefined && pid !== null && pid !== current.parent_id) {
+    const ancestry = await c2_query(
+      `WITH RECURSIVE chain (id, parent_id) AS (
+         SELECT id, parent_id FROM logs WHERE id = ? AND archive_id = ?
+         UNION
+         SELECT l.id, l.parent_id FROM logs l INNER JOIN chain c ON l.id = c.parent_id WHERE l.archive_id = ?
+       )
+       SELECT id FROM chain`,
+      [pid, Number(archiveId), Number(archiveId)]
+    );
+    if (ancestry.length === 0) {
+      return res.status(400).json({ success: false, message: 'parent_id must be a log in this archive' });
+    }
+    if (ancestry.some((row) => row.id === Number(logId))) {
+      return res.status(400).json({ success: false, message: 'A log cannot be moved under itself or its own descendant' });
+    }
+  }
 
   params.push(Number(logId), Number(archiveId));
   await c2_query(
