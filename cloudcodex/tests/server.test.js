@@ -460,3 +460,74 @@ describe('server.js: AUTH_PROVIDERS', () => {
     });
   });
 });
+
+describe('server.js: APP_URL', () => {
+  const withEnv = async (env, assertions) => {
+    const original = { ...process.env };
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    delete process.env.APP_URL;
+    delete process.env.AUTH_PROVIDERS;
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    try {
+      await import('../server.js');
+      await assertions();
+    } finally {
+      process.env = original;
+    }
+  };
+  const logged = () => errorSpy.mock.calls.flat().map(String).join(' ');
+
+  // Invitation, reset and notification links carry APP_URL, and unset it is
+  // http://localhost:3000, so a production instance without it emails links
+  // that point at the reader's own machine and never says so.
+  it('exits 1 in production when APP_URL is unset, naming the variable', async () => {
+    await withEnv({ NODE_ENV: 'production' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(logged()).toContain(
+        '✖ APP_URL is required in production: set it to the address people use to reach this instance.'
+      );
+    });
+  });
+
+  it('exits 1 in production when APP_URL is blank', async () => {
+    await withEnv({ NODE_ENV: 'production', APP_URL: '  ' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(logged()).toMatch(/APP_URL is required in production/);
+    });
+  });
+
+  it.each(['codex.example.com', 'ftp://codex.example.com', 'javascript:alert(1)', 'http://'])(
+    'exits 1 in production when APP_URL is %j, which is not an http(s) URL',
+    async (value) => {
+      await withEnv({ NODE_ENV: 'production', APP_URL: value }, () => {
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(logged()).toContain(`APP_URL "${value}" is not an http or https URL`);
+      });
+    }
+  );
+
+  it.each(['https://codex.example.com', 'http://localhost:3000', 'https://example.com/codex/'])(
+    'boots in production with APP_URL %j',
+    async (value) => {
+      await withEnv({ NODE_ENV: 'production', APP_URL: value }, () => {
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(listenMock).toHaveBeenCalledTimes(1);
+      });
+    }
+  );
+
+  it.each(['development', 'test', undefined])(
+    'boots with APP_URL unset when NODE_ENV is %j, keeping the localhost default',
+    async (nodeEnv) => {
+      await withEnv({ NODE_ENV: nodeEnv }, () => {
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(logged()).not.toMatch(/APP_URL/);
+      });
+    }
+  );
+});

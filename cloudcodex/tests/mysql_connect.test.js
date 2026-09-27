@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ENV_CONTRACT } from '../env-contract.js';
 
 vi.unmock('../mysql_connect.js');
 
@@ -31,8 +32,11 @@ const getConnectionMock = vi.fn(async () => ({
   release: releaseMock,
 }));
 
+// A spy, so the DB_POOL_SIZE tests can read the config the pool was built with.
+const createPoolMock = vi.fn(() => ({ execute: executeMock, getConnection: getConnectionMock }));
+
 vi.mock('mysql2/promise', () => ({
-  default: { createPool: () => ({ execute: executeMock, getConnection: getConnectionMock }) },
+  default: { createPool: createPoolMock },
 }));
 
 // Ensure the env vars exist so the require-vars guard at module load does
@@ -42,6 +46,7 @@ process.env.DB_PASS = process.env.DB_PASS || 'test_pass';
 
 const {
   c2_query,
+  poolSize,
   generateSessionToken,
   validateAndAutoLogin,
   touchSession,
@@ -225,6 +230,67 @@ describe('withTransaction', () => {
 
       expect(releaseMock).toHaveBeenCalledTimes(1);
     } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+describe('DB_POOL_SIZE', () => {
+  it.each([
+    [undefined, 10],
+    ['', 10],
+    ['  ', 10],
+    ['1', 1],
+    ['25', 25],
+    [' 40 ', 40],
+    ['100', 100],
+  ])('poolSize(%j) is %j', (value, expected) => {
+    expect(poolSize(value)).toBe(expected);
+  });
+
+  it.each(['0', '101', '-5', '1.5', 'ten', '1e2', '0x10'])('poolSize(%j) throws naming the variable', (value) => {
+    expect(() => poolSize(value)).toThrow(/DB_POOL_SIZE/);
+  });
+
+  it('defaults to what the contract says an unset DB_POOL_SIZE behaves as', () => {
+    const entry = ENV_CONTRACT.find((e) => e.name === 'DB_POOL_SIZE');
+    expect(entry.kind).toBe('default');
+    expect(poolSize(undefined)).toBe(Number(entry.default));
+  });
+
+  // The pool is built at import, so each case re-imports a fresh copy.
+  const importWithPoolSize = async (value) => {
+    const prior = process.env.DB_POOL_SIZE;
+    if (value === undefined) delete process.env.DB_POOL_SIZE;
+    else process.env.DB_POOL_SIZE = value;
+    try {
+      vi.resetModules();
+      createPoolMock.mockClear();
+      await import('../mysql_connect.js');
+      return createPoolMock.mock.calls[0][0];
+    } finally {
+      if (prior === undefined) delete process.env.DB_POOL_SIZE;
+      else process.env.DB_POOL_SIZE = prior;
+    }
+  };
+
+  it('reaches the pool: unset is 10 connections', async () => {
+    expect((await importWithPoolSize(undefined)).connectionLimit).toBe(10);
+  });
+
+  it('reaches the pool: a configured size', async () => {
+    expect((await importWithPoolSize('32')).connectionLimit).toBe(32);
+  });
+
+  it('exits at import with a sentence naming the variable on a bad value', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await importWithPoolSize('lots');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/DB_POOL_SIZE "lots"/);
+    } finally {
+      exitSpy.mockRestore();
       errorSpy.mockRestore();
     }
   });

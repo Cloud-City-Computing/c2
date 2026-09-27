@@ -41,6 +41,7 @@ import {
   fetchWorkspaceActivity,
   fetchLogActivity,
   fetchNotifications,
+  exportDocument,
 } from '../../src/util.jsx';
 
 const STORAGE_PREFIX = 'c2-';
@@ -444,5 +445,67 @@ describe('API wrappers — call apiFetch with the right method, URL, and body', 
     const url = fetchMock.mock.calls[0][0];
     expect(url).toContain('limit=5');
     expect(url).toContain('unread=1');
+  });
+});
+
+// ── PDF export ────────────────────────────────────────────
+
+// The print window is an about:blank popup, which inherits the opener's
+// Content-Security-Policy. In production that policy is script-src 'self', so
+// an inline <script> written into the popup never runs and the print dialog
+// never opens. The opener drives the popup instead.
+describe('exportDocument: pdf', () => {
+  let popup;
+  let listeners;
+
+  beforeEach(() => {
+    listeners = {};
+    popup = {
+      document: { write: vi.fn(), close: vi.fn(), readyState: 'loading' },
+      addEventListener: vi.fn((type, fn) => { listeners[type] = fn; }),
+      print: vi.fn(),
+      close: vi.fn(),
+    };
+    vi.spyOn(window, 'open').mockReturnValue(popup);
+  });
+
+  afterEach(() => {
+    window.open.mockRestore();
+  });
+
+  it('writes no inline script into the print window', async () => {
+    await exportDocument(1, 'pdf', 'Title', '<p>Body</p>');
+    const html = popup.document.write.mock.calls.map((c) => c[0]).join('');
+    expect(html).toContain('<p>Body</p>');
+    expect(html).not.toMatch(/<script/i);
+    expect(popup.document.close).toHaveBeenCalled();
+  });
+
+  it('prints once the window has loaded, then closes it after printing', async () => {
+    await exportDocument(1, 'pdf', 'Title', '<p>Body</p>');
+    expect(popup.print).not.toHaveBeenCalled();
+    listeners.load();
+    expect(popup.print).toHaveBeenCalledTimes(1);
+    expect(popup.close).not.toHaveBeenCalled();
+    listeners.afterprint();
+    expect(popup.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('prints straight away when the window has already finished loading', async () => {
+    popup.document.readyState = 'complete';
+    await exportDocument(1, 'pdf', 'Title', '<p>Body</p>');
+    expect(popup.print).toHaveBeenCalledTimes(1);
+  });
+
+  it('still escapes the title and sanitizes the body', async () => {
+    await exportDocument(1, 'pdf', '<b>&"', '<img src=x onerror="alert(1)">');
+    const html = popup.document.write.mock.calls.map((c) => c[0]).join('');
+    expect(html).toContain('<title>&lt;b&gt;&amp;&quot;</title>');
+    expect(html).not.toContain('onerror');
+  });
+
+  it('throws when the pop-up is blocked', async () => {
+    window.open.mockReturnValue(null);
+    await expect(exportDocument(1, 'pdf', 'Title', '<p>Body</p>')).rejects.toThrow(/Pop-up blocked/);
   });
 });
