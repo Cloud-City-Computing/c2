@@ -16,7 +16,7 @@ generated column:
 | `html_content` | `MEDIUMTEXT` | REST save, publish, restore, explicit WS save, GitHub pull | everything: rendering, export, search (via generated column), GitHub push |
 | `markdown_content` | `MEDIUMTEXT` | REST save when the client sends it, WS save, GitHub pull/resolve/import | GitHub push (`github.js:1035-1043`), markdown-mode editing |
 | `ydoc_state` | `LONGBLOB` | collab autosave and explicit save (`collab.js:114-118`) | collab session restore only (`collab.js:69-76`) |
-| `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:282`) | the FULLTEXT index |
+| `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:292`) | the FULLTEXT index |
 
 `plain_content` is `REGEXP_REPLACE(html_content, '<[^>]+>', '')`, computed by
 MySQL on every write of `html_content`. It is the *only* thing search matches on
@@ -53,8 +53,8 @@ non-empty and otherwise round-trips the HTML through turndown, so a stale
 | `POST /api/document/:logId/publish` (`documents.js:155`) | `version`, `versions` row from existing `html_content` | no |
 | `POST .../versions/:versionId/restore` (`documents.js:404`) | `html_content`, `version`, new `versions` row | **yes**, `NULL` (`documents.js:437`) |
 | WS `{type:'save'}` (`collab.js:437-501`) | `html_content` if changed, `markdown_content`, `ydoc_state` | no |
-| WS `{type:'publish'}` (`collab.js:531-604`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
-| WS `{type:'title'}` (`collab.js:506-529`) | `title` only | no |
+| WS `{type:'publish'}` (`collab.js:532-605`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
+| WS `{type:'title'}` (`collab.js:507-530`) | `title` only | no |
 | collab autosave (`collab.js:110-123`) | `ydoc_state` only | no |
 | GitHub pull / resolve / overwrite (`github.js:1183-1192`, `1225-1234`, `1407-1416`) | `html_content`, `markdown_content` | **yes**, `NULL` |
 | GitHub bulk import (`github.js:1597-1606`) | new `logs` row | n/a |
@@ -88,7 +88,7 @@ RATE_LIMIT_MAX_MESSAGES    60     per window, applies to binary and text alike
 
 ### Session setup
 
-`setupDocSession` (`collab.js:316-650`) runs after auth succeeds:
+`setupDocSession` (`collab.js:316-654`) runs after auth succeeds:
 
 1. `getOrCreateDoc(logId)` (`collab.js:55-103`) loads `ydoc_state` and applies it
    to a fresh `Y.Doc`, and caches `html_content` into `entry.lastSavedHtml`.
@@ -119,7 +119,7 @@ allow-listed to exactly five values (`collab.js:408-410`):
 | `cursor` | `canWrite` | position is validated and coerced to safe integers (`collab.js:414-425`), then broadcast to others |
 | `save` | `canWrite` | immediate save, see below |
 | `publish` | `canWrite` | permission-checked snapshot, see below |
-| `comment` | `canWrite` | relays only ids, never content (`collab.js:609-623`); the actual CRUD is REST |
+| `comment` | `canWrite` | relays only ids, never content (`collab.js:610-624`); the actual CRUD is REST |
 | `title` | `canWrite` | updates `logs.title`, broadcasts, and logs `log.rename` |
 
 All five are gated the same way. `title` was the exception until 2026-08-09
@@ -144,18 +144,18 @@ Cancels the debounce, encodes the CRDT state, sanitises the client HTML through
 runs `processMentionsOnSave` and `logActivity('log.update')`
 (`collab.js:478-496`).
 
-### Publish (`collab.js:531-604`)
+### Publish (`collab.js:532-605`)
 
 Loads the log's squad context, calls the shared `canPublish`
-(`collab.js:547`), bumps `logs.version`, writes HTML plus blob plus version,
+(`collab.js:548`), bumps `logs.version`, writes HTML plus blob plus version,
 inserts the `versions` row, fires mentions and `log.publish` activity, then
 broadcasts `{type:'published', version, title}` to **all** connections including
 the publisher. Title is capped at 255 chars, notes at 5000
-(`collab.js:533-534`).
+(`collab.js:534-535`).
 
 ### Lifecycle and teardown
 
-On close (`collab.js:626-641`): drop the connection, decrement the per-user
+On close (`collab.js:627-642`): drop the connection, decrement the per-user
 count, rebroadcast awareness, and if this was the last connection schedule both
 a final save and cleanup. Cleanup after 30s destroys the `Y.Doc` and removes the
 map entry, but only if no one reconnected (`collab.js:128-137`).
@@ -168,23 +168,23 @@ for the same log.
 
 ### The REST side-channel
 
-`broadcastToDoc(logId, message)` (`collab.js:660-668`) lets REST handlers push
+`broadcastToDoc(logId, message)` (`collab.js:661-669`) lets REST handlers push
 arbitrary JSON to live editors without going through Yjs. Its only current
 callers are the GitHub pull and resolve routes, which emit
 `{type:'github-pulled', ...}` (`github.js:1193`, `1235`, `1417`). It returns
 `false` when no one has the doc open.
 
 Three read-only accessors feed the admin and presence surfaces:
-`getActiveDocCount` (`collab.js:673`), `getActiveUsers(logId)`
-(`collab.js:680`), `getAllPresence()` (`collab.js:693`).
+`getActiveDocCount` (`collab.js:674`), `getActiveUsers(logId)`
+(`collab.js:681`), `getAllPresence()` (`collab.js:694`).
 
 ## 3. Versions
 
 `versions` rows are snapshots of `html_content` with an optional title and
-release notes (`init.sql:349-364`). Four operations:
+release notes (`init.sql:359-374`). Four operations:
 
 - **Publish** bumps `logs.version` and inserts a row. Two entry points, REST
-  (`documents.js:155`) and WS (`collab.js:531`), sharing `canPublish`.
+  (`documents.js:155`) and WS (`collab.js:532`), sharing `canPublish`.
 - **List / fetch** (`documents.js:328`, `documents.js:364`) behind read access.
 - **Restore** (`documents.js:404`) writes the old HTML back as a *new* version,
   so history is append-only and nothing is lost. It nulls `ydoc_state`.

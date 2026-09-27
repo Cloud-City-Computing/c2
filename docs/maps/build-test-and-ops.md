@@ -19,7 +19,7 @@ c2/                          <- git root; docker, docs, SQL, Makefile, start.sh
 `docker compose` command runs from the root. This catches out both humans and
 agents; a `npm test` at the root fails with a missing package.json.
 
-The `.env` file lives at the **root**, and `mysql_connect.js:16` reaches up for
+The `.env` file lives at the **root**, and `mysql_connect.js:17` reaches up for
 it with `path.resolve(dirname, '..', '.env')`. Importing `mysql_connect.js` is
 what loads env for the whole process, so any module that needs env must import
 it (directly or transitively) before reading `process.env`.
@@ -42,7 +42,7 @@ it (directly or transitively) before reading `process.env`.
 
 `NODE_ENV` matters in three places: CORS localhost allowance
 (`app.js:101`), rate-limiter `skip` when `'test'` (`app.js:133`,
-`app.js:171`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+`app.js:171`, `app.js:185`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -131,9 +131,10 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **81 files, 1694 tests, all passing**; the
-integration project is **8 files, 49 tests** (measured 2026-09-27 on the
-W6-CDX-2 branch, `track/w6-cdx-2-hashed-sessions`, against MySQL 8.4).
+Current state: the default run is **81 files, 1739 tests, all passing**; the
+integration project is **10 files, 69 tests** (measured 2026-09-27 on the merged
+tree, against MySQL 8.4 at the server's default isolation and at
+`READ-COMMITTED`).
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
@@ -319,6 +320,25 @@ run again to change zero rows. Mutation-checked on 2026-09-27: dropping the
 `UPDATE`, the `'c'` flag or the `DROP DEFAULT`, or the CHECK from `init.sql`,
 each turns a live test red.
 
+`tests/integration/documents-state.test.js` proves the reconciliation read,
+`GET /api/documents/state` (W6-CDX-16), on a real server: two workspaces, a
+machine principal (`SERVICE_TOKEN`, a non-admin `SERVICE_TOKEN_USER`) in a squad
+of the first only, and archives it can and cannot read. It asserts the answer
+for each workspace, that a document readable through a per-user grant appears
+only under its own workspace, that the admin-only and system-archive documents
+are absent (with an admin session seeing the admin-only one, so the absence is
+not vacuous), that a deleted id and an unreadable id answer byte-identically
+(body, length and ETag), that a title is bounded to 255 code points with a
+trailing astral character kept whole, and that an id past the `INT` range is a
+200 with no row, and that the answer is in ascending id order read unsorted.
+Mutation-checked on 2026-09-27: making the workspace join a no-op
+(`_fs.workspace_id = ? OR TRUE`, which keeps the bound param), dropping the
+system-archive predicate or the title bound, binding `is_admin` true, mounting
+`requireAuth` instead of `machineOrAuth`, or ordering `DESC` each turn a live
+test red. Dropping `ORDER BY l.id` does not: MySQL returns id order on this
+data anyway, so that mutation is caught only by the SQL-shape pin in
+`tests/routes/documents.test.js`.
+
 `tests/integration/admin-sync.test.js` proves the boot admin sync never
 promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
 lookup returns first, and how `LOWER(name)` and the email collation compare,
@@ -381,7 +401,7 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:104-169`. The global floor is deliberately low because
+`vitest.config.js:104-172`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```

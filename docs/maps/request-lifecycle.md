@@ -13,14 +13,14 @@ config gates run **before** anything listens.
 
 | Step | Location | Behaviour |
 |---|---|---|
-| Load `.env` | `mysql_connect.js:16` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
-| DB pool | `mysql_connect.js:18-26` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. |
-| DB credential gate | `mysql_connect.js:28-32` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
+| Load `.env` | `mysql_connect.js:17` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
+| DB pool | `mysql_connect.js:19-27` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. |
+| DB credential gate | `mysql_connect.js:29-33` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the provider gate below and an invalid `PORT`, these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
-| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:253`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
+| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:263`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
 | Collab WS | `server.js`, `setupCollabServer(server)` | `setupCollabServer(server)`, path `/collab`. |
 | Notification WS | `server.js`, `setupUserChannelServer(server)` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
@@ -49,8 +49,9 @@ app.set('trust proxy', 1)                    app.js:42
   ├─ express.json({ limit: '2mb' })          app.js:137
   ├─ authLimiter on 9 paths + reader-check   app.js:140-163
   ├─ searchLimiter on /api/users/search      app.js:174
-  ├─ static /avatars      (7d immutable)     app.js:177-180
-  ├─ static /doc-images   (30d immutable)    app.js:183-186
+  ├─ stateLimiter on /api/documents/state    app.js:188
+  ├─ static /avatars      (7d immutable)     app.js:191-194
+  ├─ static /doc-images   (30d immutable)    app.js:197-200
   └─ 18 routers, all mounted at /api
 ```
 
@@ -108,13 +109,16 @@ saves fine over WS can 413 over REST.
 |---|---|---|
 | `authLimiter` (`app.js:128-135`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:153`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:163`) |
 | `searchLimiter` (`app.js:166-173`) | 15 min / 60 | `/api/users/search` only (`app.js:174`), to blunt user enumeration |
+| `stateLimiter` (`app.js:180-187`) | 15 min / 120 | `/api/documents/state` only (`app.js:188`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
-Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
+All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. One test exercises the
 limiter itself: `tests/app.test.js` sets `NODE_ENV=production` for its duration
 and requires the 21st `/api/update-account` request, then
 `/api/update-account/confirm-email`, to answer 429 while an unmounted route does
-not. The other mounts are not exercised.
+not; a second requires the 121st `/api/documents/state` request to answer 429,
+while the first 120 reach `machineOrAuth` (401) and `/api/search` and
+`/api/document` stay unspent. The other mounts are not exercised.
 
 ### Router mounting
 
@@ -188,8 +192,9 @@ token presented on these routes meets a constant-time comparison that cannot
 match it and cannot leak its length, and the `users` lookup happens only after
 the token matches, so a wrong token costs no query.
 
-It is mounted on exactly two routes, `GET /api/search` and `GET /api/browse`
-(`routes/search.js`), and configured by `SERVICE_TOKEN` plus
+It is mounted on exactly three routes, `GET /api/search` and `GET /api/browse`
+(`routes/search.js`) and `GET /api/documents/state` (`routes/documents.js`, the
+reconciliation read), and configured by `SERVICE_TOKEN` plus
 `SERVICE_TOKEN_USER`, both required. See
 [access-control.md](access-control.md) section 7 for the never-admin rule.
 
@@ -371,7 +376,7 @@ half-created account.
 
 The convention is per-router, not app-global. Each router file ends with
 `router.use(errorHandler)` where `errorHandler` comes from
-`routes/helpers/shared.js:258-264`:
+`routes/helpers/shared.js:272-278`:
 
 ```js
 console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);

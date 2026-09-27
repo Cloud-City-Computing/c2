@@ -47,6 +47,41 @@ Returns `404` if not found or the user does not have read access.
 
 ---
 
+### `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`
+
+The reconciliation read: which of these documents the caller can read in one workspace, and their
+current title and archive. Cloud Command calls it to repair what the outbound event stream missed.
+It accepts a session token or, when the install configures one, the service token
+(`Authorization: Bearer <SERVICE_TOKEN>`); it is one of the three routes a service token reaches.
+
+| Param | Description |
+|---|---|
+| `workspaceId` | Required. The workspace to answer about. |
+| `ids` | Required. 1 to 100 comma-separated document ids. |
+
+**Response**
+
+```json
+{
+  "success": true,
+  "documents": [
+    { "id": 113, "title": "Release checklist", "archive_id": 29, "updated_at": "2026-09-24T15:04:05.000Z" }
+  ]
+}
+```
+
+A document appears only when the caller can read it, it lives in that workspace, and its archive is
+not a system archive. Every other id, deleted, unreadable, in another workspace or never existing,
+is simply absent, and the answer does not say which. `title` is bounded to 255 characters, the same
+bound the outbound event envelope applies. Ordered by `id`.
+
+Returns `400` with `A workspaceId is required` or `Between 1 and 100 document ids are required`.
+Rate-limited to 120 requests per 15 minutes per client address, counted before authentication, and
+every caller at one address shares that budget. A `429` means retry later: it says nothing about
+which documents exist or are readable, and only an id missing from a `200` answer is absent.
+
+---
+
 ## Creating Documents
 
 ---
@@ -60,13 +95,17 @@ Create a new document inside an archive.
 ```json
 {
   "title": "New Document",
-  "parent_id": null,           // optional — nest under another log
+  "parent_id": null,           // optional, nest under another log in this archive
   "html_content": "<p></p>",   // optional initial content
   "markdown_content": null     // optional
 }
 ```
 
 Requires the `create_log` permission (global, squad-level, or via workspace ownership).
+A `parent_id` must be a log in the same archive; otherwise `400`
+(`parent_id must be a log in this archive`). The upload route,
+`POST /api/archives/:archiveId/logs/upload`, applies the same rule to its
+`parent_id` field.
 
 **Response:** `{ success: true, logId }`
 
@@ -104,21 +143,38 @@ When `markdown_content` is a string, it is saved alongside the HTML (markdown-so
 
 Update a document's title. Requires write access.
 
-**Body:** `{ title }` — max 255 characters.
+**Body:** `{ title }`, a non-blank string of at most 255 characters after trimming; otherwise `400`.
+
+Records a `log.rename` activity event.
 
 ---
 
-### `PUT /api/document/:logId/parent`
+### `PUT /api/archives/:archiveId/logs/:logId`
 
-Move a document to a different parent (or to the root by passing `null`). Requires write access.
+Rename a document, move it under another parent, or both. Requires write
+access to the archive, and the document must be in that archive (`404`
+otherwise).
 
-**Body:** `{ parent_id: <id> | null }`
+**Body:** `{ title?, parent_id? }`, at least one. `title` follows the rules of
+`PUT /api/document/:logId/title`: required when present, trimmed, at most 255
+characters, with the same `400` bodies. `parent_id` is a log id or `null` for
+the top of the tree. A new parent must be another log in the same archive and
+must not be the document itself or one of its descendants; otherwise `400`.
+
+A changed title records `log.rename`, and a changed parent records `log.move`
+with `title`, `parent_id` and `previous_parent_id` in its metadata. Sending the
+values already stored records nothing. Neither event notifies watchers. This
+is the only route that moves a document. Moves in one archive are applied one
+at a time.
 
 ---
 
-### `DELETE /api/document/:logId`
+### `DELETE /api/archives/:archiveId/logs/:logId`
 
-Delete a document and all its versions, comments, and favorites. Requires write access.
+Delete a document. Requires write access to the archive. Its versions,
+comments, favorites and GitHub links go with it; its child documents move to
+the top of the tree (`logs.parent_id` is `ON DELETE SET NULL`). Records a
+`log.delete` activity event.
 
 ---
 

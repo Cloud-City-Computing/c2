@@ -118,7 +118,11 @@ boot (unset means today's set).
 **Machine callers**: `services/machine-auth.js` exports the one seam,
 `verifyMachineCredential`, gated on `SERVICE_TOKEN` + `SERVICE_TOKEN_USER`
 (both required, off by default). `machineOrAuth` in `middleware/auth.js` is
-mounted on `GET /api/search` and `GET /api/browse` and **nothing else**. The
+mounted on `GET /api/search`, `GET /api/browse` and `GET /api/documents/state`
+(the reconciliation read, W6-CDX-16) and **nothing else**. The third is safe
+for the same reason as the first two: the same `readAccessWhere` fragment with
+the principal's own params, narrowed by workspace, and an unreadable id is
+absent exactly as a deleted one is, so it is never an oracle. The
 principal is always a real non-admin user with `is_admin` forced false, because
 `is_admin` is the first bound parameter of every `ownership.js` fragment. Do
 not widen the scope or copy `is_admin` from the row.

@@ -321,7 +321,8 @@ the squad's workspace (`search.js:72-74`).
   id the principal can read, through `readAccessWhere` with the principal's params and
   `excludeSystemArchives`, narrowed to the workspace exactly as `search.js:72-74` narrows, it returns
   `{ id, title, archive_id, updated_at }`. An unreadable id and a deleted id are both simply absent,
-  so the answer is never an oracle.
+  so the answer is never an oracle. `title` carries the envelope's 255-code-point bound, so a
+  reconciler compares the same string the stream delivered.
 - A rate limit, and the amendment to `CLAUDE.md:108-114` and the access-control map naming this as
   the third machine route.
 

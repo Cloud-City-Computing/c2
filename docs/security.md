@@ -125,7 +125,7 @@ A machine caller (another service that needs to read this install's documents) a
 | Secret | `SERVICE_TOKEN`, minimum 32 characters. Shorter and the feature stays disabled, with the reason logged and the value never logged. |
 | Comparison | `crypto.timingSafeEqual` over two SHA-256 digests, never `===`. Equal-length by construction, so a wrong-length token is rejected without throwing and without leaking the configured length. |
 | Identity | `SERVICE_TOKEN_USER`, the email of an existing **non-admin** user. The credential acts as that user. |
-| Reach | `GET /api/search` and `GET /api/browse`. Nothing else. Every other route, including `GET /api/search/filters`, keeps bare `requireAuth`. |
+| Reach | `GET /api/search`, `GET /api/browse` and `GET /api/documents/state` (the reconciliation read, 1 to 100 ids in one workspace, rate-limited), all through `machineOrAuth`; plus the machine-only `GET /api/workspaces/:workspaceId/reader-check`. Nothing else. Every other route, including `GET /api/search/filters`, keeps bare `requireAuth`. |
 | Rotation | Change `SERVICE_TOKEN` and restart. No database change, no key version. Any caller still holding the old value gets 401s. |
 
 The credential has no access-control rules of its own. Because it acts as a real user, the whole existing layer applies unchanged and there is no machine-specific permission SQL to get wrong: give a machine what it should see by putting its user in the right squads or on the right archive grants.
