@@ -156,6 +156,23 @@ export async function validateAndAutoLogin(sessionToken) {
 }
 
 /**
+ * The flow that minted a session (`sessions.auth_provider`), so a session
+ * that is rotated (update-account, confirm-email) can be replaced by one
+ * carrying the same tag. Read it before the rotation deletes the row: a
+ * session that is gone, or a value that cannot be a token, answers 'local'.
+ * @param { String } sessionToken
+ * @returns { Promise<String> }
+ */
+export async function getSessionProvider(sessionToken) {
+  if (!isTokenShaped(sessionToken)) return 'local';
+  const [session] = await c2_query(
+    `SELECT auth_provider FROM sessions WHERE id = ? LIMIT 1`,
+    [hashSessionToken(sessionToken)]
+  );
+  return session?.auth_provider ?? 'local';
+}
+
+/**
  * Updates last_active_at for a session token to track user activity.
  * @param { String } sessionToken
  */
