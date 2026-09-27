@@ -794,6 +794,15 @@ describe('Archive Routes', () => {
         .mockResolvedValueOnce({ affectedRows: 1 }); // UPDATE logs
     };
 
+    /** Queue the write-access check, the current row, the new parent's ancestry, then the UPDATE. */
+    const queueTreeMove = (current, ancestry) => {
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])          // write access
+        .mockResolvedValueOnce(current)               // the current row
+        .mockResolvedValueOnce(ancestry)              // the new parent and its ancestors, in this archive
+        .mockResolvedValueOnce({ affectedRows: 1 }); // UPDATE logs
+    };
+
     it('renames a log with write access', async () => {
       mockAuthenticated();
       queueTreeWrite([{ title: 'Old Title', parent_id: null }]);
@@ -809,7 +818,7 @@ describe('Archive Routes', () => {
 
     it('moves a log to a new parent', async () => {
       mockAuthenticated();
-      queueTreeWrite([{ title: 'Doc', parent_id: null }]);
+      queueTreeMove([{ title: 'Doc', parent_id: null }], [{ id: 5 }]);
 
       const res = await request(app)
         .put('/api/archives/1/logs/10')
@@ -867,10 +876,84 @@ describe('Archive Routes', () => {
       expect(activityInserts()).toEqual([]);
     });
 
+    it('checks the new parent\'s ancestry inside the archive before the UPDATE', async () => {
+      mockAuthenticated();
+      queueTreeMove([{ title: 'Doc', parent_id: 4 }], [{ id: 5 }, { id: 2 }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 5 });
+
+      expect(res.status).toBe(200);
+      expect(c2_query.mock.calls[2][0]).toMatch(/WITH RECURSIVE/);
+      expect(c2_query.mock.calls[2][1]).toEqual([5, 1, 1]);
+      expect(c2_query.mock.calls[3][0]).toMatch(/UPDATE logs SET parent_id = \?/);
+    });
+
+    it('refuses a parent that is not in this archive, and writes nothing', async () => {
+      mockAuthenticated();
+      queueTreeMove([{ title: 'Doc', parent_id: null }], []);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 99 });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'parent_id must be a log in this archive' });
+      expect(callIndex(/UPDATE logs/)).toBe(-1);
+      await flush();
+      expect(activityInserts()).toEqual([]);
+    });
+
+    it('refuses to make a log its own parent, without a query', async () => {
+      mockAuthenticated();
+      queueTreeMove([{ title: 'Doc', parent_id: null }], [{ id: 10 }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 10 });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'A log cannot be moved under itself or its own descendant' });
+      expect(callIndex(/UPDATE logs/)).toBe(-1);
+      expect(callIndex(/WITH RECURSIVE/)).toBe(-1);
+    });
+
+    it('refuses to move a log under one of its own descendants, and writes nothing', async () => {
+      mockAuthenticated();
+      // 5's ancestry runs 5 -> 7 -> 10: 5 is a grandchild of the log being moved.
+      queueTreeMove([{ title: 'Doc', parent_id: null }], [{ id: 5 }, { id: 7 }, { id: 10 }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 5 });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'A log cannot be moved under itself or its own descendant' });
+      expect(callIndex(/UPDATE logs/)).toBe(-1);
+    });
+
+    it('skips the ancestry check when the parent is unchanged', async () => {
+      mockAuthenticated();
+      queueTreeWrite([{ title: 'Doc', parent_id: 4 }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 4 });
+
+      expect(res.status).toBe(200);
+      expect(callIndex(/WITH RECURSIVE/)).toBe(-1);
+    });
+
     it('logs log.move with both parents when the parent changes', async () => {
       mockAuthenticated();
       answerScopeLookups();
-      queueTreeWrite([{ title: 'Doc', parent_id: 4 }]);
+      queueTreeMove([{ title: 'Doc', parent_id: 4 }], [{ id: 5 }]);
 
       const res = await request(app)
         .put('/api/archives/1/logs/10')
@@ -902,7 +985,7 @@ describe('Archive Routes', () => {
     it('logs both events when one request renames and re-parents', async () => {
       mockAuthenticated();
       answerScopeLookups();
-      queueTreeWrite([{ title: 'Old Title', parent_id: null }]);
+      queueTreeMove([{ title: 'Old Title', parent_id: null }], [{ id: 5 }]);
 
       const res = await request(app)
         .put('/api/archives/1/logs/10')

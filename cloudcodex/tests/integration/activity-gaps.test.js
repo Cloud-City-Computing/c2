@@ -160,6 +160,28 @@ describe('the tree route, on a real server', () => {
     expect(await activityRows('log.move', 'log', childLogId)).toHaveLength(1);
   });
 
+  it('refuses a parent that would make a cycle, or that lives in another archive', async () => {
+    // childLogId sits under parentLogId now, so moving the parent under the
+    // child would make each the other's ancestor.
+    const underChild = await request(app)
+      .put(`/api/archives/${archiveId}/logs/${parentLogId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ parent_id: childLogId });
+    expect(underChild.status).toBe(400);
+
+    const elsewhere = await insertLog(await insertArchive('Elsewhere'), 'Foreign parent');
+    const foreign = await request(app)
+      .put(`/api/archives/${archiveId}/logs/${parentLogId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ parent_id: elsewhere });
+    expect(foreign.status).toBe(400);
+
+    const [stored] = await c2_query('SELECT parent_id FROM logs WHERE id = ?', [parentLogId]);
+    expect(stored.parent_id).toBeNull();
+    await settle();
+    expect(await activityRows('log.move', 'log', parentLogId)).toEqual([]);
+  });
+
   it('refuses a 256-character title and leaves the stored one alone', async () => {
     const res = await request(app)
       .put(`/api/archives/${archiveId}/logs/${parentLogId}`)
