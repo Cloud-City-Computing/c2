@@ -543,11 +543,11 @@ unreadable id is byte-identical.
 
 ### Task 5.3 The rule this amends, and the track's close
 
-- [ ] CLAUDE.md "Machine callers" (`CLAUDE.md:108-114`) and `docs/maps/access-control.md` section 7
+- [x] CLAUDE.md "Machine callers" (`CLAUDE.md:108-114`) and `docs/maps/access-control.md` section 7
       name this as the third `machineOrAuth` route and say why it is safe (the same ACL fragments,
       narrowed by workspace, never an oracle).
-- [ ] CHANGELOG `[Unreleased]` entries for the track, if PRs 1 to 4 did not already add them.
-- [ ] Lint, test, coverage, integration, build.
+- [x] CHANGELOG `[Unreleased]` entries for the track, if PRs 1 to 4 did not already add them.
+- [x] Lint, test, coverage, integration, build.
 
 ---
 

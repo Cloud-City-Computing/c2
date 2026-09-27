@@ -12,6 +12,18 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
+  read for Cloud Command: for up to 100 document ids it returns the id, title,
+  archive and last update of each one the caller can read in that workspace.
+  An id that is deleted, unreadable, in another workspace or in a system
+  archive is simply absent, and the answer does not say which. It is the third
+  route the service token (`SERVICE_TOKEN`) reaches, beside `GET /api/search`
+  and `GET /api/browse`, and like them it acts with the service user's
+  ordinary, never-admin access. Rate-limited to 120 requests per 15 minutes. No
+  migration and no new setting.
+
 ### Fixed
 
 - **Deleting an archive is recorded in the activity log.** The route looked

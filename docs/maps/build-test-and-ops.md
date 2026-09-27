@@ -42,7 +42,7 @@ it (directly or transitively) before reading `process.env`.
 
 `NODE_ENV` matters in three places: CORS localhost allowance
 (`app.js:101`), rate-limiter `skip` when `'test'` (`app.js:133`,
-`app.js:171`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+`app.js:171`, `app.js:185`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -303,6 +303,25 @@ is read back off the call. A last test inserts rows that break
 Mutation-checked on 2026-09-25: accepting a wrong current password, keeping the
 caller's session (`AND id != ?`), handing back the old token, and keeping the
 caller's session in the confirm step each turn a live test red.
+
+`tests/integration/documents-state.test.js` proves the reconciliation read,
+`GET /api/documents/state` (W6-CDX-16), on a real server: two workspaces, a
+machine principal (`SERVICE_TOKEN`, a non-admin `SERVICE_TOKEN_USER`) in a squad
+of the first only, and archives it can and cannot read. It asserts the answer
+for each workspace, that a document readable through a per-user grant appears
+only under its own workspace, that the admin-only and system-archive documents
+are absent (with an admin session seeing the admin-only one, so the absence is
+not vacuous), that a deleted id and an unreadable id answer byte-identically
+(body, length and ETag), that a title is bounded to 255 code points with a
+trailing astral character kept whole, and that an id past the `INT` range is a
+200 with no row, and that the answer is in ascending id order read unsorted.
+Mutation-checked on 2026-09-27: making the workspace join a no-op
+(`_fs.workspace_id = ? OR TRUE`, which keeps the bound param), dropping the
+system-archive predicate or the title bound, binding `is_admin` true, mounting
+`requireAuth` instead of `machineOrAuth`, or ordering `DESC` each turn a live
+test red. Dropping `ORDER BY l.id` does not: MySQL returns id order on this
+data anyway, so that mutation is caught only by the SQL-shape pin in
+`tests/routes/documents.test.js`.
 
 `tests/integration/admin-sync.test.js` proves the boot admin sync never
 promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
