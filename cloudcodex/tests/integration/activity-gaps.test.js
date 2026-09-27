@@ -4,7 +4,10 @@
  * The route tests prove which rows the routes ask for. Only a real server
  * proves the row lands: activity_log.workspace_id is NOT NULL, and an archive
  * delete has to read its scope before the row that leads to it is gone.
- * logActivity is fire-and-forget, so each assertion polls the table.
+ * logActivity is fire-and-forget, so each assertion polls the table. The
+ * parent rules added with them (a parent stays in its archive, and moves in
+ * one archive take turns) are proved here too, since only a real server runs
+ * the recursive walk, the row lock and a real race.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com

@@ -103,7 +103,10 @@ Consequences:
   [open-questions.md](open-questions.md) and
   `migrations/widen_log_content.sql`.
 - `logs.parent_id` self-references with `ON DELETE SET NULL` (`init.sql:293`),
-  giving documents a tree shape rendered by `PageTree.jsx`.
+  giving documents a tree shape rendered by `PageTree.jsx`. Nothing in the
+  schema holds a parent to the child's archive or forbids a cycle; the routes
+  do (see [notifications-and-activity.md](notifications-and-activity.md) on
+  the tree route and `isLogInArchive`).
 - `logs.version` is an integer counter bumped on publish and restore; the
   `versions` table holds the snapshots.
 
@@ -272,7 +275,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 | Table | Key | Written by | Read by |
 |---|---|---|---|
 | `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google; never links a user with two-factor on by email), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
-| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:742` | bulk import |
+| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:760` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
 | `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |
 | `github_embed_refs` | index on `(repo_owner, repo_name, embed_type)` | **nothing** | `/api/logs/by-github-ref` |

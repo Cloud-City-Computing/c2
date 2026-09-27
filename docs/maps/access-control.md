@@ -125,8 +125,8 @@ Never write permission SQL by hand. The wrappers already exist in
 |---|---|---|
 | `checkLogReadAccess(logId, user)` | `shared.js:76-87` | the log row, or `undefined` |
 | `checkLogWriteAccess(logId, user)` | `shared.js:93-104` | the log row, or `undefined` |
-| `checkArchiveReadAccess(archiveId, user)` | `shared.js:174-183` | the archive row, or `undefined` |
-| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:159-168` | the archive row, or `undefined` |
+| `checkArchiveReadAccess(archiveId, user)` | `shared.js:188-197` | the archive row, or `undefined` |
+| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:173-182` | the archive row, or `undefined` |
 
 Routes that need the fragment inline (search, browse, export, GitHub link
 loading) interpolate it directly; see `routes/documents.js:553`,
@@ -183,7 +183,7 @@ Resolution order:
 `{ create_squad: false, create_archive: false, create_log: true }`, applied to
 any user with no `permissions` row. New users created through the normal paths
 get a row with **all three true** via `createDefaultPermissions`
-(`shared.js:193-198`), so the default only applies to rows that predate it or
+(`shared.js:207-212`), so the default only applies to rows that predate it or
 were made outside those paths.
 
 Note step 7 maps only two of the three flags (`permissions.js:114-117`). There
@@ -220,7 +220,7 @@ first. That rule and the middleware's step 3 are two halves of the same boundary
 
 ### 3b. Publish: `canPublish`
 
-`shared.js:118-145`. Ordered bypasses: no squad context at all, allow; admin,
+`shared.js:132-159`. Ordered bypasses: no squad context at all, allow; admin,
 allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
@@ -236,8 +236,8 @@ destructive and administrative verbs. Admin, archive creator, workspace owner
 archive still cannot delete it or change its ACLs.
 
 Callers: delete archive (`archives.js:198`), manage access
-(`archives.js:259`), link and unlink archive repos (`archives.js:727`,
-`archives.js:776`).
+(`archives.js:259`), link and unlink archive repos (`archives.js:745`,
+`archives.js:794`).
 
 ### 3d. Squad management: `canManageSquad`, and its GitHub-only twin
 
@@ -440,7 +440,7 @@ something:
 | `can_create_log` | `requirePermission('create_log')` step 7 (`permissions.js:116`) |
 | `can_create_archive` | `requirePermission('create_archive')` step 7 (`permissions.js:115`) |
 | `can_manage_members` | `canManageSquad` (`squads.js`), and `userCanManageSquad` (`github.js`) on the team-sync routes only, where it counts only alongside an `admin` role |
-| `can_publish` | `canPublish` (`shared.js:118-145`) |
+| `can_publish` | `canPublish` (`shared.js:132-159`) |
 | `can_delete_version` | version delete route only (`documents.js:503-515`) |
 
 `role` is an enum of `member`/`admin`/`owner`, but only `owner` is load-bearing

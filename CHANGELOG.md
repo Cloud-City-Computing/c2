@@ -28,11 +28,16 @@ initialises an empty data directory.
   same 400 responses), where it used to accept any length and answer a
   non-string title with a 500, and it answers 404 for a document that is not
   in the archive instead of reporting success.
-- **The archive tree no longer loses documents to a bad move.** The same
+- **The archive tree no longer loses documents to a bad parent.** The same
   route wrote any `parent_id` it was given. A document put under itself or
   under one of its own descendants dropped out of the tree with everything
-  below it, and one could also be put under a document in another archive.
-  Each is now a 400.
+  below it. Each is now a 400. A document also could be moved, created
+  (`POST /api/archives/:archiveId/logs`) or uploaded under a document in
+  another archive; all three routes now refuse that with a 400. Moves in one
+  archive now take turns, so two opposite moves sent at once can no longer
+  both pass the check and leave two documents each under the other.
+- **`PUT /api/document/:logId/title` answers a title that is not a string
+  with a 400**, as the tree route now does, where it used to fail with a 500.
 
 - **A fresh install on an SELinux-enforcing host gets its schema.**
   `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`

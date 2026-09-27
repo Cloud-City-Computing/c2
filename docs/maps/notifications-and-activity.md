@@ -81,14 +81,21 @@ squad.invite_create   squad.member_join   squad.member_leave
 
 `log.rename` has three sources: `PUT /api/document/:logId/title`, the collab
 `title` message, and the tree route `PUT /api/archives/:archiveId/logs/:logId`
-(`routes/archives.js:538`). The tree route is the only source of `log.move`,
-with `parent_id` and `previous_parent_id` in its metadata. It reads the row
-first and logs each event only when the value actually changes
-(`routes/archives.js:586-639`). A new parent must be a log in the same archive
-and not the log itself or one of its descendants, checked by a recursive walk
-up the new parent's ancestry (`routes/archives.js:598-614`), so a `log.move`
-never names a parent outside the tree. Neither action auto-watches or
-notifies.
+(`routes/archives.js:541`). The tree route is the only source of `log.move`,
+with `title`, `parent_id` and `previous_parent_id` in its metadata (the title
+is what the feed names the document by). It reads the row first and logs each
+event only when the value actually changes (`routes/archives.js:592-657`). A
+new parent must be a log in the same archive and not the log itself or one of
+its descendants, checked by a recursive walk up the new parent's ancestry that
+stays in the archive (`routes/archives.js:610-626`), so a `log.move` never
+names a parent outside the tree. The read, the walk and the UPDATE run in one
+transaction behind `SELECT ... FOR UPDATE` on the archive row
+(`routes/archives.js:593`), so moves in one archive take turns: two opposite
+moves sent at once cannot both pass the walk, and `previous_parent_id` is the
+parent the move actually replaced. The two routes that create a log,
+`POST /api/archives/:archiveId/logs` and the upload route, hold a new log's
+parent to the same archive through `isLogInArchive`
+(`routes/helpers/shared.js:112`). Neither action auto-watches or notifies.
 
 `archive.delete` lands in `activity_log` but is invisible to both read paths:
 the workspace feed's access clause needs an `EXISTS` on the `archives` row
