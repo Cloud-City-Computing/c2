@@ -37,31 +37,60 @@ import firstRunRouter from './routes/first-run.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// What an unset or blank TRUST_PROXY trusts: a peer on loopback, a link-local
+// address or a private range (10/8, 172.16/12, 192.168/16, fc00::/7). That is
+// where a reverse proxy on the same host connects from over the Docker bridge,
+// and where a cloud load balancer's private address does. Any other peer is
+// counted by its own socket address, whatever X-Forwarded-For it sends
+// (GHSA-9fmx-frrf-xxmq: the old default, 1, believed that header from anyone).
+const DEFAULT_TRUST_PROXY = 'loopback, linklocal, uniquelocal';
+
 /**
- * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is 1 (trust
- * the one proxy in front of the app, as before this was configurable), digits
- * are a hop count, `true`/`false` are booleans, and anything else (`loopback`,
- * an address or CIDR list) is passed to Express, which validates it.
- * @param { String | undefined } value
+ * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is the
+ * trusted-subnet default above, `false` trusts no proxy, and anything else (a
+ * subnet name, an address or CIDR list) is passed to Express, which validates
+ * it. A hop count, 0 included, or `true` is refused unless
+ * TRUST_PROXY_ALLOW_HOP_COUNT is `true`: either believes the X-Forwarded-For of
+ * whoever connects, so a client that can reach the app's port directly picks
+ * its own address and a fresh rate-limit bucket per request.
+ * @param { String | undefined } value TRUST_PROXY
+ * @param { String | undefined } allowHopCount TRUST_PROXY_ALLOW_HOP_COUNT
  * @returns { Number | Boolean | String }
+ * @throws { Error } a sentence naming the variable, on a refused value
  */
-export function parseTrustProxy(value) {
-  if (value === undefined || value.trim() === '') return 1;
-  const trimmed = value.trim();
-  if (/^\d+$/.test(trimmed)) return Number(trimmed);
-  if (trimmed === 'true') return true;
+export function parseTrustProxy(value, allowHopCount) {
+  const allow = (allowHopCount ?? '').trim();
+  if (allow !== '' && allow !== 'true' && allow !== 'false') {
+    throw new Error(`TRUST_PROXY_ALLOW_HOP_COUNT "${allowHopCount}" is not true or false.`);
+  }
+  const trimmed = (value ?? '').trim();
+  if (trimmed === '') return DEFAULT_TRUST_PROXY;
   if (trimmed === 'false') return false;
-  return trimmed;
+  const hopCount = /^\d+$/.test(trimmed);
+  if (!hopCount && trimmed !== 'true') return trimmed;
+  if (allow !== 'true') {
+    throw new Error(`TRUST_PROXY "${value}" ${hopCount ? 'is a hop count' : 'trusts every hop'}, which believes `
+      + 'the X-Forwarded-For of whoever connects, so any client that can reach the app\'s port directly '
+      + 'can choose its own address and step around the rate limiters. Leave it unset to trust a proxy on '
+      + 'loopback or a private network, list the proxy\'s addresses or subnets, use false for no proxy, '
+      + 'or set TRUST_PROXY_ALLOW_HOP_COUNT=true to accept that.');
+  }
+  return hopCount ? Number(trimmed) : true;
 }
 
-// Decides req.ip, which is what the rate limiters count. Express compiles the
-// value here and throws on one it cannot parse; the boot stops with a
-// sentence naming the variable rather than a stack trace.
+// Decides req.ip, which is what the rate limiters count. A refused value, or
+// one Express cannot compile, stops the boot with a sentence naming the
+// variable rather than a stack trace.
 try {
-  app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
+  const setting = parseTrustProxy(process.env.TRUST_PROXY, process.env.TRUST_PROXY_ALLOW_HOP_COUNT);
+  try {
+    app.set('trust proxy', setting);
+  } catch (err) {
+    throw new Error(`TRUST_PROXY "${process.env.TRUST_PROXY}" is not valid: ${err.message}.`, { cause: err });
+  }
 } catch (err) {
-  console.error(`✖ TRUST_PROXY "${process.env.TRUST_PROXY}" is not valid: ${err.message}.`);
-  console.error('  Leave it unset for 1, or see TRUST_PROXY in .env.example.');
+  console.error(`✖ ${err.message}`);
+  console.error('  See TRUST_PROXY and TRUST_PROXY_ALLOW_HOP_COUNT in .env.example.');
   process.exit(1);
 }
 
@@ -97,9 +126,10 @@ app.use('/api', cors((req, cb) => {
   // behind a TLS-terminating proxy, where the browser sends an https Origin and
   // the app sees a plain http request, is still recognised as itself.
   //
-  // Deliberately the raw Host header and NOT req.hostname: `trust proxy` is set
-  // above, so req.hostname would honour a client-supplied X-Forwarded-Host, and
-  // the app's port is published directly by the compose files. That would turn
+  // Deliberately the raw Host header and NOT req.hostname: req.hostname honours
+  // X-Forwarded-Host from any peer `trust proxy` believes, which by default is
+  // anything on a private network or the same host, and more if TRUST_PROXY
+  // says so, and any of those can send the header itself. That would turn
   // this clause into "allow any origin that asks".
   const rawHost = req.headers.host ? hostOf(`http://${req.headers.host}`) : null;
   if (originHost && rawHost && originHost === rawHost) {

@@ -74,9 +74,19 @@ services:
     # Both sides follow PORT so setting it in .env moves the published mapping
     # too. Without this the app would bind PORT inside the container while
     # Compose still published 3000, and every request to the host would be
-    # refused while the logs showed a clean boot.
+    # refused while the logs showed a clean boot. `:-` covers the blank PORT=
+    # and APP_BIND= that .env.example ships.
+    #
+    # The host side is 127.0.0.1 unless APP_BIND says otherwise, so only this
+    # machine reaches the app: a browser on it for an evaluation, or the
+    # TLS-terminating reverse proxy production belongs behind. Docker's
+    # published ports are a DNAT rule in front of the host firewall, so a
+    # mapping with no host address is reachable from anywhere that can route
+    # here, past `ufw deny`. Set APP_BIND (0.0.0.0, or one interface's
+    # address) only to expose the port on purpose; see "TLS and reverse proxy"
+    # in docs/deployment.md.
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}"
     env_file:
       - .env
     environment:
