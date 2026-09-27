@@ -144,6 +144,8 @@ describe('createShutdown', () => {
     const shutdown = createShutdown(deps);
     const first = shutdown('SIGTERM');
     const second = shutdown('SIGINT');
+    // Let the first reach its flush, which then waits on us.
+    await vi.advanceTimersByTimeAsync(0);
     finishFlush();
     await Promise.all([first, second]);
 

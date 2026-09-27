@@ -32,8 +32,13 @@ async function fetchDocMeta(logId) {
   return row || null;
 }
 
-// In-memory store: logId → { doc, conns, saveTimer, lastSavedHtml }
+// In-memory store: logId → { doc, conns, saveTimer, saving, lastSavedHtml }
+// saveTimer is non-null exactly while a debounced save is pending, and saving
+// is the write a fired timer has in flight, so shutdown can tell what is owed.
 const docs = new Map();
+
+// Every WebSocketServer setupCollabServer made, so shutdown can close them.
+const servers = new Set();
 
 // Track per-user connection count across all documents
 const userConnectionCounts = new Map(); // userId → count
@@ -60,6 +65,7 @@ async function getOrCreateDoc(logId) {
     doc: ydoc,
     conns: new Map(),   // ws → { user, canWrite, color }
     saveTimer: null,
+    saving: null,
     cleanupTimer: null,
     lastSavedHtml: null,
     logId,
@@ -103,23 +109,83 @@ async function getOrCreateDoc(logId) {
 }
 
 /**
+ * Write the current Yjs binary CRDT state back to MySQL. Throws on failure.
+ */
+async function writeYdocState(entry) {
+  const state = Y.encodeStateAsUpdate(entry.doc);
+  await c2_query(
+    `UPDATE logs SET ydoc_state = ?, updated_at = NOW() WHERE id = ?`,
+    [Buffer.from(state), entry.logId]
+  );
+}
+
+/**
  * Debounced save: writes the current Yjs binary CRDT state back to MySQL.
  * HTML is NOT updated here — clients send HTML during explicit save/publish.
  * Binary state is saved frequently so the CRDT can be restored on restart.
  */
 function scheduleSave(entry) {
   if (entry.saveTimer) clearTimeout(entry.saveTimer);
-  entry.saveTimer = setTimeout(async () => {
-    try {
-      const state = Y.encodeStateAsUpdate(entry.doc);
-      await c2_query(
-        `UPDATE logs SET ydoc_state = ?, updated_at = NOW() WHERE id = ?`,
-        [Buffer.from(state), entry.logId]
-      );
-    } catch (err) {
+  entry.saveTimer = setTimeout(() => {
+    entry.saveTimer = null;
+    const write = writeYdocState(entry).catch((err) => {
       console.error(`[collab] Save failed for log ${entry.logId}:`, err);
-    }
+    });
+    entry.saving = write;
+    write.then(() => { if (entry.saving === write) entry.saving = null; });
   }, SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Write every debounced save that is still pending, now, instead of when its
+ * timer would have fired. The graceful shutdown calls this before it closes
+ * the sockets (services/shutdown.js), so an edit made in the last three
+ * seconds before a stop is not lost.
+ *
+ * A write a fired timer already has in flight is awaited first: two writes of
+ * the same row can land in either order on different pooled connections, and
+ * the older state landing second would undo the newer one. Documents are
+ * written one after another, and one that throws is logged and skipped rather
+ * than stopping the rest. Never rejects.
+ *
+ * @returns {Promise<{ saved: number, failed: number }>}
+ */
+export async function flushPendingSaves() {
+  let saved = 0;
+  let failed = 0;
+  for (const entry of docs.values()) {
+    const pending = entry.saveTimer !== null;
+    if (!pending && !entry.saving) continue;
+    if (pending) {
+      clearTimeout(entry.saveTimer);
+      entry.saveTimer = null;
+    }
+    try {
+      if (entry.saving) await entry.saving;
+      if (pending) {
+        await writeYdocState(entry);
+        saved++;
+      }
+    } catch (err) {
+      failed++;
+      console.error(`[${new Date().toISOString()}] [collab] shutdown flush failed for log ${entry.logId}:`, err);
+    }
+  }
+  return { saved, failed };
+}
+
+/**
+ * Close every socket on every collab server, authenticated or not, with the
+ * given close code (1001, "going away", on shutdown), and stop the servers.
+ * @param {number} code
+ * @param {string} reason
+ */
+export function closeAll(code, reason) {
+  for (const wss of servers) {
+    for (const ws of wss.clients) ws.close(code, reason);
+    wss.close();
+  }
+  servers.clear();
 }
 
 /**
@@ -207,6 +273,7 @@ export function setupCollabServer(server) {
     noServer: true,
     maxPayload: MAX_MESSAGE_SIZE,
   });
+  servers.add(wss);
 
   server.prependListener('upgrade', async (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
@@ -438,6 +505,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
         // Immediate save — client sends current HTML for DB storage alongside
         // the binary CRDT state that the server already has.
         if (entry.saveTimer) clearTimeout(entry.saveTimer);
+        entry.saveTimer = null;
         (async () => {
           try {
             const state = Y.encodeStateAsUpdate(entry.doc);
@@ -552,6 +620,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
 
             // Publish: save content AND create a formal version snapshot
             if (entry.saveTimer) clearTimeout(entry.saveTimer);
+            entry.saveTimer = null;
             const state = Y.encodeStateAsUpdate(entry.doc);
             const prevHtml = entry.lastSavedHtml;
 

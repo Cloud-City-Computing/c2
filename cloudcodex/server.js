@@ -7,11 +7,14 @@
 
 import ViteExpress from 'vite-express';
 import { initMail } from './services/email.js';
-import { setupCollabServer } from './services/collab.js';
-import { setupUserChannelServer } from './services/user-channel.js';
-import { c2_query } from './mysql_connect.js';
+import { setupCollabServer, flushPendingSaves, closeAll as closeCollabSockets } from './services/collab.js';
+import { setupUserChannelServer, closeAll as closeUserChannelSockets } from './services/user-channel.js';
+import { c2_query, openConnection, endPool } from './mysql_connect.js';
 import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import { parseAuthProviders } from './services/identity.js';
+import { acquireInstanceLock } from './services/instance-lock.js';
+import { createShutdown } from './services/shutdown.js';
+import { readiness } from './routes/health.js';
 import app from './app.js';
 
 // ─── Require Admin credentials before starting ──────────────
@@ -32,6 +35,23 @@ try {
   console.error(`✖ ${err.message}`);
   process.exit(1);
 }
+
+// ─── One process per schema: take the instance lock ─────────
+//
+// Before anything writes, so a second process refuses before its admin sync
+// or seed can race the first one's. Collab state is an in-memory Y.Doc per
+// open document, and a second process would hold a second copy of each
+// (services/instance-lock.js). A refusal, or no database to take it from,
+// ends the boot: under a supervisor that is a restart, not an outage.
+const lockLog = (line) => console.error(`[${new Date().toISOString()}] ${line}`);
+let instanceLock = null;
+try {
+  instanceLock = await acquireInstanceLock({ connect: openConnection, log: lockLog });
+} catch (err) {
+  console.error(`✖ ${err.message}`);
+  process.exit(1);
+}
+readiness.lock = instanceLock;
 
 // ─── Decide capability and seed BEFORE the port opens ───────
 //
@@ -141,6 +161,28 @@ console.log('✔ Collaborative editing WebSocket server attached');
 // Attach user-scoped notification WebSocket server (for inbox push)
 setupUserChannelServer(server);
 console.log('✔ Notification WebSocket server attached');
+
+// ─── Stop cleanly on SIGTERM / SIGINT ───────────────────────
+//
+// The image runs `node server.js` directly, so these reach Node rather than
+// npm. Bounded at ten seconds (services/shutdown.js); the compose files give a
+// twenty-second grace before SIGKILL. `once`, so a second Ctrl-C in a
+// terminal falls through to Node's default and ends the process at once.
+const shutdown = createShutdown({
+  server,
+  readiness,
+  flushPendingSaves,
+  closeSockets: (code, reason) => {
+    closeCollabSockets(code, reason);
+    closeUserChannelSockets(code, reason);
+  },
+  releaseLock: () => instanceLock?.release(),
+  endPool,
+  exit: (code) => process.exit(code),
+  log: (line) => console.error(`[${new Date().toISOString()}] ${line}`),
+});
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);
 
 // Daily prune of activity_log entries older than 365 days.
 // Single-process architecture (per CLAUDE.md) — revisit if we ever scale out.
