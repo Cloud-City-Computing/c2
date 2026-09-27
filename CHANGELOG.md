@@ -12,6 +12,17 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fresh install on an SELinux-enforcing host gets its schema.**
+  `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`
+  read-only with no SELinux relabel, so on Fedora, RHEL and their relatives the
+  MySQL container could not read it, the first boot's initialisation failed,
+  and MySQL came up with no tables ("Table 'c2.users' doesn't exist"). Both now
+  mount it `:ro,z`, as `migrations/` already was, and a test pins a label on
+  every host bind mount in the two files. An install that already hit this
+  starts again from an empty data directory; see `docs/troubleshooting.md`.
+
 ## [0.11.0] - 2026-09-27
 
 The account-security release. Three security fixes: Google sign-in no longer
