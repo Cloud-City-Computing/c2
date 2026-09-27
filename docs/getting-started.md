@@ -172,7 +172,9 @@ All seed accounts use the password **`password`**.
 | `DB_POOL_SIZE` | MySQL connections the app keeps open, 1 to 100; anything else stops the boot | `10` |
 | `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
 | `APP_URL` | Base URL used to build invitation/reset links, in emails and in the admin UI's copyable link. **Required in production**: the server will not start without an `http(s)` URL | `http://localhost:3000` in development |
-| `TRUST_PROXY` | Which proxies Express believes about the client address (a hop count, `loopback`, an address list, or `false`); the rate limiters count by that address | `1` |
+| `TRUST_PROXY` | Which proxies Express believes about the client address (subnet names such as `loopback` or `uniquelocal`, an address or CIDR list, or `false`); the rate limiters count by that address. A hop count or `true` stops the boot | `loopback, linklocal, uniquelocal` (a proxy on this host or a private network) |
+| `TRUST_PROXY_ALLOW_HOP_COUNT` | `true` accepts a hop count or `true` in `TRUST_PROXY` anyway, letting any client that can reach the port choose its own address | unset (off) |
+| `APP_BIND` | Docker Compose only: the host address the app port is published on. Set `0.0.0.0` only to reach the app from other machines on purpose | `127.0.0.1` |
 | `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
 | `SMTP_HOST` | SMTP server hostname | — (optional; leave blank to run without email) |
 | `SMTP_PORT` | SMTP server port | `587` |

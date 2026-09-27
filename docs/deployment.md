@@ -38,6 +38,7 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
    ┌──────────────────────────────────────────────────────┐
    │   Cloud Codex Node container  (docker-compose-prod)  │
    │   · vite-express serves dist/ + Express API          │
+   │   · port published on 127.0.0.1 only (APP_BIND)      │
    │   · 2 WS servers attached (collab + notifications)   │
    │   · reads .env, exits if admin credentials missing   │
    │   · SMTP is optional; mail degrades if unconfigured  │
@@ -111,7 +112,9 @@ Production-specific notes:
 |----------------------------|----------------------------------------------------------|
 | `APP_URL`                  | **Required in production**: without an `http://` or `https://` URL the server exits at boot, and a `localhost` one boots with a warning. The public address people use, `https://` behind a TLS proxy; invitation, reset and notification links carry it |
 | `CORS_ORIGIN`              | Leave empty. The app's own origin and `APP_URL`'s are always allowed; set it only for a separate front end |
-| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count. Unset is `1`, right for one reverse proxy in front of the app. See [Rate limiters](#rate-limiters) |
+| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count. Unset believes a proxy connecting from loopback or a private range, right for nginx or Caddy on the same host and for a load balancer with a private address. A hop count or `true` stops the boot. See [Rate limiters](#rate-limiters) |
+| `TRUST_PROXY_ALLOW_HOP_COUNT` | Leave unset. `true` accepts a hop count or `true` in `TRUST_PROXY` anyway, knowing that any client able to reach the app's port can then choose its own address |
+| `APP_BIND`                 | Compose only, not read by the server: the host address the app port is published on. Unset or blank is `127.0.0.1`. See [TLS and reverse proxy](#tls-and-reverse-proxy) |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
 | `SMTP_*`                   | Optional. Without them invitations show a copyable link and password reset is unavailable |
 | `ADMIN_*`                  | Hard requirement. **They reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
@@ -161,11 +164,30 @@ credentials it had, and the first-boot seed does not run on that boot.
 ## TLS and reverse proxy
 
 Cloud Codex serves plain HTTP on port 3000 inside its container, or on `PORT`
-if that is set. `docker-compose-prod.yml` publishes `${PORT:-3000}` on both
-sides of the mapping, so setting `PORT` in `.env` moves the host port with it;
-update `APP_URL` to match, and remember the smoke test below uses that port.
-Production should always sit behind a TLS-terminating reverse proxy. Two
-requirements the proxy must satisfy:
+if that is set. Both production compose files publish it as
+`${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`: `PORT` moves the port on
+both sides of the mapping (update `APP_URL` to match, and remember the smoke
+test below uses that port), and **the host side is `127.0.0.1`**, so only this
+machine reaches the app. A browser on the same machine opens
+`http://localhost:3000` as before, and so does a reverse proxy running on the
+host.
+
+**Production belongs behind a TLS-terminating reverse proxy**, not on the app
+port. Docker's published ports are a DNAT rule that sits in front of the host
+firewall, so a port published on every interface is reachable past `ufw deny`
+by anything that can route to the machine, and a client reaching the app
+directly skips TLS altogether.
+
+To expose the port deliberately (a load balancer on another machine that must
+reach it, or an evaluation from another computer on your network), set
+`APP_BIND` in `.env` to `0.0.0.0`, or to one interface's address to publish on
+that interface only, and restrict who can reach it at the network edge
+(a cloud security group, not a host firewall rule Docker bypasses). A reverse
+proxy running in **another container** cannot reach the host's loopback: join it
+to this compose project's network and proxy to `app:3000` (or `app:$PORT`)
+instead of widening `APP_BIND`.
+
+Requirements the proxy must satisfy:
 
 1. **WebSocket upgrade passthrough.** Both `/collab/:logId` and
    `/notifications-ws` rely on the HTTP upgrade dance. A proxy that strips
@@ -174,6 +196,14 @@ requirements the proxy must satisfy:
 2. **Same-origin headers.** `services/user-channel.js` enforces an
    `Origin` host check against `Host`. If your proxy rewrites either,
    make sure both end up matching the public hostname.
+3. **A client address the app can believe.** The proxy sets
+   `X-Forwarded-For` (nginx: `proxy_set_header X-Forwarded-For
+   $proxy_add_x_forwarded_for;`; Caddy does it by default), and it connects to
+   the app from an address `TRUST_PROXY` trusts. Unset, that is loopback or a
+   private range, which covers a proxy on the host (it arrives over the Docker
+   bridge, as the network's gateway address) and a load balancer with a private
+   address. A proxy connecting from a public address must be listed in
+   `TRUST_PROXY`. See [Rate limiters](#rate-limiters).
 
 Both WebSocket servers refuse a cross-origin upgrade themselves: each requires
 an `Origin` whose host equals `Host`. Helmet's CSP (`connect-src 'self' ws: wss:`)
@@ -572,15 +602,52 @@ this is not a typical concern.
 | User search          | 60 / 15 minutes per IP          |
 | WebSocket messages   | 60 / second per connection      |
 
-The limiters count per client address, which Express takes from
-`X-Forwarded-For` as far as `TRUST_PROXY` allows, so set it to match how
-clients actually reach the app. Unset, it is `1`: Express trusts exactly one
-hop in front of it. With two proxies in front (a load balancer, then nginx)
-set `TRUST_PROXY=2`; to trust only known proxy addresses, give `loopback` or a
-comma list of addresses and CIDRs; with nothing in front, `false`. Never set
-`true`: it believes whatever `X-Forwarded-For` a client sends, so anyone can
-choose their own address and walk around every limit. A value Express cannot
-parse stops the server at boot.
+The limiters count per client address. Express takes it from the connection,
+and from `X-Forwarded-For` only while each hop it walks through, starting with
+the peer that connected, is a proxy `TRUST_PROXY` trusts. So `TRUST_PROXY`
+names the proxies, by address, never by count.
+
+- **Unset** (the default) is `loopback, linklocal, uniquelocal`: a peer on
+  loopback, a link-local address, or a private range (`10.0.0.0/8`,
+  `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) is believed. That is nginx or
+  Caddy on the same host, which reaches the container over the Docker bridge
+  from the network's gateway address, a cloud load balancer with a private
+  address, and a chain of them. A client connecting from any other address is
+  counted by that address, whatever `X-Forwarded-For` it sends.
+- **A list** of those names, addresses and CIDRs believes exactly those. Use it
+  when the proxy connects from a public address, from an address outside those
+  ranges (a Tailscale `100.64.0.0/10` address, for one), or when other machines
+  on the same private network can reach the app port and you want only the
+  proxy believed: for example `TRUST_PROXY=10.0.1.25` or
+  `TRUST_PROXY=loopback,172.16.0.0/12`.
+- **`false`** believes no proxy; every request is counted by the address that
+  connected. Right with nothing in front of the app.
+- **A hop count (`1`, `2`, ...) or `true` stops the server at boot.** Either
+  believes the `X-Forwarded-For` of whoever connects, so any client that can
+  reach the app's port directly sends a new address with every request and
+  gets a fresh bucket each time: unlimited password and two-factor guessing
+  (GHSA-9fmx-frrf-xxmq). If the port truly is reachable only through the proxy
+  and its address cannot be known, `TRUST_PROXY_ALLOW_HOP_COUNT=true` accepts a
+  hop count anyway, and with it that risk. A subnet list covering every address
+  (`0.0.0.0/0`, `::/0`) is `true` by another name; do not use one.
+
+A value Express cannot parse stops the server at boot too.
+
+**If you run behind a proxy, check after upgrading** that a real client's
+address reaches the app. Sign in through the proxy, then read the address the
+app recorded for that session:
+
+```bash
+docker compose -f docker-compose-release.yml exec database \
+  sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e \
+  "SELECT ip_address, last_active_at FROM sessions ORDER BY last_active_at DESC LIMIT 3"'
+```
+
+Your own address is right. The proxy's address, or the Docker network's
+gateway (such as `::ffff:172.18.0.1`), means one of two things: the proxy is not
+trusted (list its address in `TRUST_PROXY`), or it does not set
+`X-Forwarded-For`. Either way every user shares one bucket of 20 sign-in
+attempts per 15 minutes.
 
 ---
 

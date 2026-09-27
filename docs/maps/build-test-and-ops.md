@@ -41,9 +41,9 @@ it (directly or transitively) before reading `process.env`.
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 
 `NODE_ENV` matters in five places: CORS localhost allowance
-(`app.js:125`), where Helmet is mounted (`app.js:171`: the whole app in
-production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:179`,
-`app.js:217`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
+(`app.js:155`), where Helmet is mounted (`app.js:201`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:209`,
+`app.js:247`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
 mode. `.env.example` lists it blank; `npm run start` and the Docker image set it.
 
 ## 3. Local development
@@ -93,9 +93,26 @@ without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
 so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
-  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:22-27`).
+  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:18-22`).
 - The app builds from `cloudcodex/Dockerfile`, waits on
-  `condition: service_healthy`, publishes 3000, and takes `env_file: .env`.
+  `condition: service_healthy`, publishes
+  `${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`, and takes
+  `env_file: .env`.
+
+**The app port is published on 127.0.0.1 in both production files**
+(GHSA-9fmx-frrf-xxmq). Docker's published ports are a DNAT rule in front of the
+host firewall, so the old host-less mapping was reachable from anywhere that
+could route to the machine, and a client reaching the app directly skipped the
+TLS proxy. Only this machine reaches it now (a browser here, or the reverse
+proxy); `APP_BIND` (`0.0.0.0`, or one interface's address) exposes it on
+purpose. `:-` rather than `-`, because `.env.example` ships `APP_BIND=` blank and
+a blank host address publishes on every interface. A reverse proxy in another
+container cannot reach the host's loopback: it joins this compose network and
+proxies to `app:3000`. `tests/compose-ports.test.js` pins the mapping in both
+files and separately reads each mapping's effective host (its `:-` fallback)
+and fails on anything beyond loopback, so moving the pin and the files to an
+all-interfaces default together still fails. It covers the app port only: the
+prod file's database publishes `3306:3306` on every interface (below).
 - `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build
   stage runs `npm ci` and `npm run build`, and the runtime stage runs
   `npm ci --omit=dev`, copies the source, then copies `dist/` across from the

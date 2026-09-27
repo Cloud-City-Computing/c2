@@ -20,6 +20,13 @@ itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
 is older pulls it and upgrades its data directory in place on first start, so
 back the database up first. No migration.
 
+**Upgrading: the app port is published on `127.0.0.1`, and `X-Forwarded-For`
+is believed only from a proxy on loopback or a private network.** An install
+reached directly on port 3000 from another machine stops answering there: put
+it behind a TLS-terminating proxy, or set `APP_BIND=0.0.0.0` in `.env` to
+expose it on purpose. Behind a proxy, check that a real client's address still
+reaches the app (Security, below).
+
 ### Added
 
 - `cloudcodex/env-contract.js`, the configuration contract: every environment
@@ -31,9 +38,10 @@ back the database up first. No migration.
   every stated default is checked against what the code does when the
   variable is unset or blank.
 - `TRUST_PROXY`, Express's `trust proxy` setting, which decides the address the
-  rate limiters count. Unset keeps today's `1`; a hop count, `true`, `false`,
-  `loopback` or an address list are accepted, and a value Express cannot parse
-  stops the boot with a sentence naming the variable.
+  rate limiters count: a list of subnet names (`loopback`, `linklocal`,
+  `uniquelocal`), addresses and CIDRs, or `false`. Unset is the trusted-subnet
+  default described under Security, and a value Express cannot parse stops the
+  boot with a sentence naming the variable.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
 
@@ -53,8 +61,43 @@ back the database up first. No migration.
   upgrades the data directory in place on first start, so back it up first. A
   test fails on a floating tag or on two files disagreeing.
 
+- **Both production compose files publish the app port on `127.0.0.1`**
+  (`${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`), not on every
+  interface. A browser or reverse proxy on the same machine reaches
+  `http://localhost:3000` as before; another machine no longer does, and
+  neither does a proxy in another container that used the host's address (join
+  it to the compose network and proxy to `app:3000` instead). Production
+  belongs behind a TLS-terminating reverse proxy; to expose the port on
+  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's address. A
+  test pins the mapping in both files and fails on any default beyond
+  loopback.
+
 ### Security
 
+- **The rate limiters can no longer be walked around by sending
+  `X-Forwarded-For` straight to the app port (GHSA-9fmx-frrf-xxmq).** Express's
+  `trust proxy` was `1`, so every limiter keyed on the rightmost
+  `X-Forwarded-For` entry of any request that carried one, and both production
+  compose files published the app port on every interface, where Docker's DNAT
+  rule sits in front of the host firewall. Anyone who could reach port 3000
+  directly could send a new address with each request and get a fresh bucket
+  every time: unlimited password and two-factor guessing past the sign-in
+  limit of 20 per 15 minutes, and unlimited user search. `trust proxy` now
+  defaults to `loopback, linklocal, uniquelocal`: `X-Forwarded-For` is believed
+  only when the peer that connected is on loopback or a private range, and any
+  other client is counted by its own address. The address recorded against
+  each session came from the same header and is fixed the same way.
+  `TRUST_PROXY` takes a list of addresses, subnets and those names, or
+  `false`; a hop count or `true` stops the boot with a sentence saying why,
+  unless `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that any client
+  able to reach the port can choose its own address. The app port is also
+  published on `127.0.0.1` now (Changed, above). **If you run behind a proxy,
+  check two things:** that the proxy connects to the app from an address in a
+  trusted range or listed in `TRUST_PROXY` (nginx or Caddy on the same host
+  does, over the Docker bridge; a proxy on a public address must be listed),
+  and that the proxy sets `X-Forwarded-For` itself. Otherwise every user shares
+  the proxy's one bucket. "Rate limiters" in `docs/deployment.md` shows how to
+  read the address the app recorded for your own sign-in.
 - **In production the security headers cover the whole app, not only `/api`.**
   The single-page app's HTML, its built assets and the `/avatars` and
   `/doc-images` files now carry the Content-Security-Policy, including

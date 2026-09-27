@@ -17,7 +17,7 @@ config gates run **before** anything listens.
 | Pool size gate | `mysql_connect.js:28-47`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
 | DB pool | `mysql_connect.js:50-58` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. A blank `DB_HOST` or `DB_NAME` behaves as unset (`localhost`, `c2`), as in `scripts/migrate.js`. |
 | DB credential gate | `mysql_connect.js:60-64` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| Trust proxy gate | `app.js:61`, `parseTrustProxy()` | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY` (unset or blank is 1, digits a hop count, `true`/`false` booleans, anything else passed through). Express compiles the value there and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
+| Trust proxy gate | `app.js:84-95`, `parseTrustProxy()` (`app.js:61`) | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY`. Unset or blank is `'loopback, linklocal, uniquelocal'` (`DEFAULT_TRUST_PROXY`, `app.js:46`): `X-Forwarded-For` is believed only when the immediate peer is on loopback, link-local or a private range, IPv4-mapped forms included, so a client from a public address is keyed on its socket (GHSA-9fmx-frrf-xxmq). `false` is a boolean and anything else is passed through as an address or subnet list. **A hop count (0 included) or `true` exits 1** with `✖ TRUST_PROXY "<value>" is a hop count` (or `trusts every hop`) naming `TRUST_PROXY_ALLOW_HOP_COUNT=true`, the opt-in that accepts it; the opt-in itself exits on anything but `true`, `false` or blank. Express compiles the value at `app.js:87` and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the gates around it (pool size, trust proxy, `APP_URL`, the provider list, and an invalid `PORT`), these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | `APP_URL` gate | `server.js:30-56` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. A valid one whose host is `localhost`, `127.x.x.x`, `[::1]` or a `.localhost` name boots but prints `⚠ APP_URL "<value>" points at this machine`, since `.env.example` ships `http://localhost:3000` and the release compose file's one-machine evaluation is legitimate. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
@@ -77,16 +77,17 @@ fails, and so does a listed file that stops calling it.
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', TRUST_PROXY ?? 1)     app.js:61
+app.set('trust proxy', TRUST_PROXY ??        app.js:87
+        'loopback, linklocal, uniquelocal')
   │
-  ├─ CORS, scoped to /api                    app.js:77-133
-  ├─ helmet + CSP: whole app in production,  app.js:143-171
+  ├─ CORS, scoped to /api                    app.js:106-163
+  ├─ helmet + CSP: whole app in production,  app.js:173-201
   │  /api only otherwise
-  ├─ express.json({ limit: '2mb' })          app.js:183
-  ├─ authLimiter on 9 paths + reader-check   app.js:186-209
-  ├─ searchLimiter on /api/users/search      app.js:220
-  ├─ static /avatars      (7d immutable)     app.js:223-226
-  ├─ static /doc-images   (30d immutable)    app.js:229-232
+  ├─ express.json({ limit: '2mb' })          app.js:213
+  ├─ authLimiter on 9 paths + reader-check   app.js:216-239
+  ├─ searchLimiter on /api/users/search      app.js:250
+  ├─ static /avatars      (7d immutable)     app.js:253-256
+  ├─ static /doc-images   (30d immutable)    app.js:259-262
   ├─ 18 routers, all mounted at /api
   └─ (production, at listen time) vite-express's static dist/ and index.html
      handlers, appended after all of the above
@@ -126,14 +127,15 @@ the public name, unless the operator adds `proxy_set_header Host $host`. Without
 the `APP_URL` fallback that configuration reproduces the original outage exactly:
 every write returns 500. `APP_URL` is already required and is operator-set.
 
-It is deliberately **not** `req.hostname`. `trust proxy` is 1 by default (and
-whatever `TRUST_PROXY` says otherwise), so `req.hostname`
-honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
-app's port directly, so an attacker could set that header themselves and turn
-the same-origin clause into "allow any origin".
+It is deliberately **not** `req.hostname`. `req.hostname` honours
+`X-Forwarded-Host` from any peer `trust proxy` believes, which by default is
+anything on loopback or a private network (another container on the host, a
+machine on the same LAN or VPC when `APP_BIND` exposes the port) and more when
+`TRUST_PROXY` widens it, and any of those could set that header themselves and
+turn the same-origin clause into "allow any origin".
 
-**Security headers** (`HELMET_OPTIONS`, `app.js:143-170`) are one Helmet policy
-with two scopes (`app.js:171`). **In production it is mounted on `/`**, so it
+**Security headers** (`HELMET_OPTIONS`, `app.js:173-200`) are one Helmet policy
+with two scopes (`app.js:201`). **In production it is mounted on `/`**, so it
 covers every response: the single-page app's HTML and built assets (served by
 the handlers `vite-express` appends at listen time, after everything here), the
 `/avatars` and `/doc-images` static files, and `/api`. **Anywhere else it stays
@@ -163,7 +165,7 @@ script into its print window for this reason (`frontend-architecture.md`,
 `tests/app.test.js`, which re-imports `app.js` per `NODE_ENV` and appends a
 handler the way `vite-express` does.
 
-**Body limit is 2 MB** (`app.js:183`). The collab WebSocket has its own, larger
+**Body limit is 2 MB** (`app.js:213`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:43-44`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -171,15 +173,35 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:174-181`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:186-193`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:199`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:209`) |
-| `searchLimiter` (`app.js:212-219`) | 15 min / 60 | `/api/users/search` only (`app.js:220`), to blunt user enumeration |
+| `authLimiter` (`app.js:204-211`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:216-223`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:229`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:239`) |
+| `searchLimiter` (`app.js:242-249`) | 15 min / 60 | `/api/users/search` only (`app.js:250`), to blunt user enumeration |
 
 Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
-suite can hammer `/api/login` without tripping them. One test exercises the
-limiter itself: `tests/app.test.js` sets `NODE_ENV=production` for its duration
-and requires the 21st `/api/update-account` request, then
-`/api/update-account/confirm-email`, to answer 429 while an unmounted route does
-not. The other mounts are not exercised.
+suite can hammer `/api/login` without tripping them. Two blocks in
+`tests/app.test.js` exercise the limiter itself, each setting
+`NODE_ENV=production` for its duration. One requires the 21st
+`/api/update-account` request, then `/api/update-account/confirm-email`, to
+answer 429 while an unmounted route does not. The other (`the auth limiter
+key`) is what the key is: it serves a fresh app on a real loopback socket and
+replaces the connection's `remoteAddress` before Express sees it, because
+Supertest always connects from 127.0.0.1, which the default trusts. A public
+peer (`203.0.113.9`, and its IPv4-mapped form) sending a new `X-Forwarded-For`
+on every `/api/login` gets 429 on the 21st; a private peer (`172.18.0.1`,
+`::ffff:10.0.1.25`) has its `X-Forwarded-For` believed, so a second client
+behind it keeps its own bucket. Setting `trust proxy` back to 1 reddens the
+first; setting it to `false` reddens the second. The other mounts are not
+exercised.
+
+**The key is `req.ip`, and so the trust decision is the limiter's whole
+strength.** `express-rate-limit` keys on `req.ip` (an IPv4-mapped address is
+reduced to its IPv4 form, and IPv6 to its /56), and `req.ip` walks
+`X-Forwarded-For` from the right for as long as each hop is trusted. Under a
+hop count the first hop is trusted whoever sent it, which is how a direct client
+chose its own key. Under the subnet default a peer from a public address is its
+own key. A peer that *is* on a private range, a container on the same host or a
+machine on the same LAN or VPC reaching an exposed port, is still believed; an
+operator whose network holds untrusted private peers lists the proxy's exact
+address in `TRUST_PROXY` instead.
 
 ### Router mounting
 
