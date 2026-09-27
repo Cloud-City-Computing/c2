@@ -133,11 +133,14 @@ describe('document images on live MySQL', () => {
     await expectRefused(IN_DOC, 'reader');
   });
 
-  it('the backfill records every image a document or its versions show, and only once', async () => {
+  it('the backfill records every image a document or its versions show, once', async () => {
     expect(await backfillDocImages()).toEqual({ documents: 1, versions: 1, recorded: 2 });
     expect(await rowsFor(IN_DOC)).toEqual([{ log_id: ids.docA, uploaded_by: null }]);
     expect(await rowsFor(IN_VERSION)).toEqual([{ log_id: ids.docA, uploaded_by: null }]);
-    expect((await backfillDocImages()).recorded).toBe(0);
+    // A second run refuses: the table has rows now, and run after go-live it
+    // would trust every reference saved since. Told it is a rerun, it records nothing new.
+    await expect(backfillDocImages()).rejects.toThrow(/--again/);
+    expect((await backfillDocImages({ again: true })).recorded).toBe(0);
   });
 
   it('after it, the reader and the owner get the bytes, privately cached', async () => {
@@ -259,5 +262,84 @@ describe('document images on live MySQL', () => {
       const [{ n }] = await c2_query('SELECT COUNT(*) AS n FROM doc_images WHERE uploaded_by = ?', [ids.stranger]);
       expect(n).toBe(0);
     });
+  });
+});
+
+// The confused deputy. A reference is a grant to every reader of the document
+// it is recorded for, so it may be recorded only from the write that adds it,
+// by a writer who can see the image. A later save, publish or restore that
+// merely carries a reference somebody else planted (the owner fixing a typo,
+// an admin publishing) must not record it, however much that writer can see.
+describe('a reference somebody else planted', () => {
+  const PRIVATE = hex16();
+  const privateBytes = randomBytes(64);
+  const save = (who, docId, html) => request(app)
+    .post('/api/save-document')
+    .set('Authorization', `Bearer ${tokens[who]}`)
+    .send({ doc_id: docId, html_content: html });
+
+  beforeAll(async () => {
+    const file = path.join(DOC_IMAGES_DIR, `${PRIVATE}.webp`);
+    writeFileSync(file, privateBytes);
+    filesWritten.push(file);
+
+    await user('mallory');
+    await user('admin');
+    await c2_query('UPDATE users SET is_admin = TRUE WHERE id = ?', [ids.admin]);
+
+    // P: the owner's alone, with the image the owner uploaded into it.
+    const p = await place(ids.owner, 'P');
+    ids.docP = await doc(p.archive, ids.owner, img(PRIVATE));
+    await c2_query('INSERT INTO doc_images (hash, log_id, uploaded_by) VALUES (?, ?, ?)', [PRIVATE, ids.docP, ids.owner]);
+
+    // T: the owner's too, shared with mallory as a writer. Mallory cannot read P.
+    const t = await place(ids.owner, 'T');
+    await c2_query('INSERT INTO squad_members (squad_id, user_id, can_read, can_write) VALUES (?, ?, TRUE, TRUE)', [t.squad, ids.mallory]);
+    ids.docT = await doc(t.archive, ids.owner, '<p>shared</p>');
+
+    // M: mallory's own.
+    const m = await place(ids.mallory, 'M');
+    ids.docM = await doc(m.archive, ids.mallory, '<p>mine</p>');
+  });
+
+  it('is not granted by a later save from the owner, who can see the image', async () => {
+    await expectRefused(PRIVATE, 'mallory');
+    expect((await save('mallory', ids.docT, img(PRIVATE))).status).toBe(200);
+    await expectRefused(PRIVATE, 'mallory');
+
+    // The owner fixes a typo; their editor sends the whole document back.
+    expect((await save('owner', ids.docT, `<p>typo fixed</p>${img(PRIVATE)}`)).status).toBe(200);
+
+    expect((await rowsFor(PRIVATE)).map((r) => r.log_id)).toEqual([ids.docP]);
+    await expectRefused(PRIVATE, 'mallory');
+  });
+
+  it('is not granted by an admin publishing or restoring the document it was planted in', async () => {
+    expect((await save('mallory', ids.docM, img(PRIVATE))).status).toBe(200);
+
+    const published = await request(app)
+      .post(`/api/document/${ids.docM}/publish`)
+      .set('Authorization', `Bearer ${tokens.admin}`)
+      .send({ title: 'looks fine' });
+    expect(published.status).toBe(200);
+    await expectRefused(PRIVATE, 'mallory');
+
+    const [version] = await c2_query('SELECT id FROM versions WHERE log_id = ? ORDER BY id DESC LIMIT 1', [ids.docM]);
+    const restored = await request(app)
+      .post(`/api/document/${ids.docM}/versions/${version.id}/restore`)
+      .set('Authorization', `Bearer ${tokens.admin}`);
+    expect(restored.status).toBe(200);
+
+    expect((await rowsFor(PRIVATE)).map((r) => r.log_id)).toEqual([ids.docP]);
+    await expectRefused(PRIVATE, 'mallory');
+  });
+
+  it('is granted when the owner puts the image in the document themselves', async () => {
+    // Removed and saved, then added back: that save adds it, and it is theirs.
+    expect((await save('owner', ids.docT, '<p>clean</p>')).status).toBe(200);
+    expect((await save('owner', ids.docT, `<p>for mallory</p>${img(PRIVATE)}`)).status).toBe(200);
+
+    expect((await rowsFor(PRIVATE)).map((r) => r.log_id)).toEqual([ids.docP, ids.docT].sort((a, b) => a - b));
+    await expectServed(PRIVATE, 'mallory', privateBytes);
   });
 });

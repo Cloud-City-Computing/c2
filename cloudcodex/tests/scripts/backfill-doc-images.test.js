@@ -19,9 +19,10 @@ const B = 'bbbbbbbbbbbbbbbb';
 const img = (hash) => `<img src="/doc-images/${hash}.webp">`;
 
 /** Answer SELECTs from the given tables and count INSERT rows, like a tiny database. */
-function fakeDatabase({ logs = [], versions = [] }) {
+function fakeDatabase({ logs = [], versions = [], existing = 0 }) {
   const inserted = new Set();
   c2_query.mockImplementation(async (sql, params) => {
+    if (/SELECT COUNT\(\*\) AS n FROM doc_images/.test(sql)) return [{ n: existing + inserted.size }];
     if (/FROM logs/.test(sql)) {
       return logs.filter((row) => row.id > params[0]).slice(0, BATCH_SIZE);
     }
@@ -72,16 +73,43 @@ describe('backfillDocImages', () => {
   it('only reads rows that mention /doc-images/, versions only with a document', async () => {
     fakeDatabase({});
     await backfillDocImages();
-    const selects = c2_query.mock.calls.filter(([sql]) => /^\s*SELECT/.test(sql));
+    const selects = c2_query.mock.calls.filter(([sql]) => /FROM (logs|versions)/.test(sql));
     expect(selects).toHaveLength(2);
     for (const [sql] of selects) expect(sql).toMatch(/html_content LIKE '%\/doc-images\/%'/);
     expect(selects[1][0]).toMatch(/log_id IS NOT NULL/);
   });
 
-  it('is idempotent: a second run records nothing new', async () => {
+  it('is idempotent: a second run, told it is one, records nothing new', async () => {
     fakeDatabase({ logs: [{ id: 1, html_content: img(A) }] });
     expect((await backfillDocImages()).recorded).toBe(1);
-    expect((await backfillDocImages()).recorded).toBe(0);
+    expect((await backfillDocImages({ again: true })).recorded).toBe(0);
+  });
+
+  // Run after go-live, it would record every reference saved since, including
+  // ones pasted by people who cannot see the image, which is the grant the
+  // write path refuses. Rows in the table mean the app or an earlier run wrote them.
+  it('refuses to run over a table that already has rows, and reads nothing', async () => {
+    fakeDatabase({ logs: [{ id: 1, html_content: img(A) }], existing: 3 });
+
+    await expect(backfillDocImages()).rejects.toThrow(/already has 3 row\(s\).*--again/s);
+
+    expect(c2_query.mock.calls.filter(([sql]) => /FROM logs|FROM versions/.test(sql))).toHaveLength(0);
+    expect(insertCalls()).toHaveLength(0);
+  });
+
+  it('runs over rows when told it is a rerun, or while DOC_IMAGES_PUBLIC=1 serves every image anyway', async () => {
+    fakeDatabase({ logs: [{ id: 1, html_content: img(A) }], existing: 3 });
+    expect((await backfillDocImages({ again: true })).recorded).toBe(1);
+
+    fakeDatabase({ logs: [{ id: 1, html_content: img(A) }], existing: 3 });
+    const prior = process.env.DOC_IMAGES_PUBLIC;
+    process.env.DOC_IMAGES_PUBLIC = '1';
+    try {
+      expect((await backfillDocImages()).recorded).toBe(1);
+    } finally {
+      if (prior === undefined) delete process.env.DOC_IMAGES_PUBLIC;
+      else process.env.DOC_IMAGES_PUBLIC = prior;
+    }
   });
 
   it('walks the tables in id-ordered batches until one comes back short', async () => {
@@ -112,5 +140,11 @@ describe('main', () => {
 
     expect(result).toEqual({ documents: 1, versions: 0, recorded: 1 });
     expect(lines).toEqual(['backfill-doc-images: recorded 1 image reference(s) from 1 document(s) and 0 version(s)']);
+  });
+
+  it('passes --again through', async () => {
+    fakeDatabase({ logs: [{ id: 1, html_content: img(A) }], existing: 1 });
+    await expect(main({ log: () => {}, argv: [] })).rejects.toThrow(/--again/);
+    expect((await main({ log: () => {}, argv: ['--again'] })).recorded).toBe(1);
   });
 });
