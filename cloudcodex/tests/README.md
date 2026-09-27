@@ -34,6 +34,7 @@ tests/
 ├── setup.integration.js    ← integration project setup: a throwaway schema, NO mocks
 ├── test-projects.test.js   ← pins which projects the default run names
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
+│   ├── admin-sync.test.js  ← the boot admin sync never promotes a member, in either row order
 │   ├── global-setup.js     ← teardown: fails the run if a c2_it_ schema leaked
 │   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers, lock-wait poller
 │   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql

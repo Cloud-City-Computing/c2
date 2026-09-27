@@ -78,7 +78,20 @@ Passwords are hashed with **bcrypt** at 12 salt rounds. Comparisons use constant
 
 ## Session Management
 
-Session tokens are 64-character cryptographically random strings (Node.js `crypto.randomBytes`) with a 7-day expiry. Sessions are invalidated immediately on password change and on successful password reset. IP address and user-agent are recorded per session.
+Session tokens are 64-character cryptographically random strings (Node.js `crypto.randomBytes`) with a 7-day expiry. IP address and user-agent are recorded per session.
+
+A successful password reset deletes every session of the user.
+
+---
+
+## Account Changes
+
+`POST /api/update-account` changes a user's name, email or password. A session on its own is enough for the name and for nothing else:
+
+- **An email or password change needs the current password** (`currentPassword`), compared with bcrypt exactly as sign-in compares it. Missing is a 400 and wrong is a 401, and neither changes anything. The check runs before the new address is tested for uniqueness, so a session alone cannot probe which addresses have accounts. The route shares the sign-in rate limit (20 requests per 15 minutes per IP).
+- **After an email or password change, every session of the user is deleted, the caller's included**, in the same transaction as the write, and the caller is handed a freshly generated session token. Sessions are one per user today, so every device signed in to the account holds the same token; deleting all but the caller's, as this route used to, deleted nothing that mattered and left a stolen session working after the owner changed their password. Now every holder of the old token is signed out. Until sessions become one per sign-in, the next sign-in with the new credentials is handed the same fresh token, as any two sign-ins share one today.
+- **After an email change, a notice goes to the old address** when mail is enabled, so the owner hears about a change that was not theirs.
+- **An account with no password** (one an external sign-in created) has no current password to give. Its email change is confirmed with a 6-digit code emailed to its **current** address (ten minutes, one pending change at a time, the new address bound to the confirmation token so the code applies exactly the address it was sent for), completed at `POST /api/update-account/confirm-email`, which rotates sessions the same way. With mail disabled that change is refused with a sentence saying why. Such an account sets a first password only through Forgot Password.
 
 `POST /api/logout` deletes the `sessions` row. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
 
@@ -86,15 +99,15 @@ Session tokens are 64-character cryptographically random strings (Node.js `crypt
 
 ## Single-purpose Tokens
 
-`password_reset_tokens` is a shared pool: four flows mint into it (password reset, the 2FA login challenge, TOTP enrolment, and the 2FA-disable confirmation) and four flows read out of it.
+`password_reset_tokens` is a shared pool: five flows mint into it (password reset, the 2FA login challenge, TOTP enrolment, the 2FA-disable confirmation, and the email-change confirmation for an account with no password) and five flows read out of it. Only an `email_change` row carries `new_email`, and a second `CHECK` refuses a row that breaks that pairing either way.
 
 **Every row records which flow minted it, in a `purpose` column that is `NOT NULL` with no `DEFAULT`, and every reader constrains on it.** The values live in one place, `TOKEN_PURPOSE` in `routes/helpers/shared.js`, and mirror the `CHECK` constraint in `init.sql`. The column is `VARCHAR(32)` plus a `CHECK` rather than an `ENUM` on purpose: MySQL gives a `NOT NULL` `ENUM` with no `DEFAULT` an implicit default of the first listed value even under `STRICT_TRANS_TABLES`, so an omitted purpose would silently become `password_reset`. As written, omitting the column is error 1364 and an unknown value is error 3819.
 
 The rule exists because without it a token was interchangeable across flows. `POST /api/login` mints the 2FA challenge row and hands that token back to the caller in the response body, so an unconstrained `POST /api/reset-password` accepted it. That was a persistent password rewrite plus a full session wipe of the victim, so lockout and an integrity defect, not account takeover: reset-password issues no session and does not clear `two_factor_method`, and the caller must already hold the victim's password to reach the challenge at all.
 
-Consequences for anyone adding a fifth flow:
+Consequences for anyone adding a sixth flow:
 
-- Name a new purpose in `TOKEN_PURPOSE`, add it to the `CHECK` constraint in `init.sql`, and ship a migration. Omitting the column fails the insert loudly, which is the point of having no default.
+- Name a new purpose in `TOKEN_PURPOSE`, add it to the `CHECK` constraint in `init.sql`, and ship a new migration that drops and re-adds the constraint under the same name, as `migrations/2026-09-25-token-purpose-email-change.sql` does. Never edit an applied migration file: the runner's checksum guard refuses it. Omitting the column fails the insert loudly, which is the point of having no default.
 - A new reader of this table gets `AND purpose = ?`. A token lookup by token alone is a defect.
 - Bulk invalidation is purpose-scoped too. Forgot-password's `UPDATE ... SET used = TRUE` binds `password_reset`; unscoped it silently killed the user's in-flight 2FA login.
 - The one deliberate exception is the admin 2FA reset in `routes/admin.js`, which deletes every unused row for a user regardless of purpose. It is the lockout recovery path and is meant to clear whatever the user is mid-flow on.
@@ -145,7 +158,7 @@ GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key deri
 
 | Scope | Limit |
 | --- | --- |
-| Auth endpoints | 20 requests / 15 min |
+| Auth endpoints (sign-in, sign-up, password reset, 2FA verification and confirmations, the Google callback, account changes and their email confirmation, the reader check) | 20 requests / 15 min, one bucket per IP |
 | Search | 60 requests / 15 min |
 | WebSocket messages | 60 messages / second |
 

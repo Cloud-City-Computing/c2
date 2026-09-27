@@ -50,17 +50,21 @@ export const DEFAULT_PERMISSIONS = { create_squad: false, create_archive: false,
 // --- Token purpose ---
 
 /**
- * What a `password_reset_tokens` row is for. Four flows share that table; a
+ * What a `password_reset_tokens` row is for. Five flows share that table; a
  * reader that does not constrain the purpose will accept a token minted by a
  * different flow. Values match the CHECK constraint on
  * password_reset_tokens.purpose in init.sql; tests/helpers/shared.test.js
  * asserts the two stay in sync.
+ *
+ * EMAIL_CHANGE is the only purpose whose row carries `new_email`, the address
+ * the code confirms, and a second CHECK holds the two together.
  */
 export const TOKEN_PURPOSE = {
   PASSWORD_RESET: 'password_reset',
   TWO_FACTOR_LOGIN: 'two_factor_login',
   TOTP_SETUP: 'totp_setup',
   TWO_FACTOR_DISABLE: 'two_factor_disable',
+  EMAIL_CHANGE: 'email_change',
 };
 
 // --- Log-level access checks ---

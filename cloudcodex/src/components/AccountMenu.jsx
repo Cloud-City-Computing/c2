@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  getSessStorage, apiFetch, getSessionTokenFromCookie,
+  getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie,
 } from '../util';
 import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES, DENSITIES } from '../userPrefs';
 
@@ -141,8 +141,21 @@ export function AvatarUploadPanel() {
   );
 }
 
+/**
+ * Name and email. A name change sends only the name. An email change asks for
+ * the current password, or, on an account with no password (one an external
+ * sign-in created), takes a code the server emails to the current address.
+ * Either way the server then signs out every other session and hands back a
+ * new token, which is stored exactly as sign-in stores one.
+ */
 export function AccountInfoUpdatePanel() {
-  const [fields, setFields] = useState({ name: '', email: '' });
+  const [fields, setFields] = useState({ name: '', email: '', currentPassword: '' });
+  const [saved, setSaved] = useState({ name: '', email: '' });
+  // null until /api/oauth/status answers. Unknown is treated as "has one": the
+  // password field shows, and the server, which decides, can still ask for a code.
+  const [hasPassword, setHasPassword] = useState(null);
+  const [emailCode, setEmailCode] = useState(null); // { confirmToken } while a code is pending
+  const [code, setCode] = useState('');
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
@@ -152,16 +165,36 @@ export function AccountInfoUpdatePanel() {
       try {
         const res = await apiFetch('POST', '/api/get-user', { userId, token: getSessionTokenFromCookie() });
         if (res.success) {
-          setFields(f => ({ ...f, name: res.user.name ?? '', email: res.user.email ?? '' }));
+          const loaded = { name: res.user.name ?? '', email: res.user.email ?? '' };
+          setSaved(loaded);
+          setFields(f => ({ ...f, ...loaded }));
         }
       } catch (e) {
         setStatus({ type: 'error', message: `Error fetching user data: ${e.body?.message ?? e.message}` });
       }
+      try {
+        const oauth = await apiFetch('GET', '/api/oauth/status');
+        setHasPassword(oauth.hasPassword !== false);
+      } catch { /* unknown: keep asking for the password */ }
     };
     loadUser();
   }, []);
 
+  const emailChanged = fields.email !== saved.email;
+  const needsPassword = emailChanged && hasPassword !== false;
+  const needsCode = emailChanged && hasPassword === false;
+
   const handleChange = (e) => setFields(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  const adoptRotatedSession = (token, email) => {
+    setSessionCookie(token);
+    setSaved(s => ({ ...s, email }));
+    setFields(f => ({ ...f, email, currentPassword: '' }));
+    setStatus({
+      type: 'success',
+      message: `Your email is now ${email}. Every other device signed in to this account has been signed out.`,
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -170,12 +203,62 @@ export function AccountInfoUpdatePanel() {
     const userId = getSessStorage('currentUser')?.id;
     if (!userId) { setStatus({ type: 'error', message: 'Not authenticated.' }); return; }
 
-    try {
-      await apiFetch('POST', '/api/update-account', { userId, name: fields.name, email: fields.email });
-      setStatus({ type: 'success', message: 'Account updated successfully.' });
-    } catch (e) {
-      setStatus({ type: 'error', message: `Error updating account: ${e.body?.message ?? e.message}` });
+    // Only what changed, so a name edit never carries an email change.
+    const body = { token: getSessionTokenFromCookie(), userId };
+    if (fields.name !== saved.name) body.name = fields.name;
+    if (emailChanged) body.email = fields.email;
+    if (body.name === undefined && body.email === undefined) {
+      setStatus({ type: 'error', message: 'Nothing to update.' });
+      return;
     }
+    if (needsPassword) {
+      if (!fields.currentPassword) {
+        setStatus({ type: 'error', message: 'Enter your current password to change your email.' });
+        return;
+      }
+      body.currentPassword = fields.currentPassword;
+    }
+
+    try {
+      const res = await apiFetch('POST', '/api/update-account', body);
+      if (body.name !== undefined) setSaved(s => ({ ...s, name: body.name }));
+      if (res.requires_email_code) {
+        setEmailCode({ confirmToken: res.confirmToken });
+        setCode('');
+        setStatus({ type: 'success', message: res.message });
+      } else if (res.token) {
+        adoptRotatedSession(res.token, body.email);
+      } else {
+        setStatus({ type: 'success', message: 'Account updated successfully.' });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: `Error updating account: ${err.body?.message ?? err.message}` });
+    }
+  };
+
+  const handleConfirmCode = async () => {
+    setStatus(null);
+    if (!/^\d{6}$/.test(code)) {
+      setStatus({ type: 'error', message: 'Enter the 6-digit code from the email.' });
+      return;
+    }
+    try {
+      const res = await apiFetch('POST', '/api/update-account/confirm-email', {
+        confirmToken: emailCode.confirmToken,
+        code,
+      });
+      setEmailCode(null);
+      setCode('');
+      adoptRotatedSession(res.token, res.email);
+    } catch (err) {
+      setStatus({ type: 'error', message: err.body?.message ?? 'Invalid code.' });
+    }
+  };
+
+  const handleCancelCode = () => {
+    setEmailCode(null);
+    setCode('');
+    setStatus(null);
   };
 
   return (
@@ -189,11 +272,56 @@ export function AccountInfoUpdatePanel() {
         </div>
         <div className="form-group">
           <label htmlFor="email">Email</label>
-          <input id="email" name="email" type="email" value={fields.email} onChange={handleChange} />
+          <input id="email" name="email" type="email" value={fields.email} onChange={handleChange} disabled={Boolean(emailCode)} />
         </div>
-        <p className="text-muted text-sm">To change your password, use the "Forgot Password?" link on the login screen.</p>
-        <button type="submit" className="btn btn-primary stretched-button">Update Info</button>
+        {needsPassword && (
+          <div className="form-group">
+            <label htmlFor="currentPassword">Current password</label>
+            <input
+              id="currentPassword"
+              name="currentPassword"
+              type="password"
+              autoComplete="current-password"
+              value={fields.currentPassword}
+              onChange={handleChange}
+            />
+            <p className="text-muted text-sm">Needed to change your email. Saving ends every other session on this account.</p>
+          </div>
+        )}
+        {needsCode && !emailCode && (
+          <p className="text-muted text-sm">This account has no password, so an email change is confirmed with a code sent to {saved.email}, when this instance can send email.</p>
+        )}
+        {!emailCode && (
+          <>
+            <p className="text-muted text-sm">To change your password, use the "Forgot Password?" link on the login screen.</p>
+            <button type="submit" className="btn btn-primary stretched-button">Update Info</button>
+          </>
+        )}
       </form>
+
+      {emailCode && (
+        <div className="totp-confirm-section">
+          <label className="text-sm" htmlFor="emailChangeCode">
+            Enter the 6-digit confirmation code we sent to {saved.email}:
+          </label>
+          <div className="totp-confirm-form">
+            <input
+              id="emailChangeCode"
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmCode()}
+              placeholder="000000"
+              maxLength={6}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              className="totp-code-input"
+            />
+            <button className="btn btn-primary" onClick={handleConfirmCode}>Confirm email</button>
+            <button className="btn btn-ghost btn-sm" onClick={handleCancelCode}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -728,7 +856,7 @@ export function LinkedAccountsPanel() {
         )}
         {(googleAccount || githubAccount) && !hasPassword && (
           <p className="text-muted text-sm" style={{ marginTop: 8 }}>
-            Set a password in Account Info above before unlinking your linked accounts.
+            Set a password with "Forgot Password?" on the sign-in screen before unlinking your linked accounts.
           </p>
         )}
       </div>

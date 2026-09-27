@@ -123,10 +123,10 @@ Never write permission SQL by hand. The wrappers already exist in
 
 | Function | Line | Returns |
 |---|---|---|
-| `checkLogReadAccess(logId, user)` | `shared.js:56-67` | the log row, or `undefined` |
-| `checkLogWriteAccess(logId, user)` | `shared.js:73-84` | the log row, or `undefined` |
-| `checkArchiveReadAccess(archiveId, user)` | `shared.js:154-163` | the archive row, or `undefined` |
-| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:139-148` | the archive row, or `undefined` |
+| `checkLogReadAccess(logId, user)` | `shared.js:76-87` | the log row, or `undefined` |
+| `checkLogWriteAccess(logId, user)` | `shared.js:93-104` | the log row, or `undefined` |
+| `checkArchiveReadAccess(archiveId, user)` | `shared.js:174-183` | the archive row, or `undefined` |
+| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:159-168` | the archive row, or `undefined` |
 
 Routes that need the fragment inline (search, browse, export, GitHub link
 loading) interpolate it directly; see `routes/documents.js:553`,
@@ -134,12 +134,12 @@ loading) interpolate it directly; see `routes/documents.js:553`,
 
 ## 2. The critical subtlety: everything resolves against the ARCHIVE
 
-`checkLogReadAccess` (`shared.js:56-67`) joins `logs` to `archives` and applies
+`checkLogReadAccess` (`shared.js:76-87`) joins `logs` to `archives` and applies
 `readAccessWhere('p')` where **`p` is the `archives` table**. The log's own
 columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
-(`init.sql:282-283`). Grepping the whole backend for reads of them turns up
+(`init.sql:289-290`). Grepping the whole backend for reads of them turns up
 nothing. Since 2026-08-09 the only thing that writes them is the PR-session
 log insert (`routes/github.js:1698`), which sets both to an empty
 `JSON_ARRAY()`.
@@ -183,7 +183,7 @@ Resolution order:
 `{ create_squad: false, create_archive: false, create_log: true }`, applied to
 any user with no `permissions` row. New users created through the normal paths
 get a row with **all three true** via `createDefaultPermissions`
-(`shared.js:168-173`), so the default only applies to rows that predate it or
+(`shared.js:193-198`), so the default only applies to rows that predate it or
 were made outside those paths.
 
 Note step 7 maps only two of the three flags (`permissions.js:114-117`). There
@@ -220,7 +220,7 @@ first. That rule and the middleware's step 3 are two halves of the same boundary
 
 ### 3b. Publish: `canPublish`
 
-`shared.js:98-125`. Ordered bypasses: no squad context at all, allow; admin,
+`shared.js:118-145`. Ordered bypasses: no squad context at all, allow; admin,
 allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
@@ -389,7 +389,7 @@ rather than special-cased: an orphaned squad has no tenant, so "is this user
 inside its tenant?" is unanswerable, and failing closed is the right answer to
 an unanswerable question. It is also consistent with the orphaned-workspace
 rule above. All four `INSERT INTO squads` sites set `workspace_id`
-(`squads.js:116`, `workspaces.js:80`, `admin.js:127`, `admin.js:218`), so only
+(`squads.js:116`, `workspaces.js:80`, `admin.js:161`, `admin.js:252`), so only
 legacy or hand-edited rows can be in this state.
 
 **The fix is prospective.** It stops new cross-tenant rows and removes none of
@@ -429,7 +429,7 @@ table below) applies identically regardless of which path created the row.
 
 ## 5. Per-member flags and where each is enforced
 
-`squad_members` (`init.sql:193-209`) carries `role` plus seven booleans. Their
+`squad_members` (`init.sql:200-216`) carries `role` plus seven booleans. Their
 enforcement is uneven, which is worth knowing before you assume a flag does
 something:
 
@@ -440,7 +440,7 @@ something:
 | `can_create_log` | `requirePermission('create_log')` step 7 (`permissions.js:116`) |
 | `can_create_archive` | `requirePermission('create_archive')` step 7 (`permissions.js:115`) |
 | `can_manage_members` | `canManageSquad` (`squads.js`), and `userCanManageSquad` (`github.js`) on the team-sync routes only, where it counts only alongside an `admin` role |
-| `can_publish` | `canPublish` (`shared.js:116-119`) |
+| `can_publish` | `canPublish` (`shared.js:118-145`) |
 | `can_delete_version` | version delete route only (`documents.js:503-515`) |
 
 `role` is an enum of `member`/`admin`/`owner`, but only `owner` is load-bearing
@@ -467,7 +467,32 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 (`server.js`, a top-level `await` before the port opens; defined in
 `routes/admin.js`), which
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
-(`server.js:17-21`).
+(`server.js:17-22`).
+
+**The boot sync creates or syncs, and never promotes** (GHSA-w8q3-r34w-3pjh).
+It reads every row matching `LOWER(name) = LOWER(ADMIN_USERNAME)` or
+`email = ADMIN_EMAIL`, with no `LIMIT`: `users.name` and `users.email` are each
+`UNIQUE` (`init.sql`, `CREATE TABLE users`), so the two can be two different
+rows, as when the admin renamed or changed address and a member took the old
+one. Then, in `ensureAdminUser`:
+
+| Rows matched | What boot does | Returns |
+|---|---|---|
+| none | `INSERT` the admin (`is_admin = TRUE`) and its `permissions` row | the new id |
+| any row with `is_admin` false | nothing: no `UPDATE`, no `INSERT`, no hash; one `console.error` line naming the account, "refusing to promote it" | `null` |
+| only admins | `UPDATE users SET password_hash, email` on the lowest id: `.env` resets the admin's password and email at every boot. `is_admin` is not in the `SET`, so this `UPDATE` cannot promote | that id |
+
+Every outcome logs one `admin sync:` line (`created`, `synced`, or the
+refusal) and none logs the password. `null` flows into
+`bootstrapInstance(null)`, which returns `false` before any query, so a refused
+boot seeds nothing. **In application code the only way to make an existing
+account an admin is `PUT /api/admin/users/:id/admin`**, the admin console's
+toggle, and an account promoted that way is synced from `.env` from the next
+boot on. Two admins matching (one by name, one by email) is not refused: the
+lower id is synced, and when the other holds `ADMIN_EMAIL` the `UPDATE` fails
+on the unique key, which `server.js` logs as `admin user sync failed` and boots
+on. The refusal is proved on MySQL, in both row orders, by
+`tests/integration/admin-sync.test.js`.
 
 ## 7. Machine principals: the service token
 

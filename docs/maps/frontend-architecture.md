@@ -68,13 +68,20 @@ Rollup's default chunking.
 
 ## 2. The API layer: `src/util.jsx`
 
-647 lines, and the single place any component should talk to the server from.
+662 lines, and the single place any component should talk to the server from.
 
 `apiFetch(method, url, data)` (`util.jsx:28-52`) reads the session token from
 the cookie via `getSessionTokenFromCookie()` (`util.jsx:621`), sets
 `Authorization: Bearer`, JSON-encodes the body for non-GET, and on a non-2xx
 throws an `Error` carrying `.status` and `.body`. `getErrorMessage(err)`
 (`util.jsx:102`) is the standard way to render that.
+
+`setSessionCookie(token)` (`util.jsx:642`) is the one client-side writer of the
+`sessionToken` cookie (`path=/`, seven-day `max-age`, `secure`,
+`samesite=strict`). Sign-in (`Login.jsx`, all three success paths) and the
+account panel's session rotation both call it, so a token rotated after an
+email or password change lives exactly as long as a fresh sign-in's. Write
+the cookie any other way and the two drift.
 
 `serverReq` (`util.jsx:62`) is the legacy predecessor. It does **not** attach
 auth. Do not use it in new code; it exists for the handful of pre-auth calls.
@@ -92,7 +99,7 @@ than calling `fetch` from a component. Two paths bypass `apiFetch` deliberately
 because they are not JSON: `uploadDocument` (`util.jsx:380`, multipart) and
 `exportDocument` (`util.jsx:416`, blob download).
 
-The tail of the file (`util.jsx:503-640`) is imperative DOM helpers predating
+The tail of the file (`util.jsx:501-616`) is imperative DOM helpers predating
 the React migration: `showModal`, `showModalDimmer`, `destroyModal`,
 `showDropdownMenu`, plus session-storage wrappers. They cache React roots in a
 module-level `Map` (`util.jsx:17`) to avoid double-rooting the same node. New UI

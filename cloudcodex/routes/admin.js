@@ -31,25 +31,56 @@ const SQUAD_PERMISSION_FLAGS = [
 const SQUAD_ROLES = ['member', 'admin', 'owner'];
 
 /**
- * Ensures the admin super user exists in the database.
- * Called on server startup.
+ * Creates or syncs the admin super user from ADMIN_*, at boot. Never promotes.
+ *
+ * No account matching ADMIN_USERNAME by name or ADMIN_EMAIL by email: the
+ * admin is created. A match that is already an admin: .env stays the source
+ * of truth, so its password and email are reset from ADMIN_PASSWORD and
+ * ADMIN_EMAIL. A match that is NOT an admin is refused: nothing is written
+ * and null comes back, because promoting whichever member holds that name or
+ * address would hand them the instance (GHSA-w8q3-r34w-3pjh). An operator who
+ * means to make that account the admin does it in the admin console.
+ *
+ * users.name and users.email are each UNIQUE, so the two can match two
+ * different rows, for instance an admin who renamed while a member took the
+ * old name. Every matched row is checked, not whichever the server returns
+ * first, and any non-admin among them refuses the whole sync.
+ *
+ * Logs exactly one line saying what it did, and never the password.
+ *
+ * @returns {Promise<number|null>} the admin's id, or null when refused
  */
 export async function ensureAdminUser() {
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;
   const email = process.env.ADMIN_EMAIL;
 
-  const [existing] = await c2_query(
-    `SELECT id, is_admin FROM users WHERE LOWER(name) = LOWER(?) OR email = ? LIMIT 1`,
+  const matches = await c2_query(
+    `SELECT id, is_admin FROM users WHERE LOWER(name) = LOWER(?) OR email = ? ORDER BY id`,
     [username, email]
   );
 
+  const nonAdmin = matches.find((row) => !row.is_admin);
+  if (nonAdmin) {
+    console.error(
+      `[${new Date().toISOString()}] admin sync: ${username} / ${email} matches an existing ` +
+      `non-admin account (user ${nonAdmin.id}), refusing to promote it. ` +
+      'Promote it in the admin console if that is intended.'
+    );
+    return null;
+  }
+
+  const [existing] = matches;
   if (existing) {
-    // Always sync password and email from .env (the source of truth for admin creds)
+    // Already an admin, so the flag is not written: this UPDATE cannot promote.
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     await c2_query(
-      `UPDATE users SET is_admin = TRUE, password_hash = ?, email = ? WHERE id = ?`,
+      `UPDATE users SET password_hash = ?, email = ? WHERE id = ?`,
       [passwordHash, email, existing.id]
+    );
+    console.error(
+      `[${new Date().toISOString()}] admin sync: synced ${username} / ${email} (user ${existing.id}), ` +
+      'its email and password reset from ADMIN_EMAIL and ADMIN_PASSWORD.'
     );
     return existing.id;
   }
@@ -64,6 +95,9 @@ export async function ensureAdminUser() {
 
   // Create default permissions row
   await createDefaultPermissions(result.insertId);
+  console.error(
+    `[${new Date().toISOString()}] admin sync: created ${username} / ${email} as the admin (user ${result.insertId}).`
+  );
   return result.insertId;
 }
 

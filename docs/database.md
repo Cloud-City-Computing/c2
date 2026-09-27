@@ -144,7 +144,7 @@ Active login sessions. Tokens are 64-character cryptographically random strings.
 
 ### `password_reset_tokens`
 
-Single-use short-lived tokens. Four flows share this table, so it is not only
+Single-use short-lived tokens. Five flows share this table, so it is not only
 password resets.
 
 | Column       | Type            | Notes                              |
@@ -153,12 +153,13 @@ password resets.
 | `user_id`    | INT FK → users  | ON DELETE CASCADE                  |
 | `token`      | CHAR(64) UNIQUE | Cryptographically random           |
 | `purpose`    | VARCHAR(32) NOT NULL | Which flow minted the row, CHECK-constrained |
+| `new_email`  | VARCHAR(255) NULL | The address an `email_change` row confirms; NULL on every other purpose |
 | `expires_at` | TIMESTAMP       | 10 minutes to 1 hour by flow       |
 | `used`       | BOOLEAN         | Marked TRUE once consumed          |
 | `created_at` | TIMESTAMP       |                                    |
 
 `purpose` is one of `password_reset`, `two_factor_login`, `totp_setup`,
-`two_factor_disable`, enforced by a `CHECK` constraint and mirrored by
+`two_factor_disable`, `email_change`, enforced by a `CHECK` constraint and mirrored by
 `TOKEN_PURPOSE` in `cloudcodex/routes/helpers/shared.js`. It has **no
 `DEFAULT`**, deliberately: a new flow that forgets to name its purpose fails at
 insert (error 1364) instead of silently minting a password reset token, and a
@@ -168,6 +169,12 @@ with no `DEFAULT` an implicit default of the first listed value even under
 `STRICT_TRANS_TABLES`, so an omitted purpose would silently become
 `password_reset`. Every reader of this table constrains on `purpose`, so a
 token minted by one flow is not accepted by another.
+
+`chk_password_reset_tokens_new_email`, `CHECK ((purpose = 'email_change') =
+(new_email IS NOT NULL))`, requires an address on every `email_change` row and
+refuses one on any other. The email-change confirmation applies exactly that
+address, so the code emailed for one address cannot move the account to
+another.
 
 ---
 
@@ -614,6 +621,7 @@ each compose file. The current set:
 | `widen_log_content.sql`         | `MEDIUMTEXT` for the three document content columns |
 | `2026-09-08-token-purpose.sql`  | `password_reset_tokens.purpose` + its `CHECK`       |
 | `2026-09-25-oauth-one-link-per-provider.sql` | `UNIQUE (user_id, provider)` on `oauth_accounts` |
+| `2026-09-25-token-purpose-email-change.sql` | `password_reset_tokens.new_email`, `email_change` in the purpose `CHECK`, and `chk_password_reset_tokens_new_email` |
 
 > **Rule:** any column or table added as a migration must also be present
 > in `init.sql`. Both must stay in sync — fresh installs and existing

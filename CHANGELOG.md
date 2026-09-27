@@ -32,9 +32,31 @@ initialises an empty data directory.
   Accounts panel shows "GitHub account linked." or the reason a link was
   refused (cancelled, expired, already linked to another user, and so on).
   It used to show nothing either way.
+- **`POST /api/update-account` needs `currentPassword` for an email or password
+  change.** Without it the request is a 400, with a wrong one a 401, and
+  nothing is written either way; a name change needs nothing extra, and an
+  `email` equal to the one on file is not a change. An email or password
+  change now answers `{ success: true, token }`: every session of the user,
+  the caller's included, has been deleted, so a client must store the returned
+  token in place of the one it sent. For an account with no password, an
+  email change answers `{ success: true, requires_email_code: true,
+  confirmToken }` and completes at the new
+  `POST /api/update-account/confirm-email` with `{ confirmToken, code }`. Both
+  routes now share the sign-in rate limit (20 requests per 15 minutes per IP).
+  See `docs/api/auth.md`.
 
 ### Fixed
 
+- The account page's **Update Info** button never saved anything: the panel
+  sent no session token in the request body, so every submit came back "Error
+  updating account: Token and userId are required". It now sends the token,
+  and only the fields that changed.
+- The 6-digit code row (the account page's email confirmation and the
+  two-factor setup and disable steps) no longer pushes its Cancel button out of
+  view on a phone-width screen.
+- The Linked Accounts panel told an account with no password to "Set a
+  password in Account Info above", which has never been possible; it now points
+  at "Forgot Password?" on the sign-in screen.
 - Relinking GitHub to an account that another user already has linked answered
   with a server error. It is now refused as `already_linked_other`, as a first
   link always was, and the account page says so.
@@ -65,11 +87,59 @@ initialises an empty data directory.
   ```
 
   The session goes too because an account has one session, shared by every
-  sign-in to it, so removing the link alone leaves whoever used it signed in,
-  and a password change from the account menu keeps that session. A password
-  reset through Forgot password ends every session and does the same job as
-  the second statement. Then have the owner confirm that the account's email
-  address, password and two-factor setting are theirs.
+  sign-in to it, so removing the link alone leaves whoever used it signed in.
+  A password reset through Forgot password also ends every session, and so,
+  from this release, does an email or password change (below), so either does
+  the same job as the second statement. Then have the owner confirm that the
+  account's email address, password and two-factor setting are theirs: before
+  this release a session alone was enough to change the first two.
+- **The boot admin sync no longer promotes an existing account**
+  ([GHSA-w8q3-r34w-3pjh](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-w8q3-r34w-3pjh)).
+  At every boot the server makes sure the admin named in `.env` exists. It
+  looked for an account whose name was `ADMIN_USERNAME` or whose email was
+  `ADMIN_EMAIL`, took whichever it found first, made it an admin, and replaced
+  its password and email with `ADMIN_PASSWORD` and `ADMIN_EMAIL`. So an
+  ordinary member who held that name or that address became the instance admin
+  at the next restart, and any session they already had was an admin session
+  from then on. The simplest way there was for a member to change their own
+  name or email to the one the admin had just given up. Boot now does one of
+  three things and logs one line saying which, never the password: it
+  **creates** the admin when no account matches; it **syncs** an account that
+  is already an admin, whose email and password `.env` still resets at every
+  boot, as before; and when a matching account is not an admin it **refuses**,
+  changing nothing (not that account, and not the admin's either), and logs:
+
+  ```
+  admin sync: <ADMIN_USERNAME> / <ADMIN_EMAIL> matches an existing non-admin account (user <id>), refusing to promote it. Promote it in the admin console if that is intended.
+  ```
+
+  If that line appears, decide whose name or address it is. If that account is
+  meant to be the admin, promote it in the admin console (Users, click its
+  **User** badge); from the next boot on it is synced like any admin, so its
+  email and password become `ADMIN_EMAIL` and `ADMIN_PASSWORD`. If it is not,
+  set `ADMIN_USERNAME` and `ADMIN_EMAIL` to the admin's current name and
+  address, or to a name and address no account uses to have boot create a
+  fresh admin, and restart. If you ran an earlier release, look in the Users
+  panel for an admin you did not make: revoke it there (boot no longer puts it
+  back), and treat that account as one that had admin access.
+- **Changing an account's email or password now needs its current password,
+  and signs every other device out.** Before, anyone holding a signed-in
+  session could change the account's email and password with nothing else, and
+  a password change deleted every session except the caller's own. Sessions
+  are one per account today, so the caller's session is the same one every
+  other device holds: a stolen session survived the owner changing their
+  password, and could itself change the email and take the account over. Now
+  the account page asks for the current password when the email field is
+  changed (there is still no password field on that page; passwords change
+  through "Forgot Password?"), a wrong one is refused with "Your current
+  password is incorrect.", and after the change every device signed in to the
+  account is signed out while the one that made the change carries on with a
+  new session. The old address gets an email saying the address was changed.
+  An account created by an external sign-in has no password to give, so its
+  email change is confirmed with a 6-digit code sent to its current address;
+  when this instance cannot send email, that change is refused with a sentence
+  saying why. Such an account still sets a first password only through Forgot
+  Password. A name change is unaffected.
 - **Google sign-in no longer attaches a second Google account to a user.** A
   Google account not yet linked to anyone was linked to whichever user held its
   verified email, even when that user already had a different Google account
@@ -122,6 +192,19 @@ signing in to the user; deleting a GitHub link drops its stored token, and the
 user relinks GitHub from the account menu. A refused run leaves the schema as it
 found it: nothing is recorded, and the runner drops the throwaway guard
 procedure (`migration_guard_oauth_one_link_per_provider`) the file creates.
+
+**The email-change token migration,**
+[`migrations/2026-09-25-token-purpose-email-change.sql`](migrations/2026-09-25-token-purpose-email-change.sql),
+adds `password_reset_tokens.new_email`, widens the `purpose` `CHECK` to include
+`email_change`, and adds `chk_password_reset_tokens_new_email`, which requires
+an address on every `email_change` row and refuses one on any other. Apply it
+with `npm run migrate` from `cloudcodex/`. Stopping writers is not required:
+old code never names the column and mints only rows both constraints accept,
+and new code against the old schema fails only an email change on an account
+with no password (a 500 until the file is applied). Rows already in the table
+satisfy both constraints, so it applies with rows present. On an install that
+`init.sql` builds fresh, `--adopt-fresh-install` checks that `new_email` is
+already there before it records the file.
 
 ## [0.10.0] - 2026-09-25
 

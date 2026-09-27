@@ -42,7 +42,7 @@ it (directly or transitively) before reading `process.env`.
 
 `NODE_ENV` matters in three places: CORS localhost allowance
 (`app.js:101`), rate-limiter `skip` when `'test'` (`app.js:133`,
-`app.js:155`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+`app.js:171`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -219,9 +219,17 @@ callback routes (`app.js` over supertest, a real session, only `fetch` to
 GitHub stubbed) to end with one `github_linked=1` and one `link_conflict`; and
 a GitHub relink to an account another user holds to be refused as
 `already_linked_other`. Each race is held open deterministically: a
-transaction takes a locking read of the user's empty `oauth_accounts` range,
-which holds the gap both INSERTs must enter, and the test waits until
-`information_schema.INNODB_TRX` shows both waiting. The tests share the file's
+transaction takes `SELECT ... FOR UPDATE` on the user's own `users` row
+(`holdUserRow`), every link INSERT needs a shared lock on that row to check
+its foreign key, and the test waits until `information_schema.INNODB_TRX`
+shows both waiting. It is a record lock on the parent row, not a gap lock on
+the child's empty range, because InnoDB takes foreign-key check locks at every
+isolation level and takes no gap locks at `READ-COMMITTED`, so the file does
+not depend on the server's isolation setting. Run on 2026-09-25 with the
+server at `SET GLOBAL transaction_isolation = 'READ-COMMITTED'` and at the
+default `REPEATABLE-READ`: all six tests pass at both, and removing the
+`identity_conflict` catch still turns the Google race red at
+`READ-COMMITTED`. The tests share the file's
 schema, so each uses GitHub account ids the others do not. **Trap: poll
 `INNODB_TRX` slower than every 100 ms.** InnoDB refreshes that table only after it has gone 100 ms
 unread, so a 25 ms loop saw zero waiters for ten seconds while two were
@@ -271,16 +279,47 @@ the three READ COMMITTED refusals while the default-isolation run stayed green;
 seven mocked pins; the INSERT put back to `VALUES` reddened the default-isolation
 race tests and six mocked pins; the row check loosened from `!== 1` to `=== 0`
 reddened two mocked tests; and the check removed entirely reddened the race
-tests (the seam reported a link it never wrote). The lock-wait poller both race
-modules use is `waitForLockWaits` in `tests/integration/mysql-admin.js`, which
-carries the 100 ms trap described above. **Trap: a gap lock exists only under
-REPEATABLE READ.** The C7 race tests hold their INSERTs with `holdLinkGap`, a
-`FOR UPDATE` over an empty range, and READ COMMITTED takes no gap lock, so on a
-server set to READ-COMMITTED those two tests fail with "only 0 of 2
-transactions were waiting on a lock" (measured 2026-09-25) while the product
-behaves correctly; they need the server default. The two-factor interleaves
-hold the user row itself, which locks at any isolation level, and pass either
-way.
+tests (the seam reported a link it never wrote). Every race file holds the user
+row (the C7 races lock it `FOR UPDATE`, these run the change itself) and waits
+through `waitForLockWaits` in `tests/integration/mysql-admin.js`, which carries
+the 100 ms trap described above. A record lock on the user row holds at every
+isolation level, so all of them pass with the server at `READ-COMMITTED` as
+well.
+
+`tests/integration/update-account-sessions.test.js` proves the update-account
+session rotation on a real server, where the route tests can only prove the SQL
+text. Each test seeds a user with one session minted by `generateSessionToken`
+and one inserted directly (a second holder), drives `POST /api/update-account`
+over supertest, and reads `sessions` back: a password change and a
+current-password email change each leave exactly one row, the token the caller
+was handed, with both old tokens answering 401 on a `requireAuth` route; a wrong
+current password leaves the hash and both sessions untouched; the password-less
+code flow writes an `email_change` row carrying `new_email`, sends the code to
+the old address, and after `/update-account/confirm-email` leaves one session.
+Mail is the one module stubbed (`vi.mock` of `services/email.js`), so the code
+is read back off the call. A last test inserts rows that break
+`chk_password_reset_tokens_new_email` both ways and requires error 3819.
+Mutation-checked on 2026-09-25: accepting a wrong current password, keeping the
+caller's session (`AND id != ?`), handing back the old token, and keeping the
+caller's session in the confirm step each turn a live test red.
+
+`tests/integration/admin-sync.test.js` proves the boot admin sync never
+promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
+lookup returns first, and how `LOWER(name)` and the email collation compare,
+are MySQL's. Each test creates the admin with a real first-boot
+`ensureAdminUser()`, lets the admin give up its name, its email or both, has a
+member (own password, two sessions) take the freed name or address, and boots
+again: the member is still not an admin with its row and sessions unchanged,
+the admin's row is unchanged, the call returns `null`, and exactly one refusal
+line is logged. All four shapes run with the member's row older and newer than
+the admin's, because a lookup that read only the first row passes one order and
+fails the other. A last test proves `.env` still resets an existing admin's
+email and password. Before the fix, five of the eight takeovers promoted the
+member, two crashed on the `users.email` unique key and one synced the admin.
+Mutation-checked on 2026-09-25: removing the refusal turns 8 of 9 red (five
+with the member's password and email overwritten, two on the unique-key crash,
+one with the admin synced), and checking only the first matched row turns the
+two two-row cases red in the admin-older order.
 
 Tests mirror the source tree:
 

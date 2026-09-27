@@ -29,6 +29,9 @@ exiting (the admin-credentials gate below is the only thing that's still
 boot-fatal). Squad invitations still work: the in-app notification is the
 reliable channel and the email was only ever a convenience.
 
+**An email change on an account with no password is refused too,** since
+its confirmation code goes out by email; see the account-page entry below.
+
 **Two-factor authentication is affected, in both directions.** Logging in
 with authenticator-app (TOTP) 2FA works normally, but *both* of these
 refuse with `503` while mail is off, because both deliver a code by email:
@@ -71,16 +74,36 @@ unreachable SMTP host delays startup by seconds, not minutes.
 
 ```
 ┃ ⚠  Symptom
-┃   Server exits at startup with "Admin credentials missing".
+┃   Server exits at startup with "Missing required admin configuration".
 ```
 
 **Cause.** `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` are not
 all set. The admin super-user is synced from `.env` on every boot — there
 is no way to bootstrap the system without one.
 
-**Fix.** Set all three in `.env`. You can change them later through the
-admin panel; subsequent boots will sync any changes you make to `.env`
-back into the user record.
+**Fix.** Set all three in `.env`. Change them later in `.env`, not in the
+app: every boot resets the admin's email and password from `ADMIN_EMAIL` and
+`ADMIN_PASSWORD`.
+
+---
+
+```
+┃ ⚠  Symptom
+┃   "admin sync: ... matches an existing non-admin account (user N),
+┃   refusing to promote it" in the server log at startup.
+```
+
+**Cause.** An account that is not an admin holds the name in `ADMIN_USERNAME`
+or the address in `ADMIN_EMAIL`, usually because the admin renamed or changed
+email and a member took the old one. The boot sync never promotes an account,
+so it changed nothing and carried on starting.
+
+**Fix.** If account `N` should be the admin, promote it in the admin console
+(Users, click its **User** badge); from the next boot on its email and password
+are reset from `.env` like any admin's. Otherwise set `ADMIN_USERNAME` and
+`ADMIN_EMAIL` to the admin's current name and address, or to unused ones to
+have boot create a fresh admin, and restart. See
+[deployment.md, The boot admin](./deployment.md#the-boot-admin).
 
 ---
 
@@ -206,15 +229,52 @@ The second statement is not optional. An account has one session, shared by
 every sign-in to it: a new sign-in is handed the live session the account
 already has (`generateSessionToken` in `mysql_connect.js`), so whoever signed
 in through the link holds the owner's own session token, and deleting the link
-leaves them signed in. Changing the password from the account menu does not
-end that session either, because the change keeps the session it was made
-from. A password reset through **Forgot password** deletes every session, so
-it can stand in for the second statement. Once the sessions are gone, have the
-owner sign in again and check that the account's email address, password and
-two-factor setting are theirs, since whoever held the session could change
-them; if the email address is not theirs, an operator restores it before the
-owner resets the password. One shared session per account is what the planned
+leaves them signed in. A password reset through **Forgot password** deletes
+every session, and from this release so does an email or password change (the
+next entry), so either can stand in for the second statement. Once the
+sessions are gone, have the owner sign in again and check that the account's
+email address, password and two-factor setting are theirs: before this
+release a session alone was enough to change the email and the password. If
+the email address is not theirs, an operator restores it before the owner
+resets the password. One shared session per account is what the planned
 W6-CDX-2 (one session per sign-in, stored hashed) replaces.
+
+---
+
+```
+┃ ⚠  Symptom
+┃   Changing your email on the account page asks for your current
+┃   password, answers "Your current password is incorrect.", or
+┃   refuses with "This account has no password, so an email change is
+┃   confirmed with a code sent to your current address, and this
+┃   instance cannot send email."
+```
+
+**Cause.** A signed-in session is no longer enough to change an account's
+email or password. The account page asks for the current password as soon
+as the email field differs from the saved address; the API
+(`POST /api/update-account`) refuses an email or password change without a
+correct `currentPassword`, with a 400 when it is missing and a 401 when it
+is wrong, and changes nothing either way. A name change needs no password.
+
+An account with no password (one an external sign-in created) confirms an email
+change with a 6-digit code sent to its **current** address instead. That
+needs mail, so with mail disabled the change is refused with the sentence
+above.
+
+After an email change goes through, every other device signed in to the
+account is signed out and has to sign in again; the device that made the
+change keeps working on a new session. The old address gets a notice.
+
+**Fix.**
+- Wrong password: enter the account's current password. Forgotten it? Sign
+  out and use "Forgot Password?" on the sign-in screen, then try again.
+- No password and mail disabled: an administrator can change the address in
+  the database (`UPDATE users SET email = ? WHERE id = ?`) or restore mail
+  (the email-disabled entry above) so the code can be sent.
+- A script or integration calling the API: add `currentPassword` to the
+  body for email and password changes, and store the `token` the response
+  returns, because the one it sent has been deleted. See `docs/api/auth.md`.
 
 ---
 
@@ -360,9 +420,8 @@ something else (a previous container, an unrelated app) is holding the
 port.
 
 **Fix.** `lsof -iTCP:3000 -sTCP:LISTEN` to find the offender and kill
-it. Cloud Codex doesn't currently take a `PORT` env var — port 3000
-is hard-coded in dev. If you really need a different port, search for
-the literal in `server.js` and the docs.
+it, or start this instance on another port with `PORT=<n>` (`server.js`
+honours it, defaulting to 3000); set `APP_URL` to match.
 
 ---
 

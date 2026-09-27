@@ -415,14 +415,17 @@ and `hashSessionToken(sessionToken)` as the bound parameter in `validateAndAutoL
 
 ### Task 2.3 The routes bind the digest
 
-`routes/auth.js`: logout (`DELETE FROM sessions WHERE id = ?`) and update-account's
-keep-this-device delete (`... WHERE user_id = ? AND id != ?`) bind `hashSessionToken(token)`.
-Reset's `DELETE FROM sessions WHERE user_id = ?` is unchanged. `routes/oauth.js`'s Google callback
-calls `generateSessionToken(user, req.ip, ua, { provider: 'google' })`.
+`routes/auth.js`: logout (`DELETE FROM sessions WHERE id = ?`) binds `hashSessionToken(token)`.
+Reset's `DELETE FROM sessions WHERE user_id = ?` is unchanged, and so are update-account's and
+`/update-account/confirm-email`'s: since the update-account hardening they delete every session of
+the user, the caller's included (there is no keep-this-device delete left to bind), and mint the
+caller's replacement through `generateSessionToken`, which after this PR inserts a fresh row per
+call. `routes/oauth.js`'s Google callback calls
+`generateSessionToken(user, req.ip, ua, { provider: 'google' })`.
 
 Test edits, listed in the PR body: the two logout assertions at `tests/routes/auth.test.js:279-281`
 and `:294-295` expect `[hashSessionToken('header-token')]` and `[hashSessionToken('cookie-token')]`.
-New: update-account binds the digest; the Google callback passes `{ provider: 'google' }`.
+New: the Google callback passes `{ provider: 'google' }`.
 
 ### Task 2.4 The migration and `init.sql`
 
@@ -1369,12 +1372,12 @@ router.use(errorHandler);
 export default router;
 ```
 
-The token is minted exactly as `POST /api/admin/invitations` mints one (`routes/admin.js:439`,
+The token is minted exactly as `POST /api/admin/invitations` mints one (`routes/admin.js:473`,
 32 random bytes as hex, which `user_invitations.token CHAR(64) NOT NULL UNIQUE` expects,
 `init.sql:144`). The invitation names `General` in `squad_id` with `can_write` set; `role`
 (`member`) and the other flags take their column defaults (`init.sql:147-154`), so W6-CDX-8's
 binding (Task 8.3) calls `addSquadMember` and the person lands in `General` with read and write
-(D-S). `generalSquadId` finds the squad the way `bootstrapInstance` made it (`routes/admin.js:128`,
+(D-S). `generalSquadId` finds the squad the way `bootstrapInstance` made it (`routes/admin.js:162`,
 the squad named `General` in a workspace the boot admin owns), because nothing else marks it;
 re-derive these anchors by name at execution.
 

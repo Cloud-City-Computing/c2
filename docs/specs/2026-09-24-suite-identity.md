@@ -118,8 +118,10 @@ equal `Host` (`collab.js:217-238`, `user-channel.js:90-109`).
 header already says an OIDC client-credentials grant replaces this body with no call site
 changing (`machine-auth.js:4-7`).
 
-**The admin comes from `.env`.** `ensureAdminUser` (`routes/admin.js:37-67`) matches
+**The admin comes from `.env`.** `ensureAdminUser` (`routes/admin.js:37-67` at `0fc8732`) matches
 `LOWER(name) = LOWER(?) OR email = ?`, then force-syncs `is_admin`, `password_hash` and `email`.
+(Since GHSA-w8q3-r34w-3pjh it syncs only a row that is already an admin and refuses a non-admin;
+see `docs/maps/access-control.md` section 6.)
 `server.js:17-21` exits unless `ADMIN_USERNAME`, `ADMIN_PASSWORD` and `ADMIN_EMAIL` are all set.
 
 **Admission is invite-only.** `user_invitations` carries an email, a squad, a role and the seven
@@ -670,7 +672,7 @@ The machine surface only reads: `machineOrAuth` on `GET /api/search` and `GET /a
 (`CLAUDE.md:108-114`), and `requireMachine` on the C2-5 reader check
 (`routes/workspaces.js:216-230`). An invitation carries a squad, a role and the seven permission
 flags, but not instance admin (`init.sql:141-162`). `is_admin` is written only by
-`ensureAdminUser` (`routes/admin.js:37-67`) and the admin console (`routes/admin.js:592`).
+`ensureAdminUser` (`routes/admin.js:53-102`) and the admin console (`routes/admin.js:626`).
 
 ### In scope
 
@@ -684,7 +686,7 @@ flags, but not instance admin (`init.sql:141-162`). `is_admin` is written only b
     FALSE` column (a dated migration and `init.sql`) is set for `admin`, and W6-CDX-8's
     invitation binding gives the created user `is_admin` when it is.
 - **Where an admitted member lands (D-S).** The invitation names the instance's seeded `General`
-  squad (`bootstrapInstance`, `routes/admin.js:102-152`, which creates it in the boot admin's
+  squad (`bootstrapInstance`, `routes/admin.js:136-186`, which creates it in the boot admin's
   starter workspace) in its existing `squad_id`, with `can_write` set and `can_read` at its default,
   so W6-CDX-8's binding makes the person a `General` member with read and write on first sign-in.
   No column is added for it. Every synced person lands there, the owner included. An open

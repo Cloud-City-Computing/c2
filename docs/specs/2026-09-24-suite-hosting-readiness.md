@@ -77,7 +77,7 @@ What the decision does require of Codex is small, and it is all in this track:
 
 **Health.** There is no health endpoint. `docs/deployment.md:518-527` recommends probing
 `GET /api/oauth/providers`, which reads no database (`routes/oauth.js:143-151`), so it proves only
-that the process listens. `GET /api/admin/status` requires a session (`routes/admin.js:160`).
+that the process listens. `GET /api/admin/status` requires a session (`routes/admin.js:194`).
 
 **The single process is load-bearing and unenforced.** CLAUDE.md decision 1 says a second replica
 would hold a second, divergent copy of every open document. Nothing stops one from starting. The
@@ -86,16 +86,17 @@ migration runner already takes a `GET_LOCK` named per database (`scripts/migrate
 
 **Production defaults.** `APP_URL` defaults to `http://localhost:3000`
 (`routes/helpers/shared.js:146`), and that default is what invitation, password-reset and
-notification links carry when the variable is unset (`routes/admin.js:449`, `routes/auth.js:716`,
+notification links carry when the variable is unset (`routes/admin.js:483`, `routes/auth.js:716`,
 `services/email-templates.js:24-26`). The CORS rule reads the variable directly and simply loses
 its `APP_URL` arm (`app.js:89`). `trust proxy` is hard-coded to `1` (`app.js:42`) and the pool to
 10 connections (`mysql_connect.js:24`). Every compose file floats
 MySQL at `mysql:8` (`docker-compose.yaml:8`, `docker-compose-prod.yml:3`,
 `docker-compose-release.yml:12`).
 
-**The admin sync promotes.** `ensureAdminUser` (`routes/admin.js:37-54`) finds any row matching
+**The admin sync promotes.** `ensureAdminUser` (`routes/admin.js:37-54` at `0fc8732`) finds any row matching
 `ADMIN_USERNAME` by name or `ADMIN_EMAIL` by email, sets `is_admin`, and overwrites its password,
-so an existing member whose email equals `ADMIN_EMAIL` is silently made the admin.
+so an existing member whose email equals `ADMIN_EMAIL` is silently made the admin. (Fixed ahead of
+the rest of W6-CDX-32, GHSA-w8q3-r34w-3pjh: the plan's Task 2.4.)
 
 **Document images are public.** `/doc-images` is an `express.static` mount (`app.js:176-180`)
 cached `public, immutable` for 30 days. Names are the first 16 hex characters of the image's

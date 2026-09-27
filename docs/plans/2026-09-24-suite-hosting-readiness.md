@@ -302,9 +302,21 @@ if (existing && !existing.is_admin) {
 ```
 
 An existing admin is synced as today, and an absent one is created. `bootstrapInstance(null)` already
-copes with no admin id (`routes/admin.js:102-103`). Tests: create, sync, and the new refusal. This
+copes with no admin id (`routes/admin.js:102-103` at `91493a6`). Tests: create, sync, and the new refusal. This
 lands **before** the identity track's W6-CDX-8, which is sequenced after this PR and makes the sync
 provider-aware while keeping this refusal on both branches.
+
+- [x] **Done 2026-09-25, ahead of the rest of this PR**, in its own PR (branch
+      `track/w6-cdx-32-never-promote`) so the fix ships in the next release
+      (GHSA-w8q3-r34w-3pjh). Tasks 2.1 to 2.3, 2.5 and 2.6 are unchanged and still to do. What shipped
+      goes past the draft in three ways, which W6-CDX-8 builds on: the lookup reads **every** row
+      matching by name or email (no `LIMIT`), because the two can be two different rows, and any
+      non-admin among them refuses; the sync's `UPDATE` no longer writes `is_admin`; and every outcome
+      logs one `admin sync:` line (created, synced, or the refusal above with `(user <id>)` added),
+      never the password. Unit tests in `tests/routes/admin.test.js`, and
+      `tests/integration/admin-sync.test.js` on MySQL: four takeover shapes, each in both row orders.
+      `docs/deployment.md` "The boot admin" says plainly that `ADMIN_*` reset the admin's email and
+      password at every boot, so Task 2.6 need not.
 
 ### Task 2.5 Security headers on the app, not only `/api`
 

@@ -107,12 +107,47 @@ Production-specific notes:
 | `APP_URL`                  | Must be the public HTTPS URL — used in outbound emails  |
 | `CORS_ORIGIN`              | Set to your `APP_URL` host. Empty = same-origin only     |
 | `SMTP_*`                   | Hard requirement — server exits on missing credentials  |
-| `ADMIN_*`                  | Hard requirement — admin is synced on every startup     |
+| `ADMIN_*`                  | Hard requirement. **They reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
 | `GITHUB_CLIENT_SECRET`     | Doubles as the AES-256-GCM seed for stored OAuth tokens. **Never rotate without re-encrypting** existing rows or all linked GitHub accounts go invalid |
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
 | `AUTH_PROVIDERS`           | Leave unset. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which |
 
 Add new env vars to `.env.example` (with a comment) when introducing them.
+
+### The boot admin
+
+Every boot reconciles one admin from `ADMIN_USERNAME`, `ADMIN_EMAIL` and
+`ADMIN_PASSWORD` (`ensureAdminUser` in `cloudcodex/routes/admin.js`), before
+the port opens, and logs one line saying which of three things it did. None of
+them logs the password.
+
+- **Created.** No account has that name or that email: boot creates the admin.
+- **Synced.** The account with that name or that email is already an admin:
+  **boot resets its email to `ADMIN_EMAIL` and its password to
+  `ADMIN_PASSWORD`, at every boot.** `.env` is the source of truth for the
+  admin's credentials, so a password or address the admin changes in the app
+  lasts only until the next restart; change it in `.env` instead. Its name is
+  never rewritten.
+- **Refused.** An account with that name or that email is **not** an admin.
+  Boot never promotes one: it changes nothing, not that account and not the
+  admin's, and logs
+
+  ```
+  admin sync: <ADMIN_USERNAME> / <ADMIN_EMAIL> matches an existing non-admin account (user <id>), refusing to promote it. Promote it in the admin console if that is intended.
+  ```
+
+  It happens when a member holds a name or address the admin has given up
+  (the admin renamed, or changed email, and a member took the old one), or
+  when `.env` is edited to name an existing member. If that account is meant
+  to be the admin, promote it in the admin console (Users, click its **User**
+  badge); from the next boot on it is synced as above, so its email and
+  password become `ADMIN_EMAIL` and `ADMIN_PASSWORD`. If it is not, set
+  `ADMIN_USERNAME` and `ADMIN_EMAIL` to the admin's current name and address,
+  or to a name and address no account uses to have boot create a fresh admin,
+  and restart. The refusal repeats at every boot until one of those is done.
+
+A refused sync is not fatal: the instance starts, an existing admin keeps the
+credentials it had, and the first-boot seed does not run on that boot.
 
 ---
 

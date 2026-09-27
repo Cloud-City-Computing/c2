@@ -145,6 +145,12 @@ app.use('/api/2fa/verify', authLimiter);
 app.use('/api/2fa/totp/confirm', authLimiter);
 app.use('/api/2fa/disable/confirm', authLimiter);
 app.use('/api/oauth/google/callback', authLimiter);
+// update-account checks the current password for an email or password change,
+// which would otherwise let a stolen session guess at it without limit. A
+// path mount also matches /api/update-account/confirm-email, whose code check
+// needs the same bound, so that step is covered without a second mount (a
+// second one would count each confirm twice).
+app.use('/api/update-account', authLimiter);
 /*
  * C2-5's reader check. An oracle answering a boolean invites enumeration even
  * behind a credential -- if the service token ever leaks, an unbounded one

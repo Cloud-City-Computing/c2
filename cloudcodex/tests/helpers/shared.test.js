@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { c2_query } from '../../mysql_connect.js';
@@ -187,7 +187,7 @@ describe('helpers/shared', () => {
       });
     });
 
-    it('TOKEN_PURPOSE matches the purpose CHECK in init.sql AND in the migration', () => {
+    it('TOKEN_PURPOSE matches the purpose CHECK in init.sql AND in the newest migration that sets it', () => {
       // Verified on mysql:8 (8.4.8): the column is VARCHAR NOT NULL with no
       // DEFAULT, so omitting it is error 1364, and the CHECK makes a value
       // outside this set error 3819. Both mistakes are loud, which is the whole
@@ -195,21 +195,35 @@ describe('helpers/shared', () => {
       // an implicit default of the first value even under STRICT_TRANS_TABLES,
       // so an omitted purpose would silently become 'password_reset'.
       //
-      // Both files are checked, not just init.sql. A fresh install builds from
-      // init.sql and an existing one from the migration, so a value present in
+      // Both sides are checked, not just init.sql. A fresh install builds from
+      // init.sql and an existing one from the migrations, so a value present in
       // one and missing from the other is green in dev and error 3819 in
-      // production only.
+      // production only. The migration side is the NEWEST file that sets the
+      // CHECK: an applied migration is never edited (the runner's checksum
+      // guard refuses), so a fifth flow widens it in a file of its own.
       const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+      const PURPOSE_CHECK = /CHECK \(purpose IN \(([^)]+)\)\)/;
       const purposesIn = (file) => {
-        const sql = readFileSync(resolve(repoRoot, file), 'utf8');
-        const [, body] = sql.match(/CHECK \(purpose IN \(([^)]+)\)\)/) || [];
+        const sql = readFileSync(resolve(repoRoot, file), 'utf8').replace(/--[^\n]*/g, '');
+        const [, body] = sql.match(PURPOSE_CHECK) || [];
         expect(body, `no purpose CHECK found in ${file}`).toBeDefined();
         return body.split(',').map((v) => v.trim().replace(/^'|'$/g, '')).sort();
       };
+      const newestSettingIt = readdirSync(resolve(repoRoot, 'migrations'))
+        .filter((f) => f.endsWith('.sql'))
+        .sort()
+        .filter((f) => PURPOSE_CHECK.test(readFileSync(resolve(repoRoot, 'migrations', f), 'utf8').replace(/--[^\n]*/g, '')))
+        .pop();
 
       const expected = Object.values(TOKEN_PURPOSE).sort();
       expect(purposesIn('init.sql')).toEqual(expected);
-      expect(purposesIn('migrations/2026-09-08-token-purpose.sql')).toEqual(expected);
+      expect(purposesIn(`migrations/${newestSettingIt}`)).toEqual(expected);
+    });
+
+    it('TOKEN_PURPOSE names the email-change flow', () => {
+      // POST /api/update-account mints it for an account with no password,
+      // and POST /api/update-account/confirm-email is its only reader.
+      expect(TOKEN_PURPOSE.EMAIL_CHANGE).toBe('email_change');
     });
   });
 
