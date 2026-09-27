@@ -17,6 +17,36 @@ import { createShutdown } from './services/shutdown.js';
 import { readiness } from './routes/health.js';
 import app from './app.js';
 
+// ─── Stop signals, from the first line of the boot ──────────
+//
+// The image runs `node server.js` directly, so Node is PID 1, and the kernel
+// drops any signal PID 1 has no handler for: a SIGTERM during the boot awaits
+// below (the lock, the SMTP verify, the admin sync) would otherwise be
+// ignored until Docker's SIGKILL. So the handlers go in first. Before the
+// server listens there is nothing to flush and the lock goes with the
+// process, so a stop then exits at once. Once it listens, the first signal
+// runs the bounded shutdown (services/shutdown.js) and a second one, a
+// second Ctrl-C say, ends the process at once with 1.
+const stopLog = (line) => console.error(`[${new Date().toISOString()}] ${line}`);
+let shutdown = null;          // set once the server is up
+let signalsSeen = 0;
+function onStopSignal(signal) {
+  signalsSeen++;
+  if (signalsSeen > 1) {
+    stopLog(`second ${signal} before the shutdown finished; stopping at once`);
+    process.exit(1);
+    return;
+  }
+  if (!shutdown) {
+    stopLog(`stopped on ${signal} during boot`);
+    process.exit(0);
+    return;
+  }
+  return shutdown(signal);
+}
+process.on('SIGTERM', () => onStopSignal('SIGTERM'));
+process.on('SIGINT', () => onStopSignal('SIGINT'));
+
 // ─── Require Admin credentials before starting ──────────────
 if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_EMAIL) {
   console.error('✖ Missing required admin configuration: ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_EMAIL');
@@ -42,11 +72,20 @@ try {
 // or seed can race the first one's. Collab state is an in-memory Y.Doc per
 // open document, and a second process would hold a second copy of each
 // (services/instance-lock.js). A refusal, or no database to take it from,
-// ends the boot: under a supervisor that is a restart, not an outage.
-const lockLog = (line) => console.error(`[${new Date().toISOString()}] ${line}`);
+// ends the boot: under a supervisor that is a restart, not an outage. So does
+// finding, after a lost connection, that another process took the lock
+// meanwhile: this one stops, through the shutdown once it is serving.
 let instanceLock = null;
+const onSuperseded = () => {
+  stopLog('another process took the instance lock while this one had lost it; stopping, so one process serves this database');
+  if (shutdown) {
+    shutdown('the lost instance lock', { code: 1 });
+  } else {
+    process.exit(1);
+  }
+};
 try {
-  instanceLock = await acquireInstanceLock({ connect: openConnection, log: lockLog });
+  instanceLock = await acquireInstanceLock({ connect: openConnection, log: stopLog, onSuperseded });
 } catch (err) {
   console.error(`✖ ${err.message}`);
   process.exit(1);
@@ -164,11 +203,10 @@ console.log('✔ Notification WebSocket server attached');
 
 // ─── Stop cleanly on SIGTERM / SIGINT ───────────────────────
 //
-// The image runs `node server.js` directly, so these reach Node rather than
-// npm. Bounded at ten seconds (services/shutdown.js); the compose files give a
-// twenty-second grace before SIGKILL. `once`, so a second Ctrl-C in a
-// terminal falls through to Node's default and ends the process at once.
-const shutdown = createShutdown({
+// From here a stop signal runs this, bounded at ten seconds; the compose
+// files give a twenty-second grace before SIGKILL. The handlers themselves
+// were installed at the top of this file.
+shutdown = createShutdown({
   server,
   readiness,
   flushPendingSaves,
@@ -179,10 +217,8 @@ const shutdown = createShutdown({
   releaseLock: () => instanceLock?.release(),
   endPool,
   exit: (code) => process.exit(code),
-  log: (line) => console.error(`[${new Date().toISOString()}] ${line}`),
+  log: stopLog,
 });
-process.once('SIGTERM', shutdown);
-process.once('SIGINT', shutdown);
 
 // Daily prune of activity_log entries older than 365 days.
 // Single-process architecture (per CLAUDE.md) — revisit if we ever scale out.

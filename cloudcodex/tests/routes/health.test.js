@@ -50,6 +50,7 @@ beforeEach(() => {
   readiness.lock = { held: true, disabled: false };
   readiness.migrations = null;
   readiness.database = null;
+  readiness.probe = null;
   readiness.reported = new Set();
   database();
 });
@@ -229,7 +230,7 @@ describe('GET /readyz', () => {
     expect(queriesMatching(/schema_migrations/)).toBe(1);
   });
 
-  it('never has more than one SELECT 1 outstanding, however long it hangs', async () => {
+  it('waits on a hung SELECT 1 rather than queueing another behind it, for ten seconds', async () => {
     vi.useFakeTimers();
     database({ select1: 'hang' });
 
@@ -245,6 +246,15 @@ describe('GET /readyz', () => {
     // A timed-out probe's query still holds a pooled connection; a second one
     // queued behind it would hold another, and so on until the pool is full.
     expect(queriesMatching(/^SELECT 1$/)).toBe(1);
+
+    // Ten seconds on, the hung one may never answer: ask again, and a
+    // database that has recovered reads as ready.
+    await vi.advanceTimersByTimeAsync(5_000);
+    database();
+    const third = notReadyReason();
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(third).resolves.toBe(null);
+    expect(queriesMatching(/^SELECT 1$/)).toBe(2);
   });
 
   it('says once, in the log, how to adopt a database nobody has adopted', async () => {

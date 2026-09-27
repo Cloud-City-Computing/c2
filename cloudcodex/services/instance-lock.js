@@ -22,19 +22,32 @@
  * either.
  *
  * If the connection is lost (MySQL restarted, a network blip), the lock is
- * gone with it: `held` goes false, /readyz answers 503 `lock`, and every
- * keepalive tick tries to take it back on a new connection. If another
- * process took it in the meantime, this one stays not-ready and says who.
+ * gone with it: `held` goes false, /readyz answers 503 `lock`, and the lock is
+ * tried again on a new connection every second until it is back. If another
+ * process took it in the meantime, two live processes now serve one schema,
+ * so this one hands over to `onSuperseded` once and tries no more: server.js
+ * stops through the graceful shutdown and exits 1, and its supervisor
+ * restarts it into an ordinary refusal.
+ *
+ * MySQL caps a lock name at 64 characters and a schema name at 64 too, so a
+ * schema name longer than 44 cannot follow the 20-character prefix. Such a
+ * schema is named by the first 40 hex characters of its SHA-256 instead, after
+ * a `#` so a digest can never equal a readable name.
  */
 
-const NAME_SQL = `CONCAT('cloudcodex-instance:', DATABASE())`;   // distinct from the runner's lock
+// Distinct from the runner's lock (scripts/migrate.js).
+export const INSTANCE_LOCK_NAME_SQL =
+  "IF(CHAR_LENGTH(DATABASE()) <= 44, CONCAT('cloudcodex-instance:', DATABASE()), " +
+  "CONCAT('cloudcodex-instance#', LEFT(SHA2(DATABASE(), 256), 40)))";
+const NAME_SQL = INSTANCE_LOCK_NAME_SQL;
 const PING_MS = 60_000;
+const RETAKE_MS = 1_000;
 
-const refusal = (holder) => new Error(
+const refusal = (holder) => Object.assign(new Error(
   `Another Cloud Codex process (MySQL connection ${holder}) already serves this database.\n` +
   'Two processes would hold two different copies of every open document. Stop the other one,\n' +
   'or set C2_INSTANCE_LOCK=0 if you know exactly why you need both.'
-);
+), { heldElsewhere: true });
 
 const errored = () => new Error(
   "GET_LOCK for the instance lock returned NULL, so the attempt errored rather than finding\n" +
@@ -81,10 +94,13 @@ async function takeLock(connect, onError) {
  * @param {Object} deps
  * @param {() => Promise<Object>} deps.connect - opens a mysql2 promise connection, never a pooled one
  * @param {(line: string) => void} deps.log
- * @param {number} [deps.pingMs] - keepalive and retake interval
+ * @param {(err: Error) => void} [deps.onSuperseded] - called once if another process took the lock this one lost
+ * @param {number} [deps.pingMs] - keepalive interval while the lock is held
+ * @param {number} [deps.retakeMs] - retry interval once it is lost
  * @returns {Promise<{ held: boolean, disabled: boolean, connectionId: ?number, release: () => Promise<void> }>}
  */
-export async function acquireInstanceLock({ connect, log, pingMs = PING_MS }) {
+export async function acquireInstanceLock({ connect, log, onSuperseded = () => {},
+                                            pingMs = PING_MS, retakeMs = RETAKE_MS }) {
   if (process.env.C2_INSTANCE_LOCK === '0') {
     log('instance lock disabled by C2_INSTANCE_LOCK=0; a second process on this schema will diverge');
     return { held: false, disabled: true, connectionId: null, release: async () => {} };
@@ -92,16 +108,26 @@ export async function acquireInstanceLock({ connect, log, pingMs = PING_MS }) {
 
   let conn = null;
   let released = false;
+  let superseded = false;
   let busy = false;
-  let lastRefusal = null;
+  let retake = null;
+  let lastFailure = null;
   const lock = { held: false, disabled: false, connectionId: null, release: null };
+
+  const scheduleRetake = () => {
+    if (retake || released || superseded) return;
+    retake = setTimeout(() => { retake = null; tick(); }, retakeMs);
+    retake.unref?.();
+  };
 
   const markLost = () => {
     if (!lock.held) return;
     lock.held = false;
     log('instance lock lost with its MySQL connection; /readyz reports not ready until it is taken back');
+    scheduleRetake();
   };
-  // Only the connection currently holding the lock can lose it.
+  // Only the connection currently holding the lock can lose it; a late error
+  // from one already replaced says nothing about the lock.
   const onError = (errored) => { if (errored === conn) markLost(); };
 
   const adopt = (next) => {
@@ -111,8 +137,10 @@ export async function acquireInstanceLock({ connect, log, pingMs = PING_MS }) {
   };
   adopt(await takeLock(connect, onError));
 
-  const tick = async () => {
-    if (busy || released) return;
+  // One attempt at a time: a connect can take seconds, and a second one
+  // started meanwhile would open a connection nobody tracks.
+  async function tick() {
+    if (busy || released || superseded) return;
     busy = true;
     try {
       if (lock.held) {
@@ -127,23 +155,34 @@ export async function acquireInstanceLock({ connect, log, pingMs = PING_MS }) {
       try {
         const next = await takeLock(connect, onError);
         if (released) {
+          // Released while the attempt was in flight: nobody would ever end this one.
           await next.conn.end().catch(() => next.conn.destroy());
           return;
         }
         adopt(next);
-        lastRefusal = null;
+        clearTimeout(retake);
+        retake = null;
+        lastFailure = null;
         log(`instance lock taken back on MySQL connection ${lock.connectionId}`);
       } catch (err) {
-        // Say it once per distinct reason, not once a minute.
-        if (err.message !== lastRefusal) {
-          lastRefusal = err.message;
+        if (err.heldElsewhere) {
+          superseded = true;
+          clearInterval(ping);
+          log(err.message);
+          onSuperseded(err);
+          return;
+        }
+        // MySQL still down: say it once per distinct reason, not every second.
+        if (err.message !== lastFailure) {
+          lastFailure = err.message;
           log(err.message);
         }
+        scheduleRetake();
       }
     } finally {
       busy = false;
     }
-  };
+  }
 
   const ping = setInterval(() => { tick(); }, pingMs);
   ping.unref?.();
@@ -151,6 +190,7 @@ export async function acquireInstanceLock({ connect, log, pingMs = PING_MS }) {
   lock.release = async () => {
     released = true;
     clearInterval(ping);
+    clearTimeout(retake);
     lock.held = false;
     await conn.end().catch(() => conn.destroy());
   };

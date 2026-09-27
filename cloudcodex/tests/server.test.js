@@ -633,6 +633,7 @@ describe('server.js: stop signals', () => {
     try {
       bootEnv();
       const { initMail } = await import('../services/email.js');
+      initMail.mockClear();
       initMail.mockImplementationOnce(() => new Promise(() => {}));   // an SMTP verify that never answers
       const collab = await import('../services/collab.js');
       collab.flushPendingSaves.mockClear();
@@ -722,6 +723,7 @@ describe('server.js: a lock taken over by another process', () => {
       const { acquireInstanceLock } = await import('../services/instance-lock.js');
       acquireInstanceLock.mockClear();
       const { initMail } = await import('../services/email.js');
+      initMail.mockClear();
       initMail.mockImplementationOnce(() => new Promise(() => {}));
 
       import('../server.js');
