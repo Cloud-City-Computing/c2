@@ -21,7 +21,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, errorHandler } from './helpers/shared.js';
-import { extractImagesFromHtml, recordDocImages } from './helpers/images.js';
+import { extractImagesFromHtml, recordDocImages, docImageHashes } from './helpers/images.js';
 
 const ALLOWED_EXTENSIONS = ['html', 'htm', 'md', 'markdown', 'txt', 'pdf', 'docx'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -139,7 +139,11 @@ router.post(
        VALUES (?, ?, ?, ?, ?, ?)`,
       [Number(archiveId), title, storedHtml, parentId, req.user.id, req.user.id]
     );
-    await recordDocImages(result.insertId, storedHtml, req.user, savedImages);
+    // A new document: every reference in it is this importer's to vouch for.
+    await recordDocImages(result.insertId, storedHtml, req.user, {
+      saved: savedImages,
+      introduced: docImageHashes(storedHtml),
+    });
 
     res.status(201).json({ success: true, logId: result.insertId, title });
   })

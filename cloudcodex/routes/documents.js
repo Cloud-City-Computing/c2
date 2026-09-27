@@ -12,7 +12,14 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
-import { extractImagesFromHtml, recordDocImages, inlineImagesForExport, inlineImagesForMarkdownExport } from './helpers/images.js';
+import {
+  extractImagesFromHtml,
+  recordDocImages,
+  introducedDocImages,
+  noteStoredDocImages,
+  inlineImagesForExport,
+  inlineImagesForMarkdownExport,
+} from './helpers/images.js';
 import { processMentionsOnSave } from './helpers/mentions.js';
 import { logActivity } from './helpers/activity.js';
 import { decryptToken } from './oauth.js';
@@ -92,11 +99,8 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   // Sanitize HTML to prevent stored XSS
   const cleanHtml = sanitizeHtml(html_content);
 
-  // Extract embedded base64 images to disk, replace with served URLs
-  const savedImages = new Set();
-  const storedHtml = await extractImagesFromHtml(cleanHtml, savedImages);
-
-  // Fetch existing log and verify write access
+  // Fetch existing log and verify write access, before any image is decoded
+  // or written to disk
   const [log] = await c2_query(
     `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.archive_id, pg.title
        FROM logs pg
@@ -110,6 +114,17 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   if (!log) {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
+
+  // Extract embedded base64 images to disk, replace with served URLs
+  const savedImages = new Set();
+  const storedHtml = await extractImagesFromHtml(cleanHtml, savedImages);
+
+  // Record before the write: a failure then fails the save, and a retry,
+  // whose previous HTML is unchanged, still sees what it adds.
+  await recordDocImages(log.id, storedHtml, req.user, {
+    saved: savedImages,
+    introduced: introducedDocImages(log.id, storedHtml, log.old_content, req.user),
+  });
 
   // Save content without creating a version snapshot
   // If markdown_content is provided (string or null), update it alongside HTML.
@@ -128,7 +143,7 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
     );
   }
 
-  await recordDocImages(log.id, storedHtml, req.user, savedImages);
+  noteStoredDocImages(log.id, storedHtml);
 
   await processMentionsOnSave({
     logId: log.id,
@@ -199,6 +214,9 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
   // Extract embedded base64 images before persisting
   const savedImages = new Set();
   const publishHtml = await extractImagesFromHtml(sanitizeHtml(log.html_content), savedImages);
+  // Publishing snapshots what is already stored, so it adds no reference to
+  // vouch for; only bytes decoded here are recorded, before the writes.
+  await recordDocImages(log.id, publishHtml, req.user, { saved: savedImages });
   await c2_query(
     `UPDATE logs SET version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [newVersion, req.user.id, Number(logId)]
@@ -208,7 +226,6 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
      VALUES (?, ?, ?, ?, ?, ?)`,
     [log.id, newVersion, title?.trim() || null, notes?.trim() || null, publishHtml, req.user.id]
   );
-  await recordDocImages(log.id, publishHtml, req.user, savedImages);
 
   let releaseInfo = null;
   let releaseError = null;
@@ -440,11 +457,15 @@ router.post('/document/:logId/versions/:versionId/restore', requireAuth, asyncHa
   const newVersion = currentLog.version + 1;
   const savedImages = new Set();
   const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content), savedImages);
+  // A version's references were recorded when they entered the document, so
+  // restoring adds none to vouch for; only bytes decoded here are recorded,
+  // before the writes, so a failure cannot leave a version without its snapshot.
+  await recordDocImages(currentLog.id, restoredHtml, req.user, { saved: savedImages });
   await c2_query(
     `UPDATE logs SET html_content = ?, ydoc_state = NULL, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [restoredHtml, newVersion, req.user.id, Number(logId)]
   );
-  await recordDocImages(currentLog.id, restoredHtml, req.user, savedImages);
+  noteStoredDocImages(currentLog.id, restoredHtml);
 
   // Snapshot the restored content into version history
   await c2_query(

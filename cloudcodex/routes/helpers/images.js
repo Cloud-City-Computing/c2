@@ -322,30 +322,202 @@ export async function insertDocImageRows(rows) {
 
 /**
  * Record the images a just-written document's HTML shows, so its readers can
- * see them. Call it after each write of `html_content` (or a version) that
- * went through extractImagesFromHtml, with the same `saved` set.
+ * see them. Call it for each write of `html_content` (or a version) that went
+ * through extractImagesFromHtml, with the same `saved` set.
  *
- * An image in `saved` was decoded from bytes this writer supplied, so it is
- * recorded as theirs. Any other reference is recorded (with no uploader) only
- * if the writer can already see that image. Without that check, knowing an
- * image's address would be enough to read it: paste it into a document you
- * can write, and the handler would serve it to you as that document's reader.
+ * A row is a grant to every reader of the document, so the writer may vouch
+ * only for what this write puts there:
+ *
+ * - an image in `saved` was decoded from bytes this writer supplied, and is
+ *   recorded as theirs;
+ * - a reference in `introduced` (the ones this write added, from
+ *   introducedDocImages, or credited to this writer by a live session) is
+ *   recorded, with no uploader, only if the writer can already see it;
+ * - every other reference is left alone, however much the writer can see.
+ *
+ * Without the last rule, a reference somebody planted (knowing an address is
+ * enough to type it) would be granted by the next save, publish or restore
+ * from anyone who can see the image, an owner fixing a typo or any admin.
  * @param {number} logId
  * @param {string} html - the HTML as stored
- * @param {object} user - the writer
- * @param {Set<string>} [saved] - from extractImagesFromHtml
+ * @param {object} writer
+ * @param {{ saved?: Set<string>, introduced?: string[] }} [options]
  * @returns {Promise<number>} rows newly recorded
  */
-export async function recordDocImages(logId, html, user, saved = new Set()) {
+export async function recordDocImages(logId, html, writer, { saved = new Set(), introduced = [] } = {}) {
   const hashes = docImageHashes(html);
   if (hashes.length === 0) return 0;
-  if (!user) throw new Error('recordDocImages needs the writing user');
+  if (!writer) throw new Error('recordDocImages needs the writing user');
 
+  const vouched = new Set(introduced);
   const supplied = hashes.filter((hash) => saved.has(hash));
-  const readable = await readableDocImageHashes(hashes.filter((hash) => !saved.has(hash)), user);
+  const readable = await readableDocImageHashes(
+    hashes.filter((hash) => !saved.has(hash) && vouched.has(hash)),
+    writer
+  );
 
   return insertDocImageRows([
-    ...supplied.map((hash) => [hash, logId, user.id]),
+    ...supplied.map((hash) => [hash, logId, writer.id]),
     ...readable.map((hash) => [hash, logId, null]),
   ]);
+}
+
+// ── Live editing sessions ────────────────────────────────
+//
+// Every client in a live session saves the whole shared document, so the
+// client that sends a save is not necessarily the writer who added what it
+// carries. DocImageCredits remembers, per open document, which writer's own
+// edit first put each reference into the shared document; services/collab.js
+// keeps one per open document and records by it.
+
+/**
+ * Credits kept per open document. An honest document does not name this many
+ * images, so past it a session credits nothing more (fails closed) rather
+ * than let a client grow the map without bound.
+ */
+export const MAX_DOC_IMAGE_CREDITS = 5000;
+
+export class DocImageCredits {
+  constructor() {
+    /** The references the document's stored HTML shows: nobody's to claim. */
+    this.stored = new Set();
+    /** hash -> the writer whose own edit first put it in the shared document */
+    this.credits = new Map();
+  }
+
+  /**
+   * The document now stores `texts` (its HTML, and at load the shared
+   * document itself). Replaces the previous set, so an image removed, saved
+   * and then pasted back counts as the paster's.
+   * @param {...string} texts
+   */
+  setStored(...texts) {
+    this.stored = new Set(texts.flatMap((text) => docImageHashes(text)));
+  }
+
+  /**
+   * One edit from `writer` changed the shared document. A reference is
+   * credited to them when the edit's own bytes named it (`named`), it was not
+   * in the shared document before (`before`) and is after (`after`), the
+   * stored document does not already show it, and nobody has the credit yet.
+   * So re-sending something already there (the first client filling the
+   * document from its HTML, or an edit that recreates a node) claims nothing,
+   * and neither does a reference typed a character at a time.
+   * @param {object} writer
+   * @param {string[]} named
+   * @param {string[]} before
+   * @param {string[]} after
+   */
+  noteMessage(writer, named, before, after) {
+    const was = new Set(before);
+    const is = new Set(after);
+    for (const hash of named) {
+      if (this.credits.size >= MAX_DOC_IMAGE_CREDITS) return;
+      if (!is.has(hash) || was.has(hash) || this.stored.has(hash) || this.credits.has(hash)) continue;
+      this.credits.set(hash, writer);
+    }
+  }
+
+  /**
+   * @param {string} hash
+   * @returns {object|null} the writer credited with it
+   */
+  creditedTo(hash) {
+    return this.credits.get(hash) ?? null;
+  }
+
+  /**
+   * The references `html` shows that someone is credited with, grouped by
+   * that writer, in order of first appearance.
+   * @param {string} html
+   * @returns {Array<[object, string[]]>}
+   */
+  byUser(html) {
+    const groups = new Map();
+    for (const hash of docImageHashes(html)) {
+      const writer = this.credits.get(hash);
+      if (!writer) continue;
+      if (!groups.has(writer)) groups.set(writer, []);
+      groups.get(writer).push(hash);
+    }
+    return [...groups];
+  }
+}
+
+/** logId -> the DocImageCredits of that document's live session. */
+const liveCredits = new Map();
+
+/**
+ * A live session opened on `logId`: start its credits and register them, so
+ * a REST save of the same document can ask them.
+ * @param {number} logId
+ * @returns {DocImageCredits}
+ */
+export function openDocImageCredits(logId) {
+  const credits = new DocImageCredits();
+  liveCredits.set(logId, credits);
+  return credits;
+}
+
+/**
+ * The session holding `credits` closed. Leaves a newer session's alone.
+ * @param {number} logId
+ * @param {DocImageCredits} credits
+ */
+export function closeDocImageCredits(logId, credits) {
+  if (liveCredits.get(logId) === credits) liveCredits.delete(logId);
+}
+
+/**
+ * @param {number} logId
+ * @returns {DocImageCredits|null}
+ */
+export function liveDocImageCredits(logId) {
+  return liveCredits.get(logId) ?? null;
+}
+
+/**
+ * A REST write stored `html` for `logId`: tell its live session, if any, so
+ * what the restoring or saving editor then pushes into the shared document is
+ * not credited to it.
+ * @param {number} logId
+ * @param {string} html
+ */
+export function noteStoredDocImages(logId, html) {
+  liveCredits.get(logId)?.setStored(html);
+}
+
+/**
+ * The references a write of `html` over `previousHtml` may vouch for: the
+ * ones it adds. With a live session open on the document, only those the
+ * session credits to `writer`, since an editor's REST save carries the shared
+ * document too, other writers' edits included.
+ * @param {number} logId
+ * @param {string} html
+ * @param {string|null} previousHtml
+ * @param {object} writer
+ * @returns {string[]}
+ */
+export function introducedDocImages(logId, html, previousHtml, writer) {
+  const before = new Set(docImageHashes(previousHtml));
+  const added = docImageHashes(html).filter((hash) => !before.has(hash));
+  const live = liveCredits.get(logId);
+  if (!live) return added;
+  return added.filter((hash) => live.creditedTo(hash)?.id === writer.id);
+}
+
+/**
+ * Record the references `html` shows that `credits` gives someone, each only
+ * if the writer credited with it can see it.
+ * @param {number} logId
+ * @param {string} html
+ * @param {DocImageCredits} credits
+ * @returns {Promise<number>} rows newly recorded
+ */
+export async function recordCreditedDocImages(logId, html, credits) {
+  let recorded = 0;
+  for (const [writer, introduced] of credits.byUser(html)) {
+    recorded += await recordDocImages(logId, html, writer, { introduced });
+  }
+  return recorded;
 }

@@ -20,14 +20,22 @@
  * who could read the document could already see them. Idempotent (INSERT
  * IGNORE), batched by id, and it prints how many rows it recorded.
  *
+ * That trust is why it runs once, before the new image serves anyone. Run
+ * after go-live, it would also record every reference saved since, including
+ * ones pasted by people who cannot see the image, which is exactly the grant
+ * the write path refuses. So it refuses to run over a table that already has
+ * rows, unless DOC_IMAGES_PUBLIC=1 (every image is public anyway) or it is
+ * told with --again that this is a rerun before go-live (an interrupted run).
+ *
  *   npm run backfill:doc-images
+ *   npm run backfill:doc-images -- --again
  *
  * In containers, like the migration runner:
  *   docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images
  */
 
 import { c2_query } from '../mysql_connect.js';
-import { docImageHashes, insertDocImageRows } from '../routes/helpers/images.js';
+import { docImageHashes, docImagesPublic, insertDocImageRows } from '../routes/helpers/images.js';
 import { isDirectRun } from './migrate.js';
 
 /** Rows read per query. */
@@ -64,10 +72,29 @@ async function backfillFrom(sql, docIdOf) {
 }
 
 /**
+ * Refuse to run over rows the app or an earlier run wrote (see the header).
+ * @param {boolean} again - the operator says this is a rerun before go-live
+ */
+async function refuseRerun(again) {
+  if (again || docImagesPublic()) return;
+  const [{ n }] = await c2_query('SELECT COUNT(*) AS n FROM doc_images');
+  if (Number(n) === 0) return;
+  throw new Error(
+    `doc_images already has ${n} row(s), so the app or an earlier run of this backfill has written it. ` +
+      'Run after go-live, the backfill would record every image reference saved since without asking ' +
+      'whether its writer could see the image. If this is a rerun of an interrupted backfill and the new ' +
+      'image has not served anyone yet, run it with --again (npm run backfill:doc-images -- --again).'
+  );
+}
+
+/**
  * Record every image existing documents and versions show.
+ * @param {{ again?: boolean }} [options] - `again`: run even though doc_images has rows
  * @returns {Promise<{ documents: number, versions: number, recorded: number }>}
  */
-export async function backfillDocImages() {
+export async function backfillDocImages({ again = false } = {}) {
+  await refuseRerun(again);
+
   // The LIMIT is a constant, not a bound parameter: mysql2's prepared
   // statements reject a numeric LIMIT placeholder on MySQL 8.0.22 and later.
   const documents = await backfillFrom(
@@ -92,11 +119,11 @@ export async function backfillDocImages() {
 
 /**
  * The CLI: run the backfill and say what it did.
- * @param {{ log?: (line: string) => void }} [options]
+ * @param {{ log?: (line: string) => void, argv?: string[] }} [options]
  * @returns {Promise<{ documents: number, versions: number, recorded: number }>}
  */
-export async function main({ log = defaultLog } = {}) {
-  const result = await backfillDocImages();
+export async function main({ log = defaultLog, argv = process.argv.slice(2) } = {}) {
+  const result = await backfillDocImages({ again: argv.includes('--again') });
   log(
     `backfill-doc-images: recorded ${result.recorded} image reference(s) from ` +
       `${result.documents} document(s) and ${result.versions} version(s)`
