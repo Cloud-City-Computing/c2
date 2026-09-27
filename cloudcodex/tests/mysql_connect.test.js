@@ -44,6 +44,7 @@ const {
   c2_query,
   generateSessionToken,
   validateAndAutoLogin,
+  getSessionProvider,
   touchSession,
   withTransaction,
 } = await import('../mysql_connect.js');
@@ -179,6 +180,28 @@ describe('validateAndAutoLogin', () => {
       .mockResolvedValueOnce([[{ user_id: 999, expires_at: future }], []])
       .mockResolvedValueOnce([[], []]);
     expect(await validateAndAutoLogin('orphan')).toBeNull();
+  });
+});
+
+describe('getSessionProvider', () => {
+  it('reads the flow that minted the session, by the digest of the token', async () => {
+    executeMock.mockResolvedValueOnce([[{ auth_provider: 'google' }], []]);
+
+    expect(await getSessionProvider('raw')).toBe('google');
+
+    const [sql, params] = executeMock.mock.calls[0];
+    expect(sql).toMatch(/SELECT auth_provider FROM sessions WHERE id = \? LIMIT 1/i);
+    expect(params).toEqual([hashSessionToken('raw')]);
+  });
+
+  it('answers \'local\' for a session that is gone', async () => {
+    executeMock.mockResolvedValueOnce([[], []]);
+    expect(await getSessionProvider('gone')).toBe('local');
+  });
+
+  it.each([undefined, null, '', 123, {}])('answers \'local\' without querying for %j', async (token) => {
+    expect(await getSessionProvider(token)).toBe('local');
+    expect(executeMock).not.toHaveBeenCalled();
   });
 });
 
