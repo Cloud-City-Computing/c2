@@ -297,6 +297,15 @@ describe('Auth Routes', () => {
       expect(del[1]).toEqual([hashSessionToken('cookie-token')]);
     });
 
+    it('rejects a body token that is not a string, deleting nothing', async () => {
+      const res = await request(app)
+        .post('/api/logout')
+        .send({ token: { id: 1 } });
+
+      expect(res.status).toBe(400);
+      expect(c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/i.test(sql))).toBeUndefined();
+    });
+
     it('rejects missing token', async () => {
       const res = await request(app)
         .post('/api/logout')

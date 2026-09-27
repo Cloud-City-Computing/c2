@@ -152,6 +152,17 @@ describe('validateAndAutoLogin', () => {
     expect(user).toEqual({ id: 1, name: 'Alice', email: 'a@b.c', avatar_url: null, is_admin: 0 });
   });
 
+  // Request bodies are JSON, so a token can arrive as a number, an object or
+  // an array. Hashing one would throw and turn a plain "not signed in" into a
+  // 500; binding it raw never matched a row either. No session, no query.
+  it.each([[123], [{}], [['a']], [''], [null], [undefined]])(
+    'returns null without querying for a token that is not a non-empty string (%j)',
+    async (token) => {
+      expect(await validateAndAutoLogin(token)).toBeNull();
+      expect(executeMock).not.toHaveBeenCalled();
+    }
+  );
+
   it('looks the session up by the digest of the token, never the token', async () => {
     executeMock.mockResolvedValueOnce([[], []]);
 
@@ -176,6 +187,8 @@ describe('touchSession', () => {
     await touchSession(undefined);
     await touchSession(null);
     await touchSession('');
+    await touchSession(123);
+    await touchSession({});
     expect(executeMock).not.toHaveBeenCalled();
   });
 
