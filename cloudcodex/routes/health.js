@@ -55,11 +55,11 @@ export const readiness = {
 
 // Probes are unauthenticated and sit ahead of every limiter, so a burst of
 // them must not become a burst of queries on the shared pool: concurrent
-// callers share one check. A SELECT 1 that outlives the two-second bound
-// still holds a pooled connection until MySQL answers, so the next probe
-// waits on that same query rather than queueing another behind it, for up
-// to ten seconds; after that a query that may never answer is left behind.
-let databaseCheck = null;
+// callers share the SELECT 1 that is out and the migrations read that is
+// out. A SELECT 1 that outlives the two-second bound still holds a pooled
+// connection until MySQL answers, so the next probe waits on that same query
+// rather than queueing another behind it, for up to ten seconds; after that a
+// query that may never answer is left behind.
 let migrationsCheck = null;
 
 /** Say `line` in the log once per process, keyed by `key`. */
@@ -92,13 +92,12 @@ async function selectOneAnswers() {
 }
 
 /** Whether the database answers, reusing an answer under a second old. Never throws. */
-function databaseAnswers() {
+async function databaseAnswers() {
   const cached = readiness.database;
-  if (cached && Date.now() - cached.checkedAt < DATABASE_REUSE_MS) return Promise.resolve(cached.ok);
-  databaseCheck ??= selectOneAnswers()
-    .then((ok) => { readiness.database = { checkedAt: Date.now(), ok }; return ok; })
-    .finally(() => { databaseCheck = null; });
-  return databaseCheck;
+  if (cached && Date.now() - cached.checkedAt < DATABASE_REUSE_MS) return cached.ok;
+  const ok = await selectOneAnswers();
+  readiness.database = { checkedAt: Date.now(), ok };
+  return ok;
 }
 
 /** Read the migrations answer fresh. Unknown counts as pending. Never throws. */

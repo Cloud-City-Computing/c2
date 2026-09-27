@@ -223,9 +223,24 @@ describe('GET /readyz', () => {
   });
 
   it('concurrent probes share one check instead of each querying the pool', async () => {
-    const answers = await Promise.all(Array.from({ length: 8 }, () => request(app).get('/readyz')));
+    const answers = [];
+    c2_query.mockImplementation(async (sql) => {
+      if (sql === 'SELECT 1') return [{ 1: 1 }];
+      if (/schema_migrations/.test(sql)) {
+        return new Promise((resolve) => {
+          answers.push(() => resolve(ALL_FILES.map((filename) => ({ filename, checksum: 'c'.repeat(64) }))));
+        });
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
 
-    expect(answers.map((res) => res.status)).toEqual(Array(8).fill(200));
+    // Eight probes land together, while the first one's read is still out.
+    const probes = Array.from({ length: 8 }, () => notReadyReason());
+    await vi.waitFor(() => expect(answers.length).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    answers.forEach((answer) => answer());
+
+    expect(await Promise.all(probes)).toEqual(Array(8).fill(null));
     expect(queriesMatching(/^SELECT 1$/)).toBe(1);
     expect(queriesMatching(/schema_migrations/)).toBe(1);
   });

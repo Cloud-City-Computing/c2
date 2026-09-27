@@ -227,6 +227,25 @@ describe('acquireInstanceLock: for the life of the process', () => {
     await lock.release();
   });
 
+  it('hands over once when it is the keepalive that finds the loss, with a retake already scheduled', async () => {
+    vi.useFakeTimers();
+    const first = fakeConnection({ holder: 17 });
+    const connect = vi.fn()
+      .mockResolvedValueOnce(first)
+      .mockImplementation(async () => fakeConnection({ got: 0, holder: 99 }));
+    const onSuperseded = vi.fn();
+    const lock = await acquireInstanceLock({ connect, log, onSuperseded, pingMs: 1_000, retakeMs: 500 });
+
+    // No 'error' event: the SELECT 1 fails, the tick retakes at once and is
+    // refused, and the retake the loss scheduled is still due.
+    first.state.pingFails = true;
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(onSuperseded).toHaveBeenCalledTimes(1);
+    expect(connect).toHaveBeenCalledTimes(2);
+    await lock.release();
+  });
+
   it('tries to take it back within retakeMs of losing it, not at the next keepalive', async () => {
     vi.useFakeTimers();
     const first = fakeConnection({ holder: 17 });
