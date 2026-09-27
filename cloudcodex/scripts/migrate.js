@@ -924,10 +924,11 @@ export function resolveDbConfig(env) {
   }
 
   return {
-    host: env.DB_HOST ?? 'localhost',
+    // Blank behaves as unset, as it does in mysql_connect.js.
+    host: env.DB_HOST?.trim() || 'localhost',
     user: env.DB_USER,
     password: env.DB_PASS,
-    database: env.DB_NAME ?? 'c2',
+    database: env.DB_NAME?.trim() || 'c2',
     multipleStatements: true,
   };
 }

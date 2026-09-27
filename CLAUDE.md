@@ -499,6 +499,8 @@ Before claiming a change is done:
 2. `npm test` — green.
 3. New env vars added to `.env.example` with a comment, and an entry in
    `cloudcodex/env-contract.js` (`tests/env-contract.test.js` fails without one).
+   A `default` entry also needs a test that reads its value through
+   `contractDefault('<NAME>')` and is listed in that test's `DEFAULT_PROVEN_IN`.
 4. New required dependencies added to `package.json` (and code-split in
    `vite.config.js` if they're heavy frontend libs — see `manualChunks`).
 5. Any new SQL columns/tables added as a migration in `migrations/` AND as

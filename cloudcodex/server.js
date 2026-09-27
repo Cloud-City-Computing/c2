@@ -45,6 +45,13 @@ if (process.env.NODE_ENV === 'production') {
       'set it to the address people use to reach this instance, such as https://docs.example.com.'
     );
     process.exit(1);
+  } else if (/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(new URL(appUrl).hostname)) {
+    // Allowed, since an evaluation run on one machine is legitimate, but a
+    // copied .env.example on a public host would otherwise go unnoticed.
+    console.error(
+      `⚠ APP_URL "${appUrl}" points at this machine, so emailed links open nowhere else. ` +
+      'Set it to the public address unless this instance is only used here.'
+    );
   }
 }
 

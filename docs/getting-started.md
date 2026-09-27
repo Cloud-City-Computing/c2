@@ -178,7 +178,7 @@ All seed accounts use the password **`password`**.
 | `SMTP_PORT` | SMTP server port | `587` |
 | `SMTP_USER` | SMTP username | — (optional; leave blank to run without email) |
 | `SMTP_PASS` | SMTP password | — (optional; leave blank to run without email) |
-| `SMTP_FROM` | Sender address for outbound email | — |
+| `SMTP_FROM` | Sender address for outbound email; blank uses the default | `Cloud Codex <noreply@cloudcitycomputing.com>` |
 | `ADMIN_USERNAME` | Username for the auto-created admin super-user | `admin` |
 | `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — (required) |
 | `ADMIN_PASSWORD` | Password for the admin super-user | — (required) |

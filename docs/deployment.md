@@ -109,7 +109,7 @@ Production-specific notes:
 
 | Variable                   | Production note                                          |
 |----------------------------|----------------------------------------------------------|
-| `APP_URL`                  | **Required in production**: without an `http://` or `https://` URL the server exits at boot. The public address people use, `https://` behind a TLS proxy; invitation, reset and notification links carry it |
+| `APP_URL`                  | **Required in production**: without an `http://` or `https://` URL the server exits at boot, and a `localhost` one boots with a warning. The public address people use, `https://` behind a TLS proxy; invitation, reset and notification links carry it |
 | `CORS_ORIGIN`              | Leave empty. The app's own origin and `APP_URL`'s are always allowed; set it only for a separate front end |
 | `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count. Unset is `1`, right for one reverse proxy in front of the app. See [Rate limiters](#rate-limiters) |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
@@ -573,11 +573,11 @@ this is not a typical concern.
 | WebSocket messages   | 60 / second per connection      |
 
 The limiters count per client address, which Express takes from
-`X-Forwarded-For` as far as `TRUST_PROXY` allows. Unset, it is `1`: trust
-exactly the one hop in front of the app, which is right behind one reverse
-proxy, the setup this page recommends. With two proxies in front
-(a load balancer, then nginx) set `TRUST_PROXY=2`; to trust only known proxy
-addresses, give `loopback` or a comma list of addresses and CIDRs. Never set
+`X-Forwarded-For` as far as `TRUST_PROXY` allows, so set it to match how
+clients actually reach the app. Unset, it is `1`: Express trusts exactly one
+hop in front of it. With two proxies in front (a load balancer, then nginx)
+set `TRUST_PROXY=2`; to trust only known proxy addresses, give `loopback` or a
+comma list of addresses and CIDRs; with nothing in front, `false`. Never set
 `true`: it believes whatever `X-Forwarded-For` a client sends, so anyone can
 choose their own address and walk around every limit. A value Express cannot
 parse stops the server at boot.

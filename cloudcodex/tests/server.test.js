@@ -537,7 +537,7 @@ describe('server.js: APP_URL', () => {
     }
   );
 
-  it.each(['https://codex.example.com', 'http://10.0.0.5:3000', 'https://localhost.example.com'])(
+  it.each(['https://codex.example.com', 'http://10.0.0.5:3000', 'https://localhost.example.com', 'http://notlocalhost:3000'])(
     'does not warn in production for APP_URL %j',
     async (value) => {
       await withEnv({ NODE_ENV: 'production', APP_URL: value }, () => {

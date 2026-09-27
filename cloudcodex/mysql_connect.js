@@ -46,11 +46,12 @@ try {
   process.exit(1);
 }
 
+// A blank DB_HOST or DB_NAME behaves as unset, as scripts/migrate.js does.
 const pool = mysql.createPool({
-  host:             process.env.DB_HOST ?? 'localhost',
+  host:             process.env.DB_HOST?.trim() || 'localhost',
   user:             process.env.DB_USER,
   password:         process.env.DB_PASS,
-  database:         process.env.DB_NAME ?? 'c2',
+  database:         process.env.DB_NAME?.trim() || 'c2',
   waitForConnections: true,
   connectionLimit,
   queueLimit:       0,

@@ -15,19 +15,19 @@ config gates run **before** anything listens.
 |---|---|---|
 | Load `.env` | `mysql_connect.js:16` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
 | Pool size gate | `mysql_connect.js:28-47`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
-| DB pool | `mysql_connect.js:49-57` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. |
-| DB credential gate | `mysql_connect.js:59-63` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
+| DB pool | `mysql_connect.js:50-58` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. A blank `DB_HOST` or `DB_NAME` behaves as unset (`localhost`, `c2`), as in `scripts/migrate.js`. |
+| DB credential gate | `mysql_connect.js:60-64` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
 | Trust proxy gate | `app.js:61`, `parseTrustProxy()` | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY` (unset or blank is 1, digits a hop count, `true`/`false` booleans, anything else passed through). Express compiles the value there and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the gates around it (pool size, trust proxy, `APP_URL`, the provider list, and an invalid `PORT`), these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
-| `APP_URL` gate | `server.js:30-49` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
+| `APP_URL` gate | `server.js:30-56` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. A valid one whose host is `localhost`, `127.x.x.x`, `[::1]` or a `.localhost` name boots but prints `⚠ APP_URL "<value>" points at this machine`, since `.env.example` ships `http://localhost:3000` and the release compose file's one-machine evaluation is legitimate. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
 | Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:253`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
-| Collab WS | `server.js:165` | `setupCollabServer(server)`, path `/collab`. |
-| Notification WS | `server.js:169` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
-| Activity prune | `server.js:172-190` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
+| Collab WS | `server.js:172` | `setupCollabServer(server)`, path `/collab`. |
+| Notification WS | `server.js:176` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Activity prune | `server.js:179-197` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 
 Two consequences worth knowing:
 
@@ -35,14 +35,14 @@ Two consequences worth knowing:
   out of `server.js` precisely so Supertest can mount the app without a
   listener (`app.js:4-5`). Tests import `app.js`; they never import `server.js`
   except `tests/server.test.js`.
-- **The daily prune is single-process by design.** `server.js:173` says so
+- **The daily prune is single-process by design.** `server.js:180` says so
   explicitly. If the app is ever scaled horizontally, every replica prunes.
 
 ### The configuration contract (`cloudcodex/env-contract.js`)
 
 `ENV_CONTRACT` lists every environment variable the server reads, one entry
 each: `name`; `kind` (`required`, `required-in-production`, `default` with the
-value an unset variable behaves as, or `optional`); `requiredWith` on an
+value an unset or blank variable behaves as, or `optional`); `requiredWith` on an
 optional entry boot requires beside another; `perInstance`; and `why`. The file
 is **data only and imports nothing**, because Cloud Command's operator link tool
 (W6-CMD-31) pins a byte-for-byte copy of it and prints every `perInstance` entry
@@ -63,6 +63,14 @@ whose one entry is `scripts/migrate.js` handing `process.env` to
 `resolveDbConfig(env)` for the four `DB_*` names. **A new variable is read as
 `process.env.NAME`, by literal name, and gets its entry in the same PR**, or
 this test is red.
+
+Every `default` entry's value is also proven against the code. The test's
+`DEFAULT_PROVEN_IN` names, for each one, the test file that reads the expected
+value through `contractDefault('<NAME>')` (`tests/contract-default.js`) and
+compares it with what the code does unset and blank: the `PORT` listen, the
+`TRUST_PROXY` parse, the pool's `host`, `database` and `connectionLimit`, and
+the mail transport's port and From. A new default entry without such a test
+fails, and so does a listed file that stops calling it.
 
 ## 2. The middleware stack, in mount order
 
@@ -211,7 +219,7 @@ component that consume it.
    is **exported**, so it is the single definition of "which token is this
    request carrying" and `POST /api/logout` uses the same one.
 2. No token, 401 `Authentication required`.
-3. `validateAndAutoLogin(token)` (`mysql_connect.js:183-197`) looks the session
+3. `validateAndAutoLogin(token)` (`mysql_connect.js:184-198`) looks the session
    up by primary key, rejects if `expires_at <= now`, then loads the user row.
    The returned user carries exactly `id, name, email, avatar_url, is_admin`.
 4. On success sets `req.user` and `req.sessionToken`, then fires
@@ -311,17 +319,17 @@ refusal and the linked rung's trade-off against MySQL 8.4.
 
 ### Session tokens
 
-`generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:140-175`) is
+`generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:141-176`) is
 **one session per user**, not one per device:
 
 - It looks up `WHERE user_id = ? LIMIT 1`.
 - If a live session exists, it updates `ip_address`/`user_agent`/`last_active_at`
-  and **returns the same token** (`mysql_connect.js:147-154`).
+  and **returns the same token** (`mysql_connect.js:148-155`).
 - If the session exists but is expired, it rotates the id in place and extends
-  by 7 days (`mysql_connect.js:156-164`).
+  by 7 days (`mysql_connect.js:157-165`).
 - Otherwise it inserts a new row with a 7-day expiry.
 
-Token generation (`mysql_connect.js:126-130`) uses `crypto.getRandomValues` over a
+Token generation (`mysql_connect.js:127-131`) uses `crypto.getRandomValues` over a
 62-character alphabet, default length 64, matching `sessions.id CHAR(64)`. The
 modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 

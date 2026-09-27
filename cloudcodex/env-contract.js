@@ -8,7 +8,7 @@
 // Data only, no imports: a paired product pins a copy of this file and reads it.
 //
 // kind: 'required' (boot exits without it), 'required-in-production' (boot
-// exits without it when NODE_ENV=production), 'default' (unset behaves as
+// exits without it when NODE_ENV=production), 'default' (unset or blank behaves as
 // `default`) or 'optional' (unset turns something off, or keeps a documented
 // behaviour). requiredWith, on an optional entry: boot requires it whenever
 // the variable it names is set.
