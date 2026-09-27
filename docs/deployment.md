@@ -92,21 +92,28 @@ docker compose -f docker-compose-prod.yml up -d --build
 ```
 
 The app container builds the Vite frontend during `docker build`. It
-exits immediately on startup if SMTP or admin credentials are missing —
-this is intentional. There are no hidden defaults.
+exits at startup, with a sentence naming the variable, if the admin
+credentials are missing or `APP_URL` is unset; mail is optional.
 
 ---
 
 ## Required environment for production
 
-The full reference lives in [getting-started.md](./getting-started.md).
+**Every variable the server reads is listed in
+[`cloudcodex/env-contract.js`](../cloudcodex/env-contract.js)**, with whether
+it is required, required in production, defaulted (and to what) or optional,
+and why. A test fails when the server reads a variable that file does not
+list, so it is complete by construction; `.env.example` carries a comment for
+each one, and [getting-started.md](./getting-started.md) walks through them.
 Production-specific notes:
 
 | Variable                   | Production note                                          |
 |----------------------------|----------------------------------------------------------|
-| `APP_URL`                  | Must be the public HTTPS URL — used in outbound emails  |
-| `CORS_ORIGIN`              | Set to your `APP_URL` host. Empty = same-origin only     |
-| `SMTP_*`                   | Hard requirement — server exits on missing credentials  |
+| `APP_URL`                  | **Required in production**: without an `http://` or `https://` URL the server exits at boot. The public address people use, `https://` behind a TLS proxy; invitation, reset and notification links carry it |
+| `CORS_ORIGIN`              | Leave empty. The app's own origin and `APP_URL`'s are always allowed; set it only for a separate front end |
+| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count. Unset is `1`, right for one reverse proxy in front of the app. See [Rate limiters](#rate-limiters) |
+| `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
+| `SMTP_*`                   | Optional. Without them invitations show a copyable link and password reset is unavailable |
 | `ADMIN_*`                  | Hard requirement. **They reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
 | `GITHUB_CLIENT_SECRET`     | Doubles as the AES-256-GCM seed for stored OAuth tokens. **Never rotate without re-encrypting** existing rows or all linked GitHub accounts go invalid |
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
@@ -170,8 +177,9 @@ requirements the proxy must satisfy:
 
 Both WebSocket servers refuse a cross-origin upgrade themselves: each requires
 an `Origin` whose host equals `Host`. Helmet's CSP (`connect-src 'self' ws: wss:`)
-is not what enforces that, because it is sent only on `/api` responses and so
-does not govern the page that opens the sockets.
+is not what enforces that. In production it does govern the page that opens the
+sockets, but it allows any `ws:` or `wss:` host, and a CSP binds only the
+browser that honours it, never a script calling the socket directly.
 
 ---
 
@@ -564,10 +572,15 @@ this is not a typical concern.
 | User search          | 60 / 15 minutes per IP          |
 | WebSocket messages   | 60 / second per connection      |
 
-`X-Forwarded-For` must be honored by your reverse proxy for these to
-limit per-client rather than per-proxy — Cloud Codex does not currently
-trust that header explicitly, so set `app.set('trust proxy', …)` if you
-introduce a proxy that requires it (and add a test).
+The limiters count per client address, which Express takes from
+`X-Forwarded-For` as far as `TRUST_PROXY` allows. Unset, it is `1`: trust
+exactly the one hop in front of the app, which is right behind one reverse
+proxy, the setup this page recommends. With two proxies in front
+(a load balancer, then nginx) set `TRUST_PROXY=2`; to trust only known proxy
+addresses, give `loopback` or a comma list of addresses and CIDRs. Never set
+`true`: it believes whatever `X-Forwarded-For` a client sends, so anyone can
+choose their own address and walk around every limit. A value Express cannot
+parse stops the server at boot.
 
 ---
 

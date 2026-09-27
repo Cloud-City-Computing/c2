@@ -8,23 +8,26 @@ same HTTP listener.
 
 ## 1. Boot order
 
-`cloudcodex/server.js` is the entry point and it is deliberately fail-fast: two
+`cloudcodex/server.js` is the entry point and it is deliberately fail-fast: the
 config gates run **before** anything listens.
 
 | Step | Location | Behaviour |
 |---|---|---|
 | Load `.env` | `mysql_connect.js:16` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
-| DB pool | `mysql_connect.js:18-26` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. |
-| DB credential gate | `mysql_connect.js:28-32` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the provider gate below and an invalid `PORT`, these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
+| Pool size gate | `mysql_connect.js:28-47`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
+| DB pool | `mysql_connect.js:49-57` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. |
+| DB credential gate | `mysql_connect.js:59-63` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
+| Trust proxy gate | `app.js:61`, `parseTrustProxy()` | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY` (unset or blank is 1, digits a hop count, `true`/`false` booleans, anything else passed through). Express compiles the value there and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
+| Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the gates around it (pool size, trust proxy, `APP_URL`, the provider list, and an invalid `PORT`), these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
+| `APP_URL` gate | `server.js:30-49` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
 | Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:253`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
-| Collab WS | `server.js:64` | `setupCollabServer(server)`, path `/collab`. |
-| Notification WS | `server.js:68` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
-| Activity prune | `server.js:73-89` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
+| Collab WS | `server.js:165` | `setupCollabServer(server)`, path `/collab`. |
+| Notification WS | `server.js:169` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Activity prune | `server.js:172-190` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 
 Two consequences worth knowing:
 
@@ -32,24 +35,53 @@ Two consequences worth knowing:
   out of `server.js` precisely so Supertest can mount the app without a
   listener (`app.js:4-5`). Tests import `app.js`; they never import `server.js`
   except `tests/server.test.js`.
-- **The daily prune is single-process by design.** `server.js:72` says so
+- **The daily prune is single-process by design.** `server.js:173` says so
   explicitly. If the app is ever scaled horizontally, every replica prunes.
+
+### The configuration contract (`cloudcodex/env-contract.js`)
+
+`ENV_CONTRACT` lists every environment variable the server reads, one entry
+each: `name`; `kind` (`required`, `required-in-production`, `default` with the
+value an unset variable behaves as, or `optional`); `requiredWith` on an
+optional entry boot requires beside another; `perInstance`; and `why`. The file
+is **data only and imports nothing**, because Cloud Command's operator link tool
+(W6-CMD-31) pins a byte-for-byte copy of it and prints every `perInstance` entry
+into an instance's env snippet. `perInstance` says **who supplies the value**:
+`true` when linking the instance to its workspace does (`APP_URL`,
+`SERVICE_TOKEN`, `SERVICE_TOKEN_USER` today), `false` when the box's env
+template, the database provisioning step or a default does (`DB_NAME` differs
+per instance and is still `false`).
+
+`tests/env-contract.test.js` parses every source file under `cloudcodex/`
+(outside `tests/`, `vendor/`, `node_modules/`, `dist/` and `coverage/`) with
+ESLint's parser and collects each `process.env.NAME` and
+`process.env['NAME']`. The set read must equal the set declared, every name
+must appear in `.env.example`, and each entry's fields must be well formed. A
+read by a computed key fails, and so does a bare `process.env` (passed whole,
+destructured, or `env` imported from `node:process`) outside its allowlist,
+whose one entry is `scripts/migrate.js` handing `process.env` to
+`resolveDbConfig(env)` for the four `DB_*` names. **A new variable is read as
+`process.env.NAME`, by literal name, and gets its entry in the same PR**, or
+this test is red.
 
 ## 2. The middleware stack, in mount order
 
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', 1)                    app.js:42
+app.set('trust proxy', TRUST_PROXY ?? 1)     app.js:61
   │
-  ├─ CORS, scoped to /api                    app.js:53-109
-  ├─ helmet + CSP, scoped to /api            app.js:112-125
-  ├─ express.json({ limit: '2mb' })          app.js:137
-  ├─ authLimiter on 9 paths + reader-check   app.js:140-163
-  ├─ searchLimiter on /api/users/search      app.js:174
-  ├─ static /avatars      (7d immutable)     app.js:177-180
-  ├─ static /doc-images   (30d immutable)    app.js:183-186
-  └─ 18 routers, all mounted at /api
+  ├─ CORS, scoped to /api                    app.js:77-133
+  ├─ helmet + CSP: whole app in production,  app.js:143-171
+  │  /api only otherwise
+  ├─ express.json({ limit: '2mb' })          app.js:183
+  ├─ authLimiter on 9 paths + reader-check   app.js:186-209
+  ├─ searchLimiter on /api/users/search      app.js:220
+  ├─ static /avatars      (7d immutable)     app.js:223-226
+  ├─ static /doc-images   (30d immutable)    app.js:229-232
+  ├─ 18 routers, all mounted at /api
+  └─ (production, at listen time) vite-express's static dist/ and index.html
+     handlers, appended after all of the above
 ```
 
 **CORS** (`app.js`, the `cors((req, cb) => ...)` block) allows, in order: a
@@ -86,17 +118,44 @@ the public name, unless the operator adds `proxy_set_header Host $host`. Without
 the `APP_URL` fallback that configuration reproduces the original outage exactly:
 every write returns 500. `APP_URL` is already required and is operator-set.
 
-It is deliberately **not** `req.hostname`. `trust proxy` is 1, so `req.hostname`
+It is deliberately **not** `req.hostname`. `trust proxy` is 1 by default (and
+whatever `TRUST_PROXY` says otherwise), so `req.hostname`
 honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
 app's port directly, so an attacker could set that header themselves and turn
 the same-origin clause into "allow any origin".
 
-**CSP** (`app.js:113-124`) is scoped to `/api` on purpose so the Vite dev server's
-inline module scripts are not blocked. `frameAncestors: 'none'`,
-`objectSrc: 'none'`, `connectSrc` allows `ws:`/`wss:` for the two WebSockets,
-`imgSrc` allows `data:` and `blob:` for pasted images.
+**Security headers** (`HELMET_OPTIONS`, `app.js:143-170`) are one Helmet policy
+with two scopes (`app.js:171`). **In production it is mounted on `/`**, so it
+covers every response: the single-page app's HTML and built assets (served by
+the handlers `vite-express` appends at listen time, after everything here), the
+`/avatars` and `/doc-images` static files, and `/api`. **Anywhere else it stays
+on `/api`**, so the Vite dev server's inline module scripts still load. The
+policy: `default-src 'self'`, `script-src 'self'`, `style-src 'self'
+'unsafe-inline'`, `img-src 'self' data: blob: https:` (documents hold remote
+images, pasted or imported from GitHub, and a linked GitHub avatar is remote),
+`connect-src 'self' ws: wss:` for the two WebSockets, `font-src 'self' data:`,
+`object-src 'none'`, `frame-ancestors 'none'`, plus Helmet's defaults
+(`base-uri 'self'`, `form-action 'self'`, `script-src-attr 'none'`), and
+`X-Frame-Options: DENY`. Two of Helmet's defaults are overridden by name:
 
-**Body limit is 2 MB** (`app.js:137`). The collab WebSocket has its own, larger
+- **`upgrade-insecure-requests` is off.** It would rewrite the built app's own
+  `http://` asset requests to `https://` on an install without TLS, and the
+  release compose file serves `http://localhost:3000`. TLS is the proxy's job.
+- **`Cross-Origin-Opener-Policy` is `same-origin-allow-popups`**, not
+  `same-origin`. The draw.io editor is a popup on `embed.diagrams.net` that
+  answers through `window.opener`; under `same-origin` the page's handle on a
+  cross-origin popup reads as closed and no message comes back (measured in
+  Chromium 148: no `init` event), so the editor would never load a diagram.
+
+Express's final handler replaces the CSP on its own 404 page with
+`default-src 'none'` and leaves the rest. In production that page is rare, since
+`vite-express` answers unknown paths with `index.html`. The PDF export writes no
+script into its print window for this reason (`frontend-architecture.md`,
+`exportDocument`). Covered by the `security header scope` block in
+`tests/app.test.js`, which re-imports `app.js` per `NODE_ENV` and appends a
+handler the way `vite-express` does.
+
+**Body limit is 2 MB** (`app.js:183`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:43-44`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -104,8 +163,8 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:128-135`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:153`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:163`) |
-| `searchLimiter` (`app.js:166-173`) | 15 min / 60 | `/api/users/search` only (`app.js:174`), to blunt user enumeration |
+| `authLimiter` (`app.js:174-181`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:186-193`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:199`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:209`) |
+| `searchLimiter` (`app.js:212-219`) | 15 min / 60 | `/api/users/search` only (`app.js:220`), to blunt user enumeration |
 
 Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. One test exercises the
@@ -152,7 +211,7 @@ component that consume it.
    is **exported**, so it is the single definition of "which token is this
    request carrying" and `POST /api/logout` uses the same one.
 2. No token, 401 `Authentication required`.
-3. `validateAndAutoLogin(token)` (`mysql_connect.js:152-166`) looks the session
+3. `validateAndAutoLogin(token)` (`mysql_connect.js:183-197`) looks the session
    up by primary key, rejects if `expires_at <= now`, then loads the user row.
    The returned user carries exactly `id, name, email, avatar_url, is_admin`.
 4. On success sets `req.user` and `req.sessionToken`, then fires
@@ -252,17 +311,17 @@ refusal and the linked rung's trade-off against MySQL 8.4.
 
 ### Session tokens
 
-`generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:109-144`) is
+`generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:140-175`) is
 **one session per user**, not one per device:
 
 - It looks up `WHERE user_id = ? LIMIT 1`.
 - If a live session exists, it updates `ip_address`/`user_agent`/`last_active_at`
-  and **returns the same token** (`mysql_connect.js:116-123`).
+  and **returns the same token** (`mysql_connect.js:147-154`).
 - If the session exists but is expired, it rotates the id in place and extends
-  by 7 days (`mysql_connect.js:125-133`).
+  by 7 days (`mysql_connect.js:156-164`).
 - Otherwise it inserts a new row with a 7-day expiry.
 
-Token generation (`mysql_connect.js:95-99`) uses `crypto.getRandomValues` over a
+Token generation (`mysql_connect.js:126-130`) uses `crypto.getRandomValues` over a
 62-character alphabet, default length 64, matching `sessions.id CHAR(64)`. The
 modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 

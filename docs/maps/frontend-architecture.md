@@ -68,15 +68,15 @@ Rollup's default chunking.
 
 ## 2. The API layer: `src/util.jsx`
 
-662 lines, and the single place any component should talk to the server from.
+667 lines, and the single place any component should talk to the server from.
 
 `apiFetch(method, url, data)` (`util.jsx:28-52`) reads the session token from
-the cookie via `getSessionTokenFromCookie()` (`util.jsx:621`), sets
+the cookie via `getSessionTokenFromCookie()` (`util.jsx:630`), sets
 `Authorization: Bearer`, JSON-encodes the body for non-GET, and on a non-2xx
 throws an `Error` carrying `.status` and `.body`. `getErrorMessage(err)`
 (`util.jsx:102`) is the standard way to render that.
 
-`setSessionCookie(token)` (`util.jsx:642`) is the one client-side writer of the
+`setSessionCookie(token)` (`util.jsx:647`) is the one client-side writer of the
 `sessionToken` cookie (`path=/`, seven-day `max-age`, `secure`,
 `samesite=strict`). Sign-in (`Login.jsx`, all three success paths) and the
 account panel's session rotation both call it, so a token rotated after an
@@ -96,10 +96,20 @@ notifications (`:291`), favorites (`:307`), comments (`:315`), archives
 
 **Add new API calls here as a named export**, next to their neighbours, rather
 than calling `fetch` from a component. Two paths bypass `apiFetch` deliberately
-because they are not JSON: `uploadDocument` (`util.jsx:380`, multipart) and
-`exportDocument` (`util.jsx:416`, blob download).
+because they are not JSON: `uploadDocument` (`util.jsx:379`, multipart) and
+`exportDocument` (`util.jsx:415`, blob download).
 
-The tail of the file (`util.jsx:501-616`) is imperative DOM helpers predating
+`exportDocument(..., 'pdf')` is the exception inside the exception: it opens an
+`about:blank` window, writes the sanitized document into it, and **prints it
+from the opener** (`printWindow.print()` on the window's `load`, and `close()` on
+its `afterprint`). It must not write a `<script>` into that window: an
+`about:blank` popup inherits the opener's Content-Security-Policy, and in
+production that policy is `script-src 'self'` (`request-lifecycle.md` section
+2), so an inline script there never runs and no print dialog opens. The
+listeners go on after `document.close()`, because `document.write()` on the new
+window clears any added before it.
+
+The tail of the file (`util.jsx:506-621`) is imperative DOM helpers predating
 the React migration: `showModal`, `showModalDimmer`, `destroyModal`,
 `showDropdownMenu`, plus session-storage wrappers. They cache React roots in a
 module-level `Map` (`util.jsx:17`) to avoid double-rooting the same node. New UI

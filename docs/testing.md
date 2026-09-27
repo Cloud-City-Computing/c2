@@ -82,12 +82,12 @@ not exercised, and the pre-runner files in `LEGACY_BASELINE` are never run.
 ```bash
 # any MySQL 8.4 answering on 3306, for example a scratch container:
 docker run -d --rm --name c2-it-mysql -p 3306:3306 \
-  -e MYSQL_ROOT_PASSWORD=<pw> mysql:8.4
+  -e MYSQL_ROOT_PASSWORD=<pw> mysql:8.4.11
 IT_DB_ROOT_PASSWORD=<pw> npm run test:integration   # IT_DB_HOST defaults to 127.0.0.1
 ```
 
 CI runs it inside the required `Lint, test and build` job against a
-`mysql:8.4` service container. See `docs/maps/build-test-and-ops.md` section 5
+`mysql:8.4.11` service container. See `docs/maps/build-test-and-ops.md` section 5
 for the mechanism.
 
 ---

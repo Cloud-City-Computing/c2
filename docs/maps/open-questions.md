@@ -780,7 +780,7 @@ per keystroke), but worth stating.
 
 ### C2. One session row per user
 
-`generateSessionToken` (`mysql_connect.js:109-144`) reuses the existing row, so
+`generateSessionToken` (`mysql_connect.js:140-175`) reuses the existing row, so
 signing in on a second device returns the first device's token and `POST
 /api/logout` signs out everywhere. The schema does not enforce the one-row
 assumption with a unique key on `user_id`.
@@ -907,7 +907,7 @@ Corrected in this pass, listed here so the drift pattern is visible:
   The doc's "filesystem globally" reads as more complete than it is.
 - **`useGitHubStatus` is `.jsx`, not `.js`.**
 - **The comment "no external job queue"** is accurate in spirit, but
-  `server.js:73-89` does run an in-process daily prune, which is a scheduled job
+  `server.js:172-190` does run an in-process daily prune, which is a scheduled job
   by another name.
 
 ## E. Things not investigated

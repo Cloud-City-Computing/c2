@@ -19,7 +19,8 @@ even if the DB is compromised.
       │
       ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  edge:    helmet on /api (CSP, X-Frame, X-CT, Referrer)  │
+   │  edge:    helmet: every response in prod, /api in dev    │
+   │           (CSP, X-Frame DENY, X-CT, Referrer, COOP)      │
    │           CORS allowlist (no localhost in prod)          │
    │           express-rate-limit (auth 20/15m, search 60/15m)│
    └──────────────────────────────────────────────────────────┘
@@ -148,7 +149,28 @@ GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key deri
 
 ## Security Headers
 
-**Helmet** middleware applies a strict Content Security Policy and standard security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, etc.) to every **`/api`** response (`app.js:112-125`). It is scoped to `/api` on purpose, so the Vite dev server's inline module scripts are not blocked, and that scope applies in production too: the single-page app's HTML, its built assets and the `/avatars` and `/doc-images` static files are served **without** a CSP or frame protection today. Extending the policy to the whole app in production is planned in [`specs/2026-09-24-suite-hosting-readiness.md`](specs/2026-09-24-suite-hosting-readiness.md) (W6-CDX-32).
+**Helmet** applies one policy, a strict Content Security Policy plus standard security headers (`X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` and the others Helmet sets by default), with two scopes (`HELMET_OPTIONS` in `cloudcodex/app.js`):
+
+- **In production** (`NODE_ENV=production`, which the Docker image and `npm run start` set) it covers **every response**: the single-page app's HTML and built assets, the `/avatars` and `/doc-images` static files, and `/api`. It is mounted before the static mounts and before the handlers `vite-express` appends at listen time.
+- **In development** it stays on **`/api`**, so the Vite dev server's inline module scripts still load.
+
+The policy:
+
+| Directive | Value | Why |
+| --- | --- | --- |
+| `default-src` | `'self'` | |
+| `script-src` | `'self'` | No inline or remote script. The built app has none; the PDF export prints its window from the opener rather than writing a script into it, because an `about:blank` popup inherits this policy. |
+| `style-src` | `'self' 'unsafe-inline'` | Components set inline styles. |
+| `img-src` | `'self' data: blob: https:` | Documents hold any https image (pasted, or imported from GitHub) and a linked GitHub account's avatar is remote. An image cannot run script. |
+| `connect-src` | `'self' ws: wss:` | The collab and notification WebSockets. The sockets' own `Origin` check, not this, is what refuses a cross-origin upgrade. |
+| `font-src` | `'self' data:` | |
+| `object-src` | `'none'` | |
+| `frame-ancestors` | `'none'` | Nothing may frame the app (with `X-Frame-Options: DENY` for older browsers). |
+| `upgrade-insecure-requests` | off | TLS is the reverse proxy's job; an install evaluated over plain `http://` must still load its own assets. |
+
+Helmet's defaults `base-uri 'self'`, `form-action 'self'` and `script-src-attr 'none'` also apply. **`Cross-Origin-Opener-Policy` is `same-origin-allow-popups`** rather than Helmet's `same-origin`: the draw.io editor is a popup on `embed.diagrams.net` that answers through `window.opener`, and `same-origin` severs that link for a cross-origin popup. The page is still isolated from any window that opens it.
+
+A violation found later is fixed by widening the one directive it needs, with a comment saying why, never by dropping the policy.
 
 ---
 

@@ -169,8 +169,10 @@ All seed accounts use the password **`password`**.
 | `DB_USER` | MySQL username | — (required) |
 | `DB_PASS` | MySQL password | — (required) |
 | `DB_NAME` | MySQL database name | `c2` |
+| `DB_POOL_SIZE` | MySQL connections the app keeps open, 1 to 100; anything else stops the boot | `10` |
 | `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
-| `APP_URL` | Base URL used to build invitation/reset links, in emails and in the admin UI's copyable link | `http://localhost:3000` |
+| `APP_URL` | Base URL used to build invitation/reset links, in emails and in the admin UI's copyable link. **Required in production**: the server will not start without an `http(s)` URL | `http://localhost:3000` in development |
+| `TRUST_PROXY` | Which proxies Express believes about the client address (a hop count, `loopback`, an address list, or `false`); the rate limiters count by that address | `1` |
 | `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
 | `SMTP_HOST` | SMTP server hostname | — (optional; leave blank to run without email) |
 | `SMTP_PORT` | SMTP server port | `587` |

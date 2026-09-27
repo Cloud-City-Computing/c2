@@ -159,7 +159,7 @@ auth + access-control machinery.
    POST /api/save-document  { logId, htmlContent, plainContent }
        │
        ▼
-   helmet → cors → JSON parse (2 MB limit)
+   cors → helmet → JSON parse (2 MB limit)
        │
        ▼
    requireAuth      validateAndAutoLogin(token)  ─────────► sessions

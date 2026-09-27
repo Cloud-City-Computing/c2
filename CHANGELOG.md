@@ -12,6 +12,52 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+**Upgrading: a production instance now refuses to start without `APP_URL`.**
+Check that `.env` sets it to the address people use (`.env.example` ships
+`http://localhost:3000`, which satisfies it) before pulling. No migration.
+
+### Added
+
+- `cloudcodex/env-contract.js`, the configuration contract: every environment
+  variable the server reads, whether it is required, required in production,
+  defaulted (and to what) or optional, whether linking an instance to its
+  workspace supplies it, and why. It is data only, so a paired product can pin
+  a copy. A test parses the whole server and fails on a variable read without
+  an entry, an entry nothing reads, or one missing from `.env.example`.
+- `TRUST_PROXY`, Express's `trust proxy` setting, which decides the address the
+  rate limiters count. Unset keeps today's `1`; a hop count, `true`, `false`,
+  `loopback` or an address list are accepted, and a value Express cannot parse
+  stops the boot with a sentence naming the variable.
+- `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
+  anything but a whole number from 1 to 100 stops the boot.
+
+### Changed
+
+- **`APP_URL` is required in production.** With `NODE_ENV=production` (the
+  Docker image and `npm run start`) the server exits at boot when it is unset,
+  blank or not an `http`/`https` URL, instead of emailing invitation,
+  password-reset and notification links that point at `http://localhost:3000`.
+  Development keeps that default.
+- MySQL is pinned to `mysql:8.4.11` in every compose file, both workflows and
+  `start.sh`, instead of the floating `mysql:8`. Both tags resolve to the same
+  image today, so an existing install pulls nothing new; a test fails on a
+  floating tag or on two files disagreeing.
+
+### Security
+
+- **In production the security headers cover the whole app, not only `/api`.**
+  The single-page app's HTML, its built assets and the `/avatars` and
+  `/doc-images` files now carry the Content-Security-Policy, including
+  `frame-ancestors 'none'`, and `X-Frame-Options: DENY`. The policy also
+  allows `https:` images (documents hold remote images, and a linked GitHub
+  account's avatar is remote), turns off Helmet's `upgrade-insecure-requests`
+  so an install served over plain `http` still loads, and sends
+  `Cross-Origin-Opener-Policy: same-origin-allow-popups` so the draw.io
+  editor popup can still answer the page. Development keeps the `/api`-only
+  scope for the Vite dev server. Exporting a document as PDF now prints its
+  window from the page rather than from a script written into the window,
+  which the policy would block.
+
 ### Fixed
 
 - **A fresh install on an SELinux-enforcing host gets its schema.**

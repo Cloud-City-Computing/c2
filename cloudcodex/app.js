@@ -39,10 +39,9 @@ const app = express();
 
 /**
  * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is 1 (trust
- * the one proxy in front of the app: the reverse proxy, or Docker's port
- * forward), digits are a hop count, `true`/`false` are booleans, and anything
- * else (`loopback`, an address or CIDR list) is passed to Express, which
- * validates it.
+ * the one proxy in front of the app, as before this was configurable), digits
+ * are a hop count, `true`/`false` are booleans, and anything else (`loopback`,
+ * an address or CIDR list) is passed to Express, which validates it.
  * @param { String | undefined } value
  * @returns { Number | Boolean | String }
  */
