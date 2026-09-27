@@ -62,8 +62,10 @@ The identity plan's global constraints apply. In addition:
 runtime stage's `ENV` (`Dockerfile:27`), which is why the `start` script's own `NODE_ENV=` prefix is
 not needed in the image.
 
-- [ ] `docker build -t c2:lifecycle ./cloudcodex && docker run --rm c2:lifecycle cat /proc/1/cmdline | tr '\0' ' '`
-      **Expected:** `node server.js`.
+- [x] `docker build -t c2:lifecycle ./cloudcodex && docker run --rm c2:lifecycle cat /proc/1/cmdline | tr '\0' ' '`
+      **Expected:** `node server.js`. (Done 2026-09-27 as `docker exec` into the running compose
+      container instead: `docker run <image> cat ...` makes `cat` PID 1 and prints itself.
+      Measured: `node server.js`.)
 
 ### Task 1.2 Flush and close, as testable units
 
@@ -184,10 +186,12 @@ the real `instance-lock.js` against the test schema:
 
 ### Task 1.7 Image check and docs
 
-- [ ] `docker build`, `docker run` with the release compose file: `docker inspect --format '{{.State.Health.Status}}'`
+- [x] `docker build`, `docker run` with the release compose file: `docker inspect --format '{{.State.Health.Status}}'`
       reads `healthy` within 30 seconds; `docker stop` returns within the 20-second grace period and
-      the log says "stopped cleanly on SIGTERM".
-- [ ] `docs/deployment.md` "Health checks" rewritten (the `/api/oauth/providers` advice goes: it
+      the log says "stopped cleanly on SIGTERM". (2026-09-27: on a fresh volume `/readyz` reads
+      `migrations` until the documented `--adopt-fresh-install`, then `healthy` in 1 s; after
+      `docker start` on the adopted database, `healthy` in 6 s; `docker stop` 0.45 s, exit 0.)
+- [x] `docs/deployment.md` "Health checks" rewritten (the `/api/oauth/providers` advice goes: it
       reads no database); `docs/maps/request-lifecycle.md` section 1 (boot: the lock) and a
       shutdown section; `docs/maps/build-test-and-ops.md` (the image). CHANGELOG.
 

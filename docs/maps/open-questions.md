@@ -124,7 +124,7 @@ that row for a non-admin user:
 
 So `checkLogReadAccess` should return `undefined`, and every
 `/api/logs/:logId/comments` call on a PR-session log should 403 for non-admins,
-as should the `/collab` WebSocket (`collab.js:299-303`).
+as should the `/collab` WebSocket (`collab.js:366-370`).
 
 **Verified:** the clause-by-clause reading above, and that the comment routes
 gate on `checkLogReadAccess` (`comments.js:33`, `:98`, `:122`, `:329`, `:374`,
@@ -139,7 +139,7 @@ than the log, or (b) teach the log-level checks to also honour
 ### B2. `html_content TEXT` capped documents at 64 KiB (FIXED)
 
 `logs.html_content` was `TEXT`, i.e. 65,535 bytes, against an application
-ceiling of 2 MiB (`documents.js:22`, `collab.js:44`).
+ceiling of 2 MiB (`documents.js:22`, `collab.js:49`).
 
 **Confirmed at runtime**, 2026-08-09. `sql_mode` on the shipped image (MySQL
 8.4.8) does include `STRICT_TRANS_TABLES`, so this is an error, not truncation.
@@ -774,13 +774,13 @@ read as proof of none.
 
 ### C1. `canWrite` is evaluated once per collab connection
 
-`collab.js:305`, at session setup. Revoking write access does not take effect
+`collab.js:372`, at session setup. Revoking write access does not take effect
 until the user reconnects. Deliberate (re-checking per message would be a query
 per keystroke), but worth stating.
 
 ### C2. One session row per user
 
-`generateSessionToken` (`mysql_connect.js:109-144`) reuses the existing row, so
+`generateSessionToken` (`mysql_connect.js:135-170`) reuses the existing row, so
 signing in on a second device returns the first device's token and `POST
 /api/logout` signs out everywhere. The schema does not enforce the one-row
 assumption with a unique key on `user_id`.
@@ -907,7 +907,7 @@ Corrected in this pass, listed here so the drift pattern is visible:
   The doc's "filesystem globally" reads as more complete than it is.
 - **`useGitHubStatus` is `.jsx`, not `.js`.**
 - **The comment "no external job queue"** is accurate in spirit, but
-  `server.js:73-89` does run an in-process daily prune, which is a scheduled job
+  `server.js:187-205` does run an in-process daily prune, which is a scheduled job
   by another name.
 
 ## E. Things not investigated

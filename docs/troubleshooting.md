@@ -109,6 +109,27 @@ have boot create a fresh admin, and restart. See
 
 ```
 ┃ ⚠  Symptom
+┃   "Another Cloud Codex process (MySQL connection N) already serves this
+┃   database." and the app exits at startup.
+```
+
+**Cause.** Something else is already running Cloud Codex against the same
+database: a second container, an `npm run dev` left open in another terminal,
+or an old container `docker compose up` did not replace. Two processes would
+each keep their own copy of every open document and overwrite each other's
+edits, so the second one refuses.
+
+**Fix.** Find connection `N` on the MySQL server
+(`SELECT * FROM performance_schema.processlist WHERE ID = N;` shows its host)
+and stop that process; the lock goes with it, and the next start succeeds.
+Only if you know exactly why two processes must share one schema, set
+`C2_INSTANCE_LOCK=0`. See
+[deployment.md, One process per database](./deployment.md#one-process-per-database).
+
+---
+
+```
+┃ ⚠  Symptom
 ┃   "ECONNREFUSED 127.0.0.1:3306" or "Access denied for user … "
 ┃   in the Node container's logs.
 ```

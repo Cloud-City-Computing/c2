@@ -44,7 +44,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 30 per-glob coverage thresholds
+    ├── vitest.config.js         ← three projects + 33 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -80,7 +80,7 @@ file only summarises. Start at [docs/maps/README.md](docs/maps/README.md).
 
 | Map | Read it when |
 |---|---|
-| `request-lifecycle.md` | boot order, middleware stack, sessions, WS upgrades, error handling |
+| `request-lifecycle.md` | boot order, middleware stack, sessions, WS upgrades, error handling, health probes, the instance lock, shutdown |
 | `access-control.md` | **any permission work**, the 7-clause fragments and the four other permission systems |
 | `documents-and-collab.md` | the editor, Yjs, dual-state storage, versions |
 | `github-integration.md` | anything under `routes/github.js` |
@@ -223,7 +223,9 @@ Stored in localStorage. New preferences go through `loadUserPrefs` /
    servers (`/collab` and `/notifications-ws`). No external broker, no separate
    collab service. This is load-bearing: collab state is an in-memory `Y.Doc`
    per open document, so a second replica would maintain a second, divergent
-   copy of the same log.
+   copy of the same log. The instance lock (`services/instance-lock.js`, a
+   `GET_LOCK` named for the schema) makes a second process refuse to start;
+   `C2_INSTANCE_LOCK=0` is the escape, not a scaling switch.
 2. **Dual-state document storage** (`html_content` + `ydoc_state`, plus
    `markdown_content`). REST saves write `html_content`; live editing writes
    `ydoc_state`. They converge only on an explicit save or publish.

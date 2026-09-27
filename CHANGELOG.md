@@ -12,6 +12,37 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- **`GET /healthz` and `GET /readyz`.** `/healthz` answers `{"ok":true}` while
+  the process serves HTTP and touches nothing. `/readyz` answers
+  `{"ready":true}`, or 503 with one reason: `shutting_down`, `lock`,
+  `database` (`SELECT 1` failed or took over two seconds) or `migrations` (a
+  file in `migrations/` is not applied, or the database was never adopted).
+  Neither carries a version, a count or a name. The image has a Docker
+  `HEALTHCHECK` on `/readyz`. See "Health checks" in `docs/deployment.md`.
+- **One process per database.** At boot the app takes a MySQL lock named for
+  its schema and holds it until it stops, so a second process pointed at the
+  same database refuses to start and names the connection that holds it,
+  instead of both keeping their own diverging copy of every open document.
+  `C2_INSTANCE_LOCK=0` turns it off. Instances on different schemas of one
+  server, and `npm run migrate`, never contend with it.
+
+### Changed
+
+- **The container stops cleanly.** The image runs `node server.js` instead of
+  `npm run start`, so `docker stop` reaches the app. On SIGTERM or SIGINT it
+  reports `shutting_down`, writes every open document's not-yet-saved live
+  edits to the database (previously the last three seconds were lost), closes
+  both WebSockets with code 1001, releases the lock and the pool, and exits 0,
+  within ten seconds or exits 1. The production compose files give it
+  `stop_grace_period: 20s`.
+- **Nothing to run on upgrade**, no migration. Two things read differently: a
+  brand-new install reports `unhealthy` until its one-time
+  `npm run migrate -- --adopt-fresh-install`, which was already the documented
+  first-run step, and a container started without the `./migrations` mount the
+  compose files provide reports `migrations`, because it cannot check.
+
 ### Fixed
 
 - **A fresh install on an SELinux-enforcing host gets its schema.**
