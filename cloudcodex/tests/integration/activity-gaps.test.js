@@ -140,6 +140,20 @@ describe('the tree route, on a real server', () => {
     ]);
   });
 
+  it('records nothing for a re-save of the title and parent already stored', async () => {
+    // A real server returns parent_id as a number; a string would make every
+    // re-save look like a move.
+    const res = await request(app)
+      .put(`/api/archives/${archiveId}/logs/${childLogId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'Renamed child', parent_id: parentLogId });
+    expect(res.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(await activityRows('log.rename', 'log', childLogId)).toHaveLength(1);
+    expect(await activityRows('log.move', 'log', childLogId)).toHaveLength(1);
+  });
+
   it('refuses a 256-character title and leaves the stored one alone', async () => {
     const res = await request(app)
       .put(`/api/archives/${archiveId}/logs/${parentLogId}`)

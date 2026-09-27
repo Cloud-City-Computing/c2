@@ -11,7 +11,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, isArchiveOwner, isWorkspaceMember, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
-import { logActivity } from './helpers/activity.js';
+import { logActivity, resolveActivityScope } from './helpers/activity.js';
 
 const router = express.Router();
 
@@ -198,14 +198,23 @@ router.delete('/archives/:id', requireAuth, asyncHandler(async (req, res) => {
   const allowed = await isArchiveOwner(req.user, id);
   if (!allowed) return res.status(403).json({ success: false, message: 'Only a archive or squad owner can delete this archive' });
 
+  // Read the scope while the archive row still leads to its squad and
+  // workspace. An archive with no squad has no workspace, and every
+  // activity_log row needs one, so it stays unrecorded.
+  const scope = await resolveActivityScope('archive', Number(id));
+
   await c2_query(`DELETE FROM archives WHERE id = ?`, [Number(id)]);
 
-  logActivity({
-    user: req.user,
-    action: 'archive.delete',
-    resourceType: 'archive',
-    resourceId: Number(id),
-  });
+  if (scope?.workspace_id) {
+    logActivity({
+      user: req.user,
+      action: 'archive.delete',
+      resourceType: 'archive',
+      resourceId: Number(id),
+      workspaceId: scope.workspace_id,
+      squadId: scope.squad_id,
+    });
+  }
 
   res.json({ success: true });
 }));
@@ -533,6 +542,14 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
   }
 
   const { title, parent_id } = req.body;
+  // The same title rules, and the same 400 bodies, as PUT /api/document/:logId/title.
+  const newTitle = title === undefined ? undefined : (typeof title === 'string' ? title.trim() : '');
+  if (newTitle !== undefined && !newTitle) {
+    return res.status(400).json({ success: false, message: 'Title is required' });
+  }
+  if (newTitle !== undefined && newTitle.length > 255) {
+    return res.status(400).json({ success: false, message: 'Title must be 255 characters or fewer' });
+  }
 
   const [archive] = await c2_query(
     `SELECT p.id FROM archives p
@@ -546,9 +563,10 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
 
   const fields = [];
   const params = [];
-  if (title !== undefined) { fields.push('title = ?'); params.push(title.trim()); }
+  if (newTitle !== undefined) { fields.push('title = ?'); params.push(newTitle); }
+  let pid;
   if (parent_id !== undefined) {
-    const pid = parent_id === null ? null : Number(parent_id);
+    pid = parent_id === null ? null : Number(parent_id);
     if (pid !== null && !isValidId(pid)) {
       return res.status(400).json({ success: false, message: 'Invalid parent_id' });
     }
@@ -560,18 +578,46 @@ router.put('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (
     return res.status(400).json({ success: false, message: 'No fields to update' });
   }
 
+  // The row as it stands, to tell a real rename or move from a re-save of
+  // the same values.
+  const [current] = await c2_query(
+    `SELECT title, parent_id FROM logs WHERE id = ? AND archive_id = ?`,
+    [Number(logId), Number(archiveId)]
+  );
+  if (!current) return res.status(404).json({ success: false, message: 'Log not found' });
+
   params.push(Number(logId), Number(archiveId));
   await c2_query(
     `UPDATE logs SET ${fields.join(', ')} WHERE id = ? AND archive_id = ?`,
     params
   );
 
+  if (newTitle !== undefined && newTitle !== current.title) {
+    logActivity({
+      user: req.user,
+      action: 'log.rename',
+      resourceType: 'log',
+      resourceId: Number(logId),
+      metadata: { title: newTitle },
+    });
+  }
+  if (pid !== undefined && pid !== current.parent_id) {
+    logActivity({
+      user: req.user,
+      action: 'log.move',
+      resourceType: 'log',
+      resourceId: Number(logId),
+      metadata: { parent_id: pid, previous_parent_id: current.parent_id },
+    });
+  }
+
   res.json({ success: true });
 }));
 
 /**
  * DELETE /api/archives/:archiveId/logs/:logId
- * Delete a log (write_access required, cascades children)
+ * Delete a log (write_access required). Its children are promoted, not
+ * deleted: logs.parent_id is ON DELETE SET NULL.
  */
 router.delete('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(async (req, res) => {
   const { archiveId, logId } = req.params;
