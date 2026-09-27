@@ -1,8 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
+
+const flush = () => new Promise((r) => setImmediate(r));
+
+/** Every `INSERT INTO activity_log` the mocked database has seen, as its bound params. */
+const activityInserts = () => c2_query.mock.calls
+  .filter(([sql]) => /INSERT INTO activity_log/i.test(sql))
+  .map(([, params]) => params);
+
+/** The index of the first mocked query whose SQL matches `re`, or -1. */
+const callIndex = (re) => c2_query.mock.calls.findIndex(([sql]) => re.test(sql));
 
 describe('Archive Routes', () => {
   beforeEach(() => {
@@ -228,8 +238,9 @@ describe('Archive Routes', () => {
     it('deletes archive for owner', async () => {
       mockAuthenticated();
       c2_query
-        .mockResolvedValueOnce([{ '1': 1 }]) // isArchiveOwner check
-        .mockResolvedValueOnce([]);            // DELETE
+        .mockResolvedValueOnce([{ '1': 1 }])                        // isArchiveOwner check
+        .mockResolvedValueOnce([{ workspace_id: 7, squad_id: 3 }]) // scope, read before the delete
+        .mockResolvedValueOnce([]);                                  // DELETE
 
       const res = await request(app)
         .delete('/api/archives/1')
@@ -237,6 +248,48 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+    });
+
+    it('records archive.delete with the workspace and squad resolved before the row is gone', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])                        // isArchiveOwner check
+        .mockResolvedValueOnce([{ workspace_id: 7, squad_id: 3 }]) // scope
+        .mockResolvedValueOnce({ affectedRows: 1 });                 // DELETE
+
+      const res = await request(app)
+        .delete('/api/archives/1')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      await vi.waitFor(() => expect(activityInserts()).toHaveLength(1), { timeout: 500 });
+      expect(activityInserts()[0]).toEqual([7, 3, TEST_USER.id, 'archive.delete', 'archive', 1, null]);
+      // After the DELETE nothing can resolve the scope: the archive row, the
+      // only path to its squad and workspace, no longer exists.
+      const scopeAt = callIndex(/FROM archives p\s+INNER JOIN squads s/);
+      const deleteAt = callIndex(/DELETE FROM archives/);
+      expect(scopeAt).toBeGreaterThan(-1);
+      expect(scopeAt).toBeLessThan(deleteAt);
+    });
+
+    it('deletes an archive with no owning squad and records nothing, with no lookup after the delete', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ '1': 1 }])         // isArchiveOwner check
+        .mockResolvedValueOnce([])                    // scope: no squad, so no workspace
+        .mockResolvedValueOnce({ affectedRows: 1 }); // DELETE
+
+      const res = await request(app)
+        .delete('/api/archives/1')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      await flush();
+      await flush();
+      expect(activityInserts()).toEqual([]);
+      // activity_log.workspace_id is NOT NULL, so there is nothing to record,
+      // and a second scope lookup after the delete could only find nothing.
+      expect(c2_query.mock.calls.at(-1)[0]).toMatch(/DELETE FROM archives/);
     });
 
     it('rejects non-owner', async () => {
@@ -725,11 +778,25 @@ describe('Archive Routes', () => {
   // ── PUT /api/archives/:archiveId/logs/:logId ────────────
 
   describe('PUT /api/archives/:archiveId/logs/:logId', () => {
+    // logActivity resolves the scope itself for a log event. The route's own
+    // queries are queued with mockResolvedValueOnce; the scope lookups fall
+    // through to this implementation, whenever they happen to run.
+    const answerScopeLookups = () => {
+      c2_query.mockImplementation(async (sql) =>
+        /FROM logs l\s+INNER JOIN archives p/.test(sql) ? [{ workspace_id: 7, squad_id: 3 }] : []);
+    };
+
+    /** Queue the write-access check and the current row, then the UPDATE. */
+    const queueTreeWrite = (current) => {
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])          // write access
+        .mockResolvedValueOnce(current)               // the current row
+        .mockResolvedValueOnce({ affectedRows: 1 }); // UPDATE logs
+    };
+
     it('renames a log with write access', async () => {
       mockAuthenticated();
-      c2_query
-        .mockResolvedValueOnce([{ id: 1 }])  // write access
-        .mockResolvedValueOnce([]);           // UPDATE logs
+      queueTreeWrite([{ title: 'Old Title', parent_id: null }]);
 
       const res = await request(app)
         .put('/api/archives/1/logs/10')
@@ -742,9 +809,7 @@ describe('Archive Routes', () => {
 
     it('moves a log to a new parent', async () => {
       mockAuthenticated();
-      c2_query
-        .mockResolvedValueOnce([{ id: 1 }])  // write access
-        .mockResolvedValueOnce([]);           // UPDATE logs
+      queueTreeWrite([{ title: 'Doc', parent_id: null }]);
 
       const res = await request(app)
         .put('/api/archives/1/logs/10')
@@ -753,6 +818,179 @@ describe('Archive Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+    });
+
+    it('reads the current row inside the archive after the write-access check', async () => {
+      mockAuthenticated();
+      queueTreeWrite([{ title: 'Old Title', parent_id: null }]);
+
+      await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Title' });
+
+      expect(c2_query.mock.calls[1][0]).toMatch(/SELECT title, parent_id FROM logs WHERE id = \? AND archive_id = \?/);
+      expect(c2_query.mock.calls[1][1]).toEqual([10, 1]);
+      expect(c2_query.mock.calls[2][0]).toMatch(/UPDATE logs SET title = \?/);
+    });
+
+    it('logs log.rename with the new title when the title changes', async () => {
+      mockAuthenticated();
+      answerScopeLookups();
+      queueTreeWrite([{ title: 'Old Title', parent_id: null }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: '  New Title  ' });
+
+      expect(res.status).toBe(200);
+      await vi.waitFor(() => expect(activityInserts()).toHaveLength(1), { timeout: 500 });
+      expect(activityInserts()[0]).toEqual([
+        7, 3, TEST_USER.id, 'log.rename', 'log', 10, JSON.stringify({ title: 'New Title' }),
+      ]);
+    });
+
+    it('logs nothing when the trimmed title is the one already stored', async () => {
+      mockAuthenticated();
+      answerScopeLookups();
+      queueTreeWrite([{ title: 'Same Title', parent_id: 4 }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: '  Same Title ', parent_id: 4 });
+
+      expect(res.status).toBe(200);
+      await flush();
+      await flush();
+      expect(activityInserts()).toEqual([]);
+    });
+
+    it('logs log.move with both parents when the parent changes', async () => {
+      mockAuthenticated();
+      answerScopeLookups();
+      queueTreeWrite([{ title: 'Doc', parent_id: 4 }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: 5 });
+
+      expect(res.status).toBe(200);
+      await vi.waitFor(() => expect(activityInserts()).toHaveLength(1), { timeout: 500 });
+      expect(activityInserts()[0]).toEqual([
+        7, 3, TEST_USER.id, 'log.move', 'log', 10, JSON.stringify({ parent_id: 5, previous_parent_id: 4 }),
+      ]);
+    });
+
+    it('logs log.move to the root with a null parent', async () => {
+      mockAuthenticated();
+      answerScopeLookups();
+      queueTreeWrite([{ title: 'Doc', parent_id: 4 }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ parent_id: null });
+
+      expect(res.status).toBe(200);
+      await vi.waitFor(() => expect(activityInserts()).toHaveLength(1), { timeout: 500 });
+      expect(JSON.parse(activityInserts()[0][6])).toEqual({ parent_id: null, previous_parent_id: 4 });
+    });
+
+    it('logs both events when one request renames and re-parents', async () => {
+      mockAuthenticated();
+      answerScopeLookups();
+      queueTreeWrite([{ title: 'Old Title', parent_id: null }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Title', parent_id: 5 });
+
+      expect(res.status).toBe(200);
+      await vi.waitFor(() => expect(activityInserts()).toHaveLength(2), { timeout: 500 });
+      const byAction = Object.fromEntries(activityInserts().map((p) => [p[3], JSON.parse(p[6])]));
+      expect(byAction).toEqual({
+        'log.rename': { title: 'New Title' },
+        'log.move': { parent_id: 5, previous_parent_id: null },
+      });
+    });
+
+    it('accepts a title of exactly 255 characters', async () => {
+      mockAuthenticated();
+      queueTreeWrite([{ title: 'Doc', parent_id: null }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'a'.repeat(255) });
+
+      expect(res.status).toBe(200);
+      expect(callIndex(/UPDATE logs/)).toBeGreaterThan(-1);
+    });
+
+    it('refuses a title over 255 characters with the rename route\'s 400 and writes nothing', async () => {
+      mockAuthenticated();
+      queueTreeWrite([{ title: 'Doc', parent_id: null }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'a'.repeat(256) });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'Title must be 255 characters or fewer' });
+      expect(callIndex(/UPDATE logs/)).toBe(-1);
+      await flush();
+      expect(activityInserts()).toEqual([]);
+    });
+
+    it('refuses a blank title with the rename route\'s 400 and writes nothing', async () => {
+      mockAuthenticated();
+      queueTreeWrite([{ title: 'Doc', parent_id: null }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: '   ' });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'Title is required' });
+      expect(callIndex(/UPDATE logs/)).toBe(-1);
+    });
+
+    it('refuses a title that is not a string with a 400, not a 500', async () => {
+      mockAuthenticated();
+      queueTreeWrite([{ title: 'Doc', parent_id: null }]);
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 42 });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'Title is required' });
+      expect(callIndex(/UPDATE logs/)).toBe(-1);
+    });
+
+    it('answers 404 for a log that is not in this archive, and writes nothing', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])  // write access
+        .mockResolvedValueOnce([]);           // no such log in this archive
+
+      const res = await request(app)
+        .put('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 'New Title' });
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ success: false, message: 'Log not found' });
+      expect(callIndex(/UPDATE logs/)).toBe(-1);
+      await flush();
+      expect(activityInserts()).toEqual([]);
     });
 
     it('rejects with no fields to update', async () => {
