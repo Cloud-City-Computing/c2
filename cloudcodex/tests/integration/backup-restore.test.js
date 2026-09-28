@@ -35,7 +35,7 @@ import * as Y from 'yjs';
 import { c2_query } from '../../mysql_connect.js';
 import { DOC_IMAGES_DIR } from '../../routes/helpers/images.js';
 import {
-  adminConfig, dropSchema, openAdminConnection, throwawaySchemaName,
+  adminConfig, buildSchemaFromInitSql, dropSchema, openAdminConnection, throwawaySchemaName,
 } from './mysql-admin.js';
 import {
   ADMIN, APP, freePort, holdLock, kill, killChildren, signIn, startServer,
@@ -50,6 +50,7 @@ const admin = adminConfig();
 const source = process.env.DB_NAME;      // this file's schema, built by setup.integration.js
 const scratch = throwawaySchemaName();   // the empty schema the drill restores into
 const elsewhere = throwawaySchemaName(); // a schema the restore must never reach
+const fresh = throwawaySchemaName();     // a new install: init.sql's tables, no rows
 // The shape the compose files give the app's MySQL user: everything on its
 // own schema and nothing anywhere else. The backup runs as one such user, of
 // the source, and the restore as another, of the scratch schema; neither
@@ -188,6 +189,7 @@ beforeAll(async () => {
     await adminConn.query('CREATE USER ?@\'%\' IDENTIFIED BY ?', [who.user, who.password]);
     await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(schema)}.* TO ?@'%'`, [who.user]);
   }
+  await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(fresh)}.* TO ?@'%'`, [restorer.user]);
 
   // A running instance: a document with a pasted image and some Unicode, a
   // comment on it, and collaborative state in its BLOB column.
@@ -237,6 +239,7 @@ afterAll(async () => {
   if (adminConn) {
     await dropSchema(adminConn, scratch);
     await dropSchema(adminConn, elsewhere);
+    await dropSchema(adminConn, fresh);
     for (const who of [dumper, restorer]) await adminConn.query('DROP USER IF EXISTS ?@\'%\'', [who.user]);
     await adminConn.end();
   }
@@ -457,6 +460,24 @@ describe('the drill: destroy the instance, restore it, and find everything', () 
     );
     expect(Number(stray.n)).toBe(0);
     const row = await rowIn(scratch, 'SELECT html_content FROM logs WHERE id = ?', [seen.logId]);
+    expect(row.html_content).toBe(seen.html);
+  });
+
+  it('restores onto a new install\'s empty tables without --replace, since dropping them loses nothing', async () => {
+    const conn = await openAdminConnection();
+    try {
+      await buildSchemaFromInitSql(conn, fresh);
+    } finally {
+      await conn.end();
+    }
+    const built = await tableCount(fresh);
+    expect(built).toBeGreaterThan(0);
+
+    const result = await restoreAs(['--into', fresh, '--uploads', mkdtempSync(path.join(tmp, 'u-')), archive], { DB_NAME: fresh });
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stderr).toMatch(/only empty tables/);
+    const row = await rowIn(fresh, 'SELECT html_content FROM logs WHERE id = ?', [seen.logId]);
     expect(row.html_content).toBe(seen.html);
   });
 

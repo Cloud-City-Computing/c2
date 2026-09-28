@@ -20,8 +20,10 @@
 #     (moving a backup to a differently named database is deliberate);
 #   - the app is not running, and nothing holds the instance lock that
 #     cloudcodex/services/instance-lock.js takes for that database;
-#   - the database has no tables, unless --replace, which drops every table
-#     in it (and empties avatars/ and doc-images/) before the load.
+#   - the database holds no rows, unless --replace, which drops every table
+#     in it (and empties avatars/ and doc-images/) before the load. Tables
+#     with no rows at all (a new stack, where the database service has just
+#     built init.sql) are dropped without it: nothing is lost.
 #
 # The load runs as the instance's own MySQL user, which the database service
 # grants everything on its own schema and nothing else, so a statement that
@@ -160,14 +162,26 @@ lock_free="$(db_query "SELECT IS_FREE_LOCK($INSTANCE_LOCK_NAME_SQL)")"
   die "a Cloud Codex process holds the instance lock for '$target'; stop it, then restore"
 
 tables="$(db_query 'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()')"
+clear_tables="$replace"
 if [[ "$tables" != 0 && -z "$replace" ]]; then
-  die "database '$target' already has $tables tables. Restoring over them needs --replace, which drops every table in '$target' first"
+  # Tables without a single row are what the database service builds from
+  # init.sql the first time it starts, so a new stack is not a refusal:
+  # dropping them loses nothing. One row anywhere is.
+  count_sql="$(db_query "SET SESSION group_concat_max_len = 1048576; SELECT CONCAT('SELECT ', GROUP_CONCAT(CONCAT('(SELECT COUNT(*) FROM \`', REPLACE(TABLE_NAME, '\`', '\`\`'), '\`)') SEPARATOR ' + ')) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'")"
+  rows=0
+  if [[ "$count_sql" != NULL ]]; then
+    rows="$(db_query "$count_sql")"
+  fi
+  [[ "$rows" == 0 ]] ||
+    die "database '$target' already holds data ($tables tables). Restoring over it needs --replace, which drops every table in '$target' first"
+  say "Database $target has only empty tables (a new install's); they are replaced."
+  clear_tables=replace
 fi
 
 # ---- the writes ------------------------------------------------------------
 
 drops=""
-if [[ -n "$replace" ]]; then
+if [[ -n "$clear_tables" ]]; then
   drops="$(db_query "SELECT CONCAT('DROP ', IF(TABLE_TYPE = 'VIEW', 'VIEW', 'TABLE'), ' IF EXISTS \`', REPLACE(TABLE_NAME, '\`', '\`\`'), '\`;') FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()")"
 fi
 
