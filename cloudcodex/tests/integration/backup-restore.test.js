@@ -143,6 +143,22 @@ async function craft(name, change, { keepManifest = false } = {}) {
   return out;
 }
 
+/** A copy of the drill archive whose manifest says it came from release `version`. */
+function fromRelease(name, version) {
+  return craft(name, (dir) => {
+    const file = path.join(dir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(file, 'utf8'));
+    manifest.app_version = version;
+    writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  });
+}
+
+/** Whether a schema called `name` exists, seen as the admin. */
+async function schemaExists(name) {
+  const [[row]] = await adminConn.query('SELECT COUNT(*) AS n FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?', [name]);
+  return Number(row.n) > 0;
+}
+
 /** How many tables `schema` holds, seen as the admin. */
 async function tableCount(schema) {
   const [[row]] = await adminConn.query(
@@ -304,6 +320,16 @@ describe('scripts/backup.sh', () => {
     expect(readFileSync(archive)).toEqual(before);
     expect(readdirSync(outDir)).toEqual(['drill.tar.gz']);
   });
+
+  it('refuses a MySQL user with any privilege beyond its own database, root included', async () => {
+    const out = path.join(outDir, 'as-root.tar.gz');
+    const result = await run(BACKUP, ['--local', '--uploads', UPLOADS, out], { DB_USER: admin.user, DB_PASS: admin.password });
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toMatch(/privileges beyond database/);
+    expect(readdirSync(outDir)).toEqual(['drill.tar.gz']);
+    expect(readdirSync(scriptTmp)).toEqual([]);
+  });
 });
 
 describe('scripts/restore.sh refuses before it writes anything', () => {
@@ -335,7 +361,7 @@ describe('scripts/restore.sh refuses before it writes anything', () => {
     const result = await restoreAs(['--into', scratch, '--uploads', UPLOADS, archive]);
 
     expect(result.code).not.toBe(0);
-    expect(result.stderr).toMatch(/instance lock/);
+    expect(result.stderr).toMatch(new RegExp(`holds the instance lock for '${scratch}'; nothing was written`));
     expect(await tableCount(scratch)).toBe(0);
   });
 
@@ -395,6 +421,66 @@ describe('scripts/restore.sh refuses before it writes anything', () => {
       expect(existsSync(teed), line).toBe(false);
       expect(await tableCount(scratch), line).toBe(0);
     }
+  });
+
+  it('when the MySQL user holds any privilege beyond the target database: root, a grant elsewhere, a global one, a role', async () => {
+    // As root, even a statement the line-start scan cannot see would reach
+    // another schema: the grant is what confines the load, so the user must
+    // be one the grant confines.
+    const sneaky = throwawaySchemaName();
+    const hostile = await craft('sneaky', (dir) => {
+      const file = path.join(dir, 'database.sql');
+      writeFileSync(file, `SELECT 1; CREATE DATABASE \`${sneaky}\`;\n${readFileSync(file, 'utf8')}`);
+    });
+    const wider = { user: throwawaySchemaName(), password: randomBytes(18).toString('base64url') };
+    const role = throwawaySchemaName();
+    try {
+      const asRoot = await restoreAs(['--into', scratch, '--uploads', UPLOADS, hostile], { DB_USER: admin.user, DB_PASS: admin.password });
+      expect(asRoot.code).not.toBe(0);
+      expect(asRoot.stderr).toMatch(new RegExp(`privileges beyond database '${scratch}'`));
+      expect(await schemaExists(sneaky)).toBe(false);
+
+      await adminConn.query('CREATE USER ?@\'%\' IDENTIFIED BY ?', [wider.user, wider.password]);
+      await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(scratch)}.* TO ?@'%'`, [wider.user]);
+      const asWider = (why) => restoreAs(['--into', scratch, '--uploads', UPLOADS, hostile], { DB_USER: wider.user, DB_PASS: wider.password })
+        .then((result) => {
+          expect(result.code, why).not.toBe(0);
+          expect(result.stderr, why).toMatch(/privileges beyond database/);
+        });
+
+      await adminConn.query(`GRANT INSERT ON ${mysql.escapeId(elsewhere)}.* TO ?@'%'`, [wider.user]);
+      await asWider('a grant on another schema');
+      await adminConn.query(`REVOKE INSERT ON ${mysql.escapeId(elsewhere)}.* FROM ?@'%'`, [wider.user]);
+
+      await adminConn.query('GRANT PROCESS ON *.* TO ?@\'%\'', [wider.user]);
+      await asWider('a global privilege');
+      await adminConn.query('REVOKE PROCESS ON *.* FROM ?@\'%\'', [wider.user]);
+
+      await adminConn.query('CREATE ROLE ?', [role]);
+      await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(elsewhere)}.* TO ?`, [role]);
+      await adminConn.query('GRANT ? TO ?@\'%\'', [role, wider.user]);
+      await adminConn.query('SET DEFAULT ROLE ALL TO ?@\'%\'', [wider.user]);
+      await asWider('a role');
+
+      expect(await schemaExists(sneaky)).toBe(false);
+      expect(await tableCount(scratch)).toBe(0);
+      expect(await tableCount(elsewhere)).toBe(0);
+    } finally {
+      await dropSchema(adminConn, sneaky);
+      await adminConn.query('DROP USER IF EXISTS ?@\'%\'', [wider.user]);
+      await adminConn.query('DROP ROLE IF EXISTS ?', [role]);
+    }
+  });
+
+  it('when the backup comes from a newer release than this install', async () => {
+    const newer = await fromRelease('newer', '99.0.0');
+
+    const result = await restoreAs(['--into', scratch, '--uploads', UPLOADS, newer]);
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toMatch(/99\.0\.0/);
+    expect(result.stderr).toMatch(/--allow-newer-backup/);
+    expect(await tableCount(scratch)).toBe(0);
   });
 
   it('when the uploads hold a link or a path that climbs out', async () => {
@@ -544,5 +630,17 @@ describe('the drill: destroy the instance, restore it, and find everything', () 
     expect(result.code).not.toBe(0);
     expect(result.stderr).toMatch(/denied/i);
     expect(await tableCount(elsewhere)).toBe(0);
+  });
+
+  it('--allow-newer-backup restores a newer release\'s backup anyway, saying so, and an older one needs no flag', async () => {
+    const newer = await fromRelease('newer-allowed', '99.0.0');
+    const allowed = await restoreAs(['--into', scratch, '--replace', '--allow-newer-backup', '--uploads', mkdtempSync(path.join(tmp, 'u-')), newer]);
+    expect(allowed.code, allowed.stderr).toBe(0);
+    expect(allowed.stderr).toMatch(/99\.0\.0/);
+    expect((await rowIn(scratch, 'SELECT html_content FROM logs WHERE id = ?', [seen.logId])).html_content).toBe(seen.html);
+
+    const older = await fromRelease('older', '0.0.1');
+    const plain = await restoreAs(['--into', scratch, '--replace', '--uploads', mkdtempSync(path.join(tmp, 'u-')), older]);
+    expect(plain.code, plain.stderr).toBe(0);
   });
 });
