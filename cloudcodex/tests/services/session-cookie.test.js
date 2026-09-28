@@ -101,4 +101,17 @@ describe('readSessionCookie', () => {
   it('tolerates cookie pairs separated without a space', () => {
     expect(readSessionCookie('theme=dark;__Host-sessionToken=good', on)).toBe('good');
   });
+
+  // Only the ASCII space and tab a Cookie header puts between pairs are
+  // separators. A name that starts with any other whitespace is a different
+  // cookie, one a browser stores without the __Host- rules, so it must never
+  // read as the prefixed cookie (or as the legacy one).
+  it('matches a name only after ASCII space or tab, never after other whitespace', () => {
+    for (const ws of ['\u00a0', '\ufeff', '\u2000', '\u3000', '\v', '\f']) {
+      expect(readSessionCookie(`${ws}__Host-sessionToken=tossed; __Host-sessionToken=good`, on), JSON.stringify(ws)).toBe('good');
+      expect(readSessionCookie(`theme=dark; ${ws}__Host-sessionToken=tossed`, off), JSON.stringify(ws)).toBeNull();
+      expect(readSessionCookie(`${ws}sessionToken=tossed`, on), JSON.stringify(ws)).toBeNull();
+    }
+    expect(readSessionCookie('theme=dark;\t__Host-sessionToken=good', on)).toBe('good');
+  });
 });

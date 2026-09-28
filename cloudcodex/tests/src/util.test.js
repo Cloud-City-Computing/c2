@@ -234,8 +234,18 @@ describe('the session cookie on an https page', () => {
     document.cookie = `__Host-sessionToken=; ${EXPIRED}; path=/; secure`;
     document.cookie = `sessionToken=; ${EXPIRED}; path=/`;
     document.cookie = `sessionToken=; ${EXPIRED}; path=/; secure`;
+    sessionStorage.clear();
+    vi.useRealTimers();
     globalThis.jsdom.reconfigure({ url: HOME });
   });
+
+  // A browser stores a cookie whose name starts with Unicode whitespace
+  // (U+2000, U+3000, U+FEFF, U+00A0) as a different cookie, so none of the
+  // __Host- rules apply to it and a sibling host can set it for the whole
+  // domain. jsdom's jar never produces such a name, so these read a Cookie
+  // string as a browser would hand it over.
+  const PLANTS = ['\u2000', '\u3000', '\ufeff', '\u00a0'];
+  const cookieReads = (value) => vi.spyOn(Document.prototype, 'cookie', 'get').mockReturnValue(value);
 
   describe('setSessionCookie', () => {
     it('writes __Host-sessionToken, Secure, Path=/ and no Domain, which the jar accepts', () => {
@@ -265,6 +275,28 @@ describe('the session cookie on an https page', () => {
     // A lone legacy cookie on https may have been tossed by a sibling host.
     // It is promoted only after the server agrees (upgradeLegacySessionCookie),
     // never read straight into a bearer header.
+    it('reads the real prefixed cookie past a planted name that starts with Unicode whitespace', () => {
+      for (const ws of PLANTS) {
+        const get = cookieReads(`${ws}__Host-sessionToken=EVIL; theme=dark; __Host-sessionToken=REAL`);
+        try {
+          expect(getSessionTokenFromCookie(), JSON.stringify(ws)).toBe('REAL');
+        } finally {
+          get.mockRestore();
+        }
+      }
+    });
+
+    it('reads no token at all from a planted name alone', () => {
+      for (const ws of PLANTS) {
+        const get = cookieReads(`theme=dark; ${ws}__Host-sessionToken=EVIL`);
+        try {
+          expect(getSessionTokenFromCookie(), JSON.stringify(ws)).toBeNull();
+        } finally {
+          get.mockRestore();
+        }
+      }
+    });
+
     it('does not read a lone legacy cookie', () => {
       document.cookie = 'sessionToken=old-token; path=/; secure';
       setSessStorage('currentUser', { id: 1 });
@@ -329,6 +361,50 @@ describe('the session cookie on an https page', () => {
     it('asks nothing when there is no session cookie at all', async () => {
       await upgradeLegacySessionCookie();
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('is not stopped by a planted name that only looks like the prefixed cookie', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ valid: false }) });
+      const get = cookieReads('\u2000__Host-sessionToken=EVIL; sessionToken=old-token');
+      try {
+        await upgradeLegacySessionCookie();
+      } finally {
+        get.mockRestore();
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ token: 'old-token', legacyCookie: true });
+    });
+
+    // A legacy cookie a sibling set with a Domain cannot be expired by this
+    // host's clear, so it would come back on every page load.
+    it('asks once per tab: a refused legacy cookie that survives the clear is not asked about again', async () => {
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ valid: false }) });
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+      await upgradeLegacySessionCookie();
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getSessionTokenFromCookie()).toBeNull();
+    });
+
+    // main.jsx waits for this before the first render, so a server that never
+    // answers must not leave the page blank.
+    it('gives up after a few seconds when the server does not answer, and keeps the legacy cookie', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      fetchMock.mockReturnValueOnce(new Promise(() => {}));
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      let settled = false;
+      const upgrade = upgradeLegacySessionCookie().then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await upgrade;
+
+      expect(settled).toBe(true);
+      expect(document.cookie).toBe('sessionToken=old-token');
     });
   });
 });
