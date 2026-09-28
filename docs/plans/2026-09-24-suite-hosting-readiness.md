@@ -560,6 +560,31 @@ their readers.
 
 ## PR 5: W6-CDX-35, backup and restore as one command, with a drill
 
+**Status: shipped 2026-09-28** on `track/w6-cdx-35-backup-restore` (tasks 5.1 to 5.3 done; these
+tasks carry no checkboxes). Where the build goes past the text below, and why:
+
+- Neither script uses the MySQL root account or puts a password on a command line: the clients run
+  inside the `database` service as its `MYSQL_USER`, over TCP to `127.0.0.1`, with `MYSQL_PWD`. The
+  grant is then what confines a restore to its own schema.
+- The uploads stream through `docker compose run --rm --no-deps -T app tar` on stdin and stdout,
+  not a bind mount, so there is no SELinux label to get right.
+- The archive carries a `manifest.json` with the SHA-256 of both payloads, and is written 0600 and
+  never over an existing file. `restore.sh` checks everything before it writes: members, checksums,
+  uploads that are only files and directories, a dump with no database switch or client command, a
+  target that is this instance's own database (or `--into`), no running app, a free instance lock,
+  and no rows unless `--replace`. The client runs with `--binary-mode`, and the load's first
+  statement takes the instance lock or fails.
+- A `--local` form (the `mysql` and `mysqldump` clients on `PATH`) is what the drill test drives,
+  so the test runs the real scripts rather than `mysqldump` by hand.
+- The Compose drill found the socket healthcheck calling `init.sql`'s temporary server healthy, so
+  both production compose files now ping over TCP.
+- The Compose drill, by hand on a clean clone of the branch (2026-09-28): populate (a document with
+  a pasted image, a comment, an avatar), stop, `make backup`, `down -v`, `make restore` onto the new
+  stack in 46 s; `/readyz` 200, the database fingerprint (tables, HTML and `ydoc_state`, comments,
+  `doc_images`, the ledger) identical, image and avatar bytes identical, the image still 404 to an
+  anonymous caller. Refusals seen: a running app, data without `--replace`, a wrong `--into`, a
+  tampered dump, an existing output file, and a hidden mid-line `\T`.
+
 ### Task 5.1 The scripts
 
 `scripts/backup.sh`, in a new `scripts/` directory at the repository root (the Docker side of the
