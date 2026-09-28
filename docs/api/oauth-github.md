@@ -33,9 +33,12 @@ organization.
 ### `GET /api/oauth/google`
 
 Redirects the user to Google's OAuth consent screen. Generates a short-lived
-(10 min) CSRF state token, held in server memory and in an httpOnly
-`oauth_state_google` cookie, so only the browser that started the flow can
-complete it.
+(10 min) CSRF state token, held in server memory and in an httpOnly cookie,
+so only the browser that started the flow can complete it. On an https
+instance (`APP_URL` starts with `https://`) the cookie is
+`__Host-oauth_state_google` (Secure, `Path=/`), which no other host under the
+domain can set; over plain http it is `oauth_state_google` at
+`Path=/api/oauth`. The callback reads the state under that exact name only.
 
 ### `GET /api/oauth/google/callback`
 
@@ -88,7 +91,9 @@ via `scrypt`. Tokens are never returned to the client.
 ### `GET /api/oauth/github` *(requires auth)*
 
 Redirects to GitHub's OAuth consent screen to link a GitHub account.
-Requests the `repo` scope.
+Requests the `repo` scope. Binds the flow to this browser the way the Google
+flow does, with `__Host-oauth_state_github` on https and `oauth_state_github`
+over plain http.
 
 ### `GET /api/oauth/github/callback`
 

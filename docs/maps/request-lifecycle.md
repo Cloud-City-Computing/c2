@@ -89,18 +89,18 @@ app.set('trust proxy', TRUST_PROXY ??        app.js:188
   │
   ├─ warnUntrustedForwarders()               app.js:201
   │  (middleware/forwarded-for.js)
-  ├─ health router: /healthz, /readyz        app.js:205
-  ├─ CORS, scoped to /api: isAllowedOrigin,  app.js:216-273
+  ├─ health router: /healthz, /readyz        app.js:207
+  ├─ CORS, scoped to /api: isAllowedOrigin,  app.js:229-292
   │  then the delegate
-  ├─ helmet + CSP: whole app in production,  app.js:283-311
+  ├─ helmet + CSP: whole app in production,  app.js:302-330
   │  /api only otherwise
-  ├─ requireOriginForCookieWrites on /api    app.js:XXX
-  ├─ express.json({ limit: '2mb' })          app.js:323
-  ├─ authLimiter on 9 paths + reader-check   app.js:326-349
-  ├─ searchLimiter on /api/users/search      app.js:360
-  ├─ stateLimiter on /api/documents/state    app.js:374
-  ├─ static /avatars      (7d immutable)     app.js:377-380
-  ├─ /doc-images, authorized (private, 1d)   app.js:384
+  ├─ requireOriginForCookieWrites on /api    app.js:332-352
+  ├─ express.json({ limit: '2mb' })          app.js:364
+  ├─ authLimiter on 9 paths + reader-check   app.js:367-390
+  ├─ searchLimiter on /api/users/search      app.js:401
+  ├─ stateLimiter on /api/documents/state    app.js:415
+  ├─ static /avatars      (7d immutable)     app.js:418-421
+  ├─ /doc-images, authorized (private, 1d)   app.js:425
   ├─ 18 routers, all mounted at /api
   └─ (production, at listen time) vite-express's static dist/ and index.html
      handlers, appended after all of the above
@@ -198,8 +198,8 @@ still succeeds. `tests/middleware/forwarded-for.test.js` covers once-per-peer,
 the /64 keying, the quiet cases and the bound. `ipv6Groups()` lives in the
 same file, and `app.js`'s width check reuses it.
 
-**Security headers** (`HELMET_OPTIONS`, `app.js:283-310`) are one Helmet policy
-with two scopes (`app.js:311`). **In production it is mounted on `/`**, so it
+**Security headers** (`HELMET_OPTIONS`, `app.js:302-329`) are one Helmet policy
+with two scopes (`app.js:330`). **In production it is mounted on `/`**, so it
 covers every response but the two probes, which the health router answers
 ahead of it: the single-page app's HTML and built assets (served by the
 handlers `vite-express` appends at listen time, after everything here), the
@@ -232,7 +232,7 @@ script into its print window for this reason (`frontend-architecture.md`,
 handler the way `vite-express` does.
 
 **Origin-required cookie writes** (`requireOriginForCookieWrites`,
-`app.js:198-218`, W6-CDX-3). CORS admits a request with no `Origin` at all, and
+`app.js:332-352`, W6-CDX-3). CORS admits a request with no `Origin` at all, and
 `SameSite=Strict` stops nothing between sibling hosts under one registrable
 domain, which is how the suite is hosted. So after Helmet, on `/api`: a `POST`,
 `PUT`, `PATCH` or `DELETE` that carries no bearer token (`bearerToken(req)` in
@@ -250,7 +250,7 @@ posting with a cookie must send an `Origin` or use the bearer header. Covered by
 the `Origin-required cookie writes` block in `tests/app.test.js`. There are no
 CSRF tokens.
 
-**Body limit is 2 MB** (`app.js:323`). The collab WebSocket has its own, larger
+**Body limit is 2 MB** (`app.js:364`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:55-56`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -320,7 +320,7 @@ the default leaves out `172.17.0.1`.
 ### Router mounting
 
 The health router (`routes/health.js`) is the one exception to what follows: it
-mounts at the root, ahead of every `/api` layer (`app.js:205`), and answers
+mounts at the root, ahead of every `/api` layer (`app.js:207`), and answers
 `/healthz` and `/readyz` only (section 7).
 
 All 18 other routers mount on the bare `/api` prefix, so each router
@@ -510,7 +510,15 @@ reader taking the first match would sign the victim in as the tosser.
 only when Secure, since a browser drops a `__Host-` cookie that is not), and
 `readSessionCookie(header, { allowLegacy })`: the prefixed cookie wins wherever
 it sits in the header, and the legacy name is read only when no prefixed
-cookie is present at all and the fallback is allowed.
+cookie is present at all and the fallback is allowed. **Names match exactly.**
+Every cookie reader (this one, the client's `readCookie` in `src/util.jsx` and
+the OAuth state reader) strips only the ASCII space and tab around a pair
+(`COOKIE_OWS`), never `trim()`: a browser stores a name that starts with
+U+2000, U+3000, U+FEFF or U+00A0 as a different cookie, free of the `__Host-`
+rules, and `trim()` would read it as the prefixed one. Pinned in
+`tests/services/session-cookie.test.js`, `tests/src/util.test.js` (the Cookie
+string read as a browser hands it over, since jsdom's jar never produces such a
+name) and `tests/routes/oauth-google-host-cookie.test.js`.
 
 The fallback is `legacyCookieAllowed()`: on unless `LEGACY_SESSION_COOKIE` is
 exactly `0`. Default on, so a self-hoster's sessions from before the rename
@@ -534,9 +542,23 @@ posts it to `POST /api/validate-session` with `legacyCookie: true`. The route
 answers `{ valid: false }` without a lookup when `LEGACY_SESSION_COOKIE=0`;
 otherwise it validates as usual. On a yes the client rewrites the token under
 the prefixed name; either answer expires the legacy cookie; an unreachable
-server leaves it for the next visit. Without that step the flag would be
-server-side only: the client would send a planted legacy cookie as a bearer
-header, which authenticates whatever the flag says.
+server, or one silent for `LEGACY_UPGRADE_TIMEOUT_MS` (5 s, since the first
+render waits on this), leaves it for the next visit. A refusal is remembered
+in session storage (`legacySessionCookieRefused`) for the tab, because a legacy
+cookie a sibling set with a `Domain` survives this host's host-only clear and
+would otherwise cost a round-trip on every page load. Without that step the
+flag would be server-side only: the client would send a planted legacy cookie
+as a bearer header, which authenticates whatever the flag says.
+
+**The OAuth state cookies follow the same rule.** `routes/oauth.js` binds each
+Google sign-in and GitHub link to the browser that started it with an
+`HttpOnly`, `SameSite=Lax` state cookie. When `APP_URL` is `https://` its name
+is `__Host-oauth_state_<provider>` with `Secure` and `Path=/`
+(`oauthStateCookieName`, `oauthStateCookieOptions`), and
+`stateBoundToBrowser` reads only that name, so another host cannot give the
+browser a state it minted itself. Over plain http it stays
+`oauth_state_<provider>` at `Path=/api/oauth`. The clear uses the same name
+and attributes, which a `__Host-` overwrite requires.
 
 ### An email or password change rotates every session
 

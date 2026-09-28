@@ -112,7 +112,8 @@ do). The cookie is `__Host-sessionToken` on https (`sessionToken` over plain
 http); read it only through `extractSessionToken` on the server and
 `getSessionTokenFromCookie` on the client, write it only through
 `setSessionCookie`, and never give it a `Domain`
-(`services/session-cookie.js`). An `/api` write authenticated by that cookie
+(`services/session-cookie.js`). Match cookie names exactly: strip only ASCII
+space and tab (`COOKIE_OWS`), never `trim()`. An `/api` write authenticated by that cookie
 alone needs an accepted `Origin` (`requireOriginForCookieWrites` in `app.js`).
 
 **External sign-in** decides its local user in one seam, `resolveIdentity(claims,

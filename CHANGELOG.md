@@ -12,6 +12,65 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- `LEGACY_SESSION_COOKIE`: whether a lone `sessionToken` cookie, the name the
+  session cookie had before it became `__Host-sessionToken` on https (see
+  Security), still signs its holder in. Unset keeps it on; exactly `0` turns
+  it off, for an https instance that shares its domain with hosts you do not
+  control.
+
+### Fixed
+
+- **Signing in over plain `http` to an address other than `localhost` keeps
+  its session.** The page wrote the session cookie with `Secure` whatever the
+  scheme, and a browser drops a `Secure` cookie set over plain `http`, so the
+  sign-in reloaded signed out. The page now marks it `Secure` on https only,
+  and the Google callback decides `Secure` from `APP_URL`'s scheme (as its
+  state cookie already did) rather than from `NODE_ENV`.
+
+### Security
+
+- **On https the session cookie is `__Host-sessionToken`, and a write
+  authenticated by that cookie alone must carry an accepted `Origin`.** Any
+  host under the same registrable domain could set a `sessionToken` cookie for
+  the whole domain with a longer path, which a browser sends first, and the
+  server and the page both took the first `sessionToken` they found, so a
+  sibling host could sign a visitor in as someone else. A browser refuses a
+  `__Host-` cookie with a `Domain`, so no other host can set this one; it wins
+  over a legacy `sessionToken` wherever the two sit, on the server and in the
+  page, and no writer sets `Domain`. Every cookie reader matches the name
+  exactly, stripping only the ASCII space and tab between cookies, so a cookie
+  whose name merely looks like `__Host-sessionToken` is never read as it. A
+  lone legacy cookie still works while `LEGACY_SESSION_COOKIE` is on (the
+  default): on its next visit over https the page asks the server to confirm
+  it and moves it to the new name, and until then does not use it; the page
+  waits at most five seconds for that answer and asks once per tab. Over plain
+  http the cookie keeps the old name, the only one a browser can hold there.
+  Separately, an `/api` `POST`, `PUT`, `PATCH` or `DELETE` that carries the
+  session cookie and no bearer header is refused with `403` unless its
+  `Origin` is one the CORS rule accepts; CORS admitted a request with no
+  `Origin` at all, and `SameSite=Strict` treats sibling hosts as the same
+  site. The app's own requests, which send a bearer header or an `Origin`, and
+  every server-to-server caller are unaffected. Both WebSockets already
+  refused an upgrade with no `Origin` or a sibling's; tests now pin it.
+- **On https the OAuth state cookies are `__Host-` cookies too.** The cookie
+  that ties a Google sign-in or a GitHub link to the browser that started it
+  is now `__Host-oauth_state_google` or `__Host-oauth_state_github` (Secure,
+  `Path=/`, no `Domain`), and the callback reads the state under that exact
+  name only, the same rule as the session cookie. Over plain http the names
+  stay `oauth_state_google` and `oauth_state_github` at `Path=/api/oauth`.
+
+### Migration
+
+**The cookie renames need nothing run.** Browsers that hold the older
+`sessionToken` stay signed in and move to `__Host-sessionToken` on their next
+visit over https. An https instance that sets `LEGACY_SESSION_COOKIE=0` signs
+those browsers out instead, once. A script that posts to `/api` with only a
+session cookie now needs an `Origin` header or the bearer header. On an https
+instance, a Google sign-in or GitHub link that was in progress while you
+upgraded fails once with `invalid_state` and works when started again.
+
 ## [0.12.0] - 2026-09-28
 
 The hosting-readiness release. One security fix: anyone who could reach the

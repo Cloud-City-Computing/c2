@@ -798,6 +798,22 @@ The audit found no unsafe raw `fetch` without a bearer header that a browser wou
 none changed. `GitHubPage.jsx`'s export read (a `GET`) looked for a `session_token` cookie that has
 never existed; it now calls `getSessionTokenFromCookie`.
 
+**After review (2026-09-28).** Three more changes, each with a failing test first.
+
+- **Cookie names match exactly.** Both session-cookie readers and the OAuth state reader strip only
+  the ASCII space and tab around a pair (`COOKIE_OWS` in `services/session-cookie.js`), never
+  `trim()`. A browser stores a name that starts with U+2000, U+3000, U+FEFF or U+00A0 as a
+  different cookie, free of the `__Host-` rules, and `trim()` read it as `__Host-sessionToken`.
+- **The OAuth state cookies are `__Host-` on https** (`__Host-oauth_state_google`,
+  `__Host-oauth_state_github`, Secure, `Path=/`), read only under that name; plain http keeps
+  `oauth_state_<provider>` at `Path=/api/oauth`. Not in the spec's W6-CDX-3 list, but the same
+  rule as the session cookie, and small enough to do here rather than file.
+- **The legacy upgrade is bounded.** It gives up after 5 seconds, since the first render waits on
+  it, and remembers a refusal for the tab, since a legacy cookie a sibling set with a `Domain`
+  survives this host's clear.
+
+Carry-over to PR 5: its flow cookie should follow the same rule (see the note on that bullet).
+
 The hand check drove the built app with Playwright on the same headless shell `iris` uses, rather
 than `iris shoot`, because the flow has to sign in, hold two tabs and accept the harness's
 self-signed certificate. The editor has no Edit mode at 768px and below, so the phone width signed
@@ -915,6 +931,10 @@ Load-bearing details, each with a test:
   cookie's path is `/api/auth/oidc`), `oidcFlow` otherwise; `HttpOnly`, and **`SameSite=Lax`**,
   because the callback is a cross-site top-level navigation from the issuer and a `Strict` cookie
   would not be sent on it.
+  *Carry-over from W6-CDX-3 (2026-09-28): prefer `__Host-oidcFlow` with `Path=/` on https, deciding
+  Secure from `APP_URL`'s scheme as the session and OAuth state cookies now do, and read it by exact
+  name (`COOKIE_OWS`). A `__Secure-` cookie can still be set by a sibling host with a `Domain`, and
+  the HMAC does not stop a flow cookie minted for one browser from being replayed into another.*
 - **Scope `openid email profile`**, then `authorizationCodeGrant` with `expectedState`,
   `expectedNonce`, `pkceCodeVerifier` and `idTokenExpected: true`; `sub` and `sid` from the ID
   token; `email`, `email_verified` and `name` from `fetchUserInfo`, falling back to the ID token's

@@ -240,10 +240,12 @@ directly from components.
   page load (main.jsx)
      │
      ▼
-  https, and only a legacy sessionToken cookie?
+  https, only a legacy sessionToken cookie, and not refused in this tab?
      │  yes ──► POST /api/validate-session { token, legacyCookie: true }
      │            ├── valid ──► rewrite it as __Host-sessionToken
-     │            └── either answer ──► expire the legacy cookie
+     │            ├── invalid ──► remember the refusal for this tab
+     │            ├── either answer ──► expire the legacy cookie
+     │            └── no answer in 5 s ──► render anyway, keep it
      ▼
   first render; Std_Layout reads the session cookie
      │

@@ -90,10 +90,12 @@ A successful password reset deletes every session of the user.
 
 In the browser the token lives in a cookie. **On https it is named `__Host-sessionToken`**, which a browser accepts only with `Secure`, `Path=/` and no `Domain`, so no other host under your domain can set it. Over plain http it is `sessionToken`, the name every earlier release used, because a browser keeps neither a `__Host-` nor a `Secure` cookie there. It is `SameSite=Strict` and never carries a `Domain`. It is not `HttpOnly`: the page reads the token to authenticate its two WebSockets.
 
-The prefix matters when other sites share your registrable domain (`docs.example.com` beside `app.example.com`). Script on any of them can set `sessionToken=<its own>; Domain=example.com; Path=/api`, and a browser sends the cookie with the longer path first. The server and the page both take the prefixed cookie over a legacy one wherever it sits, and a lone legacy cookie authenticates only while `LEGACY_SESSION_COOKIE` allows it:
+The prefix matters when other sites share your registrable domain (`docs.example.com` beside `app.example.com`). Script on any of them can set `sessionToken=<its own>; Domain=example.com; Path=/api`, and a browser sends the cookie with the longer path first. The server and the page both take the prefixed cookie over a legacy one wherever it sits, and match the name exactly: a cookie whose name only looks like `__Host-sessionToken` (one that starts with a Unicode space, say) is a different cookie to the browser, free of the prefix rules, and is never read as this one. A lone legacy cookie authenticates only while `LEGACY_SESSION_COOKIE` allows it:
 
 - **Unset (the default)**, a browser still holding the older `sessionToken` stays signed in. On its next visit over https the page asks the server to confirm that session and moves it to `__Host-sessionToken`; it never uses a lone legacy cookie before the server has said yes.
 - **`LEGACY_SESSION_COOKIE=0`** makes a lone `sessionToken` authenticate nobody, on the server and in the page. Set it on an https instance that shares its domain with hosts you do not fully control. Browsers that have not visited since the upgrade sign in again.
+
+The same rule covers the short-lived cookie that ties a Google sign-in or a GitHub link to the browser that started it. On https it is `__Host-oauth_state_google` or `__Host-oauth_state_github` (Secure, `Path=/`, `HttpOnly`, `SameSite=Lax`), and the callback reads the state under that exact name only, so another host under your domain cannot hand a browser a state of its own. Over plain http the names stay `oauth_state_google` and `oauth_state_github`, at `Path=/api/oauth`.
 
 ### Cross-site request forgery
 

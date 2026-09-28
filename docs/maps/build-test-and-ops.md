@@ -42,9 +42,9 @@ it (directly or transitively) before reading `process.env`.
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
 `NODE_ENV` matters in five places: CORS localhost allowance
-(`app.js:265`), where Helmet is mounted (`app.js:311`: the whole app in
-production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:319`,
-`app.js:357`, `app.js:371`), the `APP_URL` boot gate (`server.js:63`), and
+(`app.js:272`), where Helmet is mounted (`app.js:330`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:360`,
+`app.js:398`, `app.js:412`), the `APP_URL` boot gate (`server.js:63`), and
 Vite's dev-vs-prod mode. `.env.example` ships it commented out; `npm run start`
 and the Docker image set it, and both production compose files pin it (section 4).
 
