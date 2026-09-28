@@ -21,6 +21,12 @@ vi.mock('../mysql_connect.js', () => {
     getSessionProvider: vi.fn(async () => 'local'),
     touchSession: vi.fn(async () => {}),
     withTransaction: vi.fn(async fn => fn(c2_query)),
+    // The shutdown path and the instance lock. No backend test opens a real
+    // connection: a test that needs one supplies its own double.
+    endPool: vi.fn(async () => {}),
+    openConnection: vi.fn(async () => {
+      throw new Error('openConnection is not available in backend tests');
+    }),
   };
 });
 

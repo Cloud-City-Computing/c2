@@ -16,11 +16,17 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env from the archive root (one level up from cloudcodex/)
 dotenv.config({ path: path.resolve(dirname, '..', '.env') });
 
-const pool = mysql.createPool({
+// Shared by the pool and by openConnection, so the instance lock's own
+// connection can never point somewhere the pool does not.
+const connectionOptions = {
   host:             process.env.DB_HOST ?? 'localhost',
   user:             process.env.DB_USER,
   password:         process.env.DB_PASS,
   database:         process.env.DB_NAME ?? 'c2',
+};
+
+const pool = mysql.createPool({
+  ...connectionOptions,
   waitForConnections: true,
   connectionLimit:  10,
   queueLimit:       0,
@@ -30,6 +36,26 @@ if (!process.env.DB_USER || !process.env.DB_PASS) {
   console.error('Missing required environment variables: DB_USER, DB_PASS');
   console.error('Copy .env.example to .env and fill in your database credentials.');
   process.exit(1);
+}
+
+/**
+ * Opens one connection of its own, outside the pool, to the same server, user
+ * and schema. For state that belongs to a connection and must outlive any one
+ * query: the instance lock's GET_LOCK (services/instance-lock.js). The caller
+ * ends it.
+ * @returns { Promise<import('mysql2/promise').Connection> }
+ */
+export function openConnection() {
+  return mysql.createConnection({ ...connectionOptions });
+}
+
+/**
+ * Ends the shared pool: every connection closes once its query finishes. The
+ * last step of a graceful shutdown (services/shutdown.js); nothing may query
+ * after it.
+ */
+export async function endPool() {
+  await pool.end();
 }
 
 /**

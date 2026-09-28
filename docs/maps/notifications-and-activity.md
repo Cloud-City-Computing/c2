@@ -257,8 +257,8 @@ Mentions are `<span data-mention-user-id="42">` nodes emitted by the Tiptap
 plain-text context around the mention for the inbox preview and email body.
 
 Called from four places: REST save (`documents.js:148`), version restore
-(`documents.js:477`), WS save (`collab.js:535`), WS publish
-(`collab.js:638`). The comment path does its own extraction inline rather than
+(`documents.js:477`), WS save (`collab.js:603`), WS publish
+(`collab.js:707`). The comment path does its own extraction inline rather than
 reusing `processMentionsOnSave`, because comment content is plain text with a
 different link target (`comments.js:186-209`).
 
@@ -285,7 +285,7 @@ distinction from `/collab`.
 - Path `/notifications-ws`, same-origin enforced, 5s auth timeout, 10
   connections per user (`user-channel.js:22-23`).
 - State is `Map<userId, Set<ws>>` (`user-channel.js:26`).
-- `broadcastToUser(userId, message)` (`user-channel.js:48-64`) returns the
+- `broadcastToUser(userId, message)` (`user-channel.js:51-67`) returns the
   number of sockets written; `0` means the user has no tab open, which is not an
   error. Send failures are swallowed because the `close` handler untracks.
 - Frames sent: `connected`, `notification`, `read`, `read_all`.
@@ -312,7 +312,7 @@ break silently. See [access-control.md](access-control.md).
 
 `GET /api/activity/log/:logId` (`routes/activity.js:145`) is the per-document
 variant. Retention is 365 days, enforced by the daily prune `pruneOldActivity` in
-`server.js:145-163`.
+`server.js:223-241`.
 
 ---
 

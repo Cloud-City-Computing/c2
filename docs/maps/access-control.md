@@ -226,7 +226,7 @@ allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
 Called from the REST publish route and from the collab WebSocket publish message
-(`services/collab.js:602`), so both paths share one policy.
+(`services/collab.js:670`), so both paths share one policy.
 
 ### 3c. Archive ownership: `isArchiveOwner`
 
@@ -555,7 +555,7 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 (`server.js`, a top-level `await` before the port opens; defined in
 `routes/admin.js`), which
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
-(`server.js:17-22`).
+(`server.js:50-55`).
 
 **The boot sync creates or syncs, and never promotes** (GHSA-w8q3-r34w-3pjh).
 It reads every row matching `LOWER(name) = LOWER(ADMIN_USERNAME)` or

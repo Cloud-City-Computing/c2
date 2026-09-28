@@ -34,6 +34,7 @@ import notificationsRouter from './routes/notifications.js';
 import activityRouter from './routes/activity.js';
 import watchesRouter from './routes/watches.js';
 import firstRunRouter from './routes/first-run.js';
+import healthRouter from './routes/health.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -41,6 +42,10 @@ const app = express();
 // Trust the first proxy in a request (required for correct client IP behind Docker/reverse proxies)
 // Needed for rate limiting, sessions, and req.ip to work properly
 app.set('trust proxy', 1);
+
+// Liveness and readiness probes, ahead of every /api layer so no CORS rule,
+// limiter or session check stands between a supervisor and its answer.
+app.use(healthRouter);
 
 // CORS: restrict the API to same-origin requests, plus an explicit allowlist.
 //

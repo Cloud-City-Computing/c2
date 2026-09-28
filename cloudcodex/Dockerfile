@@ -42,4 +42,16 @@ COPY --from=build /app/dist ./dist
 # whatever PORT is set to. Changing this line does not move the bound port.
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+# Readiness, not just liveness: /readyz answers 503 until the instance lock is
+# held, MySQL answers and every file in /migrations is applied, and from the
+# moment a stop signal arrives (routes/health.js). node:20-slim ships no curl
+# or wget, so the probe is Node's own fetch, on whatever PORT the app binds.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/readyz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+
+# Node as the process, not npm: `docker stop` sends SIGTERM to the container's
+# main process, and with npm in between it reached npm, Node never ran its
+# shutdown, and the last three seconds of collaborative edits were lost to the
+# SIGKILL that followed. NODE_ENV=production comes from the ENV above, which is
+# why the start script's own prefix is not needed here.
+CMD ["node", "server.js"]

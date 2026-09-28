@@ -15,7 +15,7 @@ generated column:
 |---|---|---|---|
 | `html_content` | `MEDIUMTEXT` | REST save, publish, restore, explicit WS save, GitHub pull | everything: rendering, export, search (via generated column), GitHub push |
 | `markdown_content` | `MEDIUMTEXT` | REST save when the client sends it, WS save, GitHub pull/resolve/import | GitHub push (`github.js:1035-1043`), markdown-mode editing |
-| `ydoc_state` | `LONGBLOB` | collab autosave and explicit save (`collab.js:126-130`) | collab session restore only (`collab.js:78-85`) |
+| `ydoc_state` | `LONGBLOB` | collab autosave and explicit save (`collab.js:126-132`) | collab session restore only (`collab.js:84-91`) |
 | `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:293`) | the FULLTEXT index |
 
 `plain_content` is `REGEXP_REPLACE(html_content, '<[^>]+>', '')`, computed by
@@ -27,7 +27,7 @@ searchable until an explicit save writes `html_content`.**
 
 The intended invariant is that `html_content` and `ydoc_state` describe the same
 document. It is maintained by convention, not enforced. The debounced autosave
-is explicit about this (`collab.js:118-120`):
+is explicit about this (`collab.js:135-137`):
 
 > HTML is NOT updated here. Clients send HTML during explicit save/publish.
 
@@ -39,7 +39,7 @@ GitHub push, and the version snapshot taken by REST publish
 
 **`markdown_content` semantics:** `undefined` leaves the column untouched, an
 explicit `null` clears it, a string replaces it (`documents.js:129-140`,
-`collab.js:505`). Rich-text-mode saves send `null` to signal "HTML is now the
+`collab.js:573`). Rich-text-mode saves send `null` to signal "HTML is now the
 canonical source"; markdown-mode saves send the raw markdown. `localMarkdown()`
 in the GitHub path (`github.js:1035-1043`) prefers `markdown_content` when
 non-empty and otherwise round-trips the HTML through turndown, so a stale
@@ -52,10 +52,10 @@ non-empty and otherwise round-trips the HTML through turndown, so a stale
 | `POST /api/save-document` (`documents.js:84`) | `html_content`, optionally `markdown_content` | no |
 | `POST /api/document/:logId/publish` (`documents.js:173`) | `version`, `versions` row from existing `html_content` | no |
 | `POST .../versions/:versionId/restore` (`documents.js:426`) | `html_content`, `version`, new `versions` row | **yes**, `NULL` (`documents.js:465`) |
-| WS `{type:'save'}` (`collab.js:488-555`) | `html_content` if changed, `markdown_content`, `ydoc_state` | no |
-| WS `{type:'publish'}` (`collab.js:586-662`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
-| WS `{type:'title'}` (`collab.js:561-584`) | `title` only | no |
-| collab autosave (`collab.js:122-135`) | `ydoc_state` only | no |
+| WS `{type:'save'}` (`collab.js:555-623`) | `html_content` if changed, `markdown_content`, `ydoc_state` | no |
+| WS `{type:'publish'}` (`collab.js:654-731`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
+| WS `{type:'title'}` (`collab.js:629-652`) | `title` only | no |
+| collab autosave (`collab.js:139-149`), and the shutdown flush (`flushPendingSaves`, `collab.js:165-187`) | `ydoc_state` only | no |
 | GitHub pull / resolve / overwrite (`github.js:1183-1192`, `1225-1234`, `1407-1416`) | `html_content`, `markdown_content` | **yes**, `NULL` |
 | GitHub bulk import (`github.js:1597-1606`) | new `logs` row | n/a |
 | First-boot seed (`bootstrapInstance`, `routes/admin.js`) | new `logs` row, the welcome document | n/a |
@@ -63,18 +63,18 @@ non-empty and otherwise round-trips the HTML through turndown, so a stale
 Clearing `ydoc_state` to `NULL` is the deliberate mechanism for "the HTML just
 changed underneath the CRDT": on next connect the Y.Doc starts empty and the
 first client's Tiptap `Collaboration` extension re-initialises it from the
-REST-loaded HTML (`collab.js:86-88`). Any external writer of `html_content`
+REST-loaded HTML (`collab.js:92-94`). Any external writer of `html_content`
 **must** null the blob or live editors will keep resurrecting the old content.
 `POST /api/save-document` notably does not, which is correct only because it is
 the editor's own save path.
 
 ## 2. The collab WebSocket
 
-`services/collab.js`. One `Map` of `logId -> entry` (`collab.js:43`), where an
-entry is `{ doc, conns, saveTimer, cleanupTimer, lastSavedHtml, logId }`
-(`collab.js:66-75`).
+`services/collab.js`. One `Map` of `logId -> entry` (`collab.js:45`), where an
+entry is `{ doc, conns, saveTimer, saving, cleanupTimer, lastSavedHtml, credits, logId }`
+(`collab.js:71-81`).
 
-### Constants (`collab.js:48-54`)
+### Constants (`collab.js:53-59`)
 
 ```
 SAVE_DEBOUNCE_MS         3000     autosave debounce after any Y.Doc mutation
@@ -88,38 +88,38 @@ RATE_LIMIT_MAX_MESSAGES    60     per window, applies to binary and text alike
 
 ### Session setup
 
-`setupDocSession` (`collab.js:374-711`) runs after auth succeeds:
+`setupDocSession` (`collab.js:441-780`) runs after auth succeeds:
 
-1. `getOrCreateDoc(logId)` (`collab.js:62-115`) loads `ydoc_state` and applies it
+1. `getOrCreateDoc(logId)` (`collab.js:67-121`) loads `ydoc_state` and applies it
    to a fresh `Y.Doc`, and caches `html_content` into `entry.lastSavedHtml`.
-2. Cancels any pending cleanup timer (`collab.js:385-388`).
+2. Cancels any pending cleanup timer (`collab.js:452-455`).
 3. Assigns a cursor colour round-robin from a 10-entry palette
-   (`collab.js:231-241`). `colorIndex` is a module global, so colours are
+   (`collab.js:297-307`). `colorIndex` is a module global, so colours are
    assigned per-connection in arrival order, never per-user.
 4. Sends **sync step 1** then **sync step 2** immediately
-   (`collab.js:402-412`). Step 2 is proactive so a joining client gets content
+   (`collab.js:469-479`). Step 2 is proactive so a joining client gets content
    without a round trip.
 5. Sends a JSON `{type:'sync', canWrite, user}` frame carrying permissions and
    identity. **No HTML travels over this frame**, despite the older protocol
-   comment at `collab.js:249` saying it does. The doc arrives as binary CRDT
+   comment at `collab.js:315` saying it does. The doc arrives as binary CRDT
    state.
 6. Broadcasts awareness to everyone.
 
-`canWrite` is computed once at connect time (`collab.js:363`) and never
+`canWrite` is computed once at connect time (`collab.js:430`) and never
 re-checked. Revoking someone's write access does not take effect until they
 reconnect.
 
 ### Message taxonomy
 
 Binary frames are Yjs sync protocol; text frames are JSON. The JSON `type` is
-allow-listed to exactly five values (`collab.js:459-461`):
+allow-listed to exactly five values (`collab.js:526-528`):
 
 | Type | Gate | Effect |
 |---|---|---|
-| `cursor` | `canWrite` | position is validated and coerced to safe integers (`collab.js:465-476`), then broadcast to others |
+| `cursor` | `canWrite` | position is validated and coerced to safe integers (`collab.js:532-543`), then broadcast to others |
 | `save` | `canWrite` | immediate save, see below |
 | `publish` | `canWrite` | permission-checked snapshot, see below |
-| `comment` | `canWrite` | relays only ids, never content (`collab.js:667-681`); the actual CRUD is REST |
+| `comment` | `canWrite` | relays only ids, never content (`collab.js:736-750`); the actual CRUD is REST |
 | `title` | `canWrite` | updates `logs.title`, broadcasts, and logs `log.rename` |
 
 All five are gated the same way. `title` was the exception until 2026-08-09
@@ -130,67 +130,71 @@ and the `log.rename` activity that followed also mailed every watcher.
 client refetches over REST, which keeps the WS from becoming a second
 authorisation surface for comment content.
 
-Binary frames are dropped outright for read-only clients (`collab.js:441`).
+Binary frames are dropped outright for read-only clients (`collab.js:508`).
 Updates are echoed to every peer except the origin, using the sender's `ws` as
-the Yjs transaction origin (`collab.js:100-111`, `collab.js:159`), which is what
+the Yjs transaction origin (`collab.js:106-117`, `collab.js:225`), which is what
 prevents an echo loop.
 
 **Image credits.** Every client's save carries the whole shared document, so
 the client that sends a save is not necessarily the writer who added what it
-carries. `applySyncFrame` (`collab.js:151-165`) scans each binary frame's bytes
+carries. `applySyncFrame` (`collab.js:217-231`) scans each binary frame's bytes
 for `/doc-images/<hash>.webp`, and only for a frame that names one renders the
 `default` fragment before and after applying it. `entry.credits`, a
 `DocImageCredits` from `routes/helpers/images.js` opened with the entry
-(`collab.js:73`, seeded with the stored HTML and any loaded CRDT state at
-`collab.js:95`, closed on cleanup at `collab.js:192`), credits a reference to
+(`collab.js:79`, seeded with the stored HTML and any loaded CRDT state at
+`collab.js:101`, closed on cleanup at `collab.js:258`), credits a reference to
 the frame's writer only when their own frame named it, it newly appeared, the
 stored HTML does not already show it, and nobody holds the credit yet. Saves
 then record references per credited writer, never per sender
 (access-control.md section 3f).
 
-### Save (`collab.js:488-555`)
+### Save (`collab.js:555-623`)
 
 Cancels the debounce, encodes the CRDT state, sanitises the client HTML through
 `sanitizeHtml` then `extractImagesFromHtml`, and writes. It only writes
 `html_content` when the HTML actually changed against `entry.lastSavedHtml`
-(`collab.js:508`); otherwise it writes the blob alone. On an HTML change it then
-records the images (`recordLiveDocImages`, `collab.js:173-180`, which logs its
+(`collab.js:576`); otherwise it writes the blob alone. On an HTML change it then
+records the images (`recordLiveDocImages`, `collab.js:239-246`, which logs its
 own failure so nothing after it is skipped), and runs `processMentionsOnSave`
-and `logActivity('log.update')` (`collab.js:531-550`).
+and `logActivity('log.update')` (`collab.js:599-618`).
 
-### Publish (`collab.js:586-662`)
+### Publish (`collab.js:654-731`)
 
 Loads the log's squad context, calls the shared `canPublish`
-(`collab.js:602`), bumps `logs.version`, writes HTML plus blob plus version,
+(`collab.js:670`), bumps `logs.version`, writes HTML plus blob plus version,
 inserts the `versions` row, fires mentions and `log.publish` activity, then
 broadcasts `{type:'published', version, title}` to **all** connections including
 the publisher. Title is capped at 255 chars, notes at 5000
-(`collab.js:588-589`).
+(`collab.js:656-657`).
 
 ### Lifecycle and teardown
 
-On close (`collab.js:684-699`): drop the connection, decrement the per-user
+On close (`collab.js:753-768`): drop the connection, decrement the per-user
 count, rebroadcast awareness, and if this was the last connection schedule both
 a final save and cleanup. Cleanup after 30s destroys the `Y.Doc` and removes the
-map entry, but only if no one reconnected (`collab.js:185-195`).
+map entry, but only if no one reconnected (`collab.js:251-261`).
 
 **All of this is per-process, in-memory.** Restarting the server drops every
-in-memory doc; state survives only through `ydoc_state`, which is at most 3
-seconds stale. This is the load-bearing reason the single-process architecture
-is not negotiable: a second replica would maintain a second, divergent `Y.Doc`
-for the same log.
+in-memory doc; state survives only through `ydoc_state`. A graceful stop
+(SIGTERM or SIGINT) writes every pending debounced save first
+(`flushPendingSaves`, `request-lifecycle.md` section 7), so `ydoc_state` is
+current after one; only a crash or a SIGKILL can leave it up to 3 seconds
+stale. This is the load-bearing reason the single-process architecture is not
+negotiable: a second replica would maintain a second, divergent `Y.Doc` for the
+same log, and the instance lock (`services/instance-lock.js`) now makes a second
+process on the same schema refuse to start.
 
 ### The REST side-channel
 
-`broadcastToDoc(logId, message)` (`collab.js:718-726`) lets REST handlers push
+`broadcastToDoc(logId, message)` (`collab.js:787-795`) lets REST handlers push
 arbitrary JSON to live editors without going through Yjs. Its only current
 callers are the GitHub pull and resolve routes, which emit
 `{type:'github-pulled', ...}` (`github.js:1193`, `1235`, `1417`). It returns
 `false` when no one has the doc open.
 
 Three read-only accessors feed the admin and presence surfaces:
-`getActiveDocCount` (`collab.js:731`), `getActiveUsers(logId)`
-(`collab.js:738`), `getAllPresence()` (`collab.js:751`).
+`getActiveDocCount` (`collab.js:800`), `getActiveUsers(logId)`
+(`collab.js:807`), `getAllPresence()` (`collab.js:820`).
 
 ## 3. Versions
 
@@ -198,7 +202,7 @@ Three read-only accessors feed the admin and presence surfaces:
 release notes (`init.sql:360-375`). Four operations:
 
 - **Publish** bumps `logs.version` and inserts a row. Two entry points, REST
-  (`documents.js:173`) and WS (`collab.js:586`), sharing `canPublish`.
+  (`documents.js:173`) and WS (`collab.js:654`), sharing `canPublish`.
 - **List / fetch** (`documents.js:350`, `documents.js:386`) behind read access.
 - **Restore** (`documents.js:426`) writes the old HTML back as a *new* version,
   so history is append-only and nothing is lost. It nulls `ydoc_state`.
@@ -246,7 +250,7 @@ through the archive view.
 ## Related
 
 - [access-control.md](access-control.md) for what `canWrite` at
-  `collab.js:363` actually resolves.
+  `collab.js:430` actually resolves.
 - [notifications-and-activity.md](notifications-and-activity.md) for
   `processMentionsOnSave` and `logActivity`, called from every save path here.
 - [github-integration.md](github-integration.md) for the pull/push paths that

@@ -42,8 +42,8 @@ it (directly or transitively) before reading `process.env`.
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
 `NODE_ENV` matters in three places: CORS localhost allowance
-(`app.js:102`), rate-limiter `skip` when `'test'` (`app.js:134`,
-`app.js:172`, `app.js:186`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+(`app.js:107`), rate-limiter `skip` when `'test'` (`app.js:139`,
+`app.js:177`, `app.js:191`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -91,10 +91,33 @@ bind mount `./db-data/`, `init.sql` mounted into
 - `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build
   stage runs `npm ci` and `npm run build`, and the runtime stage runs
   `npm ci --omit=dev`, copies the source, then copies `dist/` across from the
-  build stage. `CMD npm run start`.
+  build stage. `CMD ["node", "server.js"]`: Node is the container's main
+  process, so `docker stop`'s SIGTERM reaches the graceful shutdown in
+  `server.js` (`request-lifecycle.md` section 7). Under the old
+  `CMD npm run start` the signal reached npm, Node never ran a handler, and
+  Docker's SIGKILL followed.
 - The runtime stage sets `ENV NODE_ENV=production` rather than relying on the
   `npm run start` script, because `vite-express` reads it when `server.js` is
-  imported to decide between serving `dist/` and booting a Vite dev server.
+  imported to decide between serving `dist/` and booting a Vite dev server. It
+  is also why the image no longer needs the script at all.
+- A `HEALTHCHECK` probes `GET /readyz` every 10 s (3 s timeout, 20 s start
+  period, 3 retries) with `node -e "fetch(...)"` on `PORT`, because
+  `node:20-slim` has no curl or wget. Healthy means the instance lock is held,
+  `SELECT 1` answers and every file under the `/migrations` mount is recorded,
+  so a fresh volume reads `unhealthy` until the one-time
+  `--adopt-fresh-install`. Measured 2026-09-27 on the release compose file with
+  a local build: `docker stop` returned in 0.45 s with exit 0 and `stopped
+  cleanly on SIGTERM`, and the restarted container reported `healthy` 6 s after
+  `docker start`. Re-measured after the review round with `docker run` of a
+  local build: a stop during the boot's SMTP verify took 0.28 s with exit 0
+  and `stopped on SIGTERM during boot`, where the previous image ignored the
+  signal (Node as PID 1 with no handler yet) and was SIGKILLed at 10.3 s with
+  exit 137; KILLing the lock's MySQL connection and taking the lock from
+  another session stopped the container with exit 1 about a second later.
+- The prod and release compose files give the app `stop_grace_period: 20s`,
+  twice the shutdown's own 10 s bound, so it finishes before Docker's SIGKILL.
+  `tests/image-lifecycle.test.js` pins the `CMD`, the `HEALTHCHECK` and the
+  grace period.
 - `src/` is copied whole rather than dropped in favour of `dist/`: the server
   imports `src/lib/githubDiff.js` directly.
 - `cloudcodex/.dockerignore` excludes `node_modules`, `dist`, `tests`,
@@ -132,10 +155,29 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **84 files, 1824 tests, all passing**; the
-integration project is **11 files, 85 tests** (measured 2026-09-27 on the merged
+Current state: the default run is **88 files, 1913 tests, all passing**; the
+integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
 tree, against MySQL 8.4 at the server's default isolation and at
 `READ-COMMITTED`).
+
+`tests/integration/lifecycle.test.js` is the fourth test group that needs
+real processes rather than a real server alone: it forks
+`tests/integration/lock-holder.js` against the file's schema to prove the
+instance lock (a second process exits 1 naming the holder's connection id, a
+SIGKILLed holder frees it within two seconds, two schemas hold their own at
+once, a 64-character schema name gets an exclusive lock of its own), then
+boots `server.js` itself (`NODE_ENV=production`, a free port, the boot admin), signs in through `/api/login`, sends one Yjs update over
+`/collab`, delivers SIGTERM 200 ms later, inside the three-second debounce, and
+requires exit 0, close code 1001, the edit in `logs.ydoc_state` and the edit
+served by a restarted server. Its last test boots `server.js`, KILLs the lock's
+connection the way a MySQL restart would, takes the lock from the test's own
+connection, and requires the server to exit 1 within 15 s naming that
+connection and without `stopped cleanly`. `tests/integration/migrate.test.js`
+adopts a 64-character schema under the runner's lock. Mutation-checked on
+2026-09-27: a `flushPendingSaves` that skips every document leaves
+`ydoc_state` NULL, a lock that ignores GET_LOCK's answer lets the second
+process in, and a lost lock that never reaches `onSuperseded`, or a `server.js`
+that ignores it, leaves the server running.
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
@@ -374,7 +416,8 @@ Four global `vi.mock` calls apply to **every** backend test:
 
 - `../mysql_connect.js`: `c2_query` returns `[]`, `generateSessionToken`
   returns `'mock-session-token'`, `validateAndAutoLogin` returns `null`,
-  `touchSession` no-ops.
+  `touchSession` and `endPool` no-op, and `openConnection` rejects, so no
+  backend test can reach a real server by accident.
 - `../services/email.js`: `sendEmail` and `verifyEmailConnection` stubbed.
 - `sharp`: a chainable stub with `resize`/`webp`/`toFile`.
 - `fs/promises`: **only `mkdir` and `unlink`.**
@@ -402,18 +445,19 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:104-176`. The global floor is deliberately low because
+`vitest.config.js:104-185`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **32 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **35 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
 arrived with the identity seam; the 31st, `services/session-token.js` (95 on
 all four), with hashed sessions; the 32nd, `routes/doc-images-serve.js` (95
-lines, 92 branches), with the authorized image handler. The security-critical and
+lines, 92 branches), with the authorized image handler; `routes/health.js`,
+`services/shutdown.js` and `services/instance-lock.js` with W6-CDX-31. The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -509,7 +553,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 32 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 35 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and

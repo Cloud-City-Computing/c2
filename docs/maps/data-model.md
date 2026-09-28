@@ -93,7 +93,7 @@ Consequences:
 - The tag-strip is a regex, not a parser, so entities such as `&amp;` survive
   into the index verbatim.
 - **All three content columns are `MEDIUMTEXT` (16 MiB)** since 2026-08-09, so
-  the app's own 2 MiB ceiling (`documents.js:29`, `collab.js:51`) is now the
+  the app's own 2 MiB ceiling (`documents.js:29`, `collab.js:56`) is now the
   real limit. Until then `html_content` and `plain_content` were `TEXT`
   (64 KiB) and the column was the true ceiling: measured, a 40 KiB save
   returned 200 and a 70 KiB save returned an opaque 500 with the edit lost,
@@ -147,11 +147,11 @@ already has rows unless `--again` or `DOC_IMAGES_PUBLIC=1`;
 `sessions.id CHAR(64)` is the primary key and holds the **SHA-256 digest of
 the token**, lowercase hex, never the token itself (`init.sql`, `CREATE TABLE
 sessions`). The token is minted by `createNewSessionToken`
-(`mysql_connect.js:96-100`) and handed to the browser; `hashSessionToken`
+(`mysql_connect.js:122-126`) and handed to the browser; `hashSessionToken`
 (`services/session-token.js`) is the one definition of what is stored, and
 every lookup and delete by token binds its output. A hex digest is also 64
 characters, so the column did not change. There are **many rows per user by
-design**, one per sign-in: `generateSessionToken` (`mysql_connect.js:122-130`)
+design**, one per sign-in: `generateSessionToken` (`mysql_connect.js:148-156`)
 only ever inserts, and the `user_id` index serves the deletes that sign every
 device out (password reset, update-account).
 
@@ -476,7 +476,10 @@ That is inherent to adopting a baseline rather than a defect, but it means the
 guard's promise is "nothing has changed since adoption", not "this is what ran".
 
 The apply phase is serialised by a MySQL advisory lock
-(`GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`). Without it two
+(`GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`; for a schema name
+longer than 45 characters, which would push the name past MySQL's 64,
+`cloudcodex_migrate#` and the first 40 hex characters of its SHA-256
+instead, so every name that fits is the one earlier releases used). Without it two
 concurrent runs both compute the same pending set, MySQL serialises the DDL, and
 the loser gets a duplicate-column error that the runner would report as "may be
 partially migrated" when the database is in fact correct. The lock is

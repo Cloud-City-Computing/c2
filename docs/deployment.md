@@ -40,6 +40,7 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
    │   · vite-express serves dist/ + Express API          │
    │   · 2 WS servers attached (collab + notifications)   │
    │   · reads .env, exits if admin credentials missing   │
+   │   · one process per database (a per-schema lock)     │
    │   · SMTP is optional; mail degrades if unconfigured  │
    │   · named volume app_public (avatars, doc-images)    │
    │   · daily activity_log prune                         │
@@ -443,8 +444,11 @@ docker compose -f docker-compose-release.yml run --rm app \
    npm run migrate -- --adopt-fresh-install
 ```
 
-Nothing is applied there, so the app can stay up for that one. Every upgrade
-after that is the four-step order above:
+Nothing is applied there, so the app can stay up for that one. Until it runs,
+`/readyz` answers `503 {"ready":false,"reason":"migrations"}` and Docker
+reports the container `unhealthy`, because a database with no bookkeeping
+cannot be shown to be migrated; the app serves requests either way. Every
+upgrade after that is the four-step order above:
 
 ```bash
 docker compose -f docker-compose-release.yml pull app       # 1. new image
@@ -470,7 +474,10 @@ The lock name is `cloudcodex_migrate:<database>`, built server-side with
 `GET_LOCK(CONCAT('cloudcodex_migrate:', DATABASE()), 10)`. `GET_LOCK` names are
 scoped to the MySQL **server**, not to a database, so an unqualified name would
 make two Cloud Codex schemas on one server serialise against each other while
-the loser was told the contention was against its own database. The runner also
+the loser was told the contention was against its own database. MySQL caps a
+lock name at 64 characters, so for a schema name longer than 45 the name is
+`cloudcodex_migrate#` and the first 40 hex characters of the schema's SHA-256
+instead; every shorter name is unchanged. The runner also
 distinguishes MySQL's two negative answers: `0` is "someone else holds it" and
 `NULL` is "the attempt itself errored", and they get different messages.
 
@@ -603,12 +610,92 @@ introduce a proxy that requires it (and add a test).
 
 ## Health checks
 
-There's no dedicated `/healthz` endpoint today. A reasonable check for
-your platform's health probe is:
+Two unauthenticated endpoints, outside `/api` and ahead of every rate limiter.
+Neither says anything about the install: no version, no counts, no names.
+
+| Endpoint | Answers | Use it for |
+|---|---|---|
+| `GET /healthz` | `200 {"ok":true}` whenever the process is serving HTTP. It touches nothing, not even the database. | **Liveness.** Restart the container only when this fails. |
+| `GET /readyz` | `200 {"ready":true}`, or `503 {"ready":false,"reason":"..."}` | **Readiness.** Route traffic to the instance, and call a deploy done, only on 200. |
+
+The `reason` is one of four words, checked in this order:
+
+| `reason` | Means | What to do |
+|---|---|---|
+| `shutting_down` | a stop signal arrived and the app is flushing and closing | nothing: it exits within ten seconds |
+| `lock` | this process does not hold the instance lock (see [One process per database](#one-process-per-database)) | read the log: MySQL restarted and the lock is being taken back (it retries every second), or another process took it, in which case this one stops |
+| `database` | `SELECT 1` failed or took longer than two seconds | check MySQL and the network |
+| `migrations` | a file in `migrations/` has not been applied, the database has never been adopted, or `migrations/` is not mounted | run `npm run migrate` (see [Upgrades](#upgrades)); on a brand-new install, the one-time `--adopt-fresh-install` |
+
+The published image carries a Docker `HEALTHCHECK` on `/readyz` (every 10 s,
+3 s timeout, 20 s start period, 3 retries), so `docker ps` and
+`docker inspect --format '{{.State.Health.Status}}' cloudcodex-app` show
+`healthy` once the app is ready. Plain Compose does not restart an unhealthy
+container; the status is for you and for whatever sits in front.
 
 ```bash
-curl -fsS http://localhost:3000/api/oauth/providers
+curl -fsS http://localhost:3000/readyz     # exits non-zero on 503
 ```
 
-It returns `200` once the app has booted past its SMTP + admin checks
-and has a working DB pool.
+Answering `/readyz` costs at most one `SELECT 1` and one read of
+`schema_migrations` at a time, however many probes arrive together, but it is
+still a database call anyone who can reach the port can make. If your proxy
+forwards every path, consider not exposing `/healthz` and `/readyz` publicly;
+your supervisor reaches the container port directly.
+
+**Do not point a liveness probe at `/readyz`.** A database outage would then
+restart a perfectly healthy app in a loop. Earlier releases of this document
+suggested `GET /api/oauth/providers`, which reads no database and so proved
+only that the process listened; use `/healthz` for that.
+
+### Stopping cleanly
+
+The image runs `node server.js` directly, so `docker stop` (SIGTERM) and
+Ctrl-C (SIGINT) reach the app. It then answers `/readyz` with
+`shutting_down`, stops taking connections, writes every open document's
+not-yet-saved collaborative edits to the database, closes both WebSockets with
+code 1001 (editors reconnect to the next process on their own), releases the
+instance lock and the database pool, logs `stopped cleanly on SIGTERM` and
+exits 0. It gives itself ten seconds and exits 1 past that. If a document's
+final write fails, the last line is `stopped on SIGTERM with 1 document not
+saved` instead (and the line before it names the document), so look for
+`cleanly`, not just `stopped`. A stop signal that arrives during startup, before
+the app is listening, ends it at once, and a second Ctrl-C does the same
+mid-shutdown. Both production compose files set `stop_grace_period: 20s` so
+Docker waits for it; if you run the image some other way, give it more than ten
+seconds before a SIGKILL.
+
+A SIGKILL, a crash or a power cut still loses up to the last three seconds of
+live edits for documents nobody had saved, as before.
+
+### One process per database
+
+A Cloud Codex process keeps every open document's live state in memory, so
+two processes on the same database would each keep their own copy and
+overwrite each other's. At boot the app therefore takes a MySQL lock named for
+its schema (`cloudcodex-instance:<database>`, or a SHA-256 digest of a schema
+name longer than 44 characters, since MySQL caps lock names at 64) and holds it
+on a connection of its own until it stops. A second process pointed at the same
+database refuses to start and says which MySQL connection holds the lock:
+
+```
+✖ Another Cloud Codex process (MySQL connection 8) already serves this database.
+Two processes would hold two different copies of every open document. Stop the other one,
+or set C2_INSTANCE_LOCK=0 if you know exactly why you need both.
+```
+
+To find it, `SELECT * FROM performance_schema.processlist WHERE ID = 8;` on the
+MySQL server. The lock goes when its process does, a `kill -9` included, so
+there is nothing to clean up. Instances on **different** schemas of one MySQL
+server never contend, and `npm run migrate` uses a lock of its own, so the
+one-off migration container never collides with the running app.
+
+If MySQL restarts under a running app, the lock goes with the connection:
+`/readyz` answers `lock` while the app tries to take it back on a new
+connection, once a second. If another process got it first (a duplicate that
+was being refused and reconnected sooner), the app that lost it logs
+`another process took the instance lock while this one had lost it`, stops
+through the normal shutdown and exits 1; under `restart: unless-stopped` it
+then comes back as an ordinary refusal naming the new holder, and you stop
+whichever one you did not mean to run. `C2_INSTANCE_LOCK=0` turns the lock off entirely; it is an
+escape for an operator who knows why, not a way to run replicas.

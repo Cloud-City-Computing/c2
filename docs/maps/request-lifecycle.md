@@ -9,21 +9,25 @@ same HTTP listener.
 ## 1. Boot order
 
 `cloudcodex/server.js` is the entry point and it is deliberately fail-fast: two
-config gates run **before** anything listens.
+config gates and the instance lock run **before** anything listens. The image
+runs it as `node server.js` directly (`cloudcodex/Dockerfile`, the `CMD`), so a
+stop signal reaches Node rather than npm; see section 7 for what it does then.
 
 | Step | Location | Behaviour |
 |---|---|---|
 | Load `.env` | `mysql_connect.js:17` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
-| DB pool | `mysql_connect.js:19-27` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. |
-| DB credential gate | `mysql_connect.js:29-33` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
+| DB pool | `mysql_connect.js:19-33` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. Its host, user, password and schema are one `connectionOptions` object, which `openConnection()` reuses for the instance lock's own connection. |
+| DB credential gate | `mysql_connect.js:35-39` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the provider gate below and an invalid `PORT`, these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
+| Instance lock | `server.js:69-93`, top-level `await` | `acquireInstanceLock()` (`services/instance-lock.js`) runs `SELECT GET_LOCK(<name>, 0)` on a connection of its own (`openConnection()`, `mysql_connect.js:48-50`), never the pool, and holds it for the life of the process. **Before anything writes**, so a second process on the same schema refuses before its admin sync or seed can race the first's. A refusal exits 1 with `Another Cloud Codex process (MySQL connection <id>) already serves this database.`, naming the holder and the escape; so does a failure to open the connection at all, which under a supervisor is a restart rather than an outage. `C2_INSTANCE_LOCK=0`, and only `0`, takes no lock and logs that a second process will diverge. The lock object is handed to `/readyz` (`readiness.lock`, `routes/health.js`). The name, built server side as `INSTANCE_LOCK_NAME_SQL`, is `cloudcodex-instance:<db>`, or `cloudcodex-instance#` and the first 40 hex characters of the schema's SHA-256 when the schema name is longer than 44 characters, since MySQL refuses a lock name over 64 (ER 4163). It differs from the migration runner's `cloudcodex_migrate:<db>` (`scripts/migrate.js`, capped the same way past 45), so `npm run migrate` in a one-off container never contends with the running app, and it carries the schema, so instances sharing one MySQL server never contend with each other. `server.js` passes `onSuperseded`, which stops the process if another one takes the lock after this one lost it (section 7). |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
 | Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:264`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
 | Collab WS | `server.js`, `setupCollabServer(server)` | `setupCollabServer(server)`, path `/collab`. |
 | Notification WS | `server.js`, `setupUserChannelServer(server)` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Stop signals | `server.js:20-48`, before every other step; `server.js:209-221` | `process.on('SIGTERM')` and `process.on('SIGINT')` go in **first**, ahead of the config gates and the boot awaits. Node is PID 1 in the image, and the kernel drops a signal PID 1 has no handler for, so a `docker stop` during the lock, SMTP verify or admin sync would otherwise wait for SIGKILL. Until `createShutdown(...)` is assigned, after the listen and the socket servers, a signal logs `stopped on <signal> during boot` and exits 0 at once: nothing is pending and the lock goes with the process. From then on the first signal runs the shutdown (section 7) and a second one logs and exits 1 at once. |
 | Activity prune | `server.js`, `pruneOldActivity` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 | Session prune | `server.js`, `pruneExpiredSessions` | Deletes `sessions` rows whose `expires_at` has passed, on the same two timers. Every sign-in adds a row and nothing refreshes one in place, so without it the table only grows; `validateAndAutoLogin` already refuses an expired row, so this reclaims space and changes no answer. |
 
@@ -34,24 +38,26 @@ Two consequences worth knowing:
   listener (`app.js:4-5`). Tests import `app.js`; they never import `server.js`
   except `tests/server.test.js`.
 - **The daily prunes are single-process by design.** The comment above
-  `pruneOldActivity` says so explicitly. If the app is ever scaled
-  horizontally, every replica prunes.
+  `pruneOldActivity` says so explicitly. The instance lock now enforces one
+  process per schema, so a second replica does not start rather than pruning
+  twice.
 
 ## 2. The middleware stack, in mount order
 
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', 1)                    app.js:43
+app.set('trust proxy', 1)                    app.js:44
   │
-  ├─ CORS, scoped to /api                    app.js:54-110
-  ├─ helmet + CSP, scoped to /api            app.js:113-126
-  ├─ express.json({ limit: '2mb' })          app.js:138
-  ├─ authLimiter on 9 paths + reader-check   app.js:141-164
-  ├─ searchLimiter on /api/users/search      app.js:175
-  ├─ stateLimiter on /api/documents/state    app.js:189
-  ├─ static /avatars      (7d immutable)     app.js:192-195
-  ├─ /doc-images, authorized (private, 1d)   app.js:199
+  ├─ health router: /healthz, /readyz        app.js:48
+  ├─ CORS, scoped to /api                    app.js:59-115
+  ├─ helmet + CSP, scoped to /api            app.js:118-131
+  ├─ express.json({ limit: '2mb' })          app.js:143
+  ├─ authLimiter on 9 paths + reader-check   app.js:146-169
+  ├─ searchLimiter on /api/users/search      app.js:180
+  ├─ stateLimiter on /api/documents/state    app.js:194
+  ├─ static /avatars      (7d immutable)     app.js:197-200
+  ├─ /doc-images, authorized (private, 1d)   app.js:204
   └─ 18 routers, all mounted at /api
 ```
 
@@ -126,22 +132,22 @@ honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
 app's port directly, so an attacker could set that header themselves and turn
 the same-origin clause into "allow any origin".
 
-**CSP** (`app.js:114-125`) is scoped to `/api` on purpose so the Vite dev server's
+**CSP** (`app.js:119-130`) is scoped to `/api` on purpose so the Vite dev server's
 inline module scripts are not blocked. `frameAncestors: 'none'`,
 `objectSrc: 'none'`, `connectSrc` allows `ws:`/`wss:` for the two WebSockets,
 `imgSrc` allows `data:` and `blob:` for pasted images.
 
-**Body limit is 2 MB** (`app.js:138`). The collab WebSocket has its own, larger
-limits (5 MB frame, 2 MB HTML) in `services/collab.js:50-51`, so a document that
+**Body limit is 2 MB** (`app.js:143`). The collab WebSocket has its own, larger
+limits (5 MB frame, 2 MB HTML) in `services/collab.js:55-56`, so a document that
 saves fine over WS can 413 over REST.
 
 ### Rate limiters
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:129-136`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:141-148`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:154`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:164`) |
-| `searchLimiter` (`app.js:167-174`) | 15 min / 60 | `/api/users/search` only (`app.js:175`), to blunt user enumeration |
-| `stateLimiter` (`app.js:181-188`) | 15 min / 120 | `/api/documents/state` only (`app.js:189`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
+| `authLimiter` (`app.js:134-141`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:146-153`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:159`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:169`) |
+| `searchLimiter` (`app.js:172-179`) | 15 min / 60 | `/api/users/search` only (`app.js:180`), to blunt user enumeration |
+| `stateLimiter` (`app.js:186-193`) | 15 min / 120 | `/api/documents/state` only (`app.js:194`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
 All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. One test exercises the
@@ -154,7 +160,11 @@ while the first 120 reach `machineOrAuth` (401) and `/api/search` and
 
 ### Router mounting
 
-All 18 routers mount on the bare `/api` prefix, so each router
+The health router (`routes/health.js`) is the one exception to what follows: it
+mounts at the root, ahead of every `/api` layer (`app.js:48`), and answers
+`/healthz` and `/readyz` only (section 7).
+
+All 18 other routers mount on the bare `/api` prefix, so each router
 declares its own full path (`router.post('/login', ...)` yields `/api/login`).
 There is no per-area prefix. Mount order is the resolution order, and several
 routers declare overlapping shapes, so a path collision resolves to whichever
@@ -190,7 +200,7 @@ component that consume it.
    is **exported**, so it is the single definition of "which token is this
    request carrying" and `POST /api/logout` uses the same one.
 2. No token, 401 `Authentication required`.
-3. `validateAndAutoLogin(token)` (`mysql_connect.js:138-156`) looks the session
+3. `validateAndAutoLogin(token)` (`mysql_connect.js:164-182`) looks the session
    up by primary key, **by the digest of the token** (`hashSessionToken`, see
    "Session tokens" below), rejects if `expires_at <= now`, then loads the user
    row. Anything that is not a non-empty string is no session, answered without
@@ -295,7 +305,7 @@ refusal and the linked rung's trade-off against MySQL 8.4.
 ### Session tokens
 
 `generateSessionToken(user, ip, userAgent, { provider })`
-(`mysql_connect.js:122-130`) is **one session per sign-in** (W6-CDX-2): every
+(`mysql_connect.js:148-156`) is **one session per sign-in** (W6-CDX-2): every
 call is exactly one `INSERT INTO sessions` with a 7-day expiry, and nothing
 reuses or refreshes a row. A second device gets a row of its own, and
 `POST /api/logout` signs out only the device that presents the token.
@@ -320,7 +330,7 @@ section 4). A rotation (update-account, confirm-email, below) keeps the tag of
 the session it replaces: `getSessionProvider(token)` (`mysql_connect.js`)
 reads it by digest, and answers `'local'` for a session that is gone.
 
-Token generation (`createNewSessionToken`, `mysql_connect.js:96-100`) uses
+Token generation (`createNewSessionToken`, `mysql_connect.js:122-126`) uses
 `crypto.getRandomValues` over a 62-character alphabet, default length 64. The
 modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 
@@ -435,28 +445,28 @@ handler.
 
 Both WS servers attach to the same `http.Server` returned by
 `ViteExpress.listen`, and both use `noServer: true` plus
-`server.prependListener('upgrade', ...)` (`services/collab.js:269`,
-`services/user-channel.js:86`). `prependListener` is used so these handlers run
+`server.prependListener('upgrade', ...)` (`services/collab.js:336`,
+`services/user-channel.js:104`). `prependListener` is used so these handlers run
 before Vite's own HMR upgrade handler, and each returns early when the path is
 not its own, letting the next listener try.
 
 | | `/collab` | `/notifications-ws` |
 |---|---|---|
 | File | `services/collab.js` | `services/user-channel.js` |
-| Path guard | `collab.js:273` | `user-channel.js:88` |
-| Origin check | `collab.js:276-296` | `user-channel.js:91-109` |
-| Query params | `?logId=<int>` (`collab.js:298-304`) | none |
-| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:315-334`) | same, 5s (`user-channel.js:117-135`) |
-| Max payload | 5 MB (`collab.js:266`) | default |
-| Per-user cap | 10 across all docs (`collab.js:52,350-354`) | 10 (`user-channel.js:23,150-153`) |
+| Path guard | `collab.js:340` | `user-channel.js:106` |
+| Origin check | `collab.js:343-363` | `user-channel.js:109-127` |
+| Query params | `?logId=<int>` (`collab.js:365-371`) | none |
+| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:382-401`) | same, 5s (`user-channel.js:135-153`) |
+| Max payload | 5 MB (`collab.js:332`) | default |
+| Per-user cap | 10 across all docs (`collab.js:57,416-420`) | 10 (`user-channel.js:23,168-171`) |
 
 **Origin handling is strict in both:** a *missing* `Origin` header is rejected
-with a raw `403` on the socket (`collab.js:278-282`), as is any origin whose
+with a raw `403` on the socket (`collab.js:345-349`), as is any origin whose
 host differs from the request `Host`. This is CSWSH protection, and it means a
 non-browser client must send an `Origin` matching the host.
 
 **Auth is post-upgrade, not pre-upgrade.** The handshake completes first
-(`collab.js:307-309`), then the first frame must be the auth message. An
+(`collab.js:374-376`), then the first frame must be the auth message. An
 unauthenticated client can therefore hold an open socket for up to 5 seconds.
 Close codes are meaningful: 4001 auth timeout, 4002 malformed auth, 4003
 unauthorized or access denied, 4004 too many connections.
@@ -478,6 +488,128 @@ convention is to normalise a handler you are already editing, and leave the rest
 alone.
 
 ---
+
+## 7. Probes and shutdown
+
+### `/healthz` and `/readyz`
+
+`routes/health.js`, mounted at the root before CORS, Helmet and every limiter,
+so nothing stands between a supervisor and its answer. Both are
+unauthenticated and both set `Cache-Control: no-store`. Because anyone who can
+reach the port can call them, **neither body carries a version, a count, a
+filename or a table name**; `tests/routes/health.test.js` asserts that over
+every outcome.
+
+| Probe | Answers | Touches |
+|---|---|---|
+| `GET /healthz` | `200 { ok: true }`, always, while the process serves HTTP | nothing: no query, so a database outage never looks like a dead process |
+| `GET /readyz` | `200 { ready: true }`, or `503 { ready: false, reason }` | the checks below, first failure wins |
+
+`notReadyReason()` checks, in order:
+
+1. `shutting_down`: `readiness.shuttingDown`, set by the shutdown's first line.
+2. `lock`: `readiness.lock` is absent, or neither `held` nor `disabled`
+   (`services/instance-lock.js`).
+3. `database`: `SELECT 1` through the pool rejects or takes longer than two
+   seconds. The answer is reused for one second (`readiness.database`).
+4. `migrations`: some file in `migrations/` (`listMigrationFiles`) has no
+   `schema_migrations` row (`readApplied`), both reused from
+   `scripts/migrate.js`. A missing table (a database nobody adopted) and an
+   unreadable directory both count as pending: readiness never says ready when
+   it cannot tell. The answer is cached on `readiness.migrations` for ten
+   seconds. **The directory is the repo-root `migrations/`, which is not in the
+   image**: every compose file bind-mounts it at `/migrations` for the runner,
+   and `/readyz` reads the same mount, so a container started without it
+   reports `migrations` (and logs why once).
+
+A **fresh** install therefore reads `migrations` until the one-time
+`npm run migrate -- --adopt-fresh-install` records its starting point, which is
+the documented first-run step (`docs/deployment.md`, "First run"); the first
+probe that finds no `schema_migrations` table logs that command once.
+
+The probes are unauthenticated and ahead of every limiter, so a burst of them
+must not become a burst of queries. Concurrent callers share the migrations
+read that is out (`migrationsCheck`) and the `SELECT 1` that is out
+(`readiness.probe`). A `SELECT 1` that outlives the two-second bound still
+holds a pooled connection until MySQL answers, so the next probe waits on that
+same query rather than queueing another behind it, for up to ten seconds, after
+which a query that may never answer is left behind and a new one is sent. At
+most one probe query per ten seconds can therefore be stuck in the pool.
+
+The image's `HEALTHCHECK` (`cloudcodex/Dockerfile`) probes `/readyz` every 10 s
+with Node's own `fetch` (`node:20-slim` has no curl), a 3 s timeout, a 20 s
+start period and 3 retries.
+
+### The instance lock for the life of the process
+
+Taken at boot (section 1), on a connection of its own, and pinged with
+`SELECT 1` every 60 s so it is never idle long enough for `wait_timeout`. The
+connection carries an `'error'` listener, because a mysql2 connection error
+with no listener is thrown by the EventEmitter and would take the process down
+with every open document's unsaved state. When the connection is lost (a MySQL
+restart), `held` goes false, `/readyz` answers `lock`, and a retake on a new
+connection is tried every second (`retakeMs`) until one succeeds; a reason it
+keeps failing for, MySQL still down say, is logged once. Only the connection
+currently holding the lock can mark it lost, attempts never overlap (`busy`),
+and a retake that completes after `release()` ends its own connection.
+
+**If another process took the lock meanwhile**, two live processes now serve
+one schema, which is the divergence the lock exists to prevent. The retake's
+refusal (`heldElsewhere`) is logged, retrying stops, and `onSuperseded` runs
+once: `server.js` logs `another process took the instance lock while this one
+had lost it` and runs the shutdown below with exit code 1 (or exits 1 at once
+during boot). Under `restart: unless-stopped` the supervisor restarts it into an
+ordinary refusal that names the holder. The one-second retake keeps that
+window short: a duplicate that reconnects first after a MySQL restart wins it,
+and this process stops within about a second of MySQL coming back.
+`tests/integration/lifecycle.test.js` KILLs a real server's lock connection,
+takes the lock from the test, and requires the server to exit 1 naming the
+test's connection. GET_LOCK belongs to
+a connection, so a process killed with SIGKILL releases it as soon as MySQL
+sees the socket close: `tests/integration/lifecycle.test.js` measures the next
+process taking it within two seconds.
+
+### Shutdown
+
+`services/shutdown.js` exports `createShutdown(deps)`, which returns
+`shutdown(cause, { code = 0 })`. `server.js` calls it for the first `SIGTERM`
+or `SIGINT` once it is serving (section 1; a second signal exits 1 at once
+there), and with `('the lost instance lock', { code: 1 })` from
+`onSuperseded`. A second call is ignored. In order:
+
+1. `readiness.shuttingDown = true`, so `/readyz` answers 503 from here on.
+2. `server.close()`: no new connections.
+3. `flushPendingSaves()` (`services/collab.js`): every document with a pending
+   debounced save is written now, awaiting a write a fired timer already has in
+   flight first so an older state can never land after a newer one; one
+   document that throws is logged and the rest still run.
+4. `closeAll(1001, 'Server shutting down')` on both WebSocket servers
+   (`services/collab.js`, `services/user-channel.js`), authenticated or not.
+   A live editor reconnects to the next process and its Yjs sync re-sends
+   whatever it has that the server does not.
+5. The instance lock's connection ends, then `endPool()`
+   (`mysql_connect.js:57-59`).
+6. `exit(code)`. The last line is `stopped cleanly on <cause>` only when the
+   code is 0, every step ran and every pending document was written; otherwise
+   it is `stopped on <cause>`, with `N documents not saved` and `N failed
+   steps` when there were any. The flush's own line says `wrote N pending
+   documents` and how many failed. A failed document or step does not change
+   the exit code: the plan fixes a rejecting flush at `exit(0)`, and the line
+   is what an operator is told to read.
+
+Every step runs even when an earlier one throws, and the flush still runs for
+a lost-lock stop: the process that took over has no editors on these
+documents in the realistic case (it is the duplicate), so the flush is what
+keeps the last seconds of edits. The whole thing is bounded at 10 s: past that
+it logs `shutdown timed out after 10000 ms` and exits 1. The
+compose files give the app `stop_grace_period: 20s`, so the bound finishes
+before Docker's SIGKILL (its default grace, 10 s, would tie).
+
+**What it does not cover.** An explicit `save` or `publish` frame whose writes
+are still in flight is not awaited (only the debounced autosave is), and
+`html_content` stays as stale after a restart as it was before one: a document
+edited only over the socket still reads its last explicit save to non-editors
+(`documents-and-collab.md`).
 
 ## Related
 
