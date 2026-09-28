@@ -5,10 +5,10 @@
  * or the operator chose, so the address is checked before it is stored and
  * again when a delivery is sent (the delivery worker, W6-CDX-14, connects
  * through pinnedLookup so DNS cannot answer differently between the check and
- * the connect). Link-local, unspecified and reserved addresses, where cloud
- * metadata services live, are refused always. Loopback and private ranges are
- * refused unless the instance sets WEBHOOK_ALLOW_PRIVATE_TARGETS=1, for a
- * receiver on the same host or network.
+ * the connect). Link-local, unspecified, reserved and IPv4-transition
+ * addresses (cloud metadata services live in link-local space) are refused
+ * always. Loopback and private ranges are refused unless the instance sets
+ * WEBHOOK_ALLOW_PRIVATE_TARGETS=1, for a receiver on the same host or network.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -22,7 +22,10 @@ export const MAX_WEBHOOK_URL_LENGTH = 2048;
 
 // Refused whatever WEBHOOK_ALLOW_PRIVATE_TARGETS says: cloud metadata lives in
 // link-local space, and "this network" and the reserved ranges are never a
-// real receiver.
+// real receiver. So are the IPv6 transition forms whose embedded IPv4 address
+// is not checked below: 6to4 (2002::/16), Teredo (2001::/32) and the local-use
+// NAT64 prefix (64:ff9b:1::/48), where a relay or a local translator would
+// carry the request on to an IPv4 host, the metadata address included.
 const ALWAYS = new BlockList();
 ALWAYS.addSubnet('0.0.0.0', 8, 'ipv4');
 ALWAYS.addSubnet('169.254.0.0', 16, 'ipv4');
@@ -31,6 +34,9 @@ ALWAYS.addSubnet('240.0.0.0', 4, 'ipv4');
 ALWAYS.addAddress('::', 'ipv6');
 ALWAYS.addSubnet('fe80::', 10, 'ipv6');
 ALWAYS.addSubnet('ff00::', 8, 'ipv6');
+ALWAYS.addSubnet('2002::', 16, 'ipv6');
+ALWAYS.addSubnet('2001::', 32, 'ipv6');
+ALWAYS.addSubnet('64:ff9b:1::', 48, 'ipv6');
 
 // Refused unless the operator opts in (a receiver on the same box or network).
 const PRIVATE = new BlockList();
@@ -137,6 +143,11 @@ export async function checkWebhookTarget(raw, { allowPrivate = false, production
   } catch {
     return refuse('The webhook URL is not a valid URL.');
   }
+  // What is stored is the normalised href, which percent-encoding can make
+  // several times longer than what was typed.
+  if (url.href.length > MAX_WEBHOOK_URL_LENGTH) {
+    return refuse(`The webhook URL is longer than ${MAX_WEBHOOK_URL_LENGTH} characters once normalised.`);
+  }
   if (url.protocol === 'http:') {
     if (production) return refuse('The webhook URL must use https in production.');
   } else if (url.protocol !== 'https:') {
@@ -164,7 +175,7 @@ export async function checkWebhookTarget(raw, { allowPrivate = false, production
     const refusal = refusalFor(address, allowPrivate);
     if (refusal === 'always') {
       return refuse(
-        `The webhook URL resolves to ${address}, a link-local, unspecified or reserved address, which is never allowed.`
+        `The webhook URL resolves to ${address}, a link-local, unspecified, reserved or IPv4-transition address, which is never allowed.`
       );
     }
     if (refusal === 'private') {

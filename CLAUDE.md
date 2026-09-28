@@ -172,12 +172,12 @@ cascades to its documents. Retention is 365 days, pruned in-process daily.
 `emitEvent`, called once inside `logActivity` after the activity row, writes
 one outbox event (`webhook_events`, the exact body bytes) and its deliveries
 for eight document and archive actions, **only when a cached subscription
-matches**, so an install with none issues no query. It never throws. Every
-receiver URL goes through `checkWebhookTarget` (the SSRF guard); do not
-build a second check. The env subscription's secret is never stored; an admin
-one's is returned only once. Contract: `docs/api/webhooks.md`; mechanism:
-`docs/maps/notifications-and-activity.md` section 2a. The delivery worker is
-not built yet (W6-CDX-14).
+matches**, so an install with none adds no query to any change. It never
+throws. Every receiver URL goes through `checkWebhookTarget` (the SSRF
+guard); do not build a second check. The env subscription's secret is never
+stored; an admin one's is returned only once. Contract:
+`docs/api/webhooks.md`; mechanism: `docs/maps/notifications-and-activity.md`
+section 2a. The delivery worker is not built yet (W6-CDX-14).
 
 ### Mentions: `routes/helpers/mentions.js`, `src/extensions/Mention.jsx`
 `<span data-mention-user-id="N">` nodes, diffed old-vs-new HTML so only newly

@@ -37,6 +37,13 @@ initialises an empty data directory.
   failure to write the outbox never affects the change that caused it. Needs
   the webhooks migration (see Migration).
 
+### Fixed
+
+- Deleting a document through `DELETE /api/archives/:archiveId/logs/:logId`
+  with an id that is not in that archive removes nothing, as before, and now
+  also records nothing: it used to add a "deleted" entry to the archive's
+  activity feed for a document that still exists.
+
 ### Migration
 
 **The webhooks migration,**

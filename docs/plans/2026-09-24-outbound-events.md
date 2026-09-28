@@ -413,7 +413,8 @@ for `server.js`. A tick:
    SECOND WHERE id = ? AND status = 'pending' AND (lease_expires_at IS NULL OR lease_expires_at <
    NOW(3))`. `affectedRows !== 1` means another worker holds it: skip the subscription.
 4. `occurred_at` more than 72 hours ago: mark `dead` (`last_error = 'expired after 72h'`) and stop
-   for this subscription this tick.
+   for this subscription this tick. `occurred_at` is stored as UTC (W6-CDX-13), so compare it in
+   SQL with `UTC_TIMESTAMP(3)`, never `NOW(3)` and never mysql2's local-time `Date`.
 5. Send, then record the outcome. **Every write after the lease carries `AND leased_by = ?`**, so a
    worker whose lease lapsed writes nothing:
    - `2xx`: `status = 'delivered'`, `delivered_at`, `last_status`; the subscription's
@@ -457,6 +458,11 @@ DNS cannot be rebound between the check and the connect. Redirects are never fol
   - **a lapsed lease writes nothing**: lease a delivery as owner A, expire the lease by hand, let
     owner B deliver it, then run A's outcome write and assert zero rows changed;
   - `410` disables, `422` dead-letters and moves on.
+  - **Hard acceptance (carried from W6-CDX-13's review):** every send runs `checkWebhookTarget`
+    again and connects only through `pinnedLookup` of the addresses it approved. A subscription
+    created while its name resolved publicly, whose name now resolves to a private or metadata
+    address, is not sent to (the env row stays enabled through a boot-time DNS failure, so this
+    send-time check is its only guard).
 - **Latency**: a subscription whose receiver never answers, and 20 `POST /api/save-document` calls;
   the median save latency is within noise of the same run with no subscription. Record both
   medians in the PR body.

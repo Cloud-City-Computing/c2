@@ -471,7 +471,10 @@ each of the eight emitted actions through its real route with a real session
 and reads exactly one `webhook_events` row and one `webhook_deliveries` row per
 matching subscription (made through the admin API, so its SQL runs too); a
 coalesced `log.update`, a `comment.create`, a subscription for another
-workspace and no subscription at all each write nothing; the stored body is
+workspace or for other event types, a delete naming a log outside its archive,
+and no subscription at all each write nothing for that subscription or event;
+a subscription disabled in the database since the cache loaded gets no
+delivery, and an event it leaves with none is rolled back; the stored body is
 byte-stable and is the envelope its row describes (its `occurred_at` read back
 in UTC); a stored 30,000-character title is emitted as 255 code points; and with
 a test-created trigger that `SIGNAL`s on every outbox insert, a save still

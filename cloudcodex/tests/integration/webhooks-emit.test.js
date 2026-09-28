@@ -324,6 +324,77 @@ describe('emitting, on a real server', () => {
     }
   });
 
+  it('records and emits nothing for a delete naming a log outside the archive', async () => {
+    // The actor can write to archiveId; the log lives in the other workspace.
+    const elsewhere = await insertLog(otherArchiveId, 'Not yours to delete');
+    const marker = await lastEventId();
+    await as('delete', `/api/archives/${archiveId}/logs/${elsewhere}`);
+
+    expect(await eventsAfter(marker, 1)).toEqual([]);
+    expect(await c2_query(
+      `SELECT id FROM activity_log WHERE action = 'log.delete' AND JSON_EXTRACT(metadata, '$.log_id') = ?`,
+      [elsewhere]
+    )).toEqual([]);
+    expect(await c2_query('SELECT id FROM logs WHERE id = ?', [elsewhere])).toEqual([{ id: elsewhere }]);
+  });
+
+  it('narrows by event type: a subscription for other types gets no delivery', async () => {
+    const created = await request(app)
+      .post('/api/admin/webhooks')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ url: RECEIVER, event_types: ['log.delete'] });
+    expect(created.status).toBe(201);
+    const typed = created.body.webhook.id;
+
+    const doc = await insertLog(archiveId, 'Typed');
+    let marker = await lastEventId();
+    await as('put', `/api/document/${doc}/title`, { title: 'Typed, renamed' });
+    let [event] = await eventsAfter(marker, 1);
+    expect(event.type).toBe('log.rename');
+    expect(event.deliveries.map((d) => d.subscription_id)).toEqual([subscriptionId]);
+
+    marker = await lastEventId();
+    await as('delete', `/api/archives/${archiveId}/logs/${doc}`);
+    [event] = await eventsAfter(marker, 1);
+    expect(event.type).toBe('log.delete');
+    expect(event.deliveries.map((d) => d.subscription_id)).toEqual([subscriptionId, typed]);
+
+    const deleted = await request(app).delete(`/api/admin/webhooks/${typed}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(deleted.status).toBe(200);
+  });
+
+  it('gives nothing to a subscription disabled since the cache loaded, and keeps no event nobody gets', async () => {
+    const created = await request(app)
+      .post('/api/admin/webhooks')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ url: RECEIVER });
+    expect(created.status).toBe(201);
+    const stale = created.body.webhook.id;
+    // Disabled in the database only: the cache still lists it as enabled.
+    await c2_query('UPDATE webhook_subscriptions SET enabled = FALSE WHERE id = ?', [stale]);
+
+    const doc = await insertLog(archiveId, 'Stale cache');
+    let marker = await lastEventId();
+    await as('put', `/api/document/${doc}/title`, { title: 'Stale cache, once' });
+    const [event] = await eventsAfter(marker, 1);
+    expect(event.deliveries.map((d) => d.subscription_id)).toEqual([subscriptionId]);
+
+    // With every cached subscription disabled underneath, the event row is
+    // rolled back with its (empty) deliveries.
+    await c2_query('UPDATE webhook_subscriptions SET enabled = FALSE WHERE id = ?', [subscriptionId]);
+    try {
+      marker = await lastEventId();
+      await as('put', `/api/document/${doc}/title`, { title: 'Stale cache, twice' });
+      expect(await eventsAfter(marker, 1)).toEqual([]);
+      expect(await c2_query(`SELECT id FROM activity_log WHERE resource_id = ? AND action = 'log.rename'`, [doc])).toHaveLength(2);
+    } finally {
+      await c2_query('UPDATE webhook_subscriptions SET enabled = TRUE WHERE id = ?', [subscriptionId]);
+    }
+
+    const deleted = await request(app).delete(`/api/admin/webhooks/${stale}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(deleted.status).toBe(200);
+  });
+
   it('writes no row at all once no subscription remains', async () => {
     const deleted = await request(app).delete(`/api/admin/webhooks/${subscriptionId}`).set('Authorization', `Bearer ${adminToken}`);
     expect(deleted.status).toBe(200);

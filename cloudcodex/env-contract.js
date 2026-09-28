@@ -108,7 +108,7 @@ export const ENV_CONTRACT = [
       + 'and never stored' },
   { name: 'WEBHOOK_WORKSPACE_ID', kind: 'optional', perInstance: true,
     why: 'limits the env subscription to one workspace\'s events; unset sends every workspace\'s, '
-      + 'and a value that is not a workspace id disables it' },
+      + 'a value that is not a whole number disables it, and one that names no workspace matches nothing' },
   { name: 'WEBHOOK_ALLOW_PRIVATE_TARGETS', kind: 'optional', perInstance: false,
     why: 'exactly 1 lets any webhook, the env one and admin-created ones, reach loopback and private '
       + 'addresses; link-local and metadata addresses stay refused' },

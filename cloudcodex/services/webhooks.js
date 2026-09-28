@@ -81,6 +81,13 @@ export function serializeEnvelope({ id, sequence, type, occurredAt, workspaceId,
 // Holds no secret: the loader never reads that column.
 let subscriptions = [];
 
+// Loads can overlap (the minute refresh, an admin write's reload). Each is
+// numbered when it starts, and a result older than the one already applied
+// is dropped, so a slow read from before an admin write cannot put back the
+// cache that write replaced.
+let loadsStarted = 0;
+let loadApplied = 0;
+
 /** event_types as MySQL hands back a JSON column: parsed, or as text. */
 function parseEventTypes(value) {
   if (value === null || value === undefined) return null;
@@ -95,10 +102,12 @@ function parseEventTypes(value) {
 
 /**
  * Read every enabled subscription into the cache. Called at boot, every
- * minute, and after every admin write. A failed read keeps the previous cache.
- * @returns { Promise<Boolean> } whether the cache was refreshed
+ * minute, and after every admin write. A failed read keeps the previous cache,
+ * and so does a read that a later-started one already overtook.
+ * @returns { Promise<Boolean> } whether this read refreshed the cache
  */
 export async function loadSubscriptions() {
+  const generation = ++loadsStarted;
   try {
     const rows = await c2_query(
       `SELECT id, url, source, enabled, event_types, workspace_id, paused_until
@@ -106,6 +115,8 @@ export async function loadSubscriptions() {
         WHERE enabled = TRUE`,
       []
     );
+    if (generation < loadApplied) return false;
+    loadApplied = generation;
     subscriptions = rows.map((row) => ({
       id: row.id,
       eventTypes: parseEventTypes(row.event_types),
@@ -242,6 +253,10 @@ export async function reconcileEnvSubscription({ resolve } = {}) {
 
 // ─── Emitting ───────────────────────────────────────────────
 
+// Thrown inside the outbox transaction to roll the event back when the
+// database re-check leaves no delivery for it.
+const NO_DELIVERY = Symbol('no delivery');
+
 /**
  * The per-type `data` object (the spec's table), or null when the document
  * the event names no longer exists. Reads the logs row only for the types
@@ -287,7 +302,8 @@ const utcDatetime = (iso) => iso.slice(0, 23).replace('T', ' ');
  * throws: a failure is logged and the caller's request is unaffected.
  * @param { object } ctx - the logActivity context
  * @param { { workspaceId: number, squadId: number|null } } scope
- * @returns { Promise<{ eventId: Number, subscriptionIds: Number[] } | null> }
+ * @returns { Promise<{ eventId: Number, deliveries: Number } | null> } the
+ *   event and how many deliveries the database wrote, or null when none
  */
 export async function emitEvent(ctx, scope) {
   try {
@@ -318,8 +334,9 @@ export async function emitEvent(ctx, scope) {
       const body = serializeEnvelope({ id: uuid, sequence, type: ctx.action, occurredAt, workspaceId, actor, data });
       await query('UPDATE webhook_events SET body = ? WHERE id = ?', [Buffer.from(body, 'utf8'), sequence]);
       // The database re-checks what the cache matched, so a subscription
-      // deleted, disabled or narrowed since the last load gets nothing.
-      await query(
+      // deleted, disabled or narrowed since the last load gets nothing. When
+      // that leaves none, the event itself is rolled back.
+      const deliveries = await query(
         `INSERT INTO webhook_deliveries (subscription_id, event_id)
          SELECT id, ? FROM webhook_subscriptions
           WHERE id IN (${ids.map(() => '?').join(', ')})
@@ -328,9 +345,12 @@ export async function emitEvent(ctx, scope) {
             AND (event_types IS NULL OR JSON_CONTAINS(event_types, JSON_QUOTE(?)))`,
         [sequence, ...ids, workspaceId, ctx.action]
       );
-      return { eventId: sequence, subscriptionIds: ids };
+      const written = deliveries?.affectedRows ?? 0;
+      if (written === 0) throw NO_DELIVERY;
+      return { eventId: sequence, deliveries: written };
     });
   } catch (err) {
+    if (err === NO_DELIVERY) return null;
     console.error(`[${new Date().toISOString()}] webhook emit failed:`, err);
     return null;
   }

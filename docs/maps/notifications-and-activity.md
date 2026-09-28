@@ -118,9 +118,9 @@ after the `activity_log` insert and before auto-watch, in a `try` of its own
 returns before the insert) is never emitted, an event is emitted only for an
 activity row that was written, and the outbox and the watchers cannot fail
 each other. `emitEvent` also never throws: it catches, logs
-`webhook emit failed` and resolves `null` (`services/webhooks.js:333`).
+`webhook emit failed` and resolves `null` (`services/webhooks.js:352`).
 
-What it does, in order (`services/webhooks.js:292`):
+What it does, in order (`services/webhooks.js:308`):
 
 1. Return unless the action is one of the eight in `EMITTED_TYPES`
    (`log.update`, `log.publish`, `log.restore`, `log.rename`, `log.move`,
@@ -129,22 +129,28 @@ What it does, in order (`services/webhooks.js:292`):
    with no `workspace_id` matches every workspace) and by `event_types`, and
    return if nothing matches. **No query runs up to here**, so an install with
    no subscription, and every unit test that never calls `loadSubscriptions`,
-   issues nothing new (`services/webhooks.js:301`).
+   issues nothing new (`services/webhooks.js:317`).
 3. Build `data` per type. Document types read `SELECT archive_id, title,
-   parent_id FROM logs WHERE id = ?` once (`services/webhooks.js:263`) and emit
+   parent_id FROM logs WHERE id = ?` once (`services/webhooks.js:278`) and emit
    nothing if the row is gone. `title` is the document's: from
    `metadata.title` where the caller logged the document's title, and from the
    row for `log.publish`, whose `metadata.title` is the name given to the
-   version (`services/webhooks.js:276`). `log.delete`'s activity row names the
+   version (`services/webhooks.js:291`). `log.delete`'s activity row names the
    archive with `metadata.log_id`, so its data needs no read; the archive
-   types need none either. Every id field is an integer or `null`.
-4. In one `withTransaction` (`services/webhooks.js:311`): insert the
+   types need none either. The route records `log.delete` only when its
+   `DELETE ... WHERE id = ? AND archive_id = ?` removed a row
+   (`routes/archives.js:690`), so an id from another archive can never be
+   announced as deleted. Every id field is an integer or `null`.
+4. In one `withTransaction` (`services/webhooks.js:327`): insert the
    `webhook_events` row with an empty body to get its id (the envelope's
    `sequence`), serialize the envelope with a fresh UUID v4 as `id`, store its
    UTF-8 bytes, and insert the deliveries with `INSERT ... SELECT` over the
    matched ids that **re-checks** `enabled`, the workspace and the type in SQL,
    so a subscription deleted, disabled or narrowed since the cache last loaded
-   gets nothing.
+   gets nothing. When that leaves no delivery at all, the transaction throws a
+   private sentinel and rolls the event row back, and `emitEvent` resolves
+   `null` without logging (`services/webhooks.js:349`). Otherwise it resolves
+   `{ eventId, deliveries }`, the count the database wrote.
 
 `serializeEnvelope` bounds `data.title` and `data.name` to 255 code points
 (never splitting a surrogate pair) and `actor.name` to 32, so no v1 body
@@ -152,13 +158,17 @@ exceeds 4 KiB however its text escapes; the worst case measures 3,631 bytes
 (`tests/services/webhooks.test.js`). The envelope is public:
 [`docs/api/webhooks.md`](../api/webhooks.md).
 
-**The cache** (`loadSubscriptions`, `services/webhooks.js:101`) holds id,
+**The cache** (`loadSubscriptions`, `services/webhooks.js:109`) holds id,
 workspace and types of every enabled subscription and **no secret** (the
 query never selects it). `server.js` loads it at boot and every 60 seconds,
 and every admin write reloads it. A failed load keeps the previous cache.
+Loads can overlap, so each is numbered when it starts and a result older than
+the one already applied is dropped: a slow minute refresh that read the
+table before an admin write cannot put back the cache that write's reload
+replaced.
 
 **The env subscription** (`reconcileEnvSubscription`,
-`services/webhooks.js:184`) runs once at boot, before the load: with
+`services/webhooks.js:195`) runs once at boot, before the load: with
 `WEBHOOK_URL` and a `WEBHOOK_SECRET` of at least 32 characters it creates or
 re-enables the one `source = 'env'` row (secret column `NULL`: the secret is
 read from the environment at send time, W6-CDX-14); with either unset, a short

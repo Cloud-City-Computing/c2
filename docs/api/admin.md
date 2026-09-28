@@ -282,7 +282,7 @@ One subscription may be declared by the server environment (`WEBHOOK_URL`, `WEBH
 }
 ```
 
-The URL passes the SSRF guard first: `https` (plain `http` only outside production), no user name or password in it, and every address its host resolves to must be public. Loopback and private addresses are refused unless the instance sets `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`; link-local and cloud-metadata addresses (`169.254.0.0/16`, `fe80::/10`) are refused always. A refusal is `400` with a sentence saying why.
+The URL passes the SSRF guard first: `https` (plain `http` only outside production), no user name or password in it, and every address its host resolves to must be public. Loopback and private addresses are refused unless the instance sets `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`; link-local and cloud-metadata addresses (`169.254.0.0/16`, `fe80::/10`) and the IPv6 transition prefixes 6to4, Teredo and local-use NAT64 are refused always. A URL longer than 2,048 characters once normalised is refused too. A refusal is `400` with a sentence saying why.
 
 **Response** `201`: `{ success: true, webhook: { ...as listed }, secret: "<64 hex characters>" }`. Store the secret now: it is not shown again. `400` for a missing or refused URL, an unknown event type, or a `workspace_id` that names no workspace.
 
