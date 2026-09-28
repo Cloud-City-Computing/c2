@@ -5,14 +5,14 @@
  * https://cloudcitycomputing.com
  */
 
-import { removeSessStorage, apiFetch } from '../util';
+import { removeSessStorage, apiFetch, clearSessionCookie } from '../util';
 
 async function performLogout() {
   try {
     await apiFetch('POST', '/api/logout', {});
   } catch { /* best-effort */ }
   removeSessStorage('currentUser');
-  document.cookie = 'sessionToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+  clearSessionCookie();
   window.location.href = '/';
 }
 

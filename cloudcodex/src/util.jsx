@@ -622,30 +622,90 @@ export function removeSessStorage(key) {
 
 // --- Auth ---
 
+// The session cookie's names. On https it is __Host-sessionToken, which a
+// browser stores only with Secure, Path=/ and no Domain, so no sibling host
+// under the same domain can plant one. A plain-http page cannot hold a Secure
+// cookie, so there the name stays sessionToken. services/session-cookie.js is
+// the server's copy of the same rule.
+const SESSION_COOKIE = '__Host-sessionToken';
+const LEGACY_SESSION_COOKIE = 'sessionToken';
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
+const EXPIRED = 'expires=Thu, 01 Jan 1970 00:00:00 UTC';
+
+const secureContext = () => window.location.protocol === 'https:';
+
+/** A cookie's value by exact name, or null when absent or empty. */
+function readCookie(name) {
+  const hit = document.cookie
+    .split(';')
+    .map((row) => row.trim())
+    .find((row) => row.startsWith(`${name}=`));
+  return hit ? hit.slice(name.length + 1) || null : null;
+}
+
 /**
- * Extract the session token from the `sessionToken` cookie.
- * Clears the cached user from session storage if no token is found.
+ * The session token from the session cookie. The prefixed cookie wins; on
+ * https a lone legacy `sessionToken` is NOT read, because a sibling host could
+ * have set it: upgradeLegacySessionCookie moves a real one across at startup,
+ * once the server agrees. Clears the cached user from session storage if no
+ * token is found.
  * @returns {string|null}
  */
 export function getSessionTokenFromCookie() {
-  const match = document.cookie
-    .split('; ')
-    .find((row) => row.startsWith('sessionToken='));
-
-  const token = match?.split('=')[1] ?? null;
+  const token = readCookie(SESSION_COOKIE)
+    ?? (secureContext() ? null : readCookie(LEGACY_SESSION_COOKIE));
   if (!token) removeSessStorage('currentUser');
   return token;
 }
 
 /**
- * Store a session token in the `sessionToken` cookie. The one client-side
+ * Store a session token in the session cookie. The one client-side
  * writer of that cookie: signing in and the account panel's session rotation
  * (after an email or password change) both go through it, so a rotated token
- * carries exactly the lifetime and scope a fresh sign-in's does.
+ * carries exactly the lifetime and scope a fresh sign-in's does. Never sets
+ * Domain, so the cookie stays on this host.
  * @param {string} token
  */
 export function setSessionCookie(token) {
-  document.cookie = `sessionToken=${token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+  if (secureContext()) {
+    document.cookie = `${SESSION_COOKIE}=${token}; path=/; max-age=${SESSION_MAX_AGE}; secure; samesite=strict`;
+  } else {
+    document.cookie = `${LEGACY_SESSION_COOKIE}=${token}; path=/; max-age=${SESSION_MAX_AGE}; samesite=strict`;
+  }
+}
+
+/**
+ * Expire the session cookie under both names (sign-out). A __Host- cookie can
+ * only be overwritten by a write that is itself Secure with Path=/.
+ */
+export function clearSessionCookie() {
+  document.cookie = `${LEGACY_SESSION_COOKIE}=; ${EXPIRED}; path=/`;
+  if (secureContext()) document.cookie = `${SESSION_COOKIE}=; ${EXPIRED}; path=/; secure`;
+}
+
+/**
+ * On https, move a session held only under the legacy `sessionToken` name
+ * (from a release before __Host-sessionToken) to the prefixed name, once the
+ * server confirms it: POST /api/validate-session with legacyCookie: true, which
+ * a hosted instance (LEGACY_SESSION_COOKIE=0) always answers invalid, because
+ * a sibling host could have planted that cookie. Either answer expires the
+ * legacy cookie; an unreachable server leaves it for the next visit. Run once
+ * at startup, before anything reads the token (main.jsx).
+ * @returns {Promise<void>}
+ */
+export async function upgradeLegacySessionCookie() {
+  if (!secureContext() || readCookie(SESSION_COOKIE)) return;
+  const legacy = readCookie(LEGACY_SESSION_COOKIE);
+  if (!legacy) return;
+
+  let response;
+  try {
+    response = await serverReq('POST', '/api/validate-session', { token: legacy, legacyCookie: true });
+  } catch {
+    return;
+  }
+  document.cookie = `${LEGACY_SESSION_COOKIE}=; ${EXPIRED}; path=/; secure`;
+  if (response.valid) setSessionCookie(legacy);
 }
 
 /**

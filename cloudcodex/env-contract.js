@@ -78,6 +78,9 @@ export const ENV_CONTRACT = [
     why: 'the Google OAuth client secret' },
   { name: 'GOOGLE_OAUTH_DOMAIN', kind: 'optional', perInstance: false,
     why: 'a Google Workspace domain whose users may sign up without an invitation' },
+  { name: 'LEGACY_SESSION_COOKIE', kind: 'default', default: '1', perInstance: false,
+    why: 'whether a lone sessionToken cookie from before __Host-sessionToken still signs its '
+      + 'holder in; only 0 turns it off, which a hosted instance on https sets' },
   { name: 'GITHUB_CLIENT_ID', kind: 'optional', perInstance: false,
     why: 'with GITHUB_CLIENT_SECRET, turns the GitHub integration on' },
   { name: 'GITHUB_CLIENT_SECRET', kind: 'optional', perInstance: false,

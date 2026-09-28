@@ -533,19 +533,6 @@ describe('app.js: Origin-required cookie writes', () => {
     expect(res.status).toBe(200);
   });
 
-  // extractSessionToken falls through to the cookie on a bare "Bearer ", so
-  // such a request is authenticated by the cookie and must be treated as one.
-  it('refuses a bare "Bearer " beside a cookie, with no Origin', async () => {
-    const res = await request(app)
-      .post('/api/logout')
-      .set('Authorization', 'Bearer ')
-      .set('Cookie', '__Host-sessionToken=cookie-token')
-      .send({});
-
-    expect(res.status).toBe(403);
-    expect(logoutDeletes()).toEqual([]);
-  });
-
   it('passes a POST with no session cookie and no Origin (sign-in itself, a script)', async () => {
     const res = await request(app).post('/api/validate-session').set('Cookie', 'theme=dark').send({});
     expect(res.status).toBe(400);
@@ -579,6 +566,19 @@ describe('app.js: Origin-required cookie writes', () => {
       });
       expect(next).not.toHaveBeenCalled();
       expect(res.statusCode).toBe(403);
+    });
+
+    // extractSessionToken falls through to the cookie on a bare "Bearer ", so
+    // such a request is authenticated by the cookie and must be treated as one.
+    // Reached directly: Node trims a header's trailing space, so over HTTP the
+    // value arrives as "Bearer", which both functions take as the token.
+    it('refuses a bare "Bearer " beside a cookie, with no Origin', () => {
+      const { res, next } = run({
+        headers: { authorization: 'Bearer ', cookie: '__Host-sessionToken=t' },
+      });
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toEqual(REFUSED);
     });
 
     it('passes the same write from the app\'s own Origin', () => {

@@ -17,6 +17,7 @@ import { c2_query, generateSessionToken } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL } from './helpers/shared.js';
 import { resolveIdentity, isSecondLinkForProvider } from '../services/identity.js';
+import { sessionCookieName } from '../services/session-cookie.js';
 
 const router = express.Router();
 
@@ -285,11 +286,16 @@ router.get('/oauth/google/callback', asyncHandler(async (req, res) => {
   user.is_admin = Boolean(user.is_admin);
   const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent'], { provider: 'google' });
 
-  // Set session cookie and redirect to the app
-  res.cookie('sessionToken', sessionToken, {
+  // Set session cookie and redirect to the app. On an https instance it is
+  // __Host-sessionToken: Secure, Path=/ and no Domain, which is what a browser
+  // demands of that name (services/session-cookie.js). Secure follows APP_URL's
+  // scheme, as the state cookie's does, so a plain-http install gets a cookie
+  // its browser keeps.
+  const secure = APP_URL.startsWith('https://');
+  res.cookie(sessionCookieName({ secure }), sessionToken, {
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    httpOnly: false, // Needs to be readable by JS (matching existing cookie behavior)
-    secure: process.env.NODE_ENV === 'production',
+    httpOnly: false, // The page reads it to authenticate its WebSockets
+    secure,
     sameSite: 'strict',
     path: '/',
   });

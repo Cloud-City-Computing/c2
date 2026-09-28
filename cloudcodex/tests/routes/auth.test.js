@@ -283,11 +283,15 @@ describe('Auth Routes', () => {
       expect(del[1]).toEqual([hashSessionToken('header-token')]);
     });
 
+    // A cookie-only write must carry an accepted Origin (app.js,
+    // requireOriginForCookieWrites), as a browser's own logout does.
     it('deletes the session for a sessionToken cookie with an empty body', async () => {
       c2_query.mockResolvedValueOnce([]); // DELETE session
 
       const res = await request(app)
         .post('/api/logout')
+        .set('Host', 'codex.example.com')
+        .set('Origin', 'https://codex.example.com')
         .set('Cookie', 'sessionToken=cookie-token')
         .send({});
 
