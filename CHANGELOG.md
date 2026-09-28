@@ -82,6 +82,11 @@ initialises an empty data directory.
   `docs/security.md` left out the one on `GET /api/documents/state`, 120
   requests per 15 minutes counted before authentication, and `security.md`'s
   "Search" row now says it is the user search it limits.
+- **The configuration contract describes `NODE_ENV` correctly.** Its entry in
+  `cloudcodex/env-contract.js` said production "arms the rate limiters", but
+  they are on in every mode except `test`. It now lists what production
+  actually changes: the built app, the security headers on every response,
+  `APP_URL` required, and no localhost origins.
 
 ## [0.12.0] - 2026-09-28
 
