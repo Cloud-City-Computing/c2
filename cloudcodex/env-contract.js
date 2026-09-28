@@ -39,9 +39,18 @@ export const ENV_CONTRACT = [
   { name: 'NODE_ENV', kind: 'optional', perInstance: false,
     why: 'production serves the built app, arms the rate limiters and puts the security headers '
       + 'on every response; the Docker image and npm run start set it' },
-  { name: 'TRUST_PROXY', kind: 'default', default: '1', perInstance: false,
-    why: 'Express trust proxy (a hop count, true, false, or an address list such as loopback), '
-      + 'which decides req.ip for the rate limiters; an invalid value exits at boot' },
+  { name: 'TRUST_PROXY', kind: 'default', default: '127.0.0.1/32, ::1/128, 172.29.0.1/32',
+    perInstance: false,
+    why: 'Express trust proxy, which decides req.ip for the rate limiters: a list of addresses, CIDRs '
+      + 'and subnet names whose X-Forwarded-For is believed, or false; the default names loopback and '
+      + 'the pinned compose network\'s gateway, and nothing else. A hop count, true, or a range wider '
+      + 'than an IPv4 /8, wider than an IPv6 /16 outside fc00::/7 and fe80::/10, or holding more than '
+      + 'an IPv4 /8 of ::ffff:0:0/96 exits at boot unless TRUST_PROXY_ALLOW_HOP_COUNT is true; an '
+      + 'entry in non-standard notation, or a value Express cannot parse, always does' },
+  { name: 'TRUST_PROXY_ALLOW_HOP_COUNT', kind: 'optional', perInstance: false,
+    why: 'true lets TRUST_PROXY be a hop count, true or an over-wide range, accepting that any client '
+      + 'able to reach the app\'s port can then choose its own address; anything but true, false or blank '
+      + 'exits at boot' },
   { name: 'CORS_ORIGIN', kind: 'optional', perInstance: false,
     why: 'one more origin allowed to call the API; the app\'s own origin and APP_URL always are' },
   { name: 'C2_INSTANCE_LOCK', kind: 'default', default: '1', perInstance: false,

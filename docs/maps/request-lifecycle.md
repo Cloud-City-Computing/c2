@@ -19,7 +19,7 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 | Pool size gate | `mysql_connect.js:29-48`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
 | DB pool | `mysql_connect.js:50-65` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. A blank `DB_HOST` or `DB_NAME` behaves as unset (`localhost`, `c2`), as in `scripts/migrate.js`. Host, user, password and schema are one `connectionOptions` object, which `openConnection()` reuses for the instance lock's own connection. |
 | DB credential gate | `mysql_connect.js:67-71` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| Trust proxy gate | `app.js:63`, `parseTrustProxy()` | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY` (unset or blank is 1, digits a hop count, `true`/`false` booleans, anything else passed through). Express compiles the value there and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
+| Trust proxy gate | `app.js:185-196`, `parseTrustProxy()` (`app.js:146`) | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY`. Unset or blank is `'127.0.0.1/32, ::1/128, 172.29.0.1/32'` (`DEFAULT_TRUST_PROXY`, `app.js:59`): the proxies **by address**, loopback as a /32 plus the gateway of the network both production compose files pin, which is where Docker presents a proxy on the host that reaches their loopback publish. Every other peer is keyed on its socket, IPv4-mapped forms included (GHSA-9fmx-frrf-xxmq). Not the default bridge's gateway, `172.17.0.1`: `docker run -p PORT:PORT` publishes on `[::]` too, the default bridge is IPv4-only, so every IPv6 client arrives as that gateway, and a re-review measured each one choosing a fresh key with no proxy at all. An earlier cut trusted `loopback, linklocal, uniquelocal`, and a review showed why a range is wrong: a client inside it (a LAN, VPN or VPC neighbour; AWS's default VPC is `172.31.0.0/16`) was itself trusted, so behind a proxy that appends it named its own key with the left entry. `false` is a boolean and anything else is a list whose every entry `trustProxyEntryRefusal()` (`app.js:93`) reads the way proxy-addr will. An entry that is not a subnet name or an address in standard notation exits 1 (`is not valid: "<entry>" is not a subnet name ...`), with or without the opt-in, because proxy-addr's parser reads `0/1` as half of IPv4 and `010.0.0.0/8` as octal 8.0.0.0/8. A range past the width thresholds exits 1 (`✖ TRUST_PROXY "<value>" trusts <entry>, ...`); the thresholds, not "anything public", since a public /8 or an IPv6 /16 to /31 is accepted: wider than an IPv4 /8, wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or an IPv6 range holding `::ffff:0:0/96` or more than an IPv4 /8 of it, since proxy-addr matches an IPv4 client against an IPv6 range in mapped form. proxy-addr itself only refuses a /0. **A hop count (0 included) or `true` exits 1** with `✖ TRUST_PROXY "<value>" is a hop count` (or `trusts every hop`) naming `TRUST_PROXY_ALLOW_HOP_COUNT=true`, the opt-in that accepts it and an over-wide range; the opt-in itself exits on anything but `true`, `false` or blank. Express compiles the value at `app.js:188` and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the gates around it (pool size, trust proxy, `APP_URL`, the provider list, and an invalid `PORT`), these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | `APP_URL` gate | `server.js:63-89` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. A valid one whose host is `localhost`, `127.x.x.x`, `[::1]` or a `.localhost` name boots but prints `⚠ APP_URL "<value>" points at this machine`, since `.env.example` ships `http://localhost:3000` and the release compose file's one-machine evaluation is legitimate. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
@@ -27,10 +27,10 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
 | Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:264`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
-| Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
+| Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. After the success line it prints `✔ Trusting proxies (the default): <value>`, or `(from TRUST_PROXY)` when that is set and not blank, with `none, X-Forwarded-For is ignored` for `false`: the resolved `app.get('trust proxy')`, printed after the bind so a crash loop cannot scroll it away (`tests/server.test.js`, `the trust proxy boot line`). The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
 | Collab WS | `server.js`, `setupCollabServer(server)` | `setupCollabServer(server)`, path `/collab`. |
 | Notification WS | `server.js`, `setupUserChannelServer(server)` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
-| Stop signals | `server.js:20-48`, before every other step; `server.js:243-255` | `process.on('SIGTERM')` and `process.on('SIGINT')` go in **first**, ahead of the config gates and the boot awaits. Node is PID 1 in the image, and the kernel drops a signal PID 1 has no handler for, so a `docker stop` during the lock, SMTP verify or admin sync would otherwise wait for SIGKILL. Until `createShutdown(...)` is assigned, after the listen and the socket servers, a signal logs `stopped on <signal> during boot` and exits 0 at once: nothing is pending and the lock goes with the process. From then on the first signal runs the shutdown (section 7) and a second one logs and exits 1 at once. |
+| Stop signals | `server.js:20-48`, before every other step; `server.js:252-264` | `process.on('SIGTERM')` and `process.on('SIGINT')` go in **first**, ahead of the config gates and the boot awaits. Node is PID 1 in the image, and the kernel drops a signal PID 1 has no handler for, so a `docker stop` during the lock, SMTP verify or admin sync would otherwise wait for SIGKILL. Until `createShutdown(...)` is assigned, after the listen and the socket servers, a signal logs `stopped on <signal> during boot` and exits 0 at once: nothing is pending and the lock goes with the process. From then on the first signal runs the shutdown (section 7) and a second one logs and exits 1 at once. |
 | Activity prune | `server.js`, `pruneOldActivity` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
 | Session prune | `server.js`, `pruneExpiredSessions` | Deletes `sessions` rows whose `expires_at` has passed, on the same two timers. Every sign-in adds a row and nothing refreshes one in place, so without it the table only grows; `validateAndAutoLogin` already refuses an expired row, so this reclaims space and changes no answer. |
 
@@ -84,20 +84,23 @@ fails, and so does a listed file that stops calling it.
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', TRUST_PROXY ?? 1)     app.js:63
+app.set('trust proxy', TRUST_PROXY ??        app.js:188
+        '127.0.0.1/32, ::1/128, 172.29.0.1/32')
   │
-  ├─ health router: /healthz, /readyz        app.js:74
-  ├─ CORS, scoped to /api: isAllowedOrigin,  app.js:96-158
+  ├─ warnUntrustedForwarders()               app.js:201
+  │  (middleware/forwarded-for.js)
+  ├─ health router: /healthz, /readyz        app.js:205
+  ├─ CORS, scoped to /api: isAllowedOrigin,  app.js:216-273
   │  then the delegate
-  ├─ helmet + CSP: whole app in production,  app.js:168-196
+  ├─ helmet + CSP: whole app in production,  app.js:283-311
   │  /api only otherwise
-  ├─ requireOriginForCookieWrites on /api    app.js:198-218
-  ├─ express.json({ limit: '2mb' })          app.js:230
-  ├─ authLimiter on 9 paths + reader-check   app.js:233-256
-  ├─ searchLimiter on /api/users/search      app.js:267
-  ├─ stateLimiter on /api/documents/state    app.js:281
-  ├─ static /avatars      (7d immutable)     app.js:284-287
-  ├─ /doc-images, authorized (private, 1d)   app.js:291
+  ├─ requireOriginForCookieWrites on /api    app.js:XXX
+  ├─ express.json({ limit: '2mb' })          app.js:323
+  ├─ authLimiter on 9 paths + reader-check   app.js:326-349
+  ├─ searchLimiter on /api/users/search      app.js:360
+  ├─ stateLimiter on /api/documents/state    app.js:374
+  ├─ static /avatars      (7d immutable)     app.js:377-380
+  ├─ /doc-images, authorized (private, 1d)   app.js:384
   ├─ 18 routers, all mounted at /api
   └─ (production, at listen time) vite-express's static dist/ and index.html
      handlers, appended after all of the above
@@ -172,14 +175,31 @@ the public name, unless the operator adds `proxy_set_header Host $host`. Without
 the `APP_URL` fallback that configuration reproduces the original outage exactly:
 every write returns 500. `APP_URL` is already required and is operator-set.
 
-It is deliberately **not** `req.hostname`. `trust proxy` is 1 by default (and
-whatever `TRUST_PROXY` says otherwise), so `req.hostname`
-honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
-app's port directly, so an attacker could set that header themselves and turn
-the same-origin clause into "allow any origin".
+It is deliberately **not** `req.hostname`. `req.hostname` honours
+`X-Forwarded-Host` from any peer `trust proxy` believes, which by default is
+every process on the host (Docker presents each one that reaches the published
+port as the gateway) and more when `TRUST_PROXY` widens it, and any of those
+could set that header themselves and turn the same-origin clause into "allow
+any origin".
 
-**Security headers** (`HELMET_OPTIONS`, `app.js:168-195`) are one Helmet policy
-with two scopes (`app.js:196`). **In production it is mounted on `/`**, so it
+**The untrusted-forwarder warning** (`warnUntrustedForwarders()`,
+`middleware/forwarded-for.js`, mounted at `app.js:201`, ahead of the health
+router, so it sees every request and blocks none) logs one
+`⚠ <peer> sent X-Forwarded-For, but TRUST_PROXY does not name <peer> ...` line
+per peer the first time a peer `trust proxy fn` does not trust sends the
+header. A peer is keyed by its address, except an IPv6 one, which is keyed by
+its /64 (`peerKey()`, since one host holds a whole /64); an IPv4-mapped
+address counts as IPv4. It remembers at most `UNTRUSTED_FORWARDER_LIMIT` (32)
+keys, logs one closing line when that fills, and is silent after: a flood from
+changing addresses cannot grow memory or the log. Trusted peers are never
+remembered. It exists because a proxy the list leaves out otherwise fails
+silently, every client behind it sharing its one bucket while every request
+still succeeds. `tests/middleware/forwarded-for.test.js` covers once-per-peer,
+the /64 keying, the quiet cases and the bound. `ipv6Groups()` lives in the
+same file, and `app.js`'s width check reuses it.
+
+**Security headers** (`HELMET_OPTIONS`, `app.js:283-310`) are one Helmet policy
+with two scopes (`app.js:311`). **In production it is mounted on `/`**, so it
 covers every response but the two probes, which the health router answers
 ahead of it: the single-page app's HTML and built assets (served by the
 handlers `vite-express` appends at listen time, after everything here), the
@@ -230,7 +250,7 @@ posting with a cookie must send an `Origin` or use the bearer header. Covered by
 the `Origin-required cookie writes` block in `tests/app.test.js`. There are no
 CSRF tokens.
 
-**Body limit is 2 MB** (`app.js:230`). The collab WebSocket has its own, larger
+**Body limit is 2 MB** (`app.js:323`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:55-56`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -238,23 +258,69 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:180-187`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:192-199`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:205`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:215`) |
-| `searchLimiter` (`app.js:218-225`) | 15 min / 60 | `/api/users/search` only (`app.js:226`), to blunt user enumeration |
-| `stateLimiter` (`app.js:232-239`) | 15 min / 120 | `/api/documents/state` only (`app.js:240`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
+| `authLimiter` (`app.js:314-321`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:326-333`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:339`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:349`) |
+| `searchLimiter` (`app.js:352-359`) | 15 min / 60 | `/api/users/search` only (`app.js:360`), to blunt user enumeration |
+| `stateLimiter` (`app.js:366-373`) | 15 min / 120 | `/api/documents/state` only (`app.js:374`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
 All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
-suite can hammer `/api/login` without tripping them. One test exercises the
-limiter itself: `tests/app.test.js` sets `NODE_ENV=production` for its duration
-and requires the 21st `/api/update-account` request, then
-`/api/update-account/confirm-email`, to answer 429 while an unmounted route does
-not; a second requires the 121st `/api/documents/state` request to answer 429,
-while the first 120 reach `machineOrAuth` (401) and `/api/search` and
-`/api/document` stay unspent. The other mounts are not exercised.
+suite can hammer `/api/login` without tripping them. Three tests in
+`tests/app.test.js` exercise the limiters themselves, each setting
+`NODE_ENV=production` for its duration. One requires the 21st
+`/api/update-account` request, then `/api/update-account/confirm-email`, to
+answer 429 while an unmounted route does not. Another requires the 121st
+`/api/documents/state` request to answer 429, while the first 120 reach
+`machineOrAuth` (401) and `/api/search` and `/api/document` stay unspent. The
+third (`the auth limiter key`) is what the key is: it serves a fresh app on a
+real loopback socket and replaces the connection's `remoteAddress` before
+Express sees it, because
+Supertest always connects from 127.0.0.1, which the default trusts. A public
+peer (`203.0.113.9`, and its IPv4-mapped form) sending a new `X-Forwarded-For`
+on every `/api/login` gets 429 on the 21st, and so does a sibling container
+inside the pinned subnet that is not its gateway (`172.29.0.5`), whose chain
+changes in every entry, the rightmost included, so the case fails if the
+sibling is trusted at all. The review's
+repro: the gateway (`172.29.0.1`) forwarding a chain it appended, with the
+client (`10.0.5.7`, `172.31.44.9`, `192.168.1.50` or `203.0.113.9`) injecting a
+new left entry on each of 40 attempts, gets 429 on attempt 21 and every one
+after. A trusted proxy (`172.29.0.1`, its mapped form, `127.0.0.1`) has its
+`X-Forwarded-For` believed, so a second client behind it keeps its own bucket,
+and the real app logs the warning once for a public peer. Setting `trust proxy`
+back to 1 reddens the public-peer and sibling cases; widening the default to
+`172.29.0.0/16` reddens the sibling cases; restoring
+`loopback, linklocal, uniquelocal` reddens the sibling and the three private
+repro cases; putting `172.17.0.1/32` back reddens its two trust-table rows;
+setting it to `false` reddens the trusted-proxy case. The other mounts are not
+exercised.
+
+**The key is `req.ip`, and so the trust decision is the limiter's whole
+strength.** `express-rate-limit` keys on `req.ip` (an IPv4-mapped address is
+reduced to its IPv4 form, and IPv6 to its /56), and `req.ip` walks
+`X-Forwarded-For` from the right for as long as each hop is trusted. Under a
+hop count the first hop is trusted whoever sent it, which is how a direct client
+chose its own key. Under a range, every client inside it is a hop, so the walk
+passes a trusted client to the entry it injected. Under the address default the
+walk passes the proxy and stops at the first address that is not a proxy, the
+client's own, whatever is to its left, so nginx appending
+(`$proxy_add_x_forwarded_for`) is as safe as overwriting (`$remote_addr`). The
+unsafe configuration is a trusted proxy that sets no header: it passes the
+client's own through and the client names `req.ip`. A proxy the default does
+not name (another container, a load balancer) is listed by address, and
+`docs/deployment.md` "Rate limiters" has the worked values. The limit that
+remains: every host process that reaches the published port, and every
+container sharing the host's network namespace, arrives as the gateway, so it
+is trusted. With `APP_BIND` widened so does every container on the host, and
+on a runtime whose userland proxy carries all published traffic
+(`"iptables": false`, rootless Docker's `builtin` port driver, Docker Desktop)
+so does every client, which is why a widened bind with nothing in front sets
+`TRUST_PROXY=false` (`docs/deployment.md`, "TLS and reverse proxy"). An IPv4-only
+Docker network also presents every IPv6 client of an all-interfaces or IPv6
+publish as its gateway, which is why `APP_BIND` must be an IPv4 address and why
+the default leaves out `172.17.0.1`.
 
 ### Router mounting
 
 The health router (`routes/health.js`) is the one exception to what follows: it
-mounts at the root, ahead of every `/api` layer (`app.js:74`), and answers
+mounts at the root, ahead of every `/api` layer (`app.js:205`), and answers
 `/healthz` and `/readyz` only (section 7).
 
 All 18 other routers mount on the bare `/api` prefix, so each router

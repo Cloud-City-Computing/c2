@@ -13,6 +13,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import path from 'path';
+import { isIP, isIPv4 } from 'net';
 import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.js';
@@ -35,39 +36,171 @@ import activityRouter from './routes/activity.js';
 import watchesRouter from './routes/watches.js';
 import firstRunRouter from './routes/first-run.js';
 import healthRouter from './routes/health.js';
+import { warnUntrustedForwarders, ipv6Groups } from './middleware/forwarded-for.js';
 import { bearerToken } from './middleware/auth.js';
 import { readSessionCookie } from './services/session-cookie.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// What an unset or blank TRUST_PROXY trusts: the proxies, by address, and
+// nothing else. 127.0.0.1 and ::1 are a proxy on this host reaching the app
+// run without Docker; 172.29.0.1 is the gateway of the network both
+// production compose files pin, which is how Docker presents a proxy on the
+// host that reaches them through the loopback publish. Any other peer is
+// counted by its own socket address, whatever X-Forwarded-For it sends
+// (GHSA-9fmx-frrf-xxmq). Not a range: the old default, 1, believed that
+// header from anyone, and trusting 172.16.0.0/12 believed every sibling
+// container and every LAN, VPN or VPC neighbour, so a client behind a proxy
+// that appends named its own key with the left entry. Loopback is a /32
+// rather than the /8 for the same reason. Not the default bridge's gateway,
+// 172.17.0.1: `docker run -p PORT:PORT` publishes on [::] as well, that
+// bridge is IPv4-only, so every IPv6 client arrives as its gateway and would
+// choose its own key with no proxy involved. docs/deployment.md has the
+// `docker run` shape that can trust it safely.
+const DEFAULT_TRUST_PROXY = '127.0.0.1/32, ::1/128, 172.29.0.1/32';
+
+// The names proxy-addr expands (to exactly these ranges); anything else in a
+// TRUST_PROXY list is an address, with or without a prefix length or netmask.
+const TRUST_PROXY_NAMES = ['loopback', 'linklocal', 'uniquelocal'];
+
+// An IPv6 entry read as 128 bits, from the groups ipv6Groups() normalises.
+const ipv6Bits = (address) =>
+  ipv6Groups(address).reduce((bits, group) => (bits << 16n) | BigInt(`0x${group}`), 0n);
+
+// Whether the /prefix range around `bits` lies inside the /within range
+// around `base`. With the arguments the other way round: whether a range
+// holds a narrower one.
+const inRange = (bits, prefix, base, within) =>
+  prefix >= within && bits >> BigInt(128 - within) === base >> BigInt(128 - within);
+
+const MAPPED = 0xffffn << 32n; // ::ffff:0:0/96, where proxy-addr matches IPv4 clients against IPv6 ranges
+const NOT_PUBLIC_V6 = [[0xfc00n << 112n, 7], [0xfe80n << 112n, 10]]; // uniquelocal, linklocal
+
 /**
- * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is 1 (trust
- * the one proxy in front of the app, as before this was configurable), digits
- * are a hop count, `true`/`false` are booleans, and anything else (`loopback`,
- * an address or CIDR list) is passed to Express, which validates it.
- * @param { String | undefined } value
- * @returns { Number | Boolean | String }
+ * Reads one TRUST_PROXY entry the way proxy-addr will, and says why it is
+ * refused, or null. `invalid` is an entry that is not a subnet name or an
+ * address in standard notation: proxy-addr's parser takes more than Node's
+ * (it reads `0/1` as half of IPv4 and `010.0.0.0/8` as octal, 8.0.0.0/8), so
+ * the width of such an entry cannot be judged and it is never accepted.
+ * `wide` is a range past these thresholds: wider than an IPv4 /8, wider than
+ * an IPv6 /16 outside the private and link-local ranges, or holding more than
+ * an IPv4 /8 of the IPv4-mapped block. A public /8 or an IPv6 /16 to /31 is
+ * not wide by this measure and is accepted. A range proxy-addr would itself
+ * refuse (a prefix past the address's length, a non-contiguous netmask) is
+ * left for Express to refuse, except a /0, which is reported as wide.
+ * @param { String } entry
+ * @returns { { invalid: true } | { wide: String } | null }
  */
-export function parseTrustProxy(value) {
-  if (value === undefined || value.trim() === '') return 1;
-  const trimmed = value.trim();
-  if (/^\d+$/.test(trimmed)) return Number(trimmed);
-  if (trimmed === 'true') return true;
-  if (trimmed === 'false') return false;
-  return trimmed;
+function trustProxyEntryRefusal(entry) {
+  if (TRUST_PROXY_NAMES.includes(entry)) return null;
+  const slash = entry.lastIndexOf('/');
+  const address = slash === -1 ? entry : entry.slice(0, slash);
+  const range = slash === -1 ? null : entry.slice(slash + 1);
+  const kind = isIP(address);
+  if (kind === 0) return { invalid: true };
+  if (range === null) return null;
+
+  let prefix;
+  if (/^\d+$/.test(range)) {
+    prefix = Number(range);
+  } else if (kind === 4 && isIPv4(range)) {
+    const mask = range.split('.').reduce((bits, octet) => bits * 256 + Number(octet), 0);
+    const ones = mask.toString(2).padStart(32, '0').match(/^1*/)[0].length;
+    if (mask !== (2 ** 32 - 2 ** (32 - ones))) return null;
+    prefix = ones;
+  } else {
+    return { invalid: true };
+  }
+  if (prefix === 0) return { wide: 'which is every address' };
+
+  if (kind === 4) return prefix < 8 ? { wide: 'wider than an IPv4 /8' } : null;
+  if (prefix > 128) return null;
+  const bits = ipv6Bits(address);
+  if (prefix <= 96 && inRange(MAPPED, 96, bits, prefix)) {
+    return { wide: 'which takes in every IPv4 address (as ::ffff:0:0/96)' };
+  }
+  if (prefix > 96 && inRange(bits, prefix, MAPPED, 96)) {
+    return prefix < 104 ? { wide: 'wider than an IPv4 /8, in IPv4-mapped form' } : null;
+  }
+  if (prefix < 16 && !NOT_PUBLIC_V6.some(([base, within]) => inRange(bits, prefix, base, within))) {
+    return { wide: 'wider than an IPv6 /16' };
+  }
+  return null;
 }
 
-// Decides req.ip, which is what the rate limiters count. Express compiles the
-// value here and throws on one it cannot parse; the boot stops with a
-// sentence naming the variable rather than a stack trace.
+/**
+ * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is the
+ * address-list default above, `false` trusts no proxy, and anything else is
+ * a list of subnet names and addresses, each checked by
+ * trustProxyEntryRefusal() and then passed to Express, which compiles it. A
+ * hop count, 0 included, `true`, or a list entry trustProxyEntryRefusal()
+ * calls wide (its thresholds, not "any public address") is refused unless
+ * TRUST_PROXY_ALLOW_HOP_COUNT is `true`: each believes the X-Forwarded-For of
+ * clients it has no reason to, so one that can reach the app's port directly
+ * picks its own address and a fresh rate-limit bucket per request. An entry
+ * in non-standard notation is always refused.
+ * @param { String | undefined } value TRUST_PROXY
+ * @param { String | undefined } allowHopCount TRUST_PROXY_ALLOW_HOP_COUNT
+ * @returns { Number | Boolean | String }
+ * @throws { Error } a sentence naming the variable, on a refused value
+ */
+export function parseTrustProxy(value, allowHopCount) {
+  const allow = (allowHopCount ?? '').trim();
+  if (allow !== '' && allow !== 'true' && allow !== 'false') {
+    throw new Error(`TRUST_PROXY_ALLOW_HOP_COUNT "${allowHopCount}" is not true or false.`);
+  }
+  const trimmed = (value ?? '').trim();
+  if (trimmed === '') return DEFAULT_TRUST_PROXY;
+  if (trimmed === 'false') return false;
+  const hopCount = /^\d+$/.test(trimmed);
+  if (!hopCount && trimmed !== 'true') {
+    // Express splits the list on commas and trims each entry; so does this.
+    for (const entry of trimmed.split(',').map((e) => e.trim())) {
+      const refusal = trustProxyEntryRefusal(entry);
+      if (refusal?.invalid) {
+        throw new Error(`TRUST_PROXY "${value}" is not valid: "${entry}" is not a subnet name `
+          + `(${TRUST_PROXY_NAMES.join(', ')}) or an IPv4 or IPv6 address in standard notation, `
+          + 'with an optional prefix length or IPv4 netmask.');
+      }
+      if (refusal?.wide && allow !== 'true') {
+        throw new Error(`TRUST_PROXY "${value}" trusts ${entry}, ${refusal.wide}, so a client from `
+          + 'anywhere in it can choose its own address and step around the rate limiters. List the '
+          + 'proxy\'s own addresses or subnets, or set TRUST_PROXY_ALLOW_HOP_COUNT=true to accept that.');
+      }
+    }
+    return trimmed;
+  }
+  if (allow !== 'true') {
+    throw new Error(`TRUST_PROXY "${value}" ${hopCount ? 'is a hop count' : 'trusts every hop'}, which believes `
+      + 'the X-Forwarded-For of whoever connects, so any client that can reach the app\'s port directly '
+      + 'can choose its own address and step around the rate limiters. Leave it unset to trust a proxy on '
+      + 'loopback or a private network, list the proxy\'s addresses or subnets, use false for no proxy, '
+      + 'or set TRUST_PROXY_ALLOW_HOP_COUNT=true to accept that.');
+  }
+  return hopCount ? Number(trimmed) : true;
+}
+
+// Decides req.ip, which is what the rate limiters count. A refused value, or
+// one Express cannot compile, stops the boot with a sentence naming the
+// variable rather than a stack trace.
 try {
-  app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
+  const setting = parseTrustProxy(process.env.TRUST_PROXY, process.env.TRUST_PROXY_ALLOW_HOP_COUNT);
+  try {
+    app.set('trust proxy', setting);
+  } catch (err) {
+    throw new Error(`TRUST_PROXY "${process.env.TRUST_PROXY}" is not valid: ${err.message}.`, { cause: err });
+  }
 } catch (err) {
-  console.error(`✖ TRUST_PROXY "${process.env.TRUST_PROXY}" is not valid: ${err.message}.`);
-  console.error('  Leave it unset for 1, or see TRUST_PROXY in .env.example.');
+  console.error(`✖ ${err.message}`);
+  console.error('  See TRUST_PROXY and TRUST_PROXY_ALLOW_HOP_COUNT in .env.example.');
   process.exit(1);
 }
+
+// A proxy TRUST_PROXY does not name would otherwise collapse every client
+// behind it into one rate-limit bucket without a word. It only logs and never
+// answers, so it sees every request, probes included, and blocks none.
+app.use(warnUntrustedForwarders());
 
 // Liveness and readiness probes, ahead of every /api layer so no CORS rule,
 // limiter or session check stands between a supervisor and its answer.
@@ -110,10 +243,11 @@ export function isAllowedOrigin(req, origin) {
   // behind a TLS-terminating proxy, where the browser sends an https Origin and
   // the app sees a plain http request, is still recognised as itself.
   //
-  // Deliberately the raw Host header and NOT req.hostname: `trust proxy` is set
-  // above, so req.hostname would honour a client-supplied X-Forwarded-Host, and
-  // the app's port is published directly by the compose files. That would turn
-  // this clause into "allow any origin that asks".
+  // Deliberately the raw Host header and NOT req.hostname: req.hostname honours
+  // X-Forwarded-Host from any peer `trust proxy` believes, which by default is
+  // every process on this host (Docker presents them all as the gateway), and
+  // more if TRUST_PROXY says so, and any of those can send the header itself.
+  // That would turn this clause into "allow any origin that asks".
   const rawHost = req.headers.host ? hostOf(`http://${req.headers.host}`) : null;
   if (originHost && rawHost && originHost === rawHost) {
     return true;

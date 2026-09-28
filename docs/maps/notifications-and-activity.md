@@ -312,7 +312,7 @@ break silently. See [access-control.md](access-control.md).
 
 `GET /api/activity/log/:logId` (`routes/activity.js:145`) is the per-document
 variant. Retention is 365 days, enforced by the daily prune `pruneOldActivity` in
-`server.js:257-275`.
+`server.js:266-284`.
 
 ---
 
