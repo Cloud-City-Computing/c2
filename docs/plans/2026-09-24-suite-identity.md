@@ -717,13 +717,13 @@ rewrites it with `writeSessionCookie` and expires the legacy name (upgrade on us
 
 ### Task 4.4 Origin-required cookie writes
 
-- [ ] First, the audit: `grep -rn "fetch(" src | grep -v apiFetch` and read each hit. **Expected:**
+- [x] First, the audit: `grep -rn "fetch(" src | grep -v apiFetch` and read each hit. **Expected:**
       every unsafe-method call already sends `Authorization` (through `apiFetch` or by hand). Any
       that does not is fixed in this PR to send it, and listed in the PR body.
-- [ ] Move the CORS delegate's allow logic (`app.js:53-109`) into an exported
+- [x] Move the CORS delegate's allow logic (`app.js:53-109`) into an exported
       `isAllowedOrigin(req, origin)` in `middleware/origin.js`, used by the delegate unchanged, so
       the two rules cannot drift. The existing CORS tests in `tests/app.test.js` pass unedited.
-- [ ] Then, after CORS in `app.js`:
+- [x] Then, after CORS in `app.js`:
 
 ```javascript
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -757,14 +757,52 @@ passes; a GET is untouched.
 
 ### Task 4.6 Verify, including by hand
 
-- [ ] `.env.example` documents `LEGACY_SESSION_COOKIE`, with the contract entry
+- [x] `.env.example` documents `LEGACY_SESSION_COOKIE`, with the contract entry
       `{ name: 'LEGACY_SESSION_COOKIE', kind: 'default', default: '1', perInstance: false }` (a
       hosted box sets `0` in its env template); `docs/maps/request-lifecycle.md` and
       `docs/security.md` describe the cookie and the Origin rule.
-- [ ] Lint, test, coverage, integration, build.
-- [ ] By hand, in a browser over https (or `localhost`), at desktop and mobile widths: log in, open
+- [x] Lint, test, coverage, integration, build.
+- [x] By hand, in a browser over https (or `localhost`), at desktop and mobile widths: log in, open
       a document in two tabs and edit (collab), receive a notification, log out. Capture with
       `iris shoot` and read the images. Record what was checked in the PR body.
+
+**As built (2026-09-28).** Six differences from the text above, each made for a reason recorded here.
+
+- **The client never reads a lone legacy cookie on an https page.** Task 4.3's "rewrite it on
+  finding it" would have undone `LEGACY_SESSION_COOKIE=0` in the browser: the page sends whatever it
+  reads as a bearer header, and a bearer token authenticates whatever the flag says, so a planted
+  `sessionToken` would still have signed the visitor in. Instead `upgradeLegacySessionCookie()`
+  (`src/util.jsx`) runs once in `main.jsx` before the first render and asks
+  `POST /api/validate-session` with `legacyCookie: true`; the route answers `{ valid: false }`
+  without a lookup when the flag is `0`, and the page promotes the token only on a yes. Either
+  answer expires the legacy cookie; an unreachable server leaves it.
+- **The client helpers keep the existing writer's name.** `setSessionCookie` already was the one
+  client writer (sign-in and the account panel's rotation), so it gained the scheme rule rather
+  than a second `writeSessionCookie` beside it; `clearSessionCookie` and the upgrade are new.
+- **The server decides Secure from `APP_URL`'s scheme, not `NODE_ENV`**, the test the OAuth state
+  cookie already makes. A production install on plain http now gets a cookie its browser keeps,
+  and an https one gets `__Host-sessionToken`.
+- **`isAllowedOrigin` and `requireOriginForCookieWrites` are exported from `app.js`**, not from a
+  `middleware/origin.js`: the allow rule became a function in place, which keeps the diff in the
+  CORS block to its `return` lines. The existing CORS tests pass unedited.
+- **The bearer skip is `bearerToken(req)`** (new in `middleware/auth.js`, and what
+  `extractSessionToken` now calls first), not `req.headers.authorization`, so a bare `Bearer `,
+  which `extractSessionToken` falls through to the cookie on, needs an Origin too. The rule mounts
+  after Helmet, so a refusal carries the security headers in production.
+- **`readSessionCookie` treats a present but empty prefixed cookie as "prefixed present"**, so it
+  never falls back to a legacy one beside it.
+
+The audit found no unsafe raw `fetch` without a bearer header that a browser would send without an
+`Origin`: `Login.jsx`'s sign-in, sign-up and forgot-password posts and `serverReq`'s
+`2fa/verify` and `validate-session` are same-origin `fetch` writes, which always carry `Origin`, so
+none changed. `GitHubPage.jsx`'s export read (a `GET`) looked for a `session_token` cookie that has
+never existed; it now calls `getSessionTokenFromCookie`.
+
+The hand check drove the built app with Playwright on the same headless shell `iris` uses, rather
+than `iris shoot`, because the flow has to sign in, hold two tabs and accept the harness's
+self-signed certificate. The editor has no Edit mode at 768px and below, so the phone width signed
+in, read the document, received the notification and signed out, and the two-tab edit ran at
+desktop width.
 
 ---
 

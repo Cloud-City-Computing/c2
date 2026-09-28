@@ -61,6 +61,11 @@ backfill; see Migration below.
   rate limiters count. Unset keeps today's `1`; a hop count, `true`, `false`,
   `loopback` or an address list are accepted, and a value Express cannot parse
   stops the boot with a sentence naming the variable.
+- `LEGACY_SESSION_COOKIE`: whether a lone `sessionToken` cookie, the name the
+  session cookie had before it became `__Host-sessionToken` on https (see
+  Security), still signs its holder in. Unset keeps it on; exactly `0` turns
+  it off, for an https instance that shares its domain with hosts you do not
+  control.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
 
@@ -146,6 +151,12 @@ backfill; see Migration below.
   `User-level lock name ... should not exceed 64 characters`. Such a schema
   now gets a lock named by a digest; every shorter name keeps the lock it had,
   so an older runner and this one still exclude each other.
+- **Signing in over plain `http` to an address other than `localhost` keeps
+  its session.** The page wrote the session cookie with `Secure` whatever the
+  scheme, and a browser drops a `Secure` cookie set over plain `http`, so the
+  sign-in reloaded signed out. The page now marks it `Secure` on https only,
+  and the Google callback decides `Secure` from `APP_URL`'s scheme (as its
+  state cookie already did) rather than from `NODE_ENV`.
 - **A blank `SMTP_FROM` sends from the default address.** `.env.example` ships
   `SMTP_FROM=` blank, and a blank value was used as the From, so an install
   that turned email on from it sent every email with an empty From. Blank now
@@ -192,7 +203,33 @@ backfill; see Migration below.
   window from the page rather than from a script written into the window,
   which the policy would block.
 
+- **On https the session cookie is `__Host-sessionToken`, and a write
+  authenticated by that cookie alone must carry an accepted `Origin`.** Any
+  host under the same registrable domain could set a `sessionToken` cookie for
+  the whole domain with a longer path, which a browser sends first, and the
+  server and the page both took the first `sessionToken` they found, so a
+  sibling host could sign a visitor in as someone else. A browser refuses a
+  `__Host-` cookie with a `Domain`, so no other host can set this one; it wins
+  over a legacy `sessionToken` wherever the two sit, on the server and in the
+  page, and no writer sets `Domain`. A lone legacy cookie still works while
+  `LEGACY_SESSION_COOKIE` is on (the default): on its next visit over https the
+  page asks the server to confirm it and moves it to the new name, and until
+  then does not use it. Over plain http the cookie keeps the old name, the only
+  one a browser can hold there. Separately, an `/api` `POST`, `PUT`, `PATCH` or
+  `DELETE` that carries the session cookie and no bearer header is refused with
+  `403` unless its `Origin` is one the CORS rule accepts; CORS admitted a
+  request with no `Origin` at all, and `SameSite=Strict` treats sibling hosts
+  as the same site. The app's own requests, which send a bearer header or an
+  `Origin`, and every server-to-server caller are unaffected. Both WebSockets
+  already refused an upgrade with no `Origin` or a sibling's; tests now pin it.
+
 ### Migration
+
+**The session cookie rename needs nothing run.** Browsers that hold the older
+`sessionToken` stay signed in and move to `__Host-sessionToken` on their next
+visit over https. An https instance that sets `LEGACY_SESSION_COOKIE=0` signs
+those browsers out instead, once. A script that posts to `/api` with only a
+session cookie now needs an `Origin` header or the bearer header.
 
 **The session migration,**
 [`migrations/2026-09-27-session-per-sign-in.sql`](migrations/2026-09-27-session-per-sign-in.sql),

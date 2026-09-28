@@ -63,7 +63,7 @@ for tokens, verifies the ID token.
    `email_not_verified`, and an account outside `GOOGLE_OAUTH_DOMAIN` with
    `domain_not_allowed`.
 
-On success, sets a `sessionToken` cookie and redirects to `/`.
+On success, sets the session cookie and redirects to `/`: `__Host-sessionToken` (`Secure`, `Path=/`, `SameSite=Strict`, no `Domain`) when `APP_URL` is `https://`, otherwise `sessionToken` without `Secure`.
 
 ### `GET /api/oauth/status` *(requires auth)*
 

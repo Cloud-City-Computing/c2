@@ -119,6 +119,7 @@ Production-specific notes:
 | `GITHUB_CLIENT_SECRET`     | Doubles as the AES-256-GCM seed for stored OAuth tokens. **Never rotate without re-encrypting** existing rows or all linked GitHub accounts go invalid |
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
 | `AUTH_PROVIDERS`           | Leave unset. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which |
+| `LEGACY_SESSION_COOKIE`    | Leave unset. On https the session cookie is `__Host-sessionToken`; unset keeps a browser that still holds the older `sessionToken` signed in and moves it across on its next visit. `0` (https only) makes a lone `sessionToken` sign nobody in: set it when hosts you do not control share your domain. See [security.md](./security.md#the-session-cookie) |
 
 Add new env vars to `.env.example` (with a comment) when introducing them.
 

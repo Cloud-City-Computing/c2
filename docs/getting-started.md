@@ -185,6 +185,7 @@ All seed accounts use the password **`password`**.
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (enables Google SSO) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | — |
 | `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
+| `LEGACY_SESSION_COOKIE` | Whether a lone `sessionToken` cookie from before the https session cookie became `__Host-sessionToken` still signs its holder in. Only `0` turns it off (for an https instance sharing its domain with hosts you do not control) | on |
 | `AUTH_PROVIDERS` | Sign-in methods to offer, a comma list of `local` and `google`. Leave unset: the server derives it (local, plus Google when configured) and refuses to start on a value that disagrees with the Google variables | unset |
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |

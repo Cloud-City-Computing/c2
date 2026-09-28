@@ -237,20 +237,28 @@ directly from components.
 ## Authentication Flow (Frontend)
 
 ```
-  page load
+  page load (main.jsx)
      │
      ▼
-  read sessionToken from localStorage ?
+  https, and only a legacy sessionToken cookie?
+     │  yes ──► POST /api/validate-session { token, legacyCookie: true }
+     │            ├── valid ──► rewrite it as __Host-sessionToken
+     │            └── either answer ──► expire the legacy cookie
+     ▼
+  first render; Std_Layout reads the session cookie
      │
-     ├── yes ──► GET /api/get-user (Authorization: Bearer …)
-     │             ├── 200 ──► authenticated, render dashboard
-     │             └── 401 ──► drop token, render Login
+     ├── token ──► cached user in sessionStorage, else
+     │             POST /api/validate-session { token }
+     │               ├── valid ──► authenticated, render the app
+     │               └── invalid ──► signed out
      │
-     └── no  ──► render Login
+     └── none  ──► signed out, render the home page
 
-  on login / signup ──► save token to localStorage
-                       store user state, route to dashboard
-                       attach token to every subsequent apiFetch() call
+  on login / signup ──► setSessionCookie(token): __Host-sessionToken
+                       (Secure) on https, sessionToken on plain http,
+                       never a Domain; reload into the app;
+                       every apiFetch() sends it as Authorization: Bearer
+  on sign-out       ──► POST /api/logout, clearSessionCookie()
 ```
 
 ---

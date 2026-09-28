@@ -22,6 +22,7 @@ even if the DB is compromised.
    │  edge:    helmet: every response in prod, /api in dev    │
    │           (CSP, X-Frame DENY, X-CT, Referrer, COOP)      │
    │           CORS allowlist (no localhost in prod)          │
+   │           Origin required on a cookie-only /api write    │
    │           express-rate-limit (auth 20/15m, search 60/15m)│
    └──────────────────────────────────────────────────────────┘
       │
@@ -33,7 +34,7 @@ even if the DB is compromised.
       │
       ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  auth:    requireAuth (Bearer token / sessionToken cookie)│
+   │  auth:    requireAuth (Bearer token / session cookie)    │
    │           validateAndAutoLogin → user object on req      │
    │           requireAdmin / requirePermission               │
    │           workspace tenant check on a body squad_id      │
@@ -85,6 +86,19 @@ Session tokens are 64-character cryptographically random strings (`crypto.getRan
 
 A successful password reset deletes every session of the user.
 
+### The session cookie
+
+In the browser the token lives in a cookie. **On https it is named `__Host-sessionToken`**, which a browser accepts only with `Secure`, `Path=/` and no `Domain`, so no other host under your domain can set it. Over plain http it is `sessionToken`, the name every earlier release used, because a browser keeps neither a `__Host-` nor a `Secure` cookie there. It is `SameSite=Strict` and never carries a `Domain`. It is not `HttpOnly`: the page reads the token to authenticate its two WebSockets.
+
+The prefix matters when other sites share your registrable domain (`docs.example.com` beside `app.example.com`). Script on any of them can set `sessionToken=<its own>; Domain=example.com; Path=/api`, and a browser sends the cookie with the longer path first. The server and the page both take the prefixed cookie over a legacy one wherever it sits, and a lone legacy cookie authenticates only while `LEGACY_SESSION_COOKIE` allows it:
+
+- **Unset (the default)**, a browser still holding the older `sessionToken` stays signed in. On its next visit over https the page asks the server to confirm that session and moves it to `__Host-sessionToken`; it never uses a lone legacy cookie before the server has said yes.
+- **`LEGACY_SESSION_COOKIE=0`** makes a lone `sessionToken` authenticate nobody, on the server and in the page. Set it on an https instance that shares its domain with hosts you do not fully control. Browsers that have not visited since the upgrade sign in again.
+
+### Cross-site request forgery
+
+There are no CSRF tokens; two rules do the job instead. CORS refuses any `Origin` that is not the app's own host, `APP_URL`'s host, `CORS_ORIGIN`, or (outside production) localhost. And **an `/api` write (`POST`, `PUT`, `PATCH`, `DELETE`) whose only credential is the session cookie is refused with 403 unless it carries an `Origin` that the same rule accepts**. A browser attaches a cookie by itself but a bearer header only when the page's own script adds one, so a request carrying `Authorization: Bearer` (every call the app makes through its API helper, and every server-to-server caller) is not affected, and a browser sends `Origin` on every same-origin write. `SameSite=Strict` alone would not be enough: it treats sibling hosts under one registrable domain as the same site. A script that posts with only a cookie must send an `Origin` or use the bearer header.
+
 ---
 
 ## Account Changes
@@ -96,7 +110,7 @@ A successful password reset deletes every session of the user.
 - **After an email change, a notice goes to the old address** when mail is enabled, so the owner hears about a change that was not theirs.
 - **An account with no password** (one an external sign-in created) has no current password to give. Its email change is confirmed with a 6-digit code emailed to its **current** address (ten minutes, one pending change at a time, the new address bound to the confirmation token so the code applies exactly the address it was sent for), completed at `POST /api/update-account/confirm-email`, which rotates sessions the same way. With mail disabled that change is refused with a sentence saying why. Such an account sets a first password only through Forgot Password.
 
-`POST /api/logout` deletes the `sessions` row for the presented token, and only that one: other devices stay signed in. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
+`POST /api/logout` deletes the `sessions` row for the presented token, and only that one: other devices stay signed in. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then the session cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
 
 ---
 
@@ -230,7 +244,7 @@ A violation found later is fixed by widening the one directive it needs, with a 
 
 ## WebSocket Hardening
 
-- Origin validation on connection upgrade
+- Origin validation on connection upgrade: an upgrade with no `Origin`, or one whose host is not the request's `Host` (a sibling host included), is refused with 403
 - Authentication timeout (unauthenticated connections are closed after a short window)
 - 5 MB message size limit
 - Per-user connection caps to prevent resource exhaustion
@@ -248,7 +262,7 @@ A violation found later is fixed by widening the one directive it needs, with a 
 
 ## CORS
 
-Allowed origins are configured via the `CORS_ORIGIN` environment variable. The `localhost` bypass that is active in development is disabled in production builds.
+The API allows a request with no `Origin` (a same-origin read, a server-to-server call) and one whose `Origin` is the app's own host, `APP_URL`'s host, or exactly `CORS_ORIGIN`. The `localhost` bypass that is active in development is disabled in production builds. The same rule decides whether a cookie-only write may proceed (see [Cross-site request forgery](#cross-site-request-forgery)).
 
 ---
 
