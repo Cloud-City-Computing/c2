@@ -426,7 +426,7 @@ describe('scripts/restore.sh refuses before it writes anything', () => {
     }
   });
 
-  it('when the MySQL user holds any privilege beyond the target database: root, a grant elsewhere, a global one, a role', async () => {
+  it('when the MySQL user holds any privilege beyond the target database: root, a grant elsewhere, a global one, a role, a mandatory role', async () => {
     // As root, even a statement the line-start scan cannot see would reach
     // another schema: the grant is what confines the load, so the user must
     // be one the grant confines.
@@ -464,6 +464,19 @@ describe('scripts/restore.sh refuses before it writes anything', () => {
       await adminConn.query('GRANT ? TO ?@\'%\'', [role, wider.user]);
       await adminConn.query('SET DEFAULT ROLE ALL TO ?@\'%\'', [wider.user]);
       await asWider('a role');
+      await adminConn.query('REVOKE ? FROM ?@\'%\'', [role, wider.user]);
+
+      // A mandatory role reaches every account without a GRANT line of its
+      // own; activated at login, it is the user's current role.
+      const [[before]] = await adminConn.query('SELECT @@GLOBAL.mandatory_roles AS roles, @@GLOBAL.activate_all_roles_on_login AS activate');
+      try {
+        await adminConn.query('SET GLOBAL mandatory_roles = ?', [`\`${role}\`@\`%\``]);
+        await adminConn.query('SET GLOBAL activate_all_roles_on_login = ON');
+        await asWider('a mandatory role');
+      } finally {
+        await adminConn.query('SET GLOBAL mandatory_roles = ?', [before.roles]);
+        await adminConn.query('SET GLOBAL activate_all_roles_on_login = ?', [Number(before.activate) ? 'ON' : 'OFF']);
+      }
 
       expect(await schemaExists(sneaky)).toBe(false);
       expect(await tableCount(scratch)).toBe(0);

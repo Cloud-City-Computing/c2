@@ -222,12 +222,13 @@ db_query() {
 # global privilege, a grant on another schema, a proxy grant or a role is a
 # refusal. What passes: USAGE on *.*, and grants on `$1`.* or its tables, in
 # the plain spelling or the one with `_` escaped that the MySQL image writes.
-# -r: SHOW GRANTS prints that backslash, and batch mode would double it.
+# SHOW GRANTS with no FOR lists the session's active roles too, a mandatory
+# one included, each as a GRANT `role` line and with its privileges (measured
+# on 8.4.11). -r: it prints that backslash, and batch mode would double it.
 check_confined_user() {
-  local database="$1" grants role user line schema escaped
+  local database="$1" grants user line schema escaped
   grants="$(db_mysql -N -B -r -e 'SHOW GRANTS')" || die "cannot read the MySQL user's grants"
   user="$(db_query 'SELECT CURRENT_USER()')"
-  role="$(db_query 'SELECT CURRENT_ROLE()')"
   escaped="${database//_/\\_}"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
@@ -238,8 +239,6 @@ check_confined_user() {
     fi
     die "MySQL user $user holds privileges beyond database '$database' ($line). Use a user granted on '$database' alone, such as the one the app runs as, never root"
   done <<<"$grants"
-  [[ "$role" == NONE ]] ||
-    die "MySQL user $user holds privileges beyond database '$database' (the active role $role). Use a user granted on '$database' alone, with no role"
 }
 
 # Whether version $1 is newer than version $2 (semantic versions; build
