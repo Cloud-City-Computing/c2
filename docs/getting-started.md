@@ -126,6 +126,14 @@ npm run dev
 
 The application will be available at **http://localhost:3000**.
 
+MySQL is published on **127.0.0.1:3306** only, which the dev server, `make`
+and a `mysql` client on the same machine reach (`DB_HOST=localhost` works).
+Nothing else on your network can reach it, since it runs with a development
+password. Set `DB_BIND=0.0.0.0` in `.env` only if you deliberately need it
+from another machine. This loopback binding has not been tested under WSL; if
+a client there cannot reach `127.0.0.1:3306`, `DB_BIND=0.0.0.0` restores the
+previous mapping.
+
 On first boot, once the admin logs in, they land inside a seeded "Getting
 Started" archive with a "Welcome to Cloud Codex" document, not an empty app.
 This only happens on a database that holds no workspaces, archives or logs at
@@ -175,7 +183,7 @@ All seed accounts use the password **`password`**.
 | `TRUST_PROXY` | Which proxies Express believes about the client address (subnet names such as `loopback` or `uniquelocal`, an address or CIDR list in standard notation, or `false`); the rate limiters count by that address. A hop count, `true`, or a range wide enough to take in public addresses stops the boot | `loopback, linklocal, uniquelocal` (a proxy on this host or a private network) |
 | `TRUST_PROXY_ALLOW_HOP_COUNT` | `true` accepts a hop count, `true` or a public-sized range in `TRUST_PROXY` anyway, letting any client that can reach the port choose its own address | unset (off) |
 | `APP_BIND` | Docker Compose only: the host address the app port is published on. Set `0.0.0.0` only to reach the app from other machines on purpose | `127.0.0.1` |
-| `DB_BIND` | `docker-compose-prod.yml` only: the host address MySQL's 3306 is published on | `127.0.0.1` |
+| `DB_BIND` | `docker-compose.yaml` (dev) and `docker-compose-prod.yml`: the host address MySQL's 3306 is published on | `127.0.0.1` |
 | `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
 | `SMTP_HOST` | SMTP server hostname | — (optional; leave blank to run without email) |
 | `SMTP_PORT` | SMTP server port | `587` |

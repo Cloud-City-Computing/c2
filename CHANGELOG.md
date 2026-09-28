@@ -74,9 +74,13 @@ Behind a proxy, check that a real client's address still reaches the app
   `docker-compose-prod.yml` also publishes MySQL as
   `${DB_BIND:-127.0.0.1}:3306:3306` instead of `3306:3306`: a mysql client or
   `npm run migrate` on the host still reaches it, and anything else needs
-  `DB_BIND` set on purpose (the release file publishes no database port). A
-  test pins every mapping in both files and fails on any default beyond
-  loopback.
+  `DB_BIND` set on purpose (the release file publishes no database port). The
+  development file, `docker-compose.yaml`, does the same for its MySQL, which
+  runs with a development password: the dev server, `make` and a `mysql`
+  client on the same machine reach it as before, and nothing else on the
+  network does. A test pins every mapping in all three files, fails on any
+  default beyond loopback, and checks that `docker-compose.linux.yml`
+  publishes nothing.
 
 ### Security
 

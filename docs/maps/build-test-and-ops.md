@@ -50,8 +50,9 @@ mode. `.env.example` lists it blank; `npm run start` and the Docker image set it
 
 `./start.sh` from the root is the one-shot bootstrap: it checks Docker, Docker
 Compose, Node and npm, brings up MySQL, installs dependencies, and starts the
-dev server. On Linux it merges `docker-compose.linux.yml`, which re-declares the
-bind mounts with the `:Z` SELinux label (`docker-compose.linux.yml:6-8`).
+dev server. On native Linux (not WSL: it checks `/proc/version`) it merges
+`docker-compose.linux.yml`, which re-declares the bind mounts with the `:Z`
+SELinux label (`docker-compose.linux.yml:6-8`) and publishes no port.
 
 Manual equivalent:
 
@@ -79,8 +80,8 @@ them. See [data-model.md](data-model.md).
 
 ## 4. Docker topologies
 
-**Dev** (`docker-compose.yaml`): MySQL only, port 3306 published, data in a
-bind mount `./db-data/`, `init.sql` mounted into
+**Dev** (`docker-compose.yaml`): MySQL only, port 3306 published on 127.0.0.1
+(`${DB_BIND:-127.0.0.1}:3306:3306`), data in a bind mount `./db-data/`, `init.sql` mounted into
 `/docker-entrypoint-initdb.d/`. The app runs on the host.
 
 **Prod** (`docker-compose-prod.yml`): MySQL plus the app.
@@ -112,8 +113,10 @@ proxies to `app:3000`. `tests/compose-ports.test.js` pins the mapping in both
 files and separately reads each mapping's effective host (its `:-` fallback)
 and fails on anything beyond loopback, so moving the pin and the files to an
 all-interfaces default together still fails. It reads every service: the prod
-file's database is pinned to `${DB_BIND:-127.0.0.1}:3306:3306` the same way, and
-the release file's to no published port at all.
+and dev files' database is pinned to `${DB_BIND:-127.0.0.1}:3306:3306` the same
+way, the release file's to no published port at all, and
+`docker-compose.linux.yml` to none, because Compose appends an override's
+`ports` to the base file's and one there would widen the dev mapping.
 
 **The prod file's MySQL port is on 127.0.0.1 too**, for the same DNAT reason:
 it used to publish `3306:3306` on every interface, the database's own
@@ -121,7 +124,10 @@ authentication the only thing between it and anything that could route to the
 host. It stays published because `docs/deployment.md` has operators run a
 mysql client or `npm run migrate` from the host against it; the app itself
 uses `DB_HOST: database` over the compose network. `DB_BIND` widens it on
-purpose.
+purpose. The dev file follows suit: its database runs with a development
+password, often on a laptop on a shared network, and everything that uses it
+(`npm run dev`, `make`, `start.sh`'s check, a `mysql` client) is on the same
+machine. `make` goes through `docker exec` and does not use the port at all.
 - `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build
   stage runs `npm ci` and `npm run build`, and the runtime stage runs
   `npm ci --omit=dev`, copies the source, then copies `dist/` across from the

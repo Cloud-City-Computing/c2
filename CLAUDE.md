@@ -31,7 +31,7 @@ down in `cloudcodex/`. **Run all `npm` commands from `cloudcodex/`.**
 c2/                              ← repo root (Docker, docs, SQL, Make)
 ├── docker-compose.yaml          ← dev: MySQL only
 ├── docker-compose-prod.yml      ← prod: MySQL + app
-├── docker-compose.linux.yml     ← WSL variant
+├── docker-compose.linux.yml     ← native-Linux :Z override for the dev file (not WSL)
 ├── Makefile                     ← seed, reset-db, db-shell
 ├── start.sh                     ← one-shot dev bootstrap
 ├── init.sql / seed.sql          ← schema + sample data

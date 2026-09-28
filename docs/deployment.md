@@ -64,7 +64,7 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
 | `docker-compose.yaml`         | **Dev** — MySQL only, app runs from `npm run dev`  |
 | `docker-compose-release.yml`  | **Prod, published image** — no build toolchain     |
 | `docker-compose-prod.yml`     | **Prod, from source** — builds `./cloudcodex`      |
-| `docker-compose.linux.yml`    | WSL variant (host networking quirks)               |
+| `docker-compose.linux.yml`    | Native-Linux override for the dev file: `:Z` SELinux labels on its bind mounts, merged by `start.sh` on Linux but not WSL; publishes no port |
 
 Running a published release, which is the recommended path unless you are
 deploying modified source:
@@ -115,7 +115,7 @@ Production-specific notes:
 | `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count. Unset believes a proxy connecting from loopback or a private range, right for nginx or Caddy on the same host and for a load balancer with a private address. A hop count or `true` stops the boot. See [Rate limiters](#rate-limiters) |
 | `TRUST_PROXY_ALLOW_HOP_COUNT` | Leave unset. `true` accepts a hop count or `true` in `TRUST_PROXY` anyway, knowing that any client able to reach the app's port can then choose its own address |
 | `APP_BIND`                 | Compose only, not read by the server: the host address the app port is published on. Unset or blank is `127.0.0.1`. See [TLS and reverse proxy](#tls-and-reverse-proxy) |
-| `DB_BIND`                  | `docker-compose-prod.yml` only, not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
+| `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
 | `SMTP_*`                   | Optional. Without them invitations show a copyable link and password reset is unavailable |
 | `ADMIN_*`                  | Hard requirement. **They reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
@@ -385,7 +385,7 @@ dependencies, and a reachable MySQL.
 |---|---|---|
 | `docker-compose-release.yml` (published image) | `docker compose -f docker-compose-release.yml run --rm app npm run migrate` | 3306 is **not** published to the host, so the runner has to be inside the compose network. `run` builds a one-off container from the **current** compose file and the **new** image, so it has both `scripts/migrate.js` and the `./migrations` mount, and it removes itself afterwards. |
 | `docker-compose-prod.yml` (built from source) | `docker compose -f docker-compose-prod.yml run --rm app npm run migrate` | Same shape, after `docker compose -f docker-compose-prod.yml build app`. 3306 *is* published here, on 127.0.0.1 unless `DB_BIND` says otherwise, so `cd cloudcodex && npm run migrate` on the host also works if you have run `npm install` there. |
-| `docker-compose.yaml` (dev) | `cd cloudcodex && npm run migrate` | Dev has **no app container**: the writer to stop is `npm run dev` on the host. MySQL publishes 3306 and `node_modules` is installed, so the runner just runs there. |
+| `docker-compose.yaml` (dev) | `cd cloudcodex && npm run migrate` | Dev has **no app container**: the writer to stop is `npm run dev` on the host. MySQL publishes 3306 on 127.0.0.1 and `node_modules` is installed, so the runner just runs there. |
 
 **`run --rm`, not `exec`.** This matters most on the one upgrade every existing
 operator performs: the one that installs the runner. `exec` runs inside the
