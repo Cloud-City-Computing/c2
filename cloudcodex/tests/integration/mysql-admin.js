@@ -20,6 +20,19 @@ export const SCHEMA_PREFIX = 'c2_it_';
 export const SCHEMA_LIKE = 'c2\\_it\\_%';
 
 /**
+ * Schemas built by the shared-server recipe (tests/integration/instance-recipe.js)
+ * start with this instead: the recipe's schema names are letters and digits
+ * only, so they cannot carry SCHEMA_PREFIX's underscores.
+ */
+export const RECIPE_SCHEMA_PREFIX = 'c2it';
+
+/** `SHOW DATABASES LIKE` pattern for RECIPE_SCHEMA_PREFIX. */
+export const RECIPE_SCHEMA_LIKE = 'c2it%';
+
+/** Every MySQL account this project creates starts with SCHEMA_PREFIX too. */
+export const USER_LIKE = SCHEMA_LIKE;
+
+/**
  * The admin credentials, from IT_DB_*. mysql_connect.js reads no DB_PORT, so
  * the server must answer on 3306 at IT_DB_HOST.
  * @returns { { host: String, user: String, password: String } }
@@ -72,6 +85,15 @@ export function queryVia(conn) {
 export async function buildSchemaFromInitSql(conn, schema) {
   await conn.query(`CREATE DATABASE ${mysql.escapeId(schema)}`);
   await conn.changeUser({ database: schema });
+  await loadInitSql(conn);
+}
+
+/**
+ * Build init.sql into `conn`'s current database, which must already exist.
+ * `conn` needs `multipleStatements`.
+ * @param { import('mysql2/promise').Connection } conn
+ */
+export async function loadInitSql(conn) {
   await conn.query(readFileSync(path.join(REPO_ROOT, 'init.sql'), 'utf8'));
 }
 
@@ -82,6 +104,15 @@ export async function buildSchemaFromInitSql(conn, schema) {
  */
 export async function dropSchema(conn, schema) {
   await conn.query(`DROP DATABASE IF EXISTS ${mysql.escapeId(schema)}`);
+}
+
+/**
+ * Drop the account `user`@'%' if it exists.
+ * @param { import('mysql2/promise').Connection } conn
+ * @param { String } user
+ */
+export async function dropUser(conn, user) {
+  await conn.query(`DROP USER IF EXISTS ?@'%'`, [user]);
 }
 
 /**

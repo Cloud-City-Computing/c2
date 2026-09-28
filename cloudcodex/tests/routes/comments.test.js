@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query } from '../../mysql_connect.js';
@@ -877,6 +877,24 @@ describe('Comment Routes', () => {
         .set('Authorization', 'Bearer valid-token');
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('a query that fails', () => {
+    it('answers the JSON error envelope, not Express\'s default HTML page', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockAuthenticated();
+      c2_query.mockRejectedValueOnce(Object.assign(new Error('DELETE command denied'), { code: 'ER_TABLEACCESS_DENIED_ERROR' }));
+
+      const res = await request(app)
+        .delete('/api/comments/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(500);
+      expect(res.headers['content-type']).toMatch(/application\/json/);
+      expect(res.body).toEqual({ success: false, message: 'An internal server error occurred' });
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('DELETE /comments/10:'), expect.any(Error));
+      logged.mockRestore();
     });
   });
 });
