@@ -132,6 +132,9 @@ export default defineConfig({
         // The probes (W6-CDX-31). Measured at 100/100/97.36/100 (lines,
         // statements, branches, functions) after the review round.
         'routes/health.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
+        // The webhook admin API (W6-CDX-13). Measured at 100 lines, 98.76
+        // statements, 92.64 branches, 100 functions when it landed.
+        'routes/webhooks.js': { lines: 97, statements: 95, branches: 88, functions: 95 },
 
         // Services.
         'services/email.js': { lines: 95, statements: 95, branches: 70, functions: 95 },
@@ -144,6 +147,12 @@ export default defineConfig({
         // The one definition of how a session token is stored (W6-CDX-2): one
         // function with no branches, measured at 100%.
         'services/session-token.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
+        // Outbound webhooks (W6-CDX-13): the emit hook, the env subscription and
+        // the SSRF guard every receiver address passes. Measured when they
+        // landed: webhooks.js 99.03 lines, 99.19 statements, 94.3 branches, 100
+        // functions; webhook-target.js 100, 95.86, 91.66, 100.
+        'services/webhooks.js': { lines: 95, statements: 95, branches: 90, functions: 95 },
+        'services/webhook-target.js': { lines: 95, statements: 92, branches: 88, functions: 95 },
         // The stop and the single-writer lock (W6-CDX-31). Measured after the
         // review round: shutdown.js 100 lines, 98.03 statements, 93.54
         // branches, 100 functions; instance-lock.js 100, 95.91, 93.93, 77.77

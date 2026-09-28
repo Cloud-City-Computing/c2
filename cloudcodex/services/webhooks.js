@@ -271,7 +271,10 @@ async function eventData(ctx) {
       previous_parent_id: idOrNull(meta.previous_parent_id),
     };
   }
-  const data = { ...base, title: typeof meta.title === 'string' ? meta.title : row.title };
+  // title is always the document's. A publish's metadata.title is the name
+  // given to the version (routes/documents.js), so publish reads the row.
+  const useMetaTitle = ctx.action !== 'log.publish' && typeof meta.title === 'string';
+  const data = { ...base, title: useMetaTitle ? meta.title : row.title };
   if (ctx.action === 'log.publish' || ctx.action === 'log.restore') data.version = idOrNull(meta.version);
   return data;
 }

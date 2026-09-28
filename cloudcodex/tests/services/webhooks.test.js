@@ -264,6 +264,8 @@ describe('services/webhooks', () => {
       const cases = [
         [ctx({ action: 'log.update', metadata: { title: 'Saved' } }), { log_id: 113, archive_id: 29, title: 'Saved' }, true],
         [ctx({ action: 'log.publish', metadata: { version: 4, title: null } }), { log_id: 113, archive_id: 29, title: 'Stored title', version: 4 }, true],
+        // A publish's metadata.title is the version's name, never the document's.
+        [ctx({ action: 'log.publish', metadata: { version: 4, title: 'v1.0 release' } }), { log_id: 113, archive_id: 29, title: 'Stored title', version: 4 }, true],
         [ctx({ action: 'log.restore', metadata: { title: 'Restored', version: 5 } }), { log_id: 113, archive_id: 29, title: 'Restored', version: 5 }, true],
         [ctx({ action: 'log.rename', metadata: { title: 'Renamed' } }), { log_id: 113, archive_id: 29, title: 'Renamed' }, true],
         [ctx({ action: 'log.move', metadata: { title: 'x', parent_id: 7, previous_parent_id: null } }), { log_id: 113, archive_id: 29, parent_id: 7, previous_parent_id: null }, true],
