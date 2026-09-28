@@ -25,9 +25,14 @@ const sha256 = (file) => createHash('sha256').update(readFileSync(file)).digest(
 const SUITES = Object.keys(manifest.files).filter((file) => file.endsWith('.test.mjs'));
 
 // Runs the package's own node:test suites inside the copy and reads the pass and fail
-// counts from the run's summary.
+// counts from the run's summary. The TAP reporter is named, because the default is
+// spec from Node 24 on; NODE_OPTIONS is dropped, because a reporter named there
+// too makes node refuse two reporters for one destination.
 function runSuites(env = process.env) {
-  const run = spawnSync(process.execPath, ['--test', ...SUITES], { cwd: VENDOR, encoding: 'utf8', timeout: 25000, env });
+  const childEnv = { ...env };
+  delete childEnv.NODE_OPTIONS;
+  const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...SUITES],
+    { cwd: VENDOR, encoding: 'utf8', timeout: 25000, env: childEnv });
   const summary = /# pass (\d+)[\s\S]*# fail (\d+)/.exec(run.stdout);
   return { run, pass: Number(summary?.[1]), fail: Number(summary?.[2]) };
 }

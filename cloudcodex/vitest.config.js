@@ -8,7 +8,7 @@
  * integration project that runs tests/integration/ against a live MySQL
  * server. `npm test` and `npm run test:coverage` name backend, frontend and
  * design explicitly, so a contributor without a MySQL server is unaffected;
- * `npm run test:integration` runs the third (tests/test-projects.test.js
+ * `npm run test:integration` runs integration (tests/test-projects.test.js
  * pins that split). Coverage is configured at the top level so a single
  * `npm run test:coverage` run produces a unified report across the default
  * projects.

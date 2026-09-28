@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  collectScanTargets, scanRawColorLiterals, scanAccentRampPositions, scanSuppressedOutlines,
+  collectScanTargets, maskComments, scanRawColorLiterals, scanAccentRampPositions, scanSuppressedOutlines,
 } from '../../vendor/cloud-city-design/gates/token-discipline.mjs';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -25,11 +25,30 @@ export const ACCENT_FILL_ALIASES = ['--cx-accent-fill'];
 
 const INDEX_CSS = 'src/index.css';
 
-// The stylesheet that defines Codex's tokens. Its literal colours are the
-// definitions (the package has no neutrals, so Codex's surfaces and text are
-// literals here), and the contrast gate measures them; the literal-colour
-// rule skips this one file, and the other two rules still read it.
+// The stylesheet that defines Codex's tokens. Its custom-property literals
+// are the definitions (the package has no neutrals, so Codex's surfaces and
+// text are literals here), and the contrast gate measures them. The
+// literal-colour rule skips those definitions in this one file and still
+// counts a literal on any other property; the other two rules read it whole.
 export const TOKEN_DEFINITIONS = ['src/codex.css'];
+
+// A custom-property declaration, `--name: value`, up to its `;` or brace.
+const CUSTOM_PROPERTY_RE = /--[\w-]+\s*:[^;{}]*/g;
+
+/**
+ * The source with every custom-property declaration blanked, line breaks
+ * kept, so line numbers still match. Declarations are found in the
+ * comment-masked copy, so a `--name:` inside a comment blanks nothing.
+ */
+export function maskCustomProperties(source) {
+  const out = source.split('');
+  for (const match of maskComments(source).matchAll(CUSTOM_PROPERTY_RE)) {
+    for (let i = match.index; i < match.index + match[0].length; i += 1) {
+      if (out[i] !== '\n') out[i] = ' ';
+    }
+  }
+  return out.join('');
+}
 
 /** Repo-relative path with forward slashes, so ledger keys match on every OS. */
 export function relativePath(file) {
@@ -56,7 +75,7 @@ export function banners(source) {
 /** Every token-discipline finding in one file's source. */
 export function scanSource(source, rel) {
   return [
-    ...(TOKEN_DEFINITIONS.includes(rel) ? [] : scanRawColorLiterals(source, rel)),
+    ...scanRawColorLiterals(TOKEN_DEFINITIONS.includes(rel) ? maskCustomProperties(source) : source, rel),
     ...scanAccentRampPositions(source, rel, { extraNames: ACCENT_FILL_ALIASES }),
     ...scanSuppressedOutlines(source, rel),
   ];
