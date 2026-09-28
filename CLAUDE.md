@@ -31,7 +31,7 @@ down in `cloudcodex/`. **Run all `npm` commands from `cloudcodex/`.**
 c2/                              ← repo root (Docker, docs, SQL, Make)
 ├── docker-compose.yaml          ← dev: MySQL only
 ├── docker-compose-prod.yml      ← prod: MySQL + app
-├── docker-compose.linux.yml     ← dev :Z SELinux override (native Linux, not WSL)
+├── docker-compose.linux.yml     ← native-Linux :Z override for the dev file (not WSL)
 ├── Makefile                     ← seed, reset-db, db-shell
 ├── start.sh                     ← one-shot dev bootstrap
 ├── init.sql / seed.sql          ← schema + sample data
@@ -54,7 +54,8 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     │   ├── oauth.js, github.js, avatars.js, doc-images.js,
     │   ├── doc-images-serve.js (the /doc-images mount), upload.js,
     │   ├── notifications.js, activity.js, watches.js
-    ├── middleware/              ← auth.js (requireAuth, requireAdmin), permissions.js
+    ├── middleware/              ← auth.js (requireAuth, requireAdmin), permissions.js,
+    │                              forwarded-for.js (the untrusted-proxy warning)
     ├── services/                ← collab.js (Yjs WS), user-channel.js (inbox WS),
     │                              notifications.js, email.js, email-templates.js
     ├── src/                     ← React frontend
@@ -456,6 +457,14 @@ New files match this pattern. Update the year only if the file is genuinely new.
 - **Bcrypt rounds = 12.** Don't lower for speed.
 - **Rate limiters are deliberate.** `authLimiter` (20/15min) on auth routes,
   `searchLimiter` (60/15min) on user search. New auth-adjacent routes get one.
+  They key on `req.ip`, so `trust proxy` is part of them: it names the
+  proxies by address (loopback, and the gateway of the network the
+  production compose files pin to 172.29.0.0/16; never 172.17.0.1, which
+  every IPv6 client of `docker run -p` arrives as), never a range, and a hop
+  count, `true` or an over-wide range is refused at boot
+  (GHSA-9fmx-frrf-xxmq). Do not relax either, do not unpin the network, and
+  keep every published port on loopback by default (`APP_BIND`, `DB_BIND`;
+  `tests/compose-ports.test.js`).
 
 ### Testing
 

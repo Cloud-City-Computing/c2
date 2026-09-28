@@ -55,7 +55,9 @@ services:
     # UPGRADING IS NOT JUST THIS NUMBER. init.sql runs only on an empty data
     # directory, so a newer app against an older schema boots cleanly and then
     # 500s, and old code against a new schema is worse. The order is: pull the
-    # new image, stop the app, migrate, then start it:
+    # new image, stop the app, migrate, then start it (upgrading from 0.11.0 or
+    # earlier, `down` instead of `stop app`, because of the network pinned at
+    # the end of this file):
     #
     #   docker compose -f docker-compose-release.yml pull app
     #   docker compose -f docker-compose-release.yml stop app
@@ -72,7 +74,7 @@ services:
     # See "Upgrades" in docs/deployment.md, which also covers the one-time
     # adoption step this database needs before its first ordinary run.
     # release.yml fails the build if this default falls behind the tag.
-    image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.11.0}
+    image: ghcr.io/cloud-city-computing/cloud-codex:${CLOUDCODEX_VERSION:-0.12.0}
     container_name: cloudcodex-app
     restart: unless-stopped
     # Longer than the app's own ten-second shutdown bound (services/shutdown.js),
@@ -85,9 +87,21 @@ services:
     # Both sides follow PORT so setting it in .env moves the published mapping
     # too. Without this the app would bind PORT inside the container while
     # Compose still published 3000, and every request to the host would be
-    # refused while the logs showed a clean boot.
+    # refused while the logs showed a clean boot. `:-` covers the blank PORT=
+    # and APP_BIND= that .env.example ships.
+    #
+    # The host side is 127.0.0.1 unless APP_BIND says otherwise, so only this
+    # machine reaches the app: a browser on it for an evaluation, or the
+    # TLS-terminating reverse proxy production belongs behind. Docker's
+    # published ports are a DNAT rule in front of the host firewall, so a
+    # mapping with no host address is reachable from anywhere that can route
+    # here, past `ufw deny`. Set APP_BIND (0.0.0.0, or one interface's IPv4
+    # address) only to expose the port on purpose; see "TLS and reverse proxy"
+    # in docs/deployment.md. Never `::` or an IPv6 address: the network below
+    # is IPv4-only, so Docker would carry every IPv6 client in as its gateway,
+    # which TRUST_PROXY trusts.
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}"
     env_file:
       - .env
     environment:
@@ -124,3 +138,24 @@ services:
 volumes:
   db_data:
   app_public:
+
+# The project's default network, pinned so its gateway is an address
+# TRUST_PROXY's default names (172.29.0.1/32). A proxy on this host reaches the
+# app through the published port, and Docker presents that traffic to the
+# container as this gateway. Left to Docker, the subnet is whatever is free
+# (172.18.0.0/16 on a fresh host, a 192.168 range once about fifteen networks
+# exist), the gateway is not in the default, and every client behind the proxy
+# would share one rate-limit bucket. 172.29.0.0/16 is distinct from Cloud
+# Command's 172.28.0.0/16, so both can run on one host. An install created
+# before this was pinned has its network on another subnet, and its upgrade
+# must take the project `down` (never `down -v`) BEFORE migrating: stopping
+# only the app and then migrating makes Compose replace this network under a
+# running database, which it reconnects without its `database` alias, so the
+# migration and the app both fail to find it. See "Upgrades" in
+# docs/deployment.md.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1
