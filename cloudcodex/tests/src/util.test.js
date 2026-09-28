@@ -24,6 +24,8 @@ import {
   removeSessStorage,
   getSessionTokenFromCookie,
   setSessionCookie,
+  clearSessionCookie,
+  upgradeLegacySessionCookie,
   clearInner,
   createAndAppend,
   // Sample API wrappers
@@ -199,15 +201,155 @@ describe('setSessionCookie', () => {
   // The one writer of the session cookie on the client: sign-in and the
   // account panel's session rotation must set it identically, or a rotated
   // session would come back with different lifetime or scope rules.
-  it('writes the sessionToken cookie with the attributes sign-in has always used', () => {
+  // A plain-http page (jsdom's default here) cannot hold a Secure cookie, so
+  // the name and the Secure attribute follow the page's scheme (W6-CDX-3).
+  it('writes the legacy name without Secure on a plain-http page, never with a Domain', () => {
     const set = vi.spyOn(Document.prototype, 'cookie', 'set');
     try {
       setSessionCookie('fresh-token');
       expect(set).toHaveBeenCalledTimes(1);
-      expect(set).toHaveBeenCalledWith('sessionToken=fresh-token; path=/; max-age=604800; secure; samesite=strict');
+      expect(set).toHaveBeenCalledWith('sessionToken=fresh-token; path=/; max-age=604800; samesite=strict');
     } finally {
       set.mockRestore();
     }
+  });
+});
+
+// ── The __Host- session cookie on an https page (W6-CDX-3) ──────────
+//
+// jsdom's cookie jar enforces the prefix rules a browser does (a __Host-
+// cookie needs Secure and Path=/, and a Secure cookie needs an https page),
+// so these run on a page reconfigured to https and read the jar back rather
+// than trusting the string written.
+
+describe('the session cookie on an https page', () => {
+  const HOME = window.location.href;
+  const EXPIRED = 'expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
+  beforeEach(() => {
+    globalThis.jsdom.reconfigure({ url: 'https://codex.example.com/' });
+  });
+
+  afterEach(() => {
+    document.cookie = `__Host-sessionToken=; ${EXPIRED}; path=/; secure`;
+    document.cookie = `sessionToken=; ${EXPIRED}; path=/`;
+    document.cookie = `sessionToken=; ${EXPIRED}; path=/; secure`;
+    globalThis.jsdom.reconfigure({ url: HOME });
+  });
+
+  describe('setSessionCookie', () => {
+    it('writes __Host-sessionToken, Secure, Path=/ and no Domain, which the jar accepts', () => {
+      const set = vi.spyOn(Document.prototype, 'cookie', 'set');
+      try {
+        setSessionCookie('fresh-token');
+        expect(set).toHaveBeenCalledWith('__Host-sessionToken=fresh-token; path=/; max-age=604800; secure; samesite=strict');
+      } finally {
+        set.mockRestore();
+      }
+      expect(document.cookie).toBe('__Host-sessionToken=fresh-token');
+    });
+  });
+
+  describe('getSessionTokenFromCookie', () => {
+    it('reads the prefixed cookie', () => {
+      setSessionCookie('host-token');
+      expect(getSessionTokenFromCookie()).toBe('host-token');
+    });
+
+    it('prefers the prefixed cookie over a legacy one', () => {
+      document.cookie = 'sessionToken=tossed; path=/; secure';
+      setSessionCookie('host-token');
+      expect(getSessionTokenFromCookie()).toBe('host-token');
+    });
+
+    // A lone legacy cookie on https may have been tossed by a sibling host.
+    // It is promoted only after the server agrees (upgradeLegacySessionCookie),
+    // never read straight into a bearer header.
+    it('does not read a lone legacy cookie', () => {
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+      setSessStorage('currentUser', { id: 1 });
+      expect(getSessionTokenFromCookie()).toBeNull();
+      expect(sessionStorage.getItem(STORAGE_PREFIX + 'currentUser')).toBeNull();
+    });
+  });
+
+  describe('clearSessionCookie', () => {
+    it('expires both names', () => {
+      setSessionCookie('host-token');
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+      clearSessionCookie();
+      expect(document.cookie).toBe('');
+    });
+  });
+
+  describe('upgradeLegacySessionCookie', () => {
+    it('moves a legacy cookie the server accepts to the prefixed name, and expires the legacy one', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ valid: true, user: { id: 1 } }) });
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, opts] = fetchMock.mock.calls[0];
+      expect(url).toBe('/api/validate-session');
+      expect(opts.method).toBe('POST');
+      expect(JSON.parse(opts.body)).toEqual({ token: 'old-token', legacyCookie: true });
+      expect(document.cookie).toBe('__Host-sessionToken=old-token');
+      expect(getSessionTokenFromCookie()).toBe('old-token');
+    });
+
+    it('expires a legacy cookie the server refuses, and writes nothing', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ valid: false }) });
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(document.cookie).toBe('');
+    });
+
+    it('keeps the legacy cookie when the server cannot be reached, so a blip signs nobody out', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('offline'));
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(document.cookie).toBe('sessionToken=old-token');
+    });
+
+    it('asks nothing when a prefixed cookie already exists', async () => {
+      setSessionCookie('host-token');
+      document.cookie = 'sessionToken=tossed; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(getSessionTokenFromCookie()).toBe('host-token');
+    });
+
+    it('asks nothing when there is no session cookie at all', async () => {
+      await upgradeLegacySessionCookie();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('the session cookie on a plain-http page', () => {
+  it('reads the legacy name, the only one a plain-http page can hold', () => {
+    setSessionCookie('http-token');
+    expect(getSessionTokenFromCookie()).toBe('http-token');
+  });
+
+  it('clearSessionCookie expires it', () => {
+    setSessionCookie('http-token');
+    clearSessionCookie();
+    expect(getSessionTokenFromCookie()).toBeNull();
+  });
+
+  it('upgradeLegacySessionCookie leaves it alone and asks nothing', async () => {
+    setSessionCookie('http-token');
+    await upgradeLegacySessionCookie();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getSessionTokenFromCookie()).toBe('http-token');
   });
 });
 
