@@ -17,7 +17,7 @@ research itself listed as its largest unre-verified claim.
   its container address.
 - Client: Node 22, `mysql2` from `cloudcodex/node_modules`, Vitest 4.
 - `cloudcodex/tests/integration/tenancy.test.js` and
-  `grants-sufficient.test.js`, in the full integration run (14 files, 161
+  `grants-sufficient.test.js`, in the full integration run (14 files, 163
   tests, all passing). The lines for the two new files are in
   [`raw-integration-run.txt`](raw-integration-run.txt).
 
@@ -52,6 +52,16 @@ And, as instance A's app account:
   `processlist` shows the caller its own connections only.
 - `information_schema` `TABLES`, `COLUMNS`, `ROUTINES` and `SCHEMATA` hold no
   row about B.
+- **B's name is not hidden.** Of the 55 `information_schema` and
+  `performance_schema` views the app account can read, exactly one names B:
+  `information_schema.TABLESPACES_EXTENSIONS`, which MySQL shows without a
+  privilege check and which lists every file-per-table tablespace on the
+  server as `<schema>/<table>` (a row `<B>/users`). No `SHOW` statement the
+  account may run names B. So the grant keeps B's rows, grants and
+  `SHOW DATABASES` entry from A, not B's schema and table names; the recipe
+  says so and asks for opaque schema names. The test pins the one view: a
+  second view naming B, or none, turns it red. `performance_schema.global_status`
+  (server-wide counters) is readable too.
 - `LOAD_FILE('/etc/hostname')` returns `NULL`.
 - `SHOW GRANTS` is exactly `GRANT USAGE ON *.*` plus the one schema line, for
   both accounts.
@@ -68,6 +78,21 @@ delete, a document delete, sign-out), one `/collab` edit and a SIGTERM that
 flushed it: every answer 2xx, exit 0 with `stopped cleanly on SIGTERM`, no
 privilege error in the log, and the edit in `ydoc_state`.
 
+## Through the compose file
+
+The recipe as first written adopted the schema with
+`docker compose -f docker-compose-release.yml run ... npm run migrate`, which
+never reaches a shared server: the release file sets the app's `DB_HOST` to its
+bundled `database` service (`environment` wins over `.env`) and makes the app
+depend on it, so the command starts a new MySQL of the install's own. The
+recipe now carries a `shared-mysql.yml` override (the bundled database behind a
+profile, the dependency reset, `DB_HOST` from `.env`). Driven for real against
+a throwaway server standing in for the shared one, it adopts the schema as the
+migration account, starts the app as the app account (`/readyz` 200, the
+instance lock held by the app account), and a command that forgets the
+override fails at the bundled database instead of starting an empty one:
+[`raw-compose-run.txt`](raw-compose-run.txt).
+
 ## The schema-name rule
 
 The Wave 6 plan's recipe granted `ON c2_acme.*`. In a database-level `GRANT`,
@@ -83,7 +108,7 @@ thing under either setting, and backticks them. The last test in
 
 ## Mutations
 
-Seven, each confirmed landed and restored: [`raw-mutations.txt`](raw-mutations.txt).
+Ten, each confirmed landed and restored: [`raw-mutations.txt`](raw-mutations.txt).
 The plan's own (`GRANT SELECT ON *.*` to the app account) turns 26 tests red.
 One found a gap in the proof: without `DELETE` the smoke path first stayed
 green, because it deleted nothing, and extending it found that

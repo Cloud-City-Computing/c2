@@ -1,0 +1,64 @@
+# The recipe driven through the release compose file and the shared-mysql.yml override from
+# docs/deployment.md, 2026-09-28, Docker Compose 5.3.1, against a throwaway mysql:8.4.11 container
+# standing in for the shared server. The app image was built from this branch
+# (docker build -t ghcr.io/cloud-city-computing/cloud-codex:w6cdx33local ./cloudcodex) and selected
+# with CLOUDCODEX_VERSION in .env. Run in a scratch copy of the install, which gave its containers
+# and its compose network names of their own because another install on this host was using
+# them; nothing else in it differs. Passwords elided.
+
+## Without the override, the reviewer's case: the release file sets the app's DB_HOST itself.
+$ docker compose -f docker-compose-release.yml config | grep -n 'DB_HOST\|condition'
+8:        condition: service_healthy
+16:      DB_HOST: database
+52:      DB_HOST: c2-it-w6cdx33-r2        # the database service's copy of .env, unused there
+# Lines 8 and 16 are the app's: it waits for the bundled database and talks to it, whatever .env says.
+
+## With the override: DB_HOST from .env, no depends_on, no database service.
+$ docker compose -f docker-compose-release.yml -f shared-mysql.yml config
+services:
+  app:
+    environment:
+      DB_HOST: c2-it-w6cdx33-r2
+      DB_NAME: c2acme
+      DB_USER: c2acme_app
+      ...
+    image: ghcr.io/cloud-city-computing/cloud-codex:w6cdx33local
+    (no depends_on; no database service in the output)
+
+## The recipe's SQL block as root on the shared server, then init.sql as the migration account.
+$ mysql -uroot -p < recipe.sql                                   # the block, verbatim, real passwords
+$ mysql -h 127.0.0.1 -u c2acme_mig -p c2acme < init.sql           # exit 0
+
+## Adopt, as the migration account, through the override.
+$ docker compose -f docker-compose-release.yml -f shared-mysql.yml run --rm \
+    -e DB_USER=c2acme_mig -e DB_PASS app npm run migrate -- --adopt-fresh-install
+  ...
+adopted 18 migration file(s) as already applied, and applied none. 5 of them postdate the pre-runner
+baseline, and each was checked against information_schema before it was recorded; the rest are the
+pre-runner set that --baseline records too.
+exit 0
+# containers in the project afterwards: the app only (created, not started). No database container.
+
+## Start the app as the app account.
+$ docker compose -f docker-compose-release.yml -f shared-mysql.yml up -d
+$ curl http://127.0.0.1:3933/readyz      -> {"ready":true} 200
+$ curl http://127.0.0.1:3933/healthz     -> {"ok":true} 200
+# On the shared server, as root:
+#   SELECT USER, DB FROM information_schema.PROCESSLIST WHERE ID = IS_USED_LOCK('cloudcodex-instance:c2acme')
+#   -> c2acme_app  c2acme
+# App log: admin sync: created admin ... bootstrap: seeded starter workspace ... Running in production mode
+
+## Forgetting the override, with no MYSQL_ROOT_PASSWORD in .env (the doc's safety net).
+$ docker compose -f docker-compose-release.yml up -d
+ Container ...-db Error dependency database failed to start
+dependency failed to start: container ...-db is unhealthy
+exit 1
+# database log: [ERROR] [Entrypoint]: Database is uninitialized and password option is not specified
+# The app container was recreated and left stopped: an outage, not an empty instance.
+
+## Recovery, as the doc says.
+$ docker compose -f docker-compose-release.yml -f shared-mysql.yml up -d      # app Up (healthy), /readyz 200
+$ docker compose -f docker-compose-release.yml -f shared-mysql.yml rm -sf database
+ Container ...-db Removed
+
+## Cleanup: compose down -v on the scratch project, the shared server's container stopped, the image removed.

@@ -15,16 +15,21 @@ initialises an empty data directory.
 ### Added
 
 - **Several instances on one MySQL server.** `docs/deployment.md` has a recipe
-  for it: per instance, one schema named with letters and digits only, an app
-  account holding `SELECT`, `INSERT`, `UPDATE` and `DELETE` on that schema
-  (capped at 15 connections), and a migration account holding every privilege
-  on that schema without `GRANT OPTION`, which builds the schema and runs
-  `npm run migrate`. Neither holds anything global. The integration suite runs
-  the recipe as written: 54 statements reaching for the other instance, for
-  the server, or for DDL the app does not need all fail with MySQL's privilege
-  error, the app runs on the app account alone, and each instance holds its own
-  single-writer lock. Nothing changes for an install with a MySQL server of its
-  own.
+  for it: per instance, one schema with an opaque name of letters and digits
+  only, an app account holding `SELECT`, `INSERT`, `UPDATE` and `DELETE` on
+  that schema (capped at 15 connections), and a migration account holding
+  every privilege on that schema without `GRANT OPTION`, which builds the
+  schema and runs `npm run migrate`. Neither holds anything global. A small
+  compose override (`shared-mysql.yml`, in the recipe) points the app and the
+  migration runner at the shared server instead of the bundled database. The
+  integration suite runs the recipe as written: 54 statements reaching for the
+  other instance, for the server, or for DDL the app does not need all fail
+  with MySQL's privilege error, the app runs on the app account alone, and each
+  instance holds its own single-writer lock. The grant hides another
+  instance's rows, not its name: MySQL lists every schema's name and table
+  names to every account (`information_schema.TABLESPACES_EXTENSIONS`), which
+  the recipe states and the suite pins. Nothing changes for an install with a
+  MySQL server of its own.
 
 ### Fixed
 

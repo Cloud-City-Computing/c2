@@ -21,8 +21,10 @@ import {
  * drop whatever remains and then fail the run, naming it, rather than let the
  * leak pass.
  *
- * Every c2_it_ and c2it schema, and every c2_it_ account, on the server counts, so two integration runs sharing
- * one server at the same moment would see, drop and report each other's.
+ * Every c2_it_ schema, every c2itrecipe<12 hex> schema (isThrowawaySchema
+ * checks the shape, so a developer's own c2items survives) and every c2_it_
+ * account on the server counts, so two integration runs sharing one server at
+ * the same moment would see, drop and report each other's.
  * Give each concurrent run its own server.
  */
 export async function teardown() {

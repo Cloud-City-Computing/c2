@@ -36,7 +36,7 @@ tests/
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
 │   ├── admin-sync.test.js  ← the boot admin sync never promotes a member, in either row order
 │   ├── documents-state.test.js ← the reconciliation read: workspace narrowing, the ACL, absence that is no oracle
-│   ├── global-setup.js     ← teardown: fails the run if a c2_it_ or c2it schema, or a c2_it_ account, leaked
+│   ├── global-setup.js     ← teardown: fails the run if a c2_it_ or c2itrecipe<hex> schema, or a c2_it_ account, leaked
 │   ├── grants-sufficient.test.js ← server.js runs on the shared-server recipe's DML-only account
 │   ├── instance-recipe.js  ← (not a test file) runs docs/deployment.md's shared-server SQL block as written
 │   ├── lifecycle.test.js   ← one writer per schema, and a SIGTERM that flushes a live edit

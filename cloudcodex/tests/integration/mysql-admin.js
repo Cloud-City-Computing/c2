@@ -21,23 +21,27 @@ export const SCHEMA_LIKE = 'c2\\_it\\_%';
 
 /**
  * Schemas built by the shared-server recipe (tests/integration/instance-recipe.js)
- * start with this instead: the recipe's schema names are letters and digits
- * only, so they cannot carry SCHEMA_PREFIX's underscores.
+ * start with this instead, followed by 12 hex digits: the recipe's schema
+ * names are letters and digits only, so they cannot carry SCHEMA_PREFIX's
+ * underscores. Long, so no schema of anyone else's starts with it by chance.
  */
-export const RECIPE_SCHEMA_PREFIX = 'c2it';
+export const RECIPE_SCHEMA_PREFIX = 'c2itrecipe';
 
-/** `SHOW DATABASES LIKE` pattern for RECIPE_SCHEMA_PREFIX. */
-export const RECIPE_SCHEMA_LIKE = 'c2it%';
+/** `SHOW DATABASES LIKE` pattern for RECIPE_SCHEMA_PREFIX; isThrowawaySchema narrows it. */
+export const RECIPE_SCHEMA_LIKE = 'c2itrecipe%';
+
+const RECIPE_SCHEMA_SHAPE = /^c2itrecipe[0-9a-f]{12}$/;
 
 /**
  * Whether the global teardown may drop `schema` as one this project left
  * behind. It drops on whatever server IT_DB_HOST names, so only a name this
- * project mints may pass.
+ * project mints may pass: a recipe schema must have the exact shape
+ * newInstance() gives it.
  * @param { String } schema
  * @returns { Boolean }
  */
 export function isThrowawaySchema(schema) {
-  return schema.startsWith(SCHEMA_PREFIX) || schema.startsWith(RECIPE_SCHEMA_PREFIX);
+  return schema.startsWith(SCHEMA_PREFIX) || RECIPE_SCHEMA_SHAPE.test(schema);
 }
 
 /** Every MySQL account this project creates starts with SCHEMA_PREFIX too. */

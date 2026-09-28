@@ -464,7 +464,12 @@ read the SQL block out of `docs/deployment.md` rather than repeat it, so the rec
 recipe documented. And `grants-sufficient.test.js` boots `server.js` as a child process instead of
 driving `app.js` through Supertest, which is what puts boot (the lock, the admin sync, the seed)
 and a real `/collab` socket on the DML-only account too; its smoke path found the comments router
-had no error handler, fixed in the same branch.
+had no error handler, fixed in the same branch. Review then found two more, both in the recipe:
+the release compose file hard-sets the app's `DB_HOST` to its bundled database, so the recipe
+carries a `shared-mysql.yml` override (driven for real, `raw-compose-run.txt`); and Task 3.2's
+`information_schema` check holds for rows but not names, since `TABLESPACES_EXTENSIONS` lists every
+schema's name and table names to every account, so the recipe asks for opaque schema names and
+`tenancy.test.js` sweeps every readable system view and pins that one.
 
 ---
 

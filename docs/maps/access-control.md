@@ -808,6 +808,15 @@ B holds a row A would find if any of them succeeded. `SHOW DATABASES` answers
 exactly `information_schema`, `performance_schema` and A's own schema;
 `information_schema` has no row about B's tables, columns, routines or schema;
 the process list shows A its own connections only; `LOAD_FILE` returns `NULL`.
+**Names are not rows, though.** The same file reads every `information_schema`
+and `performance_schema` view A's app account can read and looks for B's schema
+name: exactly one has it, `information_schema.TABLESPACES_EXTENSIONS`, which
+MySQL 8.4 shows to every account without a privilege check and which lists
+every file-per-table tablespace as `<schema>/<table>`. So the grant keeps B's
+rows, `SHOW DATABASES` entry and grants from A, but not B's schema and table
+names; the test pins that one view (a second one naming B, or none, turns it
+red) and that the recipe says so, and the recipe asks for opaque schema names
+for that reason.
 The app account has no DDL on its own schema either. The same file proves each
 instance's single-writer lock is held at once on one server, and that the app
 account's connection cap refuses the connection past it with 1226 while
@@ -826,7 +835,9 @@ the underscore (`c2\_acme`) is not a fix: with `partial_revokes` on, the
 backslash is read literally and the app loses its own schema.
 
 **What neither boundary protects against.** An operator with the server's
-root password reaches every schema. `app_public` (avatars, document images) is
+root password reaches every schema. Every account can list every schema's
+name and table names (`TABLESPACES_EXTENSIONS`, above) and read the server's
+global counters (`performance_schema.global_status`). `app_public` (avatars, document images) is
 a volume, not a table, so two instances mounting one volume share files the
 grant never sees; each needs its own. The instances share the server's CPU,
 memory and disk. And inside an instance, an admin (`is_admin`) passes every
@@ -837,8 +848,10 @@ in the recipe turns 26 tests red; dropping its `MAX_USER_CONNECTIONS` turns the
 cap test red; a migration account granted a hand-picked list without the
 routine privileges fails the upgrade path on the `DROP PROCEDURE IF EXISTS`;
 an app account without `DELETE` turns `grants-sufficient.test.js` red on the
-comment delete; and an activity insert redirected to a denied table turns it
-red on the log check.
+comment delete; an activity insert redirected to a denied table turns it red
+on the log check; and a recipe that also grants the app account `PROCESS`
+turns the view sweep red, because the `INNODB_TABLES` family then names B
+too.
 
 ---
 

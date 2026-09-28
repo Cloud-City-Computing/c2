@@ -316,6 +316,9 @@ account holds `SELECT`, `INSERT`, `UPDATE` and `DELETE` on its own schema and
 nothing else, per the recipe in
 [deployment.md](deployment.md#several-instances-on-one-mysql-server), and
 `tests/integration/tenancy.test.js` proves that recipe against a live server.
+The grant keeps another instance's rows out of reach, not its name: every
+MySQL account can list every schema's name and table names, so the recipe
+names schemas opaquely.
 Section 9 of [maps/access-control.md](maps/access-control.md) says what it
 does and does not cover.
 

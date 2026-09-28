@@ -47,3 +47,23 @@
 7. routes/comments.js without router.use(errorHandler) (the state before the fix).
    Run: npx vitest run --project backend tests/routes/comments.test.js
    Result: 1 failed, content-type 'text/html; charset=utf-8' where application/json was expected.
+
+Added in the review round (2026-09-28), each confirmed landed with grep and restored:
+
+8. The recipe without a word about TABLESPACES_EXTENSIONS (the state before the review fix).
+   Run: tenancy.test.js
+   Result: 1 failed: expected '\n## Several instances on one MySQL s...' to contain 'TABLESPACES_EXTENSIONS'.
+   The sweep itself had already found exactly ['information_schema.TABLESPACES_EXTENSIONS'].
+
+9. The recipe also grants the app account PROCESS.
+   Edit: GRANT PROCESS ON *.* TO 'c2acme_app'@'%';  (grep: docs/deployment.md:712)
+   Run: tenancy.test.js
+   Result: 5 failed, the view sweep among them: B's name now also appears in information_schema.FILES,
+   INNODB_DATAFILES, INNODB_FOREIGN, INNODB_FOREIGN_COLS, INNODB_TABLESPACES_BRIEF, INNODB_TABLES,
+   INNODB_TABLESTATS, INNODB_TABLESPACES, INNODB_BUFFER_PAGE, INNODB_BUFFER_PAGE_LRU and both process
+   lists.
+
+10. The global teardown's filter as it was: any name starting c2it.
+    Edit: isThrowawaySchema = (s) => s.startsWith('c2_it_') || s.startsWith('c2it')
+    Run: tenancy.test.js
+    Result: 1 failed: c2items: expected true to be false.

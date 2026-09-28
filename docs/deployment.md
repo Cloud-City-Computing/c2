@@ -688,15 +688,20 @@ for one instance on its own server. To run several instances against **one**
 server, give each its own schema and two accounts of its own: an app account
 that can read and write rows in that schema and nothing more, and a migration
 account that can change that schema's tables and nothing more. Neither account
-can see, read, write or grant anything in another instance's schema.
+can read, write, list (in `SHOW DATABASES`) or grant anything in another
+instance's schema. Each can still learn the other schemas' **names**, and
+their tables' names, as the last part of this section explains.
 
-**Name the schema with lowercase letters and digits only.** In a
-database-level `GRANT`, MySQL reads `_` and `%` in the schema name as
-wildcards (unless the server runs with `partial_revokes`, which is off by
-default), so a grant on `c2_acme` would also cover `c2xacme`, or any schema
+**Name the schema with lowercase letters and digits only, and make the name
+opaque.** In a database-level `GRANT`, MySQL reads `_` and `%` in the schema
+name as wildcards (unless the server runs with `partial_revokes`, which is off
+by default), so a grant on `c2_acme` would also cover `c2xacme`, or any schema
 whose name differs only where the underscore is. A name with neither character
-means the same thing whatever the server's settings. Account names are not
-patterns, so they may carry underscores.
+means the same thing whatever the server's settings. Since every account on
+the server can read the list of schema names, do not name a schema after the
+customer: use something like `c2` followed by `openssl rand -hex 6`
+(`c2a41f09c7d3e2`). The readable `c2acme` below stands in for that name.
+Account names are not patterns, so they may carry underscores.
 
 ```sql
 -- As root, once per instance. Put the instance's schema name where c2acme is,
@@ -708,9 +713,15 @@ CREATE USER 'c2acme_mig'@'%' IDENTIFIED BY '<migration password>' WITH MAX_USER_
 GRANT ALL PRIVILEGES ON `c2acme`.* TO 'c2acme_mig'@'%';
 ```
 
+`'%'` lets each account sign in from any address that reaches the server, so a
+leaked password works from anywhere with a route to MySQL. Where you know the
+address the instance connects from, put it in place of `%` in all four
+statements (`'c2acme_app'@'10.0.1.23'`, or a subnet such as `'10.0.1.%'`), and
+the account works from there alone.
+
 | Account | Holds | Used by |
 |---|---|---|
-| `c2acme_app` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `c2acme`; at most 15 connections | the running app: its `.env` sets `DB_USER=c2acme_app`, `DB_PASS` and `DB_NAME=c2acme` |
+| `c2acme_app` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `c2acme`; at most 15 connections | the running app: its `.env` sets `DB_HOST` to the shared server, `DB_USER=c2acme_app`, `DB_PASS` and `DB_NAME=c2acme` |
 | `c2acme_mig` | every privilege on `c2acme`, without `GRANT OPTION`; at most 3 connections | building the schema and `npm run migrate`, and nothing else. Its password never goes in the app's `.env` |
 
 Neither account holds anything global: no `PROCESS`, `FILE`, `SUPER`,
@@ -720,16 +731,45 @@ has no DDL even on its own schema, and the app needs none: every query it
 issues, at boot and after, is a `SELECT`, `INSERT`, `UPDATE` or `DELETE`, and
 the instance lock (`GET_LOCK`) needs no privilege.
 
+**Point the compose file at the shared server.** Both production compose files
+start their own `database` service and set the app's `DB_HOST` to it, which
+wins over `.env`. An instance on a shared server needs neither, so save this
+override next to the compose file as `shared-mysql.yml`:
+
+```yaml
+# The app's MySQL is a shared server, named by DB_HOST in .env.
+services:
+  database:
+    profiles: [bundled-database]   # never started unless asked for by name
+  app:
+    depends_on: !reset {}          # Compose 2.24 or later
+    environment:
+      DB_HOST: ${DB_HOST:?set DB_HOST in .env to the shared MySQL server}
+```
+
+and pass both files to **every** `docker compose` command for that instance,
+the ones under [Upgrades](#upgrades) included:
+`docker compose -f docker-compose-release.yml -f shared-mysql.yml up -d`.
+Leave `MYSQL_ROOT_PASSWORD` out of this instance's `.env`. A command that
+forgets the override then fails at the bundled database ("Database is
+uninitialized and password option is not specified") instead of starting a
+new, empty MySQL beside the shared one. It still stops the app: run it again
+with both files, then remove the stray container with
+`docker compose -f docker-compose-release.yml -f shared-mysql.yml rm -sf database`.
+The compose files name their containers (`cloudcodex-app`), so they run one
+instance per Docker host; the instances that share a MySQL server run on hosts
+of their own.
+
 **Build the schema as the migration account**, from a host with a `mysql`
 client that reaches the server, then record it as a fresh install with the
 runner, also as the migration account. The runner reads `DB_USER`, `DB_PASS`
 and `DB_NAME` like the app, so give it the migration account's in place of the
-app's, for example with the instance's compose file:
+app's:
 
 ```bash
 mysql -h <mysql host> -u c2acme_mig -p c2acme < init.sql
 read -rs DB_PASS && export DB_PASS          # the migration password
-docker compose -f docker-compose-release.yml run --rm \
+docker compose -f docker-compose-release.yml -f shared-mysql.yml run --rm \
   -e DB_USER=c2acme_mig -e DB_PASS app npm run migrate -- --adopt-fresh-install
 ```
 
@@ -744,22 +784,31 @@ every connection the server has. 15 covers the pool (`DB_POOL_SIZE`, 10 by
 default), the instance lock's own connection and room to reconnect; if you
 raise `DB_POOL_SIZE`, raise the cap to at least `DB_POOL_SIZE` + 5
 (`ALTER USER 'c2acme_app'@'%' WITH MAX_USER_CONNECTIONS 25;`). The server's
-`max_connections` (151 by default) must cover every instance's two caps plus a
-few for you: seven instances fit at these caps, and an eighth needs it raised.
+`max_connections` (151 by default) must cover every instance's two caps, 18 at
+these values, plus what you keep for yourself: eight instances take 144 and
+leave 7 (MySQL holds one more back for `root`), and a ninth needs
+`max_connections` raised.
 
 **What this does not protect against.** Anyone holding the server's root
-password reaches every schema. Each instance also needs its own `app_public`
-volume, because avatars and document images live on disk, outside the grant.
-And the instances share the server's CPU, memory and disk, so one heavy
-instance slows the others. Section 9 of
+password reaches every schema. Every account on the server, these included,
+can read `information_schema.TABLESPACES_EXTENSIONS`, which MySQL lists without
+any privilege check: it names every schema on the server and each of its tables
+(`c2a41f09c7d3e2/users`). That is the one system view that names another
+instance, and the reason for opaque schema names; the rows themselves stay out
+of reach. Server-wide counters (`SHOW GLOBAL STATUS`) are readable too, so one
+instance can see how busy the server as a whole is. Each instance also needs
+its own `app_public` volume, because avatars and document images live on disk,
+outside the grant. And the instances share the server's CPU, memory and disk,
+so one heavy instance slows the others. Section 9 of
 [`docs/maps/access-control.md`](maps/access-control.md) sets out where the
 boundary between instances is and where it is not.
 
 `cloudcodex/tests/integration/tenancy.test.js` runs the SQL block above, as it
-is written here, for two instances on one server, and checks that every
-cross-schema statement it knows fails with MySQL's privilege error;
-`grants-sufficient.test.js` runs the app on the app account alone. The record
-of the run is in
+is written here, for two instances on one server, checks that every
+cross-schema statement it knows fails with MySQL's privilege error, and reads
+every system view the app account can, to show that `TABLESPACES_EXTENSIONS`
+is the only one naming the other instance; `grants-sufficient.test.js` runs the
+app on the app account alone. The record of the run is in
 [`docs/research/instance-isolation-2026-09-28/`](research/instance-isolation-2026-09-28/).
 
 ---
