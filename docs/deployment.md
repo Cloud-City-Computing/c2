@@ -749,7 +749,8 @@ services:
 
 and pass both files to **every** `docker compose` command for that instance,
 the ones under [Upgrades](#upgrades) included:
-`docker compose -f docker-compose-release.yml -f shared-mysql.yml up -d`.
+`docker compose -f docker-compose-release.yml -f shared-mysql.yml up -d` (the
+override works the same over `docker-compose-prod.yml`).
 Leave `MYSQL_ROOT_PASSWORD` out of this instance's `.env`. A command that
 forgets the override then fails at the bundled database ("Database is
 uninitialized and password option is not specified") instead of starting a
