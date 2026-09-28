@@ -153,6 +153,15 @@ const server = ViteExpress.listen(app, port, () => {
   const address = server.address();
   const boundPort = address && typeof address === 'object' ? address.port : port;
   console.log(`CloudCodex API Server is running on http://localhost:${boundPort}`);
+
+  // What the process trusts about the client address, and where that came
+  // from. Both ways the boundary fails are silent (every client behind an
+  // unlisted proxy in one rate-limit bucket, or a key anyone can choose) and
+  // /api/health shows neither, so the log is where an operator checks it.
+  // Printed here, after the bind, so a crash loop does not scroll it away.
+  const trusted = app.get('trust proxy');
+  const source = (process.env.TRUST_PROXY ?? '').trim() === '' ? 'the default' : 'from TRUST_PROXY';
+  console.error(`✔ Trusting proxies (${source}): ${trusted === false ? 'none, X-Forwarded-For is ignored' : trusted}`);
 });
 
 // Without a handler, a bind failure is an unhandled 'error' event. A process

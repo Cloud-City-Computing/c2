@@ -130,7 +130,8 @@ and recreates both containers, keeping the volumes; if yours refuses, run
   - A peer `TRUST_PROXY` does not name that sends `X-Forwarded-For` is logged,
     once per address and for at most 32 addresses, so a proxy left out of the
     list shows up in the log instead of silently putting every client in one
-    bucket.
+    bucket. Once listening, the server also prints what it trusts:
+    `✔ Trusting proxies (the default): ...`, or `(from TRUST_PROXY)`.
   - The app port is published on `127.0.0.1` (Changed, above), and the prod
     file's MySQL port is no longer published on every interface.
 

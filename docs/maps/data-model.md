@@ -315,7 +315,7 @@ is flipped to `revoked` when GitHub rejects the token.
 ## 8. Activity, watches, notifications
 
 `activity_log.id` is `BIGINT` (`init.sql:415`), the only table that expects
-that volume, and it is pruned at 365 days by `server.js:179-197`. It has four
+that volume, and it is pruned at 365 days by `server.js:188-206`. It has four
 composite indexes covering the workspace, squad, resource, and user read paths.
 
 **It has a foreign key on `user_id` only.** `workspace_id`, `squad_id`,

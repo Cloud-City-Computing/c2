@@ -744,8 +744,17 @@ as it should be.
 A value Express cannot parse stops the server at boot too.
 
 **If you run behind a proxy, check after upgrading** that a real client's
-address reaches the app. Sign in through the proxy, then read the address the
-app recorded for that session:
+address reaches the app. Start with the line the server prints once it is
+listening, which says what it trusts and whether that is the default:
+
+```bash
+docker compose -f docker-compose-release.yml logs app | grep 'Trusting proxies'
+# ✔ Trusting proxies (the default): 127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32
+```
+
+`(from TRUST_PROXY)` means your value was used. Make sure the list names the
+address your proxy connects from, then confirm it end to end: sign in through
+the proxy and read the address the app recorded for that session:
 
 ```bash
 docker compose -f docker-compose-release.yml exec database \
