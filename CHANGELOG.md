@@ -23,7 +23,7 @@ initialises an empty data directory.
   connect ECONNREFUSED` until `restart: unless-stopped` brought it back (the
   0.11.0 image, which has no instance lock, started instead without its admin:
   `admin user sync failed: ... ECONNREFUSED`). The check now pings `127.0.0.1`
-  over TCP, which only the real server answers, with a 120-second start period
+  over TCP, which only the real server answers, with a 300-second start period
   so a slow initialisation is not marked unhealthy, and `start.sh` waits the
   same way (for up to three minutes instead of one). Measured on fresh
   volumes: `docker-compose-prod.yml` restarted the app 4 times in each of two

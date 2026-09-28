@@ -98,8 +98,8 @@ without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
 so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
-  `mysqladmin ping` healthcheck **over TCP to `127.0.0.1`**, with a 120 s
-  `start_period` (`docker-compose-prod.yml:25-36`, and the same block in
+  `mysqladmin ping` healthcheck **over TCP to `127.0.0.1`**, with a 300 s
+  `start_period` (`docker-compose-prod.yml:25-39`, and the same block in
   `docker-compose-release.yml`). Not the socket: on an empty volume the image
   applies `init.sql` on a temporary server with networking off, which a socket
   ping answers, so the database read healthy while nothing listened on 3306 and

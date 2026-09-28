@@ -87,7 +87,7 @@ describe('production compose database healthchecks', () => {
     // before init.sql finished, so Compose would never start the app at all.
     it(`${file} gives a first boot's initialisation a start period`, () => {
       expect(check.start_period).toMatch(/^\d+s$/);
-      expect(parseInt(check.start_period, 10)).toBeGreaterThanOrEqual(60);
+      expect(parseInt(check.start_period, 10)).toBeGreaterThanOrEqual(300);
     });
   }
 });

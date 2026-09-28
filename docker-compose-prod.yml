@@ -27,13 +27,16 @@ services:
     # answers that server: the app then started while nothing listened on
     # 3306 and exited on ECONNREFUSED until the restart policy recovered it.
     # Nothing answers 127.0.0.1 until the real server is up. start_period
-    # covers the initialisation, so a slow first boot is not marked unhealthy.
+    # covers the initialisation, so a slow first boot is not marked unhealthy:
+    # the app waits on service_healthy, and an unhealthy database would stop
+    # `up` outright. A passing ping ends the start period at once, so a
+    # generous value costs a normal boot nothing.
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--protocol=tcp", "-u${DB_USER}", "-p${DB_PASS}"]
       interval: 7s
       timeout: 8s
       retries: 15
-      start_period: 120s
+      start_period: 300s
 
   app:
     build:
