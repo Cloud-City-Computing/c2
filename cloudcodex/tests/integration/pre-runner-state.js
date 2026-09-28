@@ -27,4 +27,6 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
     'DROP CHECK chk_password_reset_tokens_purpose, DROP COLUMN new_email, ' +
     'ADD CONSTRAINT chk_password_reset_tokens_purpose ' +
     "CHECK (purpose IN ('password_reset','two_factor_login','totp_setup','two_factor_disable'))",
+  '2026-09-27-session-per-sign-in.sql':
+    'ALTER TABLE sessions DROP CHECK chk_sessions_auth_provider, DROP COLUMN auth_provider',
 });

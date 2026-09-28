@@ -100,10 +100,13 @@ Most "new feature" work is extension, not greenfield.
 
 ### Auth & accounts: `routes/auth.js`, `routes/oauth.js`, `middleware/auth.js`
 Email+password login, signup via invite token, password reset, two-factor (email
-OTP and TOTP with QR), session tokens (DB-backed, auto-refreshing), Google
-Workspace SSO, GitHub OAuth (token AES-256-GCM encrypted at rest). Use
-`requireAuth` and `requireAdmin` from `middleware/auth.js` on any new protected
-route.
+OTP and TOTP with QR), session tokens (DB-backed, one row per sign-in, stored
+only as a SHA-256 digest), Google Workspace SSO, GitHub OAuth (token
+AES-256-GCM encrypted at rest). Use `requireAuth` and `requireAdmin` from
+`middleware/auth.js` on any new protected route. **Never bind a raw session
+token into a `sessions` query**: hash it with `hashSessionToken` in
+`services/session-token.js` (`validateAndAutoLogin` and `touchSession` already
+do).
 
 **External sign-in** decides its local user in one seam, `resolveIdentity(claims,
 policy)` in `services/identity.js`: a provider route verifies the protocol and

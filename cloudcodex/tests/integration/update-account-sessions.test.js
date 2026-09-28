@@ -29,19 +29,20 @@ import bcrypt from 'bcrypt';
 import request from 'supertest';
 import app from '../../app.js';
 import { c2_query, generateSessionToken } from '../../mysql_connect.js';
+import { hashSessionToken } from '../../services/session-token.js';
 import { sendEmail } from '../../services/email.js';
 
 const OLD_PASSWORD = 'OldPassw0rd!';
 const NEW_PASSWORD = 'NewPassw0rd!';
 
 /**
- * A user with `sessions` live session rows: the first minted the way sign-in
- * mints one, the rest inserted directly, as a second device's row will be once
- * sessions are per sign-in. Returns the user id and the tokens.
+ * A user with `sessions` live session rows, each minted the way sign-in mints
+ * one: one row per sign-in, so each is a separate device. Returns the user id
+ * and the tokens.
  * @param { String } name
- * @param { { password?: String|null, extraSessions?: Number } } [opts]
+ * @param { { password?: String|null, extraSessions?: Number, provider?: String } } [opts]
  */
-async function userWithSessions(name, { password = OLD_PASSWORD, extraSessions = 1 } = {}) {
+async function userWithSessions(name, { password = OLD_PASSWORD, extraSessions = 1, provider = 'local' } = {}) {
   const hash = password === null ? null : await bcrypt.hash(password, 4);
   const created = await c2_query('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)', [
     name,
@@ -49,23 +50,28 @@ async function userWithSessions(name, { password = OLD_PASSWORD, extraSessions =
     hash,
   ]);
   const userId = created.insertId;
-  const tokens = [await generateSessionToken({ id: userId })];
-  for (let i = 0; i < extraSessions; i++) {
-    const token = randomBytes(32).toString('hex');
-    await c2_query(
-      'INSERT INTO sessions (user_id, id, created_at, expires_at) VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))',
-      [userId, token]
-    );
-    tokens.push(token);
-  }
+  const tokens = [];
+  for (let i = 0; i <= extraSessions; i++) tokens.push(await generateSessionToken({ id: userId }, null, null, { provider }));
   return { userId, tokens };
 }
 
-/** Every session id the user holds, sorted in JS (the column's collation ignores case). */
+/**
+ * Every session id the user holds, sorted in JS. sessions.id is the digest of
+ * a token, so compare against `digests(tokens)`, never the tokens.
+ */
 async function sessionsOf(userId) {
   const rows = await c2_query('SELECT id FROM sessions WHERE user_id = ?', [userId]);
   return rows.map(row => row.id).sort();
 }
+
+/** The flow tag on each of the user's sessions. */
+async function providersOf(userId) {
+  const rows = await c2_query('SELECT auth_provider FROM sessions WHERE user_id = ?', [userId]);
+  return rows.map(row => row.auth_provider);
+}
+
+/** The stored ids for these tokens, sorted like sessionsOf. */
+const digests = (tokens) => tokens.map(hashSessionToken).sort();
 
 /** The status a requireAuth route answers for `token`. */
 async function statusFor(token) {
@@ -89,7 +95,8 @@ describe('a password change through update-account, on a real server', () => {
     expect(res.status).toBe(200);
     expect(res.body.token).toMatch(/^[A-Za-z0-9]{64}$/);
     expect(tokens).not.toContain(res.body.token);
-    expect(await sessionsOf(userId)).toEqual([res.body.token]);
+    expect(await sessionsOf(userId)).toEqual(digests([res.body.token]));
+    expect(await providersOf(userId)).toEqual(['local']);
 
     for (const old of tokens) expect(await statusFor(old)).toBe(401);
     expect(await statusFor(res.body.token)).toBe(200);
@@ -98,6 +105,10 @@ describe('a password change through update-account, on a real server', () => {
     expect(oldLogin.status).toBe(401);
     const newLogin = await request(app).post('/api/login').send({ username: 'pwchange', password: NEW_PASSWORD });
     expect(newLogin.status).toBe(200);
+    // A sign-in after the change is a row of its own, never the caller's token.
+    expect(newLogin.body.token).not.toBe(res.body.token);
+    expect(await sessionsOf(userId)).toEqual(digests([res.body.token, newLogin.body.token]));
+    expect(await statusFor(res.body.token)).toBe(200);
   });
 
   it('changes nothing on a wrong current password', async () => {
@@ -111,7 +122,7 @@ describe('a password change through update-account, on a real server', () => {
     expect(res.status).toBe(401);
     const [after] = await c2_query('SELECT password_hash FROM users WHERE id = ?', [userId]);
     expect(after.password_hash).toBe(before.password_hash);
-    expect(await sessionsOf(userId)).toEqual([...tokens].sort());
+    expect(await sessionsOf(userId)).toEqual(digests(tokens));
   });
 });
 
@@ -126,13 +137,15 @@ describe('an email change through update-account, on a real server', () => {
     expect(res.status).toBe(200);
     const [row] = await c2_query('SELECT email FROM users WHERE id = ?', [userId]);
     expect(row.email).toBe('emchange-new@example.com');
-    expect(await sessionsOf(userId)).toEqual([res.body.token]);
+    expect(await sessionsOf(userId)).toEqual(digests([res.body.token]));
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail.mock.calls[0][0].to).toBe('emchange@example.com');
   });
 
   it('with no password: the code goes to the current address, and confirming it leaves one session', async () => {
-    const { userId, tokens } = await userWithSessions('emnopass', { password: null });
+    // An account with no password was made by an external sign-in, so its
+    // sessions carry that flow's tag, and the replacement must keep it.
+    const { userId, tokens } = await userWithSessions('emnopass', { password: null, provider: 'google' });
 
     const start = await request(app)
       .post('/api/update-account')
@@ -153,7 +166,7 @@ describe('an email change through update-account, on a real server', () => {
     expect(sendEmail.mock.calls[0][0].text).toContain(code);
     // Nothing has changed yet.
     expect((await c2_query('SELECT email FROM users WHERE id = ?', [userId]))[0].email).toBe('emnopass@example.com');
-    expect(await sessionsOf(userId)).toEqual([...tokens].sort());
+    expect(await sessionsOf(userId)).toEqual(digests(tokens));
 
     const done = await request(app)
       .post('/api/update-account/confirm-email')
@@ -162,7 +175,8 @@ describe('an email change through update-account, on a real server', () => {
 
     expect(done.status).toBe(200);
     expect((await c2_query('SELECT email FROM users WHERE id = ?', [userId]))[0].email).toBe('emnopass-new@example.com');
-    expect(await sessionsOf(userId)).toEqual([done.body.token]);
+    expect(await sessionsOf(userId)).toEqual(digests([done.body.token]));
+    expect(await providersOf(userId)).toEqual(['google']);
     for (const old of tokens) expect(await statusFor(old)).toBe(401);
     // The notice went to the address the account had before.
     expect(sendEmail).toHaveBeenCalledTimes(2);

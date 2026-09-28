@@ -88,14 +88,24 @@ CREATE TABLE oauth_accounts (
 ) ENGINE=InnoDB;
 
 CREATE TABLE sessions (
+  -- The SHA-256 digest of the session token, lowercase hex, never the token
+  -- itself (hashSessionToken in cloudcodex/services/session-token.js): a dump
+  -- of this table yields nothing a browser can present. One row per sign-in.
   id CHAR(64) PRIMARY KEY,
   user_id INT NOT NULL,
+  -- Which flow minted this session. NOT NULL with no DEFAULT, so a flow that
+  -- forgets to name itself fails at insert (error 1364); VARCHAR + CHECK, not
+  -- ENUM, for password_reset_tokens.purpose's reason below. Keep the CHECK in
+  -- sync with the newest migration that sets it
+  -- (migrations/2026-09-27-session-per-sign-in.sql).
+  auth_provider VARCHAR(16) NOT NULL,
   ip_address VARCHAR(45),
   user_agent TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   expires_at TIMESTAMP NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google')),
   INDEX (user_id),
   INDEX (expires_at)
 ) ENGINE=InnoDB;

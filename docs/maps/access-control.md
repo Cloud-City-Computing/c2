@@ -140,7 +140,7 @@ loading) interpolate it directly; see `routes/documents.js:553`,
 columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
-(`init.sql:289-290`). Grepping the whole backend for reads of them turns up
+(`init.sql:299-300`). Grepping the whole backend for reads of them turns up
 nothing. Since 2026-08-09 the only thing that writes them is the PR-session
 log insert (`routes/github.js:1698`), which sets both to an empty
 `JSON_ARRAY()`.
@@ -430,7 +430,7 @@ table below) applies identically regardless of which path created the row.
 
 ## 5. Per-member flags and where each is enforced
 
-`squad_members` (`init.sql:200-216`) carries `role` plus seven booleans. Their
+`squad_members` (`init.sql:210-226`) carries `role` plus seven booleans. Their
 enforcement is uneven, which is worth knowing before you assume a flag does
 something:
 

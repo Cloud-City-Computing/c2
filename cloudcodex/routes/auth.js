@@ -10,7 +10,8 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
-import { c2_query, generateSessionToken, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
+import { c2_query, generateSessionToken, getSessionProvider, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
+import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
 import { requireAuth, extractSessionToken } from '../middleware/auth.js';
@@ -283,10 +284,11 @@ async function startEmailChangeByCode(req, res, sessionUser, { newEmail, name })
  *
  * After a password or email change EVERY session of the user is deleted, the
  * caller's included, in the same transaction as the write, and the answer
- * carries a freshly generated `token`. Sessions are one per user
- * (generateSessionToken hands every sign-in the same live row), so the
- * caller's token is every other holder's too: keeping it alive kept a stolen
- * session alive through the owner's password change.
+ * carries a freshly generated `token`. Sessions are one row per sign-in, so
+ * this signs every other device out, which is the point: whoever else holds a
+ * session (a stolen one included) must not outlive the owner's credential
+ * change. The caller's replacement is a new row, minted after the commit and
+ * tagged with the flow that minted the session it replaces.
  */
 router.post('/update-account', asyncHandler(async (req, res) => {
   const { token, userId, name, email, password, currentPassword } = req.body;
@@ -396,6 +398,9 @@ router.post('/update-account', asyncHandler(async (req, res) => {
     return res.json({ success: true });
   }
 
+  // Read before the delete below removes the row it is read from.
+  const provider = await getSessionProvider(token);
+
   await withTransaction(async (query) => {
     await query(updateSql, params);
     await query(`DELETE FROM sessions WHERE user_id = ?`, [sessionUser.id]);
@@ -403,7 +408,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
 
   // Only after the commit, as create-account does: the token is the caller's
   // proof that the change landed, and every old one is already gone.
-  const freshToken = await generateSessionToken(sessionUser, req.ip, req.headers['user-agent']);
+  const freshToken = await generateSessionToken(sessionUser, req.ip, req.headers['user-agent'], { provider });
 
   if (emailChanging) {
     await sendEmailChangedNotice(req, { oldEmail: sessionUser.email, recipientName: name ?? sessionUser.name, newEmail: email });
@@ -419,8 +424,8 @@ router.post('/update-account', asyncHandler(async (req, res) => {
  * Completes an email change that POST /api/update-account started with a code
  * (an account with no password). Applies the address the token was minted
  * for, never one sent now, then rotates sessions exactly as update-account
- * does: every session of the user deleted, a fresh `token` in the answer, and
- * a notice to the old address. Modelled on POST /api/2fa/disable/confirm.
+ * does: every session of the user deleted, a fresh `token` (tagged like the
+ * caller's session) in the answer, and a notice to the old address. Modelled on POST /api/2fa/disable/confirm.
  */
 router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (req, res) => {
   const { confirmToken, code } = req.body;
@@ -456,6 +461,9 @@ router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (re
     return res.status(409).json({ success: false, message: 'An account with this email already exists' });
   }
 
+  // Read before the delete below removes the row it is read from.
+  const provider = await getSessionProvider(req.sessionToken);
+
   await withTransaction(async (query) => {
     await query(`UPDATE two_factor_codes SET used = TRUE WHERE id = ?`, [codeRecord.id]);
     await query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [tokenRecord.id]);
@@ -463,7 +471,7 @@ router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (re
     await query(`DELETE FROM sessions WHERE user_id = ?`, [req.user.id]);
   });
 
-  const freshToken = await generateSessionToken(req.user, req.ip, req.headers['user-agent']);
+  const freshToken = await generateSessionToken(req.user, req.ip, req.headers['user-agent'], { provider });
 
   await sendEmailChangedNotice(req, { oldEmail: req.user.email, recipientName: req.user.name, newEmail: tokenRecord.new_email });
 
@@ -576,11 +584,12 @@ router.post('/logout', asyncHandler(async (req, res) => {
   // The body fallback stays for any caller that still posts a token.
   const token = extractSessionToken(req) || req.body?.token || null;
 
-  if (!token) {
+  if (typeof token !== 'string' || token === '') {
     return res.status(400).json({ success: false, message: 'Token is required' });
   }
 
-  await c2_query(`DELETE FROM sessions WHERE id = ?`, [token]);
+  // sessions.id holds the digest, never the token (services/session-token.js).
+  await c2_query(`DELETE FROM sessions WHERE id = ?`, [hashSessionToken(token)]);
 
   res.json({ success: true });
 }));

@@ -3,10 +3,11 @@
  *
  * update-account used to let any holder of a session change the account's
  * email and password with nothing but the session, and a password change kept
- * the caller's own session alive while it deleted the rest. Sessions are one
- * per user today (generateSessionToken hands every sign-in the same live
+ * the caller's own session alive while it deleted the rest. Sessions were one
+ * per user then (generateSessionToken handed every sign-in the same live
  * token), so "the caller's own session" was also every other holder's: a
- * stolen session survived the owner changing their password.
+ * stolen session survived the owner changing their password. Sessions are one
+ * per sign-in now, and the rotation still deletes every one of them.
  *
  * The rules pinned here:
  *   - an email or password change needs the current password, checked the
@@ -16,7 +17,8 @@
  *     email change with a code sent to its CURRENT address, and only when mail
  *     is on; it sets a first password through Forgot password, not here;
  *   - after a password or email change EVERY session of the user is deleted,
- *     the caller's included, and the caller gets a freshly generated one;
+ *     the caller's included, and the caller gets a freshly generated one,
+ *     tagged with the flow that minted the session it replaces;
  *   - after an email change a notice goes to the OLD address when mail is on.
  *
  * The c2_query mock is routed on the SQL (fakeAccount below) instead of
@@ -32,7 +34,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
-import { c2_query, validateAndAutoLogin, generateSessionToken, withTransaction } from '../../mysql_connect.js';
+import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
@@ -49,9 +51,11 @@ const OTHER_HOLDER = 'other-holder-token';
  * An in-memory account behind the database mocks: one user, its sessions, and
  * the rows the emailed-code flow writes. Any SQL it does not recognise throws,
  * so a query the route starts issuing cannot pass by being ignored.
- * @param {{ passwordHash?: string|null, takenEmails?: string[], takenNames?: string[], sessions?: string[] }} [opts]
+ * `providers` names the flow that minted a session, by token; a session it
+ * does not name is 'local'.
+ * @param {{ passwordHash?: string|null, takenEmails?: string[], takenNames?: string[], sessions?: string[], providers?: Record<string, string> }} [opts]
  */
-function fakeAccount({ passwordHash = CURRENT_HASH, takenEmails = [], takenNames = [], sessions = [CALLER, OTHER_HOLDER] } = {}) {
+function fakeAccount({ passwordHash = CURRENT_HASH, takenEmails = [], takenNames = [], sessions = [CALLER, OTHER_HOLDER], providers = {} } = {}) {
   const state = {
     user: { ...TEST_USER, password_hash: passwordHash },
     sessions: new Set(sessions),
@@ -62,6 +66,9 @@ function fakeAccount({ passwordHash = CURRENT_HASH, takenEmails = [], takenNames
   const sessionUser = () => ({ id: state.user.id, name: state.user.name, email: state.user.email, avatar_url: null, is_admin: 0 });
 
   validateAndAutoLogin.mockImplementation(async (token) => (state.sessions.has(token) ? sessionUser() : null));
+  // Like the real one: a session that is gone answers 'local', so reading
+  // the provider after the delete would lose it.
+  getSessionProvider.mockImplementation(async (token) => (state.sessions.has(token) ? (providers[token] ?? 'local') : 'local'));
 
   let minted = 0;
   generateSessionToken.mockImplementation(async (user) => {
@@ -338,6 +345,28 @@ describe('POST /api/update-account', () => {
       expect(state.sessions).toEqual(new Set(['fresh-token-1']));
     });
 
+    it('tags the replacement with the flow that minted the caller\'s session, read before the delete', async () => {
+      fakeAccount({ providers: { [CALLER]: 'google' } });
+
+      const res = await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(getSessionProvider).toHaveBeenCalledWith(CALLER);
+      expect(generateSessionToken).toHaveBeenCalledTimes(1);
+      expect(generateSessionToken.mock.calls[0][3]).toEqual({ provider: 'google' });
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
+      const deleteOrder = c2_query.mock.invocationCallOrder[c2_query.mock.calls.indexOf(del)];
+      expect(getSessionProvider.mock.invocationCallOrder[0]).toBeLessThan(deleteOrder);
+    });
+
+    it('tags the replacement for an ordinary sign-in \'local\'', async () => {
+      fakeAccount();
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(generateSessionToken.mock.calls[0][3]).toEqual({ provider: 'local' });
+    });
+
     it('mints no token when the transaction fails, so the caller is not handed a session for a change that did not land', async () => {
       fakeAccount();
       withTransaction.mockRejectedValueOnce(new Error('deadlock'));
@@ -571,6 +600,22 @@ describe('POST /api/update-account/confirm-email', () => {
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail.mock.calls[0][0].to).toBe(TEST_USER.email);
     expect(sendEmail.mock.calls[0][0].text).toContain(NEW_EMAIL);
+  });
+
+  it('tags the replacement with the flow that minted the caller\'s session, read before the delete', async () => {
+    const state = fakeAccount({ passwordHash: null, providers: { [CALLER]: 'google' } });
+    const { confirmToken, code } = await startChange(state);
+    getSessionProvider.mockClear();
+
+    const res = await confirm({ confirmToken, code });
+
+    expect(res.status).toBe(200);
+    expect(getSessionProvider).toHaveBeenCalledWith(CALLER);
+    expect(generateSessionToken).toHaveBeenCalledTimes(1);
+    expect(generateSessionToken.mock.calls[0][3]).toEqual({ provider: 'google' });
+    const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
+    const deleteOrder = c2_query.mock.invocationCallOrder[c2_query.mock.calls.indexOf(del)];
+    expect(getSessionProvider.mock.invocationCallOrder[0]).toBeLessThan(deleteOrder);
   });
 
   it('cannot be replayed: the same token and code a second time are refused', async () => {

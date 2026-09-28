@@ -19,7 +19,7 @@ c2/                          <- git root; docker, docs, SQL, Makefile, start.sh
 `docker compose` command runs from the root. This catches out both humans and
 agents; a `npm test` at the root fails with a missing package.json.
 
-The `.env` file lives at the **root**, and `mysql_connect.js:16` reaches up for
+The `.env` file lives at the **root**, and `mysql_connect.js:17` reaches up for
 it with `path.resolve(dirname, '..', '.env')`. Importing `mysql_connect.js` is
 what loads env for the whole process, so any module that needs env must import
 it (directly or transitively) before reading `process.env`.
@@ -131,9 +131,10 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **79 files, 1661 tests, all passing**; the
-integration project is **7 files, 42 tests** (measured 2026-09-27 on the merged
-tree, at the server's default isolation and at `READ-COMMITTED`).
+Current state: the default run is **81 files, 1739 tests, all passing**; the
+integration project is **10 files, 69 tests** (measured 2026-09-27 on the merged
+tree, against MySQL 8.4 at the server's default isolation and at
+`READ-COMMITTED`).
 
 **The default run is pinned by name, not by omission.** `test`,
 `test:watch` and `test:coverage` name `--project backend --project frontend`,
@@ -289,10 +290,10 @@ them pass with the server at `READ-COMMITTED` as well.
 
 `tests/integration/update-account-sessions.test.js` proves the update-account
 session rotation on a real server, where the route tests can only prove the SQL
-text. Each test seeds a user with one session minted by `generateSessionToken`
-and one inserted directly (a second holder), drives `POST /api/update-account`
-over supertest, and reads `sessions` back: a password change and a
-current-password email change each leave exactly one row, the token the caller
+text. Each test seeds a user with two sessions minted by `generateSessionToken`
+(two sign-ins, so two devices), drives `POST /api/update-account` over
+supertest, and reads `sessions` back: a password change and a current-password
+email change each leave exactly one row, the digest of the token the caller
 was handed, with both old tokens answering 401 on a `requireAuth` route; a wrong
 current password leaves the hash and both sessions untouched; the password-less
 code flow writes an `email_change` row carrying `new_email`, sends the code to
@@ -303,6 +304,21 @@ is read back off the call. A last test inserts rows that break
 Mutation-checked on 2026-09-25: accepting a wrong current password, keeping the
 caller's session (`AND id != ?`), handing back the old token, and keeping the
 caller's session in the confirm step each turn a live test red.
+
+`tests/integration/sessions.test.js` proves one hashed session per sign-in
+(W6-CDX-2) on a real server: two sign-ins make two rows and deleting one by its
+digest leaves the other valid, no stored id equals a raw token, JavaScript's
+`hashSessionToken` equals MySQL's `SHA2(?, 256)`, an insert that omits
+`auth_provider` fails with `ER_NO_DEFAULT_FOR_FIELD` and one naming `oidc` fails
+the CHECK. Its last test runs `migrations/2026-09-27-session-per-sign-in.sql`
+for real in the file's own schema: it takes the column and CHECK off and
+un-records the file, inserts a raw-token row, an upper-case-hex raw token (only
+case separates it from a digest) and an existing digest, runs `runMigrations`,
+and requires both raw tokens to sign in through the real
+`validateAndAutoLogin`, the digest to be untouched, and the file's `UPDATE`
+run again to change zero rows. Mutation-checked on 2026-09-27: dropping the
+`UPDATE`, the `'c'` flag or the `DROP DEFAULT`, or the CHECK from `init.sql`,
+each turns a live test red.
 
 `tests/integration/documents-state.test.js` proves the reconciliation read,
 `GET /api/documents/state` (W6-CDX-16), on a real server: two workspaces, a
@@ -385,7 +401,7 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:104-169`. The global floor is deliberately low because
+`vitest.config.js:104-172`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
