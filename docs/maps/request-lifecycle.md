@@ -15,20 +15,21 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 
 | Step | Location | Behaviour |
 |---|---|---|
-| Load `.env` | `mysql_connect.js:16` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
-| DB pool | `mysql_connect.js:18-32` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. Its host, user, password and schema are one `connectionOptions` object, which `openConnection()` reuses for the instance lock's own connection. |
-| DB credential gate | `mysql_connect.js:34-38` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
+| Load `.env` | `mysql_connect.js:17` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
+| DB pool | `mysql_connect.js:19-33` | `mysql2/promise` pool, `connectionLimit: 10`, no queue limit. Its host, user, password and schema are one `connectionOptions` object, which `openConnection()` reuses for the instance lock's own connection. |
+| DB credential gate | `mysql_connect.js:35-39` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the provider gate below and an invalid `PORT`, these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
-| Instance lock | `server.js:69-93`, top-level `await` | `acquireInstanceLock()` (`services/instance-lock.js`) runs `SELECT GET_LOCK(<name>, 0)` on a connection of its own (`openConnection()`, `mysql_connect.js:47-49`), never the pool, and holds it for the life of the process. **Before anything writes**, so a second process on the same schema refuses before its admin sync or seed can race the first's. A refusal exits 1 with `Another Cloud Codex process (MySQL connection <id>) already serves this database.`, naming the holder and the escape; so does a failure to open the connection at all, which under a supervisor is a restart rather than an outage. `C2_INSTANCE_LOCK=0`, and only `0`, takes no lock and logs that a second process will diverge. The lock object is handed to `/readyz` (`readiness.lock`, `routes/health.js`). The name, built server side as `INSTANCE_LOCK_NAME_SQL`, is `cloudcodex-instance:<db>`, or `cloudcodex-instance#` and the first 40 hex characters of the schema's SHA-256 when the schema name is longer than 44 characters, since MySQL refuses a lock name over 64 (ER 4163). It differs from the migration runner's `cloudcodex_migrate:<db>` (`scripts/migrate.js`, capped the same way past 45), so `npm run migrate` in a one-off container never contends with the running app, and it carries the schema, so instances sharing one MySQL server never contend with each other. `server.js` passes `onSuperseded`, which stops the process if another one takes the lock after this one lost it (section 7). |
+| Instance lock | `server.js:69-93`, top-level `await` | `acquireInstanceLock()` (`services/instance-lock.js`) runs `SELECT GET_LOCK(<name>, 0)` on a connection of its own (`openConnection()`, `mysql_connect.js:48-50`), never the pool, and holds it for the life of the process. **Before anything writes**, so a second process on the same schema refuses before its admin sync or seed can race the first's. A refusal exits 1 with `Another Cloud Codex process (MySQL connection <id>) already serves this database.`, naming the holder and the escape; so does a failure to open the connection at all, which under a supervisor is a restart rather than an outage. `C2_INSTANCE_LOCK=0`, and only `0`, takes no lock and logs that a second process will diverge. The lock object is handed to `/readyz` (`readiness.lock`, `routes/health.js`). The name, built server side as `INSTANCE_LOCK_NAME_SQL`, is `cloudcodex-instance:<db>`, or `cloudcodex-instance#` and the first 40 hex characters of the schema's SHA-256 when the schema name is longer than 44 characters, since MySQL refuses a lock name over 64 (ER 4163). It differs from the migration runner's `cloudcodex_migrate:<db>` (`scripts/migrate.js`, capped the same way past 45), so `npm run migrate` in a one-off container never contends with the running app, and it carries the schema, so instances sharing one MySQL server never contend with each other. `server.js` passes `onSuperseded`, which stops the process if another one takes the lock after this one lost it (section 7). |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
-| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:253`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
+| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:264`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
-| Collab WS | `server.js:197` | `setupCollabServer(server)`, path `/collab`. |
-| Notification WS | `server.js:201` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
+| Collab WS | `server.js`, `setupCollabServer(server)` | `setupCollabServer(server)`, path `/collab`. |
+| Notification WS | `server.js`, `setupUserChannelServer(server)` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
 | Stop signals | `server.js:20-48`, before every other step; `server.js:209-221` | `process.on('SIGTERM')` and `process.on('SIGINT')` go in **first**, ahead of the config gates and the boot awaits. Node is PID 1 in the image, and the kernel drops a signal PID 1 has no handler for, so a `docker stop` during the lock, SMTP verify or admin sync would otherwise wait for SIGKILL. Until `createShutdown(...)` is assigned, after the listen and the socket servers, a signal logs `stopped on <signal> during boot` and exits 0 at once: nothing is pending and the lock goes with the process. From then on the first signal runs the shutdown (section 7) and a second one logs and exits 1 at once. |
-| Activity prune | `server.js:223-241` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
+| Activity prune | `server.js`, `pruneOldActivity` | Deletes `activity_log` rows older than 365 days. `setInterval` every 24h plus a `setTimeout` 60s after boot, both `.unref()`ed. |
+| Session prune | `server.js`, `pruneExpiredSessions` | Deletes `sessions` rows whose `expires_at` has passed, on the same two timers. Every sign-in adds a row and nothing refreshes one in place, so without it the table only grows; `validateAndAutoLogin` already refuses an expired row, so this reclaims space and changes no answer. |
 
 Two consequences worth knowing:
 
@@ -36,27 +37,61 @@ Two consequences worth knowing:
   out of `server.js` precisely so Supertest can mount the app without a
   listener (`app.js:4-5`). Tests import `app.js`; they never import `server.js`
   except `tests/server.test.js`.
-- **The daily prune is single-process by design.** `server.js:224` says so
-  explicitly. The instance lock now enforces one process per schema, so a
-  second replica does not start rather than pruning twice.
+- **The daily prunes are single-process by design.** The comment above
+  `pruneOldActivity` says so explicitly. The instance lock now enforces one
+  process per schema, so a second replica does not start rather than pruning
+  twice.
 
 ## 2. The middleware stack, in mount order
 
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', 1)                    app.js:43
+app.set('trust proxy', 1)                    app.js:44
   │
-  ├─ health router: /healthz, /readyz        app.js:47
-  ├─ CORS, scoped to /api                    app.js:58-114
-  ├─ helmet + CSP, scoped to /api            app.js:117-130
-  ├─ express.json({ limit: '2mb' })          app.js:142
-  ├─ authLimiter on 9 paths + reader-check   app.js:145-168
-  ├─ searchLimiter on /api/users/search      app.js:179
-  ├─ static /avatars      (7d immutable)     app.js:182-185
-  ├─ static /doc-images   (30d immutable)    app.js:188-191
+  ├─ health router: /healthz, /readyz        app.js:48
+  ├─ CORS, scoped to /api                    app.js:59-115
+  ├─ helmet + CSP, scoped to /api            app.js:118-131
+  ├─ express.json({ limit: '2mb' })          app.js:143
+  ├─ authLimiter on 9 paths + reader-check   app.js:146-169
+  ├─ searchLimiter on /api/users/search      app.js:180
+  ├─ stateLimiter on /api/documents/state    app.js:194
+  ├─ static /avatars      (7d immutable)     app.js:197-200
+  ├─ /doc-images, authorized (private, 1d)   app.js:204
   └─ 18 routers, all mounted at /api
 ```
+
+**`/doc-images` is an authorized handler, not a static mount** (W6-CDX-34).
+`docImagesHandler()` in `routes/doc-images-serve.js` is built once when
+`app.js` loads. With `DOC_IMAGES_PUBLIC=1` it returns the old
+`express.static` mount (30 days, `public, immutable`) and logs one line saying
+so; otherwise it returns a router with one route, `GET /:file`:
+
+```
+/^[0-9a-f]{16}\.webp$/ ?  ── no ──────────────────────────────┐
+  │ yes                                                        │
+extractSessionToken(req) → validateAndAutoLogin(token)         │
+  │ (no touchSession: an image load is not activity)           │
+  │ no user ───────────────────────────────────────────────────┤
+readableDocImageHashes([hash], user)   (routes/helpers/images.js)
+  │ uploader, or a reader of a document holding it?            │
+  │ no ────────────────────────────────────────────────────────┤
+res.sendFile(<hash>.webp, root = DOC_IMAGES_DIR)               │
+  │ 200 image/webp, Cache-Control: private, max-age=86400,     │
+  │     X-Content-Type-Options: nosniff                        │
+  │ missing file (send's 404) ─────────────────────────────────┤
+  │ any other read error → errorHandler (JSON 500)             │
+                                                               ▼
+              404, empty body, Cache-Control: no-store (one response for every reason)
+```
+
+A catch-all after the route sends the same 404 for anything else under
+`/doc-images` (a nested path, another method), so nothing falls through to the
+SPA. The session comes from the same `extractSessionToken` as `requireAuth`,
+so an `<img>` request is authorized by its cookie, which `SameSite=Strict`
+still sends for a same-origin subresource. Who counts as a reader is
+[access-control.md](access-control.md) section 3f; the table is
+[data-model.md](data-model.md) section 3.
 
 **CORS** (`app.js`, the `cors((req, cb) => ...)` block) allows, in order: a
 request with no `Origin` header at all; a **same-origin** request, decided by
@@ -97,33 +132,36 @@ honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
 app's port directly, so an attacker could set that header themselves and turn
 the same-origin clause into "allow any origin".
 
-**CSP** (`app.js:118-129`) is scoped to `/api` on purpose so the Vite dev server's
+**CSP** (`app.js:119-130`) is scoped to `/api` on purpose so the Vite dev server's
 inline module scripts are not blocked. `frameAncestors: 'none'`,
 `objectSrc: 'none'`, `connectSrc` allows `ws:`/`wss:` for the two WebSockets,
 `imgSrc` allows `data:` and `blob:` for pasted images.
 
-**Body limit is 2 MB** (`app.js:142`). The collab WebSocket has its own, larger
-limits (5 MB frame, 2 MB HTML) in `services/collab.js:48-49`, so a document that
+**Body limit is 2 MB** (`app.js:143`). The collab WebSocket has its own, larger
+limits (5 MB frame, 2 MB HTML) in `services/collab.js:55-56`, so a document that
 saves fine over WS can 413 over REST.
 
 ### Rate limiters
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:133-140`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:145-152`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:158`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:168`) |
-| `searchLimiter` (`app.js:171-178`) | 15 min / 60 | `/api/users/search` only (`app.js:179`), to blunt user enumeration |
+| `authLimiter` (`app.js:134-141`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:146-153`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:159`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:169`) |
+| `searchLimiter` (`app.js:172-179`) | 15 min / 60 | `/api/users/search` only (`app.js:180`), to blunt user enumeration |
+| `stateLimiter` (`app.js:186-193`) | 15 min / 120 | `/api/documents/state` only (`app.js:194`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
-Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
+All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. One test exercises the
 limiter itself: `tests/app.test.js` sets `NODE_ENV=production` for its duration
 and requires the 21st `/api/update-account` request, then
 `/api/update-account/confirm-email`, to answer 429 while an unmounted route does
-not. The other mounts are not exercised.
+not; a second requires the 121st `/api/documents/state` request to answer 429,
+while the first 120 reach `machineOrAuth` (401) and `/api/search` and
+`/api/document` stay unspent. The other mounts are not exercised.
 
 ### Router mounting
 
 The health router (`routes/health.js`) is the one exception to what follows: it
-mounts at the root, ahead of every `/api` layer (`app.js:47`), and answers
+mounts at the root, ahead of every `/api` layer (`app.js:48`), and answers
 `/healthz` and `/readyz` only (section 7).
 
 All 18 other routers mount on the bare `/api` prefix, so each router
@@ -162,8 +200,11 @@ component that consume it.
    is **exported**, so it is the single definition of "which token is this
    request carrying" and `POST /api/logout` uses the same one.
 2. No token, 401 `Authentication required`.
-3. `validateAndAutoLogin(token)` (`mysql_connect.js:178-192`) looks the session
-   up by primary key, rejects if `expires_at <= now`, then loads the user row.
+3. `validateAndAutoLogin(token)` (`mysql_connect.js:164-182`) looks the session
+   up by primary key, **by the digest of the token** (`hashSessionToken`, see
+   "Session tokens" below), rejects if `expires_at <= now`, then loads the user
+   row. Anything that is not a non-empty string is no session, answered without
+   a query.
    The returned user carries exactly `id, name, email, avatar_url, is_admin`.
 4. On success sets `req.user` and `req.sessionToken`, then fires
    `touchSession(token)` **without awaiting**; a failure is logged, never
@@ -193,8 +234,9 @@ token presented on these routes meets a constant-time comparison that cannot
 match it and cannot leak its length, and the `users` lookup happens only after
 the token matches, so a wrong token costs no query.
 
-It is mounted on exactly two routes, `GET /api/search` and `GET /api/browse`
-(`routes/search.js`), and configured by `SERVICE_TOKEN` plus
+It is mounted on exactly three routes, `GET /api/search` and `GET /api/browse`
+(`routes/search.js`) and `GET /api/documents/state` (`routes/documents.js`, the
+reconciliation read), and configured by `SERVICE_TOKEN` plus
 `SERVICE_TOKEN_USER`, both required. See
 [access-control.md](access-control.md) section 7 for the never-admin rule.
 
@@ -262,22 +304,37 @@ refusal and the linked rung's trade-off against MySQL 8.4.
 
 ### Session tokens
 
-`generateSessionToken(user, ip, userAgent)` (`mysql_connect.js:135-170`) is
-**one session per user**, not one per device:
+`generateSessionToken(user, ip, userAgent, { provider })`
+(`mysql_connect.js:148-156`) is **one session per sign-in** (W6-CDX-2): every
+call is exactly one `INSERT INTO sessions` with a 7-day expiry, and nothing
+reuses or refreshes a row. A second device gets a row of its own, and
+`POST /api/logout` signs out only the device that presents the token.
 
-- It looks up `WHERE user_id = ? LIMIT 1`.
-- If a live session exists, it updates `ip_address`/`user_agent`/`last_active_at`
-  and **returns the same token** (`mysql_connect.js:142-149`).
-- If the session exists but is expired, it rotates the id in place and extends
-  by 7 days (`mysql_connect.js:151-159`).
-- Otherwise it inserts a new row with a 7-day expiry.
+**The row holds a digest, never the token.** The call returns the raw token to
+the caller and binds `hashSessionToken(token)` (`services/session-token.js`,
+SHA-256, lowercase hex, 64 characters, so `sessions.id CHAR(64)` is unchanged)
+as the id. Every lookup and delete by token hashes first:
+`validateAndAutoLogin`, `touchSession`, and logout in `routes/auth.js`. A dump
+of `sessions` therefore yields nothing a browser can present. The helper sits
+in its own module so the global `mysql_connect.js` mock in `tests/setup.js`
+does not have to reproduce it, and MySQL's `SHA2(token, 256)` computes the same
+value (pinned on a live server in `tests/integration/sessions.test.js`), which
+is how `migrations/2026-09-27-session-per-sign-in.sql` hashed the rows already
+stored.
 
-Token generation (`mysql_connect.js:121-125`) uses `crypto.getRandomValues` over a
-62-character alphabet, default length 64, matching `sessions.id CHAR(64)`. The
+`provider` records the flow that minted the row in `sessions.auth_provider`:
+`'local'` by default (password sign-in, 2FA completion, account creation),
+`'google'` from the Google callback. The column has no default, so a new flow
+that forgets to name itself fails at insert ([data-model.md](data-model.md)
+section 4). A rotation (update-account, confirm-email, below) keeps the tag of
+the session it replaces: `getSessionProvider(token)` (`mysql_connect.js`)
+reads it by digest, and answers `'local'` for a session that is gone.
+
+Token generation (`createNewSessionToken`, `mysql_connect.js:122-126`) uses
+`crypto.getRandomValues` over a 62-character alphabet, default length 64. The
 modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 
-**Consequence:** logging in from a second device silently reuses the first
-device's token, and `POST /api/logout` therefore logs out every device at once.
+Expired rows are removed by the daily session prune (section 1).
 
 ### An email or password change rotates every session
 
@@ -294,19 +351,21 @@ panel send the form as it stands.
 On success the `UPDATE users` and `DELETE FROM sessions WHERE user_id = ?` run in
 one `withTransaction()` (the caller's own row included: the old
 `AND id != ?` "keep this device" delete is gone), and only after the commit
-does the handler call `generateSessionToken`, which finds no row and inserts a
-fresh one. The response is `{ success: true, token }`; the account panel stores
+does the handler call `generateSessionToken`, which inserts a fresh row. The
+handler reads the caller's `getSessionProvider(token)` before the transaction,
+because the delete removes that row, and passes it as `{ provider }`, so a
+Google session is replaced by a Google one. The response is `{ success: true, token }`; the account panel stores
 it with `setSessionCookie` (`src/util.jsx`), the same writer sign-in uses. An
 email change then sends `buildEmailChangedNoticeEmail` to the OLD address when
 `isMailEnabled()`, and a failed send is logged, never answered as a failure.
 
-Why the caller's row goes too: sessions are one per user (above), so the
-caller's token is every other holder's, and keeping it alive kept a stolen
-session alive through the owner's password change. **What it does not fix:**
-until sessions are per sign-in (W6-CDX-2), a later sign-in by anyone with the
-new credentials is handed the caller's new token by `generateSessionToken`,
-exactly as any two sign-ins share one today. Rotation signs out every holder of
-the old token, and that is all it can do on this schema.
+Why every row goes, the caller's too: a credential change signs every other
+device out, a stolen session included, and the caller keeps working on the
+replacement minted after the commit. This was written while sessions were one
+per user, when the caller's token was every holder's; since W6-CDX-2 each
+device has its own row, so the delete by `user_id` is what reaches them all,
+and a later sign-in with the new credentials gets a row of its own rather than
+the caller's token.
 
 An account with **no password** (`password_hash` NULL, made by an external
 sign-in) cannot answer the check. A password change is refused with a pointer
@@ -334,9 +393,12 @@ by anyone who had the token.
 
 It now resolves the token through the same `extractSessionToken` that
 `requireAuth` uses, with `req.body.token` kept as a fallback for any caller that
-still posts one, and only 400s when the request carries no token at all. The
-route stays unauthenticated: it deletes by token, so presenting a token is the
-authorisation, and an unknown token deletes nothing.
+still posts one, and only 400s when the request carries no token, or a body
+token that is not a string. The route stays unauthenticated: it deletes by the
+token's digest (`DELETE FROM sessions WHERE id = ?` bound to
+`hashSessionToken(token)`), so presenting a token is the authorisation, an
+unknown token deletes nothing, and since sessions are per sign-in (W6-CDX-2)
+it signs out only the device that presented it.
 
 The cookie fallback does not open a cross-site logout: every writer of the
 `sessionToken` cookie sets `SameSite=Strict` (`routes/oauth.js` server-side,
@@ -356,7 +418,7 @@ half-created account.
 
 The convention is per-router, not app-global. Each router file ends with
 `router.use(errorHandler)` where `errorHandler` comes from
-`routes/helpers/shared.js:258-264`:
+`routes/helpers/shared.js:272-278`:
 
 ```js
 console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}:`, err);
@@ -383,7 +445,7 @@ handler.
 
 Both WS servers attach to the same `http.Server` returned by
 `ViteExpress.listen`, and both use `noServer: true` plus
-`server.prependListener('upgrade', ...)` (`services/collab.js:278`,
+`server.prependListener('upgrade', ...)` (`services/collab.js:336`,
 `services/user-channel.js:104`). `prependListener` is used so these handlers run
 before Vite's own HMR upgrade handler, and each returns early when the path is
 not its own, letting the next listener try.
@@ -391,20 +453,20 @@ not its own, letting the next listener try.
 | | `/collab` | `/notifications-ws` |
 |---|---|---|
 | File | `services/collab.js` | `services/user-channel.js` |
-| Path guard | `collab.js:282` | `user-channel.js:106` |
-| Origin check | `collab.js:285-305` | `user-channel.js:109-127` |
-| Query params | `?logId=<int>` (`collab.js:307-313`) | none |
-| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:324-343`) | same, 5s (`user-channel.js:135-153`) |
-| Max payload | 5 MB (`collab.js:274`) | default |
-| Per-user cap | 10 across all docs (`collab.js:50,359-363`) | 10 (`user-channel.js:23,167-171`) |
+| Path guard | `collab.js:340` | `user-channel.js:106` |
+| Origin check | `collab.js:343-363` | `user-channel.js:109-127` |
+| Query params | `?logId=<int>` (`collab.js:365-371`) | none |
+| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:382-401`) | same, 5s (`user-channel.js:135-153`) |
+| Max payload | 5 MB (`collab.js:332`) | default |
+| Per-user cap | 10 across all docs (`collab.js:57,416-420`) | 10 (`user-channel.js:23,168-171`) |
 
 **Origin handling is strict in both:** a *missing* `Origin` header is rejected
-with a raw `403` on the socket (`collab.js:287-291`), as is any origin whose
+with a raw `403` on the socket (`collab.js:345-349`), as is any origin whose
 host differs from the request `Host`. This is CSWSH protection, and it means a
 non-browser client must send an `Origin` matching the host.
 
 **Auth is post-upgrade, not pre-upgrade.** The handshake completes first
-(`collab.js:316-318`), then the first frame must be the auth message. An
+(`collab.js:374-376`), then the first frame must be the auth message. An
 unauthenticated client can therefore hold an open socket for up to 5 seconds.
 Close codes are meaningful: 4001 auth timeout, 4002 malformed auth, 4003
 unauthorized or access denied, 4004 too many connections.
@@ -526,7 +588,7 @@ there), and with `('the lost instance lock', { code: 1 })` from
    A live editor reconnects to the next process and its Yjs sync re-sends
    whatever it has that the server does not.
 5. The instance lock's connection ends, then `endPool()`
-   (`mysql_connect.js:56-58`).
+   (`mysql_connect.js:57-59`).
 6. `exit(code)`. The last line is `stopped cleanly on <cause>` only when the
    code is 0, every step ran and every pending document was written; otherwise
    it is `stopped on <cause>`, with `N documents not saved` and `N failed

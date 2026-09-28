@@ -212,6 +212,30 @@ describe('app.js — Express configuration', () => {
     }
   });
 
+  // The reconciliation read (W6-CDX-16) answers up to 100 ids a request, so it
+  // gets its own bucket, 120 per 15 minutes. Mounted in app.js before any
+  // router, so an unauthenticated caller spends it too.
+  it('puts /api/documents/state in its own rate-limit bucket, ahead of authentication', async () => {
+    const prior = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const statuses = [];
+      for (let i = 0; i < 121; i++) {
+        statuses.push((await request(app).get('/api/documents/state?workspaceId=1&ids=1')).status);
+      }
+      expect(statuses.slice(0, 120)).toEqual(Array(120).fill(401));
+      expect(statuses[120]).toBe(429);
+
+      // Its own bucket: the neighbouring routes are not spent.
+      const search = await request(app).get('/api/search?query=x');
+      expect(search.status).toBe(401);
+      const doc = await request(app).get('/api/document?doc_id=1');
+      expect(doc.status).toBe(401);
+    } finally {
+      process.env.NODE_ENV = prior;
+    }
+  });
+
   it('mounts every API route group under /api', async () => {
     // A representative endpoint from each router. None should 404; they
     // should at least reach requireAuth and respond 401, or respond 200
@@ -237,9 +261,11 @@ describe('app.js — Express configuration', () => {
     expect(res.status).toBe(404);
   });
 
-  it('exposes /doc-images static directory mount', async () => {
+  it('mounts the authorized /doc-images handler: an anonymous request gets an empty 404', async () => {
     const res = await request(app).get('/doc-images/does-not-exist.webp');
     expect(res.status).toBe(404);
+    expect(res.text).toBe('');
+    expect(res.headers['cache-control']).toBe('no-store');
   });
 
   it('returns 404 for unknown API paths (no fallthrough to other routers)', async () => {

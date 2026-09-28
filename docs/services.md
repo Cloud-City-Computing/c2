@@ -421,23 +421,30 @@ statement that actually broke. The connection is always released back to the
 pool. Used by `bootstrapInstance()` in `routes/admin.js` so the first-boot
 workspace/squad/archive/document seed either lands completely or not at all.
 
-#### `generateSessionToken(user, ip, userAgent)`
+#### `generateSessionToken(user, ip, userAgent, { provider })`
 
-Manages session creation with a "one session per user" model:
-1. If the user has an existing non-expired session, it is reused (metadata
-   updated).
-2. If the session is expired, the token is rotated in place (same row, new
-   token).
-3. If no session exists, a new one is inserted.
+Mints a new session: one row per sign-in, so each device has its own and
+signing out of one leaves the others alone. Returns the raw token and stores
+only its digest, `hashSessionToken(token)` from `services/session-token.js`
+(SHA-256, lowercase hex). `provider` is `'local'` (the default) or `'google'`
+and is recorded in `sessions.auth_provider`. Every row expires 7 days after it
+is minted.
 
 Tokens are 64-character random alphanumeric strings generated using
 `crypto.getRandomValues`.
 
 #### `validateAndAutoLogin(sessionToken)`
 
-Looks up a session token, checks expiry, and returns the associated `user`
+Looks up a session by the digest of its token, checks expiry, and returns the associated `user`
 object (`id`, `name`, `email`, `avatar_url`, `is_admin`) or `null`. Called
 on every authenticated request by the `requireAuth` middleware.
+
+#### `getSessionProvider(sessionToken)`
+
+Returns the session's `auth_provider` (`'local'` or `'google'`), looked up by
+the digest of its token, or `'local'` when the session is gone or the value
+cannot be a token. update-account and confirm-email read it before they delete
+the caller's session, so the replacement they mint keeps its tag.
 
 #### `touchSession(sessionToken)`
 
@@ -470,7 +477,8 @@ unchanged, so a human session is unaffected. On a match it attaches a machine
 principal (`{ id, name, email, is_admin: false, is_machine: true }`) and sets no
 `req.sessionToken`, because a machine caller holds no session row.
 
-Mounted on exactly two routes, `GET /api/search` and `GET /api/browse`. It is
+Mounted on exactly three routes, `GET /api/search`, `GET /api/browse` and
+`GET /api/documents/state` (the reconciliation read). It is
 not a drop-in replacement for `requireAuth`: the value of the credential is
 that its reach stays enumerable by reading the routers.
 
@@ -551,10 +559,23 @@ Shared utilities used across all route files:
 
 **File:** `cloudcodex/routes/helpers/images.js`
 
-- **`extractImagesFromHtml(html)`** — Scans HTML for base64-encoded `<img>`
+- **`extractImagesFromHtml(html, saved?)`**: Scans HTML for base64-encoded `<img>`
   tags, writes them to disk under `public/doc-images/`, and replaces the
   `src` with a served URL. This prevents large binary blobs from being
-  stored in MySQL and speeds up document loads.
-- **`inlineImagesForExport(html)`** /
-  **`inlineImagesForMarkdownExport(html)`** — Re-embeds served images back
-  as base64 for self-contained DOCX/Markdown exports.
+  stored in MySQL and speeds up document loads. The optional `saved` set
+  receives the hash of each image it decoded.
+- **`recordDocImages(logId, html, writer, { saved, introduced })`**: Records in
+  `doc_images` the images a write stores, so the document's readers can see
+  them: as the writer's own when `saved` holds the hash, a reference only when
+  `introduced` holds it (this write added it) and the writer can already see
+  the image, and nothing else. `introducedDocImages(logId, html, previousHtml,
+  writer)` computes `introduced` for a save (limited, while a live session is
+  open, to what that session credits to the writer), and
+  `recordCreditedDocImages(logId, html, credits)` records the live editor's
+  saves per credited writer (`DocImageCredits`).
+- **`readableDocImageHashes(hashes, user)`**: The one answer to "may this user
+  see these images": uploader, or reader of a document holding them. The
+  `/doc-images` handler (`routes/doc-images-serve.js`) and export ask it.
+- **`inlineImagesForExport(html, user)`** /
+  **`inlineImagesForMarkdownExport(markdown, user)`**: Re-embeds served images back
+  as base64 for self-contained DOCX/Markdown exports, only the ones `user` may see.

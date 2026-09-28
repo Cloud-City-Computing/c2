@@ -64,6 +64,7 @@ Applied in:
 |---|---|
 | `routes/archives.js` | listing, log listing, rename, ACL read and write, log create/update/delete, repos |
 | `routes/search.js` | search, browse, filters |
+| `routes/documents.js` | `GET /documents/state`, the reconciliation read (a document in a system archive is absent) |
 | `routes/upload.js` | `POST /archives/:archiveId/logs/upload` |
 | `routes/github.js` | `POST /github/import-to-codex` |
 
@@ -125,11 +126,11 @@ Never write permission SQL by hand. The wrappers already exist in
 |---|---|---|
 | `checkLogReadAccess(logId, user)` | `shared.js:76-87` | the log row, or `undefined` |
 | `checkLogWriteAccess(logId, user)` | `shared.js:93-104` | the log row, or `undefined` |
-| `checkArchiveReadAccess(archiveId, user)` | `shared.js:174-183` | the archive row, or `undefined` |
-| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:159-168` | the archive row, or `undefined` |
+| `checkArchiveReadAccess(archiveId, user)` | `shared.js:188-197` | the archive row, or `undefined` |
+| `checkArchiveWriteAccess(archiveId, user)` | `shared.js:173-182` | the archive row, or `undefined` |
 
 Routes that need the fragment inline (search, browse, export, GitHub link
-loading) interpolate it directly; see `routes/documents.js:553`,
+loading) interpolate it directly; see `routes/documents.js:581`,
 `routes/search.js`, `routes/github.js:1023`.
 
 ## 2. The critical subtlety: everything resolves against the ARCHIVE
@@ -139,7 +140,7 @@ loading) interpolate it directly; see `routes/documents.js:553`,
 columns are never consulted.
 
 `logs.read_access` and `logs.write_access` exist in the schema
-(`init.sql:289-290`). Grepping the whole backend for reads of them turns up
+(`init.sql:300-301`). Grepping the whole backend for reads of them turns up
 nothing. Since 2026-08-09 the only thing that writes them is the PR-session
 log insert (`routes/github.js:1698`), which sets both to an empty
 `JSON_ARRAY()`.
@@ -155,7 +156,7 @@ now grants on a per-PR archive instead. See
 The practical rule: **the archive is the ACL boundary.** Per-document
 permissions do not exist.
 
-## 3. The five secondary systems
+## 3. The six secondary systems
 
 ### 3a. Global feature permissions: `requirePermission(flag)`
 
@@ -183,7 +184,7 @@ Resolution order:
 `{ create_squad: false, create_archive: false, create_log: true }`, applied to
 any user with no `permissions` row. New users created through the normal paths
 get a row with **all three true** via `createDefaultPermissions`
-(`shared.js:193-198`), so the default only applies to rows that predate it or
+(`shared.js:207-212`), so the default only applies to rows that predate it or
 were made outside those paths.
 
 Note step 7 maps only two of the three flags (`permissions.js:114-117`). There
@@ -191,7 +192,7 @@ is no squad-level fallback for `create_squad`, which is correct: squads are
 created in a workspace, not in a squad.
 
 Currently applied on exactly two routes: `routes/archives.js:117`
-(`create_archive`) and `routes/archives.js:470` (`create_log`), plus the upload
+(`create_archive`) and `routes/archives.js:489` (`create_log`), plus the upload
 route `routes/upload.js:95` (`create_log`).
 
 Step 3 is what makes the global flag mean "may create" rather than "may create
@@ -220,12 +221,12 @@ first. That rule and the middleware's step 3 are two halves of the same boundary
 
 ### 3b. Publish: `canPublish`
 
-`shared.js:118-145`. Ordered bypasses: no squad context at all, allow; admin,
+`shared.js:132-159`. Ordered bypasses: no squad context at all, allow; admin,
 allow; workspace owner, allow; `squad_members.can_publish` or
 `role = 'owner'`, allow; archive creator, allow; else deny.
 
 Called from the REST publish route and from the collab WebSocket publish message
-(`services/collab.js:615`), so both paths share one policy.
+(`services/collab.js:670`), so both paths share one policy.
 
 ### 3c. Archive ownership: `isArchiveOwner`
 
@@ -235,9 +236,9 @@ destructive and administrative verbs. Admin, archive creator, workspace owner
 `can_write` or the JSON grant arrays: someone with full write access on an
 archive still cannot delete it or change its ACLs.
 
-Callers: delete archive (`archives.js:195`), manage access
-(`archives.js:247`), link and unlink archive repos (`archives.js:595`,
-`archives.js:644`).
+Callers: delete archive (`archives.js:198`), manage access
+(`archives.js:259`), link and unlink archive repos (`archives.js:745`,
+`archives.js:794`).
 
 ### 3d. Squad management: `canManageSquad`, and its GitHub-only twin
 
@@ -357,7 +358,7 @@ and a rewrite of every caller, for a check most of those callers do not need.
 stays exactly where it is, below the global flag, and is not hoisted into step 3:
 
 - Both `create_log` routes re-check with `writeAccessWhere` immediately after
-  the middleware (`archives.js:486-496`, `upload.js:107-119`), so the
+  the middleware (`archives.js:505-515`, `upload.js:107-119`), so the
   archive-derived path was never open the way the body path was.
 - Checking it in the middleware would be a behaviour regression. A caller
   holding the global `create_log` flag plus an explicit `write_access` JSON
@@ -401,6 +402,93 @@ and ships no cleanup migration on purpose, because no query separates an attack
 row from an install that used these routes exactly as they behaved. See B16 in
 [open-questions.md](open-questions.md).
 
+### 3f. Document images: `readableDocImageHashes` (W6-CDX-34)
+
+`routes/helpers/images.js`. A stored image (`public/doc-images/<hash>.webp`,
+the first 16 hex digits of the uploaded bytes' SHA-256) is visible to a user
+when either holds:
+
+1. **they uploaded it**: some `doc_images` row for the hash has
+   `uploaded_by = user.id`. This survives the uploader losing access to the
+   document, but not the document being deleted (the row cascades away);
+2. **they can read a document that holds it**: some `doc_images` row for the
+   hash names a log whose archive passes `readAccessWhere('p')`, the same
+   fragment `checkLogReadAccess` uses, so an admin sees every image.
+
+One query answers both, for a batch of hashes: the `IN (...)` list first, then
+`user.id`, then the seven `readAccessParams(user)`. Three callers ask it, and
+nothing else may read an image file for a user:
+
+| Caller | What a "no" does |
+|---|---|
+| `docImagesHandler` (`routes/doc-images-serve.js`), the `/doc-images` mount | the empty 404 ([request-lifecycle.md](request-lifecycle.md) section 2) |
+| `inlineImagesForExport` / `inlineImagesForMarkdownExport` (HTML, DOCX, markdown export) | the reference stays a URL instead of becoming a data URI |
+| `recordDocImages`, for every `html_content` write that extracts images | the reference is stored but gets no row for this document |
+
+**The write-path gate is the part that is easy to lose.** `doc_images` rows
+are how a document grants its readers an image, so whoever can write a
+document can grant. `recordDocImages(logId, html, writer, { saved, introduced })`
+therefore records a hash as the writer's own (`uploaded_by = writer.id`) only
+when this write decoded its bytes (the `saved` set `extractImagesFromHtml`
+fills), and records a reference (with `uploaded_by` NULL) only when it is in
+`introduced`, the references this write put there, and the writer can already
+see that image. Every other reference in the HTML is left alone, however much
+the writer can see. Holding the bytes is not a leak, because they hash to the
+same name.
+
+Both halves matter. Without the readability check, knowing an image's address
+is enough to read it: paste the URL into any document you can write, and the
+handler serves it to you as that document's reader. Without the "introduced"
+limit, that planted reference is granted anyway by the next save, publish or
+restore from anyone who can see the image (the owner fixing a typo, any
+admin), a confused deputy. What each write may vouch for:
+
+| Write | `introduced` |
+|---|---|
+| `POST /api/save-document` | `introducedDocImages`: the references the new HTML adds over `old_content`; with a live session open on the document, only those the session credits to this writer |
+| `POST .../publish`, `POST .../restore` | none: they store what the document already held |
+| `POST /api/archives/:id/logs/upload` (import) | every reference: the document is new |
+| live editor save and publish | per writer, the references `DocImageCredits` credits to them (below) |
+
+In the live editor every client's save carries the whole shared document, so
+the sender is not the one to ask. `services/collab.js` keeps a
+`DocImageCredits` per open document (registered by `openDocImageCredits`, so
+the REST save can ask it too) that credits a reference to the writer whose own
+sync frame first put it in: the frame's bytes named it, it was not in the
+shared document before and is after, and the stored HTML does not already show
+it. So the first client filling the shared document from stored HTML, or an
+edit that recreates a node, claims nothing, and a reference typed a character
+at a time is nobody's. REST save and restore tell the session what they stored
+(`noteStoredDocImages`), so what the restoring editor then pushes in is not
+credited either. The REST routes record before they write, so a failure fails
+the request (and a retry, whose previous HTML is unchanged, still sees what it
+adds); the live editor records after its ack, in its own try/catch.
+
+The upload route (`POST /api/doc-images/upload`) is the other writer: it
+requires a `logId` the caller can write (`checkLogWriteAccess`) before it
+processes anything, and records each image as the uploader's.
+
+**What the credits do not cover.** A writer who can see an image and moves a
+planted reference (cut, then paste after a save) vouches for it, as they would
+by pasting it themselves. If the server restarts before a planted edit reaches
+the database, a client re-sending its copy of the shared document on reconnect
+is credited with it. Both need the victim writer's own action or a restart
+inside a few seconds; they are accepted, and noted here so they are not
+forgotten.
+
+**What is not gated.** `insertDocImageRows` writes whatever it is handed; only
+the upload route (after its write check) and the one-time backfill
+(`scripts/backfill-doc-images.js`, which trusts what existing documents
+already show, since those images were public until this change) call it
+directly. The backfill refuses to run over a table that already has rows unless
+`DOC_IMAGES_PUBLIC=1` or `--again`, because run after go-live it would trust
+every reference saved since. The GitHub import and pull paths store remote
+markdown without recording rows, and no later save records a reference it
+did not add, so an image reference arriving that way stays hidden (fails
+closed) until someone who can see the image puts it in again: removes it and
+saves, then adds it back. With `DOC_IMAGES_PUBLIC=1` the handler and export ask
+nothing; recording still happens.
+
 ## 4. How membership itself is granted
 
 The checks above all assume a `squad_members` row already exists; this
@@ -429,7 +517,7 @@ table below) applies identically regardless of which path created the row.
 
 ## 5. Per-member flags and where each is enforced
 
-`squad_members` (`init.sql:200-216`) carries `role` plus seven booleans. Their
+`squad_members` (`init.sql:211-227`) carries `role` plus seven booleans. Their
 enforcement is uneven, which is worth knowing before you assume a flag does
 something:
 
@@ -440,8 +528,8 @@ something:
 | `can_create_log` | `requirePermission('create_log')` step 7 (`permissions.js:116`) |
 | `can_create_archive` | `requirePermission('create_archive')` step 7 (`permissions.js:115`) |
 | `can_manage_members` | `canManageSquad` (`squads.js`), and `userCanManageSquad` (`github.js`) on the team-sync routes only, where it counts only alongside an `admin` role |
-| `can_publish` | `canPublish` (`shared.js:118-145`) |
-| `can_delete_version` | version delete route only (`documents.js:503-515`) |
+| `can_publish` | `canPublish` (`shared.js:132-159`) |
+| `can_delete_version` | version delete route only (`documents.js:531-543`) |
 
 `role` is an enum of `member`/`admin`/`owner`, but only `owner` is load-bearing
 in the SQL fragments (`ownership.js:31`, `ownership.js:57`). `admin` is treated
@@ -543,12 +631,13 @@ no failing assertion outside `tests/services/machine-auth.test.js`.
 ### The scope is a scope
 
 `machineOrAuth` (`middleware/auth.js`) tries the credential and otherwise falls
-through to `requireAuth` unchanged. It is applied to exactly two routes:
+through to `requireAuth` unchanged. It is applied to exactly three routes:
 
 | Route | Middleware |
 |---|---|
 | `GET /api/search` | `machineOrAuth` |
 | `GET /api/browse` | `machineOrAuth` |
+| `GET /api/documents/state` | `machineOrAuth` (`routes/documents.js`), W6-CDX-16 |
 | `GET /api/workspaces/:workspaceId/reader-check` | **`requireMachine`** |
 | `GET /api/search/filters` | `requireAuth` |
 | `GET /api/presence` | `requireAuth` |
@@ -590,10 +679,58 @@ does not use** (`tests/routes/reader-check.test.js`). Without that row the crede
 nothing and the request is refused anyway, so the 401 would pass even if the route had been written
 with `machineOrAuth` — the same false-green shape the `search.test.js` 401s were written to avoid.
 
-Both machine-reachable routes are reads, and both consume the principal only
-through `readAccessParams(req.user)` and `buildFilters(req.query, req.user)`.
-Neither calls `logActivity` nor `createNotification`, so nothing is attributed
-to the machine principal and no watcher is enrolled.
+All three `machineOrAuth` routes are reads, and they consume the principal only
+through `readAccessParams(req.user)` and, for search and browse,
+`buildFilters(req.query, req.user)`. None calls `logActivity` nor
+`createNotification`, so nothing is attributed to the machine principal and no
+watcher is enrolled.
+
+### The reconciliation read is safe for the same reason (W6-CDX-16)
+
+`GET /api/documents/state?workspaceId=<id>&ids=<1..100 ids>` exists because the
+outbound event stream captures after the mutation and does not await it, so a
+crash between the two loses an event; Cloud Command sweeps its linked documents
+through this route to repair that. For each id it returns
+`{ id, title, archive_id, updated_at }` only when the caller can read it. The
+existing route it is closest to is `GET /api/browse`: the same
+`readAccessWhere`, `excludeSystemArchives` and workspace join, and like browse
+it keeps a document whose creator was deleted (browse's join on `users` is a
+`LEFT JOIN`). The one field it adds for the machine principal is `updated_at`,
+which browse does not select:
+
+- **Who may call it.** The machine principal or any session, like search and
+  browse: it answers "which of these may YOU read?", never a question about a
+  third party, so it is `machineOrAuth` and not `requireMachine`. Its set is
+  the set `GET /api/browse` already lists for that caller, narrowed to one
+  workspace, so neither a session nor the machine principal can reach a
+  document it could not already list; the only new fact is `updated_at`.
+  (`GET /api/document` is not the comparison: it joins `users` with an
+  `INNER JOIN`, so a document whose creator was deleted answers 404 there and
+  appears here.)
+- **What it can enumerate.** Nothing beyond the caller's own reach. The access
+  check is `readAccessWhere('p')` with the caller's own seven params, plus
+  `excludeSystemArchives('p')`, narrowed to the workspace by the same
+  `INNER JOIN squads _fs ON _fs.id = p.squad_id AND _fs.workspace_id = ?` that
+  search's `buildFilters` uses. An id that is deleted, unreadable, in another
+  workspace, in a system archive or never existed is **absent**, and those
+  cases answer byte-identically, so the route is not an existence oracle. The
+  machine principal's `is_admin` is forced false (above), so an archive only an
+  admin could read is absent too.
+- **How fast.** `stateLimiter` (`app.js`, 120 requests per 15 minutes, mounted
+  before the routers) bounds it per client address, authenticated or not; at
+  100 ids a request that is 12,000 ids per window. The bucket is keyed on
+  `req.ip` alone, so every caller that resolves to one address, anonymous or
+  not, spends the same budget as Cloud Command's sweep there. A caller of this
+  route (W6-CMD-17) must read a 429 as "retry later", never as absence: only
+  a 200 whose `documents` omits an id says that id is unavailable.
+- **The SQL.** The `IN (...)` placeholders are generated from the id count
+  only, never from the values, and every id is bound. `title` is
+  `LEFT(l.title, 255)`, the event envelope's bound, so a reconciler compares
+  the same string the stream carried.
+
+`tests/integration/documents-state.test.js` proves the narrowing, the ACL, the
+system-archive exclusion and the byte-identical absence on a real server, with
+a non-vacuity anchor (an admin session does see the admin-only document).
 
 Widening the credential to a route that writes, logs activity, or notifies is a
 decision to take on purpose, not a tidy-up: the principal carries a real user
@@ -614,7 +751,7 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
 1. `requireAuth` first, always. There are no internal endpoints; the only
    surfaces are public HTTP and the two WebSockets. The single alternative is
    `machineOrAuth` (7), which wraps `requireAuth` rather than replacing it, and
-   which is deliberately mounted on two read routes and nothing else.
+   which is deliberately mounted on three read routes and nothing else.
 2. Creation verb, add `requirePermission('<flag>')`. If the route takes a
    workspace or squad id from the caller rather than deriving it from a row the
    caller already reaches, gate it with `isWorkspaceMember` /
@@ -622,7 +759,11 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
    create anywhere" (3e).
 3. Reading or writing an existing document or archive, call one of the four
    `check*Access` helpers, or interpolate the fragment with the matching
-   `*Params` spread. Never hand-roll the SQL.
+   `*Params` spread. Never hand-roll the SQL. A new path that writes
+   `html_content` through `extractImagesFromHtml` calls `recordDocImages`
+   with the same `saved` set and, as `introduced`, only the references that
+   write adds (3f), and one that reads image files for a user asks
+   `readableDocImageHashes` first.
 4. Destructive or ACL-changing, use `isArchiveOwner`, not write access.
 5. Wrap in `asyncHandler`, end the router with `router.use(errorHandler)`.
 6. Add the negative test. Every route test file in `tests/routes/` already has

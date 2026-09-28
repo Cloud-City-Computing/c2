@@ -50,11 +50,17 @@ Steps:
 1. Bail unless `user.id`, `action`, `resourceType`, `resourceId` are all present
    (`routes/helpers/activity.js:59`).
 2. If `workspaceId` was not passed, `resolveScope()` walks the parent chain
-   (`routes/helpers/activity.js:219-277`): log → archive → squad → workspace, with dedicated
+   (`routes/helpers/activity.js:223-281`): log → archive → squad → workspace, with dedicated
    branches for `archive`, `comment`, `squad`, and `version` resource types.
    **If the scope cannot be resolved, the event is dropped silently**
    (`routes/helpers/activity.js:65`, `routes/helpers/activity.js:68`). An archive with `squad_id NULL`, such
    as the GitHub PR-session system archive, produces no activity at all.
+   The same function is exported as `resolveActivityScope`
+   (`routes/helpers/activity.js:283`) for a caller that deletes the resource:
+   after the delete nothing leads back to a workspace, so that caller resolves
+   first and passes `workspaceId` and `squadId` in. `DELETE /api/archives/:id`
+   is the one such caller (`routes/archives.js:204`), and it skips
+   `logActivity` when the archive has no workspace.
 3. `log.update` events from the same user for the same log inside a **5-minute**
    window are coalesced away entirely (`routes/helpers/activity.js:22`, `routes/helpers/activity.js:71-82`).
    No other action type is coalesced.
@@ -67,11 +73,35 @@ Eighteen values are currently emitted across the codebase:
 ```
 archive.create   archive.delete   archive.rename
 log.create       log.delete       log.rename      log.update
-log.publish      log.restore
+log.move         log.publish      log.restore
 comment.create   comment.delete   comment.reply   comment.reopen
 version.delete
 squad.invite_create   squad.member_join   squad.member_leave
 ```
+
+`log.rename` has three sources: `PUT /api/document/:logId/title`, the collab
+`title` message, and the tree route `PUT /api/archives/:archiveId/logs/:logId`
+(`routes/archives.js:541`). The tree route is the only source of `log.move`,
+with `title`, `parent_id` and `previous_parent_id` in its metadata (the title
+is what the feed names the document by). It reads the row first and logs each
+event only when the value actually changes (`routes/archives.js:592-657`). A
+new parent must be a log in the same archive and not the log itself or one of
+its descendants, checked by a recursive walk up the new parent's ancestry that
+stays in the archive (`routes/archives.js:610-626`), so a `log.move` never
+names a parent outside the tree. The read, the walk and the UPDATE run in one
+transaction behind `SELECT ... FOR UPDATE` on the archive row
+(`routes/archives.js:593`), so moves in one archive take turns: two opposite
+moves sent at once cannot both pass the walk, and `previous_parent_id` is the
+parent the move actually replaced. The two routes that create a log,
+`POST /api/archives/:archiveId/logs` and the upload route, hold a new log's
+parent to the same archive through `isLogInArchive`
+(`routes/helpers/shared.js:112`). Neither action auto-watches or notifies.
+
+`archive.delete` lands in `activity_log` but is invisible to both read paths:
+the workspace feed's access clause needs an `EXISTS` on the `archives` row
+(`routes/activity.js:98-101`), which the delete removed, and the per-document
+read lists no archive rows. Its consumer is the outbound-events stream, not
+the feed.
 
 `resourceType` is one of `log`, `archive`, `comment`, `squad`, `version`.
 Note the asymmetry: a comment event carries `resourceId = comment.id` and puts
@@ -226,9 +256,9 @@ Mentions are `<span data-mention-user-id="42">` nodes emitted by the Tiptap
 `extractContextSnippet` (`mentions.js:71-93`) produces ~160 characters of
 plain-text context around the mention for the inbox preview and email body.
 
-Called from four places: REST save (`documents.js:129`), version restore
-(`documents.js:449`), WS save (`collab.js:549`), WS publish
-(`collab.js:649`). The comment path does its own extraction inline rather than
+Called from four places: REST save (`documents.js:148`), version restore
+(`documents.js:477`), WS save (`collab.js:603`), WS publish
+(`collab.js:707`). The comment path does its own extraction inline rather than
 reusing `processMentionsOnSave`, because comment content is plain text with a
 different link target (`comments.js:186-209`).
 
@@ -280,8 +310,8 @@ That means **28 bound access params in one query**
 change the arity of `readAccessParams`, this query is the one most likely to
 break silently. See [access-control.md](access-control.md).
 
-`GET /api/activity/log/:logId` (`routes/helpers/activity.js:145`) is the per-document
-variant. Retention is 365 days, enforced by the daily prune in
+`GET /api/activity/log/:logId` (`routes/activity.js:145`) is the per-document
+variant. Retention is 365 days, enforced by the daily prune `pruneOldActivity` in
 `server.js:223-241`.
 
 ---

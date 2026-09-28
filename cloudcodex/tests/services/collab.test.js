@@ -18,11 +18,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
 import WebSocket from 'ws';
-import { c2_query, validateAndAutoLogin } from '../../mysql_connect.js';
-import { resetMocks, TEST_USER } from '../helpers.js';
 import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
+import { c2_query, validateAndAutoLogin } from '../../mysql_connect.js';
+import { resetMocks, TEST_USER } from '../helpers.js';
 import {
   setupCollabServer,
   broadcastToDoc,
@@ -206,14 +206,15 @@ describe('services/collab — broadcastToDoc behaviour', () => {
  * Open a real ws client, complete the auth handshake, and resolve once
  * the server's awareness/sync messages have arrived.
  */
-async function authenticatedClient(logId, user = TEST_USER, dbStubs = []) {
+async function authenticatedClient(logId, user = TEST_USER, dbStubs = [], loadedHtml = '<p>hi</p>') {
   validateAndAutoLogin.mockResolvedValue(user);
-  // First DB call after auth is the doc load (SELECT ydoc_state, html_content);
-  // second is the read-access check; third is the write-access check.
+  // The real order: the read-access check, the write-access check, then the
+  // doc load (SELECT ydoc_state, html_content), which a second client on an
+  // already-open document skips, leaving its stub queued.
   c2_query
-    .mockResolvedValueOnce([{ ydoc_state: null, html_content: '<p>hi</p>' }]) // getOrCreateDoc
     .mockResolvedValueOnce([{ id: logId }])                                    // checkLogReadAccess
-    .mockResolvedValueOnce([{ id: logId }]);                                   // checkLogWriteAccess
+    .mockResolvedValueOnce([{ id: logId }])                                    // checkLogWriteAccess
+    .mockResolvedValueOnce([{ ydoc_state: null, html_content: loadedHtml }]); // getOrCreateDoc
   for (const stub of dbStubs) c2_query.mockResolvedValueOnce(stub);
 
   const ws = new WebSocket(url(logId), { headers: { Origin: origin() } });
@@ -247,8 +248,7 @@ async function readOnlyClient(logId, user = TEST_USER, dbStubs = []) {
   validateAndAutoLogin.mockResolvedValue(user);
   // Real call order, which matters here: the connection handler checks read
   // access, then write access, and only then does setupDocSession load the
-  // doc. (authenticatedClient above queues these in a different order and gets
-  // away with it because all three of its stubs are truthy rows.)
+  // doc.
   c2_query
     .mockResolvedValueOnce([{ id: logId }])                                     // checkLogReadAccess
     .mockResolvedValueOnce([])                                                  // checkLogWriteAccess: none
@@ -427,6 +427,226 @@ describe('services/collab — authenticated session', () => {
     await saved;
     ws.close();
     await new Promise((r) => ws.once('close', r));
+  });
+
+  // The live editor's explicit save and publish are html_content writes like
+  // any other, so the images they store get doc_images rows for this log. But
+  // every client's save carries the whole shared document, so a reference is
+  // recorded only for the writer whose own edit put it there, and only when
+  // that writer can already see the image: never for whoever's client
+  // happened to send the save.
+  describe('records the images an explicit save or publish stores', () => {
+    const HASH = '9999999999999999';
+    const SRC = `/doc-images/${HASH}.webp`;
+    const html = `<p>pic</p><img src="${SRC}">`;
+    const MALLORY = { ...TEST_USER, id: TEST_USER.id + 50, name: 'Mallory' };
+
+    /**
+     * Answer by SQL once the handshake's queued answers are spent. Only
+     * `canSee` users can see HASH.
+     */
+    const answerBySql = (canSee = [TEST_USER.id]) => c2_query.mockImplementation(async (sql, params) => {
+      if (/FROM doc_images di/.test(sql)) return canSee.includes(params[1]) ? [{ hash: HASH }] : [];
+      if (/INSERT IGNORE INTO doc_images/.test(sql)) return { affectedRows: 1 };
+      if (/SELECT p\.squad_id, p\.created_by AS archive_creator/.test(sql)) return [{ squad_id: null, archive_creator: TEST_USER.id }];
+      if (/SELECT version, title, archive_id FROM logs/.test(sql)) return [{ version: 1, title: 'T', archive_id: 5 }];
+      if (/SELECT id, title, archive_id FROM logs/.test(sql)) return [{ id: 1, title: 'T', archive_id: 5 }];
+      return [];
+    });
+
+    const inserts = () => c2_query.mock.calls.filter(([sql]) => /INSERT IGNORE INTO doc_images/.test(sql));
+
+    /** Resolve on the first JSON frame of `type`. */
+    const frame = (ws, type) => new Promise((resolve) => {
+      ws.on('message', (data, isBinary) => {
+        if (isBinary) return;
+        try {
+          if (JSON.parse(data.toString()).type === type) resolve();
+        } catch { /* ignore */ }
+      });
+    });
+
+    /** A client's own Yjs edit, as the binary frame its editor would send. */
+    const edit = (change) => {
+      const doc = new Y.Doc();
+      change(doc.getXmlFragment('default'));
+      const encoder = encoding.createEncoder();
+      syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(doc));
+      return encoding.toUint8Array(encoder);
+    };
+    /** Paste the image into the shared document. */
+    const pasteImage = () => edit((fragment) => {
+      const image = new Y.XmlElement('image');
+      image.setAttribute('src', SRC);
+      fragment.insert(0, [image]);
+    });
+
+    const settle = () => new Promise((r) => setTimeout(r, 50));
+    const closeAll = async (...sockets) => {
+      for (const ws of sockets) {
+        ws.close();
+        await new Promise((r) => ws.once('close', r));
+      }
+    };
+
+    it('on save, for the writer who pasted the image', async () => {
+      const ws = await authenticatedClient(120);
+      answerBySql();
+      ws.send(pasteImage());
+      await settle();
+      const saved = frame(ws, 'saved');
+      ws.send(JSON.stringify({ type: 'save', html }));
+      await saved;
+      await settle();
+
+      const asked = c2_query.mock.calls.find(([sql]) => /FROM doc_images di/.test(sql));
+      expect(asked[1].slice(0, 2)).toEqual([HASH, TEST_USER.id]);
+      expect(inserts()).toHaveLength(1);
+      expect(inserts()[0][1]).toEqual([HASH, 120, null]);
+      await closeAll(ws);
+    });
+
+    it('on publish', async () => {
+      const ws = await authenticatedClient(121);
+      answerBySql();
+      ws.send(pasteImage());
+      await settle();
+      const published = frame(ws, 'published');
+      ws.send(JSON.stringify({ type: 'publish', title: 'v2', html }));
+      await published;
+
+      expect(inserts()).toHaveLength(1);
+      expect(inserts()[0][1]).toEqual([HASH, 121, null]);
+      await closeAll(ws);
+    });
+
+    it('whoever\'s client sends the save: the pasting writer is the one asked', async () => {
+      const paster = await authenticatedClient(123);
+      const saver = await authenticatedClient(123, MALLORY);
+      c2_query.mockReset();
+      answerBySql([TEST_USER.id]);
+      paster.send(pasteImage());
+      await settle();
+      const saved = frame(saver, 'saved');
+      saver.send(JSON.stringify({ type: 'save', html }));
+      await saved;
+      await settle();
+
+      expect(inserts()).toHaveLength(1);
+      expect(inserts()[0][1]).toEqual([HASH, 123, null]);
+      await closeAll(paster, saver);
+    });
+
+    it('not for a writer who can see it saving a reference somebody else pasted', async () => {
+      const planter = await authenticatedClient(124, MALLORY);
+      const saver = await authenticatedClient(124);
+      c2_query.mockReset();
+      answerBySql([TEST_USER.id]);
+      planter.send(pasteImage());
+      await settle();
+      // Pasting it again does not take the credit over.
+      saver.send(pasteImage());
+      await settle();
+      const saved = frame(saver, 'saved');
+      saver.send(JSON.stringify({ type: 'save', html }));
+      await saved;
+      await settle();
+
+      expect(inserts()).toHaveLength(0);
+      await closeAll(planter, saver);
+    });
+
+    it('not for a reference no participant\'s own edit put in the shared document', async () => {
+      const ws = await authenticatedClient(125);
+      answerBySql();
+      const saved = frame(ws, 'saved');
+      ws.send(JSON.stringify({ type: 'save', html }));
+      await saved;
+      await settle();
+
+      expect(inserts()).toHaveLength(0);
+      await closeAll(ws);
+    });
+
+    it('not for a reference the document already stored when the session opened', async () => {
+      // The first editor to open a document fills the shared document from its
+      // stored HTML, which re-sends every reference in it.
+      const ws = await authenticatedClient(126, TEST_USER, [], html);
+      answerBySql();
+      ws.send(pasteImage());
+      await settle();
+      const saved = frame(ws, 'saved');
+      ws.send(JSON.stringify({ type: 'save', html: `<p>typo fixed</p>${html}` }));
+      await saved;
+      await settle();
+
+      expect(inserts()).toHaveLength(0);
+      await closeAll(ws);
+    });
+
+    it('not for a reference already in the shared document that an edit re-sends', async () => {
+      const typist = await authenticatedClient(127, MALLORY);
+      const editor = await authenticatedClient(127);
+      c2_query.mockReset();
+      answerBySql([TEST_USER.id]);
+      // Typed a character at a time, so no one frame carries the whole address.
+      const typed = new Y.Doc();
+      const text = new Y.XmlText();
+      typed.getXmlFragment('default').insert(0, [text]);
+      let sent = new Uint8Array([0]);
+      for (const ch of SRC) {
+        text.insert(text.length, ch);
+        const encoder = encoding.createEncoder();
+        syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(typed, sent));
+        sent = Y.encodeStateVector(typed);
+        typist.send(encoding.toUint8Array(encoder));
+      }
+      await settle();
+      // Then the other writer's edit re-sends it whole (say, joining two paragraphs).
+      editor.send(edit((fragment) => {
+        const copy = new Y.XmlText();
+        fragment.insert(0, [copy]);
+        copy.insert(0, SRC);
+      }));
+      await settle();
+      const saved = frame(editor, 'saved');
+      editor.send(JSON.stringify({ type: 'save', html: `<p>${SRC}</p>${html}` }));
+      await saved;
+      await settle();
+
+      expect(inserts()).toHaveLength(0);
+      await closeAll(typist, editor);
+    });
+
+    it('not from a read-only participant', async () => {
+      const ws = await readOnlyClient(122);
+      answerBySql();
+      ws.send(pasteImage());
+      ws.send(JSON.stringify({ type: 'save', html }));
+      await new Promise((r) => setTimeout(r, 100));
+      expect(inserts()).toHaveLength(0);
+      await closeAll(ws);
+    });
+
+    it('a failure to record does not skip mentions and activity', async () => {
+      const ws = await authenticatedClient(128);
+      answerBySql();
+      const fallback = c2_query.getMockImplementation();
+      c2_query.mockImplementation(async (sql, params) => {
+        if (/FROM doc_images di/.test(sql)) throw new Error('lock wait timeout');
+        return fallback(sql, params);
+      });
+      ws.send(pasteImage());
+      await settle();
+      const saved = frame(ws, 'saved');
+      ws.send(JSON.stringify({ type: 'save', html }));
+      await saved;
+      await settle();
+
+      // fetchDocMeta is what mentions and activity run from.
+      expect(c2_query.mock.calls.some(([sql]) => /SELECT id, title, archive_id FROM logs/.test(sql))).toBe(true);
+      await closeAll(ws);
+    });
   });
 
   it('rejects HTML payloads larger than MAX_HTML_SIZE on save (no error)', async () => {

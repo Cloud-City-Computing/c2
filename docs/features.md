@@ -340,7 +340,8 @@ editor mode.
 ## Authentication & Two-Factor Security
 
 Authentication uses 64-character cryptographically random session tokens with
-a 7-day expiry. Password reset is handled via email-based token flow.
+a 7-day expiry, one per sign-in so each device signs in and out on its own,
+stored only as a SHA-256 digest. Password reset is handled via email-based token flow.
 Two-factor authentication supports both **email OTP codes** and **TOTP
 authenticator apps** (with QR code setup).
 

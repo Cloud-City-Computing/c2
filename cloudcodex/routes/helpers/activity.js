@@ -215,6 +215,10 @@ async function fanOutToWatchers(ctx) {
  * Resolve the (workspace_id, squad_id) for a given resource so the
  * caller doesn't have to pass them on every call. Falls back through
  * the parent chain log → archive → squad → workspace.
+ *
+ * Exported as resolveActivityScope for a caller that is about to delete the
+ * resource: after the delete nothing leads back to its workspace, so the
+ * caller resolves first and passes workspaceId and squadId in.
  */
 async function resolveScope(resourceType, resourceId) {
   if (resourceType === 'log') {
@@ -275,3 +279,5 @@ async function resolveScope(resourceType, resourceId) {
   }
   return null;
 }
+
+export { resolveScope as resolveActivityScope };

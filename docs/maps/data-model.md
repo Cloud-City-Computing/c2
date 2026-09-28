@@ -1,6 +1,6 @@
 # Data Model Map
 
-24 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
+25 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
 definition; `migrations/` is the incremental path for databases that already
 exist. Both must be kept in sync, and there is a live trap in how `init.sql` is
 re-applied.
@@ -28,14 +28,14 @@ workspaces
 Every nullable parent key is load-bearing:
 
 - `squads.workspace_id` nullable, and `archives.squad_id` is
-  `ON DELETE SET NULL` (`init.sql:253`). Deleting a squad **orphans** its
+  `ON DELETE SET NULL` (`init.sql:264`). Deleting a squad **orphans** its
   archives rather than cascading. An orphaned archive has no squad, so clauses
   4 through 7 of the access fragments all evaluate false and only the creator,
   an explicit grant, or an admin can reach it. See
   [access-control.md](access-control.md).
 - `archives.squad_id NULL` is also how the GitHub PR-session system archive is
   built deliberately (`github.js:1648-1656`), one archive per PR.
-- `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:292`), so deleting an
+- `logs.archive_id` is `ON DELETE CASCADE` (`init.sql:303`), so deleting an
   archive destroys its documents, versions, comments and favourites.
 
 `workspaces.owner_id` is an INT referencing `users(id) ON DELETE SET NULL`.
@@ -58,7 +58,7 @@ because `workspaces` is created before `users` (the same reason
 ## 2. The ACL columns
 
 Only `archives` carries a working ACL. Six columns, in read/write pairs
-(`init.sql:246-251`):
+(`init.sql:257-262`):
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -66,9 +66,9 @@ Only `archives` carries a working ACL. Six columns, in read/write pairs
 | `read_access_squads` / `write_access_squads` | `JSON` array | squad ids |
 | `read_access_workspace` / `write_access_workspace` | `BOOLEAN`, default `FALSE` | workspace-wide flag |
 
-`logs.read_access` and `logs.write_access` (`init.sql:289-290`) exist with the
+`logs.read_access` and `logs.write_access` (`init.sql:300-301`) exist with the
 same shape and are **read by nothing**. `versions.read_access`
-(`init.sql:361`) is likewise never consulted. Treat all three as dead columns;
+(`init.sql:372`) is likewise never consulted. Treat all three as dead columns;
 see [open-questions.md](open-questions.md).
 
 ## 3. `logs`: the document row
@@ -83,7 +83,7 @@ FULLTEXT INDEX ft_logs_search (title, plain_content)
 ```
 
 `plain_content` is computed by MySQL on every `html_content` write and is the
-only body text the FULLTEXT index sees (`init.sql:282`, `init.sql:291`).
+only body text the FULLTEXT index sees (`init.sql:293`, `init.sql:302`).
 Consequences:
 
 - **Never write `plain_content`.** It is generated; an INSERT naming it errors.
@@ -93,7 +93,7 @@ Consequences:
 - The tag-strip is a regex, not a parser, so entities such as `&amp;` survive
   into the index verbatim.
 - **All three content columns are `MEDIUMTEXT` (16 MiB)** since 2026-08-09, so
-  the app's own 2 MiB ceiling (`documents.js:22`, `collab.js:49`) is now the
+  the app's own 2 MiB ceiling (`documents.js:29`, `collab.js:56`) is now the
   real limit. Until then `html_content` and `plain_content` were `TEXT`
   (64 KiB) and the column was the true ceiling: measured, a 40 KiB save
   returned 200 and a 70 KiB save returned an opaque 500 with the edit lost,
@@ -102,20 +102,73 @@ Consequences:
   `versions.html_content`, which publish copies the document into. See B2 in
   [open-questions.md](open-questions.md) and
   `migrations/widen_log_content.sql`.
-- `logs.parent_id` self-references with `ON DELETE SET NULL` (`init.sql:293`),
-  giving documents a tree shape rendered by `PageTree.jsx`.
+- `logs.parent_id` self-references with `ON DELETE SET NULL` (`init.sql:304`),
+  giving documents a tree shape rendered by `PageTree.jsx`. Nothing in the
+  schema holds a parent to the child's archive or forbids a cycle; the routes
+  do (see [notifications-and-activity.md](notifications-and-activity.md) on
+  the tree route and `isLogInArchive`).
 - `logs.version` is an integer counter bumped on publish and restore; the
   `versions` table holds the snapshots.
 
+### `doc_images`: which documents hold which image (W6-CDX-34)
+
+```sql
+hash        CHAR(16) NOT NULL      -- the file name without .webp
+log_id      INT NOT NULL           -- FK logs ON DELETE CASCADE
+uploaded_by INT NULL               -- FK users ON DELETE SET NULL
+PRIMARY KEY (hash, log_id), INDEX idx_doc_images_log (log_id)
+```
+
+`init.sql:380`, `migrations/2026-09-27-who-may-see-doc-images.sql`. Image files stay on
+disk (`public/doc-images/`, content-addressed by the first 16 hex digits of
+the upload's SHA-256), and a document's HTML names them by URL; this table is
+the only thing that says which documents hold an image, and the
+`/doc-images` handler serves an image only through it (who counts is
+[access-control.md](access-control.md) section 3f). Rows are written three
+ways: the upload route, with `uploaded_by` set; `recordDocImages` for an
+`html_content` write, `uploaded_by` set only for images whose bytes that write
+supplied, and a reference recorded only by the write that adds it; and the
+one-time `npm run backfill:doc-images`, with `uploaded_by`
+NULL, from `logs.html_content` and `versions.html_content`. Everything uses
+`INSERT IGNORE`, so a repeat is free. Nothing deletes a row except the
+cascade: an image a document stops showing stays readable to that document's
+readers, and a file no document holds is never removed (both deferred by the
+spec).
+
+**The upgrade gap.** The migration creates the table empty, so on an existing
+install every image is hidden from its readers until the backfill runs. The
+backfill trusts every reference already stored, so it belongs right after the
+migration and before the app starts, and it refuses to run over a table that
+already has rows unless `--again` or `DOC_IMAGES_PUBLIC=1`;
+`DOC_IMAGES_PUBLIC=1` bridges the gap when that order is not possible.
+
 ## 4. Sessions and auth tables
 
-`sessions.id CHAR(64)` is the primary key and *is* the token
-(`init.sql:91`), generated by `createNewSessionToken` (`mysql_connect.js:121`).
-There is a `UNIQUE`-by-construction guarantee via the PK and an `expires_at`
-index, but **no unique constraint on `user_id`**, even though
-`generateSessionToken` treats it as one-per-user by doing
-`WHERE user_id = ? LIMIT 1` (`mysql_connect.js:137`). Two rows for one user would
-be tolerated by the schema and half-ignored by the code.
+`sessions.id CHAR(64)` is the primary key and holds the **SHA-256 digest of
+the token**, lowercase hex, never the token itself (`init.sql`, `CREATE TABLE
+sessions`). The token is minted by `createNewSessionToken`
+(`mysql_connect.js:122-126`) and handed to the browser; `hashSessionToken`
+(`services/session-token.js`) is the one definition of what is stored, and
+every lookup and delete by token binds its output. A hex digest is also 64
+characters, so the column did not change. There are **many rows per user by
+design**, one per sign-in: `generateSessionToken` (`mysql_connect.js:148-156`)
+only ever inserts, and the `user_id` index serves the deletes that sign every
+device out (password reset, update-account).
+
+`sessions.auth_provider VARCHAR(16) NOT NULL` records which flow minted the row,
+with `chk_sessions_auth_provider` restricting it to `local` and `google`
+(W6-CDX-5 widens it to `oidc`). No default, for `purpose`'s reason below: a flow
+that forgets to name itself fails at insert with error 1364, which
+`tests/integration/sessions.test.js` pins on a live server along with the
+CHECK. Both arrived in `migrations/2026-09-27-session-per-sign-in.sql`, which
+backfilled existing rows to `local` (nothing recorded which flow made them),
+dropped the default, and hashed every stored id in place with `SHA2(id, 256)`
+where the id held a character outside `[0-9a-f]` (case-sensitively, the
+`'c'` flag, because the column's collation ignores case). That condition makes
+the hash idempotent: a digest is never hashed again. The hash rides in a file
+that adds a column because `--adopt-fresh-install` refuses any post-baseline
+file it cannot check against the schema. Expired rows are deleted daily by
+`pruneExpiredSessions` in `server.js`; nothing else removes them.
 
 `password_reset_tokens` is a **five-flow pool**, not a reset table. It also
 stores the short-lived 2FA handoff token issued during login, the TOTP
@@ -249,7 +302,7 @@ saw an onboarding flow at all. `routes/first-run.js` is the only writer.
 
 ## 5. Squads and membership
 
-`squad_members` (`init.sql:200-216`) is unique on `(squad_id, user_id)` and
+`squad_members` (`init.sql:211-227`) is unique on `(squad_id, user_id)` and
 carries `role ENUM('member','admin','owner')` plus seven permission booleans.
 Which of those are actually enforced, and where, is tabulated in
 [access-control.md](access-control.md). Short version: `admin` as a role is
@@ -257,7 +310,7 @@ inert. (A `squad_permissions` table also existed and was enforced by nothing;
 it was removed on 2026-08-09.)
 
 `squad_invitations` is unique on `(squad_id, invited_user_id, status)`
-(`init.sql:237`). Because `status` is part of the key, a user can hold one
+(`init.sql:248`). Because `status` is part of the key, a user can hold one
 pending, one accepted, and one declined invitation to the same squad
 simultaneously; re-inviting after a decline works without cleanup.
 
@@ -272,7 +325,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 | Table | Key | Written by | Read by |
 |---|---|---|---|
 | `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google; never links a user with two-factor on by email), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
-| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:589` | bulk import |
+| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:760` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
 | `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |
 | `github_embed_refs` | index on `(repo_owner, repo_name, embed_type)` | **nothing** | `/api/logs/by-github-ref` |
@@ -306,7 +359,7 @@ is flipped to `revoked` when GitHub rejects the token.
   offsets into the document.
 - External: `external_kind ENUM('pr_file_line','pr_general','issue_thread')`,
   `external_ref`, `external_id`, for comments attached to a GitHub PR or issue
-  through the PR-session mechanism (`init.sql:376-378`).
+  through the PR-session mechanism (`init.sql:401-403`).
 
 `tag` includes `pr_review` alongside the five user-facing tags. `status` is
 `open`/`resolved`/`dismissed`, with `resolved_by` FK `SET NULL`.
@@ -314,8 +367,8 @@ is flipped to `revoked` when GitHub rejects the token.
 
 ## 8. Activity, watches, notifications
 
-`activity_log.id` is `BIGINT` (`init.sql:415`), the only table that expects
-that volume, and it is pruned at 365 days by `server.js:223-241`. It has four
+`activity_log.id` is `BIGINT` (`init.sql:440`), the only table that expects
+that volume, and it is pruned at 365 days by `pruneOldActivity` in `server.js`. It has four
 composite indexes covering the workspace, squad, resource, and user read paths.
 
 **It has a foreign key on `user_id` only.** `workspace_id`, `squad_id`,
@@ -338,9 +391,9 @@ they accumulate and nothing prunes them.
 **The rule:** every schema change lands in *both*. A new column needs a file in
 `migrations/` for existing databases and an edit to `init.sql` for fresh ones.
 As of this writing the two are in sync; the p0 and p3 migration columns are all
-present in `init.sql` (p0: `oauth_accounts` at `init.sql:77-80` and
-`github_links` at `init.sql:336-339`; p3: `squads` at `init.sql:177-182` and
-`versions` at `init.sql:356-358`).
+present in `init.sql` (p0: `oauth_accounts` at `init.sql:78-81` and
+`github_links` at `init.sql:347-350`; p3: `squads` at `init.sql:188-193` and
+`versions` at `init.sql:367-369`).
 
 ### The runner and `schema_migrations`
 
@@ -486,8 +539,8 @@ fails if any host bind mount in the prod or release file loses its label.
 ### Trap 2 (fixed): `make reset-db` used to be an incomplete reset
 
 `make reset-db` (`Makefile:21-24`) pipes `init.sql` then `seed.sql` into the
-running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-36`)
-now covers all 24 tables. It used to omit `github_links`, `activity_log`,
+running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-37`)
+now covers all 25 tables (`doc_images` joined it with its table). It used to omit `github_links`, `activity_log`,
 `watches` and `notifications`, whose `CREATE TABLE` statements don't use
 `IF NOT EXISTS`, so `reset-db` failed partway through with a duplicate-table
 error on a database that already had those four. Fixed by adding them to the

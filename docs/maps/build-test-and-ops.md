@@ -19,12 +19,12 @@ c2/                          <- git root; docker, docs, SQL, Makefile, start.sh
 `docker compose` command runs from the root. This catches out both humans and
 agents; a `npm test` at the root fails with a missing package.json.
 
-The `.env` file lives at the **root**, and `mysql_connect.js:16` reaches up for
+The `.env` file lives at the **root**, and `mysql_connect.js:17` reaches up for
 it with `path.resolve(dirname, '..', '.env')`. Importing `mysql_connect.js` is
 what loads env for the whole process, so any module that needs env must import
 it (directly or transitively) before reading `process.env`.
 
-## 2. npm scripts (`package.json:6-19`)
+## 2. npm scripts (`package.json:6-20`)
 
 | Script | Command | Notes |
 |---|---|---|
@@ -39,10 +39,11 @@ it (directly or transitively) before reading `process.env`.
 | `test:integration` | `vitest run --project integration` | opt-in, needs a live MySQL; see section 5 |
 | `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
+| `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
 `NODE_ENV` matters in three places: CORS localhost allowance
-(`app.js:106`), rate-limiter `skip` when `'test'` (`app.js:138`,
-`app.js:176`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+(`app.js:107`), rate-limiter `skip` when `'test'` (`app.js:139`,
+`app.js:177`, `app.js:191`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
 
 ## 3. Local development
 
@@ -154,9 +155,11 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **84 files, 1754 tests, all passing**; the
-integration project is **8 files, 49 tests** (measured 2026-09-27 on the
-W6-CDX-31 branch).
+Current state: the default run is **88 files, 1913 tests, all passing**; the
+integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
+tree, against MySQL 8.4 at the server's default isolation and at
+`READ-COMMITTED`).
+
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
 real processes rather than a real server alone: it forks
 `tests/integration/lock-holder.js` against the file's schema to prove the
@@ -330,10 +333,10 @@ them pass with the server at `READ-COMMITTED` as well.
 
 `tests/integration/update-account-sessions.test.js` proves the update-account
 session rotation on a real server, where the route tests can only prove the SQL
-text. Each test seeds a user with one session minted by `generateSessionToken`
-and one inserted directly (a second holder), drives `POST /api/update-account`
-over supertest, and reads `sessions` back: a password change and a
-current-password email change each leave exactly one row, the token the caller
+text. Each test seeds a user with two sessions minted by `generateSessionToken`
+(two sign-ins, so two devices), drives `POST /api/update-account` over
+supertest, and reads `sessions` back: a password change and a current-password
+email change each leave exactly one row, the digest of the token the caller
 was handed, with both old tokens answering 401 on a `requireAuth` route; a wrong
 current password leaves the hash and both sessions untouched; the password-less
 code flow writes an `email_change` row carrying `new_email`, sends the code to
@@ -344,6 +347,40 @@ is read back off the call. A last test inserts rows that break
 Mutation-checked on 2026-09-25: accepting a wrong current password, keeping the
 caller's session (`AND id != ?`), handing back the old token, and keeping the
 caller's session in the confirm step each turn a live test red.
+
+`tests/integration/sessions.test.js` proves one hashed session per sign-in
+(W6-CDX-2) on a real server: two sign-ins make two rows and deleting one by its
+digest leaves the other valid, no stored id equals a raw token, JavaScript's
+`hashSessionToken` equals MySQL's `SHA2(?, 256)`, an insert that omits
+`auth_provider` fails with `ER_NO_DEFAULT_FOR_FIELD` and one naming `oidc` fails
+the CHECK. Its last test runs `migrations/2026-09-27-session-per-sign-in.sql`
+for real in the file's own schema: it takes the column and CHECK off and
+un-records the file, inserts a raw-token row, an upper-case-hex raw token (only
+case separates it from a digest) and an existing digest, runs `runMigrations`,
+and requires both raw tokens to sign in through the real
+`validateAndAutoLogin`, the digest to be untouched, and the file's `UPDATE`
+run again to change zero rows. Mutation-checked on 2026-09-27: dropping the
+`UPDATE`, the `'c'` flag or the `DROP DEFAULT`, or the CHECK from `init.sql`,
+each turns a live test red.
+
+`tests/integration/documents-state.test.js` proves the reconciliation read,
+`GET /api/documents/state` (W6-CDX-16), on a real server: two workspaces, a
+machine principal (`SERVICE_TOKEN`, a non-admin `SERVICE_TOKEN_USER`) in a squad
+of the first only, and archives it can and cannot read. It asserts the answer
+for each workspace, that a document readable through a per-user grant appears
+only under its own workspace, that the admin-only and system-archive documents
+are absent (with an admin session seeing the admin-only one, so the absence is
+not vacuous), that a deleted id and an unreadable id answer byte-identically
+(body, length and ETag), that a title is bounded to 255 code points with a
+trailing astral character kept whole, and that an id past the `INT` range is a
+200 with no row, and that the answer is in ascending id order read unsorted.
+Mutation-checked on 2026-09-27: making the workspace join a no-op
+(`_fs.workspace_id = ? OR TRUE`, which keeps the bound param), dropping the
+system-archive predicate or the title bound, binding `is_admin` true, mounting
+`requireAuth` instead of `machineOrAuth`, or ordering `DESC` each turn a live
+test red. Dropping `ORDER BY l.id` does not: MySQL returns id order on this
+data anyway, so that mutation is caught only by the SQL-shape pin in
+`tests/routes/documents.test.js`.
 
 `tests/integration/admin-sync.test.js` proves the boot admin sync never
 promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
@@ -408,17 +445,19 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:104-177`. The global floor is deliberately low because
+`vitest.config.js:104-185`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **33 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **35 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
-arrived with the identity seam; `routes/health.js`, `services/shutdown.js` and
-`services/instance-lock.js` arrived with W6-CDX-31. The security-critical and
+arrived with the identity seam; the 31st, `services/session-token.js` (95 on
+all four), with hashed sessions; the 32nd, `routes/doc-images-serve.js` (95
+lines, 92 branches), with the authorized image handler; `routes/health.js`,
+`services/shutdown.js` and `services/instance-lock.js` with W6-CDX-31. The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -429,6 +468,7 @@ well-covered modules are ratcheted high:
 | `routes/admin.js`, `routes/archives.js` | 90 |
 | `services/notifications.js` | 90 |
 | `services/identity.js` | 95 |
+| `routes/doc-images-serve.js` | 95 |
 | `routes/helpers/**` | 88 |
 | `routes/auth.js`, `routes/squads.js`, `routes/watches.js`, `mysql_connect.js` | 85 |
 | `middleware/**` | 80 |
@@ -513,7 +553,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 33 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 35 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and

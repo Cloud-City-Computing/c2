@@ -44,14 +44,15 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 33 per-glob coverage thresholds
+    ├── vitest.config.js         ← three projects + 35 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
     │   │                          activity.js, mentions.js, REUSE THESE
     │   ├── auth.js, documents.js, archives.js, workspaces.js, squads.js,
     │   ├── comments.js, search.js, favorites.js, admin.js,
-    │   ├── oauth.js, github.js, avatars.js, doc-images.js, upload.js,
+    │   ├── oauth.js, github.js, avatars.js, doc-images.js,
+    │   ├── doc-images-serve.js (the /doc-images mount), upload.js,
     │   ├── notifications.js, activity.js, watches.js
     ├── middleware/              ← auth.js (requireAuth, requireAdmin), permissions.js
     ├── services/                ← collab.js (Yjs WS), user-channel.js (inbox WS),
@@ -100,10 +101,13 @@ Most "new feature" work is extension, not greenfield.
 
 ### Auth & accounts: `routes/auth.js`, `routes/oauth.js`, `middleware/auth.js`
 Email+password login, signup via invite token, password reset, two-factor (email
-OTP and TOTP with QR), session tokens (DB-backed, auto-refreshing), Google
-Workspace SSO, GitHub OAuth (token AES-256-GCM encrypted at rest). Use
-`requireAuth` and `requireAdmin` from `middleware/auth.js` on any new protected
-route.
+OTP and TOTP with QR), session tokens (DB-backed, one row per sign-in, stored
+only as a SHA-256 digest), Google Workspace SSO, GitHub OAuth (token
+AES-256-GCM encrypted at rest). Use `requireAuth` and `requireAdmin` from
+`middleware/auth.js` on any new protected route. **Never bind a raw session
+token into a `sessions` query**: hash it with `hashSessionToken` in
+`services/session-token.js` (`validateAndAutoLogin` and `touchSession` already
+do).
 
 **External sign-in** decides its local user in one seam, `resolveIdentity(claims,
 policy)` in `services/identity.js`: a provider route verifies the protocol and
@@ -115,7 +119,11 @@ boot (unset means today's set).
 **Machine callers**: `services/machine-auth.js` exports the one seam,
 `verifyMachineCredential`, gated on `SERVICE_TOKEN` + `SERVICE_TOKEN_USER`
 (both required, off by default). `machineOrAuth` in `middleware/auth.js` is
-mounted on `GET /api/search` and `GET /api/browse` and **nothing else**. The
+mounted on `GET /api/search`, `GET /api/browse` and `GET /api/documents/state`
+(the reconciliation read, W6-CDX-16) and **nothing else**. The third is safe
+for the same reason as the first two: the same `readAccessWhere` fragment with
+the principal's own params, narrowed by workspace, and an unreadable id is
+absent exactly as a deleted one is, so it is never an oracle. The
 principal is always a real non-admin user with `is_admin` forced false, because
 `is_admin` is the first bound parameter of every `ownership.js` fragment. Do
 not widen the scope or copy `is_admin` from the row.
@@ -363,6 +371,8 @@ existing one.**
 | Send an email                              | `sendEmail` in `services/email.js`                        |
 | Build a notification email body            | `buildNotificationEmail` in `services/email-templates.js` |
 | Extract / inline images for export         | `routes/helpers/images.js`                                |
+| Record the images a write adds to a document | `recordDocImages` (with `introducedDocImages`) in `routes/helpers/images.js` |
+| Check who may see a document image         | `readableDocImageHashes` in `routes/helpers/images.js`    |
 | Three-way merge two markdown revisions     | `diff3Merge` in `src/lib/githubDiff.js`                   |
 
 If you genuinely need a new helper: place it next to its peers (route helpers
