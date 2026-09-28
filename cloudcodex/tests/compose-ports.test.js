@@ -1,5 +1,5 @@
 /**
- * Pins every published port in the production compose files to 127.0.0.1 unless a bind variable says otherwise
+ * Pins every published port in the compose files to 127.0.0.1 unless a bind variable says otherwise
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -21,15 +21,22 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 // every interface.
 const APP_PORT = '${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}';
 
-// The same, for MySQL in the file that publishes it at all: the host-side
+// The same, for MySQL in the files that publish it at all: the host-side
 // `npm run migrate` and a mysql client on the host (docs/deployment.md) reach
-// it on 127.0.0.1. The release file publishes nothing for the database; the
-// app reaches it over the compose network.
+// it on 127.0.0.1, and in development so does the app, run on the host. The
+// release file publishes nothing for the database; its app reaches MySQL over
+// the compose network.
 const DB_PORT = '${DB_BIND:-127.0.0.1}:3306:3306';
 
 const EXPECTED = {
   'docker-compose-release.yml': { database: [], app: [APP_PORT] },
   'docker-compose-prod.yml': { database: [DB_PORT], app: [APP_PORT] },
+  // Development: MySQL only, with a dev password, often on a laptop on a
+  // shared network.
+  'docker-compose.yaml': { database: [DB_PORT] },
+  // start.sh merges this over the dev file on native Linux. Compose appends an
+  // override's ports to the base file's, so it must publish nothing itself.
+  'docker-compose.linux.yml': { database: [] },
 };
 
 /**
@@ -129,7 +136,7 @@ describe('the ports reader (non-vacuity)', () => {
   });
 });
 
-describe('production compose published ports', () => {
+describe('compose published ports', () => {
   for (const [file, expected] of Object.entries(EXPECTED)) {
     const ports = publishedPorts(readFileSync(path.join(REPO, file), 'utf8'));
 
@@ -137,13 +144,11 @@ describe('production compose published ports', () => {
       expect(Object.keys(ports).sort()).toEqual(Object.keys(expected).sort());
     });
 
-    it(`${file} publishes the app port on \${APP_BIND:-127.0.0.1} only`, () => {
-      expect(ports.app).toEqual(expected.app);
-    });
-
-    it(`${file} publishes the database ${expected.database.length ? 'on ${DB_BIND:-127.0.0.1} only' : 'nowhere'}`, () => {
-      expect(ports.database).toEqual(expected.database);
-    });
+    for (const [service, mappings] of Object.entries(expected)) {
+      it(`${file} publishes ${service} ${mappings.length ? `as ${mappings.join(', ')} only` : 'nowhere'}`, () => {
+        expect(ports[service]).toEqual(mappings);
+      });
+    }
 
     // Not the pins restated: this reads what every mapping does, so editing a
     // pin and its file together to an all-interfaces default still fails, and
