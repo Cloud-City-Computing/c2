@@ -465,7 +465,9 @@ affect the response).
 ### `requireAuth`
 
 Reads the session token from the `Authorization: Bearer <token>` header, or
-falls back to the `sessionToken` cookie (for OAuth browser redirects). Calls
+falls back to the session cookie (for OAuth browser redirects):
+`__Host-sessionToken`, or a lone legacy `sessionToken` while
+`LEGACY_SESSION_COOKIE` allows it. Calls
 `validateAndAutoLogin` and attaches the user object to `req.user`. Returns
 `401` if the token is missing or invalid.
 

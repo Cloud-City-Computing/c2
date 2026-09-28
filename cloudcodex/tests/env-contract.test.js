@@ -323,6 +323,7 @@ describe('env-contract.js', () => {
     PORT: 'tests/server.test.js',
     TRUST_PROXY: 'tests/app.test.js',
     C2_INSTANCE_LOCK: 'tests/services/instance-lock.test.js',
+    LEGACY_SESSION_COOKIE: 'tests/services/session-cookie.test.js',
     SMTP_PORT: 'tests/services/email.test.js',
     SMTP_FROM: 'tests/services/email.test.js',
   };

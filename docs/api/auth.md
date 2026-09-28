@@ -8,7 +8,9 @@
 
 All auth endpoints are mounted under `/api`. Rate limiting applies on sensitive routes (20 requests per 15-minute window per IP).
 
-Authentication is carried as a **Bearer token** in the `Authorization` header for API calls, or a `sessionToken` cookie for browser redirects (e.g. OAuth callbacks). The token is a 64-character random string returned on login.
+Authentication is carried as a **Bearer token** in the `Authorization` header for API calls, or the session cookie for browser redirects (e.g. OAuth callbacks): `__Host-sessionToken` on https, `sessionToken` over plain http. A lone `sessionToken` on an https instance counts only while `LEGACY_SESSION_COOKIE` is not `0`. The token is a 64-character random string returned on login.
+
+**A write authenticated by the cookie alone needs an `Origin`.** A `POST`, `PUT`, `PATCH` or `DELETE` under `/api` that carries a session cookie and no bearer token is refused with `403` `{ success: false, message: "Cross-origin request refused" }` unless its `Origin` header is the app's own origin, `APP_URL`'s, or `CORS_ORIGIN`. Browsers send `Origin` on every same-origin write; a script should use the bearer header.
 
 ---
 
@@ -98,6 +100,18 @@ Consume a reset token and set a new password.
 **Body:** `{ token, password }`
 
 **Responses:** `200` on success, `400` for invalid/used/expired token or bad password.
+
+---
+
+### `POST /api/validate-session`
+
+Check a session token and return its user. The web client calls it at startup.
+
+**Body:** `{ token, legacyCookie? }`
+
+**Response:** `{ valid: true, user }` or `{ valid: false }`; `400` without a token.
+
+`legacyCookie: true` says the token came from a lone legacy `sessionToken` cookie that the client wants to move to `__Host-sessionToken`. With `LEGACY_SESSION_COOKIE=0` the answer is then `{ valid: false }` without a lookup, because such a cookie authenticates nobody on that instance.
 
 ---
 
@@ -245,7 +259,7 @@ check passes.
 After an email or password change **every session of the user is deleted,
 including the caller's**, and the response carries a freshly generated session
 token. Store it the way a sign-in token is stored (the web client writes the
-`sessionToken` cookie); the old token is dead. An email change also sends a
+session cookie); the old token is dead. An email change also sends a
 notice to the old address when mail is enabled.
 
 An account with **no password** (created by an external sign-in) cannot supply
@@ -300,7 +314,8 @@ earlier unused code and email-change token for the account.
 Invalidate the current session, deleting its `sessions` row.
 
 The token is read from the `Authorization: Bearer` header, then the
-`sessionToken` cookie, then `req.body.token`. A request carrying none of those
+session cookie, then `req.body.token`. A cookie-only logout needs an accepted
+`Origin` (see the top of this page). A request carrying none of those
 gets a 400, and so does a `req.body.token` that is not a string; an unknown
 token succeeds and deletes nothing.
 

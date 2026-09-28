@@ -42,9 +42,9 @@ it (directly or transitively) before reading `process.env`.
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
 `NODE_ENV` matters in five places: CORS localhost allowance
-(`app.js:265`), where Helmet is mounted (`app.js:311`: the whole app in
-production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:319`,
-`app.js:357`, `app.js:371`), the `APP_URL` boot gate (`server.js:63`), and
+(`app.js:272`), where Helmet is mounted (`app.js:330`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:360`,
+`app.js:398`, `app.js:412`), the `APP_URL` boot gate (`server.js:63`), and
 Vite's dev-vs-prod mode. `.env.example` ships it commented out; `npm run start`
 and the Docker image set it, and both production compose files pin it (section 4).
 
@@ -245,8 +245,8 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **92 files, 2176 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-28 on the 0.12.0
+Current state: the default run is **99 files, 2287 tests, all passing**; the
+integration project is **12 files, 92 tests** (measured 2026-09-28 on the 0.13.0
 release tree, against MySQL 8.4.11 at the server's default isolation and at
 `READ-COMMITTED`).
 
@@ -548,21 +548,22 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:105-188`. The global floor is deliberately low because
+`vitest.config.js:105-190`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **36 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **37 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
 arrived with the identity seam; the 31st, `services/session-token.js` (95 on
 all four), with hashed sessions; the 32nd, `routes/doc-images-serve.js` (95
 lines, 92 branches), with the authorized image handler; the 33rd to 35th,
 `routes/health.js`, `services/shutdown.js` and `services/instance-lock.js`,
-with W6-CDX-31; and the 36th, `env-contract.js`, with the configuration
-contract. The security-critical and
+with W6-CDX-31; the 36th, `env-contract.js`, with the configuration
+contract; and the 37th, `services/session-cookie.js` (95 on all four), with the
+`__Host-` session cookie (W6-CDX-3). The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -659,7 +660,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 36 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 37 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
@@ -719,11 +720,11 @@ Verify from a logged-out client rather than trusting the workflow:
 
 ```
 docker logout ghcr.io
-docker pull ghcr.io/cloud-city-computing/cloud-codex:0.12.0
+docker pull ghcr.io/cloud-city-computing/cloud-codex:0.13.0
 ```
 
 `docker-compose-release.yml` consumes the published image instead of building,
-pinned to `${CLOUDCODEX_VERSION:-0.12.0}` so an evaluator's install does not
+pinned to `${CLOUDCODEX_VERSION:-0.13.0}` so an evaluator's install does not
 move under them on the next publish. It also differs from
 `docker-compose-prod.yml` in not publishing 3306 at all: the app reaches MySQL
 over the compose network, and Docker's published ports are a DNAT rule that sits
