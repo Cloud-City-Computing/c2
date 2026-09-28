@@ -20,7 +20,14 @@ import * as decoding from 'lib0/decoding';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
 import { sanitizeHtml, canPublish, checkLogReadAccess, checkLogWriteAccess } from '../routes/helpers/shared.js';
-import { extractImagesFromHtml } from '../routes/helpers/images.js';
+import {
+  extractImagesFromHtml,
+  recordDocImages,
+  recordCreditedDocImages,
+  docImageHashes,
+  openDocImageCredits,
+  closeDocImageCredits,
+} from '../routes/helpers/images.js';
 import { processMentionsOnSave } from '../routes/helpers/mentions.js';
 import { logActivity } from '../routes/helpers/activity.js';
 
@@ -32,7 +39,7 @@ async function fetchDocMeta(logId) {
   return row || null;
 }
 
-// In-memory store: logId → { doc, conns, saveTimer, lastSavedHtml }
+// In-memory store: logId → { doc, conns, saveTimer, lastSavedHtml, credits }
 const docs = new Map();
 
 // Track per-user connection count across all documents
@@ -62,6 +69,8 @@ async function getOrCreateDoc(logId) {
     saveTimer: null,
     cleanupTimer: null,
     lastSavedHtml: null,
+    // Which writer's own edit put each image reference in (images.js).
+    credits: openDocImageCredits(logId),
     logId,
   };
 
@@ -81,6 +90,9 @@ async function getOrCreateDoc(logId) {
   if (log?.html_content) {
     entry.lastSavedHtml = log.html_content;
   }
+  // What the document already holds is nobody's to claim, including a shared
+  // document that has drifted from the stored HTML.
+  entry.credits.setStored(log?.html_content, log?.ydoc_state ? sharedDocText(ydoc) : '');
 
   // Broadcast every Y.Doc mutation to connected peers (except the origin).
   // The origin is set to the sender's WebSocket in readSyncMessage, so we
@@ -123,6 +135,51 @@ function scheduleSave(entry) {
 }
 
 /**
+ * The shared document as markup (Tiptap's fragment), for finding the image
+ * references it shows.
+ */
+function sharedDocText(ydoc) {
+  return ydoc.getXmlFragment('default').toString();
+}
+
+/**
+ * Apply one binary sync frame from `user`, crediting them with any image
+ * reference their own frame put into the shared document (images.js,
+ * DocImageCredits). Only a frame whose bytes name a reference pays for
+ * rendering the document, before and after.
+ */
+function applySyncFrame(entry, ws, user, bytes) {
+  const named = docImageHashes(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1'));
+  const before = named.length > 0 ? docImageHashes(sharedDocText(entry.doc)) : null;
+
+  const decoder = decoding.createDecoder(bytes);
+  const encoder = encoding.createEncoder();
+  // Pass `ws` as transactionOrigin so the doc 'update' handler
+  // knows which client sent it and won't echo it back.
+  syncProtocol.readSyncMessage(decoder, encoder, entry.doc, ws);
+  if (encoding.length(encoder) > 1) {
+    ws.send(encoding.toUint8Array(encoder));
+  }
+
+  if (before) entry.credits.noteMessage(user, named, before, docImageHashes(sharedDocText(entry.doc)));
+}
+
+/**
+ * Record the images a live save or publish stored: the bytes this client
+ * supplied as theirs, and each reference for the writer whose edit added it.
+ * After the save is acknowledged, so a failure is logged and never hides a
+ * save that worked or skips what follows it.
+ */
+async function recordLiveDocImages(entry, html, user, saved) {
+  try {
+    await recordDocImages(entry.logId, html, user, { saved });
+    await recordCreditedDocImages(entry.logId, html, entry.credits);
+  } catch (err) {
+    console.error(`[collab] Recording images failed for log ${entry.logId}:`, err);
+  }
+}
+
+/**
  * Remove a document from memory after all connections close (with delay).
  */
 function scheduleCleanup(entry) {
@@ -132,6 +189,7 @@ function scheduleCleanup(entry) {
       if (entry.saveTimer) clearTimeout(entry.saveTimer);
       entry.doc.destroy();
       docs.delete(entry.logId);
+      closeDocImageCredits(entry.logId, entry.credits);
     }
   }, CLEANUP_DELAY_MS);
 }
@@ -382,14 +440,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
       if (isBinary) {
         if (!canWrite) return; // read-only clients cannot mutate the doc
         try {
-          const decoder = decoding.createDecoder(new Uint8Array(data));
-          const encoder = encoding.createEncoder();
-          // Pass `ws` as transactionOrigin so the doc 'update' handler
-          // knows which client sent it and won't echo it back.
-          syncProtocol.readSyncMessage(decoder, encoder, entry.doc, ws);
-          if (encoding.length(encoder) > 1) {
-            ws.send(encoding.toUint8Array(encoder));
-          }
+          applySyncFrame(entry, ws, user, new Uint8Array(data));
         } catch (err) {
           console.error(`[collab] Binary sync error for log ${entry.logId}:`, err);
         }
@@ -443,10 +494,11 @@ async function setupDocSession(ws, user, logId, canWrite) {
             const state = Y.encodeStateAsUpdate(entry.doc);
             const prevHtml = entry.lastSavedHtml;
             let storedHtml = entry.lastSavedHtml;
+            const savedImages = new Set();
 
             if (typeof msg.html === 'string' && msg.html.length <= MAX_HTML_SIZE) {
               const safeHtml = sanitizeHtml(msg.html);
-              storedHtml = await extractImagesFromHtml(safeHtml);
+              storedHtml = await extractImagesFromHtml(safeHtml, savedImages);
             }
 
             // Determine markdown_content: explicit string keeps it, explicit null clears it, undefined leaves it unchanged
@@ -467,6 +519,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
                 );
               }
               entry.lastSavedHtml = storedHtml;
+              entry.credits.setStored(storedHtml);
             } else {
               await c2_query(
                 `UPDATE logs SET ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
@@ -476,6 +529,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
             ws.send(JSON.stringify({ type: 'saved' }));
 
             if (htmlChanged) {
+              await recordLiveDocImages(entry, storedHtml, user, savedImages);
               const meta = await fetchDocMeta(entry.logId);
               if (meta) {
                 await processMentionsOnSave({
@@ -558,8 +612,9 @@ async function setupDocSession(ws, user, logId, canWrite) {
 
             // Use client-provided HTML (preferred) or fall back to last saved HTML
             let currentHtml = entry.lastSavedHtml || '';
+            const savedImages = new Set();
             if (pubHtml && pubHtml.length <= MAX_HTML_SIZE) {
-              currentHtml = await extractImagesFromHtml(sanitizeHtml(pubHtml));
+              currentHtml = await extractImagesFromHtml(sanitizeHtml(pubHtml), savedImages);
             }
 
             const [log] = await c2_query(
@@ -577,6 +632,8 @@ async function setupDocSession(ws, user, logId, canWrite) {
               [entry.logId, newVersion, pubTitle || null, pubNotes || null, currentHtml, user.id]
             );
             entry.lastSavedHtml = currentHtml;
+            entry.credits.setStored(currentHtml);
+            await recordLiveDocImages(entry, currentHtml, user, savedImages);
 
             await processMentionsOnSave({
               logId: entry.logId,

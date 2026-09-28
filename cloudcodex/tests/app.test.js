@@ -261,9 +261,11 @@ describe('app.js — Express configuration', () => {
     expect(res.status).toBe(404);
   });
 
-  it('exposes /doc-images static directory mount', async () => {
+  it('mounts the authorized /doc-images handler: an anonymous request gets an empty 404', async () => {
     const res = await request(app).get('/doc-images/does-not-exist.webp');
     expect(res.status).toBe(404);
+    expect(res.text).toBe('');
+    expect(res.headers['cache-control']).toBe('no-store');
   });
 
   it('returns 404 for unknown API paths (no fallthrough to other routers)', async () => {

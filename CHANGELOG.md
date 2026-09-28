@@ -24,6 +24,13 @@ initialises an empty data directory.
   ordinary, never-admin access. Rate-limited to 120 requests per 15 minutes. No
   migration and no new setting.
 
+### Changed
+
+- `POST /api/doc-images/upload` needs a `logId` form field naming the document
+  the images go into, and write access to it: without one it answers `400`,
+  without access `403`, and nothing is processed either way. The editor sends
+  it. `DOC_IMAGES_PUBLIC` is new in `.env.example` (see Security).
+
 ### Fixed
 
 - **Deleting an archive is recorded in the activity log.** The route looked
@@ -76,6 +83,18 @@ initialises an empty data directory.
   caller keeps the tag of the session it replaces. Expired sessions are
   deleted daily.
 
+- **Document images are served only to people who can read the document.**
+  `/doc-images/<hash>.webp` was a public static mount, cached `public` for 30
+  days, so anyone with an image's address could fetch it. It now serves an
+  image to its uploader and to users who can read a document that holds it,
+  cached `private` for a day; everyone else, signed in or not, gets the same
+  empty `404`. A reference is recorded for a document only by the write that
+  adds it, from a writer who can see the image, so pasting another document's
+  image URL into a document you can write grants nothing, and neither does a
+  later save, publish or restore of that document by someone who can see it.
+  Export inlines only the images the exporting user can see. `DOC_IMAGES_PUBLIC=1` restores the old public mount. Avatars stay
+  public.
+
 ### Migration
 
 **The session migration,**
@@ -101,6 +120,28 @@ no rollback of the hash: going back to an older image means dropping the column
 and every user signing in again. On an install that `init.sql` builds fresh,
 `--adopt-fresh-install` checks that `auth_provider` is already there before it
 records the file.
+
+**The document-images migration,**
+[`migrations/2026-09-27-who-may-see-doc-images.sql`](migrations/2026-09-27-who-may-see-doc-images.sql),
+adds the `doc_images` table: which documents hold which image. Apply it with
+`npm run migrate` as usual. **Then run the backfill once, before starting the
+new image,** or every image in an existing document is hidden from its readers:
+
+```bash
+docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images
+# built from source: docker compose -f docker-compose-prod.yml run --rm app npm run backfill:doc-images
+# dev: cd cloudcodex && npm run backfill:doc-images
+```
+
+It records every image that a document's current HTML or any of its versions
+shows, and prints how many. It trusts every reference already stored, so run it
+once, before the new image serves anyone, and not again after go-live: it
+refuses to run over a table that already has rows, and
+`npm run backfill:doc-images -- --again` is only for rerunning an interrupted
+first run. If the app has to start before it runs, set `DOC_IMAGES_PUBLIC=1`
+for that window (the backfill then runs without `--again`) and unset it after.
+A fresh install needs neither. See `docs/deployment.md`, "The document-images
+backfill, once".
 
 ## [0.11.0] - 2026-09-27
 

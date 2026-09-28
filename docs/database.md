@@ -38,6 +38,7 @@ The database models a **workspace → squad → archive → log** hierarchy with
                  ├── archive_repos          (GitHub bulk-import link)
                  └── logs
                        ├── versions
+                       ├── doc_images       (which images it holds)
                        ├── comments
                        │     └── comment_replies
                        ├── github_links     (per-doc file sync)
@@ -387,6 +388,26 @@ Published version snapshots of a document's HTML content.
 | `created_at`   | TIMESTAMP          |                                                 |
 | `created_by`   | INT FK → users     | ON DELETE SET NULL                              |
 | `read_access`  | JSON ARRAY         | Future use; currently mirrors the parent log    |
+
+---
+
+### `doc_images`
+
+Which documents hold which stored image. The `/doc-images` handler serves an
+image only to its uploader and to users who can read a document named here
+(see `docs/security.md`, Document Images).
+
+| Column        | Type             | Notes                                                        |
+|---------------|------------------|--------------------------------------------------------------|
+| `hash`        | CHAR(16) NOT NULL | The image file's name without `.webp`                       |
+| `log_id`      | INT FK → logs    | ON DELETE CASCADE                                            |
+| `uploaded_by` | INT FK → users   | ON DELETE SET NULL; set only when this row's writer supplied the image's bytes |
+| `created_at`  | TIMESTAMP        |                                                              |
+
+**Primary key:** `(hash, log_id)`. **Index:** `idx_doc_images_log (log_id)`.
+Written by the upload route, by a document write that adds a reference (only
+from a writer who can see the image), and once by `npm run backfill:doc-images`
+on an install upgraded to it.
 
 ---
 

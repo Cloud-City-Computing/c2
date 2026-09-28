@@ -29,4 +29,5 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
     "CHECK (purpose IN ('password_reset','two_factor_login','totp_setup','two_factor_disable'))",
   '2026-09-27-session-per-sign-in.sql':
     'ALTER TABLE sessions DROP CHECK chk_sessions_auth_provider, DROP COLUMN auth_provider',
+  '2026-09-27-who-may-see-doc-images.sql': 'DROP TABLE doc_images',
 });

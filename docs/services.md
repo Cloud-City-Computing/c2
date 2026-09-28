@@ -559,10 +559,23 @@ Shared utilities used across all route files:
 
 **File:** `cloudcodex/routes/helpers/images.js`
 
-- **`extractImagesFromHtml(html)`** — Scans HTML for base64-encoded `<img>`
+- **`extractImagesFromHtml(html, saved?)`**: Scans HTML for base64-encoded `<img>`
   tags, writes them to disk under `public/doc-images/`, and replaces the
   `src` with a served URL. This prevents large binary blobs from being
-  stored in MySQL and speeds up document loads.
-- **`inlineImagesForExport(html)`** /
-  **`inlineImagesForMarkdownExport(html)`** — Re-embeds served images back
-  as base64 for self-contained DOCX/Markdown exports.
+  stored in MySQL and speeds up document loads. The optional `saved` set
+  receives the hash of each image it decoded.
+- **`recordDocImages(logId, html, writer, { saved, introduced })`**: Records in
+  `doc_images` the images a write stores, so the document's readers can see
+  them: as the writer's own when `saved` holds the hash, a reference only when
+  `introduced` holds it (this write added it) and the writer can already see
+  the image, and nothing else. `introducedDocImages(logId, html, previousHtml,
+  writer)` computes `introduced` for a save (limited, while a live session is
+  open, to what that session credits to the writer), and
+  `recordCreditedDocImages(logId, html, credits)` records the live editor's
+  saves per credited writer (`DocImageCredits`).
+- **`readableDocImageHashes(hashes, user)`**: The one answer to "may this user
+  see these images": uploader, or reader of a document holding them. The
+  `/doc-images` handler (`routes/doc-images-serve.js`) and export ask it.
+- **`inlineImagesForExport(html, user)`** /
+  **`inlineImagesForMarkdownExport(markdown, user)`**: Re-embeds served images back
+  as base64 for self-contained DOCX/Markdown exports, only the ones `user` may see.

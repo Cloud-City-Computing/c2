@@ -12,7 +12,14 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth, machineOrAuth } from '../middleware/auth.js';
 import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
-import { extractImagesFromHtml, inlineImagesForExport, inlineImagesForMarkdownExport } from './helpers/images.js';
+import {
+  extractImagesFromHtml,
+  recordDocImages,
+  introducedDocImages,
+  noteStoredDocImages,
+  inlineImagesForExport,
+  inlineImagesForMarkdownExport,
+} from './helpers/images.js';
 import { processMentionsOnSave } from './helpers/mentions.js';
 import { logActivity } from './helpers/activity.js';
 import { decryptToken } from './oauth.js';
@@ -92,10 +99,8 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   // Sanitize HTML to prevent stored XSS
   const cleanHtml = sanitizeHtml(html_content);
 
-  // Extract embedded base64 images to disk, replace with served URLs
-  const storedHtml = await extractImagesFromHtml(cleanHtml);
-
-  // Fetch existing log and verify write access
+  // Fetch existing log and verify write access, before any image is decoded
+  // or written to disk
   const [log] = await c2_query(
     `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.archive_id, pg.title
        FROM logs pg
@@ -109,6 +114,17 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   if (!log) {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
+
+  // Extract embedded base64 images to disk, replace with served URLs
+  const savedImages = new Set();
+  const storedHtml = await extractImagesFromHtml(cleanHtml, savedImages);
+
+  // Record before the write: a failure then fails the save, and a retry,
+  // whose previous HTML is unchanged, still sees what it adds.
+  await recordDocImages(log.id, storedHtml, req.user, {
+    saved: savedImages,
+    introduced: introducedDocImages(log.id, storedHtml, log.old_content, req.user),
+  });
 
   // Save content without creating a version snapshot
   // If markdown_content is provided (string or null), update it alongside HTML.
@@ -126,6 +142,8 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
       [storedHtml, req.user.id, Number(doc_id)]
     );
   }
+
+  noteStoredDocImages(log.id, storedHtml);
 
   await processMentionsOnSave({
     logId: log.id,
@@ -194,7 +212,11 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
   // Bump version and create snapshot
   const newVersion = log.version + 1;
   // Extract embedded base64 images before persisting
-  const publishHtml = await extractImagesFromHtml(sanitizeHtml(log.html_content));
+  const savedImages = new Set();
+  const publishHtml = await extractImagesFromHtml(sanitizeHtml(log.html_content), savedImages);
+  // Publishing snapshots what is already stored, so it adds no reference to
+  // vouch for; only bytes decoded here are recorded, before the writes.
+  await recordDocImages(log.id, publishHtml, req.user, { saved: savedImages });
   await c2_query(
     `UPDATE logs SET version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [newVersion, req.user.id, Number(logId)]
@@ -433,11 +455,17 @@ router.post('/document/:logId/versions/:versionId/restore', requireAuth, asyncHa
   // Bump version and restore content; clear ydoc_state so the CRDT doc
   // re-initialises from the restored HTML on next load.
   const newVersion = currentLog.version + 1;
-  const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content));
+  const savedImages = new Set();
+  const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content), savedImages);
+  // A version's references were recorded when they entered the document, so
+  // restoring adds none to vouch for; only bytes decoded here are recorded,
+  // before the writes, so a failure cannot leave a version without its snapshot.
+  await recordDocImages(currentLog.id, restoredHtml, req.user, { saved: savedImages });
   await c2_query(
     `UPDATE logs SET html_content = ?, ydoc_state = NULL, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [restoredHtml, newVersion, req.user.id, Number(logId)]
   );
+  noteStoredDocImages(currentLog.id, restoredHtml);
 
   // Snapshot the restored content into version history
   await c2_query(
@@ -566,7 +594,7 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
   switch (format) {
     case 'html': {
       // Inline /doc-images/ URLs as base64 data URIs so the file is self-contained
-      const inlinedHtml = await inlineImagesForExport(htmlContent);
+      const inlinedHtml = await inlineImagesForExport(htmlContent, req.user);
       const fullHtml = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${escapedTitle}</title></head>\n<body>\n${inlinedHtml}\n</body>\n</html>`;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.html"`);
@@ -575,7 +603,7 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
     case 'md': {
       const markdown = turndown.turndown(htmlContent || '<p></p>');
       // Inline /doc-images/ URLs in markdown image refs so the file is portable
-      const inlinedMarkdown = await inlineImagesForMarkdownExport(markdown);
+      const inlinedMarkdown = await inlineImagesForMarkdownExport(markdown, req.user);
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.md"`);
       return res.send(inlinedMarkdown);
@@ -596,7 +624,7 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
     }
     case 'docx': {
       // Inline images as base64 so html-to-docx can embed them in the Word file
-      const inlinedHtml = await inlineImagesForExport(htmlContent);
+      const inlinedHtml = await inlineImagesForExport(htmlContent, req.user);
       const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${inlinedHtml}</body></html>`;
       const docxBuffer = await HTMLtoDOCX(wrappedHtml, null, {
         table: { row: { cantSplit: true } },

@@ -44,14 +44,15 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 30 per-glob coverage thresholds
+    ├── vitest.config.js         ← three projects + 32 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
     │   │                          activity.js, mentions.js, REUSE THESE
     │   ├── auth.js, documents.js, archives.js, workspaces.js, squads.js,
     │   ├── comments.js, search.js, favorites.js, admin.js,
-    │   ├── oauth.js, github.js, avatars.js, doc-images.js, upload.js,
+    │   ├── oauth.js, github.js, avatars.js, doc-images.js,
+    │   ├── doc-images-serve.js (the /doc-images mount), upload.js,
     │   ├── notifications.js, activity.js, watches.js
     ├── middleware/              ← auth.js (requireAuth, requireAdmin), permissions.js
     ├── services/                ← collab.js (Yjs WS), user-channel.js (inbox WS),
@@ -368,6 +369,8 @@ existing one.**
 | Send an email                              | `sendEmail` in `services/email.js`                        |
 | Build a notification email body            | `buildNotificationEmail` in `services/email-templates.js` |
 | Extract / inline images for export         | `routes/helpers/images.js`                                |
+| Record the images a write adds to a document | `recordDocImages` (with `introducedDocImages`) in `routes/helpers/images.js` |
+| Check who may see a document image         | `readableDocImageHashes` in `routes/helpers/images.js`    |
 | Three-way merge two markdown revisions     | `diff3Merge` in `src/lib/githubDiff.js`                   |
 
 If you genuinely need a new helper: place it next to its peers (route helpers

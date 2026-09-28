@@ -33,13 +33,13 @@ These are the highest-confidence items. Each was checked by grepping the whole
   `middleware/` returns only `archives`-scoped reads plus the github.js writes.
 - **Not verified:** runtime behaviour.
 
-Same story for `versions.read_access` (`init.sql:371`): declared, never read,
+Same story for `versions.read_access` (`init.sql:372`): declared, never read,
 never written.
 
 ### A2. `github_embed_refs` has no writer
 
 `GET /api/logs/by-github-ref` (`github.js:1956-1977`) reads the table.
-`migrations/p1_github_embeds.sql` and `init.sql:308-322` create it. There is no
+`migrations/p1_github_embeds.sql` and `init.sql:309-323` create it. There is no
 `INSERT INTO github_embed_refs` anywhere in the repo.
 
 **Consequence:** the "which documents reference this file / issue / PR"
@@ -124,7 +124,7 @@ that row for a non-admin user:
 
 So `checkLogReadAccess` should return `undefined`, and every
 `/api/logs/:logId/comments` call on a PR-session log should 403 for non-admins,
-as should the `/collab` WebSocket (`collab.js:299-303`).
+as should the `/collab` WebSocket (`collab.js:357-361`).
 
 **Verified:** the clause-by-clause reading above, and that the comment routes
 gate on `checkLogReadAccess` (`comments.js:33`, `:98`, `:122`, `:329`, `:374`,
@@ -139,7 +139,7 @@ than the log, or (b) teach the log-level checks to also honour
 ### B2. `html_content TEXT` capped documents at 64 KiB (FIXED)
 
 `logs.html_content` was `TEXT`, i.e. 65,535 bytes, against an application
-ceiling of 2 MiB (`documents.js:22`, `collab.js:44`).
+ceiling of 2 MiB (`documents.js:29`, `collab.js:51`).
 
 **Confirmed at runtime**, 2026-08-09. `sql_mode` on the shipped image (MySQL
 8.4.8) does include `STRICT_TRANS_TABLES`, so this is an error, not truncation.
@@ -774,7 +774,7 @@ read as proof of none.
 
 ### C1. `canWrite` is evaluated once per collab connection
 
-`collab.js:305`, at session setup. Revoking write access does not take effect
+`collab.js:363`, at session setup. Revoking write access does not take effect
 until the user reconnects. Deliberate (re-checking per message would be a query
 per keystroke), but worth stating.
 
@@ -817,7 +817,7 @@ make it slow.
 ### C6. The `conflict` sync status is unreachable
 
 `github_links.sync_status` is `ENUM('clean','remote_ahead','local_ahead',
-'diverged','conflict')` (`init.sql:349`) but `classifySync`
+'diverged','conflict')` (`init.sql:350`) but `classifySync`
 (`github.js:1085-1091`) returns only the first four. Conflicts are expressed as
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.

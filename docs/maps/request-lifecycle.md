@@ -20,7 +20,7 @@ config gates run **before** anything listens.
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`; disabled logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr, and `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
 | Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` from `routes/admin.js` creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`; it **never promotes**: when an account matching by name or email is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
-| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:263`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
+| Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:264`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
 | Collab WS | `server.js`, `setupCollabServer(server)` | `setupCollabServer(server)`, path `/collab`. |
 | Notification WS | `server.js`, `setupUserChannelServer(server)` | `setupUserChannelServer(server)`, path `/notifications-ws`. |
@@ -42,18 +42,50 @@ Two consequences worth knowing:
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', 1)                    app.js:42
+app.set('trust proxy', 1)                    app.js:43
   │
-  ├─ CORS, scoped to /api                    app.js:53-109
-  ├─ helmet + CSP, scoped to /api            app.js:112-125
-  ├─ express.json({ limit: '2mb' })          app.js:137
-  ├─ authLimiter on 9 paths + reader-check   app.js:140-163
-  ├─ searchLimiter on /api/users/search      app.js:174
-  ├─ stateLimiter on /api/documents/state    app.js:188
-  ├─ static /avatars      (7d immutable)     app.js:191-194
-  ├─ static /doc-images   (30d immutable)    app.js:197-200
+  ├─ CORS, scoped to /api                    app.js:54-110
+  ├─ helmet + CSP, scoped to /api            app.js:113-126
+  ├─ express.json({ limit: '2mb' })          app.js:138
+  ├─ authLimiter on 9 paths + reader-check   app.js:141-164
+  ├─ searchLimiter on /api/users/search      app.js:175
+  ├─ stateLimiter on /api/documents/state    app.js:189
+  ├─ static /avatars      (7d immutable)     app.js:192-195
+  ├─ /doc-images, authorized (private, 1d)   app.js:199
   └─ 18 routers, all mounted at /api
 ```
+
+**`/doc-images` is an authorized handler, not a static mount** (W6-CDX-34).
+`docImagesHandler()` in `routes/doc-images-serve.js` is built once when
+`app.js` loads. With `DOC_IMAGES_PUBLIC=1` it returns the old
+`express.static` mount (30 days, `public, immutable`) and logs one line saying
+so; otherwise it returns a router with one route, `GET /:file`:
+
+```
+/^[0-9a-f]{16}\.webp$/ ?  ── no ──────────────────────────────┐
+  │ yes                                                        │
+extractSessionToken(req) → validateAndAutoLogin(token)         │
+  │ (no touchSession: an image load is not activity)           │
+  │ no user ───────────────────────────────────────────────────┤
+readableDocImageHashes([hash], user)   (routes/helpers/images.js)
+  │ uploader, or a reader of a document holding it?            │
+  │ no ────────────────────────────────────────────────────────┤
+res.sendFile(<hash>.webp, root = DOC_IMAGES_DIR)               │
+  │ 200 image/webp, Cache-Control: private, max-age=86400,     │
+  │     X-Content-Type-Options: nosniff                        │
+  │ missing file (send's 404) ─────────────────────────────────┤
+  │ any other read error → errorHandler (JSON 500)             │
+                                                               ▼
+              404, empty body, Cache-Control: no-store (one response for every reason)
+```
+
+A catch-all after the route sends the same 404 for anything else under
+`/doc-images` (a nested path, another method), so nothing falls through to the
+SPA. The session comes from the same `extractSessionToken` as `requireAuth`,
+so an `<img>` request is authorized by its cookie, which `SameSite=Strict`
+still sends for a same-origin subresource. Who counts as a reader is
+[access-control.md](access-control.md) section 3f; the table is
+[data-model.md](data-model.md) section 3.
 
 **CORS** (`app.js`, the `cors((req, cb) => ...)` block) allows, in order: a
 request with no `Origin` header at all; a **same-origin** request, decided by
@@ -94,22 +126,22 @@ honours a client-supplied `X-Forwarded-Host`, and both compose files publish the
 app's port directly, so an attacker could set that header themselves and turn
 the same-origin clause into "allow any origin".
 
-**CSP** (`app.js:113-124`) is scoped to `/api` on purpose so the Vite dev server's
+**CSP** (`app.js:114-125`) is scoped to `/api` on purpose so the Vite dev server's
 inline module scripts are not blocked. `frameAncestors: 'none'`,
 `objectSrc: 'none'`, `connectSrc` allows `ws:`/`wss:` for the two WebSockets,
 `imgSrc` allows `data:` and `blob:` for pasted images.
 
-**Body limit is 2 MB** (`app.js:137`). The collab WebSocket has its own, larger
-limits (5 MB frame, 2 MB HTML) in `services/collab.js:43-44`, so a document that
+**Body limit is 2 MB** (`app.js:138`). The collab WebSocket has its own, larger
+limits (5 MB frame, 2 MB HTML) in `services/collab.js:50-51`, so a document that
 saves fine over WS can 413 over REST.
 
 ### Rate limiters
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:128-135`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:140-147`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:153`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:163`) |
-| `searchLimiter` (`app.js:166-173`) | 15 min / 60 | `/api/users/search` only (`app.js:174`), to blunt user enumeration |
-| `stateLimiter` (`app.js:180-187`) | 15 min / 120 | `/api/documents/state` only (`app.js:188`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
+| `authLimiter` (`app.js:129-136`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:141-148`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:154`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:164`) |
+| `searchLimiter` (`app.js:167-174`) | 15 min / 60 | `/api/users/search` only (`app.js:175`), to blunt user enumeration |
+| `stateLimiter` (`app.js:181-188`) | 15 min / 120 | `/api/documents/state` only (`app.js:189`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
 All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. One test exercises the
@@ -403,7 +435,7 @@ handler.
 
 Both WS servers attach to the same `http.Server` returned by
 `ViteExpress.listen`, and both use `noServer: true` plus
-`server.prependListener('upgrade', ...)` (`services/collab.js:211`,
+`server.prependListener('upgrade', ...)` (`services/collab.js:269`,
 `services/user-channel.js:86`). `prependListener` is used so these handlers run
 before Vite's own HMR upgrade handler, and each returns early when the path is
 not its own, letting the next listener try.
@@ -411,20 +443,20 @@ not its own, letting the next listener try.
 | | `/collab` | `/notifications-ws` |
 |---|---|---|
 | File | `services/collab.js` | `services/user-channel.js` |
-| Path guard | `collab.js:215` | `user-channel.js:88` |
-| Origin check | `collab.js:218-238` | `user-channel.js:91-109` |
-| Query params | `?logId=<int>` (`collab.js:240-246`) | none |
-| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:257-276`) | same, 5s (`user-channel.js:117-135`) |
-| Max payload | 5 MB (`collab.js:208`) | default |
-| Per-user cap | 10 across all docs (`collab.js:45,292-296`) | 10 (`user-channel.js:23,150-153`) |
+| Path guard | `collab.js:273` | `user-channel.js:88` |
+| Origin check | `collab.js:276-296` | `user-channel.js:91-109` |
+| Query params | `?logId=<int>` (`collab.js:298-304`) | none |
+| Auth | first message must be `{type:'auth', token}` within 5s (`collab.js:315-334`) | same, 5s (`user-channel.js:117-135`) |
+| Max payload | 5 MB (`collab.js:266`) | default |
+| Per-user cap | 10 across all docs (`collab.js:52,350-354`) | 10 (`user-channel.js:23,150-153`) |
 
 **Origin handling is strict in both:** a *missing* `Origin` header is rejected
-with a raw `403` on the socket (`collab.js:220-224`), as is any origin whose
+with a raw `403` on the socket (`collab.js:278-282`), as is any origin whose
 host differs from the request `Host`. This is CSWSH protection, and it means a
 non-browser client must send an `Origin` matching the host.
 
 **Auth is post-upgrade, not pre-upgrade.** The handshake completes first
-(`collab.js:249-251`), then the first frame must be the auth message. An
+(`collab.js:307-309`), then the first frame must be the auth message. An
 unauthenticated client can therefore hold an open socket for up to 5 seconds.
 Close codes are meaningful: 4001 auth timeout, 4002 malformed auth, 4003
 unauthorized or access denied, 4004 too many connections.
