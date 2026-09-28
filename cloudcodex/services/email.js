@@ -65,17 +65,19 @@ export function isMailEnabled() {
 }
 
 /**
- * Determine mail availability once, at boot.
- * @returns {Promise<{enabled: boolean, reason: string|null}>}
+ * Determine mail availability once, at boot. `configured` is false only when
+ * SMTP was left unset, a supported way to run; true with `enabled` false means
+ * SMTP was set and did not verify, which is a fault.
+ * @returns {Promise<{enabled: boolean, configured: boolean, reason: string|null}>}
  */
 export async function initMail() {
   if (!isMailConfigured()) {
     mailReady = false;
-    return { enabled: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' };
+    return { enabled: false, configured: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' };
   }
   const ok = await verifyEmailConnection();
   mailReady = ok;
-  return { enabled: ok, reason: ok ? null : 'SMTP connection failed' };
+  return { enabled: ok, configured: true, reason: ok ? null : 'SMTP connection failed' };
 }
 
 /**

@@ -62,6 +62,14 @@ initialises an empty data directory.
   `SERVICE_TOKEN_USER`), marks `ADMIN_USERNAME` required, and describes
   `NODE_ENV`'s effect on CORS as `app.js` implements it, and a test now fails
   when the table misses an entry or contradicts its kind.
+- **Running without SMTP no longer reads as an error in the boot log.** The
+  documented mail-off mode printed `✖ Email disabled: SMTP_HOST, SMTP_USER or
+  SMTP_PASS not set`, the same glyph as a boot that cannot start. It now
+  prints a report line styled like the trusted-proxy one, `✔ Email off (...)`,
+  naming what is unavailable. A configured SMTP server that fails verification
+  still prints `✖ Email disabled: SMTP connection failed`, since that is a
+  fault. `initMail()` now also returns `configured`, which is how the two are
+  told apart.
 - **The rate-limit tables list every limiter.** `docs/deployment.md` and
   `docs/security.md` left out the one on `GET /api/documents/state`, 120
   requests per 15 minutes counted before authentication, and `security.md`'s

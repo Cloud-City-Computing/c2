@@ -144,6 +144,13 @@ try {
 }
 if (mail.enabled) {
   console.log('✔ SMTP connection verified');
+} else if (mail.configured === false) {
+  // Running without mail is documented and supported, so this is a report of
+  // the setting, styled like the trusted-proxy line, not an error.
+  console.error(
+    `✔ Email off (${mail.reason}): invitations show a copyable link; ` +
+    'password reset, email two-factor codes and notification emails are unavailable.'
+  );
 } else {
   console.error(
     `✖ Email disabled: ${mail.reason}. ` +
