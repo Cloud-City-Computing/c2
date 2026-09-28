@@ -12,6 +12,24 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-28
+
+The hosting-readiness release. One security fix: anyone who could reach the
+app's port directly could choose their own address in `X-Forwarded-For` and
+step around every rate limiter, including the sign-in and two-factor limit
+([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+`TRUST_PROXY` now names the proxies it believes by address, the app port is
+published on `127.0.0.1`, and the production compose files pin their network.
+Alongside it: session tokens stored only as a digest, with one session per
+sign-in; document images served only to people who can read the document;
+`/healthz` and `/readyz`; a container that stops cleanly; one process per
+database; a reconciliation read for Cloud Command; and the configuration
+contract, with `APP_URL` required in production. **Upgrading from 0.11.0 is a
+breaking change for an install reached directly from another machine, or
+behind a proxy that does not connect from `127.0.0.1`, `::1` or `172.29.0.1`;
+it takes the project `down` before migrating, applies two migrations and runs
+one backfill. See below and Migration.**
+
 **Upgrading: a production instance now refuses to start without `APP_URL`.**
 Check that `.env` sets it to the address people use before pulling.
 `.env.example` ships `http://localhost:3000`, which boots but now prints a
@@ -217,7 +235,9 @@ documents, between the migrations and the start (see Migration below).
 ### Security
 
 - **The rate limiters can no longer be walked around by choosing your own
-  address (GHSA-9fmx-frrf-xxmq).** Express's `trust proxy` was `1`, so every
+  address**
+  ([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+  Express's `trust proxy` was `1`, so every
   limiter keyed on the rightmost `X-Forwarded-For` entry of any request that
   carried one, and both production compose files published the app port on
   every interface, where Docker's DNAT rule sits in front of the host
@@ -848,7 +868,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Cloud-City-Computing/c2/compare/alpharelease...v0.9.0
