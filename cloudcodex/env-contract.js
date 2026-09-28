@@ -37,8 +37,9 @@ export const ENV_CONTRACT = [
   { name: 'PORT', kind: 'default', default: '3000', perInstance: false,
     why: 'the port the app listens on; an invalid value exits at boot' },
   { name: 'NODE_ENV', kind: 'optional', perInstance: false,
-    why: 'production serves the built app, arms the rate limiters and puts the security headers '
-      + 'on every response; the Docker image and npm run start set it' },
+    why: 'production serves the built app, puts the security headers on every response, requires '
+      + 'APP_URL and stops allowing localhost origins; the rate limiters are on in every mode but '
+      + 'test; the Docker image and npm run start set it' },
   { name: 'TRUST_PROXY', kind: 'default', default: '127.0.0.1/32, ::1/128, 172.29.0.1/32',
     perInstance: false,
     why: 'Express trust proxy, which decides req.ip for the rate limiters: a list of addresses, CIDRs '

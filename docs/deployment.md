@@ -72,8 +72,10 @@ Running a published release, which is the recommended path unless you are
 deploying modified source:
 
 ```bash
-cp .env.example .env       # fill every required variable (see below)
-docker compose -f docker-compose-release.yml up -d
+cp .env.example .env       # fill every required variable, APP_URL included (see below)
+docker compose -f docker-compose-release.yml up -d        # init.sql builds the schema
+docker compose -f docker-compose-release.yml run --rm app \
+   npm run migrate -- --adopt-fresh-install
 ```
 
 This pulls `ghcr.io/cloud-city-computing/cloud-codex`, pinned by
@@ -90,13 +92,27 @@ version does not move under you on the next publish. The published image is
 Building from your own source instead:
 
 ```bash
-cp .env.example .env
-docker compose -f docker-compose-prod.yml up -d --build
+cp .env.example .env       # fill every required variable, APP_URL included (see below)
+docker compose -f docker-compose-prod.yml up -d --build   # init.sql builds the schema
+docker compose -f docker-compose-prod.yml run --rm app \
+   npm run migrate -- --adopt-fresh-install
 ```
+
+The second command, in either snippet, runs once, on a brand-new install only:
+it records that the schema `init.sql` just built already has every migration,
+and applies nothing, so the app can stay up for it. Until it runs, `/readyz`
+answers `503 {"ready":false,"reason":"migrations"}`. An install you are
+upgrading follows [Upgrades](#upgrades) instead, and
+[First run: record a starting point, once](#first-run-record-a-starting-point-once)
+says which command an older database needs.
 
 The app container builds the Vite frontend during `docker build`. It
 exits at startup, with a sentence naming the variable, if the admin
-credentials are missing or `APP_URL` is unset; mail is optional.
+credentials are missing or `APP_URL` is unset. **Mail is optional**: with no
+SMTP the server starts anyway, invitations show a link to copy instead of
+being emailed, and password reset, email two-factor codes (so turning
+two-factor off too) and notification emails are unavailable until it is
+configured.
 
 ---
 
@@ -119,7 +135,7 @@ Production-specific notes:
 | `APP_BIND`                 | Compose only, not read by the server: the host address the app port is published on. Unset or blank is `127.0.0.1`. **An IPv4 address only**: `::` or an IPv6 address publishes to IPv6 clients, who arrive as the network's gateway and are trusted. See [TLS and reverse proxy](#tls-and-reverse-proxy) |
 | `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
-| `SMTP_*`                   | Optional. Without them invitations show a copyable link and password reset is unavailable |
+| `SMTP_*`                   | Optional; the server starts without them. Without them invitations show a copyable link, and password reset, email two-factor codes and notification emails are unavailable |
 | `ADMIN_*`                  | Hard requirement. **They reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
 | `GITHUB_CLIENT_SECRET`     | Doubles as the AES-256-GCM seed for stored OAuth tokens. **Never rotate without re-encrypting** existing rows or all linked GitHub accounts go invalid |
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
@@ -391,50 +407,6 @@ run again if one of them has changed since.
 
 ### Stop every writer first
 
-**Order: stop every writer, apply the migration, start the new image.** Not the
-other way round.
-
-A migration that adds a `NOT NULL` column with no `DEFAULT` makes the schema
-incompatible with the application in *both* directions, and no compose file
-overrides `sql_mode`, so MySQL 8's default `STRICT_TRANS_TABLES` applies:
-
-- **Old code against the new schema** fails every insert that omits the column
-  (error 1364).
-- **New code against the old schema** fails every insert that names it
-  (error 1054).
-
-Either way the affected endpoints 500 for real users for as long as the window
-is open, and 500s are not always harmless: `2026-09-08-token-purpose.sql` would,
-mid-window, make `POST /api/forgot-password` fail for an address that exists
-while still answering 200 for one that does not, which is an account enumeration
-oracle the code goes out of its way to close.
-
-"Every writer", not "the app container": `docker-compose.yaml` (dev) defines a
-single service, `database`. There is **no app container in dev**: the app runs
-on the host under `npm run dev`, and that is the writer to stop. The
-single-process architecture already makes a restart a brief total outage, so a
-planned one costs nothing extra.
-
-Stopping the writers also closes a partial-failure race for any migration that
-deletes rows and then tightens the column: a row inserted in between makes the
-tightening `ALTER` fail, and MySQL implicitly commits DDL, so the table is left
-half-migrated with nothing recording it. For
-`2026-09-08-token-purpose.sql` that error is 1265, `Data truncated for column
-'purpose'`, because the `CHECK` in the same `ALTER` forces the table-copy path;
-a bare `MODIFY` would report 1138 instead. Recovery is the same either way:
-drop the column and re-apply with the writers down.
-
-**Assume no rollback.** Reverting the application after applying a migration
-lands you in old-code-against-new-schema. Getting back means undoing the DDL by
-hand; each migration header says what that is.
-
-`schema_migrations` is runner-owned bookkeeping and is deliberately **not** in
-`init.sql`. If a fresh install arrived with the table already present and empty,
-the runner would read "nothing applied" and try to replay every shipped delta
-against the schema those deltas are already folded into.
-
-### Stop every writer first
-
 **Order: pull, stop every writer, apply the migrations, start the new image.**
 Not the other way round. The runner does not stop anything for you.
 
@@ -464,11 +436,20 @@ deletes rows and then tightens the column: a row inserted in between makes the
 tightening `ALTER` fail (each migration header names the exact error it would
 raise), and MySQL implicitly commits DDL, so the table is left half-migrated.
 The runner records nothing for a file that failed, so `schema_migrations` will
-not paper over it, but nothing undoes the DDL either.
+not paper over it, but nothing undoes the DDL either. For
+`2026-09-08-token-purpose.sql` the error is 1265, `Data truncated for column
+'purpose'`, because the `CHECK` in the same `ALTER` forces the table-copy path;
+a bare `MODIFY` would report 1138 instead. Recovery is the same either way:
+drop the column and re-apply with the writers down.
 
 **Assume no rollback.** Reverting the application after applying a migration
 lands you in old-code-against-new-schema. Getting back means undoing the DDL by
 hand; each migration header says what that is.
+
+`schema_migrations` is runner-owned bookkeeping and is deliberately **not** in
+`init.sql`. If a fresh install arrived with the table already present and empty,
+the runner would read "nothing applied" and try to replay every shipped delta
+against the schema those deltas are already folded into.
 
 ### Running the migrations
 
@@ -735,6 +716,7 @@ this is not a typical concern.
 |----------------------|---------------------------------|
 | Auth endpoints       | 20 / 15 minutes per IP          |
 | User search          | 60 / 15 minutes per IP          |
+| `GET /api/documents/state` | 120 / 15 minutes per IP, counted before authentication |
 | WebSocket messages   | 60 / second per connection      |
 
 The limiters count per client address. Express takes it from the connection,
