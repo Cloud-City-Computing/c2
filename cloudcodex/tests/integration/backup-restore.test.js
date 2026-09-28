@@ -34,6 +34,7 @@ import sharp from 'sharp';
 import * as Y from 'yjs';
 import { c2_query } from '../../mysql_connect.js';
 import { DOC_IMAGES_DIR } from '../../routes/helpers/images.js';
+import { INSTANCE_LOCK_NAME_SQL } from '../../services/instance-lock.js';
 import {
   adminConfig, buildSchemaFromInitSql, dropSchema, openAdminConnection, throwawaySchemaName,
 } from './mysql-admin.js';
@@ -44,6 +45,7 @@ import {
 const REPO_ROOT = path.resolve(APP, '..');
 const BACKUP = path.join(REPO_ROOT, 'scripts', 'backup.sh');
 const RESTORE = path.join(REPO_ROOT, 'scripts', 'restore.sh');
+const COMMON = path.join(REPO_ROOT, 'scripts', 'backup-common.sh');
 const UPLOADS = path.resolve(DOC_IMAGES_DIR, '..');
 
 const admin = adminConfig();
@@ -376,6 +378,25 @@ describe('scripts/restore.sh refuses before it writes anything', () => {
     expect(await tableCount(scratch)).toBe(0);
   });
 
+  it('when the dump hides a client command after a statement on the same line', async () => {
+    // The line-start scan cannot see these; the client itself must refuse
+    // them, and stop before the load writes anything.
+    const teed = path.join(tmp, 'teed');
+    for (const line of [`SELECT 1; \\T ${teed}`, `SELECT 1; \\! touch ${teed}`]) {
+      const hidden = await craft('midline', (dir) => {
+        const file = path.join(dir, 'database.sql');
+        writeFileSync(file, `${line}\n${readFileSync(file, 'utf8')}`);
+      });
+
+      const result = await restoreAs(['--into', scratch, '--uploads', UPLOADS, hidden]);
+
+      expect(result.code, line).not.toBe(0);
+      expect(result.stderr, line).toMatch(/Unknown command|disabled/i);
+      expect(existsSync(teed), line).toBe(false);
+      expect(await tableCount(scratch), line).toBe(0);
+    }
+  });
+
   it('when the uploads hold a link or a path that climbs out', async () => {
     const linked = await craft('linked', async (dir) => {
       const up = path.join(dir, 'up');
@@ -393,6 +414,37 @@ describe('scripts/restore.sh refuses before it writes anything', () => {
     expect(result.code).not.toBe(0);
     expect(result.stderr).toMatch(/regular files and directories/);
     expect(await tableCount(scratch)).toBe(0);
+  });
+});
+
+describe('the restore\'s load session', () => {
+  /** TAKE_LOCK_SQL as scripts/backup-common.sh defines it, expanded by Bash. */
+  function takeLockSql() {
+    return new Promise((resolve, reject) => {
+      execFile('bash', ['-c', '. "$1"; printf %s "$TAKE_LOCK_SQL"', 'bash', COMMON], (err, stdout, stderr) => {
+        if (err || !stdout) reject(new Error(`TAKE_LOCK_SQL: ${stderr || 'empty'}`));
+        else resolve(stdout);
+      });
+    });
+  }
+
+  it('fails at its first statement while another process holds the instance lock, and holds the lock otherwise', async () => {
+    // restore.sh checks IS_FREE_LOCK, then starts the load; a server that
+    // takes the lock between the two must stop the load before the drops.
+    const sql = await takeLockSql();
+    const holder = holdLock(scratch);
+    expect((await holder.outcome).held).toBe(true);
+    const conn = await mysql.createConnection({ ...admin, database: scratch });
+    try {
+      await expect(conn.query(sql)).rejects.toThrow(/instance lock/);
+
+      await kill(holder, 'SIGKILL');
+      await conn.query(sql);
+      const [[row]] = await conn.query(`SELECT IS_USED_LOCK(${INSTANCE_LOCK_NAME_SQL}) = CONNECTION_ID() AS mine`);
+      expect(Number(row.mine)).toBe(1);
+    } finally {
+      await conn.end();
+    }
   });
 });
 
