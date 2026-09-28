@@ -15,11 +15,18 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro,z
+    # Over TCP, not the socket. On an empty volume the image first applies
+    # init.sql on a temporary server with networking off, and a socket ping
+    # answers that server: the app then started while nothing listened on
+    # 3306 and exited on ECONNREFUSED until the restart policy recovered it.
+    # Nothing answers 127.0.0.1 until the real server is up. start_period
+    # covers the initialisation, so a slow first boot is not marked unhealthy.
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-u${DB_USER}", "-p${DB_PASS}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--protocol=tcp", "-u${DB_USER}", "-p${DB_PASS}"]
       interval: 7s
       timeout: 8s
       retries: 15
+      start_period: 120s
 
   app:
     build:

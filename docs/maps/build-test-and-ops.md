@@ -53,7 +53,9 @@ and the Docker image set it, and both production compose files pin it (section 4
 `./start.sh` from the root is the one-shot bootstrap: it checks Docker, Docker
 Compose, Node and npm, brings up MySQL, installs dependencies, and starts the
 dev server. On Linux it merges `docker-compose.linux.yml`, which re-declares the
-bind mounts with the `:Z` SELinux label (`docker-compose.linux.yml:6-8`).
+bind mounts with the `:Z` SELinux label (`docker-compose.linux.yml:6-8`). It
+waits for MySQL with a TCP `mysqladmin ping` inside the container, for up to
+180 s, for the same reason as the production healthcheck in section 4.
 
 Manual equivalent:
 
@@ -95,7 +97,18 @@ without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
 so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
-  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:22-27`).
+  `mysqladmin ping` healthcheck **over TCP to `127.0.0.1`**, with a 120 s
+  `start_period` (`docker-compose-prod.yml:18-29`, and the same block in
+  `docker-compose-release.yml`). Not the socket: on an empty volume the image
+  applies `init.sql` on a temporary server with networking off, which a socket
+  ping answers, so the database read healthy while nothing listened on 3306 and
+  the app exited on the instance lock's `ECONNREFUSED` until the restart policy
+  recovered it (4 restarts per first boot of the prod file, measured
+  2026-09-28; 0 with the TCP ping). The start period exists because the TCP
+  ping now fails through the whole initialisation, and without it a slow disk
+  would spend the retries and Compose would never start the app.
+  `tests/compose-healthcheck.test.js` pins both files and `start.sh`'s wait
+  loop, which pings the same way.
 - The app builds from `cloudcodex/Dockerfile`, waits on
   `condition: service_healthy`, publishes 3000, and takes `env_file: .env`.
 - `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build

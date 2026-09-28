@@ -152,6 +152,21 @@ backfill; see Migration below.
   behaves as unset (`Cloud Codex <noreply@cloudcitycomputing.com>`), and so do
   a blank `SMTP_PORT` (587), `DB_HOST` (`localhost`) and `DB_NAME` (`c2`), in
   the server and in `npm run migrate`.
+- **A first boot on an empty volume no longer crashes the app.** The MySQL
+  healthcheck in both production compose files pinged over the socket, which
+  the image's temporary initialisation server (networking off, while it runs
+  `init.sql`) answers, so the database reported healthy while nothing listened
+  on 3306. The app then exited with `Could not open a MySQL connection for the
+  instance lock: connect ECONNREFUSED` until `restart: unless-stopped` brought
+  it back, and the 0.11.0 image, which has no instance lock, started without
+  its admin (`admin user sync failed: ... ECONNREFUSED`) until the next
+  restart. The check now pings `127.0.0.1` over TCP, which only the real
+  server answers, with a 120-second start period so a slow initialisation is
+  not marked unhealthy, and `start.sh` waits the same way (for up to three
+  minutes instead of one). Measured on fresh volumes: `docker-compose-prod.yml`
+  restarted the app 4 times in each of two boots before and 0 after, and
+  `docker-compose-release.yml` with a local build 6 before and 0 after. A test
+  pins the check in both files and in `start.sh`.
 
 ### Security
 
