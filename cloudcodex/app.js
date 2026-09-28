@@ -13,6 +13,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import path from 'path';
+import { isIP, isIPv4 } from 'net';
 import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.js';
@@ -45,14 +46,94 @@ const app = express();
 // (GHSA-9fmx-frrf-xxmq: the old default, 1, believed that header from anyone).
 const DEFAULT_TRUST_PROXY = 'loopback, linklocal, uniquelocal';
 
+// The names proxy-addr expands (to exactly these ranges); anything else in a
+// TRUST_PROXY list is an address, with or without a prefix length or netmask.
+const TRUST_PROXY_NAMES = ['loopback', 'linklocal', 'uniquelocal'];
+
+// An IPv6 entry is read as 128 bits. The WHATWG URL parser validates and
+// normalises it (lower case, hex groups only, an embedded dotted quad folded
+// in), so only `::` is left to expand. A zone (`%eth0`) does not change which
+// addresses a range holds and the URL parser refuses one, so it is dropped.
+function ipv6Bits(address) {
+  const host = new URL(`http://[${address.replace(/%.*$/, '')}]/`).hostname.slice(1, -1);
+  const [head, tail] = host.split('::');
+  const groups = (part) => (part ? part.split(':') : []);
+  const all = tail === undefined
+    ? groups(head)
+    : [...groups(head), ...Array(8 - groups(head).length - groups(tail).length).fill('0'), ...groups(tail)];
+  return all.reduce((bits, group) => (bits << 16n) | BigInt(`0x${group}`), 0n);
+}
+
+// Whether the /prefix range around `bits` lies inside the /within range
+// around `base`. With the arguments the other way round: whether a range
+// holds a narrower one.
+const inRange = (bits, prefix, base, within) =>
+  prefix >= within && bits >> BigInt(128 - within) === base >> BigInt(128 - within);
+
+const MAPPED = 0xffffn << 32n; // ::ffff:0:0/96, where proxy-addr matches IPv4 clients against IPv6 ranges
+const NOT_PUBLIC_V6 = [[0xfc00n << 112n, 7], [0xfe80n << 112n, 10]]; // uniquelocal, linklocal
+
+/**
+ * Reads one TRUST_PROXY entry the way proxy-addr will, and says why it is
+ * refused, or null. `invalid` is an entry that is not a subnet name or an
+ * address in standard notation: proxy-addr's parser takes more than Node's
+ * (it reads `0/1` as half of IPv4 and `010.0.0.0/8` as octal, 8.0.0.0/8), so
+ * the width of such an entry cannot be judged and it is never accepted.
+ * `wide` is a range that takes in public addresses: wider than an IPv4 /8, or
+ * an IPv6 /16 outside the private and link-local ranges, or taking in the
+ * IPv4-mapped block wider than an IPv4 /8. A range proxy-addr would itself
+ * refuse (a prefix past the address's length, a non-contiguous netmask) is
+ * left for Express to refuse, except a /0, which is reported as wide.
+ * @param { String } entry
+ * @returns { { invalid: true } | { wide: String } | null }
+ */
+function trustProxyEntryRefusal(entry) {
+  if (TRUST_PROXY_NAMES.includes(entry)) return null;
+  const slash = entry.lastIndexOf('/');
+  const address = slash === -1 ? entry : entry.slice(0, slash);
+  const range = slash === -1 ? null : entry.slice(slash + 1);
+  const kind = isIP(address);
+  if (kind === 0) return { invalid: true };
+  if (range === null) return null;
+
+  let prefix;
+  if (/^\d+$/.test(range)) {
+    prefix = Number(range);
+  } else if (kind === 4 && isIPv4(range)) {
+    const mask = range.split('.').reduce((bits, octet) => bits * 256 + Number(octet), 0);
+    const ones = mask.toString(2).padStart(32, '0').match(/^1*/)[0].length;
+    if (mask !== (2 ** 32 - 2 ** (32 - ones))) return null;
+    prefix = ones;
+  } else {
+    return { invalid: true };
+  }
+  if (prefix === 0) return { wide: 'which is every address' };
+
+  if (kind === 4) return prefix < 8 ? { wide: 'wider than an IPv4 /8' } : null;
+  if (prefix > 128) return null;
+  const bits = ipv6Bits(address);
+  if (prefix <= 96 && inRange(MAPPED, 96, bits, prefix)) {
+    return { wide: 'which takes in every IPv4 address (as ::ffff:0:0/96)' };
+  }
+  if (prefix > 96 && inRange(bits, prefix, MAPPED, 96)) {
+    return prefix < 104 ? { wide: 'wider than an IPv4 /8, in IPv4-mapped form' } : null;
+  }
+  if (prefix < 16 && !NOT_PUBLIC_V6.some(([base, within]) => inRange(bits, prefix, base, within))) {
+    return { wide: 'wider than an IPv6 /16' };
+  }
+  return null;
+}
+
 /**
  * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is the
- * trusted-subnet default above, `false` trusts no proxy, and anything else (a
- * subnet name, an address or CIDR list) is passed to Express, which validates
- * it. A hop count, 0 included, or `true` is refused unless
- * TRUST_PROXY_ALLOW_HOP_COUNT is `true`: either believes the X-Forwarded-For of
- * whoever connects, so a client that can reach the app's port directly picks
- * its own address and a fresh rate-limit bucket per request.
+ * trusted-subnet default above, `false` trusts no proxy, and anything else is
+ * a list of subnet names and addresses, each checked by
+ * trustProxyEntryRefusal() and then passed to Express, which compiles it. A
+ * hop count, 0 included, `true`, or a list entry wide enough to take in public
+ * addresses is refused unless TRUST_PROXY_ALLOW_HOP_COUNT is `true`: each
+ * believes the X-Forwarded-For of clients it has no reason to, so one that can
+ * reach the app's port directly picks its own address and a fresh rate-limit
+ * bucket per request. An entry in non-standard notation is always refused.
  * @param { String | undefined } value TRUST_PROXY
  * @param { String | undefined } allowHopCount TRUST_PROXY_ALLOW_HOP_COUNT
  * @returns { Number | Boolean | String }
@@ -67,7 +148,23 @@ export function parseTrustProxy(value, allowHopCount) {
   if (trimmed === '') return DEFAULT_TRUST_PROXY;
   if (trimmed === 'false') return false;
   const hopCount = /^\d+$/.test(trimmed);
-  if (!hopCount && trimmed !== 'true') return trimmed;
+  if (!hopCount && trimmed !== 'true') {
+    // Express splits the list on commas and trims each entry; so does this.
+    for (const entry of trimmed.split(',').map((e) => e.trim())) {
+      const refusal = trustProxyEntryRefusal(entry);
+      if (refusal?.invalid) {
+        throw new Error(`TRUST_PROXY "${value}" is not valid: "${entry}" is not a subnet name `
+          + `(${TRUST_PROXY_NAMES.join(', ')}) or an IPv4 or IPv6 address in standard notation, `
+          + 'with an optional prefix length or IPv4 netmask.');
+      }
+      if (refusal?.wide && allow !== 'true') {
+        throw new Error(`TRUST_PROXY "${value}" trusts ${entry}, ${refusal.wide}, so a client from `
+          + 'anywhere in it can choose its own address and step around the rate limiters. List the '
+          + 'proxy\'s own addresses or subnets, or set TRUST_PROXY_ALLOW_HOP_COUNT=true to accept that.');
+      }
+    }
+    return trimmed;
+  }
   if (allow !== 'true') {
     throw new Error(`TRUST_PROXY "${value}" ${hopCount ? 'is a hop count' : 'trusts every hop'}, which believes `
       + 'the X-Forwarded-For of whoever connects, so any client that can reach the app\'s port directly '

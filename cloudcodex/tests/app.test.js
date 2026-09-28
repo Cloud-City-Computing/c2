@@ -213,6 +213,7 @@ describe('app.js — Express configuration', () => {
         ['::/80', '::/80'],
         ['::/16', '::/16'],
         ['2000::/3', '2000::/3'],
+        ['2000::/15', '2000::/15'],
         ['8000::/1', '8000::/1'],
       ])('refuses %j, naming %s', (value, entry) => {
         expect(() => parseTrustProxy(value)).toThrow(`TRUST_PROXY "${value}" trusts ${entry}`);
@@ -239,6 +240,7 @@ describe('app.js — Express configuration', () => {
         'fe80::/10',
         'fe80::1%eth0/64',
         '2001:db8::/32',
+        '2001::/16',
         '::ffff:10.0.0.0/104',
         '::ffff:10.0.0.5',
         'loopback, 10.0.1.25, 2001:db8::/48',

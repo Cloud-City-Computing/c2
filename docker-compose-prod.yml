@@ -10,8 +10,15 @@ services:
       MYSQL_PASSWORD: ${DB_PASS}
     env_file:
       - .env
+    # Published so a mysql client or `npm run migrate` on this host can reach
+    # it (docs/deployment.md), and on 127.0.0.1 only unless DB_BIND says
+    # otherwise: Docker's published ports are a DNAT rule in front of the host
+    # firewall, so a mapping with no host address puts the database on every
+    # network the machine is on, past `ufw deny`. The app does not use this; it
+    # reaches MySQL as DB_HOST: database over the compose network.
+    # docker-compose-release.yml publishes no database port at all.
     ports:
-      - "3306:3306"
+      - "${DB_BIND:-127.0.0.1}:3306:3306"
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro,z

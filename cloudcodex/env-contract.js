@@ -42,11 +42,13 @@ export const ENV_CONTRACT = [
   { name: 'TRUST_PROXY', kind: 'default', default: 'loopback, linklocal, uniquelocal', perInstance: false,
     why: 'Express trust proxy, which decides req.ip for the rate limiters: a list of subnet names, '
       + 'addresses and CIDRs whose X-Forwarded-For is believed, or false; the default believes a peer on '
-      + 'loopback or a private range only. A hop count or true exits at boot unless '
-      + 'TRUST_PROXY_ALLOW_HOP_COUNT is true, and so does a value Express cannot parse' },
+      + 'loopback or a private range only. A hop count, true or a range wide enough to take in public '
+      + 'addresses exits at boot unless TRUST_PROXY_ALLOW_HOP_COUNT is true; an entry in non-standard '
+      + 'notation, or a value Express cannot parse, always does' },
   { name: 'TRUST_PROXY_ALLOW_HOP_COUNT', kind: 'optional', perInstance: false,
-    why: 'true lets TRUST_PROXY be a hop count or true, accepting that any client able to reach the '
-      + 'app\'s port can then choose its own address; anything but true, false or blank exits at boot' },
+    why: 'true lets TRUST_PROXY be a hop count, true or a public-sized range, accepting that any client '
+      + 'able to reach the app\'s port can then choose its own address; anything but true, false or blank '
+      + 'exits at boot' },
   { name: 'CORS_ORIGIN', kind: 'optional', perInstance: false,
     why: 'one more origin allowed to call the API; the app\'s own origin and APP_URL always are' },
 
