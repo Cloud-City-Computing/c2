@@ -172,7 +172,7 @@ fourth, `integration`, is opt-in because it needs a MySQL server:
 | `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **95 files, 2091 tests, all passing**
+Current state: the default run is **95 files, 2092 tests, all passing**
 (measured 2026-09-28 on the W6-CDX-21 branch; 5 files and 77 tests of it are
 `design`); the integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
 tree, against MySQL 8.4.11 at the server's default isolation and at
