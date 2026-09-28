@@ -114,7 +114,7 @@ Production-specific notes:
 |----------------------------|----------------------------------------------------------|
 | `APP_URL`                  | **Required in production**: without an `http://` or `https://` URL the server exits at boot, and a `localhost` one boots with a warning. The public address people use, `https://` behind a TLS proxy; invitation, reset and notification links carry it |
 | `CORS_ORIGIN`              | Leave empty. The app's own origin and `APP_URL`'s are always allowed; set it only for a separate front end |
-| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count, named by address. Unset is `127.0.0.1/32, ::1/128, 172.29.0.1/32`, right for nginx or Caddy on the same host in front of either compose file. A proxy container, a load balancer, or `docker run` must be listed. A hop count, `true`, or a range past the width thresholds stops the boot. See [Rate limiters](#rate-limiters) |
+| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count, named by address. Unset is `127.0.0.1/32, ::1/128, 172.29.0.1/32`, right for nginx or Caddy on the same host in front of either compose file; without Docker, set `127.0.0.1/32, ::1/128`. A proxy container, a load balancer, or `docker run` must be listed. A hop count, `true`, or a range past the width thresholds stops the boot. See [Rate limiters](#rate-limiters) |
 | `TRUST_PROXY_ALLOW_HOP_COUNT` | Leave unset. `true` accepts a hop count, `true` or an over-wide range in `TRUST_PROXY` anyway, knowing that any client able to reach the app's port can then choose its own address |
 | `APP_BIND`                 | Compose only, not read by the server: the host address the app port is published on. Unset or blank is `127.0.0.1`. **An IPv4 address only**: `::` or an IPv6 address publishes to IPv6 clients, who arrive as the network's gateway and are trusted. See [TLS and reverse proxy](#tls-and-reverse-proxy) |
 | `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
@@ -185,9 +185,15 @@ To expose the port deliberately (a load balancer on another machine that must
 reach it, or an evaluation from another computer on your network), set
 `APP_BIND` in `.env` to `0.0.0.0`, or to one interface's IPv4 address to publish
 on that interface only, and restrict who can reach it at the network edge
-(a cloud security group, not a host firewall rule Docker bypasses). Three
+(a cloud security group, not a host firewall rule Docker bypasses). Four
 conditions come with it:
 
+- **With nothing in front of the app, also set `TRUST_PROXY=false`.** An
+  evaluation from another computer reaches the app directly, so there is no
+  proxy to believe, and `false` counts every client by the address that
+  connected. That holds on every Docker runtime, including the ones below that
+  present every client as the gateway, so it is the rule rather than a guess
+  about which runtime you have.
 - **IPv4 only.** `0.0.0.0` publishes on IPv4 alone (measured: an IPv6 client is
   refused). `APP_BIND=::`, or any IPv6 address, publishes to IPv6 clients, and
   the pinned network is IPv4-only, so Docker's userland proxy carries each one
@@ -207,12 +213,14 @@ conditions come with it:
   `APP_BIND` on `127.0.0.1`, no container reaches the port except one sharing
   the host's network namespace.
 
-Some Docker runtimes carry **all** published traffic through the userland
-proxy, not only IPv6 and loopback: `dockerd` with `"iptables": false`,
-rootless Docker with its default port driver, and possibly Docker Desktop.
-There every client, local or not, arrives as the gateway, so `APP_BIND` must
-stay on `127.0.0.1` behind a proxy on the host; widened, anyone who reaches the
-port is trusted.
+Some Docker runtimes carry **all** published traffic through a userland
+proxy, not only IPv6 and loopback: `dockerd` with `"iptables": false`, rootless
+Docker with its default (`builtin`) port driver, and Docker Desktop on macOS,
+Windows and Linux. There every client, local or not, arrives as the gateway.
+Behind a proxy on the host, keep `APP_BIND` on `127.0.0.1`; with it widened
+and nothing in front, `TRUST_PROXY=false` (above) is what keeps each client in
+its own bucket. A widened bind behind a load balancer on such a runtime is not
+safe while anything but the load balancer can reach the port.
 
 A reverse proxy running in **another container** cannot reach the host's
 loopback: join it to this compose project's network, proxy to `app:3000` (or
@@ -573,7 +581,10 @@ Nothing is applied there, so the app can stay up for that one. Until it runs,
 `/readyz` answers `503 {"ready":false,"reason":"migrations"}` and Docker
 reports the container `unhealthy`, because a database with no bookkeeping
 cannot be shown to be migrated; the app serves requests either way. Every
-upgrade after that is the four-step order above:
+upgrade after that is the four-step order above (the upgrade from 0.11.0 or
+earlier takes the project `down` once instead of `stop app`, and runs the
+document-images backfill before the start; see
+[The pinned compose network](#the-pinned-compose-network-upgrading-from-0110-or-earlier)):
 
 ```bash
 docker compose -f docker-compose-release.yml pull app       # 1. new image
@@ -740,7 +751,9 @@ range, since a range believes every client inside it too.
   public client, a machine on the same LAN, VPN or VPC (AWS's default VPC is
   `172.31.0.0/16`), and a sibling container on the compose network. The
   default bridge's gateway, `172.17.0.1`, is deliberately not in it; see
-  `docker run` below.
+  `docker run` below. **An install run without Docker** (`npm run start` on the
+  host) sets `TRUST_PROXY=127.0.0.1/32, ::1/128`: `172.29.0.1` means nothing
+  there, and on a LAN that uses `172.29.0.0/x` it may be a real router.
 - **A list replaces the default**, so keep the entries you still need and add
   your proxy. The setups the default does not cover:
   - *A proxy running as another container on the compose network.* Pin its
@@ -776,6 +789,35 @@ range, since a range believes every client inside it too.
     reaches the proxy as `172.29.0.1`: all of them then share one bucket, and
     had the gateway been listed, a proxy that appends would let each choose its
     own address.
+
+    With IPv6 on the network, pin the proxy's IPv6 address too and list it:
+    `app` then resolves to an AAAA record as well as an A record, and nginx or
+    Caddy sends some requests from the proxy's IPv6 address, which an
+    IPv4-only list does not name. In this project's compose file:
+
+    ```yaml
+    networks:
+      default:
+        enable_ipv6: true
+        ipam:
+          config:
+            - subnet: 172.29.0.0/16
+              gateway: 172.29.0.1
+            - subnet: fd29::/64
+    ```
+
+    and in the proxy's, beside its `ipv4_address`:
+
+    ```yaml
+        networks:
+          codex:
+            ipv4_address: 172.29.255.10
+            ipv6_address: fd29::ff10
+    ```
+
+    ```dotenv
+    TRUST_PROXY=127.0.0.1/32, ::1/128, 172.29.255.10/32, fd29::ff10/128
+    ```
   - *A load balancer with a private address*, reaching nginx on the host or,
     with `APP_BIND` widened, the app itself. List the subnets the load balancer
     runs in, beside the defaults:
@@ -843,8 +885,9 @@ reaches the published port, and every container sharing the host's network
 namespace, arrives as the gateway, so it is trusted and can name its own
 address. With `APP_BIND` widened, so does every container on the host (see
 "TLS and reverse proxy"), and on a runtime that carries all published traffic
-through the userland proxy, so does every client. The loopback bind decides
-who can reach the port, not whether they are believed once they do.
+through the userland proxy, so does every client, which is why a widened bind
+with nothing in front sets `TRUST_PROXY=false`. The loopback bind decides who
+can reach the port, not whether they are believed once they do.
 
 **A proxy the list leaves out is logged, not silent.** When a peer
 `TRUST_PROXY` does not name sends `X-Forwarded-For`, the server logs one line,

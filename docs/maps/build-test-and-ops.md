@@ -107,8 +107,9 @@ so moving the pin is one commit that changes all seven references.
 host firewall, so the old host-less mapping was reachable from anywhere that
 could route to the machine, and a client reaching the app directly skipped the
 TLS proxy. Only this machine reaches it now (a browser here, or the reverse
-proxy); `APP_BIND` (`0.0.0.0`, or one interface's address) exposes it on
-purpose. `:-` rather than `-`, because `.env.example` ships `APP_BIND=` blank and
+proxy); `APP_BIND` (`0.0.0.0`, or one interface's IPv4 address, never `::` or
+an IPv6 address) exposes it on purpose. `:-` rather than `-`, because
+`.env.example` ships `APP_BIND=` blank and
 a blank host address publishes on every interface. A reverse proxy in another
 container cannot reach the host's loopback: it joins this compose network,
 proxies to `app:3000`, and is listed in `TRUST_PROXY` by an address pinned with

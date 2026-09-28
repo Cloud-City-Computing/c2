@@ -286,7 +286,9 @@ remains: every host process that reaches the published port, and every
 container sharing the host's network namespace, arrives as the gateway, so it
 is trusted. With `APP_BIND` widened so does every container on the host, and
 on a runtime whose userland proxy carries all published traffic
-(`"iptables": false`, rootless Docker) so does every client. An IPv4-only
+(`"iptables": false`, rootless Docker's `builtin` port driver, Docker Desktop)
+so does every client, which is why a widened bind with nothing in front sets
+`TRUST_PROXY=false` (`docs/deployment.md`, "TLS and reverse proxy"). An IPv4-only
 Docker network also presents every IPv6 client of an all-interfaces or IPv6
 publish as its gateway, which is why `APP_BIND` must be an IPv4 address and why
 the default leaves out `172.17.0.1`.

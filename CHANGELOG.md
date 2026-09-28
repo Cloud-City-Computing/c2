@@ -25,11 +25,13 @@ backfill; see Migration below.
 `X-Forwarded-For` is believed only from a proxy named by address.** An install
 reached directly on port 3000 from another machine stops answering there: put
 it behind a TLS-terminating proxy, or set `APP_BIND=0.0.0.0` in `.env` to
-expose it on purpose (an IPv4 address, never `::`). `docker-compose-prod.yml`
+expose it on purpose (an IPv4 address, never `::`), with `TRUST_PROXY=false`
+when nothing is in front of it. `docker-compose-prod.yml`
 publishes MySQL on `127.0.0.1` too, so a database client on another machine
 needs `DB_BIND` or an SSH tunnel. `TRUST_PROXY` now defaults to
 `127.0.0.1/32, ::1/128, 172.29.0.1/32`, which covers nginx or Caddy on the same
-host in front of either compose file and nothing else: **a proxy running as
+host in front of either compose file and nothing else (an install run without
+Docker sets `127.0.0.1/32, ::1/128`): **a proxy running as
 another container, a load balancer, or the image run with `docker run`
 behind a proxy is no longer believed until you list its address** (worked
 values in "Rate limiters", `docs/deployment.md`); until then every client
@@ -146,7 +148,9 @@ documents, between the migrations and the start (see Migration below).
   neither does a proxy in another container that used the host's address (join
   it to the compose network and proxy to `app:3000` instead). Production
   belongs behind a TLS-terminating reverse proxy; to expose the port on
-  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's address.
+  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's IPv4
+  address (never `::` or an IPv6 address), and with nothing in front of it
+  `TRUST_PROXY=false`.
   `docker-compose-prod.yml` also publishes MySQL as
   `${DB_BIND:-127.0.0.1}:3306:3306` instead of `3306:3306`: a mysql client or
   `npm run migrate` on the host still reaches it, and anything else needs

@@ -377,11 +377,15 @@ passing through unchanged.
 
 **Fix.**
 - **Caddy:** `reverse_proxy` handles WS automatically.
-- **nginx:** add the standard upgrade block:
+- **nginx:** add the standard upgrade block, beside the `X-Forwarded-For`
+  line every Cloud Codex proxy needs (`$remote_addr` when nginx is the only
+  proxy; behind a load balancer, see
+  [Rate limiters](deployment.md#rate-limiters)):
   ```
   proxy_http_version 1.1;
   proxy_set_header Upgrade $http_upgrade;
   proxy_set_header Connection "upgrade";
+  proxy_set_header X-Forwarded-For $remote_addr;
   ```
 - **Cloudflare:** WebSockets are on by default for paid plans; verify
   the WebSockets toggle is on in the dashboard.
