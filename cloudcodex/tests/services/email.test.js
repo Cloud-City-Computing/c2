@@ -136,6 +136,7 @@ describe('services/email', () => {
       verifyMock.mockResolvedValueOnce(true);
       const result = await initMail();
       expect(result.enabled).toBe(true);
+      expect(result.configured).toBe(true);
       expect(result.reason).toBeNull();
       expect(isMailEnabled()).toBe(true);
     });
@@ -144,6 +145,7 @@ describe('services/email', () => {
       verifyMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
       const result = await initMail();
       expect(result.enabled).toBe(false);
+      expect(result.configured).toBe(true);
       expect(result.reason).toBe('SMTP connection failed');
       expect(isMailEnabled()).toBe(false);
     });
@@ -182,16 +184,23 @@ describe('mail capability when SMTP is unconfigured', () => {
     process.env.SMTP_PASS = '';
     vi.resetModules();
 
-    const mod = await import('../../services/email.js');
-    const result = await mod.initMail();
+    // Restored in finally, so a failure here cannot leave SMTP unset for the
+    // tests below and turn one red into a cascade.
+    try {
+      const mod = await import('../../services/email.js');
+      const result = await mod.initMail();
 
-    expect(mod.isMailConfigured()).toBe(false);
-    expect(result.enabled).toBe(false);
-    expect(result.reason).toBe('SMTP_HOST, SMTP_USER or SMTP_PASS not set');
-    expect(mod.isMailEnabled()).toBe(false);
-
-    process.env = saved;
-    vi.resetModules();
+      expect(mod.isMailConfigured()).toBe(false);
+      expect(result.enabled).toBe(false);
+      // server.js reports this documented mode as a choice, not a fault, and
+      // tells the two apart by this field rather than by the reason's wording.
+      expect(result.configured).toBe(false);
+      expect(result.reason).toBe('SMTP_HOST, SMTP_USER or SMTP_PASS not set');
+      expect(mod.isMailEnabled()).toBe(false);
+    } finally {
+      process.env = saved;
+      vi.resetModules();
+    }
   });
 });
 
