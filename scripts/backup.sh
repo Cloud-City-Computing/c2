@@ -11,7 +11,8 @@
 # an existing output file is a refusal. It holds everything the database
 # holds (password hashes, two-factor secrets, encrypted GitHub tokens), so
 # keep it the way you keep the database. It does not hold .env or any key
-# material. See "Backups" in docs/deployment.md, and scripts/backup-common.sh
+# material. It runs as a MySQL user granted on the instance's database alone,
+# never root. See "Backups" in docs/deployment.md, and scripts/backup-common.sh
 # for the two transports.
 #
 # The dump is one consistent InnoDB snapshot and can be taken while the app
@@ -66,6 +67,7 @@ trap 'exit 143' TERM
 
 database="$(target_database)"
 check_database_name "$database"
+check_confined_user "$database"
 
 say "Dumping database $database ..."
 db_dump >"$work/database.sql"

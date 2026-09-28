@@ -5,7 +5,8 @@
 # All Rights Reserved to Cloud City Computing, LLC 2026
 # https://cloudcitycomputing.com
 #
-# usage: scripts/restore.sh [--local [--uploads DIR]] [--into NAME] [--replace] [--no-start] <archive.tar.gz>
+# usage: scripts/restore.sh [--local [--uploads DIR]] [--into NAME] [--replace]
+#                           [--allow-newer-backup] [--no-start] <archive.tar.gz>
 #
 # Everything is checked before anything is written, and each check is a
 # refusal:
@@ -15,23 +16,29 @@
 #     path and no `..`;
 #   - the dump has no statement that switches, creates or drops a database and
 #     no mysql client command (`\!`, `system`, `source`, `connect`, ...) at
-#     the start of a line (the client runs with --binary-mode, so one anywhere
-#     else on a line never runs: the client refuses it and the load stops);
+#     the start of a line. That scan sees the start of a line only: the client
+#     runs with --binary-mode, so a client command anywhere else never runs
+#     (the client refuses it and the load stops), and the grant (below) is
+#     what stops a statement elsewhere on a line from reaching another schema;
+#   - the backup's release is not newer than this install's, unless
+#     --allow-newer-backup (an older release does not know a newer schema, and
+#     `npm run migrate` finds nothing to do, so it would run on it regardless);
 #   - the target is this instance's own database, never a system schema, and
 #     the archive's database has the same name, unless --into names the target
 #     (moving a backup to a differently named database is deliberate);
-#   - the app is not running, and nothing holds the instance lock that
-#     cloudcodex/services/instance-lock.js takes for that database;
+#   - the MySQL user holds privileges on that database and nothing else (no
+#     root, no global privilege, no grant elsewhere, no role);
+#   - the app is not running;
 #   - the database holds no rows, unless --replace, which drops every table
 #     in it (and empties avatars/ and doc-images/) before the load. Tables
 #     with no rows at all (a new stack, where the database service has just
 #     built init.sql) are dropped without it: nothing is lost.
 #
-# The load runs as the instance's own MySQL user, which the database service
-# grants everything on its own schema and nothing else, so a statement that
-# names another schema fails on the grant. It takes the instance lock first,
-# or stops there if a server took it since the check, and holds it throughout,
-# so an app that starts meanwhile refuses. Then the uploads are
+# The load runs as that confined user, so a statement that names another
+# schema fails on the grant. Its first statement takes the instance lock that
+# cloudcodex/services/instance-lock.js takes for that database, or fails if
+# any process holds it, before anything is written; the load holds it
+# throughout, so an app that starts meanwhile refuses. Then the uploads are
 # unpacked, and (Compose, unless --no-start) pending migrations run and the
 # stack starts.
 
@@ -42,12 +49,13 @@ umask 077
 . "$(dirname "${BASH_SOURCE[0]}")/backup-common.sh"
 
 usage() {
-  die "usage: scripts/restore.sh [--local [--uploads DIR]] [--into NAME] [--replace] [--no-start] <archive.tar.gz>"
+  die "usage: scripts/restore.sh [--local [--uploads DIR]] [--into NAME] [--replace] [--allow-newer-backup] [--no-start] <archive.tar.gz>"
 }
 
 archive=""
 into=""
 replace=""
+allow_newer=""
 start=yes
 while (($#)); do
   case "$1" in
@@ -61,6 +69,7 @@ while (($#)); do
       into="$2"
       shift ;;
     --replace) replace=replace ;;
+    --allow-newer-backup) allow_newer=yes ;;
     --no-start) start=no ;;
     -h | --help) usage ;;
     -*) die "unknown option $1" ;;
@@ -135,6 +144,23 @@ if hit="$(grep -niE -m 1 "$hostile" "$work/database.sql")"; then
   die "refusing to load database.sql: line ${hit%%:*} switches, creates or drops a database or runs a client command"
 fi
 
+# An older release than the backup's does not know the schema the backup
+# holds, and its `npm run migrate` finds nothing pending, so it would serve
+# it regardless. A version either side cannot report is not a comparison.
+backup_version="${manifest[app_version]:-unknown}"
+install_version="$(app_version)"
+semver='^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]*)?$'
+if [[ ! "$backup_version" =~ $semver ]]; then
+  say "The archive does not record which release took it; restoring without comparing releases."
+elif [[ ! "$install_version" =~ $semver ]]; then
+  [[ -n "$allow_newer" ]] ||
+    die "cannot tell which release this install runs, so cannot check that it is not older than the backup's ($backup_version). Pass --allow-newer-backup to restore anyway"
+elif version_is_newer "$backup_version" "$install_version"; then
+  [[ -n "$allow_newer" ]] ||
+    die "this archive is a backup of Cloud Codex $backup_version, and this install runs $install_version, an older release that does not know its schema. Upgrade this install to $backup_version or later first, or pass --allow-newer-backup to restore it anyway"
+  say "Restoring a backup of Cloud Codex $backup_version onto $install_version, as --allow-newer-backup asks."
+fi
+
 # ---- the target ------------------------------------------------------------
 
 if [[ "$MODE" == compose ]]; then
@@ -169,9 +195,7 @@ for ((waited = 0; ; waited += 2)); do
   sleep 2
 done
 
-lock_free="$(db_query "SELECT IS_FREE_LOCK($INSTANCE_LOCK_NAME_SQL)")"
-[[ "$lock_free" == 1 ]] ||
-  die "a Cloud Codex process holds the instance lock for '$target'; stop it, then restore"
+check_confined_user "$target"
 
 tables="$(db_query 'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()')"
 clear_tables="$replace"
@@ -199,8 +223,8 @@ fi
 
 say "Loading database.sql into $target ..."
 # One session: it takes the instance lock (TAKE_LOCK_SQL fails, and the
-# client stops, if a server took it since the check above), drops what
-# --replace drops, then loads, so no app can start on a half-loaded database.
+# client stops at line 1, if any process holds it), drops what --replace
+# drops, then loads, so no app can start on a half-loaded database.
 # --one-database skips anything that would run with another database current.
 load_ok=yes
 {
@@ -211,7 +235,7 @@ load_ok=yes
 cat "$work/load.err" >&2
 if [[ "$load_ok" == no ]]; then
   if grep -q 'at line 1: .*another process holds the instance lock' "$work/load.err"; then
-    die "a Cloud Codex process took the instance lock for '$target' as the load began; nothing was written. Stop it, then restore"
+    die "a Cloud Codex process holds the instance lock for '$target'; nothing was written. Stop it, then restore"
   fi
   die "the load into '$target' failed part way, so it holds part of the backup. Fix the cause and run the restore again with --replace"
 fi

@@ -21,21 +21,29 @@
 #                          app's own variables), and the uploads directory on
 #                          disk (--uploads, default cloudcodex/public).
 #
-# Neither transport uses the MySQL root account, and no password is ever on a
+# Either way the MySQL user must hold privileges on its own database and
+# nothing else (check_confined_user): root, a global privilege, a grant on
+# another schema or a role is a refusal, because that grant is what confines a
+# restore's load to this instance's database. No password is ever on a
 # command line: the clients read MYSQL_PWD from their own environment.
+#
+# With Compose, both production files share this directory's project and
+# container names, so a stack created from one of them is refused through the
+# other (check_compose_file): set COMPOSE_FILE to the file it was created from.
 #
 # Inside the database service the clients connect over TCP to 127.0.0.1, not
 # the socket. The first time a data directory starts, the image runs init.sql
-# on a temporary server that listens on the socket alone, and a socket
-# healthcheck (the compose files' before this change) passes against it; a
-# restore that reached it would race init.sql, and the temporary server stops
-# under it. Over TCP only the real server answers.
+# on a temporary server that listens on the socket alone; a restore that
+# reached it would race init.sql, and the temporary server stops under it.
+# Over TCP only the real server answers.
 #
 # The archive is a gzipped tar of exactly three members:
 #   database.sql       mysqldump of the one schema, schema_migrations included
 #   app_public.tar.gz  the uploads directory (avatars/, doc-images/)
 #   manifest.json      format, created_at, database, app_version and the
 #                      SHA-256 of the other two; no host, user or secret
+#                      (database.sql's header comment names the host it was
+#                      dumped from)
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
@@ -102,6 +110,7 @@ setup_transport() {
   if [[ "$MODE" == compose ]]; then
     command -v docker >/dev/null 2>&1 || die "docker is not on PATH (or pass --local)"
     export COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/docker-compose-release.yml}"
+    check_compose_file
   else
     local tool
     for tool in mysql mysqldump; do
@@ -119,6 +128,38 @@ setup_transport() {
     DB_NAME="${DB_NAME:-c2}"
     UPLOADS_DIR="${UPLOADS_DIR:-$REPO_ROOT/cloudcodex/public}"
   fi
+}
+
+# The file names in a list of compose files, comma-separated: $1 is the list,
+# $2 its separator.
+compose_file_names() {
+  local part names="" parts=()
+  IFS="$2" read -ra parts <<<"$1"
+  for part in "${parts[@]}"; do
+    [[ -n "$part" ]] && names+="${names:+,}${part##*/}"
+  done
+  printf '%s' "$names"
+}
+
+# Refuse a stack created from other compose files than COMPOSE_FILE names.
+# docker-compose-prod.yml and docker-compose-release.yml share this
+# directory's project name and their container names, so either reaches the
+# other's stack, and a restore through the wrong one would migrate and restart
+# it on the other image (the pinned release instead of a build from source, or
+# the reverse). Compose labels each container with the files it came from; the
+# names are compared, not the paths, so a checkout that moved still matches.
+# No database container yet (a new stack) is nothing to compare.
+check_compose_file() {
+  local id created want
+  id="$(compose ps -a -q database 2>/dev/null | head -n 1)" || id=""
+  [[ -n "$id" ]] || return 0
+  created="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$id")" ||
+    die "cannot inspect the stack's database container $id"
+  [[ -n "$created" && "$created" != "<no value>" ]] || return 0
+  created="$(compose_file_names "$created" ,)"
+  want="$(compose_file_names "$COMPOSE_FILE" "${COMPOSE_PATH_SEPARATOR:-:}")"
+  [[ "$created" == "$want" ]] ||
+    die "this stack was created from $created, and COMPOSE_FILE names $want (docker-compose-release.yml is the default when it is unset). Run it again with COMPOSE_FILE set to the stack's own file, for example COMPOSE_FILE=$created"
 }
 
 # The instance's database name, from the database service's own environment
@@ -173,6 +214,50 @@ db_mysql() {
 # One query's rows, tab-separated, no header.
 db_query() {
   db_mysql -N -B -e "$1"
+}
+
+# Refuse a MySQL user that holds anything beyond database $1. Restore's load
+# is confined to this instance's database by the grant alone (the dump scan
+# sees only the start of a line, and --one-database is advisory), so root, a
+# global privilege, a grant on another schema, a proxy grant or a role is a
+# refusal. What passes: USAGE on *.*, and grants on `$1`.* or its tables, in
+# the plain spelling or the one with `_` escaped that the MySQL image writes.
+# -r: SHOW GRANTS prints that backslash, and batch mode would double it.
+check_confined_user() {
+  local database="$1" grants role user line schema escaped
+  grants="$(db_mysql -N -B -r -e 'SHOW GRANTS')" || die "cannot read the MySQL user's grants"
+  user="$(db_query 'SELECT CURRENT_USER()')"
+  role="$(db_query 'SELECT CURRENT_ROLE()')"
+  escaped="${database//_/\\_}"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    [[ "$line" =~ ^GRANT\ USAGE\ ON\ \*\.\*\ TO\  ]] && continue
+    if [[ "$line" =~ ^GRANT\ [^\`]+\ ON\ \`([^\`]+)\`\.(\*|\`[^\`]+\`)\ TO\  ]]; then
+      schema="${BASH_REMATCH[1]}"
+      [[ "$schema" == "$database" || "$schema" == "$escaped" ]] && continue
+    fi
+    die "MySQL user $user holds privileges beyond database '$database' ($line). Use a user granted on '$database' alone, such as the one the app runs as, never root"
+  done <<<"$grants"
+  [[ "$role" == NONE ]] ||
+    die "MySQL user $user holds privileges beyond database '$database' (the active role $role). Use a user granted on '$database' alone, with no role"
+}
+
+# Whether version $1 is newer than version $2 (semantic versions; build
+# metadata after `+` does not order, and a pre-release is older than its
+# release).
+version_is_newer() {
+  local a="${1%%+*}" b="${2%%+*}" a_pre="" b_pre="" i x=() y=()
+  [[ "$a" == *-* ]] && a_pre="${a#*-}"
+  [[ "$b" == *-* ]] && b_pre="${b#*-}"
+  IFS=. read -ra x <<<"${a%%-*}"
+  IFS=. read -ra y <<<"${b%%-*}"
+  for i in 0 1 2; do
+    ((10#${x[i]:-0} > 10#${y[i]:-0})) && return 0
+    ((10#${x[i]:-0} < 10#${y[i]:-0})) && return 1
+  done
+  [[ -z "$a_pre" ]] && { [[ -n "$b_pre" ]]; return; }
+  [[ -n "$b_pre" && "$a_pre" != "$b_pre" &&
+    "$(printf '%s\n%s\n' "$a_pre" "$b_pre" | LC_ALL=C sort -V | tail -n 1)" == "$a_pre" ]]
 }
 
 # mysqldump of the instance's database to stdout.

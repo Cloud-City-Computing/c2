@@ -55,10 +55,12 @@ const elsewhere = throwawaySchemaName(); // a schema the restore must never reac
 const fresh = throwawaySchemaName();     // a new install: init.sql's tables, no rows
 // The shape the compose files give the app's MySQL user: everything on its
 // own schema and nothing anywhere else. The backup runs as one such user, of
-// the source, and the restore as another, of the scratch schema; neither
-// script ever uses root.
-const dumper = { user: throwawaySchemaName(), password: randomBytes(18).toString('base64url') };
-const restorer = { user: throwawaySchemaName(), password: randomBytes(18).toString('base64url') };
+// the source, and the restore as another, of the scratch schema (or a third,
+// of the new install's); both scripts refuse root, or any user granted more.
+const confinedUser = () => ({ user: throwawaySchemaName(), password: randomBytes(18).toString('base64url') });
+const dumper = confinedUser();
+const restorer = confinedUser();
+const freshRestorer = confinedUser();
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'c2-it-backup-'));
 const scriptTmp = path.join(tmp, 'script-tmp'); // TMPDIR for the scripts, so leftovers are visible
@@ -203,11 +205,12 @@ beforeAll(async () => {
   adminConn = await openAdminConnection();
   await adminConn.query(`CREATE DATABASE ${mysql.escapeId(scratch)}`);
   await adminConn.query(`CREATE DATABASE ${mysql.escapeId(elsewhere)}`);
-  for (const [who, schema] of [[dumper, source], [restorer, scratch]]) {
+  // The new install's user is granted the way the MySQL image grants
+  // MYSQL_USER, with `_` escaped in the schema's name (a wildcard otherwise).
+  for (const [who, grantOn] of [[dumper, source], [restorer, scratch], [freshRestorer, fresh.replace(/_/g, '\\_')]]) {
     await adminConn.query('CREATE USER ?@\'%\' IDENTIFIED BY ?', [who.user, who.password]);
-    await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(schema)}.* TO ?@'%'`, [who.user]);
+    await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(grantOn)}.* TO ?@'%'`, [who.user]);
   }
-  await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(fresh)}.* TO ?@'%'`, [restorer.user]);
 
   // A running instance: a document with a pasted image and some Unicode, a
   // comment on it, and collaborative state in its BLOB column.
@@ -258,7 +261,7 @@ afterAll(async () => {
     await dropSchema(adminConn, scratch);
     await dropSchema(adminConn, elsewhere);
     await dropSchema(adminConn, fresh);
-    for (const who of [dumper, restorer]) await adminConn.query('DROP USER IF EXISTS ?@\'%\'', [who.user]);
+    for (const who of [dumper, restorer, freshRestorer]) await adminConn.query('DROP USER IF EXISTS ?@\'%\'', [who.user]);
     await adminConn.end();
   }
   rmSync(tmp, { recursive: true, force: true });
@@ -515,8 +518,8 @@ describe('the restore\'s load session', () => {
   }
 
   it('fails at its first statement while another process holds the instance lock, and holds the lock otherwise', async () => {
-    // restore.sh checks IS_FREE_LOCK, then starts the load; a server that
-    // takes the lock between the two must stop the load before the drops.
+    // This is restore.sh's only lock check, the load's first statement: a
+    // process holding the lock must stop the load before the drops.
     const sql = await takeLockSql();
     const holder = holdLock(scratch);
     expect((await holder.outcome).held).toBe(true);
@@ -611,7 +614,9 @@ describe('the drill: destroy the instance, restore it, and find everything', () 
     const built = await tableCount(fresh);
     expect(built).toBeGreaterThan(0);
 
-    const result = await restoreAs(['--into', fresh, '--uploads', mkdtempSync(path.join(tmp, 'u-')), archive], { DB_NAME: fresh });
+    const result = await restoreAs(['--into', fresh, '--uploads', mkdtempSync(path.join(tmp, 'u-')), archive], {
+      DB_NAME: fresh, DB_USER: freshRestorer.user, DB_PASS: freshRestorer.password,
+    });
 
     expect(result.code, result.stderr).toBe(0);
     expect(result.stderr).toMatch(/only empty tables/);
