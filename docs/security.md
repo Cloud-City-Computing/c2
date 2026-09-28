@@ -184,7 +184,7 @@ A violation found later is fixed by widening the one directive it needs, with a 
 | Search | 60 requests / 15 min |
 | WebSocket messages | 60 messages / second |
 
-"Per IP" is the address that connected, unless that peer is a proxy `TRUST_PROXY` trusts, in which case it is the client the proxy names in `X-Forwarded-For`. The default trusts only peers on loopback, link-local and private ranges, so a client reaching the app from a public address cannot pick its own key; a hop count or `true` is refused at boot unless `TRUST_PROXY_ALLOW_HOP_COUNT=true` (GHSA-9fmx-frrf-xxmq). The production compose files publish the app port on `127.0.0.1` unless `APP_BIND` says otherwise, so a client normally cannot reach it except through the proxy. See [deployment.md](deployment.md#rate-limiters).
+"Per IP" is the address that connected, unless that peer is a proxy `TRUST_PROXY` trusts, in which case it is the client the proxy names in `X-Forwarded-For`. The default trusts only peers on loopback, link-local and private ranges, so a client reaching the app from a public address cannot pick its own key; a hop count, `true`, or a list entry wide enough to take in public addresses is refused at boot unless `TRUST_PROXY_ALLOW_HOP_COUNT=true`, and an entry not in standard notation always is (GHSA-9fmx-frrf-xxmq). The production compose files publish the app port on `127.0.0.1` unless `APP_BIND` says otherwise, so a client normally cannot reach it except through the proxy, and `docker-compose-prod.yml` publishes MySQL on `127.0.0.1` unless `DB_BIND` says otherwise. See [deployment.md](deployment.md#rate-limiters).
 
 ---
 

@@ -445,9 +445,10 @@ New files match this pattern. Update the year only if the file is genuinely new.
 - **Rate limiters are deliberate.** `authLimiter` (20/15min) on auth routes,
   `searchLimiter` (60/15min) on user search. New auth-adjacent routes get one.
   They key on `req.ip`, so `trust proxy` is part of them: it defaults to
-  `loopback, linklocal, uniquelocal`, and a hop count or `true` is refused at
-  boot (GHSA-9fmx-frrf-xxmq). Do not relax either, and keep the compose files'
-  app port on `${APP_BIND:-127.0.0.1}` (`tests/compose-ports.test.js`).
+  `loopback, linklocal, uniquelocal`, and a hop count, `true` or a
+  public-sized range is refused at boot (GHSA-9fmx-frrf-xxmq). Do not relax
+  either, and keep every port the production compose files publish on
+  loopback by default (`APP_BIND`, `DB_BIND`; `tests/compose-ports.test.js`).
 
 ### Testing
 

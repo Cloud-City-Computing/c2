@@ -17,7 +17,7 @@ config gates run **before** anything listens.
 | Pool size gate | `mysql_connect.js:28-47`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
 | DB pool | `mysql_connect.js:50-58` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. A blank `DB_HOST` or `DB_NAME` behaves as unset (`localhost`, `c2`), as in `scripts/migrate.js`. |
 | DB credential gate | `mysql_connect.js:60-64` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| Trust proxy gate | `app.js:84-95`, `parseTrustProxy()` (`app.js:61`) | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY`. Unset or blank is `'loopback, linklocal, uniquelocal'` (`DEFAULT_TRUST_PROXY`, `app.js:46`): `X-Forwarded-For` is believed only when the immediate peer is on loopback, link-local or a private range, IPv4-mapped forms included, so a client from a public address is keyed on its socket (GHSA-9fmx-frrf-xxmq). `false` is a boolean and anything else is passed through as an address or subnet list. **A hop count (0 included) or `true` exits 1** with `✖ TRUST_PROXY "<value>" is a hop count` (or `trusts every hop`) naming `TRUST_PROXY_ALLOW_HOP_COUNT=true`, the opt-in that accepts it; the opt-in itself exits on anything but `true`, `false` or blank. Express compiles the value at `app.js:87` and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
+| Trust proxy gate | `app.js:181-192`, `parseTrustProxy()` (`app.js:142`) | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY`. Unset or blank is `'loopback, linklocal, uniquelocal'` (`DEFAULT_TRUST_PROXY`, `app.js:47`): `X-Forwarded-For` is believed only when the immediate peer is on loopback, link-local or a private range, IPv4-mapped forms included, so a client from a public address is keyed on its socket (GHSA-9fmx-frrf-xxmq). `false` is a boolean and anything else is a list whose every entry `trustProxyEntryRefusal()` (`app.js:90`) reads the way proxy-addr will. An entry that is not a subnet name or an address in standard notation exits 1 (`is not valid: "<entry>" is not a subnet name ...`), with or without the opt-in, because proxy-addr's parser reads `0/1` as half of IPv4 and `010.0.0.0/8` as octal 8.0.0.0/8. A range wide enough to take in public addresses exits 1 (`✖ TRUST_PROXY "<value>" trusts <entry>, ...`): wider than an IPv4 /8, wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or an IPv6 range holding `::ffff:0:0/96` or more than an IPv4 /8 of it, since proxy-addr matches an IPv4 client against an IPv6 range in mapped form. proxy-addr itself only refuses a /0. **A hop count (0 included) or `true` exits 1** with `✖ TRUST_PROXY "<value>" is a hop count` (or `trusts every hop`) naming `TRUST_PROXY_ALLOW_HOP_COUNT=true`, the opt-in that accepts it and a public-sized range; the opt-in itself exits on anything but `true`, `false` or blank. Express compiles the value at `app.js:184` and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the gates around it (pool size, trust proxy, `APP_URL`, the provider list, and an invalid `PORT`), these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | `APP_URL` gate | `server.js:30-56` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. A valid one whose host is `localhost`, `127.x.x.x`, `[::1]` or a `.localhost` name boots but prints `⚠ APP_URL "<value>" points at this machine`, since `.env.example` ships `http://localhost:3000` and the release compose file's one-machine evaluation is legitimate. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
@@ -77,17 +77,17 @@ fails, and so does a listed file that stops calling it.
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', TRUST_PROXY ??        app.js:87
+app.set('trust proxy', TRUST_PROXY ??        app.js:184
         'loopback, linklocal, uniquelocal')
   │
-  ├─ CORS, scoped to /api                    app.js:106-163
-  ├─ helmet + CSP: whole app in production,  app.js:173-201
+  ├─ CORS, scoped to /api                    app.js:203-260
+  ├─ helmet + CSP: whole app in production,  app.js:270-298
   │  /api only otherwise
-  ├─ express.json({ limit: '2mb' })          app.js:213
-  ├─ authLimiter on 9 paths + reader-check   app.js:216-239
-  ├─ searchLimiter on /api/users/search      app.js:250
-  ├─ static /avatars      (7d immutable)     app.js:253-256
-  ├─ static /doc-images   (30d immutable)    app.js:259-262
+  ├─ express.json({ limit: '2mb' })          app.js:310
+  ├─ authLimiter on 9 paths + reader-check   app.js:313-336
+  ├─ searchLimiter on /api/users/search      app.js:347
+  ├─ static /avatars      (7d immutable)     app.js:350-353
+  ├─ static /doc-images   (30d immutable)    app.js:356-359
   ├─ 18 routers, all mounted at /api
   └─ (production, at listen time) vite-express's static dist/ and index.html
      handlers, appended after all of the above
@@ -134,8 +134,8 @@ machine on the same LAN or VPC when `APP_BIND` exposes the port) and more when
 `TRUST_PROXY` widens it, and any of those could set that header themselves and
 turn the same-origin clause into "allow any origin".
 
-**Security headers** (`HELMET_OPTIONS`, `app.js:173-200`) are one Helmet policy
-with two scopes (`app.js:201`). **In production it is mounted on `/`**, so it
+**Security headers** (`HELMET_OPTIONS`, `app.js:270-297`) are one Helmet policy
+with two scopes (`app.js:298`). **In production it is mounted on `/`**, so it
 covers every response: the single-page app's HTML and built assets (served by
 the handlers `vite-express` appends at listen time, after everything here), the
 `/avatars` and `/doc-images` static files, and `/api`. **Anywhere else it stays
@@ -165,7 +165,7 @@ script into its print window for this reason (`frontend-architecture.md`,
 `tests/app.test.js`, which re-imports `app.js` per `NODE_ENV` and appends a
 handler the way `vite-express` does.
 
-**Body limit is 2 MB** (`app.js:213`). The collab WebSocket has its own, larger
+**Body limit is 2 MB** (`app.js:310`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:43-44`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -173,8 +173,8 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:204-211`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:216-223`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:229`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:239`) |
-| `searchLimiter` (`app.js:242-249`) | 15 min / 60 | `/api/users/search` only (`app.js:250`), to blunt user enumeration |
+| `authLimiter` (`app.js:301-308`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:313-320`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:326`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:336`) |
+| `searchLimiter` (`app.js:339-346`) | 15 min / 60 | `/api/users/search` only (`app.js:347`), to blunt user enumeration |
 
 Both carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. Two blocks in

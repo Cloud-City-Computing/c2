@@ -41,9 +41,9 @@ it (directly or transitively) before reading `process.env`.
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 
 `NODE_ENV` matters in five places: CORS localhost allowance
-(`app.js:155`), where Helmet is mounted (`app.js:201`: the whole app in
-production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:209`,
-`app.js:247`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
+(`app.js:252`), where Helmet is mounted (`app.js:298`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:306`,
+`app.js:344`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
 mode. `.env.example` lists it blank; `npm run start` and the Docker image set it.
 
 ## 3. Local development
@@ -93,7 +93,7 @@ without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
 so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
-  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:18-22`).
+  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:25-29`).
 - The app builds from `cloudcodex/Dockerfile`, waits on
   `condition: service_healthy`, publishes
   `${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`, and takes
@@ -111,8 +111,17 @@ container cannot reach the host's loopback: it joins this compose network and
 proxies to `app:3000`. `tests/compose-ports.test.js` pins the mapping in both
 files and separately reads each mapping's effective host (its `:-` fallback)
 and fails on anything beyond loopback, so moving the pin and the files to an
-all-interfaces default together still fails. It covers the app port only: the
-prod file's database publishes `3306:3306` on every interface (below).
+all-interfaces default together still fails. It reads every service: the prod
+file's database is pinned to `${DB_BIND:-127.0.0.1}:3306:3306` the same way, and
+the release file's to no published port at all.
+
+**The prod file's MySQL port is on 127.0.0.1 too**, for the same DNAT reason:
+it used to publish `3306:3306` on every interface, the database's own
+authentication the only thing between it and anything that could route to the
+host. It stays published because `docs/deployment.md` has operators run a
+mysql client or `npm run migrate` from the host against it; the app itself
+uses `DB_HOST: database` over the compose network. `DB_BIND` widens it on
+purpose.
 - `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build
   stage runs `npm ci` and `npm run build`, and the runtime stage runs
   `npm ci --omit=dev`, copies the source, then copies `dist/` across from the
@@ -564,10 +573,11 @@ docker pull ghcr.io/cloud-city-computing/cloud-codex:0.11.0
 `docker-compose-release.yml` consumes the published image instead of building,
 pinned to `${CLOUDCODEX_VERSION:-0.11.0}` so an evaluator's install does not
 move under them on the next publish. It also differs from
-`docker-compose-prod.yml` in not publishing 3306: the app reaches MySQL over the
-compose network, and Docker's published ports are a DNAT rule that sits in front
-of the host firewall, so publishing it on a VPS exposes the database to the
-internet past a `ufw deny`.
+`docker-compose-prod.yml` in not publishing 3306 at all: the app reaches MySQL
+over the compose network, and Docker's published ports are a DNAT rule that sits
+in front of the host firewall, so publishing it on every interface of a VPS
+exposes the database to the internet past a `ufw deny`. The prod file publishes
+it on 127.0.0.1 only, for a client on the host.
 
 **Both** compose files mount a named volume `app_public` at `/app/public`.
 Uploaded avatars and extracted document images live only there:

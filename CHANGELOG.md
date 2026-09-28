@@ -24,8 +24,10 @@ back the database up first. No migration.
 is believed only from a proxy on loopback or a private network.** An install
 reached directly on port 3000 from another machine stops answering there: put
 it behind a TLS-terminating proxy, or set `APP_BIND=0.0.0.0` in `.env` to
-expose it on purpose. Behind a proxy, check that a real client's address still
-reaches the app (Security, below).
+expose it on purpose. `docker-compose-prod.yml` publishes MySQL on `127.0.0.1`
+too, so a database client on another machine needs `DB_BIND` or an SSH tunnel.
+Behind a proxy, check that a real client's address still reaches the app
+(Security, below).
 
 ### Added
 
@@ -68,8 +70,12 @@ reaches the app (Security, below).
   neither does a proxy in another container that used the host's address (join
   it to the compose network and proxy to `app:3000` instead). Production
   belongs behind a TLS-terminating reverse proxy; to expose the port on
-  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's address. A
-  test pins the mapping in both files and fails on any default beyond
+  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's address.
+  `docker-compose-prod.yml` also publishes MySQL as
+  `${DB_BIND:-127.0.0.1}:3306:3306` instead of `3306:3306`: a mysql client or
+  `npm run migrate` on the host still reaches it, and anything else needs
+  `DB_BIND` set on purpose (the release file publishes no database port). A
+  test pins every mapping in both files and fails on any default beyond
   loopback.
 
 ### Security
@@ -88,10 +94,15 @@ reaches the app (Security, below).
   other client is counted by its own address. The address recorded against
   each session came from the same header and is fixed the same way.
   `TRUST_PROXY` takes a list of addresses, subnets and those names, or
-  `false`; a hop count or `true` stops the boot with a sentence saying why,
-  unless `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that any client
-  able to reach the port can choose its own address. The app port is also
-  published on `127.0.0.1` now (Changed, above). **If you run behind a proxy,
+  `false`; a hop count, `true`, or a range wide enough to take in public
+  addresses (wider than an IPv4 /8 or an IPv6 /16, or the IPv4-mapped
+  `::ffff:0:0/96`, which is every IPv4 client) stops the boot with a sentence
+  saying why, unless `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that
+  any client able to reach the port can choose its own address. An entry not
+  written in standard notation always stops it, since Express reads
+  `010.0.0.0/8` as octal, public `8.0.0.0/8`. The app port is also published
+  on `127.0.0.1` now (Changed, above), and the prod file's MySQL port is no
+  longer published on every interface. **If you run behind a proxy,
   check two things:** that the proxy connects to the app from an address in a
   trusted range or listed in `TRUST_PROXY` (nginx or Caddy on the same host
   does, over the Docker bridge; a proxy on a public address must be listed),
