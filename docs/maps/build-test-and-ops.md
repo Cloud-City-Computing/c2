@@ -41,9 +41,9 @@ it (directly or transitively) before reading `process.env`.
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 
 `NODE_ENV` matters in five places: CORS localhost allowance
-(`app.js:263`), where Helmet is mounted (`app.js:309`: the whole app in
-production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:317`,
-`app.js:355`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
+(`app.js:258`), where Helmet is mounted (`app.js:304`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:312`,
+`app.js:350`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
 mode. `.env.example` lists it blank; `npm run start` and the Docker image set it.
 
 ## 3. Local development
@@ -110,9 +110,13 @@ purpose. `:-` rather than `-`, because `.env.example` ships `APP_BIND=` blank an
 a blank host address publishes on every interface. A reverse proxy in another
 container cannot reach the host's loopback: it joins this compose network,
 proxies to `app:3000`, and is listed in `TRUST_PROXY` by an address pinned with
-`ipv4_address`. `tests/compose-ports.test.js` parses every
-`docker-compose*.yml|yaml` at the repo root with js-yaml (a declared
-devDependency), so a new compose file fails until it has an expectation. For
+`ipv4_address`. `tests/compose-ports.test.js` parses every compose file at the
+repo root with js-yaml (a declared devDependency), found by name in both
+spellings Compose loads, `compose.yaml`/`compose.yml` (and `.override`) and
+`docker-compose*`, so a new one fails until it has an expectation. Every
+service in every file must not use `network_mode: host`, and no file may have a
+top-level `include:`, since an included file's ports merge in unread; both
+checks are proven on fixtures. For
 each service it pins the published mappings, reads each one's effective host
 in both the short syntax and the long one (`host_ip`), resolving `:-`
 fallbacks as a blank `.env` would, and fails on anything beyond loopback, so
@@ -131,11 +135,15 @@ default names `172.29.0.1/32`, so an unpinned network (Docker's next free
 subnet, `172.18.0.0/16` or later, or a `192.168` range once about fifteen
 networks exist) would leave the gateway untrusted and every client behind the
 proxy in one bucket. The ports test pins the `ipam` block and that its gateway
-is in the default, and that the app service neither joins another network nor
-sets `network_mode`. On a live 0.11.0 install, Compose 5.3.1's plain `up -d`
-replaced the old `172.20.0.0/16` network and recreated both containers with
-the volumes kept; `docs/deployment.md` "Upgrades" has the `down` then `up -d`
-path for a Compose that refuses.
+is in the default, and that the app service joins no other network. Upgrading
+an install created before the pin takes the project `down` before migrating
+(`docs/deployment.md` "Upgrades"). Measured on a live 0.11.0 install with
+Compose 5.3.1: when the database container's own configuration is unchanged,
+the usual stop-then-migrate order makes `run` replace the network and
+reconnect the database without its `database` alias, so the migration fails
+with `ENOTFOUND database` and the app then boots unable to reach it while
+`/api/oauth/providers` still answers 200; with `down` first it migrates and
+keeps both volumes.
 
 **The prod file's MySQL port is on 127.0.0.1 too**, for the same DNAT reason:
 it used to publish `3306:3306` on every interface, the database's own

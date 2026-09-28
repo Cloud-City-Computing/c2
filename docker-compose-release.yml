@@ -48,7 +48,9 @@ services:
     # UPGRADING IS NOT JUST THIS NUMBER. init.sql runs only on an empty data
     # directory, so a newer app against an older schema boots cleanly and then
     # 500s, and old code against a new schema is worse. The order is: pull the
-    # new image, stop the app, migrate, then start it:
+    # new image, stop the app, migrate, then start it (upgrading from 0.11.0 or
+    # earlier, `down` instead of `stop app`, because of the network pinned at
+    # the end of this file):
     #
     #   docker compose -f docker-compose-release.yml pull app
     #   docker compose -f docker-compose-release.yml stop app
@@ -82,9 +84,11 @@ services:
     # TLS-terminating reverse proxy production belongs behind. Docker's
     # published ports are a DNAT rule in front of the host firewall, so a
     # mapping with no host address is reachable from anywhere that can route
-    # here, past `ufw deny`. Set APP_BIND (0.0.0.0, or one interface's
+    # here, past `ufw deny`. Set APP_BIND (0.0.0.0, or one interface's IPv4
     # address) only to expose the port on purpose; see "TLS and reverse proxy"
-    # in docs/deployment.md.
+    # in docs/deployment.md. Never `::` or an IPv6 address: the network below
+    # is IPv4-only, so Docker would carry every IPv6 client in as its gateway,
+    # which TRUST_PROXY trusts.
     ports:
       - "${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}"
     env_file:
@@ -128,10 +132,11 @@ volumes:
 # exist), the gateway is not in the default, and every client behind the proxy
 # would share one rate-limit bucket. 172.29.0.0/16 is distinct from Cloud
 # Command's 172.28.0.0/16, so both can run on one host. An install created
-# before this was pinned has its network on another subnet: Compose 5.3.1
-# replaces it on the next `up -d` (it stops both containers, recreates the
-# network and starts them again, volumes kept). A Compose that refuses
-# instead needs `down` (never `down -v`) and then `up -d`; see "Upgrades" in
+# before this was pinned has its network on another subnet, and its upgrade
+# must take the project `down` (never `down -v`) BEFORE migrating: stopping
+# only the app and then migrating makes Compose replace this network under a
+# running database, which it reconnects without its `database` alias, so the
+# migration and the app both fail to find it. See "Upgrades" in
 # docs/deployment.md.
 networks:
   default:

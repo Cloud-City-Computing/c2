@@ -446,9 +446,10 @@ New files match this pattern. Update the year only if the file is genuinely new.
 - **Rate limiters are deliberate.** `authLimiter` (20/15min) on auth routes,
   `searchLimiter` (60/15min) on user search. New auth-adjacent routes get one.
   They key on `req.ip`, so `trust proxy` is part of them: it names the
-  proxies by address (loopback and two Docker gateways, one of them the
-  network the production compose files pin to 172.29.0.0/16), never a range,
-  and a hop count, `true` or a public-sized range is refused at boot
+  proxies by address (loopback, and the gateway of the network the
+  production compose files pin to 172.29.0.0/16; never 172.17.0.1, which
+  every IPv6 client of `docker run -p` arrives as), never a range, and a hop
+  count, `true` or an over-wide range is refused at boot
   (GHSA-9fmx-frrf-xxmq). Do not relax either, do not unpin the network, and
   keep every published port on loopback by default (`APP_BIND`, `DB_BIND`;
   `tests/compose-ports.test.js`).
