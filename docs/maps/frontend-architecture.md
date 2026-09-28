@@ -2,7 +2,8 @@
 
 React 19 + React Router 7, served by `vite-express` from the same Node process
 that serves the API. No SSR, no state library, no CSS framework. Roughly 73 JSX
-files plus a single 8844-line `src/index.css`.
+files plus a single 9070-line `src/index.css`, on top of the vendored design
+primitives (section 6).
 
 ---
 
@@ -248,9 +249,43 @@ adding its option map here, handling it in `applyPrefsToDOM`, and extending
 
 ## 6. Styling
 
-One file: `src/index.css`, 8844 lines. No CSS modules, no preprocessor, no
-utility framework. Theming works entirely through CSS custom properties set by
-`applyPrefsToDOM`, which is why preferences apply instantly without a re-render.
+Four stylesheets, imported by `src/main.jsx` in this order, which is
+load-bearing:
+
+1. `vendor/cloud-city-design/core.css`, the suite's 61 literal primitives on
+   `:root` (accent and semantic ramps, type scale, spacing, radii, motion, the
+   z-scale). It opens with its Apache-2.0 notice; Vite keeps it at the head of
+   the built stylesheet only because it is imported first and
+   `vite.config.js` sets `esbuild.legalComments: 'inline'` (Vite's default
+   strips it).
+2. `vendor/cloud-city-design/fonts.css`, `@font-face` for Inter and Poppins
+   with relative URLs, so Vite fingerprints the six `.woff2` files into
+   `dist/assets/`. Never `public/`, which the `app_public` volume shadows.
+   Nothing sets either family yet, so no font is fetched.
+3. `src/codex.css`, Codex's bindings: every name `--cx-` prefixed, all under
+   `[data-theme='dark']`, which `index.html` sets on `<html>` (Codex is dark
+   only through Wave 6). Five surfaces, three text levels, the accent
+   (`--accent-300`), its hover and fill, the status colours on the pale step,
+   the border, the scrim and the focus ring. **No rule reads a `--cx-` name
+   yet**; W6-CDX-22 repoints the legacy names onto them.
+4. `src/index.css`, 9070 lines, the whole app. No CSS modules, no
+   preprocessor, no utility framework. Its `:root` block declares the 27
+   legacy names every rule reads.
+
+**Four names overlap.** `index.css` redeclares `--brand-blue` and
+`--radius-sm`, `-md`, `-lg`, which `core.css` also declares; loaded later on
+the same selector, Codex's values win (radii 4, 8, 12 px against core's 6, 10,
+14). `tests/design/codex-css.test.js` pins the set so it can only shrink.
+**One name changed meaning:** `--font-mono`, which two GitHub-page rules read
+with a fallback, now resolves to core's monospace stack.
+
+Theming works through CSS custom properties set by `applyPrefsToDOM` on the
+root element, which is why preferences apply instantly without a re-render.
+The design gate (`tests/design/`, see
+[build-test-and-ops.md](build-test-and-ops.md) section 5) holds `src/` to an
+exemption ledger of literal colours, accent fill shades in text positions and
+suppressed outlines that can only shrink, and fails on any `var()` without a
+fallback that names nothing.
 
 Mobile is a recent investment area; UI changes should be checked at both
 desktop and mobile widths.

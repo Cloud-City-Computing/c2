@@ -896,6 +896,20 @@ HAVING COUNT(*) > 1`. The operator resolves each pair by hand (the CHANGELOG's
 Migration section says how) and re-runs it. **It is still not reproduced
 against Google itself.**
 
+### C8. `index.css` redeclares four names the design package owns
+
+The vendored `core.css` (W6-CDX-21) says a consumer never redeclares a name it
+defines. `index.css`'s `:root` still declares `--brand-blue`, `--radius-sm`,
+`--radius-md` and `--radius-lg`, and because it loads after `core.css` on the
+same selector, Codex's values win for the whole page (the radii differ: 4, 8
+and 12 px against 6, 10 and 14). `applyPrefsToDOM` also writes `--brand-blue`
+on the root element. Nothing is wrong on screen today; the tension is that the
+suite UI plan's legacy-alias bridge (W6-CDX-22, its Task 2.1) keeps
+`--brand-blue` declared, as `var(--cx-accent)`, which is still a redeclaration
+of a primitive. Whether the bridge renames it or the package's rule gets a
+recorded exception is W6-CDX-22's call. `tests/design/codex-css.test.js` pins
+the overlap to exactly these four, so it can shrink but not grow.
+
 ## D. Stale claims in the root `CLAUDE.md`
 
 Corrected in this pass, listed here so the drift pattern is visible:

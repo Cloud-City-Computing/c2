@@ -27,11 +27,12 @@ npm run test:integration  # opt-in: the live-MySQL project (needs a server, see 
 
 ---
 
-## Two default Vitest projects, one command
+## Three default Vitest projects, one command
 
-`vitest.config.js` defines three named projects. A single `npm test` runs the
-two default ones, backend and frontend, together with the right environment
-for each; the third, `integration`, is opt-in (next section):
+`vitest.config.js` defines four named projects. A single `npm test` runs the
+three default ones, backend, frontend and design, together with the right
+environment for each; the fourth, `integration`, is opt-in (next section).
+Backend and frontend:
 
 ```
    ┌─────────────────────────────────────────────────────────────┐
@@ -55,7 +56,15 @@ for each; the third, `integration`, is opt-in (next section):
 Both projects share the same coverage config so `npm run test:coverage`
 produces one unified report.
 
-The scripts name `--project backend --project frontend` explicitly, and
+The third default project, `design` (node, `tests/design/**`), runs the gates
+of the vendored `cloud-city-design` package over `index.html` and `src/`: the
+vendored copy against its SHA-256 manifest, literal colours, accent fill
+shades in text positions and suppressed outlines against an exact ledger
+(`tests/design/ledger.json`, which a fix lowers in the same change), `var()`
+references to undeclared names, and the contrast of `src/codex.css`'s
+bindings. `node tests/design/report.mjs` prints the ledger's live buckets.
+
+The scripts name `--project backend --project frontend --project design` explicitly, and
 `tests/test-projects.test.js` fails if a project the config declares (other
 than `integration`) is missing from `test`, `test:watch` or `test:coverage`, so a new project
 cannot silently drop out of the default run.

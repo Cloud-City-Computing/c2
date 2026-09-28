@@ -24,7 +24,7 @@ it with `path.resolve(dirname, '..', '.env')`. Importing `mysql_connect.js` is
 what loads env for the whole process, so any module that needs env must import
 it (directly or transitively) before reading `process.env`.
 
-## 2. npm scripts (`package.json:6-20`)
+## 2. npm scripts (`package.json:6-21`)
 
 | Script | Command | Notes |
 |---|---|---|
@@ -33,11 +33,11 @@ it (directly or transitively) before reading `process.env`.
 | `build` | `vite build` | frontend only; the backend is not bundled |
 | `preview` | `vite preview` | |
 | `lint` | `eslint .` | flat config, whole package |
-| `test` | `vitest run --project backend --project frontend` | the two default projects; never `integration` |
-| `test:watch` | `vitest --project backend --project frontend` | |
-| `test:coverage` | `vitest run --coverage --project backend --project frontend` | v8 provider, enforces thresholds |
+| `test` | `vitest run --project backend --project frontend --project design` | the three default projects; never `integration` |
+| `test:watch` | `vitest --project backend --project frontend --project design` | |
+| `test:coverage` | `vitest run --coverage --project backend --project frontend --project design` | v8 provider, enforces thresholds |
 | `test:integration` | `vitest run --project integration` | opt-in, needs a live MySQL; see section 5 |
-| `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
+| `test:backend` / `test:frontend` / `test:design` | `vitest run --project <name>` | one project at a time |
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
@@ -161,18 +161,20 @@ container is the old image, with neither the script nor the mount.
 
 ## 5. Testing
 
-**Vitest 4, three projects** in one config (`vitest.config.js:24-75`). A single
-`npm test` runs the two default ones, `backend` and `frontend`; the third,
-`integration`, is opt-in because it needs a MySQL server:
+**Vitest 4, four projects** in one config (`vitest.config.js:25-86`). A single
+`npm test` runs the three default ones, `backend`, `frontend` and `design`; the
+fourth, `integration`, is opt-in because it needs a MySQL server:
 
 | Project | Environment | Setup file | Includes |
 |---|---|---|---|
 | `backend` | node | `tests/setup.js` | `tests/routes/`, `tests/middleware/`, `tests/services/`, `tests/helpers/`, `tests/extensions/`, `tests/scripts/`, `tests/*.test.js` |
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
+| `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **90 files, 2015 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
+Current state: the default run is **95 files, 2091 tests, all passing**
+(measured 2026-09-28 on the W6-CDX-21 branch; 5 files and 77 tests of it are
+`design`); the integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
 tree, against MySQL 8.4.11 at the server's default isolation and at
 `READ-COMMITTED`).
 
@@ -198,13 +200,56 @@ process in, and a lost lock that never reaches `onSuperseded`, or a `server.js`
 that ignores it, leaves the server running.
 
 **The default run is pinned by name, not by omission.** `test`,
-`test:watch` and `test:coverage` name `--project backend --project frontend`,
-because a bare `vitest run` runs every declared project, integration included.
+`test:watch` and `test:coverage` name `--project backend --project frontend
+--project design`, because a bare `vitest run` runs every declared project,
+integration included.
 `tests/test-projects.test.js` (a backend test) fails if a declared project other
 than `integration` is missing from `test`, `test:watch` or `test:coverage`, or if
-`test:integration` runs anything but `integration`. A fourth project added to
+`test:integration` runs anything but `integration`. A project added to
 `vitest.config.js` without joining those scripts turns it red instead of
-silently never running.
+silently never running; `design` (W6-CDX-21) joined them and the guard passed
+unedited.
+
+### The design project (`tests/design/`)
+
+It runs the gates of the vendored design package over `index.html` and `src/`,
+`.css`, `.js`, `.jsx` and `.html` alike (69 files when it landed). The package
+is `vendor/cloud-city-design/`, a byte copy of the public Apache-2.0
+`Cloud-City-Computing/cloud-city-design` at the commit its `MANIFEST.json`
+names under `upstream`; ESLint ignores `vendor/`, and `vendor/.gitattributes`
+keeps git from converting its line endings. **It is never edited here**: a
+change goes upstream, then a re-vendor PR copies exactly the files the upstream
+manifest lists.
+
+| File | Gate |
+|---|---|
+| `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy |
+| `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
+| `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
+| `contrast.test.js` | every pair in `pairs.json` clears its minimum in the dark theme, and every colour binding in `src/codex.css` is in a pair or named decorative |
+| `codex-css.test.js` | `codex.css` declares only `--cx-` names under `[data-theme='dark']`, never a core name; `index.html` sets the attribute; `src/main.jsx` imports core, fonts, codex, index in that order; no font under `public/`; Vite keeps legal comments |
+
+**The ledger is exact, not a ceiling.** `ledger.json` holds a count per file,
+and per section banner inside `index.css` (`tests/design/buckets.js`,
+`banners`; an em dash in a banner title becomes a hyphen in the key). A bucket
+above its number fails as a regression and one below it fails as an unrecorded
+fix, so a burndown PR lowers the ledger by exactly what it burned, in the same
+PR. It started at 745 (646 literal colours, 77 accent positions, 22 outline
+suppressions); `node tests/design/report.mjs [file]` prints the live buckets.
+`src/codex.css` is the one file the literal rule skips (`TOKEN_DEFINITIONS`),
+because its literals are the definitions the contrast gate measures.
+
+Mutation-checked when it landed: a hex in `Toast.jsx`, an `outline: none` or a
+`color: var(--cx-accent-fill)` in `index.css`, a `var(--nope)`, one byte of the
+vendored `core.css`, `--cx-text-faint` below 4.5:1, an unpaired colour binding,
+a non-`--cx-` name, `data-theme` dropped, legal comments stripped, the import
+order swapped, a fixed dangling reference restored, and one literal removed
+without lowering the ledger each turned the named test red. A first seed of the
+hex landed inside `Toast.jsx`'s doc comment and reddened nothing, correctly: the
+scanner masks comments.
+
+`coverage.include` does not reach `tests/` or `vendor/`, so the project adds no
+coverage threshold.
 
 ### The live-MySQL project (`tests/setup.integration.js`)
 
@@ -463,7 +508,7 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:105-188`. The global floor is deliberately low because
+`vitest.config.js:116-199`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
@@ -509,7 +554,7 @@ treatment or it silently counts for nothing.
 **The practical consequence:** adding an uncovered branch to a high-threshold
 file fails CI even though every test passes. Write the test with the code. When
 you raise real coverage, ratchet the threshold up in the same PR; the comment at
-`vitest.config.js:99-104` explains the "achieved minus a small buffer" policy.
+`vitest.config.js:110-115` explains the "achieved minus a small buffer" policy.
 
 ## 6. CI
 

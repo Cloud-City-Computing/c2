@@ -23,6 +23,23 @@ backfill; see Migration below.
 
 ### Added
 
+- **The shared Cloud City design package, vendored, and a design gate.**
+  `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
+  Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)
+  package at commit `2d52baa` (0.2.0): its primitives (`core.css`), the Inter
+  and Poppins faces under the SIL Open Font License, and its gates, pinned by
+  a SHA-256 `MANIFEST.json`. It builds offline with the image, and the fonts
+  are fingerprinted into `dist/assets/`, never `public/`. A new Vitest
+  project, `design`, runs in `npm test` and `npm run test:coverage` (alone:
+  `npm run test:design`): the vendored copy must match its manifest, literal
+  colours, accent fill shades in text positions and suppressed focus outlines
+  may not exceed an exemption ledger that starts at 745 and only shrinks
+  (`node tests/design/report.mjs` prints it), every `var()` with no fallback
+  must name a declared property, and Codex's new colour bindings must clear
+  their contrast minimums. `src/codex.css` holds those bindings (`--cx-`
+  names on `<html data-theme="dark">`); nothing uses them yet, so the
+  interface does not change. The built stylesheet now keeps licence comments,
+  so the package's notice heads it. No migration and no new setting.
 - `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
   read for Cloud Command: for up to 100 document ids it returns the id, title,
   archive and last update of each one the caller can read in that workspace.
@@ -66,6 +83,10 @@ backfill; see Migration below.
 
 ### Changed
 
+- The GitHub page's linked file path and its file picker, which asked for a
+  `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now
+  get the design package's monospace stack. It renders the same face on Linux
+  and macOS; where Consolas is installed (Windows), the new stack picks it.
 - `POST /api/doc-images/upload` needs a `logId` form field naming the document
   the images go into, and write access to it: without one it answers `400`,
   without access `403`, and nothing is processed either way. The editor sends
@@ -109,6 +130,15 @@ backfill; see Migration below.
 
 ### Fixed
 
+- **Six rules that named a colour nothing defines now render.** The browser
+  drops a `var()` that names an undeclared property, so each of these fell
+  back to nothing: the "Sign in with Google" button now has its border and
+  background, the "or" divider above it its two lines, the Linked Accounts
+  rows in Account settings their border and background, the active tab in
+  Manage Archive Access its accent underline, and a draw.io diagram's delete
+  button turns red on hover instead of transparent with a white edge. A
+  sixth, on the avatar placeholder, never applied and is removed without a
+  visible change.
 - **Deleting an archive is recorded in the activity log.** The route looked
   up the archive's workspace only after deleting the row that led to it, so
   every `archive.delete` event was dropped. It now reads the workspace and

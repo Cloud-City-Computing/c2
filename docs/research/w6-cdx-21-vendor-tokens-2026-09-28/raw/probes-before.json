@@ -1,0 +1,87 @@
+{
+ "html-desktop": "<html lang=\"en\"><head>\n    <meta charset=\"UTF-8\">\n    <link rel=\"icon\" type=\"image/png\" href=\"/favicon.png\">\n    <meta n",
+ "fonts-desktop": [],
+ "body-font-desktop": "system-ui, Avenir, Helvetica, Arial, sans-serif",
+ "login-opened-desktop": true,
+ "btn-oauth-desktop": [
+  {
+   "border-top-style": "none",
+   "border-top-color": "rgba(255, 255, 255, 0.87)",
+   "background-color": "rgba(0, 0, 0, 0)",
+   "color": "rgba(255, 255, 255, 0.87)"
+  }
+ ],
+ "oauth-divider-desktop": "rgba(0, 0, 0, 0)",
+ "avatar-placeholder-desktop": [
+  {
+   "background-color": "rgba(0, 0, 0, 0)"
+  }
+ ],
+ "linked-desktop": true,
+ "linked-row-desktop": [
+  {
+   "border-top-style": "none",
+   "border-top-color": "rgba(255, 255, 255, 0.87)",
+   "background-color": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "border-top-style": "none",
+   "border-top-color": "rgba(255, 255, 255, 0.87)",
+   "background-color": "rgba(0, 0, 0, 0)"
+  }
+ ],
+ "access-opened-desktop": true,
+ "access-tab-desktop": [
+  {
+   "border-bottom-style": "none",
+   "border-bottom-color": "rgb(204, 204, 204)"
+  }
+ ],
+ "html-phone": "<html lang=\"en\"><head>\n    <meta charset=\"UTF-8\">\n    <link rel=\"icon\" type=\"image/png\" href=\"/favicon.png\">\n    <meta n",
+ "fonts-phone": [],
+ "body-font-phone": "system-ui, Avenir, Helvetica, Arial, sans-serif",
+ "login-opened-phone": true,
+ "btn-oauth-phone": [
+  {
+   "border-top-style": "none",
+   "border-top-color": "rgba(255, 255, 255, 0.87)",
+   "background-color": "rgba(0, 0, 0, 0)",
+   "color": "rgba(255, 255, 255, 0.87)"
+  }
+ ],
+ "oauth-divider-phone": "rgba(0, 0, 0, 0)",
+ "avatar-placeholder-phone": [
+  {
+   "background-color": "rgba(0, 0, 0, 0)"
+  }
+ ],
+ "linked-phone": true,
+ "linked-row-phone": [
+  {
+   "border-top-style": "none",
+   "border-top-color": "rgba(255, 255, 255, 0.87)",
+   "background-color": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "border-top-style": "none",
+   "border-top-color": "rgba(255, 255, 255, 0.87)",
+   "background-color": "rgba(0, 0, 0, 0)"
+  }
+ ],
+ "access-opened-phone": true,
+ "access-tab-phone": [
+  {
+   "border-bottom-style": "none",
+   "border-bottom-color": "rgb(204, 204, 204)"
+  }
+ ],
+ "drawio-hover": true,
+ "drawio-delete": [
+  {
+   "background-color": "rgba(0, 0, 0, 0)",
+   "border-top-color": "rgb(255, 255, 255)",
+   "color": "rgb(255, 255, 255)"
+  }
+ ],
+ "errors": []
+}
