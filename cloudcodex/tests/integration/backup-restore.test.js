@@ -50,6 +50,11 @@ const admin = adminConfig();
 const source = process.env.DB_NAME;      // this file's schema, built by setup.integration.js
 const scratch = throwawaySchemaName();   // the empty schema the drill restores into
 const elsewhere = throwawaySchemaName(); // a schema the restore must never reach
+// The shape the compose files give the app's MySQL user: everything on its
+// own schema and nothing anywhere else. The backup runs as one such user, of
+// the source, and the restore as another, of the scratch schema; neither
+// script ever uses root.
+const dumper = { user: throwawaySchemaName(), password: randomBytes(18).toString('base64url') };
 const restorer = { user: throwawaySchemaName(), password: randomBytes(18).toString('base64url') };
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'c2-it-backup-'));
@@ -83,6 +88,11 @@ function run(script, args, env = {}) {
       resolve({ code: err ? (err.code ?? 1) : 0, stdout, stderr });
     });
   });
+}
+
+/** Back up the source schema as its confined user. */
+function backupAs(args) {
+  return run(BACKUP, ['--local', ...args], { DB_USER: dumper.user, DB_PASS: dumper.password });
 }
 
 /** Restore as the confined user, into the scratch schema unless told otherwise. */
@@ -174,10 +184,10 @@ beforeAll(async () => {
   adminConn = await openAdminConnection();
   await adminConn.query(`CREATE DATABASE ${mysql.escapeId(scratch)}`);
   await adminConn.query(`CREATE DATABASE ${mysql.escapeId(elsewhere)}`);
-  // The shape the compose files give the app's MySQL user: everything on its
-  // own schema and nothing anywhere else. The restore runs as this user.
-  await adminConn.query('CREATE USER ?@\'%\' IDENTIFIED BY ?', [restorer.user, restorer.password]);
-  await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(scratch)}.* TO ?@'%'`, [restorer.user]);
+  for (const [who, schema] of [[dumper, source], [restorer, scratch]]) {
+    await adminConn.query('CREATE USER ?@\'%\' IDENTIFIED BY ?', [who.user, who.password]);
+    await adminConn.query(`GRANT ALL PRIVILEGES ON ${mysql.escapeId(schema)}.* TO ?@'%'`, [who.user]);
+  }
 
   // A running instance: a document with a pasted image and some Unicode, a
   // comment on it, and collaborative state in its BLOB column.
@@ -227,7 +237,7 @@ afterAll(async () => {
   if (adminConn) {
     await dropSchema(adminConn, scratch);
     await dropSchema(adminConn, elsewhere);
-    await adminConn.query('DROP USER IF EXISTS ?@\'%\'', [restorer.user]);
+    for (const who of [dumper, restorer]) await adminConn.query('DROP USER IF EXISTS ?@\'%\'', [who.user]);
     await adminConn.end();
   }
   rmSync(tmp, { recursive: true, force: true });
@@ -235,7 +245,7 @@ afterAll(async () => {
 
 describe('scripts/backup.sh', () => {
   it('writes one archive that only its owner can read, and leaves no working files behind', async () => {
-    const result = await run(BACKUP, ['--local', '--uploads', UPLOADS, archive]);
+    const result = await backupAs(['--uploads', UPLOADS, archive]);
 
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain(archive);
@@ -266,7 +276,7 @@ describe('scripts/backup.sh', () => {
     expect(dump).toMatch(/-- Dump completed/);
   });
 
-  it('carries no credential: neither the MySQL password it connected with nor the boot admin\'s', async () => {
+  it('carries no credential: not the MySQL password it connected with, root\'s or the boot admin\'s', async () => {
     const dir = await unpack(archive);
     const everything = Buffer.concat([
       readFileSync(path.join(dir, 'manifest.json')),
@@ -275,13 +285,14 @@ describe('scripts/backup.sh', () => {
     ]);
     // Non-vacuity: the search does find what is in there.
     expect(everything.includes(Buffer.from(seen.hash))).toBe(true);
+    expect(everything.includes(Buffer.from(dumper.password))).toBe(false);
     expect(everything.includes(Buffer.from(admin.password))).toBe(false);
     expect(everything.includes(Buffer.from(ADMIN.password))).toBe(false);
   });
 
   it('refuses to overwrite an existing file', async () => {
     const before = readFileSync(archive);
-    const result = await run(BACKUP, ['--local', '--uploads', UPLOADS, archive]);
+    const result = await backupAs(['--uploads', UPLOADS, archive]);
 
     expect(result.code).not.toBe(0);
     expect(result.stderr).toMatch(/already exists/);
@@ -427,16 +438,19 @@ describe('the drill: destroy the instance, restore it, and find everything', () 
     expect(result.stderr).toMatch(/--replace/);
   });
 
-  it('--replace makes the database and the uploads exactly the backup\'s', async () => {
+  it('--replace makes the database, avatars/ and doc-images/ exactly the backup\'s, and removes nothing else', async () => {
     const uploads = mkdtempSync(path.join(tmp, 'uploads-'));
-    writeFileSync(path.join(uploads, 'stray.txt'), 'not in the backup');
+    mkdirSync(path.join(uploads, 'doc-images'));
+    writeFileSync(path.join(uploads, 'doc-images', 'stray.webp'), 'not in the backup');
+    writeFileSync(path.join(uploads, 'keep.txt'), 'outside avatars/ and doc-images/');
     await adminConn.query(`CREATE TABLE ${mysql.escapeId(scratch)}.stray (id INT)`);
     await adminConn.query(`UPDATE ${mysql.escapeId(scratch)}.logs SET html_content = '<p>changed</p>' WHERE id = ?`, [seen.logId]);
 
     const result = await restoreAs(['--into', scratch, '--replace', '--uploads', uploads, archive]);
 
     expect(result.code, result.stderr).toBe(0);
-    expect(existsSync(path.join(uploads, 'stray.txt'))).toBe(false);
+    expect(existsSync(path.join(uploads, 'doc-images', 'stray.webp'))).toBe(false);
+    expect(readFileSync(path.join(uploads, 'keep.txt'), 'utf8')).toBe('outside avatars/ and doc-images/');
     expect(readFileSync(path.join(uploads, 'doc-images', `${seen.hash}.webp`)).equals(seen.imageBytes)).toBe(true);
     const [[stray]] = await adminConn.query(
       'SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?', [scratch, 'stray']
