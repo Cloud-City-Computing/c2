@@ -552,6 +552,90 @@ and restart. A fresh install needs none of this.
 
 ---
 
+## Several instances on one MySQL server
+
+The compose files give each install a MySQL server of its own, with one
+account (`MYSQL_USER`) that holds every privilege on `DB_NAME`. That is right
+for one instance on its own server. To run several instances against **one**
+server, give each its own schema and two accounts of its own: an app account
+that can read and write rows in that schema and nothing more, and a migration
+account that can change that schema's tables and nothing more. Neither account
+can see, read, write or grant anything in another instance's schema.
+
+**Name the schema with lowercase letters and digits only.** In a
+database-level `GRANT`, MySQL reads `_` and `%` in the schema name as
+wildcards (unless the server runs with `partial_revokes`, which is off by
+default), so a grant on `c2_acme` would also cover `c2xacme`, or any schema
+whose name differs only where the underscore is. A name with neither character
+means the same thing whatever the server's settings. Account names are not
+patterns, so they may carry underscores.
+
+```sql
+-- As root, once per instance. Put the instance's schema name where c2acme is,
+-- and a generated password (openssl rand -hex 24) in place of each <...>.
+CREATE DATABASE c2acme;
+CREATE USER 'c2acme_app'@'%' IDENTIFIED BY '<app password>' WITH MAX_USER_CONNECTIONS 15;
+GRANT SELECT, INSERT, UPDATE, DELETE ON `c2acme`.* TO 'c2acme_app'@'%';
+CREATE USER 'c2acme_mig'@'%' IDENTIFIED BY '<migration password>' WITH MAX_USER_CONNECTIONS 3;
+GRANT ALL PRIVILEGES ON `c2acme`.* TO 'c2acme_mig'@'%';
+```
+
+| Account | Holds | Used by |
+|---|---|---|
+| `c2acme_app` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `c2acme`; at most 15 connections | the running app: its `.env` sets `DB_USER=c2acme_app`, `DB_PASS` and `DB_NAME=c2acme` |
+| `c2acme_mig` | every privilege on `c2acme`, without `GRANT OPTION`; at most 3 connections | building the schema and `npm run migrate`, and nothing else. Its password never goes in the app's `.env` |
+
+Neither account holds anything global: no `PROCESS`, `FILE`, `SUPER`,
+`CREATE USER` and no `*.*` grant, so neither can list other sessions, read or
+write the server's files, change its settings or make accounts. The app account
+has no DDL even on its own schema, and the app needs none: every query it
+issues, at boot and after, is a `SELECT`, `INSERT`, `UPDATE` or `DELETE`, and
+the instance lock (`GET_LOCK`) needs no privilege.
+
+**Build the schema as the migration account**, from a host with a `mysql`
+client that reaches the server, then record it as a fresh install with the
+runner, also as the migration account. The runner reads `DB_USER`, `DB_PASS`
+and `DB_NAME` like the app, so give it the migration account's in place of the
+app's, for example with the instance's compose file:
+
+```bash
+mysql -h <mysql host> -u c2acme_mig -p c2acme < init.sql
+read -rs DB_PASS && export DB_PASS          # the migration password
+docker compose -f docker-compose-release.yml run --rm \
+  -e DB_USER=c2acme_mig -e DB_PASS app npm run migrate -- --adopt-fresh-install
+```
+
+Every later [upgrade](#upgrades) runs `npm run migrate` the same way, as the
+migration account. A migration that created a trigger or a stored function
+would also need `log_bin_trust_function_creators` on a server that keeps a
+binary log (MySQL 8.4's default); none does, and the integration tests run every
+migration file as this account, so one that did would fail there first.
+
+**Connections.** The cap on the app account is what stops one instance taking
+every connection the server has. 15 covers the pool (`DB_POOL_SIZE`, 10 by
+default), the instance lock's own connection and room to reconnect; if you
+raise `DB_POOL_SIZE`, raise the cap to at least `DB_POOL_SIZE` + 5
+(`ALTER USER 'c2acme_app'@'%' WITH MAX_USER_CONNECTIONS 25;`). The server's
+`max_connections` (151 by default) must cover every instance's two caps plus a
+few for you: seven instances fit at these caps, and an eighth needs it raised.
+
+**What this does not protect against.** Anyone holding the server's root
+password reaches every schema. Each instance also needs its own `app_public`
+volume, because avatars and document images live on disk, outside the grant.
+And the instances share the server's CPU, memory and disk, so one heavy
+instance slows the others. Section 9 of
+[`docs/maps/access-control.md`](maps/access-control.md) sets out where the
+boundary between instances is and where it is not.
+
+`cloudcodex/tests/integration/tenancy.test.js` runs the SQL block above, as it
+is written here, for two instances on one server, and checks that every
+cross-schema statement it knows fails with MySQL's privilege error;
+`grants-sufficient.test.js` runs the app on the app account alone. The record
+of the run is in
+[`docs/research/instance-isolation-2026-09-28/`](research/instance-isolation-2026-09-28/).
+
+---
+
 ## Logs
 
 Cloud Codex writes to **stdout/stderr only** — no logging library, no
