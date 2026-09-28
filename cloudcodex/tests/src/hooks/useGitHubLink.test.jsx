@@ -45,6 +45,41 @@ describe('useGitHubLink', () => {
     expect(fetchGitHubLink).not.toHaveBeenCalled();
   });
 
+  // Every /api/github route answers 403 to a user with no GitHub account
+  // linked, so the editor passes enabled: false until it knows one is.
+  it('fetches nothing while enabled is false, and loads once it turns true', async () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useGitHubLink(7, { enabled }),
+      { initialProps: { enabled: false } },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fetchGitHubLink).not.toHaveBeenCalled();
+    expect(fetchGitHubSyncStatus).not.toHaveBeenCalled();
+    expect(result.current.link).toBeNull();
+    expect(result.current.error).toBeNull();
+
+    fetchGitHubLink.mockResolvedValueOnce({ link: { id: 1, repo: 'x' } });
+    fetchGitHubSyncStatus.mockResolvedValueOnce({ sync_status: 'clean' });
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.status).toEqual({ sync_status: 'clean' }));
+    expect(fetchGitHubLink).toHaveBeenCalledWith(7);
+  });
+
+  it('forgets a loaded link when enabled turns false', async () => {
+    fetchGitHubLink.mockResolvedValueOnce({ link: { id: 1, repo: 'x' } });
+    fetchGitHubSyncStatus.mockResolvedValueOnce({ sync_status: 'clean' });
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useGitHubLink(7, { enabled }),
+      { initialProps: { enabled: true } },
+    );
+    await waitFor(() => expect(result.current.link).toEqual({ id: 1, repo: 'x' }));
+
+    rerender({ enabled: false });
+    await waitFor(() => expect(result.current.link).toBeNull());
+    expect(result.current.status).toBeNull();
+    expect(fetchGitHubLink).toHaveBeenCalledTimes(1);
+  });
+
   it('loads link and status on mount', async () => {
     fetchGitHubLink.mockResolvedValueOnce({ link: { id: 1, repo: 'x' } });
     fetchGitHubSyncStatus.mockResolvedValueOnce({ sync_status: 'clean' });

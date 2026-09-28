@@ -10,6 +10,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { contractDefault } from './contract-default.js';
 
 vi.unmock('../mysql_connect.js');
@@ -415,5 +417,25 @@ describe('DB_HOST and DB_NAME defaults', () => {
     const config = await poolConfigWith({ DB_HOST: 'database', DB_NAME: 'codex' });
     expect(config.host).toBe('database');
     expect(config.database).toBe('codex');
+  });
+});
+
+// The image has no .env (compose passes the variables in), and dotenv 17 logs
+// a line per config() call when it loads nothing, plus an advert, on every
+// boot and every restart. Quiet, and still the repository root's .env, which
+// is the file a host run reads.
+describe('dotenv', () => {
+  it('loads the repository root .env without logging', async () => {
+    const config = vi.fn();
+    vi.doMock('dotenv', () => ({ default: { config } }));
+    try {
+      vi.resetModules();
+      await import('../mysql_connect.js');
+    } finally {
+      vi.doUnmock('dotenv');
+    }
+    const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    expect(config).toHaveBeenCalledTimes(1);
+    expect(config).toHaveBeenCalledWith({ path: path.resolve(appDir, '..', '.env'), quiet: true });
   });
 });

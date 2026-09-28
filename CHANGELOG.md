@@ -12,6 +12,119 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- **Backup and restore as one command each.** `make backup OUT=<file>`
+  (`scripts/backup.sh`) writes one archive holding a `mysqldump` of the
+  database, migration ledger included, the uploads volume (avatars and document
+  images) and a manifest with a checksum of each. It is readable by its owner
+  only, never written over an existing file, and holds no password; it does
+  hold everything the database does, so keep it as carefully. `make restore
+  IN=<file>` (`scripts/restore.sh`) restores into a stopped stack and starts it,
+  after refusing an archive that is damaged or altered, is a backup of a
+  differently named database (unless `--into` names this one), or would land
+  on a database that holds data (unless `--replace`), a running app, or a
+  database whose instance lock is held. A new stack's empty tables need no
+  flag. Both run as the app's own MySQL user, never root, through Docker
+  Compose (`COMPOSE_FILE`, default `docker-compose-release.yml`), or with
+  `--local` through MySQL's `mysql` and `mysqldump` clients for an install
+  outside Docker. See "Backups" in `docs/deployment.md`, which replaces the
+  manual recipe that was there. No migration and no new setting.
+
+### Fixed
+
+- **A first boot on an empty volume no longer restarts the app** (listed as a
+  known gap in 0.12.0's release notes). The MySQL healthcheck in both
+  production compose files pinged over the socket, which the image's temporary
+  initialisation server (networking off, while it runs `init.sql`) answers, so
+  the database reported healthy while nothing listened on 3306. The app then
+  exited with `Could not open a MySQL connection for the instance lock:
+  connect ECONNREFUSED` until `restart: unless-stopped` brought it back (the
+  0.11.0 image, which has no instance lock, started instead without its admin:
+  `admin user sync failed: ... ECONNREFUSED`). The check now pings `127.0.0.1`
+  over TCP, which only the real server answers, with a 300-second start period
+  so a slow initialisation is not marked unhealthy, and `start.sh` waits the
+  same way (for up to three minutes instead of one). Measured on fresh
+  volumes: `docker-compose-prod.yml` restarted the app 4 times in each of two
+  boots before and 0 after, and `docker-compose-release.yml` built locally 6
+  before and 0 after. A test pins the check in both files and in `start.sh`.
+- **The app's inline SVG icons declare the real SVG namespace.** The rename
+  from organizations to workspaces had reached inside a URL, so the sidebar's
+  icons and the search and explore boxes' declared `www.w3.workspace` where
+  `www.w3.org` belongs. React drew them anyway, which is why it went unnoticed,
+  but the markup was not valid SVG. A test now fails on any XML namespace
+  outside a short list of W3C ones, and on any URL whose host ends in a product
+  word (workspace, squad, archive, log).
+- **The container's log no longer opens with dotenv's banner.**
+  `mysql_connect.js` and `services/email.js` each call `dotenv.config()`, and
+  dotenv 17 printed `injecting env (0) from ../.env` and an advert for each
+  call on every boot, because the image has no `.env`. Both calls are quiet
+  now and still read the same file.
+- **No more refused GitHub requests in the browser console.** A signed-out
+  visitor's landing page asked `GET /api/github/status` and got a 401, and
+  every document view by a user with no GitHub account linked asked
+  `GET /api/github/link/:id` and got a 403. The layout now asks for the GitHub
+  status only once its sign-in check has found a user, and the editor asks for
+  a document's link only once that status says an account is linked. The
+  server refuses both exactly as before. The standalone editor route
+  (`/editor/:id`) now renders inside the layout the way the archive view's
+  embedded editor already did, so it also waits for the sign-in check.
+- **The self-hosting documentation matches the code.** `docs/deployment.md`,
+  `README.md` and `docs/architecture.md` now all say SMTP is optional and what
+  running without it turns off (emailed invitations, which become a link to
+  copy, password reset, email two-factor codes and notification emails).
+  Both first-install snippets in `docs/deployment.md` now include the one-time
+  `npm run migrate -- --adopt-fresh-install`. Its "Stop every writer first"
+  section appeared twice and is now one. The environment table in
+  `docs/getting-started.md` lists every variable in `env-contract.js` it
+  lacked (`PORT`, `C2_INSTANCE_LOCK`, `DOC_IMAGES_PUBLIC`, `SERVICE_TOKEN`,
+  `SERVICE_TOKEN_USER`), marks `ADMIN_USERNAME` required, and describes
+  `NODE_ENV`'s effect on CORS as `app.js` implements it, and a test now fails
+  when the table misses an entry or contradicts its kind.
+- **README's release quick start reaches a ready instance.** It ran compose in
+  the foreground and stopped there, so a reader who followed it alone never ran
+  the one-time `npm run migrate -- --adopt-fresh-install`: `/readyz` stayed 503
+  `migrations` and the container unhealthy. It now matches the 0.12.0 release
+  notes' "Run it" block (`up -d`, then the adopt step, with `APP_URL` named among
+  what to fill in), and both first-install blocks in `docs/deployment.md` name
+  `APP_URL` too. A test fails when any documented first install on a production
+  compose file leaves out one of the three.
+- **Running without SMTP no longer reads as an error in the boot log.** The
+  documented mail-off mode printed `✖ Email disabled: SMTP_HOST, SMTP_USER or
+  SMTP_PASS not set`, the same glyph as a boot that cannot start. It now
+  prints a report line styled like the trusted-proxy one, `✔ Email off (...)`,
+  naming what is unavailable. A configured SMTP server that fails verification
+  still prints `✖ Email disabled: SMTP connection failed`, since that is a
+  fault. `initMail()` now also returns `configured`, which is how the two are
+  told apart.
+- **The rate-limit tables list every limiter.** `docs/deployment.md` and
+  `docs/security.md` left out the one on `GET /api/documents/state`, 120
+  requests per 15 minutes counted before authentication, and `security.md`'s
+  "Search" row now says it is the user search it limits.
+- **The configuration contract describes `NODE_ENV` correctly.** Its entry in
+  `cloudcodex/env-contract.js` said production "arms the rate limiters", but
+  they are on in every mode except `test`. It now lists what production
+  actually changes: the built app, the security headers on every response,
+  `APP_URL` required, and no localhost origins.
+
+## [0.12.0] - 2026-09-28
+
+The hosting-readiness release. One security fix: anyone who could reach the
+app's port directly could choose their own address in `X-Forwarded-For` and
+step around every rate limiter, including the sign-in and two-factor limit
+([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+`TRUST_PROXY` now names the proxies it believes by address, the app port is
+published on `127.0.0.1`, and the production compose files pin their network.
+Alongside it: session tokens stored only as a digest, with one session per
+sign-in; document images served only to people who can read the document;
+`/healthz` and `/readyz`; a container that stops cleanly; one process per
+database; a reconciliation read for Cloud Command; and the configuration
+contract, with `APP_URL` required in production. **Upgrading from 0.11.0 is a
+breaking change for an install reached directly from another machine, or
+behind a proxy that does not connect from `127.0.0.1`, `::1` or `172.29.0.1`;
+it takes the project `down` before migrating, applies two migrations and runs
+one backfill. See below and Migration.**
+
 **Upgrading: a production instance now refuses to start without `APP_URL`.**
 Check that `.env` sets it to the address people use before pulling.
 `.env.example` ships `http://localhost:3000`, which boots but now prints a
@@ -20,6 +133,39 @@ itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
 is older pulls it and upgrades its data directory in place on first start, so
 back the database up first. This release also has two migrations and a
 backfill; see Migration below.
+
+**Upgrading, BREAKING: the app port is published on `127.0.0.1`, and
+`X-Forwarded-For` is believed only from a proxy named by address.** An install
+reached directly on port 3000 from another machine stops answering there: put
+it behind a TLS-terminating proxy, or set `APP_BIND=0.0.0.0` in `.env` to
+expose it on purpose (an IPv4 address, never `::`), with `TRUST_PROXY=false`
+when nothing is in front of it. `docker-compose-prod.yml`
+publishes MySQL on `127.0.0.1` too, so a database client on another machine
+needs `DB_BIND` or an SSH tunnel. `TRUST_PROXY` now defaults to
+`127.0.0.1/32, ::1/128, 172.29.0.1/32`, which covers nginx or Caddy on the same
+host in front of either compose file and nothing else (an install run without
+Docker sets `127.0.0.1/32, ::1/128`): **a proxy running as
+another container, a load balancer, or the image run with `docker run`
+behind a proxy is no longer believed until you list its address** (worked
+values in "Rate limiters", `docs/deployment.md`); until then every client
+behind it shares one rate-limit bucket, and the server logs a warning naming
+it. For a single nginx, set `proxy_set_header X-Forwarded-For $remote_addr;`.
+The production compose files now pin their network to `172.29.0.0/16`, so
+**this upgrade takes the project down before migrating**:
+
+```bash
+docker compose -f docker-compose-release.yml pull app
+docker compose -f docker-compose-release.yml down     # never down -v
+docker compose -f docker-compose-release.yml run --rm app npm run migrate
+docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images
+docker compose -f docker-compose-release.yml up -d
+```
+
+The usual stop-the-app-then-migrate order makes Compose replace the network
+under a running database and reconnect it without its `database` alias, so the
+migration and then the app cannot find it (see "Upgrades",
+`docs/deployment.md`). The backfill runs once, on an install that already has
+documents, between the migrations and the start (see Migration below).
 
 ### Added
 
@@ -58,27 +204,12 @@ backfill; see Migration below.
   every stated default is checked against what the code does when the
   variable is unset or blank.
 - `TRUST_PROXY`, Express's `trust proxy` setting, which decides the address the
-  rate limiters count. Unset keeps today's `1`; a hop count, `true`, `false`,
-  `loopback` or an address list are accepted, and a value Express cannot parse
-  stops the boot with a sentence naming the variable.
+  rate limiters count: a list of addresses and CIDRs (subnet names such as
+  `loopback` are accepted too), or `false`. Unset is the address list
+  described under Security, and a value Express cannot parse stops the boot
+  with a sentence naming the variable.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
-- **Backup and restore as one command each.** `make backup OUT=<file>`
-  (`scripts/backup.sh`) writes one archive holding a `mysqldump` of the
-  database, migration ledger included, the uploads volume (avatars and document
-  images) and a manifest with a checksum of each. It is readable by its owner
-  only, never written over an existing file, and holds no password; it does
-  hold everything the database does, so keep it as carefully. `make restore
-  IN=<file>` (`scripts/restore.sh`) restores into a stopped stack and starts it,
-  after refusing an archive that is damaged or altered, is a backup of a
-  differently named database (unless `--into` names this one), or would land
-  on a database that holds data (unless `--replace`), a running app, or a
-  database whose instance lock is held. A new stack's empty tables need no
-  flag. Both run as the app's own MySQL user, never root, through Docker
-  Compose (`COMPOSE_FILE`, default `docker-compose-release.yml`), or with
-  `--local` through MySQL's `mysql` and `mysqldump` clients for an install
-  outside Docker. See "Backups" in `docs/deployment.md`, which replaces the
-  manual recipe that was there. No migration and no new setting.
 
 ### Changed
 
@@ -122,12 +253,33 @@ backfill; see Migration below.
   run an earlier 8.4 (8.4.8 shipped before): it pulls 8.4.11, and MySQL
   upgrades the data directory in place on first start, so back it up first. A
   test fails on a floating tag or on two files disagreeing.
-- The database service's healthcheck in `docker-compose-release.yml` and
-  `docker-compose-prod.yml` pings MySQL over TCP. On a new data directory the
-  MySQL image builds `init.sql` on a temporary server that listens on its
-  socket only, and the old socket ping called the service healthy while that
-  was still running, so the app could start against a half-built schema and
-  restart once. Nothing to do on upgrade.
+
+- **Both production compose files publish the app port on `127.0.0.1`**
+  (`${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`), not on every
+  interface. A browser or reverse proxy on the same machine reaches
+  `http://localhost:3000` as before; another machine no longer does, and
+  neither does a proxy in another container that used the host's address (join
+  it to the compose network and proxy to `app:3000` instead). Production
+  belongs behind a TLS-terminating reverse proxy; to expose the port on
+  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's IPv4
+  address (never `::` or an IPv6 address), and with nothing in front of it
+  `TRUST_PROXY=false`.
+  `docker-compose-prod.yml` also publishes MySQL as
+  `${DB_BIND:-127.0.0.1}:3306:3306` instead of `3306:3306`: a mysql client or
+  `npm run migrate` on the host still reaches it, and anything else needs
+  `DB_BIND` set on purpose (the release file publishes no database port). The
+  development file, `docker-compose.yaml`, does the same for its MySQL, which
+  runs with a development password: the dev server, `make` and a `mysql`
+  client on the same machine reach it as before, and nothing else on the
+  network does. A test reads every compose file at the root with a YAML
+  parser, pins every mapping, fails on any default beyond loopback in either
+  port syntax, and checks that `docker-compose.linux.yml` publishes nothing,
+  however it is spelled.
+- **Both production compose files pin their default network** to
+  `172.29.0.0/16`, gateway `172.29.0.1` (Cloud Command uses `172.28.0.0/16`),
+  so the address a proxy on the host arrives from is one `TRUST_PROXY`'s
+  default can name. An existing install's network is replaced by the `down`
+  and `up -d` the upgrade note above describes.
 
 ### Fixed
 
@@ -177,6 +329,62 @@ backfill; see Migration below.
 
 ### Security
 
+- **The rate limiters can no longer be walked around by choosing your own
+  address**
+  ([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+  Express's `trust proxy` was `1`, so every
+  limiter keyed on the rightmost `X-Forwarded-For` entry of any request that
+  carried one, and both production compose files published the app port on
+  every interface, where Docker's DNAT rule sits in front of the host
+  firewall. Anyone who could reach port 3000 directly could send a new address
+  with each request and get a fresh bucket every time: unlimited password and
+  two-factor guessing past the sign-in limit of 20 per 15 minutes, and
+  unlimited user search. The address recorded against each session came from
+  the same header. Now:
+  - `trust proxy` defaults to `127.0.0.1/32, ::1/128, 172.29.0.1/32`:
+    loopback, and the gateway of the network the production compose files now
+    pin, which is where Docker presents a proxy on the host. Every other peer
+    is counted by its own address, whatever `X-Forwarded-For` it sends: a
+    public client, a machine on the same LAN, VPN or VPC, and a sibling
+    container. A range is not trusted by default, because a client inside a
+    trusted range, behind a proxy that appends the header, could name its own
+    address with the left entry. The default bridge's gateway, `172.17.0.1`,
+    is not trusted either: `docker run -p PORT:PORT` publishes on IPv6 too,
+    that bridge is IPv4-only, and every IPv6 client arrives as its gateway.
+    An IPv4-only Docker network presents every IPv6 client of an
+    all-interfaces or IPv6 publish as its gateway, which is also why
+    `APP_BIND` must be an IPv4 address.
+  - `TRUST_PROXY` takes a list of addresses and CIDRs, subnet names, or
+    `false`. A hop count, `true`, or a range wider than an IPv4 /8, wider than
+    an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or holding more than an
+    IPv4 /8 of the IPv4-mapped `::ffff:0:0/96` (all of it is every IPv4
+    client) stops the boot with a sentence saying why, unless
+    `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that any client able to
+    reach the port can choose its own address. Those are the thresholds: a
+    public /8, or an IPv6 /16 to /31, is accepted. An entry not written in
+    standard notation always stops the boot, since Express reads `010.0.0.0/8`
+    as octal, public `8.0.0.0/8`.
+  - A peer `TRUST_PROXY` does not name that sends `X-Forwarded-For` is logged,
+    once per address (an IPv6 peer once per /64) and for at most 32 of them,
+    so a proxy left out of the list shows up in the log instead of silently
+    putting every client in one bucket. Once listening, the server also prints
+    what it trusts: `✔ Trusting proxies (the default): ...`, or
+    `(from TRUST_PROXY)`.
+  - The app port is published on `127.0.0.1` (Changed, above), and the prod
+    file's MySQL port is no longer published on every interface.
+
+  **If you run behind a proxy, check two things:** that `TRUST_PROXY` names the
+  address it connects from (nginx or Caddy on the same host needs nothing; a
+  proxy container, a load balancer or `docker run` must be listed), and that
+  the proxy **sets** `X-Forwarded-For` (for nginx alone, `$remote_addr`;
+  appending is also safe, and is what nginx behind a load balancer should do,
+  as long as the address it appends is the client's own and not one
+  `TRUST_PROXY` trusts). A proxy that sets nothing lets each client choose its
+  own address. Every process on the host that reaches the published port, and
+  with `APP_BIND` widened every container on the host, arrives as the gateway
+  and is trusted too; the loopback bind is what keeps that to this machine.
+  "Rate limiters" in `docs/deployment.md` has a check to run from outside,
+  with a forged `X-Forwarded-For`, and says what each result means.
 - **Session tokens are stored only as a SHA-256 digest, and every sign-in is
   its own session.** `sessions.id` held the raw token, so a copy of the table
   (a backup, a dump) was a list of working sign-ins; it now holds
@@ -755,7 +963,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Cloud-City-Computing/c2/compare/alpharelease...v0.9.0

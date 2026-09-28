@@ -10,19 +10,33 @@ services:
       MYSQL_PASSWORD: ${DB_PASS}
     env_file:
       - .env
+    # Published so a mysql client or `npm run migrate` on this host can reach
+    # it (docs/deployment.md), and on 127.0.0.1 only unless DB_BIND says
+    # otherwise: Docker's published ports are a DNAT rule in front of the host
+    # firewall, so a mapping with no host address puts the database on every
+    # network the machine is on, past `ufw deny`. The app does not use this; it
+    # reaches MySQL as DB_HOST: database over the compose network.
+    # docker-compose-release.yml publishes no database port at all.
     ports:
-      - "3306:3306"
+      - "${DB_BIND:-127.0.0.1}:3306:3306"
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro,z
+    # Over TCP, not the socket. On an empty volume the image first applies
+    # init.sql on a temporary server with networking off, and a socket ping
+    # answers that server: the app then started while nothing listened on
+    # 3306 and exited on ECONNREFUSED until the restart policy recovered it.
+    # Nothing answers 127.0.0.1 until the real server is up. start_period
+    # covers the initialisation, so a slow first boot is not marked unhealthy:
+    # the app waits on service_healthy, and an unhealthy database would stop
+    # `up` outright. A passing ping ends the start period at once, so a
+    # generous value costs a normal boot nothing.
     healthcheck:
-      # Over TCP: on a new data directory the image runs init.sql on a
-      # temporary server that listens on the socket alone, and a socket ping
-      # called that healthy while init.sql was still running.
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${DB_USER}", "-p${DB_PASS}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--protocol=tcp", "-u${DB_USER}", "-p${DB_PASS}"]
       interval: 7s
       timeout: 8s
       retries: 15
+      start_period: 300s
 
   app:
     build:
@@ -40,10 +54,21 @@ services:
     # Both sides follow PORT so setting it in .env moves the published mapping
     # too. Without this the app would bind PORT inside the container while
     # Compose still published 3000, and every request to the host would be
-    # refused while the logs showed a clean boot. `:-3000` covers the blank
-    # PORT= that .env.example ships.
+    # refused while the logs showed a clean boot. `:-3000` and `:-127.0.0.1`
+    # cover the blank PORT= and APP_BIND= that .env.example ships.
+    #
+    # The host side is 127.0.0.1 unless APP_BIND says otherwise, so only this
+    # machine reaches the app: a browser on it for an evaluation, or the
+    # TLS-terminating reverse proxy production belongs behind. Docker's
+    # published ports are a DNAT rule in front of the host firewall, so a
+    # mapping with no host address is reachable from anywhere that can route
+    # here, past `ufw deny`. Set APP_BIND (0.0.0.0, or one interface's IPv4
+    # address) only to expose the port on purpose; see "TLS and reverse proxy"
+    # in docs/deployment.md. Never `::` or an IPv6 address: the network below
+    # is IPv4-only, so Docker would carry every IPv6 client in as its gateway,
+    # which TRUST_PROXY trusts.
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}"
     env_file:
       - .env
     environment:
@@ -79,3 +104,24 @@ services:
 volumes:
   db_data:
   app_public:
+
+# The project's default network, pinned so its gateway is an address
+# TRUST_PROXY's default names (172.29.0.1/32). A proxy on this host reaches the
+# app through the published port, and Docker presents that traffic to the
+# container as this gateway. Left to Docker, the subnet is whatever is free
+# (172.18.0.0/16 on a fresh host, a 192.168 range once about fifteen networks
+# exist), the gateway is not in the default, and every client behind the proxy
+# would share one rate-limit bucket. 172.29.0.0/16 is distinct from Cloud
+# Command's 172.28.0.0/16, so both can run on one host. An install created
+# before this was pinned has its network on another subnet, and its upgrade
+# must take the project `down` (never `down -v`) BEFORE migrating: stopping
+# only the app and then migrating makes Compose replace this network under a
+# running database, which it reconnects without its `database` alias, so the
+# migration and the app both fail to find it. See "Upgrades" in
+# docs/deployment.md.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1

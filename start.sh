@@ -195,11 +195,15 @@ echo -e "\n${CYAN}[4/5]${NC} Waiting for MySQL to be ready…"
 DB_USER="${DB_USER:?DB_USER not set in .env}"
 DB_PASS="${DB_PASS:?DB_PASS not set in .env}"
 DB_NAME="${DB_NAME:-c2}"
-MAX_WAIT=60
+# Over TCP, not the socket: on a first boot the image applies init.sql on a
+# temporary server with networking off, which a socket ping would answer while
+# the app still could not connect. The TCP ping waits through that
+# initialisation too, hence the longer ceiling.
+MAX_WAIT=180
 WAITED=0
 
 while ! $DOCKER_SUDO docker exec "$(${COMPOSE_CMD} ps -q database)" \
-        mysqladmin ping -u"$DB_USER" -p"$DB_PASS" --silent 2>/dev/null; do
+        mysqladmin ping -h 127.0.0.1 --protocol=tcp -u"$DB_USER" -p"$DB_PASS" --silent 2>/dev/null; do
   if (( WAITED >= MAX_WAIT )); then
     fail "MySQL did not become ready within ${MAX_WAIT}s"
     info "Check logs: $COMPOSE_CMD logs database"

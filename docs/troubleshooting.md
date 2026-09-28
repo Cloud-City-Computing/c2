@@ -17,13 +17,16 @@ the cause and the fix.
 
 ```
 ┃ ⚠  Symptom
-┃   Startup log shows "✖ Email disabled: <reason>." Invitations only
-┃   show a copyable link instead of sending mail, "Forgot password"
-┃   reports itself unavailable, and email-based 2FA can't be enabled.
+┃   Startup log shows "✔ Email off (...)" or "✖ Email disabled: <reason>."
+┃   Invitations only show a copyable link instead of sending mail,
+┃   "Forgot password" reports itself unavailable, and email-based 2FA
+┃   can't be enabled.
 ```
 
-**Cause.** `SMTP_HOST`, `SMTP_USER`, or `SMTP_PASS` is empty in `.env`,
-or the configured server refused the connection test. Mail is optional:
+**Cause.** "Email off" means `SMTP_HOST`, `SMTP_USER`, or `SMTP_PASS` is
+empty in `.env`, which is a supported way to run. "Email disabled: SMTP
+connection failed" means all three are set and the server refused the
+connection test, which is a fault to fix. Mail is optional:
 the server boots either way and degrades those three features instead of
 exiting (the admin-credentials gate below is the only thing that's still
 boot-fatal). Squad invitations still work: the in-app notification is the
@@ -377,11 +380,15 @@ passing through unchanged.
 
 **Fix.**
 - **Caddy:** `reverse_proxy` handles WS automatically.
-- **nginx:** add the standard upgrade block:
+- **nginx:** add the standard upgrade block, beside the `X-Forwarded-For`
+  line every Cloud Codex proxy needs (`$remote_addr` when nginx is the only
+  proxy; behind a load balancer, see
+  [Rate limiters](deployment.md#rate-limiters)):
   ```
   proxy_http_version 1.1;
   proxy_set_header Upgrade $http_upgrade;
   proxy_set_header Connection "upgrade";
+  proxy_set_header X-Forwarded-For $remote_addr;
   ```
 - **Cloudflare:** WebSockets are on by default for paid plans; verify
   the WebSockets toggle is on in the dashboard.

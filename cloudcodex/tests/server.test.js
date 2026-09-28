@@ -47,10 +47,12 @@ vi.mock('../services/user-channel.js', () => ({ setupUserChannelServer: vi.fn(),
 const heldLock = { held: true, disabled: false, connectionId: 7, release: vi.fn(async () => {}) };
 vi.mock('../services/instance-lock.js', () => ({ acquireInstanceLock: vi.fn(async () => heldLock) }));
 vi.mock('../routes/admin.js', () => ({ default: {}, ensureAdminUser: vi.fn(), bootstrapInstance: vi.fn() }));
-vi.mock('../app.js', () => ({ default: {} }));
+// server.js reads the resolved `trust proxy` from the app for its boot line.
+const appGet = vi.fn(() => undefined);
+vi.mock('../app.js', () => ({ default: { get: appGet } }));
 vi.mock('../services/email.js', () => ({
   verifyEmailConnection: vi.fn(async () => true),
-  initMail: vi.fn(async () => ({ enabled: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' })),
+  initMail: vi.fn(async () => ({ enabled: false, configured: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' })),
   isMailEnabled: vi.fn(() => false),
   isMailConfigured: vi.fn(() => false),
   sendEmail: vi.fn(),
@@ -92,6 +94,7 @@ beforeEach(() => {
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   listenMock.mockClear();
+  appGet.mockReset();
   fakeServer.on.mockClear();
   fakeServer.listening = true;
   fakeServer.address.mockReturnValue({ port: 4100 });
@@ -194,6 +197,48 @@ describe('server.js: PORT', () => {
     });
   });
 
+  // The trust boundary fails silently both ways (every client in one bucket,
+  // or a key anyone can choose), and /healthz and /readyz cannot show it, so the boot
+  // says what the process actually trusts and where that came from. After the
+  // bind, like the line above, so it does not scroll past in a crash loop.
+  describe('the trust proxy boot line', () => {
+    const line = () => errorSpy.mock.calls.flat().map(String).find((l) => l.includes('Trusting proxies'));
+
+    it('names the resolved value and marks it the default when TRUST_PROXY is unset or blank', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? contractDefault('TRUST_PROXY') : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: '  ' }, () => {
+        listenCallback();
+        expect(appGet).toHaveBeenCalledWith('trust proxy');
+        expect(line()).toBe(`✔ Trusting proxies (the default): ${contractDefault('TRUST_PROXY')}`);
+      });
+    });
+
+    it('marks a value that came from TRUST_PROXY', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? '10.0.1.0/24' : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: '10.0.1.0/24' }, () => {
+        listenCallback();
+        expect(line()).toBe('✔ Trusting proxies (from TRUST_PROXY): 10.0.1.0/24');
+      });
+    });
+
+    it('says X-Forwarded-For is ignored when TRUST_PROXY is false', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? false : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: 'false' }, () => {
+        listenCallback();
+        expect(line()).toBe('✔ Trusting proxies (from TRUST_PROXY): none, X-Forwarded-For is ignored');
+      });
+    });
+
+    it('is not printed when the bind failed', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? contractDefault('TRUST_PROXY') : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: '' }, () => {
+        fakeServer.listening = false;
+        listenCallback();
+        expect(line()).toBeUndefined();
+      });
+    });
+  });
+
   it('reports the port actually bound, not the one requested, when PORT is 0', async () => {
     await withEnv({ PORT: '0' }, () => {
       expect(listenMock.mock.calls[0][1]).toBe(0);
@@ -284,9 +329,41 @@ describe('server.js: mail is optional', () => {
 
       expect(initMail).toHaveBeenCalled();
       expect(exitSpy).not.toHaveBeenCalled();
-      const allLogs = errorSpy.mock.calls.flat().join(' ');
-      expect(allLogs).toMatch(/Email disabled/);
-      expect(allLogs).toMatch(/SMTP_HOST, SMTP_USER or SMTP_PASS not set/);
+      // Running without mail is a documented optional mode, so its line is a
+      // report, styled like the trusted-proxy line, not an error: an operator
+      // scanning a first boot for the error glyph should find nothing here.
+      const mailLines = errorSpy.mock.calls.flat().map(String).filter((l) => /email/i.test(l));
+      expect(mailLines).toEqual([
+        '✔ Email off (SMTP_HOST, SMTP_USER or SMTP_PASS not set): invitations show a copyable link; '
+          + 'password reset, email two-factor codes and notification emails are unavailable.',
+      ]);
+      expect(errorSpy.mock.calls.flat().map(String).join(' ')).not.toMatch(/✖/);
+    } finally {
+      process.env = original;
+    }
+  });
+
+  // SMTP that is configured and does not answer is a fault, not a choice, so
+  // that line keeps the error glyph.
+  it('logs a configured SMTP that fails verification as an error', async () => {
+    const original = { ...process.env };
+    try {
+      process.env.SMTP_HOST = 'smtp.example.com';
+      process.env.SMTP_USER = 'u';
+      process.env.SMTP_PASS = 'p';
+      process.env.ADMIN_USERNAME = 'admin';
+      process.env.ADMIN_PASSWORD = 'pw';
+      process.env.ADMIN_EMAIL = 'admin@test.com';
+
+      const { initMail } = await import('../services/email.js');
+      initMail.mockResolvedValueOnce({ enabled: false, configured: true, reason: 'SMTP connection failed' });
+      await import('../server.js');
+
+      expect(exitSpy).not.toHaveBeenCalled();
+      const mailLines = errorSpy.mock.calls.flat().map(String).filter((l) => /email/i.test(l));
+      expect(mailLines).toEqual([
+        '✖ Email disabled: SMTP connection failed. Invites will show copyable links; password reset is unavailable.',
+      ]);
     } finally {
       process.env = original;
     }
