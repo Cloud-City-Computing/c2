@@ -71,12 +71,26 @@ describe('the scan is looking at the code base', () => {
     expect(rules.sort()).toEqual(['token-accent-position', 'token-literal-color', 'token-outline-suppressed']);
   });
 
-  it('skips literal colours only in the token definitions, and still applies the other rules there', () => {
+  it('skips the literal colours that define tokens, and still applies the other rules there', () => {
     expect(TOKEN_DEFINITIONS).toEqual(['src/codex.css']);
     const seed = '[data-theme=\'dark\'] { --cx-x: oklch(0.5 0 0); }\n.z { outline: 0; color: var(--brand-blue); }';
     expect(scanSource(seed, 'src/codex.css').map((f) => f.rule).sort())
       .toEqual(['token-accent-position', 'token-outline-suppressed']);
     expect(scanSource(seed, 'src/other.css').map((f) => f.rule)).toContain('token-literal-color');
+  });
+
+  it('skips only the custom-property definitions there, not a literal on any other property', () => {
+    const seed = [
+      "[data-theme='dark'] {",
+      '  --cx-a: oklch(0.5 0 0);',
+      '  /* a note on --cx-b: it is mid-sentence */ color: #ff0000;',
+      '  --cx-c:',
+      '    #00ff00;',
+      '  background: rgb(255 0 0);',
+      '}',
+    ].join('\n');
+    const literals = scanSource(seed, 'src/codex.css').filter((f) => f.rule === 'token-literal-color');
+    expect(literals.map((f) => f.line)).toEqual([3, 6]);
   });
 
   it('buckets index.css findings by both banner shapes, with em dashes as hyphens', () => {
@@ -86,7 +100,7 @@ describe('the scan is looking at the code base', () => {
       '========================= */',
       '/* ─── GitHub Integration ─── */',
       '/* ==========',
-      '   Remote Cursors — Collaborative Editing',
+      '   Remote Cursors \u2014 Collaborative Editing',
     ].join('\n'));
     expect(marks).toEqual([
       { line: 1, name: 'Buttons' },

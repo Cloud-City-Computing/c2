@@ -22,6 +22,16 @@ const why = (detail) => `${detail}. vendor/cloud-city-design is a vendored copy 
 
 const sha256 = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
 
+const SUITES = Object.keys(manifest.files).filter((file) => file.endsWith('.test.mjs'));
+
+// Runs the package's own node:test suites inside the copy and reads the pass and fail
+// counts from the run's summary.
+function runSuites(env = process.env) {
+  const run = spawnSync(process.execPath, ['--test', ...SUITES], { cwd: VENDOR, encoding: 'utf8', timeout: 25000, env });
+  const summary = /# pass (\d+)[\s\S]*# fail (\d+)/.exec(run.stdout);
+  return { run, pass: Number(summary?.[1]), fail: Number(summary?.[2]) };
+}
+
 function presentFiles() {
   return readdirSync(VENDOR, { recursive: true, encoding: 'utf8' })
     .map((entry) => entry.split(path.sep).join('/'))
@@ -56,13 +66,19 @@ describe('the vendored cloud-city-design package', () => {
   });
 
   it('passes the package\'s own node:test suites in this copy', () => {
-    const suites = Object.keys(manifest.files).filter((file) => file.endsWith('.test.mjs'));
-    expect(suites.length).toBeGreaterThanOrEqual(5);
-    const run = spawnSync(process.execPath, ['--test', ...suites], { cwd: VENDOR, encoding: 'utf8', timeout: 25000 });
-    const summary = /# pass (\d+)[\s\S]*# fail (\d+)/.exec(run.stdout);
+    expect(SUITES.length).toBeGreaterThanOrEqual(5);
+    const { run, pass, fail } = runSuites();
     expect(run.status, why(`node --test failed:\n${run.stdout}\n${run.stderr}`)).toBe(0);
     // Non-vacuity: the suites ran their cases, not zero of them.
-    expect(Number(summary?.[1])).toBeGreaterThanOrEqual(50);
-    expect(Number(summary?.[2])).toBe(0);
+    expect(pass).toBeGreaterThanOrEqual(50);
+    expect(fail).toBe(0);
+  });
+
+  it('reads the same counts whatever test reporter the environment asks for', () => {
+    // Node 24 prints the spec reporter by default, and NODE_OPTIONS can name one too.
+    const { run, pass, fail } = runSuites({ ...process.env, NODE_OPTIONS: '--test-reporter=spec' });
+    expect(run.status, `node --test failed:\n${run.stdout}\n${run.stderr}`).toBe(0);
+    expect(pass).toBeGreaterThanOrEqual(50);
+    expect(fail).toBe(0);
   });
 });

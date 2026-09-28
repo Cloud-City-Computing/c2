@@ -28,6 +28,15 @@ describe('src/codex.css', () => {
     expect(names.filter((name) => !name.startsWith('--cx-'))).toEqual([]);
   });
 
+  it('declares custom properties and nothing else', () => {
+    // A plain property here would paint the page from the one file whose
+    // custom-property literals the token-discipline ledger reads as definitions.
+    const declarations = blocks(codex).flatMap((b) => b.body.split(';'))
+      .map((d) => d.trim()).filter(Boolean);
+    expect(declarations.length).toBe(declaredNames(codex).length);
+    expect(declarations.filter((d) => !/^--cx-[\w-]+\s*:/.test(d))).toEqual([]);
+  });
+
   it('declares everything under the dark theme attribute, and nothing on :root', () => {
     const selectors = blocks(codex).map((b) => b.selector);
     expect(selectors).toEqual(["[data-theme='dark']"]);
