@@ -9,7 +9,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import http from 'node:http';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -49,10 +49,13 @@ describe('app.js — Express configuration', () => {
   // GHSA-9fmx-frrf-xxmq. A hop count believes the X-Forwarded-For of whoever
   // connects, and the compose files published the app port on every
   // interface, so a client reaching the port directly chose its own address
-  // and got a fresh rate-limit bucket per request. The default now trusts a
-  // peer only when it is on loopback, link-local or a private range, which is
-  // where a reverse proxy on the same host (over the Docker bridge) or a cloud
-  // load balancer's private address connects from.
+  // and got a fresh rate-limit bucket per request. Trusting private ranges
+  // instead was not enough: a client on the same LAN, VPN or VPC (AWS's
+  // default VPC is 172.31.0.0/16, inside 172.16.0.0/12) was itself trusted, so
+  // behind a proxy that appends it named its own key with the left entry. The
+  // default now names each proxy by address: loopback, the default Docker
+  // bridge's gateway, and the gateway of the network the compose files pin,
+  // where a proxy on the host arrives from.
   describe('TRUST_PROXY', () => {
     const UNSET = { TRUST_PROXY: undefined, TRUST_PROXY_ALLOW_HOP_COUNT: undefined };
 
@@ -77,14 +80,14 @@ describe('app.js — Express configuration', () => {
       expect(parseTrustProxy(undefined)).toBe(contractDefault('TRUST_PROXY'));
     });
 
-    it('the default is the trusted-subnet form, not a hop count', () => {
-      expect(contractDefault('TRUST_PROXY')).toBe('loopback, linklocal, uniquelocal');
+    it('the default names the proxies by address, not by range or count', () => {
+      expect(contractDefault('TRUST_PROXY')).toBe('127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32');
     });
 
     it.each([
-      [undefined, 'loopback, linklocal, uniquelocal'],
-      ['', 'loopback, linklocal, uniquelocal'],
-      ['   ', 'loopback, linklocal, uniquelocal'],
+      [undefined, '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32'],
+      ['', '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32'],
+      ['   ', '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32'],
       ['false', false],
       [' false ', false],
       ['loopback', 'loopback'],
@@ -103,23 +106,29 @@ describe('app.js — Express configuration', () => {
         ['127.0.0.1', 'loopback'],
         ['::1', 'IPv6 loopback'],
         ['::ffff:127.0.0.1', 'loopback on a dual-stack socket'],
-        ['172.18.0.1', 'the Docker bridge gateway, where nginx on the host arrives from'],
-        ['::ffff:172.18.0.1', 'the same gateway on the container\'s dual-stack socket'],
-        ['10.0.1.25', 'a cloud load balancer\'s private address'],
-        ['192.168.1.10', 'a private LAN address'],
-        ['169.254.10.1', 'IPv4 link-local'],
-        ['fe80::1', 'IPv6 link-local'],
-        ['fd12:3456::1', 'IPv6 unique local'],
+        ['172.29.0.1', 'the gateway of the network the compose files pin, where nginx on the host arrives from'],
+        ['::ffff:172.29.0.1', 'the same gateway on the container\'s dual-stack socket'],
+        ['172.17.0.1', 'the default Docker bridge\'s gateway, for the image run without compose'],
+        ['::ffff:172.17.0.1', 'the same on a dual-stack socket'],
       ])('trusts %s (%s)', (peer) => {
         expect(trust()(peer, 0)).toBe(true);
       });
 
       it.each([
+        ['127.0.0.2', 'loopback, but not the one address a proxy on this host uses'],
+        ['172.29.0.5', 'a sibling container on the pinned network, not its gateway'],
+        ['::ffff:172.29.0.5', 'the same on a dual-stack socket'],
+        ['172.31.44.9', 'a neighbour in AWS\'s default VPC'],
+        ['172.18.0.1', 'the gateway of a compose network nobody pinned'],
+        ['10.0.1.25', 'a private address, a load balancer until it is listed'],
+        ['192.168.1.10', 'a machine on the same LAN'],
+        ['169.254.10.1', 'IPv4 link-local'],
+        ['fe80::1', 'IPv6 link-local'],
+        ['fd12:3456::1', 'IPv6 unique local'],
         ['203.0.113.9', 'a public IPv4 client'],
         ['::ffff:203.0.113.9', 'the same client on a dual-stack socket'],
         ['8.8.8.8', 'a public IPv4 address'],
         ['2001:db8::1', 'a public IPv6 address'],
-        ['172.32.0.1', 'just outside 172.16.0.0/12'],
       ])('does not trust %s (%s)', (peer) => {
         expect(trust()(peer, 0)).toBe(false);
       });
@@ -292,6 +301,12 @@ describe('app.js — Express configuration', () => {
   // and its store are the real code, and only the address the kernel reported
   // is replaced. Each case imports a fresh app, so it gets a fresh store.
   describe('the auth limiter key', () => {
+    // The app logs a warning when an untrusted peer sends X-Forwarded-For,
+    // which most cases here do on purpose; one case below asserts it.
+    let errorSpy;
+    beforeEach(() => { errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {}); });
+    afterEach(() => errorSpy.mockRestore());
+
     function servedFrom(peer, target) {
       return http.createServer((req, res) => {
         Object.defineProperty(req.socket, 'remoteAddress', { value: peer, configurable: true });
@@ -331,8 +346,47 @@ describe('app.js — Express configuration', () => {
       },
     );
 
-    it.each(['172.18.0.1', '::ffff:10.0.1.25'])(
-      'believes a private peer\'s (%s) X-Forwarded-For: two clients behind it get separate buckets',
+    // A peer inside the pinned subnet that is not its gateway is a sibling
+    // container, and a sibling is not a proxy: it is keyed on its own address
+    // whatever chain it sends, appended form included.
+    it.each(['172.29.0.5', '::ffff:172.29.0.5'])(
+      'counts a non-gateway peer inside the pinned subnet (%s) by its own address',
+      async (peer) => {
+        const chains = Array.from({ length: 21 }, (_, i) => `198.51.100.${i + 1}, 10.0.5.7`);
+        const statuses = await loginsFrom(await freshApp(), peer, chains);
+        expect(statuses.slice(0, 20)).not.toContain(429);
+        expect(statuses[20]).toBe(429);
+      },
+    );
+
+    // The review's repro. A client behind the proxy, nginx appending as
+    // documented, sends a new left entry with every attempt. The proxy is
+    // trusted, so the walk reads the entry nginx appended, the client's real
+    // address, and stops there because that client is not a proxy: one key,
+    // 429 on attempt 21. Under the old subnet default a private client was
+    // itself trusted, the walk went on to the injected entry, and all 40
+    // attempts got a fresh bucket.
+    it.each([
+      ['10.0.5.7', 'a LAN or VPN client'],
+      ['172.31.44.9', 'a neighbour in AWS\'s default VPC'],
+      ['192.168.1.50', 'a home-network client'],
+      ['203.0.113.9', 'a public client'],
+    ])('keys %s (%s) behind an appending proxy on its own address, whatever left entry it injects', async (client) => {
+      const chains = Array.from({ length: 40 }, (_, i) => `198.51.100.${i + 1}, ${client}`);
+      const statuses = await loginsFrom(await freshApp(), '172.29.0.1', chains);
+      expect(statuses.slice(0, 20)).not.toContain(429);
+      expect(statuses.slice(20)).toEqual(Array(20).fill(429));
+    });
+
+    it('logs once, naming TRUST_PROXY, when an untrusted peer sends X-Forwarded-For', async () => {
+      await loginsFrom(await freshApp(), '203.0.113.9', rotating(3));
+      const warnings = errorSpy.mock.calls.flat().filter((line) => String(line).includes('TRUST_PROXY'));
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('203.0.113.9');
+    });
+
+    it.each(['172.29.0.1', '::ffff:172.29.0.1', '127.0.0.1'])(
+      'believes a trusted proxy\'s (%s) X-Forwarded-For: two clients behind it get separate buckets',
       async (peer) => {
         const target = await freshApp();
         const first = await loginsFrom(target, peer, Array(21).fill('198.51.100.1'));
