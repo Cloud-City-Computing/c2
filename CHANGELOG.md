@@ -62,6 +62,14 @@ initialises an empty data directory.
   `SERVICE_TOKEN_USER`), marks `ADMIN_USERNAME` required, and describes
   `NODE_ENV`'s effect on CORS as `app.js` implements it, and a test now fails
   when the table misses an entry or contradicts its kind.
+- **README's release quick start reaches a ready instance.** It ran compose in
+  the foreground and stopped there, so a reader who followed it alone never ran
+  the one-time `npm run migrate -- --adopt-fresh-install`: `/readyz` stayed 503
+  `migrations` and the container unhealthy. It now matches the 0.12.0 release
+  notes' "Run it" block (`up -d`, then the adopt step, with `APP_URL` named among
+  what to fill in), and both first-install blocks in `docs/deployment.md` name
+  `APP_URL` too. A test fails when any documented first install on a production
+  compose file leaves out one of the three.
 - **Running without SMTP no longer reads as an error in the boot log.** The
   documented mail-off mode printed `✖ Email disabled: SMTP_HOST, SMTP_USER or
   SMTP_PASS not set`, the same glyph as a boot that cannot start. It now

@@ -72,7 +72,7 @@ Running a published release, which is the recommended path unless you are
 deploying modified source:
 
 ```bash
-cp .env.example .env       # fill every required variable (see below)
+cp .env.example .env       # fill every required variable, APP_URL included (see below)
 docker compose -f docker-compose-release.yml up -d        # init.sql builds the schema
 docker compose -f docker-compose-release.yml run --rm app \
    npm run migrate -- --adopt-fresh-install
@@ -92,7 +92,7 @@ version does not move under you on the next publish. The published image is
 Building from your own source instead:
 
 ```bash
-cp .env.example .env
+cp .env.example .env       # fill every required variable, APP_URL included (see below)
 docker compose -f docker-compose-prod.yml up -d --build   # init.sql builds the schema
 docker compose -f docker-compose-prod.yml run --rm app \
    npm run migrate -- --adopt-fresh-install

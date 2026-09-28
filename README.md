@@ -169,17 +169,24 @@ probably is.
 else. No Node, no build step.
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Cloud-City-Computing/c2.git
 cd c2
-cp .env.example .env   # fill in DB and admin credentials; SMTP is optional
-docker compose -f docker-compose-release.yml up
+cp .env.example .env    # fill in DB and admin credentials and APP_URL; SMTP is optional
+docker compose -f docker-compose-release.yml up -d
+docker compose -f docker-compose-release.yml run --rm app npm run migrate -- --adopt-fresh-install
 ```
+
+The last line is a one-time step on a fresh install: it records that the schema
+`init.sql` just built already has every migration. Until it runs, `/readyz`
+answers 503 `migrations` and Docker reports the container unhealthy.
+`APP_URL` is the address people use to reach the instance; production refuses
+to start without it, and invitation and password-reset links are built from it.
 
 **Work on the source.** Installs dependencies and runs the dev server with
 hot reload.
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Cloud-City-Computing/c2.git
 cd c2
 cp .env.example .env   # fill in DB and admin credentials; SMTP is optional
 ./start.sh             # installs deps, starts MySQL, launches dev server
