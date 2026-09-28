@@ -29,6 +29,17 @@ export const RECIPE_SCHEMA_PREFIX = 'c2it';
 /** `SHOW DATABASES LIKE` pattern for RECIPE_SCHEMA_PREFIX. */
 export const RECIPE_SCHEMA_LIKE = 'c2it%';
 
+/**
+ * Whether the global teardown may drop `schema` as one this project left
+ * behind. It drops on whatever server IT_DB_HOST names, so only a name this
+ * project mints may pass.
+ * @param { String } schema
+ * @returns { Boolean }
+ */
+export function isThrowawaySchema(schema) {
+  return schema.startsWith(SCHEMA_PREFIX) || schema.startsWith(RECIPE_SCHEMA_PREFIX);
+}
+
 /** Every MySQL account this project creates starts with SCHEMA_PREFIX too. */
 export const USER_LIKE = SCHEMA_LIKE;
 

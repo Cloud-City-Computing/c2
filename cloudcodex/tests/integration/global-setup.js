@@ -8,6 +8,7 @@
 import {
   dropSchema,
   dropUser,
+  isThrowawaySchema,
   openAdminConnection,
   RECIPE_SCHEMA_LIKE,
   SCHEMA_LIKE,
@@ -36,6 +37,7 @@ export async function teardown() {
       const [rows] = await conn.query(`SHOW DATABASES LIKE '${like}'`);
       for (const row of rows) {
         const schema = Object.values(row)[0];
+        if (!isThrowawaySchema(schema)) continue;
         await dropSchema(conn, schema);
         leaked.push(schema);
       }

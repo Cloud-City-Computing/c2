@@ -34,17 +34,25 @@ export const RECIPE_EXAMPLE = Object.freeze({
 });
 
 /**
- * The recipe's SQL block, verbatim: the first ```sql fence in the section.
+ * The recipe's section of docs/deployment.md, heading to the next `## `.
  * @returns { String }
  */
-export function recipeSql() {
+export function recipeSection() {
   const doc = readFileSync(DEPLOYMENT_MD, 'utf8');
   const start = doc.indexOf(`\n${SECTION}\n`);
   if (start === -1) {
     throw new Error(`docs/deployment.md has no "${SECTION}" section, so there is no recipe to prove`);
   }
   const next = doc.indexOf('\n## ', start + SECTION.length + 2);
-  const section = doc.slice(start, next === -1 ? undefined : next);
+  return doc.slice(start, next === -1 ? undefined : next);
+}
+
+/**
+ * The recipe's SQL block, verbatim: the first ```sql fence in the section.
+ * @returns { String }
+ */
+export function recipeSql() {
+  const section = recipeSection();
   const fence = section.match(/```sql\n([\s\S]*?)```/);
   if (!fence) {
     throw new Error(`the "${SECTION}" section of docs/deployment.md has no \`\`\`sql block`);

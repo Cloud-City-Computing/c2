@@ -20,13 +20,21 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import mysql from 'mysql2/promise';
 import { listMigrationFiles, LEGACY_BASELINE, MIGRATIONS_DIR } from '../../scripts/migrate.js';
-import { dropSchema, dropUser, openAdminConnection, SCHEMA_PREFIX } from './mysql-admin.js';
+import {
+  dropSchema,
+  dropUser,
+  isThrowawaySchema,
+  openAdminConnection,
+  SCHEMA_PREFIX,
+  throwawaySchemaName,
+} from './mysql-admin.js';
 import {
   buildFresh,
   buildUpgraded,
   connectAs,
   newInstance,
   provision,
+  recipeSection,
   recipeSql,
   unprovision,
 } from './instance-recipe.js';
@@ -220,6 +228,41 @@ describe("instance A's app account against instance B", () => {
     expect(n).toBeGreaterThan(0);
   });
 
+  // Every system view the app account can read, searched for B's schema
+  // name. MySQL lists every file-per-table tablespace to every account, so
+  // one view does name B, with its tables: the recipe must say so, since it
+  // is why schema names should not be customer names.
+  it('the one system view that names B is TABLESPACES_EXTENSIONS, and the recipe says so', async () => {
+    const [views] = await appA.query(
+      'SELECT TABLE_SCHEMA AS s, TABLE_NAME AS t FROM information_schema.TABLES ' +
+        "WHERE TABLE_SCHEMA IN ('information_schema', 'performance_schema')"
+    );
+    const read = [];
+    const naming = [];
+    for (const { s, t } of views) {
+      let rows;
+      try {
+        [rows] = await appA.query(`SELECT * FROM ${mysql.escapeId(s)}.${mysql.escapeId(t)}`);
+      } catch (err) {
+        if ([ER_TABLEACCESS_DENIED_ERROR, ER_SPECIFIC_ACCESS_DENIED_ERROR].includes(err.errno)) continue;
+        throw err;
+      }
+      read.push(`${s}.${t}`);
+      if (JSON.stringify(rows).includes(b.schema)) naming.push(`${s}.${t}`);
+    }
+    // Non-vacuity: the sweep read the views that would name B if any did.
+    expect(read).toEqual(expect.arrayContaining(['information_schema.TABLES', 'information_schema.SCHEMATA',
+      'information_schema.COLUMNS', 'information_schema.TABLESPACES_EXTENSIONS']));
+    expect(naming).toEqual(['information_schema.TABLESPACES_EXTENSIONS']);
+
+    const [rows] = await appA.query(
+      'SELECT TABLESPACE_NAME AS name FROM information_schema.TABLESPACES_EXTENSIONS WHERE TABLESPACE_NAME LIKE ?',
+      [`${b.schema}/%`]
+    );
+    expect(rows.map((row) => row.name)).toContain(`${b.schema}/users`);
+    expect(recipeSection()).toContain('TABLESPACES_EXTENSIONS');
+  });
+
   it('sees only its own connections in the process list', async () => {
     const [[{ bConn }]] = await appB.query('SELECT CONNECTION_ID() AS bConn');
     for (const sql of ['SELECT ID, USER FROM information_schema.PROCESSLIST', 'SELECT ID, USER FROM performance_schema.processlist']) {
@@ -334,6 +377,19 @@ describe('why the recipe names schemas with letters and digits only', () => {
       await dropSchema(admin, named);
       await dropSchema(admin, lookalike);
       await dropUser(admin, user);
+    }
+  });
+});
+
+describe('the global teardown', () => {
+  // It drops on whatever server IT_DB_HOST names, which may be a developer's
+  // own, so a schema of theirs that merely starts like ours must survive it.
+  it('recognises the names this project mints and nothing that only starts like them', () => {
+    expect(isThrowawaySchema(a.schema)).toBe(true);
+    expect(isThrowawaySchema(b.schema)).toBe(true);
+    expect(isThrowawaySchema(throwawaySchemaName())).toBe(true);
+    for (const name of ['c2items', 'c2itest', 'c2it', 'c2it0123456789ab', `${a.schema}x`, `${a.schema}_x`]) {
+      expect(isThrowawaySchema(name), name).toBe(false);
     }
   });
 });
