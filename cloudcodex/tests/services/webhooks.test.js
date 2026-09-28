@@ -126,7 +126,7 @@ describe('services/webhooks', () => {
       const longestType = [...EMITTED_TYPES].reduce((a, b) => (b.length > a.length ? b : a));
       const body = serializeEnvelope({
         id: '5b0e3c0e-8f0e-4a8c-9b7e-2c1d0f6a9e11',
-        sequence: 9_223_372_036_854_775_807,
+        sequence: Number(9_223_372_036_854_775_807n),
         type: longestType,
         occurredAt: '2026-09-24T15:04:05.123Z',
         workspaceId: INT_MAX,

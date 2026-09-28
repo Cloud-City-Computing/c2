@@ -89,4 +89,18 @@ export const ENV_CONTRACT = [
       + 'at least 32 characters' },
   { name: 'SERVICE_TOKEN_USER', kind: 'optional', perInstance: true,
     why: 'the email of the existing non-admin user whose access the machine credential acts with' },
+
+  // Outbound webhooks
+  { name: 'WEBHOOK_URL', kind: 'optional', perInstance: true,
+    why: 'with WEBHOOK_SECRET, the receiver the env-declared subscription sends events to; either unset '
+      + 'disables that subscription at boot' },
+  { name: 'WEBHOOK_SECRET', kind: 'optional', perInstance: true,
+    why: 'the env subscription\'s signing secret, at least 32 characters, read from the environment '
+      + 'and never stored' },
+  { name: 'WEBHOOK_WORKSPACE_ID', kind: 'optional', perInstance: true,
+    why: 'limits the env subscription to one workspace\'s events; unset sends every workspace\'s, '
+      + 'and a value that is not a workspace id disables it' },
+  { name: 'WEBHOOK_ALLOW_PRIVATE_TARGETS', kind: 'optional', perInstance: false,
+    why: 'exactly 1 lets any webhook, the env one and admin-created ones, reach loopback and private '
+      + 'addresses; link-local and metadata addresses stay refused' },
 ];

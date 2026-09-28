@@ -189,6 +189,10 @@ All seed accounts use the password **`password`**.
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |
 | `NODE_ENV` | `production` tightens CORS to `CORS_ORIGIN` only; anything else also allows localhost origins | — (optional) |
+| `WEBHOOK_URL` | With `WEBHOOK_SECRET`, the receiver the server's own webhook subscription sends events to ([webhooks](api/webhooks.md)); `https` in production | — (optional) |
+| `WEBHOOK_SECRET` | That subscription's signing secret, at least 32 characters, never stored in the database | — (optional) |
+| `WEBHOOK_WORKSPACE_ID` | Send only this workspace's events to it; unset sends every workspace's | — (optional) |
+| `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `1` lets any webhook reach loopback and private addresses; link-local and metadata addresses are always refused | — (optional) |
 
 ---
 
