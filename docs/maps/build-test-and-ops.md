@@ -219,6 +219,17 @@ than `integration` is missing from `test`, `test:watch` or `test:coverage`, or i
 `vitest.config.js` without joining those scripts turns it red instead of
 silently never running.
 
+**`tests/namespace-urls.test.js` reads every text file in the repository**
+(source, tests, docs, SQL, compose files and workflows; not `node_modules/`,
+`dist/`, `coverage/` or `public/`). Every `xmlns` value must be on its short
+allowlist of W3C namespaces, and no `http(s)` URL's host may end in a product
+word (`workspace`, `squad`, `archive`, `log` and their plurals), since no real
+top-level domain is one. It exists because the organizations-to-workspaces
+rename was a text substitution that reached inside URLs: ten inline SVG icons
+declared `www.w3.workspace` as their namespace until 2026-09-28, and React
+rendered them regardless, so no page looked wrong. The file leaves itself out,
+because its fixtures are the broken spellings.
+
 ### The live-MySQL project (`tests/setup.integration.js`)
 
 The only tests in the repo that touch a real database. The per-file setup runs

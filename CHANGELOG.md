@@ -167,6 +167,13 @@ backfill; see Migration below.
   restarted the app 4 times in each of two boots before and 0 after, and
   `docker-compose-release.yml` with a local build 6 before and 0 after. A test
   pins the check in both files and in `start.sh`.
+- **The app's inline SVG icons declare the real SVG namespace.** The rename
+  from organizations to workspaces had reached inside a URL, so the sidebar's
+  icons and the search and explore boxes' declared `www.w3.workspace` where
+  `www.w3.org` belongs. React drew them anyway, which is why it went unnoticed,
+  but the markup was not valid SVG. A test now fails on any XML namespace
+  outside a short list of W3C ones, and on any URL whose host ends in a product
+  word (workspace, squad, archive, log).
 
 ### Security
 
