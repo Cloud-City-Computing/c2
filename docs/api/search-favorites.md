@@ -10,7 +10,7 @@
 
 Full-text search across all documents the current user has read access to. Built on MySQL's `FULLTEXT` index over the `logs.title` and `logs.plain_content` columns.
 
-**Authentication.** `GET /api/search` and `GET /api/browse` accept either a normal session token or, when the install has configured one, a service token (`Authorization: Bearer <SERVICE_TOKEN>`). They are the only two routes in the app a service token reaches: `GET /api/search/filters` and `GET /api/presence` require a session and answer 401 to a service token. A service token acts as the non-admin user named by `SERVICE_TOKEN_USER` and therefore sees exactly what that user sees. See [../security.md](../security.md) for the rules and [`.env.example`](../../.env.example) for the configuration.
+**Authentication.** `GET /api/search` and `GET /api/browse` accept either a normal session token or, when the install has configured one, a service token (`Authorization: Bearer <SERVICE_TOKEN>`). With `GET /api/documents/state` ([documents.md](documents.md)) they are the only three routes in the app a service token reaches: `GET /api/search/filters` and `GET /api/presence` require a session and answer 401 to a service token. A service token acts as the non-admin user named by `SERVICE_TOKEN_USER` and therefore sees exactly what that user sees. See [../security.md](../security.md) for the rules and [`.env.example`](../../.env.example) for the configuration.
 
 ---
 

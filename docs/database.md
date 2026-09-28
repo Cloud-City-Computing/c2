@@ -38,6 +38,7 @@ The database models a **workspace → squad → archive → log** hierarchy with
                  ├── archive_repos          (GitHub bulk-import link)
                  └── logs
                        ├── versions
+                       ├── doc_images       (which images it holds)
                        ├── comments
                        │     └── comment_replies
                        ├── github_links     (per-doc file sync)
@@ -124,21 +125,22 @@ Links a Cloud Codex user to an external OAuth provider (Google or GitHub).
 
 ### `sessions`
 
-Active login sessions. Tokens are 64-character cryptographically random strings.
+Active login sessions, one row per sign-in. Tokens are 64-character cryptographically random strings, and only their SHA-256 digest is stored.
 
 | Column           | Type            | Notes                                  |
 |------------------|-----------------|----------------------------------------|
-| `id`             | CHAR(64) PK     | The session token itself               |
+| `id`             | CHAR(64) PK     | SHA-256 of the session token, lowercase hex; never the token itself |
 | `user_id`        | INT FK → users  | ON DELETE CASCADE                      |
+| `auth_provider`  | VARCHAR(16)     | The flow that minted it: `local` or `google` (CHECK). NOT NULL with no default |
 | `ip_address`     | VARCHAR(45)     | IPv4 or IPv6                           |
 | `user_agent`     | TEXT            |                                        |
 | `created_at`     | TIMESTAMP       |                                        |
 | `last_active_at` | TIMESTAMP       | Updated on each authenticated request |
-| `expires_at`     | TIMESTAMP       | 7-day rolling expiry                   |
+| `expires_at`     | TIMESTAMP       | 7 days after sign-in, never extended   |
 
-**Indexes:** `user_id`, `expires_at`.
+**Indexes:** `user_id`, `expires_at`. **Constraints:** `chk_sessions_auth_provider`.
 
-> A user has at most one active session. On re-login, the existing session is refreshed in place. Expired sessions are renewed (new token generated, same row updated).
+> Every sign-in inserts its own row, so each device has its own session and signing out of one leaves the others signed in. Nothing refreshes a row in place; expired rows are deleted by a daily prune in `server.js`. Added by `migrations/2026-09-27-session-per-sign-in.sql`, which also hashed the rows already stored.
 
 ---
 
@@ -386,6 +388,26 @@ Published version snapshots of a document's HTML content.
 | `created_at`   | TIMESTAMP          |                                                 |
 | `created_by`   | INT FK → users     | ON DELETE SET NULL                              |
 | `read_access`  | JSON ARRAY         | Future use; currently mirrors the parent log    |
+
+---
+
+### `doc_images`
+
+Which documents hold which stored image. The `/doc-images` handler serves an
+image only to its uploader and to users who can read a document named here
+(see `docs/security.md`, Document Images).
+
+| Column        | Type             | Notes                                                        |
+|---------------|------------------|--------------------------------------------------------------|
+| `hash`        | CHAR(16) NOT NULL | The image file's name without `.webp`                       |
+| `log_id`      | INT FK → logs    | ON DELETE CASCADE                                            |
+| `uploaded_by` | INT FK → users   | ON DELETE SET NULL; set only when this row's writer supplied the image's bytes |
+| `created_at`  | TIMESTAMP        |                                                              |
+
+**Primary key:** `(hash, log_id)`. **Index:** `idx_doc_images_log (log_id)`.
+Written by the upload route, by a document write that adds a reference (only
+from a writer who can see the image), and once by `npm run backfill:doc-images`
+on an install upgraded to it.
 
 ---
 

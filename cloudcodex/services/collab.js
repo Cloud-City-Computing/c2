@@ -20,7 +20,14 @@ import * as decoding from 'lib0/decoding';
 import { validateAndAutoLogin } from '../mysql_connect.js';
 import { c2_query } from '../mysql_connect.js';
 import { sanitizeHtml, canPublish, checkLogReadAccess, checkLogWriteAccess } from '../routes/helpers/shared.js';
-import { extractImagesFromHtml } from '../routes/helpers/images.js';
+import {
+  extractImagesFromHtml,
+  recordDocImages,
+  recordCreditedDocImages,
+  docImageHashes,
+  openDocImageCredits,
+  closeDocImageCredits,
+} from '../routes/helpers/images.js';
 import { processMentionsOnSave } from '../routes/helpers/mentions.js';
 import { logActivity } from '../routes/helpers/activity.js';
 
@@ -32,8 +39,13 @@ async function fetchDocMeta(logId) {
   return row || null;
 }
 
-// In-memory store: logId → { doc, conns, saveTimer, lastSavedHtml }
+// In-memory store: logId → { doc, conns, saveTimer, saving, lastSavedHtml, credits }
+// saveTimer is non-null exactly while a debounced save is pending, and saving
+// is the write a fired timer has in flight, so shutdown can tell what is owed.
 const docs = new Map();
+
+// Every WebSocketServer setupCollabServer made, so shutdown can close them.
+const servers = new Set();
 
 // Track per-user connection count across all documents
 const userConnectionCounts = new Map(); // userId → count
@@ -60,8 +72,11 @@ async function getOrCreateDoc(logId) {
     doc: ydoc,
     conns: new Map(),   // ws → { user, canWrite, color }
     saveTimer: null,
+    saving: null,
     cleanupTimer: null,
     lastSavedHtml: null,
+    // Which writer's own edit put each image reference in (images.js).
+    credits: openDocImageCredits(logId),
     logId,
   };
 
@@ -81,6 +96,9 @@ async function getOrCreateDoc(logId) {
   if (log?.html_content) {
     entry.lastSavedHtml = log.html_content;
   }
+  // What the document already holds is nobody's to claim, including a shared
+  // document that has drifted from the stored HTML.
+  entry.credits.setStored(log?.html_content, log?.ydoc_state ? sharedDocText(ydoc) : '');
 
   // Broadcast every Y.Doc mutation to connected peers (except the origin).
   // The origin is set to the sender's WebSocket in readSyncMessage, so we
@@ -103,23 +121,128 @@ async function getOrCreateDoc(logId) {
 }
 
 /**
+ * Write the current Yjs binary CRDT state back to MySQL. Throws on failure.
+ */
+async function writeYdocState(entry) {
+  const state = Y.encodeStateAsUpdate(entry.doc);
+  await c2_query(
+    `UPDATE logs SET ydoc_state = ?, updated_at = NOW() WHERE id = ?`,
+    [Buffer.from(state), entry.logId]
+  );
+}
+
+/**
  * Debounced save: writes the current Yjs binary CRDT state back to MySQL.
  * HTML is NOT updated here — clients send HTML during explicit save/publish.
  * Binary state is saved frequently so the CRDT can be restored on restart.
  */
 function scheduleSave(entry) {
   if (entry.saveTimer) clearTimeout(entry.saveTimer);
-  entry.saveTimer = setTimeout(async () => {
-    try {
-      const state = Y.encodeStateAsUpdate(entry.doc);
-      await c2_query(
-        `UPDATE logs SET ydoc_state = ?, updated_at = NOW() WHERE id = ?`,
-        [Buffer.from(state), entry.logId]
-      );
-    } catch (err) {
+  entry.saveTimer = setTimeout(() => {
+    entry.saveTimer = null;
+    const write = writeYdocState(entry).catch((err) => {
       console.error(`[collab] Save failed for log ${entry.logId}:`, err);
-    }
+    });
+    entry.saving = write;
+    write.then(() => { if (entry.saving === write) entry.saving = null; });
   }, SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Write every debounced save that is still pending, now, instead of when its
+ * timer would have fired. The graceful shutdown calls this before it closes
+ * the sockets (services/shutdown.js), so an edit made in the last three
+ * seconds before a stop is not lost.
+ *
+ * A write a fired timer already has in flight is awaited first: two writes of
+ * the same row can land in either order on different pooled connections, and
+ * the older state landing second would undo the newer one. Documents are
+ * written one after another, and one that throws is logged and skipped rather
+ * than stopping the rest. Never rejects.
+ *
+ * @returns {Promise<{ saved: number, failed: number }>}
+ */
+export async function flushPendingSaves() {
+  let saved = 0;
+  let failed = 0;
+  for (const entry of docs.values()) {
+    const pending = entry.saveTimer !== null;
+    if (!pending && !entry.saving) continue;
+    if (pending) {
+      clearTimeout(entry.saveTimer);
+      entry.saveTimer = null;
+    }
+    try {
+      if (entry.saving) await entry.saving;
+      if (pending) {
+        await writeYdocState(entry);
+        saved++;
+      }
+    } catch (err) {
+      failed++;
+      console.error(`[${new Date().toISOString()}] [collab] shutdown flush failed for log ${entry.logId}:`, err);
+    }
+  }
+  return { saved, failed };
+}
+
+/**
+ * Close every socket on every collab server, authenticated or not, with the
+ * given close code (1001, "going away", on shutdown), and stop the servers.
+ * @param {number} code
+ * @param {string} reason
+ */
+export function closeAll(code, reason) {
+  for (const wss of servers) {
+    for (const ws of wss.clients) ws.close(code, reason);
+    wss.close();
+  }
+  servers.clear();
+}
+
+/**
+ * The shared document as markup (Tiptap's fragment), for finding the image
+ * references it shows.
+ */
+function sharedDocText(ydoc) {
+  return ydoc.getXmlFragment('default').toString();
+}
+
+/**
+ * Apply one binary sync frame from `user`, crediting them with any image
+ * reference their own frame put into the shared document (images.js,
+ * DocImageCredits). Only a frame whose bytes name a reference pays for
+ * rendering the document, before and after.
+ */
+function applySyncFrame(entry, ws, user, bytes) {
+  const named = docImageHashes(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1'));
+  const before = named.length > 0 ? docImageHashes(sharedDocText(entry.doc)) : null;
+
+  const decoder = decoding.createDecoder(bytes);
+  const encoder = encoding.createEncoder();
+  // Pass `ws` as transactionOrigin so the doc 'update' handler
+  // knows which client sent it and won't echo it back.
+  syncProtocol.readSyncMessage(decoder, encoder, entry.doc, ws);
+  if (encoding.length(encoder) > 1) {
+    ws.send(encoding.toUint8Array(encoder));
+  }
+
+  if (before) entry.credits.noteMessage(user, named, before, docImageHashes(sharedDocText(entry.doc)));
+}
+
+/**
+ * Record the images a live save or publish stored: the bytes this client
+ * supplied as theirs, and each reference for the writer whose edit added it.
+ * After the save is acknowledged, so a failure is logged and never hides a
+ * save that worked or skips what follows it.
+ */
+async function recordLiveDocImages(entry, html, user, saved) {
+  try {
+    await recordDocImages(entry.logId, html, user, { saved });
+    await recordCreditedDocImages(entry.logId, html, entry.credits);
+  } catch (err) {
+    console.error(`[collab] Recording images failed for log ${entry.logId}:`, err);
+  }
 }
 
 /**
@@ -132,6 +255,7 @@ function scheduleCleanup(entry) {
       if (entry.saveTimer) clearTimeout(entry.saveTimer);
       entry.doc.destroy();
       docs.delete(entry.logId);
+      closeDocImageCredits(entry.logId, entry.credits);
     }
   }, CLEANUP_DELAY_MS);
 }
@@ -207,6 +331,7 @@ export function setupCollabServer(server) {
     noServer: true,
     maxPayload: MAX_MESSAGE_SIZE,
   });
+  servers.add(wss);
 
   server.prependListener('upgrade', async (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
@@ -382,14 +507,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
       if (isBinary) {
         if (!canWrite) return; // read-only clients cannot mutate the doc
         try {
-          const decoder = decoding.createDecoder(new Uint8Array(data));
-          const encoder = encoding.createEncoder();
-          // Pass `ws` as transactionOrigin so the doc 'update' handler
-          // knows which client sent it and won't echo it back.
-          syncProtocol.readSyncMessage(decoder, encoder, entry.doc, ws);
-          if (encoding.length(encoder) > 1) {
-            ws.send(encoding.toUint8Array(encoder));
-          }
+          applySyncFrame(entry, ws, user, new Uint8Array(data));
         } catch (err) {
           console.error(`[collab] Binary sync error for log ${entry.logId}:`, err);
         }
@@ -438,15 +556,17 @@ async function setupDocSession(ws, user, logId, canWrite) {
         // Immediate save — client sends current HTML for DB storage alongside
         // the binary CRDT state that the server already has.
         if (entry.saveTimer) clearTimeout(entry.saveTimer);
+        entry.saveTimer = null;
         (async () => {
           try {
             const state = Y.encodeStateAsUpdate(entry.doc);
             const prevHtml = entry.lastSavedHtml;
             let storedHtml = entry.lastSavedHtml;
+            const savedImages = new Set();
 
             if (typeof msg.html === 'string' && msg.html.length <= MAX_HTML_SIZE) {
               const safeHtml = sanitizeHtml(msg.html);
-              storedHtml = await extractImagesFromHtml(safeHtml);
+              storedHtml = await extractImagesFromHtml(safeHtml, savedImages);
             }
 
             // Determine markdown_content: explicit string keeps it, explicit null clears it, undefined leaves it unchanged
@@ -467,6 +587,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
                 );
               }
               entry.lastSavedHtml = storedHtml;
+              entry.credits.setStored(storedHtml);
             } else {
               await c2_query(
                 `UPDATE logs SET ydoc_state = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
@@ -476,6 +597,7 @@ async function setupDocSession(ws, user, logId, canWrite) {
             ws.send(JSON.stringify({ type: 'saved' }));
 
             if (htmlChanged) {
+              await recordLiveDocImages(entry, storedHtml, user, savedImages);
               const meta = await fetchDocMeta(entry.logId);
               if (meta) {
                 await processMentionsOnSave({
@@ -501,8 +623,9 @@ async function setupDocSession(ws, user, logId, canWrite) {
       }
 
       // Gated on canWrite like every other mutating message: renaming writes
-      // the row, sets updated_by, and logs log.rename, which auto-watches the
-      // actor and emails every other watcher.
+      // the row and sets updated_by. It logs log.rename, which neither
+      // auto-watches nor notifies (routes/helpers/activity.js
+      // WATCH_NOTIFICATION_TYPE and AUTO_WATCH_RULES).
       if (msg.type === 'title' && canWrite && typeof msg.title === 'string') {
         const safeTitle = msg.title.trim().slice(0, 255);
         if (!safeTitle) return;
@@ -552,13 +675,15 @@ async function setupDocSession(ws, user, logId, canWrite) {
 
             // Publish: save content AND create a formal version snapshot
             if (entry.saveTimer) clearTimeout(entry.saveTimer);
+            entry.saveTimer = null;
             const state = Y.encodeStateAsUpdate(entry.doc);
             const prevHtml = entry.lastSavedHtml;
 
             // Use client-provided HTML (preferred) or fall back to last saved HTML
             let currentHtml = entry.lastSavedHtml || '';
+            const savedImages = new Set();
             if (pubHtml && pubHtml.length <= MAX_HTML_SIZE) {
-              currentHtml = await extractImagesFromHtml(sanitizeHtml(pubHtml));
+              currentHtml = await extractImagesFromHtml(sanitizeHtml(pubHtml), savedImages);
             }
 
             const [log] = await c2_query(
@@ -576,6 +701,8 @@ async function setupDocSession(ws, user, logId, canWrite) {
               [entry.logId, newVersion, pubTitle || null, pubNotes || null, currentHtml, user.id]
             );
             entry.lastSavedHtml = currentHtml;
+            entry.credits.setStored(currentHtml);
+            await recordLiveDocImages(entry, currentHtml, user, savedImages);
 
             await processMentionsOnSave({
               logId: entry.logId,

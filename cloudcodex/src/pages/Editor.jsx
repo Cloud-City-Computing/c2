@@ -72,11 +72,14 @@ import IssuePickerModal from '../components/github/IssuePickerModal';
  * Upload an image file to the server and return the served URL.
  * Used by the markdown editor's paste handler.
  * @param {File} file
+ * @param {string} logId - the document the image goes into; the server
+ *   requires write access to it and serves the image to its readers
  * @returns {Promise<string|null>} The image URL, or null on failure
  */
-async function uploadImageFile(file) {
+async function uploadImageFile(file, logId) {
   const token = getSessionTokenFromCookie();
   const formData = new FormData();
+  formData.append('logId', logId);
   formData.append('files', file);
   try {
     const headers = {};
@@ -101,7 +104,7 @@ async function uploadImageFile(file) {
  * upload the file, then replace the placeholder with the served URL.
  * Uses the Tiptap editor API so it works from toolbar, paste, and drop.
  */
-async function insertImagePlaceholderAndUpload(editor, file, insertPos) {
+async function insertImagePlaceholderAndUpload(editor, file, insertPos, logId) {
   if (!editor) return;
   // Insert a placeholder image with a loading indicator via alt text
   const placeholderSrc = URL.createObjectURL(file);
@@ -111,7 +114,7 @@ async function insertImagePlaceholderAndUpload(editor, file, insertPos) {
     attrs: { src: placeholderSrc, alt: 'Uploading…' },
   }).run();
 
-  const url = await uploadImageFile(file);
+  const url = await uploadImageFile(file, logId);
   URL.revokeObjectURL(placeholderSrc);
 
   if (url) {
@@ -322,6 +325,11 @@ function TiptapToolbar({ editor, onImageSelect }) {
 
 function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId, ydoc, synced, restoreKey }) {
   const editorContainerRef = useRef(null);
+  // The editorProps closures below are built once, so they read the document
+  // id through a ref rather than capturing the first render's.
+  const { logId } = useParams();
+  const logIdRef = useRef(logId);
+  logIdRef.current = logId;
   // Stable ref to the editor instance for use in editorProps closures (avoids stale closures)
   const editorInstanceRef = useRef(null);
   // Track whether the Y.Doc was already initialised from REST HTML (migration path)
@@ -363,7 +371,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
         event.preventDefault();
         // Use the drop coordinates to determine insertion position
         const dropPos = view.posAtCoords({ left: event.clientX, top: event.clientY });
-        images.forEach(file => insertImagePlaceholderAndUpload(editorInstanceRef.current, file, dropPos?.pos));
+        images.forEach(file => insertImagePlaceholderAndUpload(editorInstanceRef.current, file, dropPos?.pos, logIdRef.current));
         return true;
       },
       handlePaste: (view, event) => {
@@ -373,7 +381,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
           if (item.type.startsWith('image/')) {
             event.preventDefault();
             const file = item.getAsFile();
-            if (file) insertImagePlaceholderAndUpload(editorInstanceRef.current, file);
+            if (file) insertImagePlaceholderAndUpload(editorInstanceRef.current, file, undefined, logIdRef.current);
             return true;
           }
         }
@@ -451,7 +459,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
   };
 
   const handleCropConfirm = (resultFile) => {
-    insertImagePlaceholderAndUpload(editorInstanceRef.current || editor, resultFile);
+    insertImagePlaceholderAndUpload(editorInstanceRef.current || editor, resultFile, undefined, logIdRef.current);
     setCropQueue(prev => prev.slice(1));
   };
 
@@ -487,6 +495,7 @@ function RichTextEditor({ content, setContent, contentRef, onLocalChange, onCurs
 // --- Markdown Editor with live preview ---
 
 function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCursorChange, remoteCursors, comments, activeCommentId, markdownContent, onMarkdownChange }) {
+  const { logId } = useParams();
   // Use stored raw markdown if available; fall back to HTML→markdown conversion
   const [md, setMd] = useState(() => markdownContent ?? htmlToMarkdown(content));
   const [preview, setPreview] = useState(() => markdownContent ? markdownToHtml(markdownContent) : sanitizeHtml(content || ''));
@@ -578,7 +587,7 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
         const withPlaceholder = val.substring(0, start) + placeholder + val.substring(ta.selectionEnd);
         setMd(withPlaceholder);
 
-        const url = await uploadImageFile(file);
+        const url = await uploadImageFile(file, logId);
         if (url) {
           const imgMarkdown = `![image](${url})`;
           const newVal = withPlaceholder.replace(placeholder, imgMarkdown);
@@ -597,7 +606,7 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
         return; // Only handle the first image
       }
     }
-  }, [setContent, contentRef, onLocalChange, onMarkdownChange]);
+  }, [setContent, contentRef, onLocalChange, onMarkdownChange, logId]);
 
   return (
     <div className="markdown-editor">

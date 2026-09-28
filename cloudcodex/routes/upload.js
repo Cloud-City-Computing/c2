@@ -20,8 +20,8 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/permissions.js';
 import { writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
-import { isValidId, asyncHandler, sanitizeHtml, errorHandler } from './helpers/shared.js';
-import { extractImagesFromHtml } from './helpers/images.js';
+import { isValidId, asyncHandler, sanitizeHtml, errorHandler, isLogInArchive } from './helpers/shared.js';
+import { extractImagesFromHtml, recordDocImages, docImageHashes } from './helpers/images.js';
 
 const ALLOWED_EXTENSIONS = ['html', 'htm', 'md', 'markdown', 'txt', 'pdf', 'docx'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -118,26 +118,37 @@ router.post(
       return res.status(403).json({ success: false, message: 'Write access denied' });
     }
 
+    // The parent is checked before the file is converted, so a refused upload
+    // leaves no extracted images behind.
+    const parentId = req.body.parent_id ? Number(req.body.parent_id) : null;
+    if (parentId !== null && !isValidId(parentId)) {
+      return res.status(400).json({ success: false, message: 'Invalid parent_id' });
+    }
+    if (parentId !== null && !(await isLogInArchive(parentId, Number(archiveId)))) {
+      return res.status(400).json({ success: false, message: 'parent_id must be a log in this archive' });
+    }
+
     // Convert file content to HTML and sanitize
     const rawHtml = await convertToHtml(req.file.buffer, req.file.originalname);
     const cleanHtml = sanitizeHtml(rawHtml);
 
     // Extract embedded base64 images from imported content
-    const storedHtml = await extractImagesFromHtml(cleanHtml);
+    const savedImages = new Set();
+    const storedHtml = await extractImagesFromHtml(cleanHtml, savedImages);
 
     // Derive log title from filename (strip extension)
     const title = req.file.originalname.replace(/\.[^.]+$/, '').trim() || 'Uploaded Document';
-
-    const parentId = req.body.parent_id ? Number(req.body.parent_id) : null;
-    if (parentId !== null && !isValidId(parentId)) {
-      return res.status(400).json({ success: false, message: 'Invalid parent_id' });
-    }
 
     const result = await c2_query(
       `INSERT INTO logs (archive_id, title, html_content, parent_id, created_by, updated_by)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [Number(archiveId), title, storedHtml, parentId, req.user.id, req.user.id]
     );
+    // A new document: every reference in it is this importer's to vouch for.
+    await recordDocImages(result.insertId, storedHtml, req.user, {
+      saved: savedImages,
+      introduced: docImageHashes(storedHtml),
+    });
 
     res.status(201).json({ success: true, logId: result.insertId, title });
   })

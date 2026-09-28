@@ -18,10 +18,37 @@ Check that `.env` sets it to the address people use before pulling.
 warning in production, since emailed links would open only on the server
 itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
 is older pulls it and upgrades its data directory in place on first start, so
-back the database up first. No migration.
+back the database up first. This release also has two migrations and a
+backfill; see Migration below.
 
 ### Added
 
+- `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
+  read for Cloud Command: for up to 100 document ids it returns the id, title,
+  archive and last update of each one the caller can read in that workspace.
+  An id that is deleted, unreadable, in another workspace or in a system
+  archive is simply absent, and the answer does not say which. It is the third
+  route the service token (`SERVICE_TOKEN`) reaches, beside `GET /api/search`
+  and `GET /api/browse`, and like them it acts with the service user's
+  ordinary, never-admin access. Rate-limited to 120 requests per 15 minutes. No
+  migration and no new setting.
+- **`GET /healthz` and `GET /readyz`.** `/healthz` answers `{"ok":true}` while
+  the process serves HTTP and touches nothing. `/readyz` answers
+  `{"ready":true}`, or 503 with one reason: `shutting_down`, `lock`,
+  `database` (`SELECT 1` failed or took over two seconds) or `migrations` (a
+  file in `migrations/` is not applied, or the database was never adopted).
+  Neither carries a version, a count or a name. However many probes arrive at
+  once, `/readyz` has at most one `SELECT 1` and one migrations read out. The
+  image has a Docker `HEALTHCHECK` on `/readyz`. See "Health checks" in
+  `docs/deployment.md`.
+- **One process per database.** At boot the app takes a MySQL lock named for
+  its schema and holds it until it stops, so a second process pointed at the
+  same database refuses to start and names the connection that holds it,
+  instead of both keeping their own diverging copy of every open document.
+  `C2_INSTANCE_LOCK=0` turns it off. Instances on different schemas of one
+  server, and `npm run migrate`, never contend with it. If MySQL restarts, the
+  app takes the lock back within a second; if another process got it first,
+  the app that lost it stops and exits 1 rather than keep serving beside it.
 - `cloudcodex/env-contract.js`, the configuration contract: every environment
   variable the server reads, whether it is required, required in production,
   defaulted (and to what) or optional, whether linking an instance to its
@@ -39,6 +66,33 @@ back the database up first. No migration.
 
 ### Changed
 
+- `POST /api/doc-images/upload` needs a `logId` form field naming the document
+  the images go into, and write access to it: without one it answers `400`,
+  without access `403`, and nothing is processed either way. The editor sends
+  it. `DOC_IMAGES_PUBLIC` is new in `.env.example` (see Security).
+- **The container stops cleanly.** The image runs `node server.js` instead of
+  `npm run start`, so `docker stop` reaches the app. On SIGTERM or SIGINT it
+  reports `shutting_down`, writes every open document's not-yet-saved live
+  edits to the database (previously the last three seconds were lost), closes
+  both WebSockets with code 1001, releases the lock and the pool, and exits 0,
+  within ten seconds or exits 1. It says `stopped cleanly` only when every
+  pending document was written. A stop signal during startup, or a second
+  Ctrl-C, ends it at once. The production compose files give it
+  `stop_grace_period: 20s`.
+- **Both production compose files pin `NODE_ENV=production`**, and
+  `.env.example` ships it commented out. The image now runs `node server.js`
+  directly, so its own `ENV` is all that sets it, and a blank `NODE_ENV=` line
+  in `.env` (the `.env.example` of 0.9.0 to 0.11.0 has one) would have
+  replaced it with an empty value and started the container in development
+  mode. An install that runs the image some other way should delete that line
+  from its `.env`.
+- **The stop and the probes need nothing run on upgrade**, and no migration of
+  their own. Two things read differently: a brand-new install reports
+  `unhealthy` until its one-time
+  `npm run migrate -- --adopt-fresh-install`, which was already the documented
+  first-run step (the log says so once), and a container started without the
+  `./migrations` mount the compose files provide reports `migrations`, because
+  it cannot check.
 - **`APP_URL` is required in production.** With `NODE_ENV=production` (the
   Docker image and `npm run start`) the server exits at boot when it is unset,
   blank or not an `http`/`https` URL, instead of emailing invitation,
@@ -53,8 +107,78 @@ back the database up first. No migration.
   upgrades the data directory in place on first start, so back it up first. A
   test fails on a floating tag or on two files disagreeing.
 
+### Fixed
+
+- **Deleting an archive is recorded in the activity log.** The route looked
+  up the archive's workspace only after deleting the row that led to it, so
+  every `archive.delete` event was dropped. It now reads the workspace and
+  squad first. An archive with no squad has no workspace and stays
+  unrecorded, as before.
+- **Renaming or moving a document in the archive tree is recorded.**
+  `PUT /api/archives/:archiveId/logs/:logId` now logs `log.rename` when the
+  title changes and `log.move`, with the previous and new parent, when the
+  parent changes; re-sending the stored values logs nothing, and neither
+  event notifies watchers. It also applies the title rules of
+  `PUT /api/document/:logId/title` (required, at most 255 characters, the
+  same 400 responses), where it used to accept any length and answer a
+  non-string title with a 500, and it answers 404 for a document that is not
+  in the archive instead of reporting success.
+- **The archive tree no longer loses documents to a bad parent.** The same
+  route wrote any `parent_id` it was given. A document put under itself or
+  under one of its own descendants dropped out of the tree with everything
+  below it. Each is now a 400. A document also could be moved, created
+  (`POST /api/archives/:archiveId/logs`) or uploaded under a document in
+  another archive; all three routes now refuse that with a 400. Moves in one
+  archive now take turns, so two opposite moves sent at once can no longer
+  both pass the check and leave two documents each under the other.
+- **`PUT /api/document/:logId/title` answers a title that is not a string
+  with a 400**, as the tree route now does, where it used to fail with a 500.
+- **A fresh install on an SELinux-enforcing host gets its schema.**
+  `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`
+  read-only with no SELinux relabel, so on Fedora, RHEL and their relatives the
+  MySQL container could not read it, the first boot's initialisation failed,
+  and MySQL came up with no tables ("Table 'c2.users' doesn't exist"). Both now
+  mount it `:ro,z`, as `migrations/` already was, and a test pins a label on
+  every host bind mount in the two files. An install that already hit this
+  starts again from an empty data directory; see `docs/troubleshooting.md`.
+- **The migration lock fits any schema name.** `npm run migrate` against a
+  schema whose name is longer than 45 characters failed with MySQL's
+  `User-level lock name ... should not exceed 64 characters`. Such a schema
+  now gets a lock named by a digest; every shorter name keeps the lock it had,
+  so an older runner and this one still exclude each other.
+- **A blank `SMTP_FROM` sends from the default address.** `.env.example` ships
+  `SMTP_FROM=` blank, and a blank value was used as the From, so an install
+  that turned email on from it sent every email with an empty From. Blank now
+  behaves as unset (`Cloud Codex <noreply@cloudcitycomputing.com>`), and so do
+  a blank `SMTP_PORT` (587), `DB_HOST` (`localhost`) and `DB_NAME` (`c2`), in
+  the server and in `npm run migrate`.
+
 ### Security
 
+- **Session tokens are stored only as a SHA-256 digest, and every sign-in is
+  its own session.** `sessions.id` held the raw token, so a copy of the table
+  (a backup, a dump) was a list of working sign-ins; it now holds
+  `hashSessionToken(token)`, and every lookup and delete hashes the presented
+  token first. Each sign-in also gets a row of its own: a second device used to
+  be handed the first device's token, so signing out anywhere signed out
+  everywhere, and a sign-in after a password change was handed the caller's
+  fresh token. Now `POST /api/logout` signs out only the device that sent it; a
+  password reset, and an email or password change, still sign out every device.
+  Each row records the flow that minted it (`sessions.auth_provider`, `local`
+  or `google`), and the replacement an email or password change hands the
+  caller keeps the tag of the session it replaces. Expired sessions are
+  deleted daily.
+- **Document images are served only to people who can read the document.**
+  `/doc-images/<hash>.webp` was a public static mount, cached `public` for 30
+  days, so anyone with an image's address could fetch it. It now serves an
+  image to its uploader and to users who can read a document that holds it,
+  cached `private` for a day; everyone else, signed in or not, gets the same
+  empty `404`. A reference is recorded for a document only by the write that
+  adds it, from a writer who can see the image, so pasting another document's
+  image URL into a document you can write grants nothing, and neither does a
+  later save, publish or restore of that document by someone who can see it.
+  Export inlines only the images the exporting user can see. `DOC_IMAGES_PUBLIC=1` restores the old public mount. Avatars stay
+  public.
 - **In production the security headers cover the whole app, not only `/api`.**
   The single-page app's HTML, its built assets and the `/avatars` and
   `/doc-images` files now carry the Content-Security-Policy, including
@@ -68,22 +192,53 @@ back the database up first. No migration.
   window from the page rather than from a script written into the window,
   which the policy would block.
 
-### Fixed
+### Migration
 
-- **A blank `SMTP_FROM` sends from the default address.** `.env.example` ships
-  `SMTP_FROM=` blank, and a blank value was used as the From, so an install
-  that turned email on from it sent every email with an empty From. Blank now
-  behaves as unset (`Cloud Codex <noreply@cloudcitycomputing.com>`), and so do
-  a blank `SMTP_PORT` (587), `DB_HOST` (`localhost`) and `DB_NAME` (`c2`), in
-  the server and in `npm run migrate`.
-- **A fresh install on an SELinux-enforcing host gets its schema.**
-  `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`
-  read-only with no SELinux relabel, so on Fedora, RHEL and their relatives the
-  MySQL container could not read it, the first boot's initialisation failed,
-  and MySQL came up with no tables ("Table 'c2.users' doesn't exist"). Both now
-  mount it `:ro,z`, as `migrations/` already was, and a test pins a label on
-  every host bind mount in the two files. An install that already hit this
-  starts again from an empty data directory; see `docs/troubleshooting.md`.
+**The session migration,**
+[`migrations/2026-09-27-session-per-sign-in.sql`](migrations/2026-09-27-session-per-sign-in.sql),
+adds `sessions.auth_provider` (existing rows become `local`, then the default is
+dropped) with `CHECK (auth_provider IN ('local', 'google'))`, and hashes every
+stored session id in place, so nobody is signed out by the upgrade. **Stop every
+writer, apply it, then start the new image**, from `cloudcodex/`:
+
+```sh
+npm run migrate
+```
+
+In containers, `docker compose ... run --rm app npm run migrate` with the app
+stopped. The schema is incompatible with the app in both directions: the old
+image against it fails every sign-in (error 1364) and cannot find any existing
+session, and the new image against the old schema fails every sign-in (error
+1054) and cannot find any either. The hash step is idempotent (it skips any id
+that is already a lowercase hex digest), so a re-run changes nothing it already
+changed; if a run is interrupted partway, drop the column
+(`ALTER TABLE sessions DROP COLUMN auth_provider;`) and run it again. There is
+no rollback of the hash: going back to an older image means dropping the column
+and every user signing in again. On an install that `init.sql` builds fresh,
+`--adopt-fresh-install` checks that `auth_provider` is already there before it
+records the file.
+
+**The document-images migration,**
+[`migrations/2026-09-27-who-may-see-doc-images.sql`](migrations/2026-09-27-who-may-see-doc-images.sql),
+adds the `doc_images` table: which documents hold which image. Apply it with
+`npm run migrate` as usual. **Then run the backfill once, before starting the
+new image,** or every image in an existing document is hidden from its readers:
+
+```bash
+docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images
+# built from source: docker compose -f docker-compose-prod.yml run --rm app npm run backfill:doc-images
+# dev: cd cloudcodex && npm run backfill:doc-images
+```
+
+It records every image that a document's current HTML or any of its versions
+shows, and prints how many. It trusts every reference already stored, so run it
+once, before the new image serves anyone, and not again after go-live: it
+refuses to run over a table that already has rows, and
+`npm run backfill:doc-images -- --again` is only for rerunning an interrupted
+first run. If the app has to start before it runs, set `DOC_IMAGES_PUBLIC=1`
+for that window (the backfill then runs without `--again`) and unset it after.
+A fresh install needs neither. See `docs/deployment.md`, "The document-images
+backfill, once".
 
 ## [0.11.0] - 2026-09-27
 

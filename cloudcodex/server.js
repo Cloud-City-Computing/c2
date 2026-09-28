@@ -7,12 +7,45 @@
 
 import ViteExpress from 'vite-express';
 import { initMail } from './services/email.js';
-import { setupCollabServer } from './services/collab.js';
-import { setupUserChannelServer } from './services/user-channel.js';
-import { c2_query } from './mysql_connect.js';
+import { setupCollabServer, flushPendingSaves, closeAll as closeCollabSockets } from './services/collab.js';
+import { setupUserChannelServer, closeAll as closeUserChannelSockets } from './services/user-channel.js';
+import { c2_query, openConnection, endPool } from './mysql_connect.js';
 import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import { parseAuthProviders } from './services/identity.js';
+import { acquireInstanceLock } from './services/instance-lock.js';
+import { createShutdown } from './services/shutdown.js';
+import { readiness } from './routes/health.js';
 import app from './app.js';
+
+// ─── Stop signals, from the first line of the boot ──────────
+//
+// The image runs `node server.js` directly, so Node is PID 1, and the kernel
+// drops any signal PID 1 has no handler for: a SIGTERM during the boot awaits
+// below (the lock, the SMTP verify, the admin sync) would otherwise be
+// ignored until Docker's SIGKILL. So the handlers go in first. Before the
+// server listens there is nothing to flush and the lock goes with the
+// process, so a stop then exits at once. Once it listens, the first signal
+// runs the bounded shutdown (services/shutdown.js) and a second one, a
+// second Ctrl-C say, ends the process at once with 1.
+const stopLog = (line) => console.error(`[${new Date().toISOString()}] ${line}`);
+let shutdown = null;          // set once the server is up
+let signalsSeen = 0;
+function onStopSignal(signal) {
+  signalsSeen++;
+  if (signalsSeen > 1) {
+    stopLog(`second ${signal} before the shutdown finished; stopping at once`);
+    process.exit(1);
+    return;
+  }
+  if (!shutdown) {
+    stopLog(`stopped on ${signal} during boot`);
+    process.exit(0);
+    return;
+  }
+  return shutdown(signal);
+}
+process.on('SIGTERM', () => onStopSignal('SIGTERM'));
+process.on('SIGINT', () => onStopSignal('SIGINT'));
 
 // ─── Require Admin credentials before starting ──────────────
 if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_EMAIL) {
@@ -66,6 +99,32 @@ try {
   console.error(`✖ ${err.message}`);
   process.exit(1);
 }
+
+// ─── One process per schema: take the instance lock ─────────
+//
+// Before anything writes, so a second process refuses before its admin sync
+// or seed can race the first one's. Collab state is an in-memory Y.Doc per
+// open document, and a second process would hold a second copy of each
+// (services/instance-lock.js). A refusal, or no database to take it from,
+// ends the boot: under a supervisor that is a restart, not an outage. So does
+// finding, after a lost connection, that another process took the lock
+// meanwhile: this one stops, through the shutdown once it is serving.
+let instanceLock = null;
+const onSuperseded = () => {
+  stopLog('another process took the instance lock while this one had lost it; stopping, so one process serves this database');
+  if (shutdown) {
+    shutdown('the lost instance lock', { code: 1 });
+  } else {
+    process.exit(1);
+  }
+};
+try {
+  instanceLock = await acquireInstanceLock({ connect: openConnection, log: stopLog, onSuperseded });
+} catch (err) {
+  console.error(`✖ ${err.message}`);
+  process.exit(1);
+}
+readiness.lock = instanceLock;
 
 // ─── Decide capability and seed BEFORE the port opens ───────
 //
@@ -176,6 +235,25 @@ console.log('✔ Collaborative editing WebSocket server attached');
 setupUserChannelServer(server);
 console.log('✔ Notification WebSocket server attached');
 
+// ─── Stop cleanly on SIGTERM / SIGINT ───────────────────────
+//
+// From here a stop signal runs this, bounded at ten seconds; the compose
+// files give a twenty-second grace before SIGKILL. The handlers themselves
+// were installed at the top of this file.
+shutdown = createShutdown({
+  server,
+  readiness,
+  flushPendingSaves,
+  closeSockets: (code, reason) => {
+    closeCollabSockets(code, reason);
+    closeUserChannelSockets(code, reason);
+  },
+  releaseLock: () => instanceLock?.release(),
+  endPool,
+  exit: (code) => process.exit(code),
+  log: stopLog,
+});
+
 // Daily prune of activity_log entries older than 365 days.
 // Single-process architecture (per CLAUDE.md) — revisit if we ever scale out.
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -195,3 +273,20 @@ async function pruneOldActivity() {
 setInterval(pruneOldActivity, ONE_DAY_MS).unref();
 // Run once shortly after boot so a long-uptime process gets cleaned without waiting 24h
 setTimeout(pruneOldActivity, 60 * 1000).unref();
+
+// Daily prune of expired sessions. Every row has a fixed 7-day life and
+// nothing refreshes one in place, and each sign-in adds a row, so without
+// this the table only grows. validateAndAutoLogin already refuses an expired
+// row; this only reclaims the space.
+async function pruneExpiredSessions() {
+  try {
+    const result = await c2_query(`DELETE FROM sessions WHERE expires_at < NOW()`, []);
+    if (result?.affectedRows) {
+      console.error(`[${new Date().toISOString()}] session prune: removed ${result.affectedRows} rows`);
+    }
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] session prune failed:`, err);
+  }
+}
+setInterval(pruneExpiredSessions, ONE_DAY_MS).unref();
+setTimeout(pruneExpiredSessions, 60 * 1000).unref();

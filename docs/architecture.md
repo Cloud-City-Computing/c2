@@ -237,7 +237,8 @@ cloudcodex/                  — Application root
 │   ├── oauth.js             — Google SSO + GitHub OAuth
 │   ├── github.js            — GitHub API proxy (40+ endpoints)
 │   ├── avatars.js           — avatar upload/serve
-│   ├── doc-images.js        — document image extraction
+│   ├── doc-images.js        - document image upload (into a document)
+│   ├── doc-images-serve.js  - /doc-images, served to readers only
 │   ├── upload.js            — document import (HTML/MD/PDF/DOCX)
 │   └── helpers/
 │       ├── shared.js        — validators, asyncHandler, sanitizeHtml

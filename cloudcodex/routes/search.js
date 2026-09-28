@@ -97,7 +97,7 @@ function buildFilters(query, user) {
  * Uses MySQL FULLTEXT index for fast, relevance-ranked search.
  * Returns paginated results with contextual match snippets.
  *
- * machineOrAuth, not requireAuth: this is one of exactly two routes a service
+ * machineOrAuth, not requireAuth: this is one of exactly three routes a service
  * token may reach. The principal is an ordinary non-admin user, so the access
  * fragment below is unchanged and there is no machine-specific SQL. This is a
  * read with no logActivity and no notification, so nothing is attributed to
@@ -220,8 +220,9 @@ router.get('/search', machineOrAuth, asyncHandler(async (req, res) => {
  *                 &favorites=true&workspaceId=<id>&squadId=<id>&archiveId=<id>
  * Paginated listing of all accessible logs (no search query required).
  *
- * machineOrAuth, not requireAuth: the second and last route a service token
- * may reach. See GET /api/search above.
+ * machineOrAuth, not requireAuth: the second of the three routes a service
+ * token may reach (the third is GET /api/documents/state). See GET /api/search
+ * above.
  */
 router.get('/browse', machineOrAuth, asyncHandler(async (req, res) => {
   const { page: rawPage, limit: rawLimit, sort } = req.query;
@@ -288,8 +289,8 @@ router.get('/browse', machineOrAuth, asyncHandler(async (req, res) => {
  * Returns the available filter options for the current user:
  * workspaces, squads (grouped by workspace), and archives (grouped by squad).
  *
- * Deliberately bare requireAuth. A service token is scoped to /api/search and
- * /api/browse only, and this route enumerates the workspace, squad and archive
+ * Deliberately bare requireAuth. A service token is scoped to /api/search,
+ * /api/browse and /api/documents/state only, and this route enumerates the workspace, squad and archive
  * names a principal can see, which is org structure rather than document
  * content. Widening the machine credential to reach it is a decision, not a
  * tidy-up.

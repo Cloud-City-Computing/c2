@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import app from '../../app.js';
 import { c2_query, validateAndAutoLogin, generateSessionToken, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
+import { hashSessionToken } from '../../services/session-token.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
 // Pre-compute a bcrypt hash for login tests (low rounds for speed)
@@ -278,7 +279,8 @@ describe('Auth Routes', () => {
 
       const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/i.test(sql));
       expect(del).toBeDefined();
-      expect(del[1]).toEqual(['header-token']);
+      // sessions.id holds the digest, so logout deletes by the digest.
+      expect(del[1]).toEqual([hashSessionToken('header-token')]);
     });
 
     it('deletes the session for a sessionToken cookie with an empty body', async () => {
@@ -292,7 +294,16 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(200);
 
       const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/i.test(sql));
-      expect(del[1]).toEqual(['cookie-token']);
+      expect(del[1]).toEqual([hashSessionToken('cookie-token')]);
+    });
+
+    it('rejects a body token that is not a string, deleting nothing', async () => {
+      const res = await request(app)
+        .post('/api/logout')
+        .send({ token: { id: 1 } });
+
+      expect(res.status).toBe(400);
+      expect(c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/i.test(sql))).toBeUndefined();
     });
 
     it('rejects missing token', async () => {

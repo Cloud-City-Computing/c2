@@ -44,6 +44,11 @@ export const ENV_CONTRACT = [
       + 'which decides req.ip for the rate limiters; an invalid value exits at boot' },
   { name: 'CORS_ORIGIN', kind: 'optional', perInstance: false,
     why: 'one more origin allowed to call the API; the app\'s own origin and APP_URL always are' },
+  { name: 'C2_INSTANCE_LOCK', kind: 'default', default: '1', perInstance: false,
+    why: 'the single-writer lock, one process per schema; only 0 disables it' },
+  { name: 'DOC_IMAGES_PUBLIC', kind: 'optional', perInstance: false,
+    why: 'exactly 1 serves document images to anyone with the address, as before; only for an '
+      + 'upgrade that must start before npm run backfill:doc-images has run' },
 
   // The boot admin
   { name: 'ADMIN_USERNAME', kind: 'required', perInstance: false,
@@ -80,7 +85,8 @@ export const ENV_CONTRACT = [
 
   // Machine access
   { name: 'SERVICE_TOKEN', kind: 'optional', perInstance: true,
-    why: 'the machine credential for GET /api/search and GET /api/browse, at least 32 characters' },
+    why: 'the machine credential for GET /api/search, GET /api/browse and GET /api/documents/state, '
+      + 'at least 32 characters' },
   { name: 'SERVICE_TOKEN_USER', kind: 'optional', perInstance: true,
     why: 'the email of the existing non-admin user whose access the machine credential acts with' },
 ];

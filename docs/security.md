@@ -79,7 +79,9 @@ Passwords are hashed with **bcrypt** at 12 salt rounds. Comparisons use constant
 
 ## Session Management
 
-Session tokens are 64-character cryptographically random strings (Node.js `crypto.randomBytes`) with a 7-day expiry. IP address and user-agent are recorded per session.
+Session tokens are 64-character cryptographically random strings (`crypto.getRandomValues`) with a 7-day expiry. IP address and user-agent are recorded per session.
+
+**Every sign-in is its own session**, so each device holds its own token and signing out of one leaves the others signed in. **The database stores only a SHA-256 digest of each token** (`sessions.id`), and every lookup and delete hashes the presented token first, so a copy of the `sessions` table, from a backup or a dump, yields nothing a browser can present. Expired sessions are deleted daily.
 
 A successful password reset deletes every session of the user.
 
@@ -90,11 +92,11 @@ A successful password reset deletes every session of the user.
 `POST /api/update-account` changes a user's name, email or password. A session on its own is enough for the name and for nothing else:
 
 - **An email or password change needs the current password** (`currentPassword`), compared with bcrypt exactly as sign-in compares it. Missing is a 400 and wrong is a 401, and neither changes anything. The check runs before the new address is tested for uniqueness, so a session alone cannot probe which addresses have accounts. The route shares the sign-in rate limit (20 requests per 15 minutes per IP).
-- **After an email or password change, every session of the user is deleted, the caller's included**, in the same transaction as the write, and the caller is handed a freshly generated session token. Sessions are one per user today, so every device signed in to the account holds the same token; deleting all but the caller's, as this route used to, deleted nothing that mattered and left a stolen session working after the owner changed their password. Now every holder of the old token is signed out. Until sessions become one per sign-in, the next sign-in with the new credentials is handed the same fresh token, as any two sign-ins share one today.
+- **After an email or password change, every session of the user is deleted, the caller's included**, in the same transaction as the write, and the caller is handed a freshly generated session token. Every other device is signed out, a stolen session included, and the caller continues on its new one. (While sessions were one per user this route's older "delete all but the caller's" rule deleted nothing that mattered, because every device held the caller's token.)
 - **After an email change, a notice goes to the old address** when mail is enabled, so the owner hears about a change that was not theirs.
 - **An account with no password** (one an external sign-in created) has no current password to give. Its email change is confirmed with a 6-digit code emailed to its **current** address (ten minutes, one pending change at a time, the new address bound to the confirmation token so the code applies exactly the address it was sent for), completed at `POST /api/update-account/confirm-email`, which rotates sessions the same way. With mail disabled that change is refused with a sentence saying why. Such an account sets a first password only through Forgot Password.
 
-`POST /api/logout` deletes the `sessions` row. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
+`POST /api/logout` deletes the `sessions` row for the presented token, and only that one: other devices stay signed in. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
 
 ---
 
@@ -124,7 +126,7 @@ A machine caller (another service that needs to read this install's documents) a
 | Secret | `SERVICE_TOKEN`, minimum 32 characters. Shorter and the feature stays disabled, with the reason logged and the value never logged. |
 | Comparison | `crypto.timingSafeEqual` over two SHA-256 digests, never `===`. Equal-length by construction, so a wrong-length token is rejected without throwing and without leaking the configured length. |
 | Identity | `SERVICE_TOKEN_USER`, the email of an existing **non-admin** user. The credential acts as that user. |
-| Reach | `GET /api/search` and `GET /api/browse`. Nothing else. Every other route, including `GET /api/search/filters`, keeps bare `requireAuth`. |
+| Reach | `GET /api/search`, `GET /api/browse` and `GET /api/documents/state` (the reconciliation read, 1 to 100 ids in one workspace, rate-limited), all through `machineOrAuth`; plus the machine-only `GET /api/workspaces/:workspaceId/reader-check`. Nothing else. Every other route, including `GET /api/search/filters`, keeps bare `requireAuth`. |
 | Rotation | Change `SERVICE_TOKEN` and restart. No database change, no key version. Any caller still holding the old value gets 401s. |
 
 The credential has no access-control rules of its own. Because it acts as a real user, the whole existing layer applies unchanged and there is no machine-specific permission SQL to get wrong: give a machine what it should see by putting its user in the right squads or on the right archive grants.
@@ -141,6 +143,46 @@ The whole surface is one function, `verifyMachineCredential` in `services/machin
 
 ---
 
+## Document Images
+
+An image pasted or uploaded into a document is stored as a file named by the
+first 16 hex digits of its SHA-256 and shown through its `/doc-images/<hash>.webp`
+URL. **Knowing that URL is not access.** `GET /doc-images/:file` serves the
+image only to the user who uploaded it and to users who can read a document
+that holds it, through the same archive read check as the document itself;
+everyone else (anonymous, signed in without access, a missing file, a
+malformed name) gets one identical empty `404` with `Cache-Control: no-store`.
+A served image is `Cache-Control: private, max-age=86400`, so no shared cache
+keeps it, though a browser may keep it for a day, including after its user
+signs out.
+
+Which documents hold an image is the `doc_images` table. The ways into it are
+checked too:
+
+- The upload (`POST /api/doc-images/upload`) needs a `logId` the caller can
+  write, and processes nothing without one.
+- A reference is recorded against a document only by the write that adds it,
+  and only if that writer supplied the image's bytes or can already see it. So
+  pasting someone else's image URL into a document you can write stores the
+  reference and grants nothing, and a later save, publish or restore by
+  someone who can see the image (an owner fixing a typo, an admin publishing)
+  does not grant it either, because that write did not add it. In the live
+  editor, where every client saves the whole shared document, a reference is
+  credited to the writer whose own edit put it there, not to whoever's client
+  sent the save.
+- Export (HTML, DOCX, markdown) inlines only the images the exporting user can
+  see, so it cannot be used to read an image file the handler would refuse.
+
+`DOC_IMAGES_PUBLIC=1` turns all of this off and serves every image to anyone
+with its address, which is how every earlier release behaved. It exists for the
+upgrade window before `npm run backfill:doc-images` has run, and should be
+unset afterwards. The backfill trusts every reference already stored, so it
+runs once, before the new release serves anyone, and refuses to run over a
+table that already has rows unless told `--again`. Avatars stay public by
+decision.
+
+---
+
 ## OAuth Token Encryption
 
 GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key derived from `GITHUB_CLIENT_SECRET` via scrypt. OAuth state tokens are single-use and expire after 10 minutes.
@@ -151,7 +193,7 @@ GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key deri
 
 **Helmet** applies one policy, a strict Content Security Policy plus standard security headers (`X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` and the others Helmet sets by default), with two scopes (`HELMET_OPTIONS` in `cloudcodex/app.js`):
 
-- **In production** (`NODE_ENV=production`, which the Docker image and `npm run start` set) it covers **every response**: the single-page app's HTML and built assets, the `/avatars` and `/doc-images` static files, and `/api`. It is mounted before the static mounts and before the handlers `vite-express` appends at listen time.
+- **In production** (`NODE_ENV=production`, which the Docker image and `npm run start` set) it covers **every response but the two probes**: the single-page app's HTML and built assets, the `/avatars` static files, `/doc-images` responses, and `/api`. It is mounted before those and before the handlers `vite-express` appends at listen time. `GET /healthz` and `GET /readyz` are mounted ahead of it, and of CORS and every limiter, and answer small JSON bodies with `Cache-Control: no-store`.
 - **In development** it stays on **`/api`**, so the Vite dev server's inline module scripts still load.
 
 The policy:

@@ -236,6 +236,10 @@ Rename an archive. Requires write access to the archive.
 
 Delete an archive and all its documents. Requires archive ownership (creator, squad owner, or workspace owner).
 
+Records an `archive.delete` activity event in the archive's workspace and
+squad, read before the row is deleted. An archive with no owning squad has no
+workspace, so its delete is not recorded.
+
 ---
 
 ### `GET /api/archives/:id/access`
