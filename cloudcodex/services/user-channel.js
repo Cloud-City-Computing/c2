@@ -25,6 +25,9 @@ const MAX_CONNECTIONS_PER_USER = 10;
 // userId → Set<ws>
 const channels = new Map();
 
+// Every WebSocketServer setupUserChannelServer made, so shutdown can close them.
+const servers = new Set();
+
 function trackConnection(userId, ws) {
   let set = channels.get(userId);
   if (!set) {
@@ -75,6 +78,20 @@ export function isUserConnected(userId) {
 }
 
 /**
+ * Close every socket on every user-channel server, authenticated or not, with
+ * the given close code (1001, "going away", on shutdown), and stop the servers.
+ * @param {number} code
+ * @param {string} reason
+ */
+export function closeAll(code, reason) {
+  for (const wss of servers) {
+    for (const ws of wss.clients) ws.close(code, reason);
+    wss.close();
+  }
+  servers.clear();
+}
+
+/**
  * Attach the user-channel WebSocket server to an existing HTTP server.
  * Mirrors the auth pattern in services/collab.js.
  *
@@ -82,6 +99,7 @@ export function isUserConnected(userId) {
  */
 export function setupUserChannelServer(server) {
   const wss = new WebSocketServer({ noServer: true });
+  servers.add(wss);
 
   server.prependListener('upgrade', (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);

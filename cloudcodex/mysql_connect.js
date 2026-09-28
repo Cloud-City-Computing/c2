@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { hashSessionToken } from './services/session-token.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env from the archive root (one level up from cloudcodex/)
@@ -46,12 +47,18 @@ try {
   process.exit(1);
 }
 
-// A blank DB_HOST or DB_NAME behaves as unset, as scripts/migrate.js does.
-const pool = mysql.createPool({
+// Shared by the pool and by openConnection, so the instance lock's own
+// connection can never point somewhere the pool does not. A blank DB_HOST or
+// DB_NAME behaves as unset, as scripts/migrate.js does.
+const connectionOptions = {
   host:             process.env.DB_HOST?.trim() || 'localhost',
   user:             process.env.DB_USER,
   password:         process.env.DB_PASS,
   database:         process.env.DB_NAME?.trim() || 'c2',
+};
+
+const pool = mysql.createPool({
+  ...connectionOptions,
   waitForConnections: true,
   connectionLimit,
   queueLimit:       0,
@@ -61,6 +68,26 @@ if (!process.env.DB_USER || !process.env.DB_PASS) {
   console.error('Missing required environment variables: DB_USER, DB_PASS');
   console.error('Copy .env.example to .env and fill in your database credentials.');
   process.exit(1);
+}
+
+/**
+ * Opens one connection of its own, outside the pool, to the same server, user
+ * and schema. For state that belongs to a connection and must outlive any one
+ * query: the instance lock's GET_LOCK (services/instance-lock.js). The caller
+ * ends it.
+ * @returns { Promise<import('mysql2/promise').Connection> }
+ */
+export function openConnection() {
+  return mysql.createConnection({ ...connectionOptions });
+}
+
+/**
+ * Ends the shared pool: every connection closes once its query finishes. The
+ * last step of a graceful shutdown (services/shutdown.js); nothing may query
+ * after it.
+ */
+export async function endPool() {
+  await pool.end();
 }
 
 /**
@@ -131,46 +158,31 @@ function createNewSessionToken(length = 64) {
 }
 
 /**
- * Returns a valid session token for the given user, reusing an existing
- * non-expired session or creating/refreshing one as needed.
+ * Whether `value` could be a session token at all: a non-empty string.
+ * @param { unknown } value
+ * @returns { boolean }
+ */
+function isTokenShaped(value) {
+  return typeof value === 'string' && value !== '';
+}
+
+/**
+ * Mints a new session for `user`: one row per sign-in, so signing out of one
+ * device leaves the others alone. Returns the raw token; only its digest
+ * (hashSessionToken) is stored, so a database dump yields nothing a browser
+ * can present.
  * @param { Object } user - Must contain an `id` property
  * @param { string } [ip] - Client IP address
  * @param { string } [userAgent] - Client User-Agent header
+ * @param { { provider?: 'local'|'google' } } [options] - the flow that minted it
  * @returns { Promise<String> }
  */
-export async function generateSessionToken(user, ip = null, userAgent = null) {
-  const [session] = await c2_query(
-    `SELECT id, expires_at FROM sessions WHERE user_id = ? LIMIT 1`,
-    [user.id]
-  );
-
-  if (session) {
-    if (session.expires_at > new Date()) {
-      // Update metadata on reuse
-      await c2_query(
-        `UPDATE sessions SET ip_address = ?, user_agent = ?, last_active_at = NOW() WHERE id = ?`,
-        [ip, userAgent, session.id]
-      );
-      return session.id;
-    }
-
-    // Expired — refresh in place
-    const newToken = createNewSessionToken();
-    await c2_query(
-      `UPDATE sessions SET id = ?, created_at = NOW(), expires_at = DATE_ADD(NOW(), INTERVAL 7 DAY),
-       ip_address = ?, user_agent = ?, last_active_at = NOW()
-       WHERE id = ? AND user_id = ?`,
-      [newToken, ip, userAgent, session.id, user.id]
-    );
-    return newToken;
-  }
-
-  // No session — create one
+export async function generateSessionToken(user, ip = null, userAgent = null, { provider = 'local' } = {}) {
   const token = createNewSessionToken();
   await c2_query(
-    `INSERT INTO sessions (user_id, id, created_at, expires_at, ip_address, user_agent)
-     VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), ?, ?)`,
-    [user.id, token, ip, userAgent]
+    `INSERT INTO sessions (user_id, id, auth_provider, created_at, expires_at, ip_address, user_agent)
+     VALUES (?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), ?, ?)`,
+    [user.id, hashSessionToken(token), provider, ip, userAgent]
   );
   return token;
 }
@@ -182,9 +194,13 @@ export async function generateSessionToken(user, ip = null, userAgent = null) {
  * @returns { Promise<Object|null> }
  */
 export async function validateAndAutoLogin(sessionToken) {
+  // A JSON body can carry anything. Only a non-empty string can be a token,
+  // and hashing anything else would throw a 500 over what is just "no session".
+  if (!isTokenShaped(sessionToken)) return null;
+
   const [session] = await c2_query(
     `SELECT user_id, expires_at FROM sessions WHERE id = ? LIMIT 1`,
-    [sessionToken]
+    [hashSessionToken(sessionToken)]
   );
 
   if (!session || session.expires_at <= new Date()) return null;
@@ -198,13 +214,30 @@ export async function validateAndAutoLogin(sessionToken) {
 }
 
 /**
+ * The flow that minted a session (`sessions.auth_provider`), so a session
+ * that is rotated (update-account, confirm-email) can be replaced by one
+ * carrying the same tag. Read it before the rotation deletes the row: a
+ * session that is gone, or a value that cannot be a token, answers 'local'.
+ * @param { String } sessionToken
+ * @returns { Promise<String> }
+ */
+export async function getSessionProvider(sessionToken) {
+  if (!isTokenShaped(sessionToken)) return 'local';
+  const [session] = await c2_query(
+    `SELECT auth_provider FROM sessions WHERE id = ? LIMIT 1`,
+    [hashSessionToken(sessionToken)]
+  );
+  return session?.auth_provider ?? 'local';
+}
+
+/**
  * Updates last_active_at for a session token to track user activity.
  * @param { String } sessionToken
  */
 export async function touchSession(sessionToken) {
-  if (!sessionToken) return;
+  if (!isTokenShaped(sessionToken)) return;
   await c2_query(
     `UPDATE sessions SET last_active_at = NOW() WHERE id = ?`,
-    [sessionToken]
+    [hashSessionToken(sessionToken)]
   );
 }

@@ -301,9 +301,11 @@ Invalidate the current session, deleting its `sessions` row.
 
 The token is read from the `Authorization: Bearer` header, then the
 `sessionToken` cookie, then `req.body.token`. A request carrying none of those
-gets a 400; an unknown token succeeds and deletes nothing.
+gets a 400, and so does a `req.body.token` that is not a string; an unknown
+token succeeds and deletes nothing.
 
-Sessions are one-per-user, not one-per-device, so this logs out every device.
+Every sign-in is its own session, so this signs out only the device that sent
+it; the account's other devices stay signed in.
 
 ---
 

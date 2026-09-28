@@ -283,7 +283,7 @@ router.get('/oauth/google/callback', asyncHandler(async (req, res) => {
   }
 
   user.is_admin = Boolean(user.is_admin);
-  const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent']);
+  const sessionToken = await generateSessionToken(user, req.ip, req.headers['user-agent'], { provider: 'google' });
 
   // Set session cookie and redirect to the app
   res.cookie('sessionToken', sessionToken, {

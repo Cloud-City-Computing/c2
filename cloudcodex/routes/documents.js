@@ -9,10 +9,17 @@ import express from 'express';
 import TurndownService from 'turndown';
 import HTMLtoDOCX from 'html-to-docx';
 import { c2_query } from '../mysql_connect.js';
-import { requireAuth } from '../middleware/auth.js';
-import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams } from './helpers/ownership.js';
+import { requireAuth, machineOrAuth } from '../middleware/auth.js';
+import { readAccessWhere, readAccessParams, writeAccessWhere, writeAccessParams, excludeSystemArchives } from './helpers/ownership.js';
 import { isValidId, asyncHandler, sanitizeHtml, canPublish, errorHandler } from './helpers/shared.js';
-import { extractImagesFromHtml, inlineImagesForExport, inlineImagesForMarkdownExport } from './helpers/images.js';
+import {
+  extractImagesFromHtml,
+  recordDocImages,
+  introducedDocImages,
+  noteStoredDocImages,
+  inlineImagesForExport,
+  inlineImagesForMarkdownExport,
+} from './helpers/images.js';
 import { processMentionsOnSave } from './helpers/mentions.js';
 import { logActivity } from './helpers/activity.js';
 import { decryptToken } from './oauth.js';
@@ -92,10 +99,8 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   // Sanitize HTML to prevent stored XSS
   const cleanHtml = sanitizeHtml(html_content);
 
-  // Extract embedded base64 images to disk, replace with served URLs
-  const storedHtml = await extractImagesFromHtml(cleanHtml);
-
-  // Fetch existing log and verify write access
+  // Fetch existing log and verify write access, before any image is decoded
+  // or written to disk
   const [log] = await c2_query(
     `SELECT pg.id, pg.html_content AS old_content, pg.version, pg.archive_id, pg.title
        FROM logs pg
@@ -109,6 +114,17 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
   if (!log) {
     return res.status(403).json({ success: false, message: 'Document not found or write access denied' });
   }
+
+  // Extract embedded base64 images to disk, replace with served URLs
+  const savedImages = new Set();
+  const storedHtml = await extractImagesFromHtml(cleanHtml, savedImages);
+
+  // Record before the write: a failure then fails the save, and a retry,
+  // whose previous HTML is unchanged, still sees what it adds.
+  await recordDocImages(log.id, storedHtml, req.user, {
+    saved: savedImages,
+    introduced: introducedDocImages(log.id, storedHtml, log.old_content, req.user),
+  });
 
   // Save content without creating a version snapshot
   // If markdown_content is provided (string or null), update it alongside HTML.
@@ -126,6 +142,8 @@ router.post('/save-document', requireAuth, asyncHandler(async (req, res) => {
       [storedHtml, req.user.id, Number(doc_id)]
     );
   }
+
+  noteStoredDocImages(log.id, storedHtml);
 
   await processMentionsOnSave({
     logId: log.id,
@@ -194,7 +212,11 @@ router.post('/document/:logId/publish', requireAuth, asyncHandler(async (req, re
   // Bump version and create snapshot
   const newVersion = log.version + 1;
   // Extract embedded base64 images before persisting
-  const publishHtml = await extractImagesFromHtml(sanitizeHtml(log.html_content));
+  const savedImages = new Set();
+  const publishHtml = await extractImagesFromHtml(sanitizeHtml(log.html_content), savedImages);
+  // Publishing snapshots what is already stored, so it adds no reference to
+  // vouch for; only bytes decoded here are recorded, before the writes.
+  await recordDocImages(log.id, publishHtml, req.user, { saved: savedImages });
   await c2_query(
     `UPDATE logs SET version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [newVersion, req.user.id, Number(logId)]
@@ -287,7 +309,7 @@ router.put('/document/:logId/title', requireAuth, asyncHandler(async (req, res) 
   }
 
   const { title } = req.body;
-  if (!title?.trim()) {
+  if (typeof title !== 'string' || !title.trim()) {
     return res.status(400).json({ success: false, message: 'Title is required' });
   }
   if (title.trim().length > 255) {
@@ -433,11 +455,17 @@ router.post('/document/:logId/versions/:versionId/restore', requireAuth, asyncHa
   // Bump version and restore content; clear ydoc_state so the CRDT doc
   // re-initialises from the restored HTML on next load.
   const newVersion = currentLog.version + 1;
-  const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content));
+  const savedImages = new Set();
+  const restoredHtml = await extractImagesFromHtml(sanitizeHtml(targetVersion.html_content), savedImages);
+  // A version's references were recorded when they entered the document, so
+  // restoring adds none to vouch for; only bytes decoded here are recorded,
+  // before the writes, so a failure cannot leave a version without its snapshot.
+  await recordDocImages(currentLog.id, restoredHtml, req.user, { saved: savedImages });
   await c2_query(
     `UPDATE logs SET html_content = ?, ydoc_state = NULL, version = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
     [restoredHtml, newVersion, req.user.id, Number(logId)]
   );
+  noteStoredDocImages(currentLog.id, restoredHtml);
 
   // Snapshot the restored content into version history
   await c2_query(
@@ -566,7 +594,7 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
   switch (format) {
     case 'html': {
       // Inline /doc-images/ URLs as base64 data URIs so the file is self-contained
-      const inlinedHtml = await inlineImagesForExport(htmlContent);
+      const inlinedHtml = await inlineImagesForExport(htmlContent, req.user);
       const fullHtml = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${escapedTitle}</title></head>\n<body>\n${inlinedHtml}\n</body>\n</html>`;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.html"`);
@@ -575,7 +603,7 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
     case 'md': {
       const markdown = turndown.turndown(htmlContent || '<p></p>');
       // Inline /doc-images/ URLs in markdown image refs so the file is portable
-      const inlinedMarkdown = await inlineImagesForMarkdownExport(markdown);
+      const inlinedMarkdown = await inlineImagesForMarkdownExport(markdown, req.user);
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.md"`);
       return res.send(inlinedMarkdown);
@@ -596,7 +624,7 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
     }
     case 'docx': {
       // Inline images as base64 so html-to-docx can embed them in the Word file
-      const inlinedHtml = await inlineImagesForExport(htmlContent);
+      const inlinedHtml = await inlineImagesForExport(htmlContent, req.user);
       const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${inlinedHtml}</body></html>`;
       const docxBuffer = await HTMLtoDOCX(wrappedHtml, null, {
         table: { row: { cantSplit: true } },
@@ -608,6 +636,56 @@ router.get('/document/:logId/export', requireAuth, asyncHandler(async (req, res)
       return res.send(Buffer.from(docxBuffer));
     }
   }
+}));
+
+/** The most ids one GET /api/documents/state answers. */
+const STATE_MAX_IDS = 100;
+
+/**
+ * GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>
+ * The reconciliation read (W6-CDX-16): for each id the caller can read in
+ * that workspace, { id, title, archive_id, updated_at }. Cloud Command uses it
+ * to repair what the outbound event stream missed.
+ *
+ * machineOrAuth, the third and last route a service token may reach (the
+ * other two are GET /api/search and GET /api/browse). It answers "which of
+ * these may YOU read?", so a session is the natural other half, and it is
+ * never an oracle: an id that is unreadable, deleted, in another workspace or
+ * in a system archive is simply absent, and those cases cannot be told apart.
+ * The access check is the shared read fragment with the caller's own params,
+ * narrowed by workspace through the archive's squad exactly as GET
+ * /api/search narrows. A read, with no logActivity and no notification.
+ * Rate-limited in app.js (stateLimiter), ahead of authentication.
+ *
+ * The title carries the event envelope's bound, 255 characters (MySQL counts
+ * code points, so a surrogate pair is never split), so a reconciler comparing
+ * the two sees the same string and the answer stays small.
+ */
+router.get('/documents/state', machineOrAuth, asyncHandler(async (req, res) => {
+  const { workspaceId } = req.query;
+  const ids = String(req.query.ids ?? '').split(',').filter(Boolean);
+
+  if (!isValidId(workspaceId)) {
+    return res.status(400).json({ success: false, message: 'A workspaceId is required' });
+  }
+  if (ids.length === 0 || ids.length > STATE_MAX_IDS || !ids.every(isValidId)) {
+    return res.status(400).json({ success: false, message: 'Between 1 and 100 document ids are required' });
+  }
+
+  // The placeholders are generated from the count only, never from the values.
+  const documents = await c2_query(
+    `SELECT l.id, LEFT(l.title, 255) AS title, l.archive_id, l.updated_at
+       FROM logs l
+ INNER JOIN archives p ON l.archive_id = p.id
+ INNER JOIN squads _fs ON _fs.id = p.squad_id AND _fs.workspace_id = ?
+      WHERE l.id IN (${ids.map(() => '?').join(', ')})
+        AND ${readAccessWhere('p')}
+        AND ${excludeSystemArchives('p')}
+      ORDER BY l.id`,
+    [Number(workspaceId), ...ids.map(Number), ...readAccessParams(req.user)]
+  );
+
+  res.json({ success: true, documents });
 }));
 
 router.use(errorHandler);

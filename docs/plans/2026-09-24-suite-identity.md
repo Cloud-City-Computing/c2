@@ -427,6 +427,14 @@ Test edits, listed in the PR body: the two logout assertions at `tests/routes/au
 and `:294-295` expect `[hashSessionToken('header-token')]` and `[hashSessionToken('cookie-token')]`.
 New: the Google callback passes `{ provider: 'google' }`.
 
+As built: the two rotations keep the caller's provenance. With only the default, a Google session
+rotated by update-account or confirm-email came back tagged `'local'`, and confirm-email is the path
+for exactly the password-less accounts an external sign-in creates. `getSessionProvider(token)`
+(`mysql_connect.js`) reads `sessions.auth_provider` by the token's digest, and each route reads it
+before its transaction deletes the row and passes `{ provider }` to `generateSessionToken`. A
+session that is gone answers `'local'`. Tests in `tests/routes/auth-update-account.test.js` (the
+provider is read before the delete) and, live, `tests/integration/update-account-sessions.test.js`.
+
 ### Task 2.4 The migration and `init.sql`
 
 `migrations/<today>-session-per-sign-in.sql`, with a header in the style of
@@ -454,7 +462,7 @@ after `user_id` and
 `CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google'))`, and a comment
 on `id` saying it is the digest.
 
-- [ ] `node -e "import('./scripts/migrate.js').then(m => console.log(m.schemaClaims(require('fs').readFileSync('../migrations/<file>', 'utf8'))))"`
+- [x] `node -e "import('./scripts/migrate.js').then(m => console.log(m.schemaClaims(require('fs').readFileSync('../migrations/<file>', 'utf8'))))"`
       **Expected:** `[ { kind: 'column', table: 'sessions', column: 'auth_provider' } ]`.
 
 ### Task 2.5 Reap expired sessions
@@ -502,13 +510,18 @@ Extend `tests/server.test.js` the way it covers the activity prune.
 `google-auth-library` mocking pattern in that file and assert every `Set-Cookie` header matches
 `/sessionToken=/` and does not match `/;\s*Domain=/i`.
 
+As built: the test is in `tests/routes/oauth-google-seam.test.js`, the file that holds the
+`google-auth-library` mock since W6-CDX-4 (`oauth.test.js` has none), beside the new
+`{ provider: 'google' }` assertion. The callback's `Set-Cookie` set is asserted to include a
+`sessionToken=` cookie, and no header in it to carry `Domain`.
+
 ### Task 2.8 Docs and verification
 
-- [ ] `docs/maps/request-lifecycle.md` "Session tokens" and "Logout actually terminates the
+- [x] `docs/maps/request-lifecycle.md` "Session tokens" and "Logout actually terminates the
       session now"; `docs/maps/data-model.md` section 4; `docs/maps/open-questions.md` C2 marked
       resolved with the PR number; `CHANGELOG.md` `[Unreleased]`: a Security entry (digests at rest,
       one session per device) and a Migration entry with the stop, migrate, start order.
-- [ ] `npm run lint`, `npm test`, `npm run test:coverage`, `npm run test:integration`,
+- [x] `npm run lint`, `npm test`, `npm run test:coverage`, `npm run test:integration`,
       `npm run build`. Coverage for `mysql_connect.js` stays at or above its 85/85/80/90 floor.
 
 ---
@@ -973,6 +986,14 @@ only by the ladder's link-by-email rung (Task 5.6), which refuses to link an acc
 beside the Google button.
 
 `parseAuthProviders` (PR 3) now accepts `oidc`, still requiring `local` until PR 8.
+
+**Carried from PR 2:** update-account and `/update-account/confirm-email` rotate the caller's session
+by deleting every row of the user and minting one replacement, tagged through
+`getSessionProvider(token)` so its `auth_provider` survives. That carries the provider only. An OIDC
+session rotated this way would lose `identity_id`, `provider_sid` and its `OIDC_SESSION_TTL_HOURS`
+expiry, and so fall outside `revokeForLogoutToken`'s `provider_sid` match (PR 6). This PR widens
+the read to every provenance field the OIDC row carries and passes them all to the replacement,
+with a route test per field and a live test that rotates an OIDC session and reads the row back.
 
 ### Task 5.8 The reader check by subject
 

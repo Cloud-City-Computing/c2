@@ -3,7 +3,7 @@
  */
 
 import { vi, expect } from 'vitest';
-import { c2_query, validateAndAutoLogin, generateSessionToken, touchSession, withTransaction } from '../mysql_connect.js';
+import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, touchSession, withTransaction } from '../mysql_connect.js';
 
 /** A standard authenticated test user. */
 export const TEST_USER = { id: 1, name: 'testuser', email: 'test@example.com' };
@@ -25,6 +25,7 @@ export function mockAuthenticated(user = TEST_USER) {
  */
 export function mockUnauthenticated() {
   validateAndAutoLogin.mockResolvedValue(null);
+  getSessionProvider.mockResolvedValue('local');
 }
 
 /**

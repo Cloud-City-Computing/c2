@@ -1101,6 +1101,25 @@ describe('scripts/migrate', () => {
       expect(release.sql).toContain("CONCAT('cloudcodex_migrate:', DATABASE())");
     });
 
+    // MySQL caps a lock name at 64 characters and a schema name at 64 too, so
+    // a name longer than 45 cannot follow the 19-character prefix. Names that
+    // fit keep exactly the name earlier releases used, so an older runner and
+    // this one still exclude each other. tests/integration/migrate.test.js
+    // migrates a 64-character schema on a live server.
+    it('names the lock by a digest when the schema name is too long to follow the prefix', async () => {
+      const dir = makeDir({ 'a.sql': '-- a' });
+      const db = fakeDb();
+
+      await runMigrations({ query: db.query, dir, log });
+
+      const get = db.calls.find(c => c.sql.startsWith('SELECT GET_LOCK'));
+      const release = db.calls.find(c => c.sql.startsWith('SELECT RELEASE_LOCK'));
+      for (const { sql } of [get, release]) {
+        expect(sql).toContain('IF(CHAR_LENGTH(DATABASE()) <= 45');
+        expect(sql).toContain("CONCAT('cloudcodex_migrate#', LEFT(SHA2(DATABASE(), 256), 40))");
+      }
+    });
+
     it('names the database it is contending for when the wait times out', async () => {
       const dir = makeDir({ 'a.sql': '-- a' });
       const db = fakeDb({ lockGranted: false, database: 'codex_two' });

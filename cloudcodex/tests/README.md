@@ -35,6 +35,7 @@ tests/
 ├── test-projects.test.js   ← pins which projects the default run names
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
 │   ├── admin-sync.test.js  ← the boot admin sync never promotes a member, in either row order
+│   ├── documents-state.test.js ← the reconciliation read: workspace narrowing, the ACL, absence that is no oracle
 │   ├── global-setup.js     ← teardown: fails the run if a c2_it_ schema leaked
 │   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers, row holder, lock-wait poller
 │   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql

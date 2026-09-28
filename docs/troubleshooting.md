@@ -109,6 +109,33 @@ have boot create a fresh admin, and restart. See
 
 ```
 ┃ ⚠  Symptom
+┃   "Another Cloud Codex process (MySQL connection N) already serves this
+┃   database." and the app exits at startup.
+```
+
+**Cause.** Something else is already running Cloud Codex against the same
+database: a second container, an `npm run dev` left open in another terminal,
+or an old container `docker compose up` did not replace. Two processes would
+each keep their own copy of every open document and overwrite each other's
+edits, so the second one refuses.
+
+**Fix.** Find connection `N` on the MySQL server
+(`SELECT * FROM performance_schema.processlist WHERE ID = N;` shows its host)
+and stop that process; the lock goes with it, and the next start succeeds.
+Only if you know exactly why two processes must share one schema, set
+`C2_INSTANCE_LOCK=0`. See
+[deployment.md, One process per database](./deployment.md#one-process-per-database).
+
+If the same message appears in a process that was already running, followed by
+`another process took the instance lock while this one had lost it`, MySQL
+restarted while a second process was waiting to start, and that one reconnected
+first. The first process stopped on purpose, so that only one keeps serving.
+The fix is the same: stop the one you did not mean to run.
+
+---
+
+```
+┃ ⚠  Symptom
 ┃   "ECONNREFUSED 127.0.0.1:3306" or "Access denied for user … "
 ┃   in the Node container's logs.
 ```
@@ -248,19 +275,22 @@ DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google';
 DELETE FROM sessions WHERE user_id = <id>;
 ```
 
-The second statement is not optional. An account has one session, shared by
-every sign-in to it: a new sign-in is handed the live session the account
-already has (`generateSessionToken` in `mysql_connect.js`), so whoever signed
-in through the link holds the owner's own session token, and deleting the link
-leaves them signed in. A password reset through **Forgot password** deletes
-every session, and from this release so does an email or password change (the
-next entry), so either can stand in for the second statement. Once the
-sessions are gone, have the owner sign in again and check that the account's
-email address, password and two-factor setting are theirs: before this
-release a session alone was enough to change the email and the password. If
-the email address is not theirs, an operator restores it before the owner
-resets the password. One shared session per account is what the planned
-W6-CDX-2 (one session per sign-in, stored hashed) replaces.
+The second statement is not optional. Deleting the link stops new sign-ins
+through it, but not the sessions those sign-ins already hold, and it has to
+delete every session of the account because no narrower query can find the
+right ones. Each sign-in has a session row of its own, one made through the
+link included, and nothing ties a row to the link that minted it.
+`sessions.auth_provider` does not help: it names the flow only for sessions
+minted after the upgrade that added it, and every row from before is tagged
+`local`, so a Google sign-in from then looks like a password one. A password
+reset through **Forgot password** deletes every session of the account, and so
+does an email or password change (the next entry), so either can stand in for
+the second statement. Once the sessions are gone, have the owner sign in again
+and check that the account's email address, password and two-factor setting
+are theirs: before the release that added the current-password check, a
+session alone was enough to change the email and the password. If the email
+address is not theirs, an operator restores it before the owner resets the
+password.
 
 ---
 

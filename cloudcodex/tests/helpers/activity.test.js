@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { c2_query } from '../../mysql_connect.js';
-import { logActivity } from '../../routes/helpers/activity.js';
+import { logActivity, resolveActivityScope } from '../../routes/helpers/activity.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
 
 const flush = () => new Promise((r) => setImmediate(r));
@@ -161,6 +161,49 @@ describe('routes/helpers/activity', () => {
 
     const notifInsert = c2_query.mock.calls.find((c) => /INSERT INTO notifications/i.test(c[0]));
     expect(notifInsert).toBeFalsy();
+  });
+
+  it('records log.rename and neither auto-watches the actor nor notifies a watcher', async () => {
+    // Queue what fan-out and auto-watch would read if either ran: the log, a
+    // watcher who is not the actor, and the log's archive. A rename must
+    // consume only the first response, its own INSERT.
+    c2_query
+      .mockResolvedValueOnce({ insertId: 1 })             // INSERT activity
+      .mockResolvedValueOnce([{ id: 42, title: 'Doc' }]) // log info, if fan-out ran
+      .mockResolvedValueOnce([{ user_id: 99 }])          // a direct watcher
+      .mockResolvedValueOnce([{ archive_id: 5 }])        // log.archive_id
+      .mockResolvedValueOnce([]);                         // archive watchers
+
+    logActivity({
+      user: { id: 1, name: 'Alice' },
+      action: 'log.rename',
+      resourceType: 'log',
+      resourceId: 42,
+      workspaceId: 7,
+      squadId: 3,
+      metadata: { title: 'Doc' },
+    });
+    await flush();
+    await flush();
+
+    expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(c2_query.mock.calls[0][0]).toMatch(/INSERT INTO activity_log/i);
+    expect(c2_query.mock.calls[0][1][3]).toBe('log.rename');
+    expect(c2_query.mock.calls.some(([sql]) => /watches|notifications/i.test(sql))).toBe(false);
+  });
+
+  it('resolveActivityScope resolves an archive to its squad and workspace', async () => {
+    c2_query.mockResolvedValueOnce([{ workspace_id: 7, squad_id: 3 }]);
+
+    await expect(resolveActivityScope('archive', 12)).resolves.toEqual({ workspace_id: 7, squad_id: 3 });
+    expect(c2_query.mock.calls[0][0]).toMatch(/FROM archives p\s+INNER JOIN squads s/);
+    expect(c2_query.mock.calls[0][1]).toEqual([12]);
+  });
+
+  it('resolveActivityScope answers null for an archive with no owning squad', async () => {
+    c2_query.mockResolvedValueOnce([]);
+
+    await expect(resolveActivityScope('archive', 12)).resolves.toBeNull();
   });
 
   it('auto-watches the actor on log.create', async () => {

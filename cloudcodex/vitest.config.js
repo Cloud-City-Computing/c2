@@ -125,6 +125,13 @@ export default defineConfig({
         'routes/notifications.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
         'routes/squads.js': { lines: 85, statements: 75, branches: 65, functions: 95 },
         'routes/watches.js': { lines: 85, statements: 85, branches: 73, functions: 95 },
+        // The /doc-images authorization boundary (W6-CDX-34). Measured at 100%
+        // on all four when it landed; the buffer allows a small guard, not a
+        // refusal path.
+        'routes/doc-images-serve.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
+        // The probes (W6-CDX-31). Measured at 100/100/97.36/100 (lines,
+        // statements, branches, functions) after the review round.
+        'routes/health.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
 
         // Services.
         'services/email.js': { lines: 95, statements: 95, branches: 70, functions: 95 },
@@ -134,6 +141,15 @@ export default defineConfig({
         // local user here. Measured at 100% on all four when it landed
         // (W6-CDX-4); the buffer allows a small uncovered guard, not a branch.
         'services/identity.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
+        // The one definition of how a session token is stored (W6-CDX-2): one
+        // function with no branches, measured at 100%.
+        'services/session-token.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
+        // The stop and the single-writer lock (W6-CDX-31). Measured after the
+        // review round: shutdown.js 100 lines, 98.03 statements, 93.54
+        // branches, 100 functions; instance-lock.js 100, 95.91, 93.93, 77.77
+        // (the destroy() fallbacks behind a failing end()).
+        'services/shutdown.js': { lines: 95, statements: 95, branches: 88, functions: 95 },
+        'services/instance-lock.js': { lines: 95, statements: 92, branches: 88, functions: 75 },
         // collab.js — was 25%, ratcheted to 65% after the gap-fix pass.
         'services/collab.js': { lines: 65, statements: 65, branches: 50, functions: 75 },
 

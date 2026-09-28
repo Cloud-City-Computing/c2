@@ -277,9 +277,18 @@ export async function readApplied(query) {
  * evaluated server-side rather than interpolated from config, so the name
  * matches whatever schema this connection is actually pointed at. The prefix is
  * a source constant, never user input.
+ *
+ * MySQL caps a lock name at 64 characters, and a schema name can be 64 long,
+ * so one longer than 45 cannot follow the 19-character prefix. That schema is
+ * named by the first 40 hex characters of its SHA-256 instead, after a `#` so
+ * a digest never equals a readable name. Every name that fits is exactly the
+ * one earlier releases used, so an older runner and this one still exclude
+ * each other.
  */
 const LOCK_PREFIX = 'cloudcodex_migrate';
-const LOCK_NAME_SQL = `CONCAT('${LOCK_PREFIX}:', DATABASE())`;
+const LOCK_NAME_SQL =
+  `IF(CHAR_LENGTH(DATABASE()) <= 45, CONCAT('${LOCK_PREFIX}:', DATABASE()), ` +
+  `CONCAT('${LOCK_PREFIX}#', LEFT(SHA2(DATABASE(), 256), 40)))`;
 const LOCK_TIMEOUT_SECONDS = 10;
 
 /**
@@ -301,12 +310,13 @@ const LOCK_TIMEOUT_SECONDS = 10;
  * @param { Function } fn
  */
 export async function withMigrationLock(query, fn) {
-  const [row] = await query(`SELECT GET_LOCK(${LOCK_NAME_SQL}, ?) AS locked, DATABASE() AS db`, [
-    LOCK_TIMEOUT_SECONDS,
-  ]);
+  const [row] = await query(
+    `SELECT GET_LOCK(${LOCK_NAME_SQL}, ?) AS locked, DATABASE() AS db, ${LOCK_NAME_SQL} AS lock_name`,
+    [LOCK_TIMEOUT_SECONDS]
+  );
 
   const database = row && row.db ? row.db : '<unknown>';
-  const lockName = `${LOCK_PREFIX}:${database}`;
+  const lockName = row && row.lock_name ? row.lock_name : `${LOCK_PREFIX}:${database}`;
 
   if (!row || row.locked === null || row.locked === undefined) {
     throw new Error(

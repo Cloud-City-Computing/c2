@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import * as db from '../../mysql_connect.js';
 import { runMigrations, listMigrationFiles, MIGRATIONS_DIR } from '../../scripts/migrate.js';
 import {
+  SCHEMA_PREFIX,
   buildSchemaFromInitSql,
   dropSchema,
   openAdminConnection,
@@ -70,6 +71,29 @@ describe('scripts/migrate.js on a database init.sql built', () => {
     } finally {
       await dropSchema(otherConn, other);
       await otherConn.end();
+    }
+  });
+
+  it('adopts a schema whose name is as long as MySQL allows, under its lock', async () => {
+    // 64 characters: the lock name cannot simply be the prefix and the schema,
+    // since MySQL caps a lock name at 64 characters too.
+    const long = `${SCHEMA_PREFIX}${'m'.repeat(64 - SCHEMA_PREFIX.length - 12)}${Date.now().toString(16).padStart(12, '0')}`;
+    expect(long).toHaveLength(64);
+    const longConn = await openAdminConnection();
+    try {
+      await buildSchemaFromInitSql(longConn, long);
+      const result = await runMigrations({
+        query: queryVia(longConn),
+        dir: MIGRATIONS_DIR,
+        adoptFreshInstall: true,
+        log: () => {},
+      });
+      expect(result.pending).toEqual([]);
+      const [[{ n }]] = await longConn.query('SELECT COUNT(*) AS n FROM schema_migrations');
+      expect(Number(n)).toBe(listMigrationFiles(MIGRATIONS_DIR).length);
+    } finally {
+      await dropSchema(longConn, long);
+      await longConn.end();
     }
   });
 });

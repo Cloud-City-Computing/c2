@@ -26,6 +26,7 @@ import squadsRouter from './routes/squads.js';
 import commentsRouter from './routes/comments.js';
 import avatarsRouter from './routes/avatars.js';
 import docImagesRouter from './routes/doc-images.js';
+import { docImagesHandler } from './routes/doc-images-serve.js';
 import adminRouter from './routes/admin.js';
 import oauthRouter from './routes/oauth.js';
 import githubRouter from './routes/github.js';
@@ -34,6 +35,7 @@ import notificationsRouter from './routes/notifications.js';
 import activityRouter from './routes/activity.js';
 import watchesRouter from './routes/watches.js';
 import firstRunRouter from './routes/first-run.js';
+import healthRouter from './routes/health.js';
 import { warnUntrustedForwarders, ipv6Groups } from './middleware/forwarded-for.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -194,8 +196,13 @@ try {
 }
 
 // A proxy TRUST_PROXY does not name would otherwise collapse every client
-// behind it into one rate-limit bucket without a word.
+// behind it into one rate-limit bucket without a word. It only logs and never
+// answers, so it sees every request, probes included, and blocks none.
 app.use(warnUntrustedForwarders());
+
+// Liveness and readiness probes, ahead of every /api layer so no CORS rule,
+// limiter or session check stands between a supervisor and its answer.
+app.use(healthRouter);
 
 // CORS: restrict the API to same-origin requests, plus an explicit allowlist.
 //
@@ -352,17 +359,29 @@ const searchLimiter = rateLimit({
 });
 app.use('/api/users/search', searchLimiter);
 
+// The reconciliation read (W6-CDX-16) answers up to 100 document ids a
+// request, under the machine credential or a session. Its own bucket, mounted
+// before any router so an unauthenticated caller spends it too: a sweep of 100
+// ids a request fits well inside it, and a caller probing ids is bounded.
+const stateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: { success: false, message: 'Too many state requests, please try again later' },
+});
+app.use('/api/documents/state', stateLimiter);
+
 // Serve uploaded avatars as static files
 app.use('/avatars', express.static(path.join(__dirname, 'public', 'avatars'), {
   maxAge: '7d',
   immutable: true,
 }));
 
-// Serve document images as static files (extracted from embedded base64)
-app.use('/doc-images', express.static(path.join(__dirname, 'public', 'doc-images'), {
-  maxAge: '30d',
-  immutable: true,
-}));
+// Document images, only for their uploader and the readers of a document
+// holding them (DOC_IMAGES_PUBLIC=1 keeps the old public static mount)
+app.use('/doc-images', docImagesHandler());
 
 // Mount route groups
 app.use('/api', authRoutes);

@@ -62,8 +62,10 @@ The identity plan's global constraints apply. In addition:
 runtime stage's `ENV` (`Dockerfile:27`), which is why the `start` script's own `NODE_ENV=` prefix is
 not needed in the image.
 
-- [ ] `docker build -t c2:lifecycle ./cloudcodex && docker run --rm c2:lifecycle cat /proc/1/cmdline | tr '\0' ' '`
-      **Expected:** `node server.js`.
+- [x] `docker build -t c2:lifecycle ./cloudcodex && docker run --rm c2:lifecycle cat /proc/1/cmdline | tr '\0' ' '`
+      **Expected:** `node server.js`. (Done 2026-09-27 as `docker exec` into the running compose
+      container instead: `docker run <image> cat ...` makes `cat` PID 1 and prints itself.
+      Measured: `node server.js`.)
 
 ### Task 1.2 Flush and close, as testable units
 
@@ -184,10 +186,12 @@ the real `instance-lock.js` against the test schema:
 
 ### Task 1.7 Image check and docs
 
-- [ ] `docker build`, `docker run` with the release compose file: `docker inspect --format '{{.State.Health.Status}}'`
+- [x] `docker build`, `docker run` with the release compose file: `docker inspect --format '{{.State.Health.Status}}'`
       reads `healthy` within 30 seconds; `docker stop` returns within the 20-second grace period and
-      the log says "stopped cleanly on SIGTERM".
-- [ ] `docs/deployment.md` "Health checks" rewritten (the `/api/oauth/providers` advice goes: it
+      the log says "stopped cleanly on SIGTERM". (2026-09-27: on a fresh volume `/readyz` reads
+      `migrations` until the documented `--adopt-fresh-install`, then `healthy` in 1 s; after
+      `docker start` on the adopted database, `healthy` in 6 s; `docker stop` 0.45 s, exit 0.)
+- [x] `docs/deployment.md` "Health checks" rewritten (the `/api/oauth/providers` advice goes: it
       reads no database); `docs/maps/request-lifecycle.md` section 1 (boot: the lock) and a
       shutdown section; `docs/maps/build-test-and-ops.md` (the image). CHANGELOG.
 
@@ -450,6 +454,32 @@ single-writer lock (PR 1) is acquired, since `GET_LOCK` needs no privilege.
 ---
 
 ## PR 4: W6-CDX-34, document images only for people who can read the document
+
+**Status: shipped 2026-09-27** on `track/w6-cdx-34-image-readers` (tasks 4.1 to 4.5 done; these
+tasks carry no checkboxes). Where the build goes past the text below, and why:
+
+- `recordDocImages(logId, html, writer, { saved, introduced })` records a reference to an image
+  the writer did not supply the bytes for only when this write introduced it and the writer can
+  already see it. Recording every reference would let anyone who knows an address read it by
+  pasting it into a document they can write; recording every readable reference would let the next
+  save, publish or restore by an owner or admin grant a reference somebody else planted. A save
+  vouches for what it adds over the stored HTML, publish and restore for nothing, an import for
+  everything, and the live editor per writer whose own edit added the reference
+  (`DocImageCredits`), since any client's save carries the whole shared document.
+- Export (`inlineImagesForExport`, `inlineImagesForMarkdownExport`) asks the same question before
+  it inlines a file off disk, since it would otherwise bypass the handler.
+- The backfill also reads `versions.html_content`, so restoring an old version does not bring back
+  images nobody can see, and it refuses to run over a table that already has rows unless
+  `--again` or `DOC_IMAGES_PUBLIC=1`, since run after go-live it would trust every reference
+  saved since.
+- The GitHub import and pull paths are not hooked, and no later save records a reference it did
+  not add, so an image reference arriving that way stays hidden (fails closed) until someone who
+  can see the image puts it in again.
+- `POST /api/save-document` checks write access before it decodes any embedded image, as the
+  upload route does.
+- The migration is `2026-09-27-who-may-see-doc-images.sql`, not `<today>-doc-images.sql`:
+  W6-CDX-2's `2026-09-27-session-per-sign-in.sql` landed on `main` first, and the runner applies
+  files in lexicographic order, so this file's name has to sort after it.
 
 ### Task 4.1 The table
 

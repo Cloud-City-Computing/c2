@@ -34,6 +34,10 @@ services:
       dockerfile: Dockerfile
     container_name: cloudcodex-app
     restart: unless-stopped
+    # Longer than the app's own ten-second shutdown bound (services/shutdown.js),
+    # so it flushes open documents and exits before Docker's SIGKILL. Docker's
+    # default is ten seconds, which would tie with it.
+    stop_grace_period: 20s
     depends_on:
       database:
         condition: service_healthy
@@ -59,6 +63,10 @@ services:
       - .env
     environment:
       DB_HOST: database
+      # The image runs `node server.js` directly, so NODE_ENV comes from its ENV
+      # alone, and a blank `NODE_ENV=` in .env (older .env.example files ship
+      # one) would replace it with an empty value. environment wins over env_file.
+      NODE_ENV: production
     working_dir: /app
     volumes:
       # Same reason as docker-compose-release.yml: uploaded avatars and images

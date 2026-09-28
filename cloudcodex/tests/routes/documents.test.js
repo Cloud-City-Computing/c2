@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
-import { c2_query } from '../../mysql_connect.js';
+import { c2_query, validateAndAutoLogin } from '../../mysql_connect.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
 vi.mock('../../routes/oauth.js', async (importOriginal) => {
@@ -311,6 +311,19 @@ describe('Document Routes', () => {
         .send({ title: '' });
 
       expect(res.status).toBe(400);
+    });
+
+    it('refuses a title that is not a string with a 400, not a 500', async () => {
+      mockAuthenticated();
+
+      const res = await request(app)
+        .put('/api/document/1/title')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ title: 42 });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: 'Title is required' });
+      expect(c2_query).not.toHaveBeenCalledWith(expect.stringMatching(/UPDATE logs/), expect.anything());
     });
 
     it('rejects invalid log ID', async () => {
@@ -838,6 +851,136 @@ describe('Document Routes', () => {
       expect(res.status).toBe(200);
       expect(res.text).not.toContain('<script>');
       expect(res.text).toContain('&lt;script&gt;');
+    });
+  });
+
+  // ── GET /api/documents/state (W6-CDX-16) ──────────────────
+
+  describe('GET /api/documents/state', () => {
+    const SERVICE_TOKEN = 'cloud-command-service-token-00000000';
+    const SERVICE_ROW = { id: 9, name: 'cloud-command', email: 'svc@example.com', is_admin: 0 };
+
+    /** The one state query this route issues, as [sql, params]. */
+    const stateCall = () => c2_query.mock.calls.find(([sql]) => sql.includes('FROM logs l'));
+
+    const get = (qs, token = 'valid-token') =>
+      request(app).get(`/api/documents/state${qs}`).set('Authorization', `Bearer ${token}`);
+
+    it('answers 401 with no credential at all', async () => {
+      const res = await request(app).get('/api/documents/state?workspaceId=1&ids=1');
+      expect(res.status).toBe(401);
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['no workspaceId', '?ids=1,2', 'A workspaceId is required'],
+      ['a non-numeric workspaceId', '?workspaceId=abc&ids=1', 'A workspaceId is required'],
+      ['a zero workspaceId', '?workspaceId=0&ids=1', 'A workspaceId is required'],
+      ['no ids parameter', '?workspaceId=1', 'Between 1 and 100 document ids are required'],
+      ['an empty ids list', '?workspaceId=1&ids=', 'Between 1 and 100 document ids are required'],
+      ['only separators', '?workspaceId=1&ids=,,', 'Between 1 and 100 document ids are required'],
+      ['a non-numeric id', '?workspaceId=1&ids=1,abc,3', 'Between 1 and 100 document ids are required'],
+      ['a negative id', '?workspaceId=1&ids=1,-2', 'Between 1 and 100 document ids are required'],
+      ['a fractional id', '?workspaceId=1&ids=1.5', 'Between 1 and 100 document ids are required'],
+      [
+        '101 ids',
+        `?workspaceId=1&ids=${Array.from({ length: 101 }, (_, i) => i + 1).join(',')}`,
+        'Between 1 and 100 document ids are required',
+      ],
+    ])('is a 400 for %s, and issues no state query', async (_label, qs, message) => {
+      mockAuthenticated();
+
+      const res = await get(qs);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message });
+      expect(stateCall()).toBeUndefined();
+    });
+
+    it('binds the workspace, then the ids, then exactly the 7 read-access params', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      const res = await get('?workspaceId=3&ids=4242,4343,4444');
+
+      expect(res.status).toBe(200);
+      const [sql, params] = stateCall();
+      expect(params).toEqual([
+        3,
+        4242, 4343, 4444,
+        false, JSON.stringify(TEST_USER.id), TEST_USER.id, TEST_USER.id, TEST_USER.id, TEST_USER.id, TEST_USER.id,
+      ]);
+      // One placeholder per id, generated from the count; never a value in the text.
+      expect(sql).toMatch(/l\.id IN \(\?, \?, \?\)/);
+      expect(sql).not.toMatch(/4242|4343|4444/);
+      // Narrowed by workspace the way GET /api/search narrows, through the archive's squad.
+      expect(sql).toMatch(/INNER JOIN squads _fs ON _fs\.id = p\.squad_id AND _fs\.workspace_id = \?/);
+      // The shared fragments, on the archive alias, and no system archive.
+      expect(sql).toContain('JSON_CONTAINS(p.read_access, ?)');
+      expect(sql).toContain('NOT COALESCE(p.`system`, FALSE)');
+      // The same bound on a title the event envelope applies.
+      expect(sql).toContain('LEFT(l.title, 255) AS title');
+      // docs/api promises the answer is ordered by id; this is that promise.
+      expect(sql).toMatch(/\bORDER BY l\.id\s*$/);
+    });
+
+    it('accepts exactly 100 ids, with 100 placeholders', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+      const ids = Array.from({ length: 100 }, (_, i) => i + 1);
+
+      const res = await get(`?workspaceId=1&ids=${ids.join(',')}`);
+
+      expect(res.status).toBe(200);
+      const [sql, params] = stateCall();
+      expect(sql.match(/\?/g)).toHaveLength(1 + 100 + 7);
+      expect(params.slice(1, 101)).toEqual(ids);
+    });
+
+    it('returns the rows it found and nothing for an id it did not', async () => {
+      mockAuthenticated();
+      const row = { id: 7, title: 'Runbook', archive_id: 3, updated_at: '2026-09-24T00:00:00.000Z' };
+      // 8 was deleted and 9 is unreadable: the query simply does not return them.
+      c2_query.mockResolvedValueOnce([row]);
+
+      const res = await get('?workspaceId=1&ids=7,8,9');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, documents: [row] });
+    });
+
+    describe('with the machine credential', () => {
+      beforeEach(() => {
+        process.env.SERVICE_TOKEN = SERVICE_TOKEN;
+        process.env.SERVICE_TOKEN_USER = 'svc@example.com';
+        // No session row backs this token, so a 200 can only come from the machine path.
+        mockUnauthenticated();
+      });
+
+      afterEach(() => {
+        delete process.env.SERVICE_TOKEN;
+        delete process.env.SERVICE_TOKEN_USER;
+      });
+
+      it('is accepted, and binds a non-admin principal', async () => {
+        c2_query.mockResolvedValueOnce([SERVICE_ROW]); // principal lookup
+        c2_query.mockResolvedValueOnce([{ id: 1, title: 'A', archive_id: 2, updated_at: null }]);
+
+        const res = await get('?workspaceId=5&ids=1', SERVICE_TOKEN);
+
+        expect(res.status).toBe(200);
+        expect(res.body.documents).toHaveLength(1);
+        expect(validateAndAutoLogin).not.toHaveBeenCalled();
+        const [, params] = stateCall();
+        expect(params).toEqual([5, 1, false, '9', 9, 9, 9, 9, 9]);
+      });
+
+      it('is refused with 401 for a token merely close to the service token', async () => {
+        const res = await get('?workspaceId=5&ids=1', `${SERVICE_TOKEN}x`);
+
+        expect(res.status).toBe(401);
+        expect(stateCall()).toBeUndefined();
+      });
     });
   });
 });
