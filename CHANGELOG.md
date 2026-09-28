@@ -63,6 +63,17 @@ backfill; see Migration below.
   stops the boot with a sentence naming the variable.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
+- **Several instances on one MySQL server.** `docs/deployment.md` has a recipe
+  for it: per instance, one schema named with letters and digits only, an app
+  account holding `SELECT`, `INSERT`, `UPDATE` and `DELETE` on that schema
+  (capped at 15 connections), and a migration account holding every privilege
+  on that schema without `GRANT OPTION`, which builds the schema and runs
+  `npm run migrate`. Neither holds anything global. The integration suite runs
+  the recipe as written: 54 statements reaching for the other instance, for
+  the server, or for DDL the app does not need all fail with MySQL's privilege
+  error, the app runs on the app account alone, and each instance holds its own
+  single-writer lock. Nothing changes for an install with a MySQL server of its
+  own.
 
 ### Changed
 
@@ -152,6 +163,12 @@ backfill; see Migration below.
   behaves as unset (`Cloud Codex <noreply@cloudcitycomputing.com>`), and so do
   a blank `SMTP_PORT` (587), `DB_HOST` (`localhost`) and `DB_NAME` (`c2`), in
   the server and in `npm run migrate`.
+- **A failing comments request answers JSON.** `routes/comments.js` was the one
+  router without the shared error handler, so a database error there answered
+  Express's default HTML error page, and the error was not logged in the
+  project's format. It now answers `500` with
+  `{ "success": false, "message": "An internal server error occurred" }` like
+  every other route.
 
 ### Security
 

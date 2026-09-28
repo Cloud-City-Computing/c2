@@ -308,6 +308,15 @@ resolution table, the behaviour change that came with the orphaned-squad rule,
 and the reason the archive-derived squad is deliberately not checked in the
 middleware.
 
+**Between instances**, when several share one MySQL server, the boundary is
+not in the application at all: it is the MySQL grant. Each instance's app
+account holds `SELECT`, `INSERT`, `UPDATE` and `DELETE` on its own schema and
+nothing else, per the recipe in
+[deployment.md](deployment.md#several-instances-on-one-mysql-server), and
+`tests/integration/tenancy.test.js` proves that recipe against a live server.
+Section 9 of [maps/access-control.md](maps/access-control.md) says what it
+does and does not cover.
+
 ---
 
 ## Auditing for Pre-existing Cross-tenant Rows

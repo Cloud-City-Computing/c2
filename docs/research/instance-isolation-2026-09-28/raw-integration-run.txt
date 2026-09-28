@@ -1,0 +1,74 @@
+# npx vitest run --project integration --reporter=verbose
+# 2026-09-28, mysql:8.4.11 (stock image, partial_revokes OFF, log_bin ON), Node v22.22.2, branch track/w6-cdx-33-shared-mysql
+# The tenancy and grants-sufficient lines, then the run's summary. Durations are this run's.
+✓ |integration| tests/integration/tenancy.test.js > the recipe, as written in docs/deployment.md > names a schema of letters and digits only, so its grant is not a pattern 2ms
+✓ |integration| tests/integration/tenancy.test.js > the recipe, as written in docs/deployment.md > builds both ways as the migration account alone 2ms
+✓ |integration| tests/integration/tenancy.test.js > the recipe, as written in docs/deployment.md > gives the app account DML on its schema and nothing else, nothing global 0ms
+✓ |integration| tests/integration/tenancy.test.js > the recipe, as written in docs/deployment.md > gives the migration account its schema only, without GRANT OPTION, nothing global 0ms
+✓ |integration| tests/integration/tenancy.test.js > the recipe, as written in docs/deployment.md > lets the app account do its work on its own schema 57ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > the row it must not reach is there: every denial below is a denial, not an absence 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a schema-qualified SELECT fails with the privilege error 1ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a backtick-quoted SELECT fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > an INSERT fails with the privilege error 1ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > an UPDATE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a DELETE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a REPLACE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a JOIN of its own logs with B logs fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a comma join fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a subquery fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a CTE named after a real table fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a UNION fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a TABLE statement fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a CREATE VIEW over B fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a CREATE TABLE ... SELECT from B fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > USE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > SHOW TABLES FROM fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > SHOW TABLE STATUS FROM fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > SHOW CREATE TABLE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > DESCRIBE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > SHOW INDEX fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > HANDLER ... OPEN fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > LOCK TABLES fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a RENAME into B fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > DROP DATABASE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > CALL of a routine in B fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > PREPARE of a statement on B fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a GRANT on B to itself fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > a GRANT on its own schema to B fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > reading B's grants fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > mysql.user fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > CREATE USER fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > SET GLOBAL fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > KILL of B's connection fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > KILL QUERY on B's connection fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > other sessions' statements fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > other sessions' threads fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > other sessions' locks fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > other sessions' transactions fails with the privilege error 1ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > the sys schema fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > SELECT ... INTO OUTFILE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > LOAD DATA INFILE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > CREATE TABLE on its own schema fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > ALTER TABLE on its own schema fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > CREATE TEMPORARY TABLE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > SHOW DATABASES lists its own schema and the two system schemas every account sees 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > information_schema has no row about B's tables, columns or routines 2ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > sees only its own connections in the process list 1ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's app account against instance B > LOAD_FILE reads nothing 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > a SELECT fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > a CREATE TABLE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > an ALTER TABLE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > a DROP TABLE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > DROP DATABASE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > a GRANT on its own schema to B (no GRANT OPTION) fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > CREATE USER fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > SET GLOBAL fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > KILL of B's connection fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > SELECT ... INTO OUTFILE fails with the privilege error 0ms
+✓ |integration| tests/integration/tenancy.test.js > instance A's migration account against instance B > SHOW DATABASES lists its own schema and the two system schemas 0ms
+✓ |integration| tests/integration/tenancy.test.js > connections > app A's connection cap stops it at its limit while app B still connects 19ms
+✓ |integration| tests/integration/tenancy.test.js > connections > each instance's app account holds its own single-writer lock, at the same time 238ms
+✓ |integration| tests/integration/tenancy.test.js > why the recipe names schemas with letters and digits only > a database-level grant reads _ as a wildcard, so it would reach a lookalike schema 721ms
+✓ |integration| tests/integration/grants-sufficient.test.js > the app on the DML-only account > boots, serves the smoke path, saves a live edit and stops cleanly, with no privilege error 2568ms
+Test Files  14 passed (14)
+Tests  161 passed (161)

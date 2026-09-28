@@ -508,7 +508,9 @@ turn every "file not found on that branch" into a 500. See
 **`app.js` mounts no global error handler at all.** A router that forgets its
 `router.use(errorHandler)` falls through to Express's default handler, which
 returns an HTML stack trace outside production. Adding a router means adding the
-handler.
+handler. `routes/comments.js` was the one that had forgotten it until
+2026-09-28 (W6-CDX-33's DML-only smoke path hit it on a denied `DELETE`);
+`tests/routes/comments.test.js` now pins the JSON envelope there.
 
 ## 5. WebSocket upgrades
 

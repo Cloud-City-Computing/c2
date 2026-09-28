@@ -1,0 +1,49 @@
+# Mutation checks, 2026-09-28, mysql:8.4.11, run one at a time and restored after each.
+# Each edit was confirmed to have landed (grep of the changed line) before the run.
+
+1. The plan's mutation: widen the app account.
+   Edit: docs/deployment.md recipe block, after the app GRANT, add
+         GRANT SELECT ON *.* TO 'c2acme_app'@'%';
+   Landed: grep -n "GRANT SELECT ON \*\.\*" docs/deployment.md -> 579:GRANT SELECT ON *.* TO 'c2acme_app'@'%';
+   Run: npx vitest run --project integration tests/integration/tenancy.test.js
+   Result: 26 failed. Among them: the recipe's grant-shape pin, SHOW GRANTS for the app account,
+   every read shape (schema-qualified, backticks, JOIN, comma join, subquery, CTE, UNION, TABLE,
+   SHOW TABLES/TABLE STATUS/CREATE TABLE/INDEX, DESCRIBE, HANDLER, PREPARE), mysql.user,
+   SHOW GRANTS FOR the other account, performance_schema statements/threads/locks, sys,
+   SHOW DATABASES and the information_schema check.
+
+2. Drop the app account's connection cap.
+   Edit: CREATE USER 'c2acme_app'@'%' IDENTIFIED BY '<app password>';   (no MAX_USER_CONNECTIONS)
+   Result: 1 failed, "app A's connection cap stops it at its limit": expected 0 to be greater than or equal to 12.
+
+3. Take DELETE from the app account.
+   Edit: GRANT SELECT, INSERT, UPDATE ON `c2acme`.* TO 'c2acme_app'@'%';
+   Run: grants-sufficient.test.js
+   First result: 1 passed. The smoke path at that point never deleted anything, so the test
+   could not see the loss. The path gained a comment delete, a document delete and a sign-out.
+   Result after: 1 failed, DELETE /api/comments/:id expected 200, received 500. The 500 body was
+   Express's default HTML page, which is how the missing errorHandler in routes/comments.js was
+   found (fixed in this branch, pinned by tests/routes/comments.test.js).
+
+4. A migration account with a hand-picked list instead of ALL PRIVILEGES.
+   Edit: GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON `c2acme`.* TO 'c2acme_mig'@'%';
+   Run: tenancy.test.js
+   Result: the file failed in beforeAll, on the upgrade path:
+     Migration 2026-09-25-oauth-one-link-per-provider.sql failed ...
+     alter routine command denied to user '..._mig'@'%' for routine '...migration_guard_oauth_one_link_per_provider'
+     (errno 1370, on DROP PROCEDURE IF EXISTS)
+
+5. A privilege error in a fire-and-forget write must reach the log check.
+   Edit: cloudcodex/routes/helpers/activity.js, INSERT INTO activity_log -> INSERT INTO mysql.activity_log
+   Run: grants-sufficient.test.js
+   Result: 1 failed on expect(log).not.toMatch(PRIVILEGE_ERROR); every request still answered 2xx.
+
+6. An underscore schema name in the app grant.
+   Edit: GRANT SELECT, INSERT, UPDATE, DELETE ON c2_acme.* TO 'c2acme_app'@'%';
+   Run: tenancy.test.js
+   Result: the file failed in beforeAll (the app account could not reach its own schema, since the
+   substituted name no longer matched the grant). Red, though not on the grant-shape pin itself.
+
+7. routes/comments.js without router.use(errorHandler) (the state before the fix).
+   Run: npx vitest run --project backend tests/routes/comments.test.js
+   Result: 1 failed, content-type 'text/html; charset=utf-8' where application/json was expected.

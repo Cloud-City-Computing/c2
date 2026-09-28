@@ -171,13 +171,14 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **90 files, 2015 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
-tree, against MySQL 8.4.11 at the server's default isolation and at
-`READ-COMMITTED`).
+Current state: the default run is **90 files, 2016 tests, all passing**; the
+integration project is **14 files, 161 tests** (measured 2026-09-28 on
+`track/w6-cdx-33-shared-mysql`, against a stock MySQL 8.4.11).
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
-real processes rather than a real server alone: it forks
+real processes rather than a real server alone (the fork, sign-in and
+`/collab` helpers it shares with `grants-sufficient.test.js` live in
+`tests/integration/server-child.js`): it forks
 `tests/integration/lock-holder.js` against the file's schema to prove the
 instance lock (a second process exits 1 naming the holder's connection id, a
 SIGKILLed holder frees it within two seconds, two schemas hold their own at
@@ -226,19 +227,38 @@ before each test file is imported and **does not** mock `mysql_connect.js`:
    already set, so a developer's `.env` cannot redirect it.
 4. Drops the schema in `afterAll`.
 
-The admin helpers (`adminConfig`, `buildSchemaFromInitSql`, `queryVia`,
-`dropSchema`, `throwawaySchemaName`) live in `tests/integration/mysql-admin.js`;
+The admin helpers (`adminConfig`, `buildSchemaFromInitSql`, `loadInitSql`,
+`queryVia`, `dropSchema`, `dropUser`, `throwawaySchemaName`) live in
+`tests/integration/mysql-admin.js`;
 a test that needs a second schema (as the adoption-refusal test does) builds it
 with them and drops it in its own `finally`. `queryVia` wraps **one**
 connection, never a pool, because the runner's advisory lock is per connection.
 
-The global teardown drops every `c2_it_` schema still on the server and fails
-the run naming them. **Trap: Vitest 4 only logs an error thrown from a
+The global teardown drops every `c2_it_` and `c2it` schema, and every `c2_it_`
+account, still on the server and fails the run naming them. **Trap: Vitest 4 only logs an error thrown from a
 globalSetup teardown ("error during close") and exits 0**, so the teardown sets
 `process.exitCode = 1` before it throws; the throw alone would leave a leak
 green (found by mutation, 2026-09-25). Because it counts every `c2_it_` schema,
 two integration runs sharing one server at once would report each other's; give
 each concurrent run its own server.
+
+**The shared-server recipe (W6-CDX-33).** `tests/integration/instance-recipe.js`
+reads the SQL block under "Several instances on one MySQL server" in
+`docs/deployment.md` and runs it as root with throwaway names (a `c2it<hex>`
+schema, since the recipe allows letters and digits only, and `c2_it_<hex>_app`
+and `_mig` accounts), then builds the schema as the migration account by the
+fresh-install path (`buildFresh`) or the upgrade path (`buildUpgraded`: every
+post-baseline file applied for real, as that account). `tenancy.test.js` does
+this for two instances and asserts the exact MySQL error for 54 statements
+from instance A's accounts that reach for B, for the server or for DDL, plus
+`SHOW DATABASES`, `information_schema`, the process list, `LOAD_FILE`, both
+accounts' `SHOW GRANTS`, the app account's connection cap (1226 past it) and
+each instance's lock held at once; its last test demonstrates why the recipe
+bans `_` in schema names. `grants-sufficient.test.js` boots `server.js` as the
+app account alone and runs a smoke path, a `/collab` edit and a SIGTERM, and
+fails on any privilege error in the child's log. Access-control section 9 has
+the boundary; `docs/research/instance-isolation-2026-09-28/` the run and its
+seven mutations.
 
 `tests/integration/migrate.test.js` holds four tests: a canary that
 fails if `c2_query` is a mock, adoption recorded every migration file, a second

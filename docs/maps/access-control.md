@@ -773,6 +773,75 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
 
 ---
 
+## 9. Between instances: the MySQL grant (W6-CDX-33)
+
+Everything above runs **inside** one instance, where the tenant boundary is the
+workspace (3e: `isWorkspaceMember` in `ownership.js`). Several instances can
+share one MySQL server, one schema each, and nothing in the application
+separates them: no query names a schema, and `c2_query` runs as whatever
+account `DB_USER` names. **The boundary between instances is that account's
+grant**, set up by the recipe in `docs/deployment.md` ("Several instances on
+one MySQL server"):
+
+| Account | Grant | Used by |
+|---|---|---|
+| `<schema>_app` | ``SELECT, INSERT, UPDATE, DELETE ON `<schema>`.*``, `MAX_USER_CONNECTIONS 15` | the app (`DB_USER`) |
+| `<schema>_mig` | ``ALL PRIVILEGES ON `<schema>`.*``, no `GRANT OPTION`, `MAX_USER_CONNECTIONS 3` | `init.sql` and `npm run migrate` |
+
+Nothing global for either (`SHOW GRANTS` is exactly `USAGE ON *.*` plus the one
+schema line), so neither holds `PROCESS`, `FILE`, `SUPER` or `CREATE USER`.
+
+**Proved, not asserted.** `tests/integration/tenancy.test.js` reads the SQL
+block out of `docs/deployment.md`, runs it as root for two instances on one
+server, builds one by the fresh-install path and the other by the upgrade path
+(every post-baseline migration applied for real, the `CREATE PROCEDURE` guard
+included), both as their migration account, and then tries 44 statements as
+instance A's app account and 10 as its migration account, reaching for B, for
+the server, and (the app account) for DDL on its own schema, each asserted to
+fail with the exact MySQL 8.4.11 error: 1142 (table access) for reads, writes, joins, subqueries,
+a CTE named after a real table, `UNION`, `TABLE`, `HANDLER`, `DESCRIBE`,
+`PREPARE` and a `RENAME` into B; 1044 (database access) for `USE`,
+`SHOW TABLES FROM`, `LOCK TABLES`, `DROP DATABASE` and a `GRANT` either way;
+1370 for `CALL` of B's routine; 1095 for `KILL` of B's connection; 1227 for
+`INTO OUTFILE`, `SET GLOBAL` and `CREATE USER`; 1045 for `LOAD DATA INFILE`.
+B holds a row A would find if any of them succeeded. `SHOW DATABASES` answers
+exactly `information_schema`, `performance_schema` and A's own schema;
+`information_schema` has no row about B's tables, columns, routines or schema;
+the process list shows A its own connections only; `LOAD_FILE` returns `NULL`.
+The app account has no DDL on its own schema either. The same file proves each
+instance's single-writer lock is held at once on one server, and that the app
+account's connection cap refuses the connection past it with 1226 while
+instance B still connects. `tests/integration/grants-sufficient.test.js` boots
+`server.js` as the app account alone and runs boot, a signed-in smoke path
+(create, save, a `FOR UPDATE` rename, comment, publish, search, deletes,
+sign-out), a `/collab` edit and a SIGTERM flush, with no privilege error in
+the log.
+
+**Schema names are letters and digits.** In a database-level `GRANT`, `_` and
+`%` in the schema name are wildcards while `partial_revokes` is off (the
+default), so `GRANT ... ON c2_acme.*` also opens `c2xacme`. The last test in
+`tenancy.test.js` demonstrates it on a lookalike schema; the first pins that
+the documented recipe's grants name a backticked `[a-z0-9]+` schema. Escaping
+the underscore (`c2\_acme`) is not a fix: with `partial_revokes` on, the
+backslash is read literally and the app loses its own schema.
+
+**What neither boundary protects against.** An operator with the server's
+root password reaches every schema. `app_public` (avatars, document images) is
+a volume, not a table, so two instances mounting one volume share files the
+grant never sees; each needs its own. The instances share the server's CPU,
+memory and disk. And inside an instance, an admin (`is_admin`) passes every
+check above (section 6).
+
+Mutation-checked on 2026-09-28: adding `GRANT SELECT ON *.*` to the app account
+in the recipe turns 26 tests red; dropping its `MAX_USER_CONNECTIONS` turns the
+cap test red; a migration account granted a hand-picked list without the
+routine privileges fails the upgrade path on the `DROP PROCEDURE IF EXISTS`;
+an app account without `DELETE` turns `grants-sufficient.test.js` red on the
+comment delete; and an activity insert redirected to a denied table turns it
+red on the log check.
+
+---
+
 ## Related
 
 - [data-model.md](data-model.md) for the ACL column families and their defaults.
@@ -782,3 +851,5 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
   defects rather than design.
 - [../security.md](../security.md) for the tenant-boundary summary and the three
   read-only queries that enumerate cross-tenant rows predating 3e.
+- [../deployment.md](../deployment.md), "Several instances on one MySQL
+  server", for the recipe section 9 proves.

@@ -36,7 +36,11 @@ tests/
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
 │   ├── admin-sync.test.js  ← the boot admin sync never promotes a member, in either row order
 │   ├── documents-state.test.js ← the reconciliation read: workspace narrowing, the ACL, absence that is no oracle
-│   ├── global-setup.js     ← teardown: fails the run if a c2_it_ schema leaked
+│   ├── global-setup.js     ← teardown: fails the run if a c2_it_ or c2it schema, or a c2_it_ account, leaked
+│   ├── grants-sufficient.test.js ← server.js runs on the shared-server recipe's DML-only account
+│   ├── instance-recipe.js  ← (not a test file) runs docs/deployment.md's shared-server SQL block as written
+│   ├── lifecycle.test.js   ← one writer per schema, and a SIGTERM that flushes a live edit
+│   ├── lock-holder.js      ← (not a test file) a child that takes the instance lock and holds it
 │   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers, row holder, lock-wait poller
 │   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql
 │   ├── migrate.test.js     ← the migration runner on a real database
@@ -44,6 +48,8 @@ tests/
 │   ├── oauth-google-two-factor.test.js ← Google never links a two-factor account by email; linked ones still sign in
 │   ├── oauth-google-two-factor-read-committed.test.js ← the same link interleaves with the app pool on READ COMMITTED
 │   ├── google-link-races.js ← (not a test file) the lookup-then-INSERT interleaves both files above run
+│   ├── server-child.js     ← (not a test file) fork server.js or the lock holder, sign in, open /collab
+│   ├── tenancy.test.js     ← two instances on one server: every cross-schema statement is denied
 │   ├── update-account-sessions.test.js ← an email or password change leaves one session, the caller's new one
 │   └── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
@@ -264,7 +270,11 @@ build the install from the release before a migration and run just that file.
 normally; they bind to the file's schema. If a test needs a second schema (for
 example one deliberately missing a column), build it with
 `buildSchemaFromInitSql` from `tests/integration/mysql-admin.js` and drop it in
-the test's own `finally`. Hand the migration runner a `queryVia(connection)`
+the test's own `finally`. A test that needs an instance with its own accounts,
+as the shared-server recipe makes them, uses `newInstance`, `provision` and
+`buildFresh` from `tests/integration/instance-recipe.js` and `unprovision` in
+`afterAll`; any account a test creates is named with the `c2_it_` prefix so
+the teardown can find it if the test does not drop it. Hand the migration runner a `queryVia(connection)`
 executor over one connection, never a pool: its advisory lock is per
 connection. Tests in one file share a schema, so clean up rows you rely on
 being absent.
