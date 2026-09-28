@@ -9,7 +9,7 @@
  * The /doc-images handler serves an image only to its uploader and to readers
  * of a document that holds it, and it knows which documents those are from
  * the doc_images table. The migration that creates the table
- * (migrations/2026-09-27-doc-images.sql) leaves it empty, so on an install
+ * (migrations/2026-09-27-who-may-see-doc-images.sql) leaves it empty, so on an install
  * that already has documents with images, every one of those images is hidden
  * from its readers until this runs.
  *

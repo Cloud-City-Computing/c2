@@ -33,13 +33,13 @@ These are the highest-confidence items. Each was checked by grepping the whole
   `middleware/` returns only `archives`-scoped reads plus the github.js writes.
 - **Not verified:** runtime behaviour.
 
-Same story for `versions.read_access` (`init.sql:361`): declared, never read,
+Same story for `versions.read_access` (`init.sql:372`): declared, never read,
 never written.
 
 ### A2. `github_embed_refs` has no writer
 
 `GET /api/logs/by-github-ref` (`github.js:1956-1977`) reads the table.
-`migrations/p1_github_embeds.sql` and `init.sql:298-312` create it. There is no
+`migrations/p1_github_embeds.sql` and `init.sql:309-323` create it. There is no
 `INSERT INTO github_embed_refs` anywhere in the repo.
 
 **Consequence:** the "which documents reference this file / issue / PR"
@@ -778,19 +778,23 @@ read as proof of none.
 until the user reconnects. Deliberate (re-checking per message would be a query
 per keystroke), but worth stating.
 
-### C2. One session row per user
+### C2. One session row per user (RESOLVED)
 
-`generateSessionToken` (`mysql_connect.js:109-144`) reuses the existing row, so
-signing in on a second device returns the first device's token and `POST
-/api/logout` signs out everywhere. The schema does not enforce the one-row
-assumption with a unique key on `user_id`.
+`generateSessionToken` used to reuse the user's existing row, so signing in on
+a second device returned the first device's token and `POST /api/logout`
+signed out everywhere; the row also held the raw token. It was also why
+`POST /api/update-account` deletes the caller's session along with every other
+after an email or password change: the caller's token was every holder's, so
+sparing it spared a stolen one, and the next sign-in with the new credentials
+was handed that fresh token too.
 
-It is also why `POST /api/update-account` deletes the caller's session along
-with every other after an email or password change and mints a fresh one
-([request-lifecycle.md](request-lifecycle.md)): the caller's token is every
-holder's, so sparing it spared a stolen one. The limit that remains is this
-entry's: the next sign-in with the new credentials is handed that fresh token
-too.
+**Resolved** by W6-CDX-2 (branch `track/w6-cdx-2-hashed-sessions`): every
+sign-in inserts its own row, stored as `hashSessionToken(token)`, a SHA-256
+digest, with the minting flow in `sessions.auth_provider`, and a daily prune
+reaps expired rows. Logout signs out one device; update-account's delete by
+`user_id` still signs out every other device, and a later sign-in gets a row
+of its own. The mechanism is in [request-lifecycle.md](request-lifecycle.md)
+("Session tokens") and [data-model.md](data-model.md) section 4.
 
 ### C3. Rotating `GITHUB_CLIENT_SECRET` invalidates every stored token
 
@@ -800,7 +804,7 @@ product, worth documenting in the ops runbook.
 
 ### C4. Watch rows outlive their resources
 
-`watches` has a FK on `user_id` only (`init.sql:439`); `resource_id` is
+`watches` has a FK on `user_id` only (`init.sql:449`); `resource_id` is
 polymorphic and unconstrained. Deleting a document orphans its watches. Harmless
 (`routes/helpers/activity.js:180-184` bails when the log is gone) but unbounded.
 
@@ -813,7 +817,7 @@ make it slow.
 ### C6. The `conflict` sync status is unreachable
 
 `github_links.sync_status` is `ENUM('clean','remote_ahead','local_ahead',
-'diverged','conflict')` (`init.sql:339`) but `classifySync`
+'diverged','conflict')` (`init.sql:350`) but `classifySync`
 (`github.js:1085-1091`) returns only the first four. Conflicts are expressed as
 a 409 response instead. Either the enum value is vestigial or a state was
 planned and never wired.
@@ -907,8 +911,8 @@ Corrected in this pass, listed here so the drift pattern is visible:
   The doc's "filesystem globally" reads as more complete than it is.
 - **`useGitHubStatus` is `.jsx`, not `.js`.**
 - **The comment "no external job queue"** is accurate in spirit, but
-  `server.js:73-89` does run an in-process daily prune, which is a scheduled job
-  by another name.
+  `server.js` runs two in-process daily prunes (`pruneOldActivity` and
+  `pruneExpiredSessions`), which are scheduled jobs by another name.
 
 ## E. Things not investigated
 

@@ -460,3 +460,78 @@ describe('server.js: AUTH_PROVIDERS', () => {
     });
   });
 });
+
+// Sessions are one row per sign-in with a fixed life, and nothing refreshes a
+// row in place, so the table only grows unless something reaps it. The prune
+// is a named function handed to the timers, so these find it by name rather
+// than by position among server.js's other timers.
+describe('server.js: the expired-session prune', () => {
+  let intervalSpy;
+  let timeoutSpy;
+
+  beforeEach(() => {
+    intervalSpy = vi.spyOn(globalThis, 'setInterval');
+    timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+  });
+
+  afterEach(() => {
+    intervalSpy.mockRestore();
+    timeoutSpy.mockRestore();
+  });
+
+  const boot = async () => {
+    const original = { ...process.env };
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    try {
+      await import('../server.js');
+    } finally {
+      process.env = original;
+    }
+    const { c2_query } = await import('../mysql_connect.js');
+    const named = (spy) => spy.mock.calls.filter(([fn]) => fn?.name === 'pruneExpiredSessions');
+    return { c2_query, intervals: named(intervalSpy), timeouts: named(timeoutSpy) };
+  };
+
+  it('runs daily, and once a minute after boot', async () => {
+    const { intervals, timeouts } = await boot();
+
+    expect(intervals.map(([, ms]) => ms)).toEqual([24 * 60 * 60 * 1000]);
+    expect(timeouts.map(([, ms]) => ms)).toEqual([60 * 1000]);
+  });
+
+  it('deletes only expired rows, and logs how many it removed', async () => {
+    const { c2_query, intervals } = await boot();
+    c2_query.mockClear();
+    c2_query.mockResolvedValueOnce({ affectedRows: 3 });
+
+    await intervals[0][0]();
+
+    expect(c2_query).toHaveBeenCalledTimes(1);
+    expect(c2_query.mock.calls[0][0]).toMatch(/^\s*DELETE FROM sessions WHERE expires_at < NOW\(\)\s*$/);
+    expect(c2_query.mock.calls[0][1]).toEqual([]);
+    expect(errorSpy.mock.calls.flat().map(String).join(' ')).toMatch(/session prune: removed 3 rows/);
+  });
+
+  it('stays quiet when nothing had expired', async () => {
+    const { c2_query, intervals } = await boot();
+    c2_query.mockResolvedValueOnce({ affectedRows: 0 });
+    errorSpy.mockClear();
+
+    await intervals[0][0]();
+
+    expect(errorSpy.mock.calls.flat().map(String).join(' ')).not.toMatch(/session prune/);
+  });
+
+  it('logs a failure and does not throw, so a bad night never takes the process down', async () => {
+    const { c2_query, timeouts } = await boot();
+    c2_query.mockRejectedValueOnce(new Error('db unreachable'));
+
+    await expect(timeouts[0][0]()).resolves.toBeUndefined();
+
+    const logged = errorSpy.mock.calls.flat().map(String).join(' ');
+    expect(logged).toMatch(/session prune failed/);
+    expect(logged).toMatch(/db unreachable/);
+  });
+});

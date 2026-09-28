@@ -161,3 +161,20 @@ async function pruneOldActivity() {
 setInterval(pruneOldActivity, ONE_DAY_MS).unref();
 // Run once shortly after boot so a long-uptime process gets cleaned without waiting 24h
 setTimeout(pruneOldActivity, 60 * 1000).unref();
+
+// Daily prune of expired sessions. Every row has a fixed 7-day life and
+// nothing refreshes one in place, and each sign-in adds a row, so without
+// this the table only grows. validateAndAutoLogin already refuses an expired
+// row; this only reclaims the space.
+async function pruneExpiredSessions() {
+  try {
+    const result = await c2_query(`DELETE FROM sessions WHERE expires_at < NOW()`, []);
+    if (result?.affectedRows) {
+      console.error(`[${new Date().toISOString()}] session prune: removed ${result.affectedRows} rows`);
+    }
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] session prune failed:`, err);
+  }
+}
+setInterval(pruneExpiredSessions, ONE_DAY_MS).unref();
+setTimeout(pruneExpiredSessions, 60 * 1000).unref();

@@ -508,7 +508,7 @@ semicolons.
 
 ### The document-images backfill, once
 
-`2026-09-27-doc-images.sql` creates `doc_images`, the table that says which
+`2026-09-27-who-may-see-doc-images.sql` creates `doc_images`, the table that says which
 documents hold which image, and the `/doc-images` handler now serves an image
 only to its uploader and to readers of a document named there. The table starts
 empty, so **on an install that already has documents with images, every image

@@ -12,7 +12,51 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
+  read for Cloud Command: for up to 100 document ids it returns the id, title,
+  archive and last update of each one the caller can read in that workspace.
+  An id that is deleted, unreadable, in another workspace or in a system
+  archive is simply absent, and the answer does not say which. It is the third
+  route the service token (`SERVICE_TOKEN`) reaches, beside `GET /api/search`
+  and `GET /api/browse`, and like them it acts with the service user's
+  ordinary, never-admin access. Rate-limited to 120 requests per 15 minutes. No
+  migration and no new setting.
+
+### Changed
+
+- `POST /api/doc-images/upload` needs a `logId` form field naming the document
+  the images go into, and write access to it: without one it answers `400`,
+  without access `403`, and nothing is processed either way. The editor sends
+  it. `DOC_IMAGES_PUBLIC` is new in `.env.example` (see Security).
+
 ### Fixed
+
+- **Deleting an archive is recorded in the activity log.** The route looked
+  up the archive's workspace only after deleting the row that led to it, so
+  every `archive.delete` event was dropped. It now reads the workspace and
+  squad first. An archive with no squad has no workspace and stays
+  unrecorded, as before.
+- **Renaming or moving a document in the archive tree is recorded.**
+  `PUT /api/archives/:archiveId/logs/:logId` now logs `log.rename` when the
+  title changes and `log.move`, with the previous and new parent, when the
+  parent changes; re-sending the stored values logs nothing, and neither
+  event notifies watchers. It also applies the title rules of
+  `PUT /api/document/:logId/title` (required, at most 255 characters, the
+  same 400 responses), where it used to accept any length and answer a
+  non-string title with a 500, and it answers 404 for a document that is not
+  in the archive instead of reporting success.
+- **The archive tree no longer loses documents to a bad parent.** The same
+  route wrote any `parent_id` it was given. A document put under itself or
+  under one of its own descendants dropped out of the tree with everything
+  below it. Each is now a 400. A document also could be moved, created
+  (`POST /api/archives/:archiveId/logs`) or uploaded under a document in
+  another archive; all three routes now refuse that with a 400. Moves in one
+  archive now take turns, so two opposite moves sent at once can no longer
+  both pass the check and leave two documents each under the other.
+- **`PUT /api/document/:logId/title` answers a title that is not a string
+  with a 400**, as the tree route now does, where it used to fail with a 500.
 
 - **A fresh install on an SELinux-enforcing host gets its schema.**
   `docker-compose-release.yml` and `docker-compose-prod.yml` mounted `init.sql`
@@ -23,14 +67,21 @@ initialises an empty data directory.
   every host bind mount in the two files. An install that already hit this
   starts again from an empty data directory; see `docs/troubleshooting.md`.
 
-### Changed
-
-- `POST /api/doc-images/upload` needs a `logId` form field naming the document
-  the images go into, and write access to it: without one it answers `400`,
-  without access `403`, and nothing is processed either way. The editor sends
-  it. `DOC_IMAGES_PUBLIC` is new in `.env.example` (see Security).
-
 ### Security
+
+- **Session tokens are stored only as a SHA-256 digest, and every sign-in is
+  its own session.** `sessions.id` held the raw token, so a copy of the table
+  (a backup, a dump) was a list of working sign-ins; it now holds
+  `hashSessionToken(token)`, and every lookup and delete hashes the presented
+  token first. Each sign-in also gets a row of its own: a second device used to
+  be handed the first device's token, so signing out anywhere signed out
+  everywhere, and a sign-in after a password change was handed the caller's
+  fresh token. Now `POST /api/logout` signs out only the device that sent it; a
+  password reset, and an email or password change, still sign out every device.
+  Each row records the flow that minted it (`sessions.auth_provider`, `local`
+  or `google`), and the replacement an email or password change hands the
+  caller keeps the tag of the session it replaces. Expired sessions are
+  deleted daily.
 
 - **Document images are served only to people who can read the document.**
   `/doc-images/<hash>.webp` was a public static mount, cached `public` for 30
@@ -46,8 +97,32 @@ initialises an empty data directory.
 
 ### Migration
 
+**The session migration,**
+[`migrations/2026-09-27-session-per-sign-in.sql`](migrations/2026-09-27-session-per-sign-in.sql),
+adds `sessions.auth_provider` (existing rows become `local`, then the default is
+dropped) with `CHECK (auth_provider IN ('local', 'google'))`, and hashes every
+stored session id in place, so nobody is signed out by the upgrade. **Stop every
+writer, apply it, then start the new image**, from `cloudcodex/`:
+
+```sh
+npm run migrate
+```
+
+In containers, `docker compose ... run --rm app npm run migrate` with the app
+stopped. The schema is incompatible with the app in both directions: the old
+image against it fails every sign-in (error 1364) and cannot find any existing
+session, and the new image against the old schema fails every sign-in (error
+1054) and cannot find any either. The hash step is idempotent (it skips any id
+that is already a lowercase hex digest), so a re-run changes nothing it already
+changed; if a run is interrupted partway, drop the column
+(`ALTER TABLE sessions DROP COLUMN auth_provider;`) and run it again. There is
+no rollback of the hash: going back to an older image means dropping the column
+and every user signing in again. On an install that `init.sql` builds fresh,
+`--adopt-fresh-install` checks that `auth_provider` is already there before it
+records the file.
+
 **The document-images migration,**
-[`migrations/2026-09-27-doc-images.sql`](migrations/2026-09-27-doc-images.sql),
+[`migrations/2026-09-27-who-may-see-doc-images.sql`](migrations/2026-09-27-who-may-see-doc-images.sql),
 adds the `doc_images` table: which documents hold which image. Apply it with
 `npm run migrate` as usual. **Then run the backfill once, before starting the
 new image,** or every image in an existing document is hidden from its readers:

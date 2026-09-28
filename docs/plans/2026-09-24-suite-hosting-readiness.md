@@ -464,6 +464,9 @@ tasks carry no checkboxes). Where the build goes past the text below, and why:
   can see the image puts it in again.
 - `POST /api/save-document` checks write access before it decodes any embedded image, as the
   upload route does.
+- The migration is `2026-09-27-who-may-see-doc-images.sql`, not `<today>-doc-images.sql`:
+  W6-CDX-2's `2026-09-27-session-per-sign-in.sql` landed on `main` first, and the runner applies
+  files in lexicographic order, so this file's name has to sort after it.
 
 ### Task 4.1 The table
 

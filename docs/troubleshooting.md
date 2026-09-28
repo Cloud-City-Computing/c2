@@ -248,19 +248,22 @@ DELETE FROM oauth_accounts WHERE user_id = <id> AND provider = 'google';
 DELETE FROM sessions WHERE user_id = <id>;
 ```
 
-The second statement is not optional. An account has one session, shared by
-every sign-in to it: a new sign-in is handed the live session the account
-already has (`generateSessionToken` in `mysql_connect.js`), so whoever signed
-in through the link holds the owner's own session token, and deleting the link
-leaves them signed in. A password reset through **Forgot password** deletes
-every session, and from this release so does an email or password change (the
-next entry), so either can stand in for the second statement. Once the
-sessions are gone, have the owner sign in again and check that the account's
-email address, password and two-factor setting are theirs: before this
-release a session alone was enough to change the email and the password. If
-the email address is not theirs, an operator restores it before the owner
-resets the password. One shared session per account is what the planned
-W6-CDX-2 (one session per sign-in, stored hashed) replaces.
+The second statement is not optional. Deleting the link stops new sign-ins
+through it, but not the sessions those sign-ins already hold, and it has to
+delete every session of the account because no narrower query can find the
+right ones. Each sign-in has a session row of its own, one made through the
+link included, and nothing ties a row to the link that minted it.
+`sessions.auth_provider` does not help: it names the flow only for sessions
+minted after the upgrade that added it, and every row from before is tagged
+`local`, so a Google sign-in from then looks like a password one. A password
+reset through **Forgot password** deletes every session of the account, and so
+does an email or password change (the next entry), so either can stand in for
+the second statement. Once the sessions are gone, have the owner sign in again
+and check that the account's email address, password and two-factor setting
+are theirs: before the release that added the current-password check, a
+session alone was enough to change the email and the password. If the email
+address is not theirs, an operator restores it before the owner resets the
+password.
 
 ---
 

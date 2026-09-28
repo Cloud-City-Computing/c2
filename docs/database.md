@@ -125,21 +125,22 @@ Links a Cloud Codex user to an external OAuth provider (Google or GitHub).
 
 ### `sessions`
 
-Active login sessions. Tokens are 64-character cryptographically random strings.
+Active login sessions, one row per sign-in. Tokens are 64-character cryptographically random strings, and only their SHA-256 digest is stored.
 
 | Column           | Type            | Notes                                  |
 |------------------|-----------------|----------------------------------------|
-| `id`             | CHAR(64) PK     | The session token itself               |
+| `id`             | CHAR(64) PK     | SHA-256 of the session token, lowercase hex; never the token itself |
 | `user_id`        | INT FK → users  | ON DELETE CASCADE                      |
+| `auth_provider`  | VARCHAR(16)     | The flow that minted it: `local` or `google` (CHECK). NOT NULL with no default |
 | `ip_address`     | VARCHAR(45)     | IPv4 or IPv6                           |
 | `user_agent`     | TEXT            |                                        |
 | `created_at`     | TIMESTAMP       |                                        |
 | `last_active_at` | TIMESTAMP       | Updated on each authenticated request |
-| `expires_at`     | TIMESTAMP       | 7-day rolling expiry                   |
+| `expires_at`     | TIMESTAMP       | 7 days after sign-in, never extended   |
 
-**Indexes:** `user_id`, `expires_at`.
+**Indexes:** `user_id`, `expires_at`. **Constraints:** `chk_sessions_auth_provider`.
 
-> A user has at most one active session. On re-login, the existing session is refreshed in place. Expired sessions are renewed (new token generated, same row updated).
+> Every sign-in inserts its own row, so each device has its own session and signing out of one leaves the others signed in. Nothing refreshes a row in place; expired rows are deleted by a daily prune in `server.js`. Added by `migrations/2026-09-27-session-per-sign-in.sql`, which also hashed the rows already stored.
 
 ---
 

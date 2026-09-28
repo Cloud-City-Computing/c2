@@ -16,7 +16,7 @@ generated column:
 | `html_content` | `MEDIUMTEXT` | REST save, publish, restore, explicit WS save, GitHub pull | everything: rendering, export, search (via generated column), GitHub push |
 | `markdown_content` | `MEDIUMTEXT` | REST save when the client sends it, WS save, GitHub pull/resolve/import | GitHub push (`github.js:1035-1043`), markdown-mode editing |
 | `ydoc_state` | `LONGBLOB` | collab autosave and explicit save (`collab.js:126-130`) | collab session restore only (`collab.js:78-85`) |
-| `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:282`) | the FULLTEXT index |
+| `plain_content` | generated `STORED` | MySQL, from `html_content` (`init.sql:293`) | the FULLTEXT index |
 
 `plain_content` is `REGEXP_REPLACE(html_content, '<[^>]+>', '')`, computed by
 MySQL on every write of `html_content`. It is the *only* thing search matches on
@@ -53,8 +53,8 @@ non-empty and otherwise round-trips the HTML through turndown, so a stale
 | `POST /api/document/:logId/publish` (`documents.js:173`) | `version`, `versions` row from existing `html_content` | no |
 | `POST .../versions/:versionId/restore` (`documents.js:426`) | `html_content`, `version`, new `versions` row | **yes**, `NULL` (`documents.js:465`) |
 | WS `{type:'save'}` (`collab.js:488-555`) | `html_content` if changed, `markdown_content`, `ydoc_state` | no |
-| WS `{type:'publish'}` (`collab.js:585-661`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
-| WS `{type:'title'}` (`collab.js:560-583`) | `title` only | no |
+| WS `{type:'publish'}` (`collab.js:586-662`) | `html_content`, `ydoc_state`, `version`, `versions` row | no |
+| WS `{type:'title'}` (`collab.js:561-584`) | `title` only | no |
 | collab autosave (`collab.js:122-135`) | `ydoc_state` only | no |
 | GitHub pull / resolve / overwrite (`github.js:1183-1192`, `1225-1234`, `1407-1416`) | `html_content`, `markdown_content` | **yes**, `NULL` |
 | GitHub bulk import (`github.js:1597-1606`) | new `logs` row | n/a |
@@ -88,7 +88,7 @@ RATE_LIMIT_MAX_MESSAGES    60     per window, applies to binary and text alike
 
 ### Session setup
 
-`setupDocSession` (`collab.js:374-707`) runs after auth succeeds:
+`setupDocSession` (`collab.js:374-711`) runs after auth succeeds:
 
 1. `getOrCreateDoc(logId)` (`collab.js:62-115`) loads `ydoc_state` and applies it
    to a fresh `Y.Doc`, and caches `html_content` into `entry.lastSavedHtml`.
@@ -119,7 +119,7 @@ allow-listed to exactly five values (`collab.js:459-461`):
 | `cursor` | `canWrite` | position is validated and coerced to safe integers (`collab.js:465-476`), then broadcast to others |
 | `save` | `canWrite` | immediate save, see below |
 | `publish` | `canWrite` | permission-checked snapshot, see below |
-| `comment` | `canWrite` | relays only ids, never content (`collab.js:666-680`); the actual CRUD is REST |
+| `comment` | `canWrite` | relays only ids, never content (`collab.js:667-681`); the actual CRUD is REST |
 | `title` | `canWrite` | updates `logs.title`, broadcasts, and logs `log.rename` |
 
 All five are gated the same way. `title` was the exception until 2026-08-09
@@ -158,18 +158,18 @@ records the images (`recordLiveDocImages`, `collab.js:173-180`, which logs its
 own failure so nothing after it is skipped), and runs `processMentionsOnSave`
 and `logActivity('log.update')` (`collab.js:531-550`).
 
-### Publish (`collab.js:585-661`)
+### Publish (`collab.js:586-662`)
 
 Loads the log's squad context, calls the shared `canPublish`
-(`collab.js:601`), bumps `logs.version`, writes HTML plus blob plus version,
+(`collab.js:602`), bumps `logs.version`, writes HTML plus blob plus version,
 inserts the `versions` row, fires mentions and `log.publish` activity, then
 broadcasts `{type:'published', version, title}` to **all** connections including
 the publisher. Title is capped at 255 chars, notes at 5000
-(`collab.js:587-588`).
+(`collab.js:588-589`).
 
 ### Lifecycle and teardown
 
-On close (`collab.js:683-698`): drop the connection, decrement the per-user
+On close (`collab.js:684-699`): drop the connection, decrement the per-user
 count, rebroadcast awareness, and if this was the last connection schedule both
 a final save and cleanup. Cleanup after 30s destroys the `Y.Doc` and removes the
 map entry, but only if no one reconnected (`collab.js:185-195`).
@@ -182,23 +182,23 @@ for the same log.
 
 ### The REST side-channel
 
-`broadcastToDoc(logId, message)` (`collab.js:717-725`) lets REST handlers push
+`broadcastToDoc(logId, message)` (`collab.js:718-726`) lets REST handlers push
 arbitrary JSON to live editors without going through Yjs. Its only current
 callers are the GitHub pull and resolve routes, which emit
 `{type:'github-pulled', ...}` (`github.js:1193`, `1235`, `1417`). It returns
 `false` when no one has the doc open.
 
 Three read-only accessors feed the admin and presence surfaces:
-`getActiveDocCount` (`collab.js:730`), `getActiveUsers(logId)`
-(`collab.js:737`), `getAllPresence()` (`collab.js:750`).
+`getActiveDocCount` (`collab.js:731`), `getActiveUsers(logId)`
+(`collab.js:738`), `getAllPresence()` (`collab.js:751`).
 
 ## 3. Versions
 
 `versions` rows are snapshots of `html_content` with an optional title and
-release notes (`init.sql:349-364`). Four operations:
+release notes (`init.sql:360-375`). Four operations:
 
 - **Publish** bumps `logs.version` and inserts a row. Two entry points, REST
-  (`documents.js:173`) and WS (`collab.js:585`), sharing `canPublish`.
+  (`documents.js:173`) and WS (`collab.js:586`), sharing `canPublish`.
 - **List / fetch** (`documents.js:350`, `documents.js:386`) behind read access.
 - **Restore** (`documents.js:426`) writes the old HTML back as a *new* version,
   so history is append-only and nothing is lost. It nulls `ydoc_state`.
@@ -212,19 +212,19 @@ The publish route also accepts `create_github_release`, `target_repo`, and
 
 ## 4. The editor
 
-`src/pages/Editor.jsx` (1516 lines) is the client. The Tiptap extension stack
-is assembled at `Editor.jsx:424-445`:
+`src/pages/Editor.jsx` (1341 lines) is the client. The Tiptap extension stack
+is assembled at `Editor.jsx:339-359`:
 
 `StarterKit` with `codeBlock`, `underline` and `undoRedo` disabled
-(`Editor.jsx:425`, undo/redo because the `Collaboration` extension supplies its
+(`Editor.jsx:340`, undo/redo because the `Collaboration` extension supplies its
 own CRDT-aware history), plus `ResizableImage`, `Placeholder`, `Underline`,
 `TextAlign`, `Link`, the four table extensions, `CodeBlockWithLanguage`
 (lowlight), `DrawioBlock`, `GitHubCodeEmbed`, `GitHubIssueEmbed`, `Mention`,
 and `Collaboration.configure({ document: ydoc })`.
 
-Initial content is deliberately empty (`Editor.jsx:445-446`); the
+Initial content is deliberately empty (`Editor.jsx:360-363`); the
 `Collaboration` extension populates the editor from the shared Y.Doc. Its
-`onUpdate` fires for **both** local and remote changes (`Editor.jsx:476-479`),
+`onUpdate` fires for **both** local and remote changes (`Editor.jsx:391-405`),
 which is why state updates there are deferred rather than applied inline.
 
 `useCollab(logId, onRemoteUpdate, onRemoteComment, onPublished, onRemoteTitle)`
