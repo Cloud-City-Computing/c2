@@ -11,6 +11,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import nodemailer from 'nodemailer';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { contractDefault } from '../contract-default.js';
 
 // Bypass the global email mock — we want the real module under test.
@@ -245,5 +247,25 @@ describe('SMTP_PORT and SMTP_FROM defaults', () => {
   it('SMTP_FROM set is the From on every email', async () => {
     const { mail } = await importWith({ SMTP_FROM: 'Docs <docs@example.com>' });
     expect(mail.from).toBe('Docs <docs@example.com>');
+  });
+});
+
+// Same file and same reason as mysql_connect.js: the image has no .env, and
+// dotenv 17 logs a line and an advert for every config() call that loads
+// nothing, on every boot.
+describe('dotenv', () => {
+  it('loads the repository root .env without logging', async () => {
+    const config = vi.fn();
+    vi.doMock('dotenv', () => ({ default: { config } }));
+    try {
+      vi.resetModules();
+      await import('../../services/email.js');
+    } finally {
+      vi.doUnmock('dotenv');
+      vi.resetModules();
+    }
+    const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    expect(config).toHaveBeenCalledTimes(1);
+    expect(config).toHaveBeenCalledWith({ path: path.resolve(appDir, '..', '.env'), quiet: true });
   });
 });
