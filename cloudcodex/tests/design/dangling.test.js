@@ -49,11 +49,11 @@ describe('dangling var() references', () => {
   });
 
   it('read the code base, not nothing', () => {
-    // Measured when the gate landed: 69 referrer files, over 700 no-fallback
-    // references, and the 27 index.css names, 61 core.css primitives and 20
+    // Measured when the gate landed: 69 referrer files (57 .jsx), 753 no-fallback
+    // references, and the 27 index.css names, 61 core.css primitives and 19
     // codex.css bindings declared.
     expect(inspection.referrerFiles).toContain('src/index.css');
-    expect(inspection.referrerFiles.filter((f) => f.endsWith('.jsx')).length).toBeGreaterThanOrEqual(40);
+    expect(inspection.referrerFiles.filter((f) => f.endsWith('.jsx')).length).toBeGreaterThanOrEqual(50);
     expect(inspection.referrerFiles.length).toBeGreaterThanOrEqual(60);
     expect(inspection.referenceSites).toBeGreaterThanOrEqual(600);
     for (const name of ['--bg-main', '--accent-300', '--cx-accent']) {

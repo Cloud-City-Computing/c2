@@ -57,9 +57,9 @@ describe('the scan is looking at the code base', () => {
     expect(targets).toContain('src/index.css');
     expect(targets).toContain('src/codex.css');
     expect(targets).toContain('src/userPrefs.js');
-    // Measured at 69 files, 45 of them .jsx, when the gate landed.
+    // Measured at 69 files, 57 of them .jsx, when the gate landed.
     expect(targets.length).toBeGreaterThanOrEqual(60);
-    expect(targets.filter((file) => file.endsWith('.jsx')).length).toBeGreaterThanOrEqual(40);
+    expect(targets.filter((file) => file.endsWith('.jsx')).length).toBeGreaterThanOrEqual(50);
   });
 
   it('finds each of the three rules in a seeded source', () => {

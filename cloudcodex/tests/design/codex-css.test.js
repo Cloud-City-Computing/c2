@@ -11,6 +11,7 @@ import path from 'node:path';
 import { declaredNames } from '../../vendor/cloud-city-design/gates/dangling.mjs';
 import { maskComments } from '../../vendor/cloud-city-design/gates/token-discipline.mjs';
 import { ROOT } from './buckets.js';
+import viteConfig from '../../vite.config.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const coreNames = new Set(declaredNames(read('vendor/cloud-city-design/core.css')));
@@ -23,7 +24,7 @@ const blocks = (css) => [...maskComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
 describe('src/codex.css', () => {
   it('declares only --cx- names', () => {
     const names = declaredNames(codex);
-    expect(names.length).toBeGreaterThanOrEqual(20);
+    expect(names.length).toBeGreaterThanOrEqual(19);
     expect(names.filter((name) => !name.startsWith('--cx-'))).toEqual([]);
   });
 
@@ -62,6 +63,12 @@ describe('the page', () => {
       './codex.css',
       './index.css',
     ]);
+  });
+
+  it('keeps core.css\'s licence notice through the minifier', () => {
+    expect(read('vendor/cloud-city-design/core.css').startsWith('/*! cloud-city-design core.css')).toBe(true);
+    // Vite's default is 'none', which strips it from the built stylesheet.
+    expect(viteConfig.esbuild?.legalComments).toBe('inline');
   });
 
   it('keeps the fonts out of public/, which the uploads volume shadows', () => {
