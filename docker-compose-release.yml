@@ -35,7 +35,10 @@ services:
       # (see the app service, which mounts migrations/ for exactly that).
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro,z
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-u${DB_USER}", "-p${DB_PASS}"]
+      # Over TCP: on a new data directory the image runs init.sql on a
+      # temporary server that listens on the socket alone, and a socket ping
+      # called that healthy while init.sql was still running.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${DB_USER}", "-p${DB_PASS}"]
       interval: 7s
       timeout: 8s
       retries: 15

@@ -154,8 +154,17 @@ fi
 
 detect_client_guard
 
-db_query 'SELECT 1' >/dev/null ||
-  die "cannot reach database '$target' as this instance's MySQL user; does it exist?"
+# The service it just started may still be building init.sql (see
+# backup-common.sh), and a compose file from before its healthcheck moved to
+# TCP calls that healthy, so give the real server time to answer.
+max_wait=0
+if [[ "$MODE" == compose ]]; then max_wait=180; fi
+for ((waited = 0; ; waited += 2)); do
+  if db_query 'SELECT 1' >/dev/null 2>&1; then break; fi
+  ((waited < max_wait)) ||
+    die "cannot reach database '$target' as this instance's MySQL user; does it exist? ($(db_query 'SELECT 1' 2>&1 >/dev/null | tail -n 1))"
+  sleep 2
+done
 
 lock_free="$(db_query "SELECT IS_FREE_LOCK($INSTANCE_LOCK_NAME_SQL)")"
 [[ "$lock_free" == 1 ]] ||

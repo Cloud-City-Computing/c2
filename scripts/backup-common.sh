@@ -24,6 +24,13 @@
 # Neither transport uses the MySQL root account, and no password is ever on a
 # command line: the clients read MYSQL_PWD from their own environment.
 #
+# Inside the database service the clients connect over TCP to 127.0.0.1, not
+# the socket. The first time a data directory starts, the image runs init.sql
+# on a temporary server that listens on the socket alone, and a socket
+# healthcheck (the compose files' before this change) passes against it; a
+# restore that reached it would race init.sql, and the temporary server stops
+# under it. Over TCP only the real server answers.
+#
 # The archive is a gzipped tar of exactly three members:
 #   database.sql       mysqldump of the one schema, schema_migrations included
 #   app_public.tar.gz  the uploads directory (avatars/, doc-images/)
@@ -144,7 +151,7 @@ db_mysql() {
   if [[ "$MODE" == compose ]]; then
     # shellcheck disable=SC2016  # expanded by the container's shell, not this one
     compose exec -T database sh -c \
-      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --default-character-set=utf8mb4 "$@" -u "$MYSQL_USER" "$MYSQL_DATABASE"' \
+      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --default-character-set=utf8mb4 "$@" --protocol=TCP -h 127.0.0.1 -u "$MYSQL_USER" "$MYSQL_DATABASE"' \
       mysql ${CLIENT_GUARD[@]+"${CLIENT_GUARD[@]}"} "$@"
   else
     MYSQL_PWD="$DB_PASS" mysql --default-character-set=utf8mb4 ${CLIENT_GUARD[@]+"${CLIENT_GUARD[@]}"} "$@" \
@@ -162,7 +169,7 @@ db_dump() {
   if [[ "$MODE" == compose ]]; then
     # shellcheck disable=SC2016  # expanded by the container's shell, not this one
     compose exec -T database sh -c \
-      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqldump "$@" -u "$MYSQL_USER" "$MYSQL_DATABASE"' \
+      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqldump "$@" --protocol=TCP -h 127.0.0.1 -u "$MYSQL_USER" "$MYSQL_DATABASE"' \
       mysqldump "${DUMP_FLAGS[@]}"
   else
     MYSQL_PWD="$DB_PASS" mysqldump "${DUMP_FLAGS[@]}" --protocol=TCP -h "$DB_HOST" -u "$DB_USER" "$DB_NAME"
