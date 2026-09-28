@@ -716,6 +716,7 @@ this is not a typical concern.
 |----------------------|---------------------------------|
 | Auth endpoints       | 20 / 15 minutes per IP          |
 | User search          | 60 / 15 minutes per IP          |
+| `GET /api/documents/state` | 120 / 15 minutes per IP, counted before authentication |
 | WebSocket messages   | 60 / second per connection      |
 
 The limiters count per client address. Express takes it from the connection,
