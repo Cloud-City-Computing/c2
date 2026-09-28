@@ -7,35 +7,43 @@
 
 import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
 import { verifyMachineCredential } from '../services/machine-auth.js';
+import { readSessionCookie, legacyCookieAllowed } from '../services/session-cookie.js';
+
+/**
+ * The bearer token in the Authorization header, or null. A bare "Bearer " is
+ * no token, so extractSessionToken falls through to the cookie for it.
+ *
+ * Exported for the Origin rule on cookie writes (app.js): a request is
+ * authenticated by its header exactly when this returns a token, and only a
+ * request authenticated by the cookie alone can be forged cross-site.
+ */
+export function bearerToken(req) {
+  const header = req.headers['authorization'];
+  if (!header) return null;
+  return header.replace('Bearer ', '') || null;
+}
 
 /**
  * The session token this request carries, from the Authorization header
- * (API calls) or the sessionToken cookie (browser redirects). Returns null
+ * (API calls) or the session cookie (browser redirects). Returns null
  * when the request carries neither.
+ *
+ * The cookie is __Host-sessionToken, which wins over a legacy sessionToken
+ * wherever the two sit in the header; a lone legacy cookie counts only while
+ * LEGACY_SESSION_COOKIE allows it (services/session-cookie.js).
  *
  * Exported so there is exactly one definition of "which token is this request
  * carrying": POST /api/logout used to read req.body.token, which no client
  * ever sends, so every logout 400d and no session row was ever deleted.
  */
 export function extractSessionToken(req) {
-  const header = req.headers['authorization'];
-  if (header) {
-    const bearer = header.replace('Bearer ', '');
-    if (bearer) return bearer;
-  }
-
-  const cookieHeader = req.headers['cookie'];
-  if (cookieHeader) {
-    const match = cookieHeader.split('; ').find(c => c.startsWith('sessionToken='));
-    if (match) return match.split('=')[1];
-  }
-
-  return null;
+  return bearerToken(req)
+    ?? readSessionCookie(req.headers['cookie'], { allowLegacy: legacyCookieAllowed() });
 }
 
 /**
  * Express middleware that validates the session token from either
- * the Authorization header (Bearer) or the sessionToken cookie, attaches
+ * the Authorization header (Bearer) or the session cookie, attaches
  * req.user, and refreshes session activity tracking.
  */
 export function requireAuth(req, res, next) {

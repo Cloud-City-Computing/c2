@@ -19,7 +19,7 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 | Pool size gate | `mysql_connect.js:29-48`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
 | DB pool | `mysql_connect.js:50-65` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. A blank `DB_HOST` or `DB_NAME` behaves as unset (`localhost`, `c2`), as in `scripts/migrate.js`. Host, user, password and schema are one `connectionOptions` object, which `openConnection()` reuses for the instance lock's own connection. |
 | DB credential gate | `mysql_connect.js:67-71` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
-| Trust proxy gate | `app.js:185-196`, `parseTrustProxy()` (`app.js:146`) | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY`. Unset or blank is `'127.0.0.1/32, ::1/128, 172.29.0.1/32'` (`DEFAULT_TRUST_PROXY`, `app.js:59`): the proxies **by address**, loopback as a /32 plus the gateway of the network both production compose files pin, which is where Docker presents a proxy on the host that reaches their loopback publish. Every other peer is keyed on its socket, IPv4-mapped forms included (GHSA-9fmx-frrf-xxmq). Not the default bridge's gateway, `172.17.0.1`: `docker run -p PORT:PORT` publishes on `[::]` too, the default bridge is IPv4-only, so every IPv6 client arrives as that gateway, and a re-review measured each one choosing a fresh key with no proxy at all. An earlier cut trusted `loopback, linklocal, uniquelocal`, and a review showed why a range is wrong: a client inside it (a LAN, VPN or VPC neighbour; AWS's default VPC is `172.31.0.0/16`) was itself trusted, so behind a proxy that appends it named its own key with the left entry. `false` is a boolean and anything else is a list whose every entry `trustProxyEntryRefusal()` (`app.js:93`) reads the way proxy-addr will. An entry that is not a subnet name or an address in standard notation exits 1 (`is not valid: "<entry>" is not a subnet name ...`), with or without the opt-in, because proxy-addr's parser reads `0/1` as half of IPv4 and `010.0.0.0/8` as octal 8.0.0.0/8. A range past the width thresholds exits 1 (`✖ TRUST_PROXY "<value>" trusts <entry>, ...`); the thresholds, not "anything public", since a public /8 or an IPv6 /16 to /31 is accepted: wider than an IPv4 /8, wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or an IPv6 range holding `::ffff:0:0/96` or more than an IPv4 /8 of it, since proxy-addr matches an IPv4 client against an IPv6 range in mapped form. proxy-addr itself only refuses a /0. **A hop count (0 included) or `true` exits 1** with `✖ TRUST_PROXY "<value>" is a hop count` (or `trusts every hop`) naming `TRUST_PROXY_ALLOW_HOP_COUNT=true`, the opt-in that accepts it and an over-wide range; the opt-in itself exits on anything but `true`, `false` or blank. Express compiles the value at `app.js:188` and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
+| Trust proxy gate | `app.js:187-198`, `parseTrustProxy()` (`app.js:148`) | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY`. Unset or blank is `'127.0.0.1/32, ::1/128, 172.29.0.1/32'` (`DEFAULT_TRUST_PROXY`, `app.js:61`): the proxies **by address**, loopback as a /32 plus the gateway of the network both production compose files pin, which is where Docker presents a proxy on the host that reaches their loopback publish. Every other peer is keyed on its socket, IPv4-mapped forms included (GHSA-9fmx-frrf-xxmq). Not the default bridge's gateway, `172.17.0.1`: `docker run -p PORT:PORT` publishes on `[::]` too, the default bridge is IPv4-only, so every IPv6 client arrives as that gateway, and a re-review measured each one choosing a fresh key with no proxy at all. An earlier cut trusted `loopback, linklocal, uniquelocal`, and a review showed why a range is wrong: a client inside it (a LAN, VPN or VPC neighbour; AWS's default VPC is `172.31.0.0/16`) was itself trusted, so behind a proxy that appends it named its own key with the left entry. `false` is a boolean and anything else is a list whose every entry `trustProxyEntryRefusal()` (`app.js:95`) reads the way proxy-addr will. An entry that is not a subnet name or an address in standard notation exits 1 (`is not valid: "<entry>" is not a subnet name ...`), with or without the opt-in, because proxy-addr's parser reads `0/1` as half of IPv4 and `010.0.0.0/8` as octal 8.0.0.0/8. A range past the width thresholds exits 1 (`✖ TRUST_PROXY "<value>" trusts <entry>, ...`); the thresholds, not "anything public", since a public /8 or an IPv6 /16 to /31 is accepted: wider than an IPv4 /8, wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or an IPv6 range holding `::ffff:0:0/96` or more than an IPv4 /8 of it, since proxy-addr matches an IPv4 client against an IPv6 range in mapped form. proxy-addr itself only refuses a /0. **A hop count (0 included) or `true` exits 1** with `✖ TRUST_PROXY "<value>" is a hop count` (or `trusts every hop`) naming `TRUST_PROXY_ALLOW_HOP_COUNT=true`, the opt-in that accepts it and an over-wide range; the opt-in itself exits on anything but `true`, `false` or blank. Express compiles the value at `app.js:190` and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the gates around it (pool size, trust proxy, `APP_URL`, the provider list, and an invalid `PORT`), these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | `APP_URL` gate | `server.js:63-89` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. A valid one whose host is `localhost`, `127.x.x.x`, `[::1]` or a `.localhost` name boots but prints `⚠ APP_URL "<value>" points at this machine`, since `.env.example` ships `http://localhost:3000` and the release compose file's one-machine evaluation is legitimate. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
 | Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set, `local` plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, so an install that sets nothing boots as before. A set value is a comma list of `local` and `google`; an unknown name, a list without `local`, a listed `google` that is not configured, or a configured Google the list leaves out exits 1 with a sentence naming the variable. The returned `Set` is not consumed yet: W6-CDX-8 is what unmounts providers by it. |
@@ -86,21 +86,23 @@ fails, and so does a listed file that stops calling it.
 All of this lives in `cloudcodex/app.js`. Order matters and is not alphabetical.
 
 ```
-app.set('trust proxy', TRUST_PROXY ??        app.js:188
+app.set('trust proxy', TRUST_PROXY ??        app.js:190
         '127.0.0.1/32, ::1/128, 172.29.0.1/32')
   │
-  ├─ warnUntrustedForwarders()               app.js:201
+  ├─ warnUntrustedForwarders()               app.js:203
   │  (middleware/forwarded-for.js)
-  ├─ health router: /healthz, /readyz        app.js:205
-  ├─ CORS, scoped to /api                    app.js:216-273
-  ├─ helmet + CSP: whole app in production,  app.js:283-311
+  ├─ health router: /healthz, /readyz        app.js:207
+  ├─ CORS, scoped to /api: isAllowedOrigin,  app.js:229-292
+  │  then the delegate
+  ├─ helmet + CSP: whole app in production,  app.js:302-330
   │  /api only otherwise
-  ├─ express.json({ limit: '2mb' })          app.js:323
-  ├─ authLimiter on 9 paths + reader-check   app.js:326-349
-  ├─ searchLimiter on /api/users/search      app.js:360
-  ├─ stateLimiter on /api/documents/state    app.js:374
-  ├─ static /avatars      (7d immutable)     app.js:377-380
-  ├─ /doc-images, authorized (private, 1d)   app.js:384
+  ├─ requireOriginForCookieWrites on /api    app.js:332-352
+  ├─ express.json({ limit: '2mb' })          app.js:364
+  ├─ authLimiter on 9 paths + reader-check   app.js:367-390
+  ├─ searchLimiter on /api/users/search      app.js:401
+  ├─ stateLimiter on /api/documents/state    app.js:415
+  ├─ static /avatars      (7d immutable)     app.js:418-421
+  ├─ /doc-images, authorized (private, 1d)   app.js:425
   ├─ 18 routers, all mounted at /api
   └─ (production, at listen time) vite-express's static dist/ and index.html
      handlers, appended after all of the above
@@ -139,7 +141,10 @@ still sends for a same-origin subresource. Who counts as a reader is
 [data-model.md](data-model.md) section 3.
 
 **CORS** (`app.js`, the `cors((req, cb) => ...)` block) allows, in order: a
-request with no `Origin` header at all; a **same-origin** request, decided by
+request with no `Origin` header at all; then whatever `isAllowedOrigin(req,
+origin)` accepts, which is exported from `app.js` so the Origin rule on cookie
+writes (below) applies the same test and the two cannot drift: a
+**same-origin** request, decided by
 comparing the `Origin` URL's host against `req.headers.host`; a request whose
 Origin matches **`APP_URL`**'s host; an exact match against `CORS_ORIGIN`; and
 any localhost or 127.0.0.1 origin **when `NODE_ENV !== 'production'`**.
@@ -180,7 +185,7 @@ could set that header themselves and turn the same-origin clause into "allow
 any origin".
 
 **The untrusted-forwarder warning** (`warnUntrustedForwarders()`,
-`middleware/forwarded-for.js`, mounted at `app.js:201`, ahead of the health
+`middleware/forwarded-for.js`, mounted at `app.js:203`, ahead of the health
 router, so it sees every request and blocks none) logs one
 `⚠ <peer> sent X-Forwarded-For, but TRUST_PROXY does not name <peer> ...` line
 per peer the first time a peer `trust proxy fn` does not trust sends the
@@ -195,8 +200,8 @@ still succeeds. `tests/middleware/forwarded-for.test.js` covers once-per-peer,
 the /64 keying, the quiet cases and the bound. `ipv6Groups()` lives in the
 same file, and `app.js`'s width check reuses it.
 
-**Security headers** (`HELMET_OPTIONS`, `app.js:283-310`) are one Helmet policy
-with two scopes (`app.js:311`). **In production it is mounted on `/`**, so it
+**Security headers** (`HELMET_OPTIONS`, `app.js:302-329`) are one Helmet policy
+with two scopes (`app.js:330`). **In production it is mounted on `/`**, so it
 covers every response but the two probes, which the health router answers
 ahead of it: the single-page app's HTML and built assets (served by the
 handlers `vite-express` appends at listen time, after everything here), the
@@ -228,7 +233,26 @@ script into its print window for this reason (`frontend-architecture.md`,
 `tests/app.test.js`, which re-imports `app.js` per `NODE_ENV` and appends a
 handler the way `vite-express` does.
 
-**Body limit is 2 MB** (`app.js:323`). The collab WebSocket has its own, larger
+**Origin-required cookie writes** (`requireOriginForCookieWrites`,
+`app.js:332-352`, W6-CDX-3). CORS admits a request with no `Origin` at all, and
+`SameSite=Strict` stops nothing between sibling hosts under one registrable
+domain, which is how the suite is hosted. So after Helmet, on `/api`: a `POST`,
+`PUT`, `PATCH` or `DELETE` that carries no bearer token (`bearerToken(req)` in
+`middleware/auth.js`, the same test `extractSessionToken` makes first) but does
+carry a session cookie under either name (`readSessionCookie(..., { allowLegacy:
+true })`) is answered 403 `Cross-origin request refused` unless its `Origin`
+passes `isAllowedOrigin`. It runs before every router, so a refused request
+touches nothing. Everything else passes untouched: every `apiFetch` call and
+every machine caller (bearer), a write with no session cookie (sign-in itself),
+and every `GET`, `HEAD` and `OPTIONS`. A browser sends `Origin` on every
+same-origin `fetch` that is not a `GET` or `HEAD`, so the app's own raw-`fetch`
+writes without a bearer header (`Login.jsx`'s sign-in, sign-up and forgot
+password, `serverReq`'s `validate-session` and `2fa/verify`) pass. A script
+posting with a cookie must send an `Origin` or use the bearer header. Covered by
+the `Origin-required cookie writes` block in `tests/app.test.js`. There are no
+CSRF tokens.
+
+**Body limit is 2 MB** (`app.js:364`). The collab WebSocket has its own, larger
 limits (5 MB frame, 2 MB HTML) in `services/collab.js:55-56`, so a document that
 saves fine over WS can 413 over REST.
 
@@ -236,9 +260,9 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:314-321`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:326-333`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:339`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:349`) |
-| `searchLimiter` (`app.js:352-359`) | 15 min / 60 | `/api/users/search` only (`app.js:360`), to blunt user enumeration |
-| `stateLimiter` (`app.js:366-373`) | 15 min / 120 | `/api/documents/state` only (`app.js:374`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
+| `authLimiter` (`app.js:355-362`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:367-374`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:380`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:390`) |
+| `searchLimiter` (`app.js:393-400`) | 15 min / 60 | `/api/users/search` only (`app.js:401`), to blunt user enumeration |
+| `stateLimiter` (`app.js:407-414`) | 15 min / 120 | `/api/documents/state` only (`app.js:415`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
 All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. Three tests in
@@ -298,7 +322,7 @@ the default leaves out `172.17.0.1`.
 ### Router mounting
 
 The health router (`routes/health.js`) is the one exception to what follows: it
-mounts at the root, ahead of every `/api` layer (`app.js:205`), and answers
+mounts at the root, ahead of every `/api` layer (`app.js:207`), and answers
 `/healthz` and `/readyz` only (section 7).
 
 All 18 other routers mount on the bare `/api` prefix, so each router
@@ -330,12 +354,14 @@ component that consume it.
 
 `requireAuth`:
 
-1. Token from `extractSessionToken(req)`: `Authorization: Bearer <token>`,
-   falling back to a `sessionToken=` cookie parsed by hand out of the raw
-   `Cookie` header. The cookie path exists for browser redirects, notably the
-   OAuth callbacks. There is no cookie-parser dependency. `extractSessionToken`
-   is **exported**, so it is the single definition of "which token is this
-   request carrying" and `POST /api/logout` uses the same one.
+1. Token from `extractSessionToken(req)`: `Authorization: Bearer <token>`
+   (`bearerToken(req)`; a bare `Bearer ` is no token), falling back to the
+   session cookie, read by `readSessionCookie` in `services/session-cookie.js`
+   out of the raw `Cookie` header (see "The session cookie" below). The cookie
+   path exists for browser redirects, notably the OAuth callbacks, and image
+   loads. There is no cookie-parser dependency. `extractSessionToken` is
+   **exported**, so it is the single definition of "which token is this request
+   carrying" and `POST /api/logout` uses the same one.
 2. No token, 401 `Authentication required`.
 3. `validateAndAutoLogin(token)` (`mysql_connect.js:196-214`) looks the session
    up by primary key, **by the digest of the token** (`hashSessionToken`, see
@@ -473,6 +499,69 @@ modulo mapping is very slightly biased; irrelevant at 64 characters of entropy.
 
 Expired rows are removed by the daily session prune (section 1).
 
+### The session cookie
+
+**On https it is `__Host-sessionToken`** (W6-CDX-3). A browser stores a
+`__Host-` cookie only with `Secure`, `Path=/` and no `Domain`, so no other host
+under the same registrable domain can plant one. The old name, `sessionToken`,
+could be: script on any sibling can set `sessionToken=<its own>;
+Domain=<parent>; Path=/api`, a browser sends the longer path first, and a
+reader taking the first match would sign the victim in as the tosser.
+`services/session-cookie.js` holds the names (`SESSION_COOKIE`,
+`LEGACY_SESSION_COOKIE`), `sessionCookieName({ secure })` (the prefixed name
+only when Secure, since a browser drops a `__Host-` cookie that is not), and
+`readSessionCookie(header, { allowLegacy })`: the prefixed cookie wins wherever
+it sits in the header, and the legacy name is read only when no prefixed
+cookie is present at all and the fallback is allowed. **Names match exactly.**
+Every cookie reader (this one, the client's `readCookie` in `src/util.jsx` and
+the OAuth state reader) strips only the ASCII space and tab around a pair
+(`COOKIE_OWS`), never `trim()`: a browser stores a name that starts with
+U+2000, U+3000, U+FEFF or U+00A0 as a different cookie, free of the `__Host-`
+rules, and `trim()` would read it as the prefixed one. Pinned in
+`tests/services/session-cookie.test.js`, `tests/src/util.test.js` (the Cookie
+string read as a browser hands it over, since jsdom's jar never produces such a
+name) and `tests/routes/oauth-google-host-cookie.test.js`.
+
+The fallback is `legacyCookieAllowed()`: on unless `LEGACY_SESSION_COOKIE` is
+exactly `0`. Default on, so a self-hoster's sessions from before the rename
+survive the upgrade; a hosted instance on https sets `0`. Over plain http the
+legacy name is the only one a browser can hold, so `0` belongs only on https.
+
+Writers. The server writes the cookie in one place, the Google callback in
+`routes/oauth.js`: Secure when `APP_URL` is `https://` (the same test the
+OAuth state cookie makes), named by `sessionCookieName`, `SameSite=Strict`,
+`Path=/`, not `HttpOnly` (the page reads it to authenticate both WebSockets),
+no `Domain`. The client writes it through `setSessionCookie` in
+`src/util.jsx`, which picks the name and `secure` from the page's scheme, and
+clears both names through `clearSessionCookie` (sign-out, `AccountPanel.jsx`).
+No writer sets `Domain`.
+
+Readers. The server reads through `extractSessionToken`. The client's
+`getSessionTokenFromCookie` prefers the prefixed cookie and, **on an https page,
+never reads a lone legacy cookie**, since a sibling could have planted it:
+`upgradeLegacySessionCookie`, run once in `main.jsx` before the first render,
+posts it to `POST /api/validate-session` with `legacyCookie: true`. The route
+answers `{ valid: false }` without a lookup when `LEGACY_SESSION_COOKIE=0`;
+otherwise it validates as usual. On a yes the client rewrites the token under
+the prefixed name; either answer expires the legacy cookie; an unreachable
+server, or one silent for `LEGACY_UPGRADE_TIMEOUT_MS` (5 s, since the first
+render waits on this), leaves it for the next visit. A refusal is remembered
+in session storage (`legacySessionCookieRefused`) for the tab, because a legacy
+cookie a sibling set with a `Domain` survives this host's host-only clear and
+would otherwise cost a round-trip on every page load. Without that step the
+flag would be server-side only: the client would send a planted legacy cookie
+as a bearer header, which authenticates whatever the flag says.
+
+**The OAuth state cookies follow the same rule.** `routes/oauth.js` binds each
+Google sign-in and GitHub link to the browser that started it with an
+`HttpOnly`, `SameSite=Lax` state cookie. When `APP_URL` is `https://` its name
+is `__Host-oauth_state_<provider>` with `Secure` and `Path=/`
+(`oauthStateCookieName`, `oauthStateCookieOptions`), and
+`stateBoundToBrowser` reads only that name, so another host cannot give the
+browser a state it minted itself. Over plain http it stays
+`oauth_state_<provider>` at `Path=/api/oauth`. The clear uses the same name
+and attributes, which a `__Host-` overwrite requires.
+
 ### An email or password change rotates every session
 
 `POST /api/update-account` (`routes/auth.js`, the `router.post('/update-account'`
@@ -538,9 +627,11 @@ unknown token deletes nothing, and since sessions are per sign-in (W6-CDX-2)
 it signs out only the device that presented it.
 
 The cookie fallback does not open a cross-site logout: every writer of the
-`sessionToken` cookie sets `SameSite=Strict` (`routes/oauth.js` server-side,
-`src/components/Login.jsx` client-side), so a cross-site POST carries no cookie
-and lands in the 400 branch.
+session cookie sets `SameSite=Strict` (`routes/oauth.js` server-side,
+`setSessionCookie` in `src/util.jsx` client-side), so a cross-site POST carries
+no cookie and lands in the 400 branch, and a same-site one from a sibling host
+that carries it has no accepted `Origin`, so `requireOriginForCookieWrites`
+refuses it with 403 before the route runs (section 2).
 
 **`POST /api/create-account` generates its session token only after its
 transaction commits.** The user insert, default-permissions insert,
@@ -599,8 +690,13 @@ not its own, letting the next listener try.
 
 **Origin handling is strict in both:** a *missing* `Origin` header is rejected
 with a raw `403` on the socket (`collab.js:345-349`), as is any origin whose
-host differs from the request `Host`. This is CSWSH protection, and it means a
-non-browser client must send an `Origin` matching the host.
+host differs from the request `Host`, a sibling host under the same domain
+included. This is CSWSH protection, and it means a non-browser client must send
+an `Origin` matching the host. Both sockets authenticate from a token the page
+reads out of the session cookie, so this check is their whole cross-site
+defence; the `the Origin rule, pinned` blocks in `tests/services/collab.test.js`
+and `tests/services/user-channel.test.js` pin both refusals (status 403, socket
+destroyed) against a same-Host control that opens.
 
 **Auth is post-upgrade, not pre-upgrade.** The handshake completes first
 (`collab.js:374-376`), then the first frame must be the auth message. An

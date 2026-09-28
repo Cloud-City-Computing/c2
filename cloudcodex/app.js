@@ -37,6 +37,8 @@ import watchesRouter from './routes/watches.js';
 import firstRunRouter from './routes/first-run.js';
 import healthRouter from './routes/health.js';
 import { warnUntrustedForwarders, ipv6Groups } from './middleware/forwarded-for.js';
+import { bearerToken } from './middleware/auth.js';
+import { readSessionCookie } from './services/session-cookie.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -213,13 +215,18 @@ app.use(healthRouter);
 // site's, and the previous version rejected both: a production instance with
 // no CORS_ORIGIN set answered its own login request with a 500, which is every
 // self-hosted install following .env.example.
-app.use('/api', cors((req, cb) => {
-  const origin = req.headers.origin;
-  const options = { credentials: true };
+//
+// The allow rule is isAllowedOrigin, shared with the Origin rule on cookie
+// writes below so the two cannot drift.
 
-  // No Origin header: a same-origin GET, a server-to-server call, curl.
-  if (!origin) return cb(null, { ...options, origin: true });
-
+/**
+ * Whether an Origin header names a caller this instance accepts: the same
+ * host, APP_URL's host, an exact CORS_ORIGIN, or localhost outside production.
+ * @param { import('express').Request } req
+ * @param { String } origin
+ * @returns { Boolean }
+ */
+export function isAllowedOrigin(req, origin) {
   const hostOf = (value) => {
     try {
       // Lowercased by the URL parser. req.headers.host is not, so both sides of
@@ -243,7 +250,7 @@ app.use('/api', cors((req, cb) => {
   // That would turn this clause into "allow any origin that asks".
   const rawHost = req.headers.host ? hostOf(`http://${req.headers.host}`) : null;
   if (originHost && rawHost && originHost === rawHost) {
-    return cb(null, { ...options, origin: true });
+    return true;
   }
 
   // The configured public origin. A reverse proxy that does not rewrite Host
@@ -253,21 +260,33 @@ app.use('/api', cors((req, cb) => {
   // required, and unlike X-Forwarded-Host it is operator-set, not caller-set.
   const appHost = process.env.APP_URL ? hostOf(process.env.APP_URL) : null;
   if (originHost && appHost && originHost === appHost) {
-    return cb(null, { ...options, origin: true });
+    return true;
   }
 
   // Explicitly allowed cross-origin caller.
   const allowed = process.env.CORS_ORIGIN;
-  if (allowed && origin === allowed) return cb(null, { ...options, origin: true });
+  if (allowed && origin === allowed) return true;
 
   // In development only, allow localhost origins on any port, so the Vite dev
   // server on 5173 can call the API on 3000.
   if (process.env.NODE_ENV !== 'production' && originHost) {
     const hostname = originHost.split(':')[0];
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return cb(null, { ...options, origin: true });
+      return true;
     }
   }
+
+  return false;
+}
+
+app.use('/api', cors((req, cb) => {
+  const origin = req.headers.origin;
+  const options = { credentials: true };
+
+  // No Origin header: a same-origin GET, a server-to-server call, curl.
+  if (!origin) return cb(null, { ...options, origin: true });
+
+  if (isAllowedOrigin(req, origin)) return cb(null, { ...options, origin: true });
 
   cb(new Error('Not allowed by CORS'));
 }));
@@ -309,6 +328,28 @@ const HELMET_OPTIONS = {
   xFrameOptions: { action: 'deny' },
 };
 app.use(process.env.NODE_ENV === 'production' ? '/' : '/api', helmet(HELMET_OPTIONS));
+
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * Origin-required cookie writes (W6-CDX-3). A browser attaches the session
+ * cookie on its own; it attaches a bearer header only when the page's own
+ * script does. So only a write authenticated by the cookie ALONE can be forged
+ * cross-site, and only that must carry an Origin isAllowedOrigin accepts.
+ * The CORS layer admits a request with no Origin at all, and SameSite=Strict
+ * adds nothing between sibling hosts under one registrable domain, which is
+ * how the suite is hosted; this closes that gap without a CSRF token. A
+ * browser sends Origin on every same-origin fetch that is not a GET or HEAD.
+ */
+export function requireOriginForCookieWrites(req, res, next) {
+  if (!UNSAFE_METHODS.has(req.method)) return next();
+  if (bearerToken(req)) return next();
+  if (!readSessionCookie(req.headers.cookie, { allowLegacy: true })) return next();
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(req, origin)) return next();
+  return res.status(403).json({ success: false, message: 'Cross-origin request refused' });
+}
+app.use('/api', requireOriginForCookieWrites);
 
 // Rate limiting for auth endpoints
 const authLimiter = rateLimit({

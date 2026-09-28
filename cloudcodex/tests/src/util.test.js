@@ -24,6 +24,8 @@ import {
   removeSessStorage,
   getSessionTokenFromCookie,
   setSessionCookie,
+  clearSessionCookie,
+  upgradeLegacySessionCookie,
   clearInner,
   createAndAppend,
   // Sample API wrappers
@@ -199,15 +201,231 @@ describe('setSessionCookie', () => {
   // The one writer of the session cookie on the client: sign-in and the
   // account panel's session rotation must set it identically, or a rotated
   // session would come back with different lifetime or scope rules.
-  it('writes the sessionToken cookie with the attributes sign-in has always used', () => {
+  // A plain-http page (jsdom's default here) cannot hold a Secure cookie, so
+  // the name and the Secure attribute follow the page's scheme (W6-CDX-3).
+  it('writes the legacy name without Secure on a plain-http page, never with a Domain', () => {
     const set = vi.spyOn(Document.prototype, 'cookie', 'set');
     try {
       setSessionCookie('fresh-token');
       expect(set).toHaveBeenCalledTimes(1);
-      expect(set).toHaveBeenCalledWith('sessionToken=fresh-token; path=/; max-age=604800; secure; samesite=strict');
+      expect(set).toHaveBeenCalledWith('sessionToken=fresh-token; path=/; max-age=604800; samesite=strict');
     } finally {
       set.mockRestore();
     }
+  });
+});
+
+// ── The __Host- session cookie on an https page (W6-CDX-3) ──────────
+//
+// jsdom's cookie jar enforces the prefix rules a browser does (a __Host-
+// cookie needs Secure and Path=/, and a Secure cookie needs an https page),
+// so these run on a page reconfigured to https and read the jar back rather
+// than trusting the string written.
+
+describe('the session cookie on an https page', () => {
+  const HOME = window.location.href;
+  const EXPIRED = 'expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
+  beforeEach(() => {
+    globalThis.jsdom.reconfigure({ url: 'https://codex.example.com/' });
+  });
+
+  afterEach(() => {
+    document.cookie = `__Host-sessionToken=; ${EXPIRED}; path=/; secure`;
+    document.cookie = `sessionToken=; ${EXPIRED}; path=/`;
+    document.cookie = `sessionToken=; ${EXPIRED}; path=/; secure`;
+    sessionStorage.clear();
+    vi.useRealTimers();
+    globalThis.jsdom.reconfigure({ url: HOME });
+  });
+
+  // A browser stores a cookie whose name starts with Unicode whitespace
+  // (U+2000, U+3000, U+FEFF, U+00A0) as a different cookie, so none of the
+  // __Host- rules apply to it and a sibling host can set it for the whole
+  // domain. jsdom's jar never produces such a name, so these read a Cookie
+  // string as a browser would hand it over.
+  const PLANTS = ['\u2000', '\u3000', '\ufeff', '\u00a0'];
+  const cookieReads = (value) => vi.spyOn(Document.prototype, 'cookie', 'get').mockReturnValue(value);
+
+  describe('setSessionCookie', () => {
+    it('writes __Host-sessionToken, Secure, Path=/ and no Domain, which the jar accepts', () => {
+      const set = vi.spyOn(Document.prototype, 'cookie', 'set');
+      try {
+        setSessionCookie('fresh-token');
+        expect(set).toHaveBeenCalledWith('__Host-sessionToken=fresh-token; path=/; max-age=604800; secure; samesite=strict');
+      } finally {
+        set.mockRestore();
+      }
+      expect(document.cookie).toBe('__Host-sessionToken=fresh-token');
+    });
+  });
+
+  describe('getSessionTokenFromCookie', () => {
+    it('reads the prefixed cookie', () => {
+      setSessionCookie('host-token');
+      expect(getSessionTokenFromCookie()).toBe('host-token');
+    });
+
+    it('prefers the prefixed cookie over a legacy one', () => {
+      document.cookie = 'sessionToken=tossed; path=/; secure';
+      setSessionCookie('host-token');
+      expect(getSessionTokenFromCookie()).toBe('host-token');
+    });
+
+    // A lone legacy cookie on https may have been tossed by a sibling host.
+    // It is promoted only after the server agrees (upgradeLegacySessionCookie),
+    // never read straight into a bearer header.
+    it('reads the real prefixed cookie past a planted name that starts with Unicode whitespace', () => {
+      for (const ws of PLANTS) {
+        const get = cookieReads(`${ws}__Host-sessionToken=EVIL; theme=dark; __Host-sessionToken=REAL`);
+        try {
+          expect(getSessionTokenFromCookie(), JSON.stringify(ws)).toBe('REAL');
+        } finally {
+          get.mockRestore();
+        }
+      }
+    });
+
+    it('reads no token at all from a planted name alone', () => {
+      for (const ws of PLANTS) {
+        const get = cookieReads(`theme=dark; ${ws}__Host-sessionToken=EVIL`);
+        try {
+          expect(getSessionTokenFromCookie(), JSON.stringify(ws)).toBeNull();
+        } finally {
+          get.mockRestore();
+        }
+      }
+    });
+
+    it('does not read a lone legacy cookie', () => {
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+      setSessStorage('currentUser', { id: 1 });
+      expect(getSessionTokenFromCookie()).toBeNull();
+      expect(sessionStorage.getItem(STORAGE_PREFIX + 'currentUser')).toBeNull();
+    });
+  });
+
+  describe('clearSessionCookie', () => {
+    it('expires both names', () => {
+      setSessionCookie('host-token');
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+      clearSessionCookie();
+      expect(document.cookie).toBe('');
+    });
+  });
+
+  describe('upgradeLegacySessionCookie', () => {
+    it('moves a legacy cookie the server accepts to the prefixed name, and expires the legacy one', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ valid: true, user: { id: 1 } }) });
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, opts] = fetchMock.mock.calls[0];
+      expect(url).toBe('/api/validate-session');
+      expect(opts.method).toBe('POST');
+      expect(JSON.parse(opts.body)).toEqual({ token: 'old-token', legacyCookie: true });
+      expect(document.cookie).toBe('__Host-sessionToken=old-token');
+      expect(getSessionTokenFromCookie()).toBe('old-token');
+    });
+
+    it('expires a legacy cookie the server refuses, and writes nothing', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ valid: false }) });
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(document.cookie).toBe('');
+    });
+
+    it('keeps the legacy cookie when the server cannot be reached, so a blip signs nobody out', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('offline'));
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(document.cookie).toBe('sessionToken=old-token');
+    });
+
+    it('asks nothing when a prefixed cookie already exists', async () => {
+      setSessionCookie('host-token');
+      document.cookie = 'sessionToken=tossed; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(getSessionTokenFromCookie()).toBe('host-token');
+    });
+
+    it('asks nothing when there is no session cookie at all', async () => {
+      await upgradeLegacySessionCookie();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('is not stopped by a planted name that only looks like the prefixed cookie', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ valid: false }) });
+      const get = cookieReads('\u2000__Host-sessionToken=EVIL; sessionToken=old-token');
+      try {
+        await upgradeLegacySessionCookie();
+      } finally {
+        get.mockRestore();
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ token: 'old-token', legacyCookie: true });
+    });
+
+    // A legacy cookie a sibling set with a Domain cannot be expired by this
+    // host's clear, so it would come back on every page load.
+    it('asks once per tab: a refused legacy cookie that survives the clear is not asked about again', async () => {
+      fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ valid: false }) });
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+      await upgradeLegacySessionCookie();
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      await upgradeLegacySessionCookie();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getSessionTokenFromCookie()).toBeNull();
+    });
+
+    // main.jsx waits for this before the first render, so a server that never
+    // answers must not leave the page blank.
+    it('gives up after a few seconds when the server does not answer, and keeps the legacy cookie', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      fetchMock.mockReturnValueOnce(new Promise(() => {}));
+      document.cookie = 'sessionToken=old-token; path=/; secure';
+
+      let settled = false;
+      const upgrade = upgradeLegacySessionCookie().then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await upgrade;
+
+      expect(settled).toBe(true);
+      expect(document.cookie).toBe('sessionToken=old-token');
+    });
+  });
+});
+
+describe('the session cookie on a plain-http page', () => {
+  it('reads the legacy name, the only one a plain-http page can hold', () => {
+    setSessionCookie('http-token');
+    expect(getSessionTokenFromCookie()).toBe('http-token');
+  });
+
+  it('clearSessionCookie expires it', () => {
+    setSessionCookie('http-token');
+    clearSessionCookie();
+    expect(getSessionTokenFromCookie()).toBeNull();
+  });
+
+  it('upgradeLegacySessionCookie leaves it alone and asks nothing', async () => {
+    setSessionCookie('http-token');
+    await upgradeLegacySessionCookie();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getSessionTokenFromCookie()).toBe('http-token');
   });
 });
 

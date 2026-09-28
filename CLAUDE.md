@@ -44,7 +44,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 36 per-glob coverage thresholds
+    ├── vitest.config.js         ← three projects + 37 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -108,7 +108,13 @@ AES-256-GCM encrypted at rest). Use `requireAuth` and `requireAdmin` from
 `middleware/auth.js` on any new protected route. **Never bind a raw session
 token into a `sessions` query**: hash it with `hashSessionToken` in
 `services/session-token.js` (`validateAndAutoLogin` and `touchSession` already
-do).
+do). The cookie is `__Host-sessionToken` on https (`sessionToken` over plain
+http); read it only through `extractSessionToken` on the server and
+`getSessionTokenFromCookie` on the client, write it only through
+`setSessionCookie`, and never give it a `Domain`
+(`services/session-cookie.js`). Match cookie names exactly: strip only ASCII
+space and tab (`COOKIE_OWS`), never `trim()`. An `/api` write authenticated by that cookie
+alone needs an accepted `Origin` (`requireOriginForCookieWrites` in `app.js`).
 
 **External sign-in** decides its local user in one seam, `resolveIdentity(claims,
 policy)` in `services/identity.js`: a provider route verifies the protocol and
