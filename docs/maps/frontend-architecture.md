@@ -30,7 +30,7 @@ not a general catch-all.
 |---|---|---|
 | `/` | HomePage | eager |
 | `/reset-password` | ResetPasswordPage | |
-| `/editor/:logId` | Editor | wrapped in `MobileEditorGuard` |
+| `/editor/:logId` | Editor | wrapped in `MobileEditorGuard`; the page wraps its `EditorView` in `Std_Layout`, which `ArchiveView` also embeds it in |
 | `/account`, `/settings` → `/account` | AccountSettings | `/settings` is a redirect |
 | `/archives`, `/archives/:archiveId` | ArchivesPage | |
 | `/archives/:archiveId/doc/:logId`, `/archives/:archiveId/doc` | ArchiveView | |
@@ -122,8 +122,8 @@ should use React components (`ConfirmDialog`, `Toast`) instead.
 | `useCollab.js` | the `/collab` WebSocket and the shared `Y.Doc`; returns connection state, presence, cursors, and five senders |
 | `usePresence.js` | polls `/api/presence` for who is in which document, for browse/archive views |
 | `useNotificationChannel.js` | the `/notifications-ws` socket, feeding `NotificationBell` |
-| `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance |
-| `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner` |
+| `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
+| `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
 | `useFirstRun.js` | fetches `GET /api/first-run` once per mount, exposes `{ firstRun, loading, complete }` |
 
@@ -137,6 +137,20 @@ a 10-second timeout (`useCollab.js:252-283`).
 
 `useGitHubStatus` is a `.jsx` file, not `.js`, because it exports a context
 provider alongside the hook.
+
+**The layout and the editor do not ask a GitHub route that would refuse.** The
+status route (`routes/oauth.js`) is behind `requireAuth`, a 401 signed out, and
+every route in `routes/github.js` is behind `requireGitHub` as well, a 403 with
+no account linked. Both used to ask anyway: every signed-out landing page logged
+a 401 and every document view by an unlinked user a 403. `Std_Layout` now mounts
+`GitHubStatusProvider` inside itself with `enabled={Boolean(user)}`, so nothing
+is asked until its auth check finds a user (a stale session cookie included),
+and the editor passes `{ enabled: connected === true }` to `useGitHubLink`. The
+server's gates are unchanged; the client only stopped asking. The provider holds
+`null` from enabling until its answer, so the sidebar, which hides its GitHub
+link on `false`, does not flash it away for linked users.
+`tests/src/page_layouts/Std_Layout.test.jsx` pins the signed-out and
+stale-cookie cases.
 
 `useFirstRun` dismisses locally before the completion request resolves:
 `complete()` sets local state to null immediately, then fires
@@ -197,8 +211,12 @@ one:
   renderers over the same collab cursor data.
 
 `src/page_layouts/Std_Layout.jsx` is the shell (nav, sidebar, content slot) that
-every page composes. Its authenticated branch renders `<FirstRunGate />`
-ahead of `children`, which is the mount point that finally makes the welcome
+every page composes, and the home of `GitHubStatusProvider` (section 3); its
+`Sidebar` and `MobileNav` read the status from it. Because `children` render
+only once the auth check has found a user, the standalone editor route wraps
+`EditorView` in it rather than the other way round, which puts the view's hooks
+inside the provider exactly as `ArchiveView`'s embedded editor already was. Its
+authenticated branch renders `<FirstRunGate />` ahead of `children`, which is the mount point that finally makes the welcome
 reachable for the admin, who is synced from `.env` at boot rather than
 signing up through an invitation and so never passed through the old
 imperative call in `Login.jsx`.

@@ -179,6 +179,15 @@ backfill; see Migration below.
   dotenv 17 printed `injecting env (0) from ../.env` and an advert for each
   call on every boot, because the image has no `.env`. Both calls are quiet
   now and still read the same file.
+- **No more refused GitHub requests in the browser console.** A signed-out
+  visitor's landing page asked `GET /api/github/status` and got a 401, and
+  every document view by a user with no GitHub account linked asked
+  `GET /api/github/link/:id` and got a 403. The layout now asks for the GitHub
+  status only once its sign-in check has found a user, and the editor asks for
+  a document's link only once that status says an account is linked. The
+  server refuses both exactly as before. The standalone editor route
+  (`/editor/:id`) now renders inside the layout the way the archive view's
+  embedded editor already did, so it also waits for the sign-in check.
 
 ### Security
 

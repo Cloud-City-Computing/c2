@@ -133,8 +133,9 @@ const NAV_ITEMS = [
 
 const ADMIN_NAV_ITEM = { to: '/admin', label: 'Admin', Icon: AdminIcon };
 
-function Sidebar({ collapsed, onToggle, isAdmin, githubConnected }) {
+function Sidebar({ collapsed, onToggle, isAdmin }) {
   const location = useLocation();
+  const { connected: githubConnected } = useGitHubStatus();
   const base = githubConnected === false ? NAV_ITEMS.filter(i => i.to !== '/github') : NAV_ITEMS;
   const items = isAdmin ? [...base, ADMIN_NAV_ITEM] : base;
 
@@ -202,8 +203,9 @@ function TopBar({ user }) {
 
 // --- Mobile Bottom Navigation ---
 
-function MobileNav({ isAdmin, githubConnected }) {
+function MobileNav({ isAdmin }) {
   const location = useLocation();
+  const { connected: githubConnected } = useGitHubStatus();
   const base = githubConnected === false ? NAV_ITEMS.filter(i => i.to !== '/github') : NAV_ITEMS;
   const items = isAdmin ? [...base, ADMIN_NAV_ITEM] : base;
 
@@ -247,7 +249,6 @@ function StdLayout({ children }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const { connected: githubConnected } = useGitHubStatus();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('c2-user-prefs'));
@@ -340,32 +341,29 @@ function StdLayout({ children }) {
     }, 100);
   }, [authChecked]);
 
+  // GitHub status is asked only once the auth check has found a user: the
+  // route is behind requireAuth, so asking for anyone else is a 401.
   return (
-    <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
-      <TopBar user={user} />
-      {user && (
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(c => !c)}
-          isAdmin={isAdmin}
-          githubConnected={githubConnected}
-        />
-      )}
-      <main className="main-content">
-        {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage />)}
-      </main>
-      {user && <MobileNav isAdmin={isAdmin} githubConnected={githubConnected} />}
-      <footer className="log-footer">
-        <p>&copy; {new Date().getFullYear()} <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
-      </footer>
-    </div>
-  );
-}
-
-export default function StdLayoutWrapper(props) {
-  return (
-    <GitHubStatusProvider enabled={true}>
-      <StdLayout {...props} />
+    <GitHubStatusProvider enabled={Boolean(user)}>
+      <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
+        <TopBar user={user} />
+        {user && (
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed(c => !c)}
+            isAdmin={isAdmin}
+          />
+        )}
+        <main className="main-content">
+          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage />)}
+        </main>
+        {user && <MobileNav isAdmin={isAdmin} />}
+        <footer className="log-footer">
+          <p>&copy; {new Date().getFullYear()} <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
+        </footer>
+      </div>
     </GitHubStatusProvider>
   );
 }
+
+export default StdLayout;
