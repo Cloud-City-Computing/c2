@@ -538,7 +538,7 @@ fails if any host bind mount in the prod or release file loses its label.
 
 ### Trap 2 (fixed): `make reset-db` used to be an incomplete reset
 
-`make reset-db` (`Makefile:21-24`) pipes `init.sql` then `seed.sql` into the
+`make reset-db` (`Makefile:19-22`) pipes `init.sql` then `seed.sql` into the
 running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-37`)
 now covers all 25 tables (`doc_images` joined it with its table). It used to omit `github_links`, `activity_log`,
 `watches` and `notifications`, whose `CREATE TABLE` statements don't use

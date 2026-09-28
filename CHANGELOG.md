@@ -63,6 +63,22 @@ backfill; see Migration below.
   stops the boot with a sentence naming the variable.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
+- **Backup and restore as one command each.** `make backup OUT=<file>`
+  (`scripts/backup.sh`) writes one archive holding a `mysqldump` of the
+  database, migration ledger included, the uploads volume (avatars and document
+  images) and a manifest with a checksum of each. It is readable by its owner
+  only, never written over an existing file, and holds no password; it does
+  hold everything the database does, so keep it as carefully. `make restore
+  IN=<file>` (`scripts/restore.sh`) restores into a stopped stack and starts it,
+  after refusing an archive that is damaged or altered, is a backup of a
+  differently named database (unless `--into` names this one), or would land
+  on a database that holds data (unless `--replace`), a running app, or a
+  database whose instance lock is held. A new stack's empty tables need no
+  flag. Both run as the app's own MySQL user, never root, through Docker
+  Compose (`COMPOSE_FILE`, default `docker-compose-release.yml`), or with
+  `--local` through MySQL's `mysql` and `mysqldump` clients for an install
+  outside Docker. See "Backups" in `docs/deployment.md`, which replaces the
+  manual recipe that was there. No migration and no new setting.
 
 ### Changed
 
@@ -106,6 +122,12 @@ backfill; see Migration below.
   run an earlier 8.4 (8.4.8 shipped before): it pulls 8.4.11, and MySQL
   upgrades the data directory in place on first start, so back it up first. A
   test fails on a floating tag or on two files disagreeing.
+- The database service's healthcheck in `docker-compose-release.yml` and
+  `docker-compose-prod.yml` pings MySQL over TCP. On a new data directory the
+  MySQL image builds `init.sql` on a temporary server that listens on its
+  socket only, and the old socket ping called the service healthy while that
+  was still running, so the app could start against a half-built schema and
+  restart once. Nothing to do on upgrade.
 
 ### Fixed
 

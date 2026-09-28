@@ -12,6 +12,7 @@ level down in `cloudcodex/`.
 
 ```
 c2/                          <- git root; docker, docs, SQL, Makefile, start.sh
+├── scripts/                 <- Bash: backup.sh, restore.sh, backup-common.sh (section 4)
 └── cloudcodex/              <- the npm package; package.json lives HERE
 ```
 
@@ -62,13 +63,15 @@ docker compose up -d          # from the root: MySQL only
 cd cloudcodex && npm install && npm run dev
 ```
 
-Make targets (`Makefile`) all shell into the running container:
+Make targets (`Makefile`); the first three shell into the running container:
 
 | Target | Effect |
 |---|---|
 | `make seed` | pipes `seed.sql` in |
 | `make reset-db` | pipes `init.sql` then `seed.sql` in |
 | `make db-shell` | interactive `mysql` CLI |
+| `make backup OUT=<file>` | `scripts/backup.sh <file>` (section 4, "Backup and restore") |
+| `make restore IN=<file> [ARGS=...]` | `scripts/restore.sh $(ARGS) <file>` |
 
 The Makefile does `include .env` / `export` at the top, so it needs a populated
 root `.env`, and it resolves the container via
@@ -95,7 +98,12 @@ without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
 so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
-  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:22-27`).
+  `mysqladmin ping -h 127.0.0.1` healthcheck (`docker-compose-prod.yml:18-25`,
+  `docker-compose-release.yml:37-44`). **Over TCP on purpose:** on a new data
+  directory the image runs `init.sql` on a temporary server that listens on
+  the socket alone, and the old socket ping reported `healthy` while `init.sql`
+  was still running, so `depends_on: service_healthy` (and `up --wait`) let a
+  client in mid-build. Found by the W6-CDX-35 restore drill, 2026-09-28.
 - The app builds from `cloudcodex/Dockerfile`, waits on
   `condition: service_healthy`, publishes 3000, and takes `env_file: .env`.
 - `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build
@@ -146,6 +154,70 @@ so moving the pin is one commit that changes all seven references.
   where the app runs on the host, and wrong inside the prod container).
   `environment` takes precedence over `env_file`.
 
+### Backup and restore (`scripts/`)
+
+`scripts/backup.sh <out>` and `scripts/restore.sh <archive>` (Bash, `set -euo
+pipefail`, `umask 077`) share `scripts/backup-common.sh`: the archive format
+(`ARCHIVE_MEMBERS`, `ARCHIVE_FORMAT`), `DUMP_FLAGS`, a copy of the instance
+lock's name (`INSTANCE_LOCK_NAME_SQL`, pinned equal to
+`services/instance-lock.js`'s by `tests/scripts/backup-common.test.js`) and two
+transports behind the same functions (`db_mysql`, `db_query`, `db_dump`,
+`uploads_out`, `uploads_in`, `app_version`, `target_database`):
+
+- **Compose** (default): `docker compose` on `COMPOSE_FILE`, defaulting to
+  `docker-compose-release.yml`. The clients run inside the `database` service
+  as its `MYSQL_USER` with `MYSQL_PWD="$MYSQL_PASSWORD"`, never root and never a
+  password on argv, over `--protocol=TCP -h 127.0.0.1` (the temporary init
+  server above is socket-only). The uploads go through a one-off
+  `run --rm --no-deps -T app` streaming `tar` on stdin/stdout, so there is no
+  bind mount and no SELinux label to get right.
+- **`--local`**: the `mysql`/`mysqldump` on `PATH`, `DB_HOST`/`DB_USER`/
+  `DB_PASS`/`DB_NAME`, `--protocol=TCP`, and `--uploads DIR` (default
+  `cloudcodex/public`). This is what `tests/integration/backup-restore.test.js`
+  drives.
+
+The archive is `database.sql`, `app_public.tar.gz` and a one-key-per-line
+`manifest.json` (format, `created_at`, `database`, `app_version`, both
+SHA-256s). `backup.sh` builds it in a `mktemp -d` beside the output, checks the
+dump's last line is `-- Dump completed`, and publishes it with `ln` (atomic,
+and a refusal if the output appeared meanwhile); an existing output is refused
+up front. `restore.sh` does every check before any write (members, types,
+checksums, uploads types and paths, a line-start scan of the dump for client
+commands and database switches, the target name against the manifest or
+`--into`, a running `app` service, `IS_FREE_LOCK`, and rows), then loads in one
+session that starts with `TAKE_LOCK_SQL` (take the instance lock or fail, so a
+server that took it since the check stops the load at line 1, and the restore
+says nothing was written) and, under `--replace` or when every table is empty,
+drops every table first. It then requires as many tables
+as the dump has `CREATE TABLE` lines, unpacks the uploads (`--replace` empties
+only `avatars/` and `doc-images/`), and in Compose runs `npm run migrate` and
+`up -d` unless `--no-start`.
+
+Traps, each found while building it (2026-09-28):
+
+- **`--one-database` needs the database as the positional argument.** With
+  `-D <db>` both MySQL 8.4.11's and MariaDB 10.11's `mysql` skip **every**
+  statement and exit 0, so a restore "succeeds" into an empty database. The
+  scripts never pass `-D`, and the table-count check after the load catches a
+  load that silently did nothing.
+- **MariaDB's `mysqldump` cannot back up this schema for MySQL.** It writes the
+  value of the generated column `logs.plain_content`, and MySQL refuses every
+  such row (ERROR 3105). `--local` refuses a MariaDB `mysqldump`.
+- **`tar | grep -q` under `pipefail` can read a hit as a miss** (tar's SIGPIPE
+  wins), so every listing is captured into a variable first.
+- **The line-start scan does not see a client command later on a line.**
+  `SELECT 1; \T <file>` passed it and the client wrote `<file>` as whoever ran
+  it. `db_mysql` passes `--binary-mode`, which turns off every client command
+  in piped input except `delimiter` (a dump with triggers needs it) and
+  `charset`, wherever it sits; the shell escape is also turned off by feature
+  detection, `--skip-system-command` (MySQL) or `--sandbox` (MariaDB).
+- The load's confinement to one schema is the **grant**, not a parser:
+  `--one-database` ignores a qualified `db.table`, and the test proves a
+  `CREATE TABLE <other>.x` in the dump fails with access denied when the
+  restoring user has privileges on its own schema only.
+
+CI runs `shellcheck -x scripts/*.sh` (section 6).
+
 One thing to get right when deploying: **`init.sql` only executes on a fresh
 volume.** The MySQL entrypoint skips `/docker-entrypoint-initdb.d/` when the
 data directory is already initialised. Editing `init.sql` and restarting
@@ -171,10 +243,36 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **90 files, 2015 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
-tree, against MySQL 8.4.11 at the server's default isolation and at
-`READ-COMMITTED`).
+Current state: the default run is **91 files, 2016 tests, all passing**; the
+integration project is **13 files, 110 tests** (measured 2026-09-28 on the
+W6-CDX-35 branch, against MySQL 8.4.11).
+
+The child-process helpers (`spawn`, `childEnv`, `holdLock`, `startServer`,
+`signIn`, `freePort`, `killChildren` and the boot `ADMIN`) live in
+`tests/integration/app-process.js`, shared by the lifecycle and backup files.
+
+`tests/integration/backup-restore.test.js` is the backup and restore drill. It
+boots `server.js`, saves a document with a pasted PNG and some Unicode through
+`/api/save-document`, comments on it, stops the server with SIGTERM, writes a
+Yjs update into `ydoc_state`, and runs `scripts/backup.sh --local` as a MySQL
+user granted only on the file's schema. It pins the archive (mode 0600, exactly
+three members, manifest keys and checksums, no MySQL or admin password in any
+byte, no overwrite, no working files left), then each refusal `restore.sh`
+makes with nothing written. The drill proper drops the schema and deletes the
+image file, restores into an empty scratch schema as a user granted only on
+it, and requires `html_content` and `ydoc_state` byte-identical, the comment
+and `doc_images` rows equal, a server booted on the result to answer `/readyz`
+200, and the image served to its reader and 404 to an anonymous caller. Then
+`--replace`, a new install's empty tables restored without it, and a dump that
+names another schema failing on the grant, a client command hidden after a
+statement refused by the client, and `TAKE_LOCK_SQL` failing while a lock
+holder runs. **It needs MySQL's `mysql` and
+`mysqldump` on `PATH`** (the CI runner image has them; a MariaDB client fails
+the backup by design, see section 4). Mutation-checked 2026-09-28: dropping the
+lock check, the checksum check, the name check, the dump scan, the owner-only
+mode or the row check, passing `-D`, granting the restoring user `*.*`,
+dropping `--binary-mode`, or taking the lock with a plain `DO GET_LOCK` each
+turns its test red.
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
 real processes rather than a real server alone: it forks
@@ -517,8 +615,12 @@ you raise real coverage, ratchet the threshold up in the same PR; the comment at
 cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 
 ```
-npm ci -> npm run lint -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
+npm ci -> npm run lint -> shellcheck -x scripts/*.sh -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
 ```
+
+The ShellCheck step runs from the repository root (`working-directory: .`) with
+the runner image's own `shellcheck`; the Bash scripts are the only code no
+other step reads.
 
 The job carries a `mysql:8.4.11` **service container** (root password
 `ci-root-password`, published on 3306, health-checked with `mysqladmin ping`),

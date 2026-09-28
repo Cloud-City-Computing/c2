@@ -429,7 +429,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-32 | Production configuration and the per-instance contract (**shipped 2026-09-27** in #66: `cloudcodex/env-contract.js` and its test, `APP_URL` required in production, `TRUST_PROXY` and `DB_POOL_SIZE`, `mysql:8.4.11` everywhere, and in production the security headers on the whole app. Task 2.4, the admin sync never promotes, landed early 2026-09-25 in #58 and was released in 0.11.0 with GHSA-w8q3-r34w-3pjh) | W6-CDX-10 | yes |
 | W6-CDX-33 | The grant recipe and the isolation proof | W6-CDX-32 | no: before a fourth instance |
 | W6-CDX-34 | Document images for readers only (**shipped 2026-09-27** in #67) | W6-CDX-10 | yes |
-| W6-CDX-35 | Backup and restore, with a drill | W6-CDX-31 | yes |
+| W6-CDX-35 | Backup and restore, with a drill (**shipped 2026-09-28** on `track/w6-cdx-35-backup-restore`: `scripts/backup.sh` and `scripts/restore.sh`, `make backup` and `make restore`, the live-MySQL drill in `tests/integration/backup-restore.test.js`, and the Compose drill by hand) | W6-CDX-31 | yes |
 | W6-CDX-36 | The Wave 6 Codex release the test box pins | every session marked yes above | yes |
 
 Two releases, deliberately separate: **0.10.0** carries C2-0 to C2-5 and
