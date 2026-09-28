@@ -53,9 +53,11 @@ describe('app.js — Express configuration', () => {
   // instead was not enough: a client on the same LAN, VPN or VPC (AWS's
   // default VPC is 172.31.0.0/16, inside 172.16.0.0/12) was itself trusted, so
   // behind a proxy that appends it named its own key with the left entry. The
-  // default now names each proxy by address: loopback, the default Docker
-  // bridge's gateway, and the gateway of the network the compose files pin,
-  // where a proxy on the host arrives from.
+  // default now names each proxy by address: loopback, and the gateway of the
+  // network the compose files pin, where a proxy on the host arrives from. Not
+  // the default bridge's gateway: `docker run -p PORT:PORT` publishes on [::]
+  // too, the default bridge is IPv4-only, so every IPv6 client arrives as that
+  // gateway, and trusting it let each one choose its own key with no proxy.
   describe('TRUST_PROXY', () => {
     const UNSET = { TRUST_PROXY: undefined, TRUST_PROXY_ALLOW_HOP_COUNT: undefined };
 
@@ -81,13 +83,13 @@ describe('app.js — Express configuration', () => {
     });
 
     it('the default names the proxies by address, not by range or count', () => {
-      expect(contractDefault('TRUST_PROXY')).toBe('127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32');
+      expect(contractDefault('TRUST_PROXY')).toBe('127.0.0.1/32, ::1/128, 172.29.0.1/32');
     });
 
     it.each([
-      [undefined, '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32'],
-      ['', '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32'],
-      ['   ', '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32'],
+      [undefined, '127.0.0.1/32, ::1/128, 172.29.0.1/32'],
+      ['', '127.0.0.1/32, ::1/128, 172.29.0.1/32'],
+      ['   ', '127.0.0.1/32, ::1/128, 172.29.0.1/32'],
       ['false', false],
       [' false ', false],
       ['loopback', 'loopback'],
@@ -108,14 +110,14 @@ describe('app.js — Express configuration', () => {
         ['::ffff:127.0.0.1', 'loopback on a dual-stack socket'],
         ['172.29.0.1', 'the gateway of the network the compose files pin, where nginx on the host arrives from'],
         ['::ffff:172.29.0.1', 'the same gateway on the container\'s dual-stack socket'],
-        ['172.17.0.1', 'the default Docker bridge\'s gateway, for the image run without compose'],
-        ['::ffff:172.17.0.1', 'the same on a dual-stack socket'],
       ])('trusts %s (%s)', (peer) => {
         expect(trust()(peer, 0)).toBe(true);
       });
 
       it.each([
         ['127.0.0.2', 'loopback, but not the one address a proxy on this host uses'],
+        ['172.17.0.1', 'the default bridge\'s gateway, which every IPv6 client of `docker run -p` arrives as'],
+        ['::ffff:172.17.0.1', 'the same on a dual-stack socket'],
         ['172.29.0.5', 'a sibling container on the pinned network, not its gateway'],
         ['::ffff:172.29.0.5', 'the same on a dual-stack socket'],
         ['172.31.44.9', 'a neighbour in AWS\'s default VPC'],
@@ -348,11 +350,13 @@ describe('app.js — Express configuration', () => {
 
     // A peer inside the pinned subnet that is not its gateway is a sibling
     // container, and a sibling is not a proxy: it is keyed on its own address
-    // whatever chain it sends, appended form included.
+    // whatever chain it sends. Every entry changes on every request, the
+    // rightmost included, so trusting the sibling at all (a hop count, or the
+    // whole subnet) hands out a fresh key each time and this goes red.
     it.each(['172.29.0.5', '::ffff:172.29.0.5'])(
       'counts a non-gateway peer inside the pinned subnet (%s) by its own address',
       async (peer) => {
-        const chains = Array.from({ length: 21 }, (_, i) => `198.51.100.${i + 1}, 10.0.5.7`);
+        const chains = Array.from({ length: 21 }, (_, i) => `198.51.100.${i + 1}, 10.0.5.${i + 1}`);
         const statuses = await loginsFrom(await freshApp(), peer, chains);
         expect(statuses.slice(0, 20)).not.toContain(429);
         expect(statuses[20]).toBe(429);

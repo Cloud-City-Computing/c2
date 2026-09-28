@@ -15,8 +15,11 @@ import { contractDefault } from './contract-default.js';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // Every compose file at the repository root, found by name, so a new one
-// cannot slip past: it fails below until it has an entry in EXPECTED.
-const COMPOSE_FILES = readdirSync(REPO).filter((f) => /^docker-compose.*\.ya?ml$/.test(f)).sort();
+// cannot slip past: it fails below until it has an entry in EXPECTED. Both
+// spellings Compose loads by itself: compose.yaml / compose.yml (and their
+// .override) and the older docker-compose*.
+const isComposeFile = (name) => /^(docker-)?compose([.-].*)?\.ya?ml$/.test(name);
+const COMPOSE_FILES = readdirSync(REPO).filter(isComposeFile).sort();
 
 // GHSA-9fmx-frrf-xxmq. Docker's published ports are a DNAT rule that sits in
 // front of the host firewall, so a mapping with no host address is reachable
@@ -86,6 +89,14 @@ function servicesOf(text) {
   }]));
 }
 
+/**
+ * Services that share the host's network namespace. They publish nothing,
+ * because they need not: every port they listen on is on every interface the
+ * host has, and the loopback pins above cannot see it.
+ */
+const onHostNetwork = (services) =>
+  Object.entries(services).filter(([, def]) => String(def.networkMode ?? '').trim() === 'host').map(([n]) => n);
+
 /** Every mapping, in any file, that publishes beyond loopback by default. */
 const beyondLoopback = (services) => Object.entries(services).flatMap(([name, def]) =>
   def.ports.filter((entry) => !isLoopback(hostOf(entry))).map((entry) => `${name} ${JSON.stringify(entry)}`));
@@ -122,6 +133,27 @@ describe('the ports reader (non-vacuity)', () => {
   });
 });
 
+describe('the file and service checks (non-vacuity)', () => {
+  it('finds both spellings of a compose file, and nothing else', () => {
+    const names = ['compose.yaml', 'compose.yml', 'compose.override.yaml', 'docker-compose.yml',
+      'docker-compose-prod.yml', 'docker-compose.linux.yml', 'compose.json', 'notcompose.yml', 'composer.yaml'];
+    expect(names.filter(isComposeFile).sort()).toEqual(['compose.override.yaml', 'compose.yaml', 'compose.yml',
+      'docker-compose-prod.yml', 'docker-compose.linux.yml', 'docker-compose.yml']);
+  });
+
+  it.each([
+    ['plain', 'services:\n  app:\n    network_mode: host\n'],
+    ['quoted', 'services:\n  app:\n    network_mode: "host"\n'],
+    ['on a service other than app', 'services:\n  app: {}\n  database:\n    network_mode: host\n'],
+  ])('sees network_mode: host, %s', (_label, text) => {
+    expect(onHostNetwork(servicesOf(text))).toHaveLength(1);
+  });
+
+  it('sees a top-level include', () => {
+    expect(yaml.load('include:\n  - other.yml\nservices: {}\n').include).toBeDefined();
+  });
+});
+
 describe('compose published ports', () => {
   it('finds every compose file at the repository root (non-vacuity)', () => {
     expect(COMPOSE_FILES).toEqual(Object.keys(EXPECTED).sort());
@@ -153,6 +185,16 @@ describe('compose published ports', () => {
       expect(beyondLoopback(services)).toEqual([]);
     });
 
+    it(`${file} puts no service on the host network`, () => {
+      expect(onHostNetwork(services)).toEqual([]);
+    });
+
+    // An included file's services and ports merge into this one, and nothing
+    // above would read them.
+    it(`${file} includes no other compose file`, () => {
+      expect((yaml.load(text) ?? {}).include).toBeUndefined();
+    });
+
     if (expected.network) {
       it(`${file} pins the default network to ${expected.network.subnet}, and TRUST_PROXY's default names its gateway`, () => {
         const doc = yaml.load(text);
@@ -161,7 +203,6 @@ describe('compose published ports', () => {
           .toContain(`${expected.network.gateway}/32`);
         // The app must be on that network, not moved off it by a service key.
         expect(services.app.networks).toBeUndefined();
-        expect(services.app.networkMode).toBeUndefined();
       });
     }
   }

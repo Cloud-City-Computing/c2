@@ -48,7 +48,7 @@ describe('warnUntrustedForwarders', () => {
     expect(log).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['127.0.0.1', '::ffff:127.0.0.1', '172.29.0.1', '172.17.0.1'])(
+  it.each(['127.0.0.1', '::ffff:127.0.0.1', '172.29.0.1', '::1'])(
     'stays quiet for a trusted peer (%s), and does not remember it',
     (peer) => {
       const log = vi.fn();
@@ -58,6 +58,38 @@ describe('warnUntrustedForwarders', () => {
       expect(middleware.seen.size).toBe(0);
     },
   );
+
+  // One IPv6 host holds a whole /64, so keying the set by address would let a
+  // single client fill it and silence the warning for everyone after.
+  it('counts an IPv6 /64 once, naming the address that arrived first', () => {
+    const log = vi.fn();
+    const middleware = warnUntrustedForwarders({ log });
+    for (const peer of ['2001:db8:1:2::1', '2001:db8:1:2::ffff', '2001:db8:1:2:abcd:ef01:2345:6789', '2001:DB8:1:2::7']) {
+      run(middleware, requestFrom(peer));
+    }
+    expect(log).toHaveBeenCalledOnce();
+    expect(log.mock.calls[0][0]).toContain('2001:db8:1:2::1');
+    expect(middleware.seen.size).toBe(1);
+    run(middleware, requestFrom('2001:db8:1:3::1'));
+    expect(log).toHaveBeenCalledTimes(2);
+  });
+
+  it('cannot be filled from one /64', () => {
+    const log = vi.fn();
+    const middleware = warnUntrustedForwarders({ log, limit: 3 });
+    for (let i = 1; i <= 100; i += 1) run(middleware, requestFrom(`2001:db8:9:9::${i.toString(16)}`));
+    expect(middleware.seen.size).toBe(1);
+    expect(log).toHaveBeenCalledOnce();
+    run(middleware, requestFrom('203.0.113.50'));
+    expect(log).toHaveBeenCalledTimes(2);
+  });
+
+  it('keys an IPv4 peer, mapped or not, by its whole address', () => {
+    const log = vi.fn();
+    const middleware = warnUntrustedForwarders({ log });
+    for (const peer of ['::ffff:203.0.113.1', '::ffff:203.0.113.2', '203.0.113.3']) run(middleware, requestFrom(peer));
+    expect(log).toHaveBeenCalledTimes(3);
+  });
 
   it('stays quiet for an untrusted peer that sends no X-Forwarded-For', () => {
     const log = vi.fn();
