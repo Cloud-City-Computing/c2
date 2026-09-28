@@ -231,7 +231,11 @@ pipefail`, `umask 077`) share `scripts/backup-common.sh`: the archive format
 lock's name (`INSTANCE_LOCK_NAME_SQL`, pinned equal to
 `services/instance-lock.js`'s by `tests/scripts/backup-common.test.js`) and two
 transports behind the same functions (`db_mysql`, `db_query`, `db_dump`,
-`uploads_out`, `uploads_in`, `app_version`, `target_database`):
+`uploads_out`, `uploads_in`, `app_version`, `target_database`), and two
+checks both scripts make before they write: `check_confined_user` (the MySQL
+user holds privileges on the instance's database and nothing else) and, with
+Compose, `check_compose_file` (the stack was created from the file
+`COMPOSE_FILE` names):
 
 - **Compose** (default): `docker compose` on `COMPOSE_FILE`, defaulting to
   `docker-compose-release.yml`. The clients run inside the `database` service
@@ -239,7 +243,12 @@ transports behind the same functions (`db_mysql`, `db_query`, `db_dump`,
   password on argv, over `--protocol=TCP -h 127.0.0.1` (the temporary init
   server above is socket-only). The uploads go through a one-off
   `run --rm --no-deps -T app` streaming `tar` on stdin/stdout, so there is no
-  bind mount and no SELinux label to get right.
+  bind mount and no SELinux label to get right. Both production files share
+  the repo root's project name and the container names, so either file
+  reaches the other's stack; `check_compose_file` reads the
+  `com.docker.compose.project.config_files` label off the `database`
+  container and refuses when its file names differ from `COMPOSE_FILE`'s
+  (names, not paths, so a moved checkout still matches).
 - **`--local`**: the `mysql`/`mysqldump` on `PATH`, `DB_HOST`/`DB_USER`/
   `DB_PASS`/`DB_NAME`, `--protocol=TCP`, and `--uploads DIR` (default
   `cloudcodex/public`). This is what `tests/integration/backup-restore.test.js`
@@ -252,12 +261,15 @@ dump's last line is `-- Dump completed`, and publishes it with `ln` (atomic,
 and a refusal if the output appeared meanwhile); an existing output is refused
 up front. `restore.sh` does every check before any write (members, types,
 checksums, uploads types and paths, a line-start scan of the dump for client
-commands and database switches, the target name against the manifest or
-`--into`, a running `app` service, `IS_FREE_LOCK`, and rows), then loads in one
-session that starts with `TAKE_LOCK_SQL` (take the instance lock or fail, so a
-server that took it since the check stops the load at line 1, and the restore
-says nothing was written) and, under `--replace` or when every table is empty,
-drops every table first. It then requires as many tables
+commands and database switches, the manifest's `app_version` against this
+install's (`version_is_newer`; a newer backup needs `--allow-newer-backup`,
+since `npm run migrate` only looks for missing ledger rows and would pass an
+older app over a newer schema), the target name against the manifest or
+`--into`, `check_confined_user`, a running `app` service, and rows), then
+loads in one session that starts with `TAKE_LOCK_SQL` (take the instance lock
+or fail: the only lock check, so a process holding it stops the load at line
+1 and the restore says nothing was written) and, under `--replace` or when
+every table is empty, drops every table first. It then requires as many tables
 as the dump has `CREATE TABLE` lines, unpacks the uploads (`--replace` empties
 only `avatars/` and `doc-images/`), and in Compose runs `npm run migrate` and
 `up -d` unless `--no-start`.
@@ -284,6 +296,16 @@ Traps, each found while building it (2026-09-28):
   `--one-database` ignores a qualified `db.table`, and the test proves a
   `CREATE TABLE <other>.x` in the dump fails with access denied when the
   restoring user has privileges on its own schema only.
+- **So the user has to be one the grant confines.** `--local` first took any
+  `DB_USER`, and as root a dump starting `SELECT 1; CREATE DATABASE x;` got
+  past the line-start scan and created `x` (found in review, 2026-09-28).
+  `check_confined_user` reads `SHOW GRANTS` (with `-r`, since batch mode
+  doubles the backslash the MySQL image's `c2\_name` grant spelling carries)
+  and allows only `USAGE ON *.*` and grants on `` `<db>`.* `` or its tables.
+  `SHOW GRANTS` with no `FOR` lists the session's active roles, a mandatory
+  one included, as `GRANT `role`` lines with their privileges (measured on
+  8.4.11), so a role is refused by the same loop; a separate
+  `CURRENT_ROLE()` check could never fire first, and was removed.
 
 CI runs `shellcheck -x scripts/*.sh` (section 6).
 
@@ -312,10 +334,10 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **92 files, 2176 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-28 on the 0.12.0
-release tree, against MySQL 8.4.11 at the server's default isolation and at
-`READ-COMMITTED`).
+Current state: the default run is **97 files, 2226 tests, all passing**; the
+integration project is **13 files, 114 tests** (measured 2026-09-28 on the
+W6-CDX-35 branch merged with main, against MySQL 8.4.11 with MySQL's 8.0.45
+clients on `PATH`; the 0.12.0 release tree also passed at `READ-COMMITTED`).
 
 The child-process helpers (`spawn`, `childEnv`, `holdLock`, `startServer`,
 `signIn`, `freePort`, `killChildren` and the boot `ADMIN`) live in
@@ -327,22 +349,35 @@ boots `server.js`, saves a document with a pasted PNG and some Unicode through
 Yjs update into `ydoc_state`, and runs `scripts/backup.sh --local` as a MySQL
 user granted only on the file's schema. It pins the archive (mode 0600, exactly
 three members, manifest keys and checksums, no MySQL or admin password in any
-byte, no overwrite, no working files left), then each refusal `restore.sh`
-makes with nothing written. The drill proper drops the schema and deletes the
-image file, restores into an empty scratch schema as a user granted only on
-it, and requires `html_content` and `ydoc_state` byte-identical, the comment
-and `doc_images` rows equal, a server booted on the result to answer `/readyz`
+byte, no overwrite, no working files left) and the backup's refusal of root,
+then each refusal `restore.sh` makes with nothing written: another database's
+archive, a system schema, a held instance lock (by the load's own first
+statement), a checksum, an extra member, a line-start switch or client
+command, a client command after a statement, a user with more than its own
+database (root with a mid-line `CREATE DATABASE`, a grant elsewhere, a global
+privilege, a role, a mandatory role), a newer release's backup, and a link in
+the uploads. The drill proper drops the schema and deletes the image file,
+restores into an empty scratch schema as a user granted only on it, and
+requires `html_content` and `ydoc_state` byte-identical, the comment and
+`doc_images` rows equal, a server booted on the result to answer `/readyz`
 200, and the image served to its reader and 404 to an anonymous caller. Then
-`--replace`, a new install's empty tables restored without it, and a dump that
-names another schema failing on the grant, a client command hidden after a
-statement refused by the client, and `TAKE_LOCK_SQL` failing while a lock
-holder runs. **It needs MySQL's `mysql` and
-`mysqldump` on `PATH`** (the CI runner image has them; a MariaDB client fails
-the backup by design, see section 4). Mutation-checked 2026-09-28: dropping the
-lock check, the checksum check, the name check, the dump scan, the owner-only
-mode or the row check, passing `-D`, granting the restoring user `*.*`,
-dropping `--binary-mode`, or taking the lock with a plain `DO GET_LOCK` each
-turns its test red.
+`--replace`, a new install's empty tables restored without it (as a user
+granted the way the MySQL image grants, with `_` escaped), a dump that names
+another schema failing on the grant, and `--allow-newer-backup`.
+`TAKE_LOCK_SQL` is also run directly against a lock holder. **It needs MySQL's
+`mysql` and `mysqldump` on `PATH`** (the CI runner image has them; a MariaDB
+client fails the backup by design, see section 4); it passes with the 8.4.11
+and the 8.0.45 clients. `tests/scripts/backup-common.test.js` pins the lock
+name, `version_is_newer`, and `check_compose_file` through a stand-in `docker`
+on `PATH`.
+
+Mutation-checked 2026-09-28, each confirmed landed, then restored. These turn
+a test red: removing the checksum check, the name check, the dump scan, the
+row check, `check_confined_user` in either script, its escaped-name spelling,
+the version refusal, `TAKE_LOCK_SQL`'s line in the load, `--binary-mode`, or
+`check_compose_file` (the unit test); passing `-D`. The owner-only mode has two
+guards, `umask 077` and `chmod 600`, and removing either alone stays green;
+removing both turns the mode test red.
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
 real processes rather than a real server alone: it forks

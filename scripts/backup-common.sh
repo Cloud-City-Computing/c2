@@ -57,10 +57,10 @@ manifest.json'
 # while anything holds it, and holds it itself while it loads.
 readonly INSTANCE_LOCK_NAME_SQL="IF(CHAR_LENGTH(DATABASE()) <= 44, CONCAT('cloudcodex-instance:', DATABASE()), CONCAT('cloudcodex-instance#', LEFT(SHA2(DATABASE(), 256), 40)))"
 
-# The load's first statement: take that lock, or fail. A plain DO GET_LOCK
-# carries on when a server took the lock after the IS_FREE_LOCK check; this
-# errors instead (UUID_TO_BIN refuses the sentence, naming it), so the client
-# stops before the drops. A NULL from GET_LOCK fails the same way.
+# The load's first statement, and the restore's only lock check: take that
+# lock, or fail. A plain DO GET_LOCK carries on when another process holds it;
+# this errors instead (UUID_TO_BIN refuses the sentence, naming it), so the
+# client stops before the drops. A NULL from GET_LOCK fails the same way.
 readonly TAKE_LOCK_SQL="DO UUID_TO_BIN(IF(GET_LOCK($INSTANCE_LOCK_NAME_SQL, 0) = 1, '00000000-0000-0000-0000-000000000000', 'another process holds the instance lock'))"
 
 # --single-transaction: one consistent snapshot, for InnoDB tables (every

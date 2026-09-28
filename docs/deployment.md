@@ -311,17 +311,23 @@ make restore IN=backups/c2-2026-09-28.tar.gz       # scripts/restore.sh
 Both drive the stack through `docker compose`, on
 `docker-compose-release.yml` unless `COMPOSE_FILE` names another (for example
 `COMPOSE_FILE=docker-compose-prod.yml` when you build from source), and
-`COMPOSE_PROJECT_NAME` works as it does for Compose. Neither needs the MySQL
-root password: they run inside the database service as the app's own MySQL
-user (`DB_USER`), which the image grants everything on the app's database and
-nothing else.
+`COMPOSE_PROJECT_NAME` works as it does for Compose. The two production files
+share this directory's project and container names, so each script compares
+`COMPOSE_FILE` with the file the stack's containers were created from and
+refuses a mismatch, naming the right one: a restore through the wrong file
+would migrate and restart your stack on the other file's image. Neither needs
+the MySQL root password: they run inside the database service as the app's own
+MySQL user (`DB_USER`), which the image grants everything on the app's database
+and nothing else, and both refuse a MySQL user that holds anything more.
 
 **What an archive holds.** One gzipped tar of three files: `database.sql`
 (`mysqldump --single-transaction --routines --triggers --hex-blob` of the app's
 database, including `schema_migrations`, so the migration ledger comes back
 with the data), `app_public.tar.gz` (the uploads volume) and `manifest.json`
 (the format, when it was taken, the database name, the app version, and the
-SHA-256 of the other two). No host name, user or password is in it.
+SHA-256 of the other two). No password is in any of them, and the manifest
+names no host or user; `database.sql`'s header comment does name the database
+host it was dumped from, as every `mysqldump` does.
 
 **Keep it the way you keep the database.** The archive is written readable by
 its owner only (mode 0600) and never over an existing file. It holds
@@ -356,21 +362,26 @@ make restore IN=... ARGS="--replace"                        # over existing data
 
 It checks everything before it writes anything, and each check is a refusal:
 the archive holds exactly its three files and each matches the manifest's
-checksum; the uploads hold only plain files and directories; the dump has no
-statement that switches, creates or drops a database and no `mysql` client
-command; the archive is a backup of a database with the same name as this
-stack's (pass `--into <this stack's DB_NAME>` to restore it under a different
-name on purpose); the app is not running and nothing holds the database's
-[instance lock](#one-process-per-database); and the database holds no rows.
+checksum; the uploads hold only plain files and directories; no line of the
+dump starts with a statement that switches, creates or drops a database or
+with a `mysql` client command (the client runs with `--binary-mode`, so a
+client command anywhere else on a line never runs either); the backup was not
+taken on a newer release than this stack runs (pass `--allow-newer-backup` to
+restore it anyway, knowing the older app does not know the newer schema); the
+archive is a backup of a database with the same name as this stack's (pass
+`--into <this stack's DB_NAME>` to restore it under a different name on
+purpose); the MySQL user holds privileges on that database and nothing else;
+the app is not running; and the database holds no rows.
 Tables with no rows at all are what the database service builds from
 `init.sql` when a new stack first starts, so a restore onto a new machine needs
 no flag. Over real data it needs `--replace`, which drops every table in the
 database and empties `avatars/` and `doc-images/` before loading. The load runs
-as the app's own MySQL user and holds the instance lock, so a statement naming
-another database fails on the grant and an app that starts meanwhile refuses.
-Then it runs `npm run migrate` (a backup from an older release is brought up to
-date; restore onto the same release or a newer one, never an older one) and
-`docker compose up -d`. `--no-start` stops after the data and prints the two
+as that confined MySQL user, so a statement naming another database fails on
+the grant, wherever it sits on a line. Its first statement takes the database's
+[instance lock](#one-process-per-database), or fails with nothing written if
+any process holds it, and the load keeps it, so an app that starts meanwhile
+refuses. Then it runs `npm run migrate` (a backup from an older release is
+brought up to date) and `docker compose up -d`. `--no-start` stops after the data and prints the two
 commands instead.
 
 A load that fails part way leaves the database holding part of the backup, and
@@ -394,11 +405,14 @@ avatar checked after the restore.
 `scripts/restore.sh --local [--uploads DIR] ... <file>` do the same with the
 `mysql` and `mysqldump` clients on `PATH`, connecting over TCP as `DB_USER`
 with `DB_PASS` to `DB_NAME` on `DB_HOST`, and with the uploads directory on
-disk (default `cloudcodex/public`). They need MySQL's clients: MariaDB's
-`mysqldump` writes the values of generated columns (`logs.plain_content`),
-which MySQL refuses on restore, so `--local` refuses it. A MySQL server shared
-by several instances is backed up the same way, one instance at a time, each
-with its own user.
+disk (default `cloudcodex/public`). `DB_USER` must be granted on `DB_NAME`
+alone, as the app's own user should be (`GRANT ALL ON c2.* TO ...`): root, a
+global privilege, a grant on another database or a role is refused, because
+that grant is what keeps a restore inside its own database. They need MySQL's
+clients: MariaDB's `mysqldump` writes the values of generated columns
+(`logs.plain_content`), which MySQL refuses on restore, so `--local` refuses
+it. A MySQL server shared by several instances is backed up the same way, one
+instance at a time, each with its own user.
 
 ---
 
