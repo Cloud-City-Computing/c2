@@ -1,5 +1,5 @@
 /**
- * Pins the app port in the production compose files to 127.0.0.1 unless APP_BIND says otherwise
+ * Pins every published port in the production compose files to 127.0.0.1 unless a bind variable says otherwise
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -12,8 +12,6 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const PRODUCTION_COMPOSE = ['docker-compose-release.yml', 'docker-compose-prod.yml'];
-
 // GHSA-9fmx-frrf-xxmq. Docker's published ports are a DNAT rule that sits in
 // front of the host firewall, so a mapping with no host address is reachable
 // from anywhere that can route to the machine, past `ufw deny`. The app port
@@ -22,6 +20,17 @@ const PRODUCTION_COMPOSE = ['docker-compose-release.yml', 'docker-compose-prod.y
 // .env.example ships APP_BIND blank, and a blank host address publishes on
 // every interface.
 const APP_PORT = '${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}';
+
+// The same, for MySQL in the file that publishes it at all: the host-side
+// `npm run migrate` and a mysql client on the host (docs/deployment.md) reach
+// it on 127.0.0.1. The release file publishes nothing for the database; the
+// app reaches it over the compose network.
+const DB_PORT = '${DB_BIND:-127.0.0.1}:3306:3306';
+
+const EXPECTED = {
+  'docker-compose-release.yml': { database: [], app: [APP_PORT] },
+  'docker-compose-prod.yml': { database: [DB_PORT], app: [APP_PORT] },
+};
 
 /**
  * Each service's `ports:` list, read by indentation: services at two spaces
@@ -77,7 +86,7 @@ function mappingParts(mapping) {
 function beyondLoopback(mapping) {
   const parts = mappingParts(mapping);
   const host = parts.length === 3 ? parts[0] : '';
-  const fallback = host.match(/^\$\{APP_BIND:-([^}]*)\}$/)?.[1] ?? host;
+  const fallback = host.match(/^\$\{[A-Z][A-Z0-9_]*:-([^}]*)\}$/)?.[1] ?? host;
   return !/^(127\.\d+\.\d+\.\d+|\[::1\])$/.test(fallback);
 }
 
@@ -109,7 +118,11 @@ describe('the ports reader (non-vacuity)', () => {
     ['${APP_BIND-127.0.0.1}:${PORT:-3000}:${PORT:-3000}', true],
     ['${APP_BIND:-0.0.0.0}:${PORT:-3000}:${PORT:-3000}', true],
     ['target: 3000', true],
+    ['3306:3306', true],
+    ['${DB_BIND-127.0.0.1}:3306:3306', true],
+    ['${DB_BIND}:3306:3306', true],
     [APP_PORT, false],
+    [DB_PORT, false],
     ['127.0.0.1:3000:3000', false],
   ])('judges %j beyond loopback: %j', (mapping, expected) => {
     expect(beyondLoopback(mapping)).toBe(expected);
@@ -117,21 +130,28 @@ describe('the ports reader (non-vacuity)', () => {
 });
 
 describe('production compose published ports', () => {
-  for (const file of PRODUCTION_COMPOSE) {
+  for (const [file, expected] of Object.entries(EXPECTED)) {
     const ports = publishedPorts(readFileSync(path.join(REPO, file), 'utf8'));
 
-    it(`${file} has an app service to check (non-vacuity)`, () => {
-      expect(Object.keys(ports)).toEqual(expect.arrayContaining(['database', 'app']));
+    it(`${file} has its services to check (non-vacuity)`, () => {
+      expect(Object.keys(ports).sort()).toEqual(Object.keys(expected).sort());
     });
 
     it(`${file} publishes the app port on \${APP_BIND:-127.0.0.1} only`, () => {
-      expect(ports.app).toEqual([APP_PORT]);
+      expect(ports.app).toEqual(expected.app);
     });
 
-    // Not the pin restated: this reads what the mapping does, so editing the
-    // pin and the file together to an all-interfaces default still fails.
-    it(`${file} never publishes the app port beyond loopback by default`, () => {
-      expect(ports.app.filter(beyondLoopback)).toEqual([]);
+    it(`${file} publishes the database ${expected.database.length ? 'on ${DB_BIND:-127.0.0.1} only' : 'nowhere'}`, () => {
+      expect(ports.database).toEqual(expected.database);
+    });
+
+    // Not the pins restated: this reads what every mapping does, so editing a
+    // pin and its file together to an all-interfaces default still fails, and
+    // so does a new service that publishes a port with no host address.
+    it(`${file} publishes nothing beyond loopback by default`, () => {
+      const beyond = Object.entries(ports).flatMap(([service, list]) =>
+        list.filter(beyondLoopback).map((m) => `${service} ${m}`));
+      expect(beyond).toEqual([]);
     });
   }
 });

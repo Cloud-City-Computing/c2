@@ -184,9 +184,101 @@ describe('app.js — Express configuration', () => {
     });
 
     it('exits naming the variable when Express rejects the value', async () => {
-      const { exited, said } = await bootWith({ TRUST_PROXY: 'not-an-address' });
+      // A /33 is plain notation, so it gets past the entry check and it is
+      // Express that refuses it.
+      const { exited, said } = await bootWith({ TRUST_PROXY: '10.0.0.0/33' });
       expect(exited).toEqual([[1]]);
-      expect(said).toMatch(/TRUST_PROXY "not-an-address" is not valid/);
+      expect(said).toMatch(/TRUST_PROXY "10\.0\.0\.0\/33" is not valid/);
+    });
+
+    // A list can trust every address, or public space, without saying `true`.
+    // proxy-addr already throws on a /0, but not on two /1s, and it matches an
+    // IPv4 client against an IPv6 subnet in its IPv4-mapped form, so
+    // ::ffff:0:0/96 is every IPv4 address. Wider than an IPv4 /8, or an IPv6
+    // /16 outside the private and link-local ranges, is refused unless the
+    // operator has accepted that any client can choose its address.
+    describe('a range wide enough to take in public addresses', () => {
+      it.each([
+        ['0.0.0.0/0', '0.0.0.0/0'],
+        ['::/0', '::/0'],
+        ['0.0.0.0/1', '0.0.0.0/1'],
+        ['0.0.0.0/1, 128.0.0.0/1', '0.0.0.0/1'],
+        ['loopback, 128.0.0.0/1', '128.0.0.0/1'],
+        ['11.0.0.0/7', '11.0.0.0/7'],
+        ['128.0.0.0/128.0.0.0', '128.0.0.0/128.0.0.0'],
+        ['::ffff:0.0.0.0/96', '::ffff:0.0.0.0/96'],
+        ['::ffff:0:0/96', '::ffff:0:0/96'],
+        ['::FFFF:0.0.0.0/96', '::FFFF:0.0.0.0/96'],
+        ['::ffff:0.0.0.0/100', '::ffff:0.0.0.0/100'],
+        ['::/80', '::/80'],
+        ['::/16', '::/16'],
+        ['2000::/3', '2000::/3'],
+        ['8000::/1', '8000::/1'],
+      ])('refuses %j, naming %s', (value, entry) => {
+        expect(() => parseTrustProxy(value)).toThrow(`TRUST_PROXY "${value}" trusts ${entry}`);
+        expect(() => parseTrustProxy(value)).toThrow('TRUST_PROXY_ALLOW_HOP_COUNT=true');
+      });
+
+      it.each(['0.0.0.0/1', '0.0.0.0/1, 128.0.0.0/1', '::ffff:0.0.0.0/96', '2000::/3'])(
+        'accepts %j when TRUST_PROXY_ALLOW_HOP_COUNT=true',
+        (value) => {
+          expect(parseTrustProxy(value, 'true')).toBe(value);
+        },
+      );
+
+      it.each([
+        '10.0.0.0/8',
+        '172.16.0.0/12',
+        '192.168.0.0/16',
+        '100.64.0.0/10',
+        '203.0.113.7',
+        '10.0.0.0/255.0.0.0',
+        '::1',
+        'fc00::/7',
+        'fd00::/8',
+        'fe80::/10',
+        'fe80::1%eth0/64',
+        '2001:db8::/32',
+        '::ffff:10.0.0.0/104',
+        '::ffff:10.0.0.5',
+        'loopback, 10.0.1.25, 2001:db8::/48',
+      ])('accepts %j, which is no wider than that', (value) => {
+        expect(parseTrustProxy(value)).toBe(value);
+      });
+
+      it('boot exits naming the variable and the entry', async () => {
+        const { exited, said } = await bootWith({ TRUST_PROXY: '::ffff:0.0.0.0/96' });
+        expect(exited).toEqual([[1]]);
+        expect(said).toContain('TRUST_PROXY "::ffff:0.0.0.0/96" trusts ::ffff:0.0.0.0/96');
+      });
+    });
+
+    // proxy-addr's parser takes spellings Node's does not, and reads some of
+    // them in ways nobody would guess: `0/1` is half of IPv4 and `010.0.0.0/8`
+    // is octal, 8.0.0.0/8, public space. The width check can only be sound on
+    // an entry it reads the same way, so an entry must be a subnet name or an
+    // address in standard notation, with or without the opt-in.
+    describe('an entry not written as a subnet name or a standard address', () => {
+      it.each([
+        ['not-an-address', 'not-an-address'],
+        ['0/1', '0/1'],
+        ['0x0/1', '0x0/1'],
+        ['010.0.0.0/8', '010.0.0.0/8'],
+        ['1, loopback', '1'],
+        ['loopback,', ''],
+        ['10.0.0.0/0xff000000', '10.0.0.0/0xff000000'],
+        ['Loopback', 'Loopback'],
+      ])('refuses %j, naming %j, even with the opt-in', (value, entry) => {
+        for (const allow of [undefined, 'true']) {
+          expect(() => parseTrustProxy(value, allow)).toThrow(`TRUST_PROXY "${value}" is not valid: "${entry}"`);
+        }
+      });
+
+      it('boot exits naming the variable', async () => {
+        const { exited, said } = await bootWith({ TRUST_PROXY: 'not-an-address' });
+        expect(exited).toEqual([[1]]);
+        expect(said).toMatch(/TRUST_PROXY "not-an-address" is not valid/);
+      });
     });
   });
 
