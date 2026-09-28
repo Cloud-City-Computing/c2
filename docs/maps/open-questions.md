@@ -806,11 +806,11 @@ product, worth documenting in the ops runbook.
 
 `watches` has a FK on `user_id` only (`init.sql:449`); `resource_id` is
 polymorphic and unconstrained. Deleting a document orphans its watches. Harmless
-(`routes/helpers/activity.js:180-184` bails when the log is gone) but unbounded.
+(`routes/helpers/activity.js:190-194` bails when the log is gone) but unbounded.
 
 ### C5. Watcher fan-out is a sequential await loop
 
-`routes/helpers/activity.js:197-211`, one `createNotification` per watcher, inside a
+`routes/helpers/activity.js:207-221`, one `createNotification` per watcher, inside a
 fire-and-forget promise. Fine at current scale; a heavily-watched archive would
 make it slow.
 

@@ -412,7 +412,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-8 | Hosted mode: OIDC only, invitations bind on verified email | W6-CDX-5, W6-CDX-32; W6-CCID-3 | yes |
 | W6-CDX-9 | Machine membership endpoints for the automatic sync | W6-CDX-7, W6-CDX-8 | yes |
 | W6-CDX-12 | Three activity gaps fixed at the source (**shipped 2026-09-27** in #62; `archive.delete` reaches the table, the tree route logs `log.rename` and `log.move` and caps titles at 255, and every route that sets a parent keeps it in the archive) | W6-CDX-10 | yes |
-| W6-CDX-13 | The outbox, subscriptions and the emit hook | W6-CDX-12 | yes |
+| W6-CDX-13 | The outbox, subscriptions and the emit hook (**shipped 2026-09-28** on `track/w6-cdx-13-outbox`; three webhook tables, `emitEvent` in `logActivity`, the env subscription, the SSRF guard and `/api/admin/webhooks`; nothing is sent until W6-CDX-14) | W6-CDX-12 | yes |
 | W6-CDX-14 | The delivery worker | W6-CDX-13 | yes |
 | W6-CDX-15 | Webhooks in the admin console | W6-CDX-14 | no |
 | W6-CDX-16 | A machine read for reconciliation (**shipped 2026-09-27** in #63; `GET /api/documents/state`, the third `machineOrAuth` route) | W6-CDX-10 | no |

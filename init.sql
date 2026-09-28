@@ -9,10 +9,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS webhook_deliveries;
-DROP TABLE IF EXISTS webhook_events;
-DROP TABLE IF EXISTS webhook_subscriptions;
-DROP TABLE IF EXISTS doc_images;
+DROP TABLE IF EXISTS webhook_deliveries, webhook_events, webhook_subscriptions, doc_images;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS watches;
 DROP TABLE IF EXISTS activity_log;

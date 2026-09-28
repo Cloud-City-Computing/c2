@@ -18,11 +18,31 @@ Check that `.env` sets it to the address people use before pulling.
 warning in production, since emailed links would open only on the server
 itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
 is older pulls it and upgrades its data directory in place on first start, so
-back the database up first. This release also has two migrations and a
+back the database up first. This release also has three migrations and a
 backfill; see Migration below.
 
 ### Added
 
+- **Outbound webhooks, recorded.** Cloud Codex can now tell a receiver you run
+  when a document is saved, published, restored, renamed, moved or deleted, or
+  an archive is renamed or deleted: each such change writes one JSON event (`codex.event.v1`, documented in `docs/api/webhooks.md`) to an
+  outbox, with one delivery per matching subscription. Titles and names are
+  cut to 255 characters, so no event exceeds 4 KiB, and an event carries ids,
+  that title or name, and the actor's user id and name, never an email or any
+  content. **Nothing is sent yet**: the delivery worker ships in a later
+  release. Off by default: with no subscription nothing is written and no
+  query is added. One subscription can be declared in the environment
+  (`WEBHOOK_URL`, `WEBHOOK_SECRET` of at least 32 characters, optional
+  `WEBHOOK_WORKSPACE_ID`), reconciled at every boot, its secret never stored;
+  instance admins manage more under `/api/admin/webhooks` (list, create,
+  rotate the secret, enable or disable, delete), where a secret is shown once.
+  Every receiver URL must be `https` in production and resolve only to public
+  addresses: loopback and private ones need `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`,
+  and link-local and cloud-metadata ones are refused always. An admin
+  subscription's secret is stored in the database in plaintext, so a database
+  dump can sign events to that receiver; the env subscription avoids it. A
+  failure to write the outbox never affects the change that caused it. Needs
+  the webhooks migration (see Migration).
 - `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
   read for Cloud Command: for up to 100 document ids it returns the id, title,
   archive and last update of each one the caller can read in that workspace.
@@ -239,6 +259,18 @@ first run. If the app has to start before it runs, set `DOC_IMAGES_PUBLIC=1`
 for that window (the backfill then runs without `--again`) and unset it after.
 A fresh install needs neither. See `docs/deployment.md`, "The document-images
 backfill, once".
+
+**The webhooks migration,**
+[`migrations/2026-09-28-webhooks.sql`](migrations/2026-09-28-webhooks.sql),
+adds three tables, `webhook_subscriptions`, `webhook_events` and
+`webhook_deliveries`, and changes nothing that exists. Apply it with
+`npm run migrate` before starting the new image (in containers,
+`docker compose ... run --rm app npm run migrate`); nothing else is run. Until
+it is applied the new image logs `webhook env subscription reconcile failed`
+at boot and `webhook subscriptions load failed` once a minute, and otherwise
+runs as before, emitting nothing. On an install `init.sql` builds fresh, `--adopt-fresh-install`
+checks that the three tables are there before it records the file. To undo it:
+`DROP TABLE webhook_deliveries, webhook_events, webhook_subscriptions;`.
 
 ## [0.11.0] - 2026-09-27
 

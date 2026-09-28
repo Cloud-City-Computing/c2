@@ -14,6 +14,7 @@ import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
 import { getAllPresence, getActiveDocCount } from '../services/collab.js';
 import { createNotification } from '../services/notifications.js';
+import webhooksRouter from './webhooks.js';
 
 const router = express.Router();
 
@@ -815,6 +816,10 @@ router.get('/admin/stats', requireAuth, requireAdmin, asyncHandler(async (req, r
     stats: { ...counts, onlineUserCount: getAllPresence() ? Object.values(getAllPresence()).reduce((s, u) => { u.forEach(x => s.add(x.id)); return s; }, new Set()).size : 0, activeDocCount: getActiveDocCount() },
   });
 }));
+
+// The outbound-webhook subscriptions, /api/admin/webhooks (routes/webhooks.js):
+// admin-only like everything above, with its own error handler.
+router.use(webhooksRouter);
 
 router.use(errorHandler);
 

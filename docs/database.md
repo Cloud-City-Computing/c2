@@ -2,7 +2,7 @@
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║                                                                            ║
 ║   DATABASE                                                                 ║
-║   MySQL 8 schema — 25 tables modelling the workspace → log hierarchy.      ║
+║   MySQL 8 schema: 28 tables modelling the workspace → log hierarchy.       ║
 ║                                                                            ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 ```
@@ -50,7 +50,9 @@ The database models a **workspace → squad → archive → log** hierarchy with
           ──< user_invitations / password_reset_tokens / two_factor_codes
           ──< notifications  ──┐
           ──< watches  ────────┤  fan-out paths from
-                               └─ activity_log
+                               └─ activity_log ── webhook_events (outbox)
+
+   webhook_subscriptions ──< webhook_deliveries >── webhook_events
 ```
 
 ---
@@ -540,6 +542,68 @@ entries older than 365 days are removed.
 
 ---
 
+### `webhook_subscriptions`
+
+Who receives outbound events ([api/webhooks.md](api/webhooks.md)). One row may
+come from the environment (`source = 'env'`, reconciled at every boot from
+`WEBHOOK_URL`, `WEBHOOK_SECRET` and `WEBHOOK_WORKSPACE_ID`); the rest are made
+by an instance admin through `/api/admin/webhooks` (`source = 'admin'`).
+
+| Column                 | Type                  | Notes                                       |
+|------------------------|-----------------------|---------------------------------------------|
+| `id`                   | INT AUTO_INCREMENT PK |                                             |
+| `url`                  | VARCHAR(2048)         | The receiver, checked by the SSRF guard     |
+| `secret`               | VARCHAR(255)          | Admin rows only, never returned by the API; `NULL` for the env row, whose secret stays in the environment |
+| `source`               | VARCHAR(8)            | `env` or `admin` (CHECK)                    |
+| `enabled`              | BOOLEAN               | Default TRUE                                |
+| `event_types`          | JSON                  | `NULL` = every emitted type, else an array  |
+| `workspace_id`         | INT                   | `NULL` = every workspace. No FK, on purpose |
+| `disabled_reason`      | VARCHAR(255)          | Why it is off, for the admin console        |
+| `consecutive_failures` | INT                   | Backoff state for the delivery worker       |
+| `paused_until`         | DATETIME(3)           | Backoff state for the delivery worker       |
+| `created_by`           | INT FK → users        | ON DELETE SET NULL                          |
+| `created_at`           | TIMESTAMP             |                                             |
+
+**Constraints:** `chk_webhook_subscriptions_source`, and
+`chk_webhook_subscriptions_secret`, `(source = 'env') = (secret IS NULL)`.
+
+### `webhook_events`
+
+The outbox: one row per emitted event, written only when a subscription
+matches it. `body` is the exact bytes every delivery of it sends.
+
+| Column        | Type                     | Notes                                      |
+|---------------|--------------------------|--------------------------------------------|
+| `id`          | BIGINT AUTO_INCREMENT PK | The envelope's `sequence`                  |
+| `event_uuid`  | CHAR(36)                 | The envelope's `id`, unique; the idempotency key |
+| `type`        | VARCHAR(32)              | One of the eight emitted actions           |
+| `workspace_id`| INT                      | The event's workspace                      |
+| `occurred_at` | DATETIME(3)              | UTC                                        |
+| `body`        | MEDIUMBLOB               | The serialized envelope, UTF-8             |
+| `created_at`  | TIMESTAMP                | Indexed                                    |
+
+### `webhook_deliveries`
+
+One row per (subscription, event), worked in event order per subscription by
+the delivery worker.
+
+| Column             | Type                     | Notes                                    |
+|--------------------|--------------------------|------------------------------------------|
+| `id`               | BIGINT AUTO_INCREMENT PK | Sent as `X-Codex-Delivery`               |
+| `subscription_id`  | INT FK → webhook_subscriptions | ON DELETE CASCADE                  |
+| `event_id`         | BIGINT FK → webhook_events | ON DELETE CASCADE                      |
+| `status`           | VARCHAR(12)              | `pending`, `delivered` or `dead` (CHECK) |
+| `attempts`         | INT                      |                                          |
+| `leased_by`, `lease_expires_at` | CHAR(36), DATETIME(3) | The worker's lease               |
+| `last_status`, `last_error` | SMALLINT, VARCHAR(255) | The last attempt's outcome       |
+| `delivered_at`     | DATETIME(3)              |                                          |
+| `created_at`       | TIMESTAMP                |                                          |
+
+**Indexes:** `UNIQUE (subscription_id, event_id)`,
+`(subscription_id, status, event_id)` for the head of each queue.
+
+---
+
 ### `github_embed_refs`
 
 Tracks every GitHub embed (code snippet, issue, pull request, file) that
@@ -644,6 +708,9 @@ each compose file. The current set:
 | `2026-09-08-token-purpose.sql`  | `password_reset_tokens.purpose` + its `CHECK`       |
 | `2026-09-25-oauth-one-link-per-provider.sql` | `UNIQUE (user_id, provider)` on `oauth_accounts` |
 | `2026-09-25-token-purpose-email-change.sql` | `password_reset_tokens.new_email`, `email_change` in the purpose `CHECK`, and `chk_password_reset_tokens_new_email` |
+| `2026-09-27-session-per-sign-in.sql` | `sessions.auth_provider` + its `CHECK`, and hashes the stored session ids |
+| `2026-09-27-who-may-see-doc-images.sql` | `doc_images` table (then run `npm run backfill:doc-images` once) |
+| `2026-09-28-webhooks.sql` | `webhook_subscriptions`, `webhook_events` and `webhook_deliveries` tables |
 
 > **Rule:** any column or table added as a migration must also be present
 > in `init.sql`. Both must stay in sync — fresh installs and existing
