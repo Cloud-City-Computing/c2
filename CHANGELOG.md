@@ -12,15 +12,6 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
-**Upgrading: a production instance now refuses to start without `APP_URL`.**
-Check that `.env` sets it to the address people use before pulling.
-`.env.example` ships `http://localhost:3000`, which boots but now prints a
-warning in production, since emailed links would open only on the server
-itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
-is older pulls it and upgrades its data directory in place on first start, so
-back the database up first. This release also has two migrations and a
-backfill; see Migration below.
-
 ### Added
 
 - **The shared Cloud City design package, vendored, and a design gate.**
@@ -40,6 +31,93 @@ backfill; see Migration below.
   names on `<html data-theme="dark">`); nothing uses them yet, so the
   interface does not change. The built stylesheet now keeps licence comments,
   so the package's notice heads it. No migration and no new setting.
+
+### Changed
+
+- The GitHub page's linked file path and its file picker, which asked for a
+  `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now
+  get the design package's monospace stack (`ui-monospace, SFMono-Regular,
+  Menlo, Consolas, monospace`). On Linux both stacks render the same face
+  (checked by rendering each). On macOS and Windows the new stack may pick
+  Menlo or Consolas where the old one used the browser's generic monospace
+  face; that was not checked.
+
+### Fixed
+
+- **Five rules that named a colour nothing defines now render, and a sixth
+  that never applied is removed.** A `var()` that names an undeclared property
+  makes its declaration invalid at computed-value time, so the property
+  computes as `unset`: transparent for a background, inherited for a colour.
+  The "Sign in with Google" button now has its border and background, the
+  "or" divider above it its two lines, the Linked Accounts rows in Account
+  settings their border and background, the active tab in Manage Archive
+  Access its accent underline, and a draw.io diagram's delete button turns red
+  on hover instead of transparent with a white edge. The avatar placeholder's
+  background named such a property and was already transparent; the
+  declaration is deleted, with no visible change.
+
+## [0.12.0] - 2026-09-28
+
+The hosting-readiness release. One security fix: anyone who could reach the
+app's port directly could choose their own address in `X-Forwarded-For` and
+step around every rate limiter, including the sign-in and two-factor limit
+([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+`TRUST_PROXY` now names the proxies it believes by address, the app port is
+published on `127.0.0.1`, and the production compose files pin their network.
+Alongside it: session tokens stored only as a digest, with one session per
+sign-in; document images served only to people who can read the document;
+`/healthz` and `/readyz`; a container that stops cleanly; one process per
+database; a reconciliation read for Cloud Command; and the configuration
+contract, with `APP_URL` required in production. **Upgrading from 0.11.0 is a
+breaking change for an install reached directly from another machine, or
+behind a proxy that does not connect from `127.0.0.1`, `::1` or `172.29.0.1`;
+it takes the project `down` before migrating, applies two migrations and runs
+one backfill. See below and Migration.**
+
+**Upgrading: a production instance now refuses to start without `APP_URL`.**
+Check that `.env` sets it to the address people use before pulling.
+`.env.example` ships `http://localhost:3000`, which boots but now prints a
+warning in production, since emailed links would open only on the server
+itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
+is older pulls it and upgrades its data directory in place on first start, so
+back the database up first. This release also has two migrations and a
+backfill; see Migration below.
+
+**Upgrading, BREAKING: the app port is published on `127.0.0.1`, and
+`X-Forwarded-For` is believed only from a proxy named by address.** An install
+reached directly on port 3000 from another machine stops answering there: put
+it behind a TLS-terminating proxy, or set `APP_BIND=0.0.0.0` in `.env` to
+expose it on purpose (an IPv4 address, never `::`), with `TRUST_PROXY=false`
+when nothing is in front of it. `docker-compose-prod.yml`
+publishes MySQL on `127.0.0.1` too, so a database client on another machine
+needs `DB_BIND` or an SSH tunnel. `TRUST_PROXY` now defaults to
+`127.0.0.1/32, ::1/128, 172.29.0.1/32`, which covers nginx or Caddy on the same
+host in front of either compose file and nothing else (an install run without
+Docker sets `127.0.0.1/32, ::1/128`): **a proxy running as
+another container, a load balancer, or the image run with `docker run`
+behind a proxy is no longer believed until you list its address** (worked
+values in "Rate limiters", `docs/deployment.md`); until then every client
+behind it shares one rate-limit bucket, and the server logs a warning naming
+it. For a single nginx, set `proxy_set_header X-Forwarded-For $remote_addr;`.
+The production compose files now pin their network to `172.29.0.0/16`, so
+**this upgrade takes the project down before migrating**:
+
+```bash
+docker compose -f docker-compose-release.yml pull app
+docker compose -f docker-compose-release.yml down     # never down -v
+docker compose -f docker-compose-release.yml run --rm app npm run migrate
+docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images
+docker compose -f docker-compose-release.yml up -d
+```
+
+The usual stop-the-app-then-migrate order makes Compose replace the network
+under a running database and reconnect it without its `database` alias, so the
+migration and then the app cannot find it (see "Upgrades",
+`docs/deployment.md`). The backfill runs once, on an install that already has
+documents, between the migrations and the start (see Migration below).
+
+### Added
+
 - `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
   read for Cloud Command: for up to 100 document ids it returns the id, title,
   archive and last update of each one the caller can read in that workspace.
@@ -75,18 +153,15 @@ backfill; see Migration below.
   every stated default is checked against what the code does when the
   variable is unset or blank.
 - `TRUST_PROXY`, Express's `trust proxy` setting, which decides the address the
-  rate limiters count. Unset keeps today's `1`; a hop count, `true`, `false`,
-  `loopback` or an address list are accepted, and a value Express cannot parse
-  stops the boot with a sentence naming the variable.
+  rate limiters count: a list of addresses and CIDRs (subnet names such as
+  `loopback` are accepted too), or `false`. Unset is the address list
+  described under Security, and a value Express cannot parse stops the boot
+  with a sentence naming the variable.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
 
 ### Changed
 
-- The GitHub page's linked file path and its file picker, which asked for a
-  `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now
-  get the design package's monospace stack. It renders the same face on Linux
-  and macOS; where Consolas is installed (Windows), the new stack picks it.
 - `POST /api/doc-images/upload` needs a `logId` form field naming the document
   the images go into, and write access to it: without one it answers `400`,
   without access `403`, and nothing is processed either way. The editor sends
@@ -128,17 +203,35 @@ backfill; see Migration below.
   upgrades the data directory in place on first start, so back it up first. A
   test fails on a floating tag or on two files disagreeing.
 
+- **Both production compose files publish the app port on `127.0.0.1`**
+  (`${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`), not on every
+  interface. A browser or reverse proxy on the same machine reaches
+  `http://localhost:3000` as before; another machine no longer does, and
+  neither does a proxy in another container that used the host's address (join
+  it to the compose network and proxy to `app:3000` instead). Production
+  belongs behind a TLS-terminating reverse proxy; to expose the port on
+  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's IPv4
+  address (never `::` or an IPv6 address), and with nothing in front of it
+  `TRUST_PROXY=false`.
+  `docker-compose-prod.yml` also publishes MySQL as
+  `${DB_BIND:-127.0.0.1}:3306:3306` instead of `3306:3306`: a mysql client or
+  `npm run migrate` on the host still reaches it, and anything else needs
+  `DB_BIND` set on purpose (the release file publishes no database port). The
+  development file, `docker-compose.yaml`, does the same for its MySQL, which
+  runs with a development password: the dev server, `make` and a `mysql`
+  client on the same machine reach it as before, and nothing else on the
+  network does. A test reads every compose file at the root with a YAML
+  parser, pins every mapping, fails on any default beyond loopback in either
+  port syntax, and checks that `docker-compose.linux.yml` publishes nothing,
+  however it is spelled.
+- **Both production compose files pin their default network** to
+  `172.29.0.0/16`, gateway `172.29.0.1` (Cloud Command uses `172.28.0.0/16`),
+  so the address a proxy on the host arrives from is one `TRUST_PROXY`'s
+  default can name. An existing install's network is replaced by the `down`
+  and `up -d` the upgrade note above describes.
+
 ### Fixed
 
-- **Six rules that named a colour nothing defines now render.** The browser
-  drops a `var()` that names an undeclared property, so each of these fell
-  back to nothing: the "Sign in with Google" button now has its border and
-  background, the "or" divider above it its two lines, the Linked Accounts
-  rows in Account settings their border and background, the active tab in
-  Manage Archive Access its accent underline, and a draw.io diagram's delete
-  button turns red on hover instead of transparent with a white edge. A
-  sixth, on the avatar placeholder, never applied and is removed without a
-  visible change.
 - **Deleting an archive is recorded in the activity log.** The route looked
   up the archive's workspace only after deleting the row that led to it, so
   every `archive.delete` event was dropped. It now reads the workspace and
@@ -185,6 +278,62 @@ backfill; see Migration below.
 
 ### Security
 
+- **The rate limiters can no longer be walked around by choosing your own
+  address**
+  ([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+  Express's `trust proxy` was `1`, so every
+  limiter keyed on the rightmost `X-Forwarded-For` entry of any request that
+  carried one, and both production compose files published the app port on
+  every interface, where Docker's DNAT rule sits in front of the host
+  firewall. Anyone who could reach port 3000 directly could send a new address
+  with each request and get a fresh bucket every time: unlimited password and
+  two-factor guessing past the sign-in limit of 20 per 15 minutes, and
+  unlimited user search. The address recorded against each session came from
+  the same header. Now:
+  - `trust proxy` defaults to `127.0.0.1/32, ::1/128, 172.29.0.1/32`:
+    loopback, and the gateway of the network the production compose files now
+    pin, which is where Docker presents a proxy on the host. Every other peer
+    is counted by its own address, whatever `X-Forwarded-For` it sends: a
+    public client, a machine on the same LAN, VPN or VPC, and a sibling
+    container. A range is not trusted by default, because a client inside a
+    trusted range, behind a proxy that appends the header, could name its own
+    address with the left entry. The default bridge's gateway, `172.17.0.1`,
+    is not trusted either: `docker run -p PORT:PORT` publishes on IPv6 too,
+    that bridge is IPv4-only, and every IPv6 client arrives as its gateway.
+    An IPv4-only Docker network presents every IPv6 client of an
+    all-interfaces or IPv6 publish as its gateway, which is also why
+    `APP_BIND` must be an IPv4 address.
+  - `TRUST_PROXY` takes a list of addresses and CIDRs, subnet names, or
+    `false`. A hop count, `true`, or a range wider than an IPv4 /8, wider than
+    an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or holding more than an
+    IPv4 /8 of the IPv4-mapped `::ffff:0:0/96` (all of it is every IPv4
+    client) stops the boot with a sentence saying why, unless
+    `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that any client able to
+    reach the port can choose its own address. Those are the thresholds: a
+    public /8, or an IPv6 /16 to /31, is accepted. An entry not written in
+    standard notation always stops the boot, since Express reads `010.0.0.0/8`
+    as octal, public `8.0.0.0/8`.
+  - A peer `TRUST_PROXY` does not name that sends `X-Forwarded-For` is logged,
+    once per address (an IPv6 peer once per /64) and for at most 32 of them,
+    so a proxy left out of the list shows up in the log instead of silently
+    putting every client in one bucket. Once listening, the server also prints
+    what it trusts: `✔ Trusting proxies (the default): ...`, or
+    `(from TRUST_PROXY)`.
+  - The app port is published on `127.0.0.1` (Changed, above), and the prod
+    file's MySQL port is no longer published on every interface.
+
+  **If you run behind a proxy, check two things:** that `TRUST_PROXY` names the
+  address it connects from (nginx or Caddy on the same host needs nothing; a
+  proxy container, a load balancer or `docker run` must be listed), and that
+  the proxy **sets** `X-Forwarded-For` (for nginx alone, `$remote_addr`;
+  appending is also safe, and is what nginx behind a load balancer should do,
+  as long as the address it appends is the client's own and not one
+  `TRUST_PROXY` trusts). A proxy that sets nothing lets each client choose its
+  own address. Every process on the host that reaches the published port, and
+  with `APP_BIND` widened every container on the host, arrives as the gateway
+  and is trusted too; the loopback bind is what keeps that to this machine.
+  "Rate limiters" in `docs/deployment.md` has a check to run from outside,
+  with a forged `X-Forwarded-For`, and says what each result means.
 - **Session tokens are stored only as a SHA-256 digest, and every sign-in is
   its own session.** `sessions.id` held the raw token, so a copy of the table
   (a backup, a dump) was a list of working sign-ins; it now holds
@@ -763,7 +912,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Cloud-City-Computing/c2/compare/alpharelease...v0.9.0

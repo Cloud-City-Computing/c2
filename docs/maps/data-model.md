@@ -523,7 +523,7 @@ the procedure body.
 ### Trap 1: `init.sql` only runs on a fresh volume
 
 The compose files mount it into `/docker-entrypoint-initdb.d/`
-(`docker-compose.yaml:22`, `docker-compose-prod.yml:17`,
+(`docker-compose.yaml:27`, `docker-compose-prod.yml:24`,
 `docker-compose-release.yml:36`). The MySQL entrypoint
 **skips that directory entirely when the data directory is already
 initialised.** Editing `init.sql` and restarting the container does nothing.
