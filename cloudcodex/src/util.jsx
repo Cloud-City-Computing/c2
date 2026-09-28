@@ -630,15 +630,22 @@ export function removeSessStorage(key) {
 const SESSION_COOKIE = '__Host-sessionToken';
 const LEGACY_SESSION_COOKIE = 'sessionToken';
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
+const LEGACY_UPGRADE_TIMEOUT_MS = 5000;
+const LEGACY_REFUSED_KEY = 'legacySessionCookieRefused';
 const EXPIRED = 'expires=Thu, 01 Jan 1970 00:00:00 UTC';
 
 const secureContext = () => window.location.protocol === 'https:';
 
-/** A cookie's value by exact name, or null when absent or empty. */
+/**
+ * A cookie's value by exact name, or null when absent or empty. Strips only
+ * the ASCII space and tab between pairs: trim() would also strip Unicode
+ * whitespace, and a browser stores a name that starts with U+2000, say, as a
+ * different cookie, free of the __Host- rules, that a sibling host can set.
+ */
 function readCookie(name) {
   const hit = document.cookie
     .split(';')
-    .map((row) => row.trim())
+    .map((row) => row.replace(/^[ \t]+|[ \t]+$/g, ''))
     .find((row) => row.startsWith(`${name}=`));
   return hit ? hit.slice(name.length + 1) || null : null;
 }
@@ -689,23 +696,36 @@ export function clearSessionCookie() {
  * server confirms it: POST /api/validate-session with legacyCookie: true, which
  * a hosted instance (LEGACY_SESSION_COOKIE=0) always answers invalid, because
  * a sibling host could have planted that cookie. Either answer expires the
- * legacy cookie; an unreachable server leaves it for the next visit. Run once
- * at startup, before anything reads the token (main.jsx).
+ * legacy cookie; an unreachable or silent server (given up on after
+ * LEGACY_UPGRADE_TIMEOUT_MS) leaves it for the next visit. A refusal is
+ * remembered for the tab: a legacy cookie a sibling set with a Domain survives
+ * this host's clear, and must not cost a round-trip on every page load. Run
+ * once at startup, before anything reads the token (main.jsx).
  * @returns {Promise<void>}
  */
 export async function upgradeLegacySessionCookie() {
-  if (!secureContext() || readCookie(SESSION_COOKIE)) return;
+  if (!secureContext() || readCookie(SESSION_COOKIE) || getSessStorage(LEGACY_REFUSED_KEY)) return;
   const legacy = readCookie(LEGACY_SESSION_COOKIE);
   if (!legacy) return;
 
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('validate-session did not answer')), LEGACY_UPGRADE_TIMEOUT_MS);
+  });
   let response;
   try {
-    response = await serverReq('POST', '/api/validate-session', { token: legacy, legacyCookie: true });
+    response = await Promise.race([
+      serverReq('POST', '/api/validate-session', { token: legacy, legacyCookie: true }),
+      timeout,
+    ]);
   } catch {
     return;
+  } finally {
+    clearTimeout(timer);
   }
   document.cookie = `${LEGACY_SESSION_COOKIE}=; ${EXPIRED}; path=/; secure`;
   if (response.valid) setSessionCookie(legacy);
+  else setSessStorage(LEGACY_REFUSED_KEY, true);
 }
 
 /**

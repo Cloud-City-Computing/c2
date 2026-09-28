@@ -17,7 +17,7 @@ import { c2_query, generateSessionToken } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL } from './helpers/shared.js';
 import { resolveIdentity, isSecondLinkForProvider } from '../services/identity.js';
-import { sessionCookieName } from '../services/session-cookie.js';
+import { sessionCookieName, COOKIE_OWS } from '../services/session-cookie.js';
 
 const router = express.Router();
 
@@ -110,36 +110,50 @@ function validateOAuthState(state) {
  * a top-level navigation from the provider's site, where a Strict cookie is not
  * sent. One cookie per provider so two flows in two tabs do not clobber each
  * other.
+ *
+ * On https the name is __Host-oauth_state_<provider>, Secure with Path=/, the
+ * same rule as the session cookie (services/session-cookie.js): a browser
+ * stores a __Host- cookie only without a Domain, so another host under the
+ * same domain cannot give this browser a state of its choosing. The callback
+ * reads the state under that exact name only. Over plain http no browser can
+ * hold a Secure cookie, so the name stays oauth_state_<provider> at
+ * Path=/api/oauth.
  */
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
-const OAUTH_STATE_COOKIE = { google: 'oauth_state_google', github: 'oauth_state_github' };
+const secureStateCookie = () => APP_URL.startsWith('https://');
+
+function oauthStateCookieName(provider) {
+  return `${secureStateCookie() ? '__Host-' : ''}oauth_state_${provider}`;
+}
 
 function oauthStateCookieOptions() {
+  const secure = secureStateCookie();
   return {
     httpOnly: true,
     sameSite: 'lax',
-    secure: APP_URL.startsWith('https://'),
-    path: '/api/oauth',
+    secure,
+    path: secure ? '/' : '/api/oauth',
   };
 }
 
 function setOAuthStateCookie(res, provider, state) {
-  res.cookie(OAUTH_STATE_COOKIE[provider], state, { ...oauthStateCookieOptions(), maxAge: OAUTH_STATE_TTL_MS });
+  res.cookie(oauthStateCookieName(provider), state, { ...oauthStateCookieOptions(), maxAge: OAUTH_STATE_TTL_MS });
 }
 
 function clearOAuthStateCookie(res, provider) {
-  res.clearCookie(OAUTH_STATE_COOKIE[provider], oauthStateCookieOptions());
+  res.clearCookie(oauthStateCookieName(provider), oauthStateCookieOptions());
 }
 
+/** A cookie's value by exact name. Only ASCII space and tab are stripped (COOKIE_OWS), never Unicode whitespace. */
 function readCookie(req, name) {
   const header = req.headers.cookie;
   if (typeof header !== 'string') return undefined;
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
     if (eq === -1) continue;
-    if (part.slice(0, eq).trim() !== name) continue;
+    if (part.slice(0, eq).replace(COOKIE_OWS, '') !== name) continue;
     try {
-      return decodeURIComponent(part.slice(eq + 1).trim());
+      return decodeURIComponent(part.slice(eq + 1).replace(COOKIE_OWS, ''));
     } catch {
       return undefined;
     }
@@ -149,7 +163,7 @@ function readCookie(req, name) {
 
 /** True when the browser completing the callback holds the cookie its own initiation set. */
 function stateBoundToBrowser(req, provider, state) {
-  const held = readCookie(req, OAUTH_STATE_COOKIE[provider]);
+  const held = readCookie(req, oauthStateCookieName(provider));
   if (typeof held !== 'string' || typeof state !== 'string') return false;
   const a = Buffer.from(held);
   const b = Buffer.from(state);

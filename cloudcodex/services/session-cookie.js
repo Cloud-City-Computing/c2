@@ -20,6 +20,9 @@
 export const SESSION_COOKIE = '__Host-sessionToken';
 export const LEGACY_SESSION_COOKIE = 'sessionToken';
 
+/** The whitespace a Cookie header puts around a pair: ASCII space and tab, nothing else. */
+export const COOKIE_OWS = /^[ \t]+|[ \t]+$/g;
+
 /**
  * The name a cookie with this Secure flag must carry: a browser drops a
  * __Host- cookie that is not Secure, so a plain-http instance keeps the
@@ -46,14 +49,18 @@ export function legacyCookieAllowed() {
  * The session token in a Cookie header, or null. The prefixed cookie always
  * wins, wherever it sits in the header. The legacy name is read only when no
  * prefixed cookie is present at all (an empty one included) and the fallback
- * is allowed. Names match exactly; an empty value is no token.
+ * is allowed. Names match exactly, after stripping only ASCII space and tab;
+ * an empty value is no token.
  * @param {string | undefined} cookieHeader
  * @param {{ allowLegacy: boolean }} options
  * @returns {string | null}
  */
 export function readSessionCookie(cookieHeader, { allowLegacy }) {
   if (!cookieHeader) return null;
-  const pairs = cookieHeader.split(';').map((pair) => pair.trim());
+  // Strip only the ASCII space and tab that separate pairs. trim() would also
+  // strip Unicode whitespace, turning a differently named cookie (one a
+  // browser stores without the __Host- rules) into the prefixed one.
+  const pairs = cookieHeader.split(';').map((pair) => pair.replace(COOKIE_OWS, ''));
   const valueOf = (name) => {
     const hit = pairs.find((pair) => pair.startsWith(`${name}=`));
     return hit === undefined ? undefined : hit.slice(name.length + 1);
