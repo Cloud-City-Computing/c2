@@ -39,12 +39,14 @@ export const ENV_CONTRACT = [
   { name: 'NODE_ENV', kind: 'optional', perInstance: false,
     why: 'production serves the built app, arms the rate limiters and puts the security headers '
       + 'on every response; the Docker image and npm run start set it' },
-  { name: 'TRUST_PROXY', kind: 'default', default: 'loopback, linklocal, uniquelocal', perInstance: false,
-    why: 'Express trust proxy, which decides req.ip for the rate limiters: a list of subnet names, '
-      + 'addresses and CIDRs whose X-Forwarded-For is believed, or false; the default believes a peer on '
-      + 'loopback or a private range only. A hop count, true or a range wide enough to take in public '
-      + 'addresses exits at boot unless TRUST_PROXY_ALLOW_HOP_COUNT is true; an entry in non-standard '
-      + 'notation, or a value Express cannot parse, always does' },
+  { name: 'TRUST_PROXY', kind: 'default', default: '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32',
+    perInstance: false,
+    why: 'Express trust proxy, which decides req.ip for the rate limiters: a list of addresses, CIDRs '
+      + 'and subnet names whose X-Forwarded-For is believed, or false; the default names loopback, the '
+      + 'default Docker bridge gateway and the pinned compose network\'s gateway, and nothing else. '
+      + 'A hop count, true or a range wide enough to take in public addresses exits at boot unless '
+      + 'TRUST_PROXY_ALLOW_HOP_COUNT is true; an entry in non-standard notation, or a value Express '
+      + 'cannot parse, always does' },
   { name: 'TRUST_PROXY_ALLOW_HOP_COUNT', kind: 'optional', perInstance: false,
     why: 'true lets TRUST_PROXY be a hop count, true or a public-sized range, accepting that any client '
       + 'able to reach the app\'s port can then choose its own address; anything but true, false or blank '

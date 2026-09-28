@@ -119,3 +119,23 @@ services:
 volumes:
   db_data:
   app_public:
+
+# The project's default network, pinned so its gateway is an address
+# TRUST_PROXY's default names (172.29.0.1/32). A proxy on this host reaches the
+# app through the published port, and Docker presents that traffic to the
+# container as this gateway. Left to Docker, the subnet is whatever is free
+# (172.18.0.0/16 on a fresh host, a 192.168 range once about fifteen networks
+# exist), the gateway is not in the default, and every client behind the proxy
+# would share one rate-limit bucket. 172.29.0.0/16 is distinct from Cloud
+# Command's 172.28.0.0/16, so both can run on one host. An install created
+# before this was pinned has its network on another subnet: Compose 5.3.1
+# replaces it on the next `up -d` (it stops both containers, recreates the
+# network and starts them again, volumes kept). A Compose that refuses
+# instead needs `down` (never `down -v`) and then `up -d`; see "Upgrades" in
+# docs/deployment.md.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1

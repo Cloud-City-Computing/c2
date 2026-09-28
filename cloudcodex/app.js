@@ -34,17 +34,24 @@ import notificationsRouter from './routes/notifications.js';
 import activityRouter from './routes/activity.js';
 import watchesRouter from './routes/watches.js';
 import firstRunRouter from './routes/first-run.js';
+import { warnUntrustedForwarders } from './middleware/forwarded-for.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// What an unset or blank TRUST_PROXY trusts: a peer on loopback, a link-local
-// address or a private range (10/8, 172.16/12, 192.168/16, fc00::/7). That is
-// where a reverse proxy on the same host connects from over the Docker bridge,
-// and where a cloud load balancer's private address does. Any other peer is
-// counted by its own socket address, whatever X-Forwarded-For it sends
-// (GHSA-9fmx-frrf-xxmq: the old default, 1, believed that header from anyone).
-const DEFAULT_TRUST_PROXY = 'loopback, linklocal, uniquelocal';
+// What an unset or blank TRUST_PROXY trusts: the proxies, by address, and
+// nothing else. 127.0.0.1 and ::1 are a proxy on this host reaching the app
+// run without Docker; 172.17.0.1 is the default bridge's gateway, where a
+// proxy on the host reaches the image run with `docker run -p`; 172.29.0.1 is
+// the gateway of the network both production compose files pin, where it
+// reaches them. Docker presents host-originated traffic to a container as the
+// gateway. Any other peer is counted by its own socket address, whatever
+// X-Forwarded-For it sends (GHSA-9fmx-frrf-xxmq). Not a range: the old
+// default, 1, believed that header from anyone, and trusting 172.16.0.0/12
+// believed every sibling container and every LAN, VPN or VPC neighbour, so a
+// client behind a proxy that appends named its own key with the left entry.
+// Loopback is a /32 rather than the /8, for the same reason.
+const DEFAULT_TRUST_PROXY = '127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32';
 
 // The names proxy-addr expands (to exactly these ranges); anything else in a
 // TRUST_PROXY list is an address, with or without a prefix length or netmask.
@@ -126,7 +133,7 @@ function trustProxyEntryRefusal(entry) {
 
 /**
  * Express's `trust proxy` value from TRUST_PROXY. Unset or blank is the
- * trusted-subnet default above, `false` trusts no proxy, and anything else is
+ * address-list default above, `false` trusts no proxy, and anything else is
  * a list of subnet names and addresses, each checked by
  * trustProxyEntryRefusal() and then passed to Express, which compiles it. A
  * hop count, 0 included, `true`, or a list entry wide enough to take in public
@@ -191,6 +198,10 @@ try {
   process.exit(1);
 }
 
+// A proxy TRUST_PROXY does not name would otherwise collapse every client
+// behind it into one rate-limit bucket without a word.
+app.use(warnUntrustedForwarders());
+
 // CORS: restrict the API to same-origin requests, plus an explicit allowlist.
 //
 // The request-taking form of cors() is used because deciding this needs the
@@ -225,9 +236,9 @@ app.use('/api', cors((req, cb) => {
   //
   // Deliberately the raw Host header and NOT req.hostname: req.hostname honours
   // X-Forwarded-Host from any peer `trust proxy` believes, which by default is
-  // anything on a private network or the same host, and more if TRUST_PROXY
-  // says so, and any of those can send the header itself. That would turn
-  // this clause into "allow any origin that asks".
+  // every process on this host (Docker presents them all as the gateway), and
+  // more if TRUST_PROXY says so, and any of those can send the header itself.
+  // That would turn this clause into "allow any origin that asks".
   const rawHost = req.headers.host ? hostOf(`http://${req.headers.host}`) : null;
   if (originHost && rawHost && originHost === rawHost) {
     return cb(null, { ...options, origin: true });
