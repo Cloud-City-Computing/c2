@@ -47,7 +47,9 @@ vi.mock('../services/user-channel.js', () => ({ setupUserChannelServer: vi.fn(),
 const heldLock = { held: true, disabled: false, connectionId: 7, release: vi.fn(async () => {}) };
 vi.mock('../services/instance-lock.js', () => ({ acquireInstanceLock: vi.fn(async () => heldLock) }));
 vi.mock('../routes/admin.js', () => ({ default: {}, ensureAdminUser: vi.fn(), bootstrapInstance: vi.fn() }));
-vi.mock('../app.js', () => ({ default: {} }));
+// server.js reads the resolved `trust proxy` from the app for its boot line.
+const appGet = vi.fn(() => undefined);
+vi.mock('../app.js', () => ({ default: { get: appGet } }));
 vi.mock('../services/email.js', () => ({
   verifyEmailConnection: vi.fn(async () => true),
   initMail: vi.fn(async () => ({ enabled: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' })),
@@ -92,6 +94,7 @@ beforeEach(() => {
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   listenMock.mockClear();
+  appGet.mockReset();
   fakeServer.on.mockClear();
   fakeServer.listening = true;
   fakeServer.address.mockReturnValue({ port: 4100 });
@@ -191,6 +194,48 @@ describe('server.js: PORT', () => {
       fakeServer.listening = false;
       listenCallback();
       expect(logSpy.mock.calls.flat().join(' ')).not.toMatch(/running on/);
+    });
+  });
+
+  // The trust boundary fails silently both ways (every client in one bucket,
+  // or a key anyone can choose), and /healthz and /readyz cannot show it, so the boot
+  // says what the process actually trusts and where that came from. After the
+  // bind, like the line above, so it does not scroll past in a crash loop.
+  describe('the trust proxy boot line', () => {
+    const line = () => errorSpy.mock.calls.flat().map(String).find((l) => l.includes('Trusting proxies'));
+
+    it('names the resolved value and marks it the default when TRUST_PROXY is unset or blank', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? contractDefault('TRUST_PROXY') : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: '  ' }, () => {
+        listenCallback();
+        expect(appGet).toHaveBeenCalledWith('trust proxy');
+        expect(line()).toBe(`✔ Trusting proxies (the default): ${contractDefault('TRUST_PROXY')}`);
+      });
+    });
+
+    it('marks a value that came from TRUST_PROXY', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? '10.0.1.0/24' : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: '10.0.1.0/24' }, () => {
+        listenCallback();
+        expect(line()).toBe('✔ Trusting proxies (from TRUST_PROXY): 10.0.1.0/24');
+      });
+    });
+
+    it('says X-Forwarded-For is ignored when TRUST_PROXY is false', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? false : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: 'false' }, () => {
+        listenCallback();
+        expect(line()).toBe('✔ Trusting proxies (from TRUST_PROXY): none, X-Forwarded-For is ignored');
+      });
+    });
+
+    it('is not printed when the bind failed', async () => {
+      appGet.mockImplementation((key) => (key === 'trust proxy' ? contractDefault('TRUST_PROXY') : undefined));
+      await withEnv({ PORT: '4100', TRUST_PROXY: '' }, () => {
+        fakeServer.listening = false;
+        listenCallback();
+        expect(line()).toBeUndefined();
+      });
     });
   });
 

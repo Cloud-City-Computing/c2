@@ -38,6 +38,8 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
    ┌──────────────────────────────────────────────────────┐
    │   Cloud Codex Node container  (docker-compose-prod)  │
    │   · vite-express serves dist/ + Express API          │
+   │   · port published on 127.0.0.1 only (APP_BIND)      │
+   │   · network pinned to 172.29.0.0/16 (gateway .1)     │
    │   · 2 WS servers attached (collab + notifications)   │
    │   · reads .env, exits if admin credentials missing   │
    │   · one process per database (a per-schema lock)     │
@@ -51,7 +53,7 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
    │   MySQL 8 container                                  │
    │   · named volume db_data                             │
    │   · 3306 not published by docker-compose-release.yml │
-   │   · 3306 IS published by docker-compose-prod.yml     │
+   │   · 3306 on 127.0.0.1 in docker-compose-prod.yml     │
    └──────────────────────────────────────────────────────┘
 ```
 
@@ -64,7 +66,7 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
 | `docker-compose.yaml`         | **Dev** — MySQL only, app runs from `npm run dev`  |
 | `docker-compose-release.yml`  | **Prod, published image** — no build toolchain     |
 | `docker-compose-prod.yml`     | **Prod, from source** — builds `./cloudcodex`      |
-| `docker-compose.linux.yml`    | WSL variant (host networking quirks)               |
+| `docker-compose.linux.yml`    | Native-Linux override for the dev file: `:Z` SELinux labels on its bind mounts, merged by `start.sh` on Linux but not WSL; publishes no port |
 
 Running a published release, which is the recommended path unless you are
 deploying modified source:
@@ -75,7 +77,7 @@ docker compose -f docker-compose-release.yml up -d
 ```
 
 This pulls `ghcr.io/cloud-city-computing/cloud-codex`, pinned by
-`CLOUDCODEX_VERSION` (default `0.11.0`), so nothing is compiled locally and the
+`CLOUDCODEX_VERSION` (default `0.12.0`), so nothing is compiled locally and the
 version does not move under you on the next publish. The published image is
 `linux/amd64`; Apple Silicon runs it under Docker Desktop's emulation.
 
@@ -112,7 +114,10 @@ Production-specific notes:
 |----------------------------|----------------------------------------------------------|
 | `APP_URL`                  | **Required in production**: without an `http://` or `https://` URL the server exits at boot, and a `localhost` one boots with a warning. The public address people use, `https://` behind a TLS proxy; invitation, reset and notification links carry it |
 | `CORS_ORIGIN`              | Leave empty. The app's own origin and `APP_URL`'s are always allowed; set it only for a separate front end |
-| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count. Unset is `1`, right for one reverse proxy in front of the app. See [Rate limiters](#rate-limiters) |
+| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count, named by address. Unset is `127.0.0.1/32, ::1/128, 172.29.0.1/32`, right for nginx or Caddy on the same host in front of either compose file; without Docker, set `127.0.0.1/32, ::1/128`. A proxy container, a load balancer, or `docker run` must be listed. A hop count, `true`, or a range past the width thresholds stops the boot. See [Rate limiters](#rate-limiters) |
+| `TRUST_PROXY_ALLOW_HOP_COUNT` | Leave unset. `true` accepts a hop count, `true` or an over-wide range in `TRUST_PROXY` anyway, knowing that any client able to reach the app's port can then choose its own address |
+| `APP_BIND`                 | Compose only, not read by the server: the host address the app port is published on. Unset or blank is `127.0.0.1`. **An IPv4 address only**: `::` or an IPv6 address publishes to IPv6 clients, who arrive as the network's gateway and are trusted. See [TLS and reverse proxy](#tls-and-reverse-proxy) |
+| `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
 | `SMTP_*`                   | Optional. Without them invitations show a copyable link and password reset is unavailable |
 | `ADMIN_*`                  | Hard requirement. **They reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
@@ -162,11 +167,67 @@ credentials it had, and the first-boot seed does not run on that boot.
 ## TLS and reverse proxy
 
 Cloud Codex serves plain HTTP on port 3000 inside its container, or on `PORT`
-if that is set. `docker-compose-prod.yml` publishes `${PORT:-3000}` on both
-sides of the mapping, so setting `PORT` in `.env` moves the host port with it;
-update `APP_URL` to match, and remember the smoke test below uses that port.
-Production should always sit behind a TLS-terminating reverse proxy. Two
-requirements the proxy must satisfy:
+if that is set. Both production compose files publish it as
+`${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`: `PORT` moves the port on
+both sides of the mapping (update `APP_URL` to match, and remember the smoke
+test below uses that port), and **the host side is `127.0.0.1`**, so only this
+machine reaches the app. A browser on the same machine opens
+`http://localhost:3000` as before, and so does a reverse proxy running on the
+host.
+
+**Production belongs behind a TLS-terminating reverse proxy**, not on the app
+port. Docker's published ports are a DNAT rule that sits in front of the host
+firewall, so a port published on every interface is reachable past `ufw deny`
+by anything that can route to the machine, and a client reaching the app
+directly skips TLS altogether.
+
+To expose the port deliberately (a load balancer on another machine that must
+reach it, or an evaluation from another computer on your network), set
+`APP_BIND` in `.env` to `0.0.0.0`, or to one interface's IPv4 address to publish
+on that interface only, and restrict who can reach it at the network edge
+(a cloud security group, not a host firewall rule Docker bypasses). Four
+conditions come with it:
+
+- **With nothing in front of the app, also set `TRUST_PROXY=false`.** An
+  evaluation from another computer reaches the app directly, so there is no
+  proxy to believe, and `false` counts every client by the address that
+  connected. That holds on every Docker runtime, including the ones below that
+  present every client as the gateway, so it is the rule rather than a guess
+  about which runtime you have.
+- **IPv4 only.** `0.0.0.0` publishes on IPv4 alone (measured: an IPv6 client is
+  refused). `APP_BIND=::`, or any IPv6 address, publishes to IPv6 clients, and
+  the pinned network is IPv4-only, so Docker's userland proxy carries each one
+  in from the network's gateway, `172.29.0.1`, which the default trusts:
+  measured, an IPv6 client then named a new address on every attempt and
+  never met a limit. The general rule: **an IPv4-only Docker network presents
+  every IPv6 client of an all-interfaces or IPv6 publish as its gateway.**
+- **A load balancer that reaches a widened bind must be listed in
+  `TRUST_PROXY` itself**: Docker hands the container its real address, which
+  the default does not name, so until you list it every client behind it
+  shares its one rate-limit bucket. See [Rate limiters](#rate-limiters).
+- **Every container on the host can then reach the port, and arrives as the
+  gateway.** A sibling on the compose network going to `172.29.0.1:PORT`, and a
+  container on another Docker network going to the host's own address, are
+  presented as `172.29.0.1`, so each is trusted and can name its own address.
+  On a box that also runs Cloud Command, its containers are such peers. With
+  `APP_BIND` on `127.0.0.1`, no container reaches the port except one sharing
+  the host's network namespace.
+
+Some Docker runtimes carry **all** published traffic through a userland
+proxy, not only IPv6 and loopback: `dockerd` with `"iptables": false`, rootless
+Docker with its default (`builtin`) port driver, and Docker Desktop on macOS,
+Windows and Linux. There every client, local or not, arrives as the gateway.
+Behind a proxy on the host, keep `APP_BIND` on `127.0.0.1`; with it widened
+and nothing in front, `TRUST_PROXY=false` (above) is what keeps each client in
+its own bucket. A widened bind behind a load balancer on such a runtime is not
+safe while anything but the load balancer can reach the port.
+
+A reverse proxy running in **another container** cannot reach the host's
+loopback: join it to this compose project's network, proxy to `app:3000` (or
+`app:$PORT`) instead of widening `APP_BIND`, and list its address, as shown in
+[Rate limiters](#rate-limiters).
+
+Requirements the proxy must satisfy:
 
 1. **WebSocket upgrade passthrough.** Both `/collab/:logId` and
    `/notifications-ws` rely on the HTTP upgrade dance. A proxy that strips
@@ -175,6 +236,35 @@ requirements the proxy must satisfy:
 2. **Same-origin headers.** `services/user-channel.js` enforces an
    `Origin` host check against `Host`. If your proxy rewrites either,
    make sure both end up matching the public hostname.
+3. **A client address the app can believe.** The proxy connects from an
+   address `TRUST_PROXY` names (a proxy on the host does, by default), and it
+   **sets** `X-Forwarded-For`. For nginx as the only proxy, overwrite it with
+   the address nginx saw:
+
+   ```nginx
+   proxy_set_header X-Forwarded-For $remote_addr;
+   ```
+
+   Caddy's `reverse_proxy` already does the equivalent. With a load balancer in
+   front of nginx, append instead, so the client's address the load balancer
+   added survives, and list the load balancer in `TRUST_PROXY`:
+
+   ```nginx
+   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+   ```
+
+   Appending is safe under address trust **as long as the address the proxy
+   appends is the real client's, and `TRUST_PROXY` does not also name it**:
+   the app reads the chain from the right and stops at the first address it
+   does not trust, which is that client's, so whatever the client put on the
+   left is never reached. It stops being safe when the proxy sees a trusted
+   address instead of the client's, which is what happens to a proxy in a
+   container whose published port reaches IPv6 clients over an IPv4-only
+   network: it appends the gateway, the app trusts the gateway, and the walk
+   goes on to the client's own entry. **The fatal configuration is setting
+   nothing**: nginx then passes the client's own header through, the app trusts
+   the proxy that delivered it, and the client names its own address. See
+   [Rate limiters](#rate-limiters).
 
 Both WebSocket servers refuse a cross-origin upgrade themselves: each requires
 an `Origin` whose host equals `Host`. Helmet's CSP (`connect-src 'self' ws: wss:`)
@@ -256,6 +346,41 @@ changes.
                                                  |    installs only       |
                                                  +------------------------+
 ```
+
+### The pinned compose network (upgrading from 0.11.0 or earlier)
+
+Both production compose files pin their default network to `172.29.0.0/16`,
+gateway `172.29.0.1`, because `TRUST_PROXY`'s default names that gateway. An
+install created by an earlier file has its `<project>_default` network (the
+project is the directory name, so `c2_default`) on whatever subnet Docker
+chose. **For this upgrade, take the project down before the migration**, so
+the network is created fresh:
+
+```bash
+docker compose -f docker-compose-release.yml pull app
+docker compose -f docker-compose-release.yml down     # NOT down -v: that deletes db_data and app_public
+docker compose -f docker-compose-release.yml run --rm app npm run migrate
+docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images   # once, from 0.11.0 or earlier
+docker compose -f docker-compose-release.yml up -d
+```
+
+`down` stops and removes both containers and the old network and keeps both
+volumes. The usual order below (stop only the app, then migrate) is **not
+safe here**, measured on a live 0.11.0 install with Compose 5.3.1: `run`
+replaces the changed network, and when the database container's own
+configuration has not changed Compose reconnects it to the new network
+**without its `database` alias**, so the migration fails with
+`getaddrinfo ENOTFOUND database`, and the following `up -d` starts an app that
+cannot reach its database at all (measured before this release's instance lock,
+while the health check still answered 200; with the lock, the app exits at boot
+and restarts in a loop).
+With `down` first, the same install migrated, came back on `172.29.0.0/16` and
+kept both volumes, and so did one whose images changed as well.
+
+`docker network inspect c2_default` should then show `172.29.0.0/16`. If another network on the host already uses that range,
+Compose cannot create this one: change the subnet and gateway in the compose
+file, and put the new gateway's `/32` in `TRUST_PROXY` in place of
+`172.29.0.1/32`. The same applies to `docker-compose-prod.yml`.
 
 **Rule:** `init.sql` and `migrations/*.sql` must stay in sync. Every
 column or table added in a migration also lives in `init.sql` so a fresh
@@ -354,8 +479,8 @@ dependencies, and a reachable MySQL.
 | Deployment | Command | Why |
 |---|---|---|
 | `docker-compose-release.yml` (published image) | `docker compose -f docker-compose-release.yml run --rm app npm run migrate` | 3306 is **not** published to the host, so the runner has to be inside the compose network. `run` builds a one-off container from the **current** compose file and the **new** image, so it has both `scripts/migrate.js` and the `./migrations` mount, and it removes itself afterwards. |
-| `docker-compose-prod.yml` (built from source) | `docker compose -f docker-compose-prod.yml run --rm app npm run migrate` | Same shape, after `docker compose -f docker-compose-prod.yml build app`. 3306 *is* published here, so `cd cloudcodex && npm run migrate` on the host also works if you have run `npm install` there. |
-| `docker-compose.yaml` (dev) | `cd cloudcodex && npm run migrate` | Dev has **no app container**: the writer to stop is `npm run dev` on the host. MySQL publishes 3306 and `node_modules` is installed, so the runner just runs there. |
+| `docker-compose-prod.yml` (built from source) | `docker compose -f docker-compose-prod.yml run --rm app npm run migrate` | Same shape, after `docker compose -f docker-compose-prod.yml build app`. 3306 *is* published here, on 127.0.0.1 unless `DB_BIND` says otherwise, so `cd cloudcodex && npm run migrate` on the host also works if you have run `npm install` there. |
+| `docker-compose.yaml` (dev) | `cd cloudcodex && npm run migrate` | Dev has **no app container**: the writer to stop is `npm run dev` on the host. MySQL publishes 3306 on 127.0.0.1 and `node_modules` is installed, so the runner just runs there. |
 
 **`run --rm`, not `exec`.** This matters most on the one upgrade every existing
 operator performs: the one that installs the runner. `exec` runs inside the
@@ -456,7 +581,10 @@ Nothing is applied there, so the app can stay up for that one. Until it runs,
 `/readyz` answers `503 {"ready":false,"reason":"migrations"}` and Docker
 reports the container `unhealthy`, because a database with no bookkeeping
 cannot be shown to be migrated; the app serves requests either way. Every
-upgrade after that is the four-step order above:
+upgrade after that is the four-step order above (the upgrade from 0.11.0 or
+earlier takes the project `down` once instead of `stop app`, and runs the
+document-images backfill before the start; see
+[The pinned compose network](#the-pinned-compose-network-upgrading-from-0110-or-earlier)):
 
 ```bash
 docker compose -f docker-compose-release.yml pull app       # 1. new image
@@ -609,15 +737,223 @@ this is not a typical concern.
 | User search          | 60 / 15 minutes per IP          |
 | WebSocket messages   | 60 / second per connection      |
 
-The limiters count per client address, which Express takes from
-`X-Forwarded-For` as far as `TRUST_PROXY` allows, so set it to match how
-clients actually reach the app. Unset, it is `1`: Express trusts exactly one
-hop in front of it. With two proxies in front (a load balancer, then nginx)
-set `TRUST_PROXY=2`; to trust only known proxy addresses, give `loopback` or a
-comma list of addresses and CIDRs; with nothing in front, `false`. Never set
-`true`: it believes whatever `X-Forwarded-For` a client sends, so anyone can
-choose their own address and walk around every limit. A value Express cannot
-parse stops the server at boot.
+The limiters count per client address. Express takes it from the connection,
+and from `X-Forwarded-For` only while each hop it walks through, from the
+right, starting with the peer that connected, is a proxy `TRUST_PROXY` names.
+So `TRUST_PROXY` lists the proxies **by address**: never by count, and not by
+range, since a range believes every client inside it too.
+
+- **Unset** (the default) is `127.0.0.1/32, ::1/128, 172.29.0.1/32`: a proxy
+  on this host in front of either production compose file. Directly, it
+  connects from loopback; through the loopback publish, Docker presents it to
+  the container as the pinned network's gateway, `172.29.0.1`. Anyone else is
+  counted by the address that connected, whatever `X-Forwarded-For` it sends: a
+  public client, a machine on the same LAN, VPN or VPC (AWS's default VPC is
+  `172.31.0.0/16`), and a sibling container on the compose network. The
+  default bridge's gateway, `172.17.0.1`, is deliberately not in it; see
+  `docker run` below. **An install run without Docker** (`npm run start` on the
+  host) sets `TRUST_PROXY=127.0.0.1/32, ::1/128`: `172.29.0.1` means nothing
+  there, and on a LAN that uses `172.29.0.0/x` it may be a real router.
+- **A list replaces the default**, so keep the entries you still need and add
+  your proxy. The setups the default does not cover:
+  - *A proxy running as another container on the compose network.* Pin its
+    address and list that `/32` with loopback, and **not** the gateway. Docker
+    hands out addresses from the start of the range, so pick one near the end.
+    In the proxy's own compose file, with this project's network (named after
+    its directory: `c2_default` for a checkout in `c2/`):
+
+    ```yaml
+    services:
+      caddy:
+        image: caddy:2
+        ports:
+          - "0.0.0.0:80:80"
+          - "0.0.0.0:443:443"
+        networks:
+          codex:
+            ipv4_address: 172.29.255.10
+    networks:
+      codex:
+        name: c2_default
+        external: true
+    ```
+
+    ```dotenv
+    TRUST_PROXY=127.0.0.1/32, ::1/128, 172.29.255.10/32
+    ```
+
+    Publish the proxy's ports on explicit IPv4 addresses, as above, or give the
+    pinned network IPv6 (`enable_ipv6: true`, and a ULA subnet such as
+    `fd29::/64` beside the IPv4 one in its `ipam` config). A plain `"443:443"`
+    also publishes on `[::]`, and over an IPv4-only network every IPv6 client
+    reaches the proxy as `172.29.0.1`: all of them then share one bucket, and
+    had the gateway been listed, a proxy that appends would let each choose its
+    own address.
+
+    With IPv6 on the network, pin the proxy's IPv6 address too and list it:
+    `app` then resolves to an AAAA record as well as an A record, and nginx or
+    Caddy sends some requests from the proxy's IPv6 address, which an
+    IPv4-only list does not name. In this project's compose file:
+
+    ```yaml
+    networks:
+      default:
+        enable_ipv6: true
+        ipam:
+          config:
+            - subnet: 172.29.0.0/16
+              gateway: 172.29.0.1
+            - subnet: fd29::/64
+    ```
+
+    and in the proxy's, beside its `ipv4_address`:
+
+    ```yaml
+        networks:
+          codex:
+            ipv4_address: 172.29.255.10
+            ipv6_address: fd29::ff10
+    ```
+
+    ```dotenv
+    TRUST_PROXY=127.0.0.1/32, ::1/128, 172.29.255.10/32, fd29::ff10/128
+    ```
+  - *A load balancer with a private address*, reaching nginx on the host or,
+    with `APP_BIND` widened, the app itself. List the subnets the load balancer
+    runs in, beside the defaults:
+
+    ```dotenv
+    TRUST_PROXY=127.0.0.1/32, ::1/128, 172.29.0.1/32, 10.0.1.0/24, 10.0.2.0/24
+    ```
+
+    Every address in a listed subnet is believed, so give the load balancer
+    **dedicated subnets** that nothing else runs in, and a security group that
+    lets only the load balancer reach the port. With nginx between the load
+    balancer and the app, nginx appends (`$proxy_add_x_forwarded_for`);
+    overwriting would make every client the load balancer. **A layer-4 load
+    balancer that sets no `X-Forwarded-For` (an AWS Network Load Balancer, for
+    one) must not be listed at all**: it passes each client's own header
+    through, so trusting it lets every client choose its address.
+  - *The image run with `docker run` behind a proxy on the host.* Publish on
+    loopback and add the default bridge's gateway:
+
+    ```bash
+    docker run -d -p 127.0.0.1:3000:3000 --env-file .env ghcr.io/cloud-city-computing/cloud-codex:<version>
+    ```
+
+    ```dotenv
+    TRUST_PROXY=127.0.0.1/32, ::1/128, 172.17.0.1/32
+    ```
+
+    Only with that loopback publish. `-p 3000:3000` publishes on `[::]` too,
+    the default bridge is IPv4-only, and every IPv6 client then arrives as
+    `172.17.0.1`: with it listed, each one chooses its own address with no
+    proxy involved. **An IPv4-only Docker network presents every IPv6 client of
+    an all-interfaces or IPv6 publish as its gateway.** Without the entry, a
+    bare `docker run` behind a proxy on the host puts every client in one
+    bucket, and the warning below names `172.17.0.1`.
+  - Subnet names (`loopback`, `linklocal`, `uniquelocal`) are still accepted,
+    but each believes every client in its range, which is the gap the default
+    closed: behind a proxy that appends, a client in a trusted range names its
+    own address with the left entry.
+- **`false`** believes no proxy; every request is counted by the address that
+  connected. Right with nothing in front of the app.
+- **A hop count (`1`, `2`, ...) or `true` stops the server at boot.** Either
+  believes the `X-Forwarded-For` of whoever connects, so any client that can
+  reach the app's port directly sends a new address with every request and
+  gets a fresh bucket each time: unlimited password and two-factor guessing
+  (GHSA-9fmx-frrf-xxmq). If the port truly is reachable only through the proxy
+  and its address cannot be known, `TRUST_PROXY_ALLOW_HOP_COUNT=true` accepts a
+  hop count anyway, and with it that risk.
+- **A range past the width thresholds stops the server at boot too**, naming
+  the entry: wider than an IPv4 /8 (`0.0.0.0/1,128.0.0.0/1` is every
+  address), wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or
+  holding more than an IPv4 /8 of the IPv4-mapped block `::ffff:0:0/96` (all of
+  it is every IPv4 client, which Express matches in that form). Those are the
+  thresholds, not "anything public": a public /8, or an IPv6 /16 to /31, is
+  accepted and believes everyone in it, so list only what your proxy uses.
+  `TRUST_PROXY_ALLOW_HOP_COUNT=true` accepts an over-wide range, with the same
+  risk as a hop count.
+- **Every entry is a subnet name or an address in standard notation**, with an
+  optional prefix length or IPv4 netmask, or the server stops at boot even
+  with the opt-in. Express's parser accepts more, and reads it in ways nobody
+  expects: `0/1` is half of IPv4, and `010.0.0.0/8` is octal, `8.0.0.0/8`,
+  which is public space.
+
+**One limit the default cannot remove.** Every process on the host that
+reaches the published port, and every container sharing the host's network
+namespace, arrives as the gateway, so it is trusted and can name its own
+address. With `APP_BIND` widened, so does every container on the host (see
+"TLS and reverse proxy"), and on a runtime that carries all published traffic
+through the userland proxy, so does every client, which is why a widened bind
+with nothing in front sets `TRUST_PROXY=false`. The loopback bind decides who
+can reach the port, not whether they are believed once they do.
+
+**A proxy the list leaves out is logged, not silent.** When a peer
+`TRUST_PROXY` does not name sends `X-Forwarded-For`, the server logs one line,
+once per address (an IPv6 peer once per /64) and for at most 32 of them per
+process:
+
+```
+⚠ <address> sent X-Forwarded-For, but TRUST_PROXY does not name <address> as a proxy, ...
+```
+
+If that address is your proxy, every client behind it is sharing one bucket:
+add it. If it is a client talking to the app directly, the header was ignored,
+as it should be.
+
+A value Express cannot parse stops the server at boot too.
+
+**If you run behind a proxy, check after upgrading** that the app keys each
+client on the client's own address. First, the line the server prints once it
+is listening, which says what it trusts and whether that is the default:
+
+```bash
+docker compose -f docker-compose-release.yml logs app | grep 'Trusting proxies'
+# ✔ Trusting proxies (the default): 127.0.0.1/32, ::1/128, 172.29.0.1/32
+```
+
+`(from TRUST_PROXY)` means your value was used. Make sure the list names the
+address your proxy connects from.
+
+Second, **from a machine outside**, through the proxy's public address, send
+two failed sign-ins that each claim a different address, and compare how many
+attempts the app says are left:
+
+```bash
+for claimed in 203.0.113.98 203.0.113.99; do
+  curl -s -o /dev/null -D - -H "X-Forwarded-For: $claimed" -H 'Content-Type: application/json' \
+    -d '{"username":"nobody","password":"x"}' https://codex.example.com/api/login \
+    | grep -i '^ratelimit-remaining'
+done
+```
+
+- **One lower the second time** (say 19, then 18): both requests shared a
+  bucket, so the claimed addresses were ignored. Go on to the third check.
+- **The same number twice**: each claimed address got its own bucket, so any
+  client can pick its key. The proxy passes the client's header through
+  (it sets none), or it appends and the address it appends is one
+  `TRUST_PROXY` trusts (an IPv6 client reaching a proxy container as the
+  gateway, above). Fix that first.
+
+Third, sign in through the proxy in a browser and read the address the app
+recorded for that session:
+
+```bash
+docker compose -f docker-compose-release.yml exec database \
+  sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e \
+  "SELECT ip_address, last_active_at FROM sessions ORDER BY last_active_at DESC LIMIT 3"'
+```
+
+- **Your own address**: right.
+- **The proxy's address**: the proxy is not trusted, so every user shares its
+  one bucket of 20 sign-in attempts per 15 minutes. List it in `TRUST_PROXY`
+  (the warning above names it too).
+- **The Docker network's gateway** (`::ffff:172.29.0.1`): a proxy on the host
+  is trusted but hands on no client address, so every user shares the
+  gateway's bucket. If the second check passed, the proxy clears the header
+  without setting it; if it failed, the proxy sets none and your browser simply
+  sent none, which is the fatal case above.
 
 ---
 
