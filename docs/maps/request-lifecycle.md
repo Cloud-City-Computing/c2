@@ -15,7 +15,7 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 
 | Step | Location | Behaviour |
 |---|---|---|
-| Load `.env` | `mysql_connect.js:17` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. |
+| Load `.env` | `mysql_connect.js:17` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. `services/email.js` loads the same file again. Both pass `quiet: true`: the image has no `.env`, and dotenv 17 otherwise logs `injecting env (0)` with an advert for each call on every boot. |
 | Pool size gate | `mysql_connect.js:29-48`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
 | DB pool | `mysql_connect.js:50-65` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. A blank `DB_HOST` or `DB_NAME` behaves as unset (`localhost`, `c2`), as in `scripts/migrate.js`. Host, user, password and schema are one `connectionOptions` object, which `openConnection()` reuses for the instance lock's own connection. |
 | DB credential gate | `mysql_connect.js:67-71` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |

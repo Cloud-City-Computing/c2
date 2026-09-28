@@ -174,6 +174,11 @@ backfill; see Migration below.
   but the markup was not valid SVG. A test now fails on any XML namespace
   outside a short list of W3C ones, and on any URL whose host ends in a product
   word (workspace, squad, archive, log).
+- **The container's log no longer opens with dotenv's banner.**
+  `mysql_connect.js` and `services/email.js` each call `dotenv.config()`, and
+  dotenv 17 printed `injecting env (0) from ../.env` and an advert for each
+  call on every boot, because the image has no `.env`. Both calls are quiet
+  now and still read the same file.
 
 ### Security
 

@@ -14,7 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 
 // Explicit timeouts. initMail() runs before the port opens, so nodemailer's
 // defaults (2 minutes to connect, 30 seconds for the greeting, 10 minutes on
