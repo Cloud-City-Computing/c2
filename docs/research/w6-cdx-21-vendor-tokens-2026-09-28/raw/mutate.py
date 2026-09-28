@@ -23,6 +23,8 @@ muts=[
  ('import order swapped','src/main.jsx', lambda s: s.replace("import './codex.css'\nimport './index.css'","import './index.css'\nimport './codex.css'",1), "import './index.css'\nimport './codex.css'"),
  ('a fixed dangling reference reverted','src/index.css', lambda s: s.replace("background: var(--color-danger);\n  color: #fff;","background: var(--red);\n  color: #fff;",1), "var(--red)"),
  ('an unrecorded fix (one literal removed)','src/util.jsx', lambda s: re.sub(r"#[0-9a-fA-F]{6}\b", "inherit", s, count=1), None),
+ ('a literal on a plain property in codex.css','src/codex.css', lambda s: s.replace("  --cx-surface-0: oklch(0.26 0.014 240);","  --cx-surface-0: oklch(0.26 0.014 240);\n  color: #ff0000; background: rgb(255 0 0);",1), "color: #ff0000; background: rgb(255 0 0);"),
+ ('NODE_OPTIONS kept for the package suites','tests/design/vendored.test.js', lambda s: s.replace("  delete childEnv.NODE_OPTIONS;\n","",1), None),
 ]
 assert clean()
 for name,f,fn,marker in muts:

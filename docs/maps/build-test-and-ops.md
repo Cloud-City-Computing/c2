@@ -233,9 +233,9 @@ fourth, `integration`, is opt-in because it needs a MySQL server:
 | `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **97 files, 2253 tests, all passing**
+Current state: the default run is **97 files, 2256 tests, all passing**
 (measured 2026-09-28 on the W6-CDX-21 branch with the 0.12.0 release merged in;
-5 files and 77 tests of it are `design`); the integration project is **12 files,
+5 files and 80 tests of it are `design`); the integration project is **12 files,
 92 tests** (measured 2026-09-28 on the same tree, against MySQL 8.4.11 at the
 server's default isolation and at
 `READ-COMMITTED`).
@@ -285,11 +285,11 @@ manifest lists.
 
 | File | Gate |
 |---|---|
-| `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy |
+| `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy (run with the TAP reporter named and `NODE_OPTIONS` dropped, so the summary parses on Node 24, whose default reporter is spec) |
 | `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
 | `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
 | `contrast.test.js` | every pair in `pairs.json` clears its minimum in the dark theme, and every colour binding in `src/codex.css` is in a pair or named decorative |
-| `codex-css.test.js` | `codex.css` declares only `--cx-` names under `[data-theme='dark']`, never a core name; `index.html` sets the attribute; `src/main.jsx` imports core, fonts, codex, index in that order; no font under `public/`; Vite keeps legal comments |
+| `codex-css.test.js` | `codex.css` declares only `--cx-` custom properties, nothing else, under `[data-theme='dark']`, never a core name; `index.html` sets the attribute; `src/main.jsx` imports core, fonts, codex, index in that order; no font under `public/`; Vite keeps legal comments |
 
 **The ledger is exact, not a ceiling.** `ledger.json` holds a count per file,
 and per section banner inside `index.css` (`tests/design/buckets.js`,
@@ -298,15 +298,20 @@ above its number fails as a regression and one below it fails as an unrecorded
 fix, so a burndown PR lowers the ledger by exactly what it burned, in the same
 PR. It started at 745 (646 literal colours, 77 accent positions, 22 outline
 suppressions); `node tests/design/report.mjs [file]` prints the live buckets.
-`src/codex.css` is the one file the literal rule skips (`TOKEN_DEFINITIONS`),
-because its literals are the definitions the contrast gate measures.
+In `src/codex.css` (`TOKEN_DEFINITIONS`) the literal rule skips the
+custom-property declarations (`maskCustomProperties` blanks them first),
+because those literals are the definitions the contrast gate measures; a
+literal on any other property there still counts, and `codex-css.test.js`
+pins that the file declares custom properties and nothing else.
 
 Mutation-checked when it landed: a hex in `Toast.jsx`, an `outline: none` or a
 `color: var(--cx-accent-fill)` in `index.css`, a `var(--nope)`, one byte of the
 vendored `core.css`, `--cx-text-faint` below 4.5:1, an unpaired colour binding,
 a non-`--cx-` name, `data-theme` dropped, legal comments stripped, the import
 order swapped, a fixed dangling reference restored, and one literal removed
-without lowering the ledger each turned the named test red. A first seed of the
+without lowering the ledger each turned the named test red, as did two added
+after review: a literal on a plain property in `codex.css`, and `NODE_OPTIONS`
+passed through to the package suites. A first seed of the
 hex landed inside `Toast.jsx`'s doc comment and reddened nothing, correctly: the
 scanner masks comments.
 

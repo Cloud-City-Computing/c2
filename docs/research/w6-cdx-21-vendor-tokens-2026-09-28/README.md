@@ -81,13 +81,20 @@ the strongest hover at 4.70:1 and the accent there at 4.97:1. Faint is
   largest, about 2 KB).
 - **`core.css` names `--font-mono`, which `index.css` already read with a fallback** in two
   GitHub-page rules. They now get the package's stack. On this Linux box both stacks resolve
-  to the same face (checked by rendering both); where Consolas is installed (Windows), the new
-  stack names it before the generic fallback.
+  to the same face (checked by rendering both). macOS and Windows were not checked: there the
+  new stack may pick Menlo or Consolas where the old one fell to the browser's generic
+  monospace face.
 
 ## Mutations
 
 `raw/mutate.py` seeds each, checks it landed, runs the `design` project, restores it with
-`git checkout`, and checks the tree is clean; `raw/mutations.txt` is its output. All thirteen
-turned the named test red. The first attempt at the `.jsx` hex put it inside `Toast.jsx`'s doc
+`git checkout`, and checks the tree is clean; `raw/mutations.txt` is its output. All fifteen
+turned the named test red. The last two were added after review: a literal colour on a plain
+property inside `codex.css`'s dark block (the literal rule had skipped the whole file; it now
+skips only custom-property declarations, and `codex-css.test.js` pins that the file declares
+nothing else), and `NODE_OPTIONS` passed through to the package suites (their summary is read
+as TAP, which is Node 20 and 22's default when piped but not Node 24's; the run now names the
+TAP reporter and drops `NODE_OPTIONS`, and the design project passes under `node:24-slim`,
+v24.21.0, where the earlier version failed with `NaN`). The first attempt at the `.jsx` hex put it inside `Toast.jsx`'s doc
 comment (the first occurrence of "import" in the file is in its usage note), where the
 scanner correctly ignores it and nothing went red; the seed was moved into code.
