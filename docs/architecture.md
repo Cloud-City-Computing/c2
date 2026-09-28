@@ -215,7 +215,7 @@ auth + access-control machinery.
 cloudcodex/                  — Application root
 ├── app.js                   — Express app setup (middleware, route mounting)
 ├── server.js                — Entry point: starts HTTP + 2 WS servers,
-│                              verifies SMTP, bootstraps admin, schedules
+│                              checks SMTP if set, bootstraps admin, schedules
 │                              the daily activity_log prune
 ├── mysql_connect.js         — DB pool, session management, c2_query()
 ├── middleware/
@@ -333,8 +333,10 @@ cloudcodex/                  — Application root
 ## Environment Configuration
 
 Copy `.env.example` to `.env`. See [getting-started.md](./getting-started.md)
-for the full annotated walkthrough. Required at minimum: DB credentials,
-SMTP credentials, admin super-user. Optional: Google + GitHub OAuth.
+for the full annotated walkthrough. Required at minimum: DB credentials and
+the admin super-user, plus `APP_URL` in production. Optional: SMTP (without it
+invitations show a link to copy, and password reset, email two-factor codes and
+notification emails are off), Google and GitHub OAuth.
 
 ---
 

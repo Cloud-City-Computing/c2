@@ -181,9 +181,13 @@ hot reload.
 ```bash
 git clone <repository-url>
 cd c2
-cp .env.example .env   # fill in DB, SMTP, and admin credentials
+cp .env.example .env   # fill in DB and admin credentials; SMTP is optional
 ./start.sh             # installs deps, starts MySQL, launches dev server
 ```
+
+Without SMTP the server still starts. Invitations then show a link to copy
+instead of being emailed, and password reset, email two-factor codes and
+notification emails are unavailable until you configure it.
 
 The application will be available at **http://localhost:3000**. If something
 else already owns that port, set `PORT` in `.env` and update `APP_URL` to

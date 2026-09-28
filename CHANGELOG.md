@@ -188,6 +188,20 @@ backfill; see Migration below.
   server refuses both exactly as before. The standalone editor route
   (`/editor/:id`) now renders inside the layout the way the archive view's
   embedded editor already did, so it also waits for the sign-in check.
+- **The self-hosting documentation matches the code.** `docs/deployment.md`,
+  `README.md` and `docs/architecture.md` now all say SMTP is optional and what
+  running without it turns off (emailed invitations, which become a link to
+  copy, password reset, email two-factor codes and notification emails).
+  `docker-compose.linux.yml` is described as what it is, the dev file's `:Z`
+  SELinux override that `start.sh` merges on native Linux, not a WSL variant.
+  Both first-install snippets in `docs/deployment.md` now include the one-time
+  `npm run migrate -- --adopt-fresh-install`. Its "Stop every writer first"
+  section appeared twice and is now one. The environment table in
+  `docs/getting-started.md` lists every variable in `env-contract.js` it
+  lacked (`PORT`, `C2_INSTANCE_LOCK`, `DOC_IMAGES_PUBLIC`, `SERVICE_TOKEN`,
+  `SERVICE_TOKEN_USER`), marks `ADMIN_USERNAME` required, and describes
+  `NODE_ENV`'s effect on CORS as `app.js` implements it, and a test now fails
+  when the table misses an entry or contradicts its kind.
 
 ### Security
 

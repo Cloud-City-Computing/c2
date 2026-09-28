@@ -63,7 +63,9 @@ per instance and is still `false`).
 (outside `tests/`, `vendor/`, `node_modules/`, `dist/` and `coverage/`) with
 ESLint's parser and collects each `process.env.NAME` and
 `process.env['NAME']`. The set read must equal the set declared, every name
-must appear in `.env.example`, and each entry's fields must be well formed. A
+must appear in `.env.example` and have a row in `docs/getting-started.md`'s
+Environment Variables table whose Default column agrees with its kind, and each
+entry's fields must be well formed. A
 read by a computed key fails, and so does a bare `process.env` (passed whole,
 destructured, or `env` imported from `node:process`) outside its allowlist,
 whose one entry is `scripts/migrate.js` handing `process.env` to
