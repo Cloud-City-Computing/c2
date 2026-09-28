@@ -139,6 +139,15 @@ describe('/api/admin/webhooks', () => {
       expect(c2_query).not.toHaveBeenCalled();
     });
 
+    it('answers 400, not a failed insert, for a URL that grows past 2048 characters when normalised', async () => {
+      mockAuthenticated(ADMIN_USER);
+      const url = `https://93.184.215.14/${'é'.repeat(1000)}`;
+      const res = await request(app).post('/api/admin/webhooks').set('Authorization', 'Bearer t').send({ url });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ success: false, message: expect.stringMatching(/2048/) });
+      expect(c2_query).not.toHaveBeenCalled();
+    });
+
     it('allows a private target when the instance opts in', async () => {
       mockAuthenticated(ADMIN_USER);
       process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS = '1';

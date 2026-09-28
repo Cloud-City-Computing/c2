@@ -50,6 +50,14 @@ describe('checkWebhookTarget', () => {
     ['IPv4-mapped public', 'https://receiver.example/hook', [`::ffff:${PUBLIC}`], {}, true],
     ['NAT64 of a private address', 'https://receiver.example/hook', ['64:ff9b::a00:5'], {}, false],
     ['IPv4-compatible loopback', 'https://receiver.example/hook', ['::127.0.0.1'], {}, false],
+    // IPv6 transition forms that reach an IPv4 host through a relay or a
+    // local translator: 6to4 (here the metadata address), Teredo, and the
+    // local-use NAT64 prefix. None is a real receiver, so all are refused.
+    ['6to4 of the metadata address, even with private allowed', 'https://receiver.example/hook', ['2002:a9fe:a9fe::1'], { allowPrivate: true }, false],
+    ['6to4 of a public address', 'https://receiver.example/hook', ['2002:5db8:d70e::1'], {}, false],
+    ['Teredo, even with private allowed', 'https://receiver.example/hook', ['2001:0:4136:e378:8000:63bf:3fff:fdd2'], { allowPrivate: true }, false],
+    ['local-use NAT64, even with private allowed', 'https://receiver.example/hook', ['64:ff9b:1::a9fe:a9fe'], { allowPrivate: true }, false],
+    ['just outside Teredo', 'https://receiver.example/hook', ['2001:1::1'], {}, true],
     ['one public and one private address', 'https://receiver.example/hook', [PUBLIC, '10.0.0.5'], {}, false],
     ['one private and one public address', 'https://receiver.example/hook', ['10.0.0.5', PUBLIC], {}, false],
     ['a public and a metadata address, private allowed', 'https://receiver.example/hook', [PUBLIC, '169.254.169.254'], { allowPrivate: true }, false],
@@ -111,6 +119,16 @@ describe('checkWebhookTarget', () => {
 
   it('refuses a URL longer than 2048 characters', async () => {
     const result = await checkWebhookTarget(`https://receiver.example/${'a'.repeat(2048)}`, { resolve: resolver(PUBLIC) });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/2048/);
+  });
+
+  it('refuses a URL whose normalised form is longer than 2048 characters, before anything stores it', async () => {
+    // 1,020 characters as typed, but each é becomes six (%C3%A9) in the href
+    // the subscription stores, which would not fit the column.
+    const raw = `https://receiver.example/${'\u00e9'.repeat(1000)}`;
+    expect(raw.length).toBeLessThanOrEqual(2048);
+    const result = await checkWebhookTarget(raw, { resolve: resolver(PUBLIC) });
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/2048/);
   });

@@ -56,6 +56,13 @@ function queueEmitWrites(eventId = 1042) {
 /** The SQL and params of every c2_query call, in order. */
 const calls = () => c2_query.mock.calls.map(([sql, params]) => ({ sql, params }));
 
+/** The subscription ids the deliveries insert asked the database to re-check. */
+function deliveryCandidates() {
+  const deliveries = calls().find((c) => /INSERT INTO webhook_deliveries/.test(c.sql));
+  // params: the event id, then the candidate ids, then workspace and type.
+  return deliveries.params.slice(1, -2);
+}
+
 /** The stored body of the one emitted event, parsed. */
 function emittedEnvelope() {
   const update = calls().find((c) => /UPDATE webhook_events SET body/.test(c.sql));
@@ -163,6 +170,44 @@ describe('services/webhooks', () => {
       expect(await emitEvent(ctx(), { workspaceId: 3, squadId: null })).toMatchObject({ eventId: 1042 });
     });
 
+    it('never lets an older read overwrite a newer one that finished first', async () => {
+      // A periodic refresh reads the table, an admin write lands, and the
+      // admin's own reload finishes before the refresh does. The refresh's
+      // stale rows must not replace the reload's.
+      let finishStale;
+      c2_query
+        .mockImplementationOnce(() => new Promise((resolve) => { finishStale = resolve; }))
+        .mockResolvedValueOnce([sub(5)]);
+      const stale = loadSubscriptions();
+      expect(await loadSubscriptions()).toBe(true);
+      finishStale([]);
+      expect(await stale).toBe(false);
+      c2_query.mockClear();
+
+      c2_query.mockResolvedValueOnce([{ archive_id: 29, title: 'T', parent_id: null }]);
+      queueEmitWrites();
+      expect(await emitEvent(ctx(), { workspaceId: 3 })).toMatchObject({ eventId: 1042 });
+      expect(deliveryCandidates()).toEqual([5]);
+    });
+
+    it('still applies an older read that finishes before a newer one', async () => {
+      let finishNewer;
+      c2_query
+        .mockResolvedValueOnce([sub(1)])
+        .mockImplementationOnce(() => new Promise((resolve) => { finishNewer = resolve; }));
+      const older = loadSubscriptions();
+      const newer = loadSubscriptions();
+      expect(await older).toBe(true);
+      finishNewer([sub(2)]);
+      expect(await newer).toBe(true);
+      c2_query.mockClear();
+
+      c2_query.mockResolvedValueOnce([{ archive_id: 29, title: 'T', parent_id: null }]);
+      queueEmitWrites();
+      await emitEvent(ctx(), { workspaceId: 3 });
+      expect(deliveryCandidates()).toEqual([2]);
+    });
+
     it('accepts event_types as MySQL returns JSON, parsed or as text', async () => {
       await cache([
         sub(1, { event_types: ['log.delete'] }),
@@ -170,8 +215,8 @@ describe('services/webhooks', () => {
       ]);
       c2_query.mockResolvedValueOnce([{ archive_id: 29, title: 'T', parent_id: null }]);
       queueEmitWrites();
-      const result = await emitEvent(ctx(), { workspaceId: 3, squadId: null });
-      expect(result.subscriptionIds).toEqual([2]);
+      await emitEvent(ctx(), { workspaceId: 3, squadId: null });
+      expect(deliveryCandidates()).toEqual([2]);
     });
   });
 
@@ -196,7 +241,9 @@ describe('services/webhooks', () => {
       c2_query.mockResolvedValueOnce([{ archive_id: 29, title: 'T', parent_id: null }]);
       queueEmitWrites();
       const result = await emitEvent(ctx(), { workspaceId: 3, squadId: 8 });
-      expect(result.subscriptionIds).toEqual([1, 2]);
+      expect(deliveryCandidates()).toEqual([1, 2]);
+      // What the database inserted, not what the cache matched.
+      expect(result).toEqual({ eventId: 1042, deliveries: 1 });
 
       const deliveries = calls().find((c) => /INSERT INTO webhook_deliveries/.test(c.sql));
       // The database re-checks what the cache matched: the subscription is
@@ -218,7 +265,8 @@ describe('services/webhooks', () => {
       await cache([sub(1, { event_types: ['log.delete'] }), sub(2, { event_types: ['log.rename', 'log.move'] })]);
       c2_query.mockResolvedValueOnce([{ archive_id: 29, title: 'T', parent_id: null }]);
       queueEmitWrites();
-      expect((await emitEvent(ctx(), { workspaceId: 3 })).subscriptionIds).toEqual([2]);
+      await emitEvent(ctx(), { workspaceId: 3 });
+      expect(deliveryCandidates()).toEqual([2]);
     });
 
     it('writes the envelope with every spec field and nothing else, in one transaction', async () => {
@@ -322,6 +370,27 @@ describe('services/webhooks', () => {
         { workspaceId: 3 }
       );
       expect(emittedEnvelope().data.version).toBeNull();
+    });
+
+    it('rolls the event back when the database re-check leaves no subscription', async () => {
+      // Cached as enabled, but disabled or deleted since the last load.
+      await cache([sub(1)]);
+      c2_query.mockResolvedValueOnce([{ archive_id: 29, title: 'T', parent_id: null }]);
+      c2_query
+        .mockResolvedValueOnce({ insertId: 1042 })
+        .mockResolvedValueOnce({ affectedRows: 1 })
+        .mockResolvedValueOnce({ affectedRows: 0 });
+      let transaction;
+      withTransaction.mockImplementationOnce((fn) => {
+        transaction = fn(c2_query);
+        return transaction;
+      });
+      expect(await emitEvent(ctx(), { workspaceId: 3 })).toBeNull();
+      // The transaction's work threw, so withTransaction rolls the event row
+      // back rather than committing an event no delivery points at.
+      await expect(transaction).rejects.toThrow();
+      // A subscription changing under the cache is expected, not a failure.
+      expect(errorSpy).not.toHaveBeenCalled();
     });
 
     it('writes nothing when the document is already gone', async () => {
