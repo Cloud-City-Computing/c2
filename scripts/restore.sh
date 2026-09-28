@@ -14,7 +14,9 @@
 #   - the uploads hold only regular files and directories, with no absolute
 #     path and no `..`;
 #   - the dump has no statement that switches, creates or drops a database and
-#     no mysql client command (`\!`, `system`, `source`, `connect`, ...);
+#     no mysql client command (`\!`, `system`, `source`, `connect`, ...) at
+#     the start of a line (the client runs with --binary-mode, so one anywhere
+#     else on a line never runs: the client refuses it and the load stops);
 #   - the target is this instance's own database, never a system schema, and
 #     the archive's database has the same name, unless --into names the target
 #     (moving a backup to a differently named database is deliberate);
@@ -27,8 +29,9 @@
 #
 # The load runs as the instance's own MySQL user, which the database service
 # grants everything on its own schema and nothing else, so a statement that
-# names another schema fails on the grant. It runs with the instance lock
-# held, so an app that starts meanwhile refuses. Then the uploads are
+# names another schema fails on the grant. It takes the instance lock first,
+# or stops there if a server took it since the check, and holds it throughout,
+# so an app that starts meanwhile refuses. Then the uploads are
 # unpacked, and (Compose, unless --no-start) pending migrations run and the
 # stack starts.
 
@@ -195,14 +198,21 @@ if [[ -n "$clear_tables" ]]; then
 fi
 
 say "Loading database.sql into $target ..."
-# One session: it takes the instance lock, drops what --replace drops, then
-# loads, so no app can start on a half-loaded database. --one-database skips
-# anything that would run with another database current.
-if ! {
-  printf 'DO GET_LOCK(%s, 0);\n' "$INSTANCE_LOCK_NAME_SQL"
+# One session: it takes the instance lock (TAKE_LOCK_SQL fails, and the
+# client stops, if a server took it since the check above), drops what
+# --replace drops, then loads, so no app can start on a half-loaded database.
+# --one-database skips anything that would run with another database current.
+load_ok=yes
+{
+  printf '%s;\n' "$TAKE_LOCK_SQL"
   printf 'SET FOREIGN_KEY_CHECKS = 0;\n%s\nSET FOREIGN_KEY_CHECKS = 1;\n' "$drops"
   cat "$work/database.sql"
-} | db_mysql --one-database; then
+} | db_mysql --one-database 2>"$work/load.err" || load_ok=no
+cat "$work/load.err" >&2
+if [[ "$load_ok" == no ]]; then
+  if grep -q 'at line 1: .*another process holds the instance lock' "$work/load.err"; then
+    die "a Cloud Codex process took the instance lock for '$target' as the load began; nothing was written. Stop it, then restore"
+  fi
   die "the load into '$target' failed part way, so it holds part of the backup. Fix the cause and run the restore again with --replace"
 fi
 

@@ -49,6 +49,12 @@ manifest.json'
 # while anything holds it, and holds it itself while it loads.
 readonly INSTANCE_LOCK_NAME_SQL="IF(CHAR_LENGTH(DATABASE()) <= 44, CONCAT('cloudcodex-instance:', DATABASE()), CONCAT('cloudcodex-instance#', LEFT(SHA2(DATABASE(), 256), 40)))"
 
+# The load's first statement: take that lock, or fail. A plain DO GET_LOCK
+# carries on when a server took the lock after the IS_FREE_LOCK check; this
+# errors instead (UUID_TO_BIN refuses the sentence, naming it), so the client
+# stops before the drops. A NULL from GET_LOCK fails the same way.
+readonly TAKE_LOCK_SQL="DO UUID_TO_BIN(IF(GET_LOCK($INSTANCE_LOCK_NAME_SQL, 0) = 1, '00000000-0000-0000-0000-000000000000', 'another process holds the instance lock'))"
+
 # --single-transaction: one consistent snapshot, for InnoDB tables (every
 # table init.sql creates). --hex-blob: ydoc_state and every other binary
 # column byte for byte. --no-tablespaces: needs no PROCESS privilege.
@@ -147,14 +153,19 @@ detect_client_guard() {
 # database is the positional argument, never -D: both MySQL's and MariaDB's
 # clients apply --one-database only to a database named that way, and with -D
 # they skip every statement and exit 0 (measured on 8.4.11 and 10.11).
+#
+# --binary-mode turns off every client command in piped input except
+# `delimiter` (which a dump with triggers needs) and `charset`, wherever it
+# sits on a line. restore.sh's scan sees only a command at the start of one;
+# without this, `SELECT 1; \T <file>` wrote <file> as whoever ran the client.
 db_mysql() {
   if [[ "$MODE" == compose ]]; then
     # shellcheck disable=SC2016  # expanded by the container's shell, not this one
     compose exec -T database sh -c \
-      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --default-character-set=utf8mb4 "$@" --protocol=TCP -h 127.0.0.1 -u "$MYSQL_USER" "$MYSQL_DATABASE"' \
+      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --binary-mode --default-character-set=utf8mb4 "$@" --protocol=TCP -h 127.0.0.1 -u "$MYSQL_USER" "$MYSQL_DATABASE"' \
       mysql ${CLIENT_GUARD[@]+"${CLIENT_GUARD[@]}"} "$@"
   else
-    MYSQL_PWD="$DB_PASS" mysql --default-character-set=utf8mb4 ${CLIENT_GUARD[@]+"${CLIENT_GUARD[@]}"} "$@" \
+    MYSQL_PWD="$DB_PASS" mysql --binary-mode --default-character-set=utf8mb4 ${CLIENT_GUARD[@]+"${CLIENT_GUARD[@]}"} "$@" \
       --protocol=TCP -h "$DB_HOST" -u "$DB_USER" "$DB_NAME"
   fi
 }
