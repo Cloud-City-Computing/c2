@@ -48,7 +48,10 @@ message check matters: GitHub also returns 403 for rate limits and missing
 scopes, and flipping the status on those would produce spurious "re-link your
 account" prompts. The frontend reads this through
 `GET /api/github/status` (`oauth.js:605`) and the `useGitHubStatus` hook, which
-is what hides GitHub UI affordances for unlinked users.
+is what hides GitHub UI affordances for unlinked users. The client asks that
+route only for a signed-in user, and asks the gated routes (the editor's
+`GET /api/github/link/:logId`) only once it reads `connected`; see
+`frontend-architecture.md` section 3.
 
 ### This router does NOT use the shared error handler
 

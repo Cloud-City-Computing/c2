@@ -55,6 +55,8 @@ Compose, Node and npm, brings up MySQL, installs dependencies, and starts the
 dev server. On native Linux (not WSL: it checks `/proc/version`) it merges
 `docker-compose.linux.yml`, which re-declares the bind mounts with the `:Z`
 SELinux label (`docker-compose.linux.yml:6-8`) and publishes no port.
+It waits for MySQL with a TCP `mysqladmin ping` inside the container, for up to
+180 s, for the same reason as the production healthcheck in section 4.
 
 Manual equivalent:
 
@@ -96,7 +98,18 @@ without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
 so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
-  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:25-29`).
+  `mysqladmin ping` healthcheck **over TCP to `127.0.0.1`**, with a 300 s
+  `start_period` (`docker-compose-prod.yml:25-39`, and the same block in
+  `docker-compose-release.yml`). Not the socket: on an empty volume the image
+  applies `init.sql` on a temporary server with networking off, which a socket
+  ping answers, so the database read healthy while nothing listened on 3306 and
+  the app exited on the instance lock's `ECONNREFUSED` until the restart policy
+  recovered it (4 restarts per first boot of the prod file, measured
+  2026-09-28; 0 with the TCP ping). The start period exists because the TCP
+  ping now fails through the whole initialisation, and without it a slow disk
+  would spend the retries and Compose would never start the app.
+  `tests/compose-healthcheck.test.js` pins both files and `start.sh`'s wait
+  loop, which pings the same way.
 - The app builds from `cloudcodex/Dockerfile`, waits on
   `condition: service_healthy`, publishes
   `${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`, and takes
@@ -266,6 +279,17 @@ than `integration` is missing from `test`, `test:watch` or `test:coverage`, or i
 `test:integration` runs anything but `integration`. A fourth project added to
 `vitest.config.js` without joining those scripts turns it red instead of
 silently never running.
+
+**`tests/namespace-urls.test.js` reads every text file in the repository**
+(source, tests, docs, SQL, compose files and workflows; not `node_modules/`,
+`dist/`, `coverage/` or `public/`). Every `xmlns` value must be on its short
+allowlist of W3C namespaces, and no `http(s)` URL's host may end in a product
+word (`workspace`, `squad`, `archive`, `log` and their plurals), since no real
+top-level domain is one. It exists because the organizations-to-workspaces
+rename was a text substitution that reached inside URLs: ten inline SVG icons
+declared `www.w3.workspace` as their namespace until 2026-09-28, and React
+rendered them regardless, so no page looked wrong. The file leaves itself out,
+because its fixtures are the broken spellings.
 
 ### The live-MySQL project (`tests/setup.integration.js`)
 

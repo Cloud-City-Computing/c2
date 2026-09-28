@@ -28,7 +28,7 @@ import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
 function AccountIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
@@ -38,7 +38,7 @@ function AccountIcon() {
 
 function HomeIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <polyline points="9 22 9 12 15 12 15 22" />
@@ -48,7 +48,7 @@ function HomeIcon() {
 
 function WorkspaceIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
@@ -58,7 +58,7 @@ function WorkspaceIcon() {
 
 function ArchiveIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
     </svg>
@@ -76,7 +76,7 @@ function ActivityIcon() {
 
 function SettingsIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -86,7 +86,7 @@ function SettingsIcon() {
 
 function AdminIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
@@ -104,7 +104,7 @@ function GitHubNavIcon() {
 
 function CollapseIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <polyline points="15 18 9 12 15 6" />
     </svg>
@@ -113,7 +113,7 @@ function CollapseIcon() {
 
 function ExpandIcon() {
   return (
-    <svg xmlns="http://www.w3.workspace/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <polyline points="9 18 15 12 9 6" />
     </svg>
@@ -133,8 +133,9 @@ const NAV_ITEMS = [
 
 const ADMIN_NAV_ITEM = { to: '/admin', label: 'Admin', Icon: AdminIcon };
 
-function Sidebar({ collapsed, onToggle, isAdmin, githubConnected }) {
+function Sidebar({ collapsed, onToggle, isAdmin }) {
   const location = useLocation();
+  const { connected: githubConnected } = useGitHubStatus();
   const base = githubConnected === false ? NAV_ITEMS.filter(i => i.to !== '/github') : NAV_ITEMS;
   const items = isAdmin ? [...base, ADMIN_NAV_ITEM] : base;
 
@@ -202,8 +203,9 @@ function TopBar({ user }) {
 
 // --- Mobile Bottom Navigation ---
 
-function MobileNav({ isAdmin, githubConnected }) {
+function MobileNav({ isAdmin }) {
   const location = useLocation();
+  const { connected: githubConnected } = useGitHubStatus();
   const base = githubConnected === false ? NAV_ITEMS.filter(i => i.to !== '/github') : NAV_ITEMS;
   const items = isAdmin ? [...base, ADMIN_NAV_ITEM] : base;
 
@@ -247,7 +249,6 @@ function StdLayout({ children }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const { connected: githubConnected } = useGitHubStatus();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('c2-user-prefs'));
@@ -340,32 +341,29 @@ function StdLayout({ children }) {
     }, 100);
   }, [authChecked]);
 
+  // GitHub status is asked only once the auth check has found a user: the
+  // route is behind requireAuth, so asking for anyone else is a 401.
   return (
-    <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
-      <TopBar user={user} />
-      {user && (
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(c => !c)}
-          isAdmin={isAdmin}
-          githubConnected={githubConnected}
-        />
-      )}
-      <main className="main-content">
-        {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage />)}
-      </main>
-      {user && <MobileNav isAdmin={isAdmin} githubConnected={githubConnected} />}
-      <footer className="log-footer">
-        <p>&copy; {new Date().getFullYear()} <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
-      </footer>
-    </div>
-  );
-}
-
-export default function StdLayoutWrapper(props) {
-  return (
-    <GitHubStatusProvider enabled={true}>
-      <StdLayout {...props} />
+    <GitHubStatusProvider enabled={Boolean(user)}>
+      <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
+        <TopBar user={user} />
+        {user && (
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed(c => !c)}
+            isAdmin={isAdmin}
+          />
+        )}
+        <main className="main-content">
+          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage />)}
+        </main>
+        {user && <MobileNav isAdmin={isAdmin} />}
+        <footer className="log-footer">
+          <p>&copy; {new Date().getFullYear()} <a href="https://cloudcitycomputing.com/" target="_blank" rel="noopener noreferrer">Cloud City Computing, LLC</a>. All rights reserved.</p>
+        </footer>
+      </div>
     </GitHubStatusProvider>
   );
 }
+
+export default StdLayout;

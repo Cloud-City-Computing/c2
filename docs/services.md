@@ -318,10 +318,14 @@ Whether mail is usable is decided once, at boot, not per-send:
   traffic while the answer is undecided. Configured and unconfigured both
   resolve (never rejects);
   configured also live-verifies the connection. Returns
-  `{enabled, reason}` and never exits the process. `server.js` logs the
-  result: `✔ SMTP connection verified` when enabled, or
-  `✖ Email disabled: <reason>. Invites will show copyable links; password
-  reset is unavailable.` on stderr when not.
+  `{enabled, configured, reason}` and never exits the process. `server.js`
+  logs the result: `✔ SMTP connection verified` when enabled; when SMTP is
+  left unset (`configured: false`, a supported way to run), the report line
+  `✔ Email off (SMTP_HOST, SMTP_USER or SMTP_PASS not set): invitations show a
+  copyable link; password reset, email two-factor codes and notification
+  emails are unavailable.`; and when SMTP is set but does not verify,
+  `✖ Email disabled: SMTP connection failed. Invites will show copyable links;
+  password reset is unavailable.` All three go to stderr except the first.
 - **`isMailEnabled()`** — the cached result of the last `initMail()` call;
   what `sendEmail()` and the routes below check. Nothing re-runs
   `initMail()`, so fixing SMTP config or reviving a dead host needs a

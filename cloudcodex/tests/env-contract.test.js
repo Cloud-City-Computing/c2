@@ -157,6 +157,49 @@ function contractProblems(contract) {
   return problems;
 }
 
+/**
+ * The rows of the Environment Variables table in docs/getting-started.md, as
+ * name -> { description, value } for every row whose first cell is one
+ * backticked name.
+ */
+function envTableRows(markdown) {
+  const section = markdown.split(/^## /m).find((s) => s.startsWith('Environment Variables'));
+  const rows = new Map();
+  if (!section) return rows;
+  for (const line of section.split('\n')) {
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    const name = cells[0]?.match(/^`([A-Z][A-Z0-9_]*)`$/);
+    if (name && cells.length === 3) rows.set(name[1], { description: cells[1], value: cells[2] });
+  }
+  return rows;
+}
+
+/**
+ * Every way the table disagrees with a contract, as sentences: an entry with
+ * no row, and a row whose Default column contradicts the entry's kind.
+ */
+function envTableProblems(contract, markdown) {
+  const rows = envTableRows(markdown);
+  const problems = [];
+  for (const e of contract) {
+    const row = rows.get(e.name);
+    if (!row) { problems.push(`${e.name} has no row`); continue; }
+    if (e.kind === 'required' && !/required/i.test(row.value)) {
+      problems.push(`${e.name} is required but its row says ${row.value}`);
+    }
+    if (e.kind === 'required-in-production' && !/required in production/i.test(`${row.description} ${row.value}`)) {
+      problems.push(`${e.name} is required in production but its row does not say so`);
+    }
+    if (e.kind === 'default' && !row.value.includes(`\`${e.default}\``)) {
+      problems.push(`${e.name} defaults to ${e.default} but its row says ${row.value}`);
+    }
+    if (e.kind === 'optional' && /\brequired\b/i.test(row.value)) {
+      problems.push(`${e.name} is optional but its row says ${row.value}`);
+    }
+  }
+  return problems;
+}
+
 describe('the scanner (non-vacuity)', () => {
   it('sees dotted, bracketed and template reads, and flags computed and bare uses', () => {
     const found = scanSource([
@@ -181,6 +224,36 @@ describe('the scanner (non-vacuity)', () => {
   it('reports a file it cannot parse, or cannot match, instead of skipping it', () => {
     expect(scanSource('const = ;', 'broken.js').fatal).toHaveLength(1);
     expect(scanSource('const a = process.env.A;', 'unmatched.ts').fatal).toHaveLength(1);
+  });
+
+  it('the getting-started table check catches each defect it claims to', () => {
+    const contract = [
+      { name: 'A_REQ', kind: 'required', perInstance: false, why: 'x' },
+      { name: 'B_PROD', kind: 'required-in-production', perInstance: false, why: 'x' },
+      { name: 'C_DEF', kind: 'default', default: '10', perInstance: false, why: 'x' },
+      { name: 'D_OPT', kind: 'optional', perInstance: false, why: 'x' },
+      { name: 'E_MISSING', kind: 'optional', perInstance: false, why: 'x' },
+    ];
+    const table = [
+      '## Environment Variables',
+      '',
+      '| Variable | Description | Default |',
+      '| --- | --- | --- |',
+      '| `A_REQ` | a | `admin` |',
+      '| `B_PROD` | b | `http://localhost:3000` in development |',
+      '| `C_DEF` | c | `100` |',
+      '| `D_OPT` | d | (required) |',
+      '',
+      '## Next',
+      '| `E_MISSING` | outside the section | unset |',
+    ].join('\n');
+    expect(envTableProblems(contract, table)).toEqual([
+      'A_REQ is required but its row says `admin`',
+      'B_PROD is required in production but its row does not say so',
+      'C_DEF defaults to 10 but its row says `100`',
+      'D_OPT is optional but its row says (required)',
+      'E_MISSING has no row',
+    ]);
   });
 
   it('the contract checks catch each defect they claim to', () => {
@@ -270,6 +343,15 @@ describe('env-contract.js', () => {
       .map((e) => e.name)
       .filter((name) => !new RegExp(`^#?\\s*${name}=`, 'm').test(example));
     expect(undocumented).toEqual([]);
+  });
+
+  // The table is where an operator reads what to set, so an entry the table
+  // lacks, or a row that says the opposite of the entry, misleads a first
+  // install as surely as a missing .env.example line.
+  it('has a row in docs/getting-started.md for every variable, agreeing with its kind', () => {
+    const markdown = readFileSync(path.join(REPO, 'docs', 'getting-started.md'), 'utf8');
+    expect(envTableRows(markdown).get('DB_USER')).toBeDefined();
+    expect(envTableProblems(ENV_CONTRACT, markdown)).toEqual([]);
   });
 
   it('is data only: no import, no export but ENV_CONTRACT, no require', () => {
