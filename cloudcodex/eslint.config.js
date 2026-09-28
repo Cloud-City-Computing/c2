@@ -13,7 +13,10 @@ import react from 'eslint-plugin-react'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // vendor/ is a byte copy of an upstream package, pinned by checksum; its
+  // gates/fixtures/ are scanner input and fx-component.jsx is invalid JSX on
+  // purpose. It is linted upstream, never here.
+  globalIgnores(['dist', 'vendor']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

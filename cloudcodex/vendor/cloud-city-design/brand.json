@@ -1,0 +1,43 @@
+{
+  "license": "Apache-2.0",
+  "copyright": "Copyright 2026 Cloud City Computing, LLC",
+  "source": {
+    "file": "core.css",
+    "sha256": "a26acd4cd3f542677fac4d8b47a74faac14f9e97cac583bd1d93ca5588e41c07"
+  },
+  "conversion": "OKLCH to sRGB, each channel clamped to 0..1, rounded to 8 bits",
+  "tolerance": {
+    "inGamut": 0.002,
+    "clamped": 0.02,
+    "unit": "deltaE OK"
+  },
+  "colors": {
+    "brand-blue": "#2ca7db",
+    "accent-100": "#dbf3ff",
+    "accent-200": "#b0e0f8",
+    "accent-300": "#6ec3eb",
+    "accent-400": "#1ca6d9",
+    "accent-500": "#0085bc",
+    "accent-600": "#00679d",
+    "accent-700": "#004f7b",
+    "success-deep": "#25984d",
+    "success-bright": "#36a558",
+    "success-pale": "#61cb7c",
+    "warning-deep": "#b37900",
+    "warning-bright": "#d49824",
+    "warning-pale": "#e8ab3e",
+    "danger-deep": "#c92f33",
+    "danger-bright": "#e54c4a",
+    "danger-pale": "#fda19a",
+    "violet-deep": "#8f68cb",
+    "violet-bright": "#956ed2",
+    "violet-pale": "#c6a9fc"
+  },
+  "clamped": [
+    "accent-100",
+    "accent-500",
+    "accent-600",
+    "accent-700",
+    "warning-deep"
+  ]
+}
