@@ -53,7 +53,8 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     │   ├── comments.js, search.js, favorites.js, admin.js,
     │   ├── oauth.js, github.js, avatars.js, doc-images.js, upload.js,
     │   ├── notifications.js, activity.js, watches.js
-    ├── middleware/              ← auth.js (requireAuth, requireAdmin), permissions.js
+    ├── middleware/              ← auth.js (requireAuth, requireAdmin), permissions.js,
+    │                              forwarded-for.js (the untrusted-proxy warning)
     ├── services/                ← collab.js (Yjs WS), user-channel.js (inbox WS),
     │                              notifications.js, email.js, email-templates.js
     ├── src/                     ← React frontend
@@ -444,11 +445,13 @@ New files match this pattern. Update the year only if the file is genuinely new.
 - **Bcrypt rounds = 12.** Don't lower for speed.
 - **Rate limiters are deliberate.** `authLimiter` (20/15min) on auth routes,
   `searchLimiter` (60/15min) on user search. New auth-adjacent routes get one.
-  They key on `req.ip`, so `trust proxy` is part of them: it defaults to
-  `loopback, linklocal, uniquelocal`, and a hop count, `true` or a
-  public-sized range is refused at boot (GHSA-9fmx-frrf-xxmq). Do not relax
-  either, and keep every port the production compose files publish on
-  loopback by default (`APP_BIND`, `DB_BIND`; `tests/compose-ports.test.js`).
+  They key on `req.ip`, so `trust proxy` is part of them: it names the
+  proxies by address (loopback and two Docker gateways, one of them the
+  network the production compose files pin to 172.29.0.0/16), never a range,
+  and a hop count, `true` or a public-sized range is refused at boot
+  (GHSA-9fmx-frrf-xxmq). Do not relax either, do not unpin the network, and
+  keep every published port on loopback by default (`APP_BIND`, `DB_BIND`;
+  `tests/compose-ports.test.js`).
 
 ### Testing
 

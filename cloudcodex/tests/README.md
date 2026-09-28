@@ -226,7 +226,7 @@ depends on MySQL itself.
 `DB_PORT`). A scratch container is simplest:
 
 ```bash
-docker run -d --rm --name c2-it-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=<pw> mysql:8.4.11
+docker run -d --rm --name c2-it-mysql -p 127.0.0.1:3306:3306 -e MYSQL_ROOT_PASSWORD=<pw> mysql:8.4.11
 IT_DB_ROOT_PASSWORD=<pw> npm run test:integration
 docker stop c2-it-mysql
 ```

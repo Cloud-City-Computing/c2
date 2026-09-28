@@ -20,14 +20,24 @@ itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
 is older pulls it and upgrades its data directory in place on first start, so
 back the database up first. No migration.
 
-**Upgrading: the app port is published on `127.0.0.1`, and `X-Forwarded-For`
-is believed only from a proxy on loopback or a private network.** An install
+**Upgrading, BREAKING: the app port is published on `127.0.0.1`, and
+`X-Forwarded-For` is believed only from a proxy named by address.** An install
 reached directly on port 3000 from another machine stops answering there: put
 it behind a TLS-terminating proxy, or set `APP_BIND=0.0.0.0` in `.env` to
 expose it on purpose. `docker-compose-prod.yml` publishes MySQL on `127.0.0.1`
 too, so a database client on another machine needs `DB_BIND` or an SSH tunnel.
-Behind a proxy, check that a real client's address still reaches the app
-(Security, below).
+`TRUST_PROXY` now defaults to `127.0.0.1/32, ::1/128, 172.17.0.1/32,
+172.29.0.1/32`, which covers nginx or Caddy on the same host and nothing else:
+**a proxy running as another container, or a load balancer, is no longer
+believed until you list its address** (worked values in "Rate limiters",
+`docs/deployment.md`); until then every client behind it shares one
+rate-limit bucket, and the server logs a warning naming it. For a single
+nginx, set `proxy_set_header X-Forwarded-For $remote_addr;`. The production
+compose files now pin their network to `172.29.0.0/16`: on the next
+`docker compose up -d`, Compose 5.3.1 replaces an existing install's network
+and recreates both containers, keeping the volumes; if yours refuses, run
+`docker compose -f <file> down` (never `down -v`) and then `up -d` (see
+"Upgrades", `docs/deployment.md`).
 
 ### Added
 
@@ -40,10 +50,10 @@ Behind a proxy, check that a real client's address still reaches the app
   every stated default is checked against what the code does when the
   variable is unset or blank.
 - `TRUST_PROXY`, Express's `trust proxy` setting, which decides the address the
-  rate limiters count: a list of subnet names (`loopback`, `linklocal`,
-  `uniquelocal`), addresses and CIDRs, or `false`. Unset is the trusted-subnet
-  default described under Security, and a value Express cannot parse stops the
-  boot with a sentence naming the variable.
+  rate limiters count: a list of addresses and CIDRs (subnet names such as
+  `loopback` are accepted too), or `false`. Unset is the address list
+  described under Security, and a value Express cannot parse stops the boot
+  with a sentence naming the variable.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
 
@@ -78,41 +88,62 @@ Behind a proxy, check that a real client's address still reaches the app
   development file, `docker-compose.yaml`, does the same for its MySQL, which
   runs with a development password: the dev server, `make` and a `mysql`
   client on the same machine reach it as before, and nothing else on the
-  network does. A test pins every mapping in all three files, fails on any
-  default beyond loopback, and checks that `docker-compose.linux.yml`
-  publishes nothing.
+  network does. A test reads every compose file at the root with a YAML
+  parser, pins every mapping, fails on any default beyond loopback in either
+  port syntax, and checks that `docker-compose.linux.yml` publishes nothing,
+  however it is spelled.
+- **Both production compose files pin their default network** to
+  `172.29.0.0/16`, gateway `172.29.0.1` (Cloud Command uses `172.28.0.0/16`),
+  so the address a proxy on the host arrives from is one `TRUST_PROXY`'s
+  default can name. An existing install's network is replaced on the next
+  `up -d`, as the upgrade note above describes.
 
 ### Security
 
-- **The rate limiters can no longer be walked around by sending
-  `X-Forwarded-For` straight to the app port (GHSA-9fmx-frrf-xxmq).** Express's
-  `trust proxy` was `1`, so every limiter keyed on the rightmost
-  `X-Forwarded-For` entry of any request that carried one, and both production
-  compose files published the app port on every interface, where Docker's DNAT
-  rule sits in front of the host firewall. Anyone who could reach port 3000
-  directly could send a new address with each request and get a fresh bucket
-  every time: unlimited password and two-factor guessing past the sign-in
-  limit of 20 per 15 minutes, and unlimited user search. `trust proxy` now
-  defaults to `loopback, linklocal, uniquelocal`: `X-Forwarded-For` is believed
-  only when the peer that connected is on loopback or a private range, and any
-  other client is counted by its own address. The address recorded against
-  each session came from the same header and is fixed the same way.
-  `TRUST_PROXY` takes a list of addresses, subnets and those names, or
-  `false`; a hop count, `true`, or a range wide enough to take in public
-  addresses (wider than an IPv4 /8 or an IPv6 /16, or the IPv4-mapped
-  `::ffff:0:0/96`, which is every IPv4 client) stops the boot with a sentence
-  saying why, unless `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that
-  any client able to reach the port can choose its own address. An entry not
-  written in standard notation always stops it, since Express reads
-  `010.0.0.0/8` as octal, public `8.0.0.0/8`. The app port is also published
-  on `127.0.0.1` now (Changed, above), and the prod file's MySQL port is no
-  longer published on every interface. **If you run behind a proxy,
-  check two things:** that the proxy connects to the app from an address in a
-  trusted range or listed in `TRUST_PROXY` (nginx or Caddy on the same host
-  does, over the Docker bridge; a proxy on a public address must be listed),
-  and that the proxy sets `X-Forwarded-For` itself. Otherwise every user shares
-  the proxy's one bucket. "Rate limiters" in `docs/deployment.md` shows how to
-  read the address the app recorded for your own sign-in.
+- **The rate limiters can no longer be walked around by choosing your own
+  address (GHSA-9fmx-frrf-xxmq).** Express's `trust proxy` was `1`, so every
+  limiter keyed on the rightmost `X-Forwarded-For` entry of any request that
+  carried one, and both production compose files published the app port on
+  every interface, where Docker's DNAT rule sits in front of the host
+  firewall. Anyone who could reach port 3000 directly could send a new address
+  with each request and get a fresh bucket every time: unlimited password and
+  two-factor guessing past the sign-in limit of 20 per 15 minutes, and
+  unlimited user search. The address recorded against each session came from
+  the same header. Now:
+  - `trust proxy` defaults to `127.0.0.1/32, ::1/128, 172.17.0.1/32,
+    172.29.0.1/32`: loopback, the default Docker bridge's gateway, and the
+    gateway of the network the production compose files now pin, which is
+    where Docker presents a proxy on the host. Every other peer is counted by
+    its own address, whatever `X-Forwarded-For` it sends: a public client, a
+    machine on the same LAN, VPN or VPC, and a sibling container. A range is
+    not trusted by default, because a client inside a trusted range, behind a
+    proxy that appends the header, could name its own address with the left
+    entry.
+  - `TRUST_PROXY` takes a list of addresses and CIDRs, subnet names, or
+    `false`. A hop count, `true`, or a range wide enough to take in public
+    addresses (wider than an IPv4 /8 or an IPv6 /16, or the IPv4-mapped
+    `::ffff:0:0/96`, which is every IPv4 client) stops the boot with a sentence
+    saying why, unless `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that
+    any client able to reach the port can choose its own address. An entry not
+    written in standard notation always stops it, since Express reads
+    `010.0.0.0/8` as octal, public `8.0.0.0/8`.
+  - A peer `TRUST_PROXY` does not name that sends `X-Forwarded-For` is logged,
+    once per address and for at most 32 addresses, so a proxy left out of the
+    list shows up in the log instead of silently putting every client in one
+    bucket.
+  - The app port is published on `127.0.0.1` (Changed, above), and the prod
+    file's MySQL port is no longer published on every interface.
+
+  **If you run behind a proxy, check two things:** that `TRUST_PROXY` names the
+  address it connects from (nginx or Caddy on the same host needs nothing; a
+  proxy container or a load balancer must be listed), and that the proxy
+  **sets** `X-Forwarded-For` (for nginx alone, `$remote_addr`; appending is
+  also safe, and is what nginx behind a load balancer should do). A proxy that
+  sets nothing lets each client choose its own address. Every process on the
+  host that reaches the published port arrives as the gateway and is trusted
+  too; the loopback bind is what keeps that to this machine. "Rate limiters"
+  in `docs/deployment.md` shows how to read the address the app recorded for
+  your own sign-in.
 - **In production the security headers cover the whole app, not only `/api`.**
   The single-page app's HTML, its built assets and the `/avatars` and
   `/doc-images` files now carry the Content-Security-Policy, including

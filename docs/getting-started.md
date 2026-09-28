@@ -180,7 +180,7 @@ All seed accounts use the password **`password`**.
 | `DB_POOL_SIZE` | MySQL connections the app keeps open, 1 to 100; anything else stops the boot | `10` |
 | `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
 | `APP_URL` | Base URL used to build invitation/reset links, in emails and in the admin UI's copyable link. **Required in production**: the server will not start without an `http(s)` URL | `http://localhost:3000` in development |
-| `TRUST_PROXY` | Which proxies Express believes about the client address (subnet names such as `loopback` or `uniquelocal`, an address or CIDR list in standard notation, or `false`); the rate limiters count by that address. A hop count, `true`, or a range wide enough to take in public addresses stops the boot | `loopback, linklocal, uniquelocal` (a proxy on this host or a private network) |
+| `TRUST_PROXY` | Which proxies Express believes about the client address, named by address (an address or CIDR list in standard notation, subnet names such as `loopback`, or `false`); the rate limiters count by that address. A hop count, `true`, or a range wide enough to take in public addresses stops the boot | `127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32` (a proxy on this host) |
 | `TRUST_PROXY_ALLOW_HOP_COUNT` | `true` accepts a hop count, `true` or a public-sized range in `TRUST_PROXY` anyway, letting any client that can reach the port choose its own address | unset (off) |
 | `APP_BIND` | Docker Compose only: the host address the app port is published on. Set `0.0.0.0` only to reach the app from other machines on purpose | `127.0.0.1` |
 | `DB_BIND` | `docker-compose.yaml` (dev) and `docker-compose-prod.yml`: the host address MySQL's 3306 is published on | `127.0.0.1` |

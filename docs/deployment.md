@@ -39,6 +39,7 @@ For things that go wrong, see [troubleshooting.md](./troubleshooting.md).
    │   Cloud Codex Node container  (docker-compose-prod)  │
    │   · vite-express serves dist/ + Express API          │
    │   · port published on 127.0.0.1 only (APP_BIND)      │
+   │   · network pinned to 172.29.0.0/16 (gateway .1)     │
    │   · 2 WS servers attached (collab + notifications)   │
    │   · reads .env, exits if admin credentials missing   │
    │   · SMTP is optional; mail degrades if unconfigured  │
@@ -112,7 +113,7 @@ Production-specific notes:
 |----------------------------|----------------------------------------------------------|
 | `APP_URL`                  | **Required in production**: without an `http://` or `https://` URL the server exits at boot, and a `localhost` one boots with a warning. The public address people use, `https://` behind a TLS proxy; invitation, reset and notification links carry it |
 | `CORS_ORIGIN`              | Leave empty. The app's own origin and `APP_URL`'s are always allowed; set it only for a separate front end |
-| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count. Unset believes a proxy connecting from loopback or a private range, right for nginx or Caddy on the same host and for a load balancer with a private address. A hop count or `true` stops the boot. See [Rate limiters](#rate-limiters) |
+| `TRUST_PROXY`              | Which proxies to believe about the client address, which is what the rate limiters count, named by address. Unset is `127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32`, right for nginx or Caddy on the same host. A proxy container or a load balancer must be added. A hop count, `true` or a public-sized range stops the boot. See [Rate limiters](#rate-limiters) |
 | `TRUST_PROXY_ALLOW_HOP_COUNT` | Leave unset. `true` accepts a hop count or `true` in `TRUST_PROXY` anyway, knowing that any client able to reach the app's port can then choose its own address |
 | `APP_BIND`                 | Compose only, not read by the server: the host address the app port is published on. Unset or blank is `127.0.0.1`. See [TLS and reverse proxy](#tls-and-reverse-proxy) |
 | `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
@@ -183,10 +184,14 @@ To expose the port deliberately (a load balancer on another machine that must
 reach it, or an evaluation from another computer on your network), set
 `APP_BIND` in `.env` to `0.0.0.0`, or to one interface's address to publish on
 that interface only, and restrict who can reach it at the network edge
-(a cloud security group, not a host firewall rule Docker bypasses). A reverse
-proxy running in **another container** cannot reach the host's loopback: join it
-to this compose project's network and proxy to `app:3000` (or `app:$PORT`)
-instead of widening `APP_BIND`.
+(a cloud security group, not a host firewall rule Docker bypasses). **A load
+balancer that reaches a widened bind must be listed in `TRUST_PROXY` itself**:
+Docker hands the container its real address, which the default does not name,
+so until you list it every client behind it shares its one rate-limit bucket.
+See [Rate limiters](#rate-limiters). A reverse proxy running in **another
+container** cannot reach the host's loopback: join it to this compose project's
+network, proxy to `app:3000` (or `app:$PORT`) instead of widening `APP_BIND`,
+and list its address, as shown there.
 
 Requirements the proxy must satisfy:
 
@@ -197,14 +202,29 @@ Requirements the proxy must satisfy:
 2. **Same-origin headers.** `services/user-channel.js` enforces an
    `Origin` host check against `Host`. If your proxy rewrites either,
    make sure both end up matching the public hostname.
-3. **A client address the app can believe.** The proxy sets
-   `X-Forwarded-For` (nginx: `proxy_set_header X-Forwarded-For
-   $proxy_add_x_forwarded_for;`; Caddy does it by default), and it connects to
-   the app from an address `TRUST_PROXY` trusts. Unset, that is loopback or a
-   private range, which covers a proxy on the host (it arrives over the Docker
-   bridge, as the network's gateway address) and a load balancer with a private
-   address. A proxy connecting from a public address must be listed in
-   `TRUST_PROXY`. See [Rate limiters](#rate-limiters).
+3. **A client address the app can believe.** The proxy connects from an
+   address `TRUST_PROXY` names (a proxy on the host does, by default), and it
+   **sets** `X-Forwarded-For`. For nginx as the only proxy, overwrite it with
+   the address nginx saw:
+
+   ```nginx
+   proxy_set_header X-Forwarded-For $remote_addr;
+   ```
+
+   Caddy's `reverse_proxy` already does the equivalent. With a load balancer in
+   front of nginx, append instead, so the client's address the load balancer
+   added survives, and list the load balancer in `TRUST_PROXY`:
+
+   ```nginx
+   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+   ```
+
+   Appending is safe under address trust: the app reads the chain from the
+   right and stops at the first address it does not trust, which is the real
+   client's, so whatever a client put on the left is never reached. **The
+   fatal configuration is setting nothing**: nginx then passes the client's own
+   header through, the app trusts the proxy that delivered it, and the client
+   names its own address. See [Rate limiters](#rate-limiters).
 
 Both WebSocket servers refuse a cross-origin upgrade themselves: each requires
 an `Origin` whose host equals `Host`. Helmet's CSP (`connect-src 'self' ws: wss:`)
@@ -286,6 +306,30 @@ changes.
                                                  |    installs only       |
                                                  +------------------------+
 ```
+
+### The pinned compose network (upgrading from 0.11.0 or earlier)
+
+Both production compose files pin their default network to `172.29.0.0/16`,
+gateway `172.29.0.1`, because `TRUST_PROXY`'s default names that gateway. An
+install created by an earlier file has its `<project>_default` network (the
+project is the directory name, so `c2_default`) on whatever subnet Docker
+chose. Measured on a live 0.11.0 install with Compose 5.3.1: step 4's
+`docker compose -f docker-compose-release.yml up -d` finds the network's
+configuration changed, stops both containers, replaces the network with the
+pinned one and starts them again, with `db_data` and `app_public` kept. If your
+Compose refuses instead, saying the network needs to be recreated, stop and
+remove the project, which keeps the volumes, then start it:
+
+```bash
+docker compose -f docker-compose-release.yml down     # NOT down -v: that deletes db_data and app_public
+docker compose -f docker-compose-release.yml up -d
+```
+
+Either way, `docker network inspect c2_default` should then show
+`172.29.0.0/16`. If another network on the host already uses that range,
+Compose cannot create this one: change the subnet and gateway in the compose
+file, and put the new gateway's `/32` in `TRUST_PROXY` in place of
+`172.29.0.1/32`. The same applies to `docker-compose-prod.yml`.
 
 **Rule:** `init.sql` and `migrations/*.sql` must stay in sync. Every
 column or table added in a migration also lives in `init.sql` so a fresh
@@ -604,23 +648,60 @@ this is not a typical concern.
 | WebSocket messages   | 60 / second per connection      |
 
 The limiters count per client address. Express takes it from the connection,
-and from `X-Forwarded-For` only while each hop it walks through, starting with
-the peer that connected, is a proxy `TRUST_PROXY` trusts. So `TRUST_PROXY`
-names the proxies, by address, never by count.
+and from `X-Forwarded-For` only while each hop it walks through, from the
+right, starting with the peer that connected, is a proxy `TRUST_PROXY` names.
+So `TRUST_PROXY` lists the proxies **by address**: never by count, and not by
+range, since a range believes every client inside it too.
 
-- **Unset** (the default) is `loopback, linklocal, uniquelocal`: a peer on
-  loopback, a link-local address, or a private range (`10.0.0.0/8`,
-  `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) is believed. That is nginx or
-  Caddy on the same host, which reaches the container over the Docker bridge
-  from the network's gateway address, a cloud load balancer with a private
-  address, and a chain of them. A client connecting from any other address is
-  counted by that address, whatever `X-Forwarded-For` it sends.
-- **A list** of those names, addresses and CIDRs believes exactly those. Use it
-  when the proxy connects from a public address, from an address outside those
-  ranges (a Tailscale `100.64.0.0/10` address, for one), or when other machines
-  on the same private network can reach the app port and you want only the
-  proxy believed: for example `TRUST_PROXY=10.0.1.25` or
-  `TRUST_PROXY=loopback,172.16.0.0/12`.
+- **Unset** (the default) is `127.0.0.1/32, ::1/128, 172.17.0.1/32,
+  172.29.0.1/32`: a proxy on this host, however it reaches the app. Directly,
+  it connects from loopback. Through a published port, Docker presents it to
+  the container as the network's gateway: `172.29.0.1` for both production
+  compose files, which pin their network to `172.29.0.0/16` for exactly this
+  reason, and `172.17.0.1` for the image run with `docker run -p`. Anyone else
+  is counted by the address that connected, whatever `X-Forwarded-For` it
+  sends: a public client, a machine on the same LAN, VPN or VPC (AWS's default
+  VPC is `172.31.0.0/16`), and a sibling container on the compose network.
+- **A list replaces the default**, so keep the entries you still need and add
+  your proxy. The two setups a proxy on the host does not cover:
+  - *A proxy running as another container on the compose network.* Pin its
+    address and list that `/32`. Docker hands out addresses from the start of
+    the range, so pick one near the end. In the proxy's own compose file, with
+    this project's network (named after its directory: `c2_default` for a
+    checkout in `c2/`):
+
+    ```yaml
+    services:
+      caddy:
+        image: caddy:2
+        networks:
+          codex:
+            ipv4_address: 172.29.255.10
+    networks:
+      codex:
+        name: c2_default
+        external: true
+    ```
+
+    ```dotenv
+    TRUST_PROXY=127.0.0.1/32, ::1/128, 172.29.0.1/32, 172.29.255.10/32
+    ```
+
+  - *A load balancer with a private address*, reaching nginx on the host or,
+    with `APP_BIND` widened, the app itself. List the subnets the load balancer
+    runs in (its own, not the whole VPC), beside the defaults:
+
+    ```dotenv
+    TRUST_PROXY=127.0.0.1/32, ::1/128, 172.17.0.1/32, 172.29.0.1/32, 10.0.1.0/24, 10.0.2.0/24
+    ```
+
+    With nginx between the load balancer and the app, nginx appends
+    (`$proxy_add_x_forwarded_for`); overwriting would make every client the
+    load balancer.
+  - Subnet names (`loopback`, `linklocal`, `uniquelocal`) are still accepted,
+    but each believes every client in its range, which is the gap the default
+    closed: behind a proxy that appends, a client in a trusted range names its
+    own address with the left entry.
 - **`false`** believes no proxy; every request is counted by the address that
   connected. Right with nothing in front of the app.
 - **A hop count (`1`, `2`, ...) or `true` stops the server at boot.** Either
@@ -643,6 +724,23 @@ names the proxies, by address, never by count.
   expects: `0/1` is half of IPv4, and `010.0.0.0/8` is octal, `8.0.0.0/8`,
   which is public space.
 
+**One limit the default cannot remove.** Every process on the host that
+reaches the published port arrives as the gateway, so it is trusted and can
+name its own address. The loopback bind decides who can reach the port, not
+whether they are believed once they do.
+
+**A proxy the list leaves out is logged, not silent.** When a peer
+`TRUST_PROXY` does not name sends `X-Forwarded-For`, the server logs, once per
+address and for at most 32 addresses per process:
+
+```
+⚠ <address> sent X-Forwarded-For, but TRUST_PROXY does not name <address> as a proxy, ...
+```
+
+If that address is your proxy, every client behind it is sharing one bucket:
+add it. If it is a client talking to the app directly, the header was ignored,
+as it should be.
+
 A value Express cannot parse stops the server at boot too.
 
 **If you run behind a proxy, check after upgrading** that a real client's
@@ -655,11 +753,13 @@ docker compose -f docker-compose-release.yml exec database \
   "SELECT ip_address, last_active_at FROM sessions ORDER BY last_active_at DESC LIMIT 3"'
 ```
 
-Your own address is right. The proxy's address, or the Docker network's
-gateway (such as `::ffff:172.18.0.1`), means one of two things: the proxy is not
-trusted (list its address in `TRUST_PROXY`), or it does not set
-`X-Forwarded-For`. Either way every user shares one bucket of 20 sign-in
-attempts per 15 minutes.
+Your own address is right. The proxy's address means it is not trusted:
+list it in `TRUST_PROXY` (the warning above names it too). The Docker
+network's gateway (`::ffff:172.29.0.1`) means a proxy on the host is trusted
+but does not set `X-Forwarded-For`. Either way every user shares one bucket of
+20 sign-in attempts per 15 minutes. An address a client chose, one that is not
+theirs, means the proxy passes the client's own header through: set it as
+shown under "TLS and reverse proxy".
 
 ---
 

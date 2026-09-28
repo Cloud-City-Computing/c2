@@ -41,9 +41,9 @@ it (directly or transitively) before reading `process.env`.
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 
 `NODE_ENV` matters in five places: CORS localhost allowance
-(`app.js:252`), where Helmet is mounted (`app.js:298`: the whole app in
-production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:306`,
-`app.js:344`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
+(`app.js:263`), where Helmet is mounted (`app.js:309`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:317`,
+`app.js:355`), the `APP_URL` boot gate (`server.js:30`), and Vite's dev-vs-prod
 mode. `.env.example` lists it blank; `npm run start` and the Docker image set it.
 
 ## 3. Local development
@@ -108,15 +108,34 @@ TLS proxy. Only this machine reaches it now (a browser here, or the reverse
 proxy); `APP_BIND` (`0.0.0.0`, or one interface's address) exposes it on
 purpose. `:-` rather than `-`, because `.env.example` ships `APP_BIND=` blank and
 a blank host address publishes on every interface. A reverse proxy in another
-container cannot reach the host's loopback: it joins this compose network and
-proxies to `app:3000`. `tests/compose-ports.test.js` pins the mapping in both
-files and separately reads each mapping's effective host (its `:-` fallback)
-and fails on anything beyond loopback, so moving the pin and the files to an
-all-interfaces default together still fails. It reads every service: the prod
-and dev files' database is pinned to `${DB_BIND:-127.0.0.1}:3306:3306` the same
-way, the release file's to no published port at all, and
-`docker-compose.linux.yml` to none, because Compose appends an override's
-`ports` to the base file's and one there would widen the dev mapping.
+container cannot reach the host's loopback: it joins this compose network,
+proxies to `app:3000`, and is listed in `TRUST_PROXY` by an address pinned with
+`ipv4_address`. `tests/compose-ports.test.js` parses every
+`docker-compose*.yml|yaml` at the repo root with js-yaml (a declared
+devDependency), so a new compose file fails until it has an expectation. For
+each service it pins the published mappings, reads each one's effective host
+in both the short syntax and the long one (`host_ip`), resolving `:-`
+fallbacks as a blank `.env` would, and fails on anything beyond loopback, so
+moving a pin and its file together to an all-interfaces default still fails.
+The prod and dev files' database is pinned to `${DB_BIND:-127.0.0.1}:3306:3306`,
+the release file's to none with `expose: ["3306"]`, and
+`docker-compose.linux.yml` to none: Compose appends an override's `ports` to
+the base file's, and the reader's non-vacuity cases prove it sees a flow list,
+a commented key, a quoted key, a merged anchor, the long syntax and a bare
+number. It also pins `.env.example`'s `APP_BIND=` and `DB_BIND=` blank.
+
+**Both production files pin the default network** to `172.29.0.0/16`, gateway
+`172.29.0.1` (distinct from Cloud Command's `172.28.0.0/16`). Docker presents
+a proxy on the host to the container as that gateway, and `TRUST_PROXY`'s
+default names `172.29.0.1/32`, so an unpinned network (Docker's next free
+subnet, `172.18.0.0/16` or later, or a `192.168` range once about fifteen
+networks exist) would leave the gateway untrusted and every client behind the
+proxy in one bucket. The ports test pins the `ipam` block and that its gateway
+is in the default, and that the app service neither joins another network nor
+sets `network_mode`. On a live 0.11.0 install, Compose 5.3.1's plain `up -d`
+replaced the old `172.20.0.0/16` network and recreated both containers with
+the volumes kept; `docs/deployment.md` "Upgrades" has the `down` then `up -d`
+path for a Compose that refuses.
 
 **The prod file's MySQL port is on 127.0.0.1 too**, for the same DNAT reason:
 it used to publish `3306:3306` on every interface, the database's own
