@@ -12,6 +12,22 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-28
+
+The cookie-hardening release. One security fix: on an https instance, the
+cookie that ties a Google sign-in or a GitHub link to the browser that started
+it is now a `__Host-` cookie, read only under that exact name
+([GHSA-xq3x-556x-fr4q](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-xq3x-556x-fr4q)).
+On https the session cookie becomes `__Host-sessionToken` under the same rule,
+and a write authenticated by the session cookie alone must now carry an
+accepted `Origin`.
+Alongside them: a first boot on an empty volume that no longer restarts the
+app, a clean boot log and browser console, and self-hosting documentation that
+matches the code. **Upgrading from 0.12.0 applies no migration and needs
+nothing run, and signed-in browsers stay signed in. A script that posts to
+`/api` with only a session cookie now needs an `Origin` header or the bearer
+header; see Migration below.**
+
 ### Added
 
 - `LEGACY_SESSION_COOKIE`: whether a lone `sessionToken` cookie, the name the
@@ -104,6 +120,17 @@ initialises an empty data directory.
 
 ### Security
 
+- **On https the OAuth state cookies are `__Host-oauth_state_<provider>`, read
+  only under that exact name**
+  ([GHSA-xq3x-556x-fr4q](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-xq3x-556x-fr4q)).
+  The cookie that ties a Google sign-in or a GitHub link to the browser that
+  started it is now `__Host-oauth_state_google` or `__Host-oauth_state_github`
+  when `APP_URL` is https: Secure, `Path=/` and no `Domain`, so no other host
+  under the same domain can set it, and the callback reads the state under
+  that name only. The protection needs https. A browser cannot hold a
+  `__Host-` cookie over plain http, so there the names stay
+  `oauth_state_google` and `oauth_state_github` at `Path=/api/oauth`, and an
+  instance served that way stays exposed to scripts on hosts under its domain.
 - **On https the session cookie is `__Host-sessionToken`, and a write
   authenticated by that cookie alone must carry an accepted `Origin`.** Any
   host under the same registrable domain could set a `sessionToken` cookie for
@@ -114,25 +141,20 @@ initialises an empty data directory.
   over a legacy `sessionToken` wherever the two sit, on the server and in the
   page, and no writer sets `Domain`. Every cookie reader matches the name
   exactly, stripping only the ASCII space and tab between cookies, so a cookie
-  whose name merely looks like `__Host-sessionToken` is never read as it. A
-  lone legacy cookie still works while `LEGACY_SESSION_COOKIE` is on (the
-  default): on its next visit over https the page asks the server to confirm
-  it and moves it to the new name, and until then does not use it; the page
-  waits at most five seconds for that answer and asks once per tab. Over plain
-  http the cookie keeps the old name, the only one a browser can hold there.
-  Separately, an `/api` `POST`, `PUT`, `PATCH` or `DELETE` that carries the
-  session cookie and no bearer header is refused with `403` unless its
-  `Origin` is one the CORS rule accepts; CORS admitted a request with no
-  `Origin` at all, and `SameSite=Strict` treats sibling hosts as the same
-  site. The app's own requests, which send a bearer header or an `Origin`, and
-  every server-to-server caller are unaffected. Both WebSockets already
-  refused an upgrade with no `Origin` or a sibling's; tests now pin it.
-- **On https the OAuth state cookies are `__Host-` cookies too.** The cookie
-  that ties a Google sign-in or a GitHub link to the browser that started it
-  is now `__Host-oauth_state_google` or `__Host-oauth_state_github` (Secure,
-  `Path=/`, no `Domain`), and the callback reads the state under that exact
-  name only, the same rule as the session cookie. Over plain http the names
-  stay `oauth_state_google` and `oauth_state_github` at `Path=/api/oauth`.
+  whose name merely looks like `__Host-sessionToken` is never read as it.
+  What an operator sees: sessions under the old `sessionToken` name keep
+  working while `LEGACY_SESSION_COOKIE` is on (the default, `1`), and each is
+  upgraded to `__Host-sessionToken` on its browser's first visit over https,
+  with no new sign-in. (The page asks the server to confirm the old cookie
+  before moving it, waits at most five seconds for the answer, and asks once
+  per tab.) Over plain http the cookie keeps the old name, the only one a
+  browser can hold there. Separately, an `/api` `POST`, `PUT`, `PATCH` or
+  `DELETE` that carries the session cookie and no bearer header is refused
+  with `403` unless its `Origin` is one the CORS rule accepts; CORS admitted a
+  request with no `Origin` at all, and `SameSite=Strict` treats sibling hosts
+  as the same site. The app's own requests, which send a bearer header or an
+  `Origin`, and every server-to-server caller are unaffected. Both WebSockets
+  already refused an upgrade with no `Origin` or a sibling's; tests now pin it.
 
 ### Migration
 
@@ -1000,7 +1022,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0

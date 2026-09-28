@@ -245,8 +245,8 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **92 files, 2176 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-28 on the 0.12.0
+Current state: the default run is **99 files, 2287 tests, all passing**; the
+integration project is **12 files, 92 tests** (measured 2026-09-28 on the 0.13.0
 release tree, against MySQL 8.4.11 at the server's default isolation and at
 `READ-COMMITTED`).
 
@@ -720,11 +720,11 @@ Verify from a logged-out client rather than trusting the workflow:
 
 ```
 docker logout ghcr.io
-docker pull ghcr.io/cloud-city-computing/cloud-codex:0.12.0
+docker pull ghcr.io/cloud-city-computing/cloud-codex:0.13.0
 ```
 
 `docker-compose-release.yml` consumes the published image instead of building,
-pinned to `${CLOUDCODEX_VERSION:-0.12.0}` so an evaluator's install does not
+pinned to `${CLOUDCODEX_VERSION:-0.13.0}` so an evaluator's install does not
 move under them on the next publish. It also differs from
 `docker-compose-prod.yml` in not publishing 3306 at all: the app reaches MySQL
 over the compose network, and Docker's published ports are a DNAT rule that sits
