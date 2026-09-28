@@ -126,6 +126,14 @@ npm run dev
 
 The application will be available at **http://localhost:3000**.
 
+MySQL is published on **127.0.0.1:3306** only, which the dev server, `make`
+and a `mysql` client on the same machine reach (`DB_HOST=localhost` works).
+Nothing else on your network can reach it, since it runs with a development
+password. Set `DB_BIND=0.0.0.0` in `.env` only if you deliberately need it
+from another machine. This loopback binding has not been tested under WSL; if
+a client there cannot reach `127.0.0.1:3306`, `DB_BIND=0.0.0.0` restores the
+previous mapping.
+
 On first boot, once the admin logs in, they land inside a seeded "Getting
 Started" archive with a "Welcome to Cloud Codex" document, not an empty app.
 This only happens on a database that holds no workspaces, archives or logs at
@@ -172,7 +180,10 @@ All seed accounts use the password **`password`**.
 | `DB_POOL_SIZE` | MySQL connections the app keeps open, 1 to 100; anything else stops the boot | `10` |
 | `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
 | `APP_URL` | Base URL used to build invitation/reset links, in emails and in the admin UI's copyable link. **Required in production**: the server will not start without an `http(s)` URL | `http://localhost:3000` in development |
-| `TRUST_PROXY` | Which proxies Express believes about the client address (a hop count, `loopback`, an address list, or `false`); the rate limiters count by that address | `1` |
+| `TRUST_PROXY` | Which proxies Express believes about the client address, named by address (an address or CIDR list in standard notation, subnet names such as `loopback`, or `false`); the rate limiters count by that address. A hop count, `true`, or a range wider than an IPv4 /8 or an IPv6 /16 (outside `fc00::/7` and `fe80::/10`) stops the boot | `127.0.0.1/32, ::1/128, 172.29.0.1/32` (a proxy on this host, in front of either compose file) |
+| `TRUST_PROXY_ALLOW_HOP_COUNT` | `true` accepts a hop count, `true` or an over-wide range in `TRUST_PROXY` anyway, letting any client that can reach the port choose its own address | unset (off) |
+| `APP_BIND` | Docker Compose only: the host address the app port is published on. Set `0.0.0.0` only to reach the app from other machines on purpose; an IPv4 address only, never `::` | `127.0.0.1` |
+| `DB_BIND` | `docker-compose.yaml` (dev) and `docker-compose-prod.yml`: the host address MySQL's 3306 is published on | `127.0.0.1` |
 | `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
 | `SMTP_HOST` | SMTP server hostname | — (optional; leave blank to run without email) |
 | `SMTP_PORT` | SMTP server port | `587` |
