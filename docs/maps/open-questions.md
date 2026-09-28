@@ -320,8 +320,10 @@ and injects the Vite middleware asynchronously, so `'listening'` fires roughly
 t=11.6s, `Cannot GET /` before that). Announcing there would trade a lie about
 binding for a lie about readiness. The callback runs after injection.
 
-**Docker:** `docker-compose-prod.yml` publishes `"${PORT:-3000}:${PORT:-3000}"`
-so setting `PORT` moves the published mapping with it. Note that a port
+**Docker:** both production compose files publish
+`"${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}"` (the host address was
+added by GHSA-9fmx-frrf-xxmq, see `build-test-and-ops.md` section 4), so
+setting `PORT` moves the published mapping with it. Note that a port
 conflict on a Docker host is a *host*-side collision that `PORT` alone cannot
 resolve; it surfaces as Compose's own "port is already allocated".
 

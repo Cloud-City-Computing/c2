@@ -42,9 +42,9 @@ it (directly or transitively) before reading `process.env`.
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
 `NODE_ENV` matters in six places: CORS localhost allowance
-(`app.js:131`), where Helmet is mounted (`app.js:177`: the whole app in
-production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:185`,
-`app.js:223`, `app.js:237`), the `APP_URL` boot gate (`server.js:64`), the webhook SSRF
+(`app.js:265`), where Helmet is mounted (`app.js:311`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:319`,
+`app.js:357`, `app.js:371`), the `APP_URL` boot gate (`server.js:64`), the webhook SSRF
 guard's https-only rule (`webhookTargetOptions`, `services/webhooks.js`), and
 Vite's dev-vs-prod mode. `.env.example` ships it commented out; `npm run start`
 and the Docker image set it, and both production compose files pin it (section 4).
@@ -53,8 +53,9 @@ and the Docker image set it, and both production compose files pin it (section 4
 
 `./start.sh` from the root is the one-shot bootstrap: it checks Docker, Docker
 Compose, Node and npm, brings up MySQL, installs dependencies, and starts the
-dev server. On Linux it merges `docker-compose.linux.yml`, which re-declares the
-bind mounts with the `:Z` SELinux label (`docker-compose.linux.yml:6-8`).
+dev server. On native Linux (not WSL: it checks `/proc/version`) it merges
+`docker-compose.linux.yml`, which re-declares the bind mounts with the `:Z`
+SELinux label (`docker-compose.linux.yml:6-8`) and publishes no port.
 
 Manual equivalent:
 
@@ -82,8 +83,8 @@ them. See [data-model.md](data-model.md).
 
 ## 4. Docker topologies
 
-**Dev** (`docker-compose.yaml`): MySQL only, port 3306 published, data in a
-bind mount `./db-data/`, `init.sql` mounted into
+**Dev** (`docker-compose.yaml`): MySQL only, port 3306 published on 127.0.0.1
+(`${DB_BIND:-127.0.0.1}:3306:3306`), data in a bind mount `./db-data/`, `init.sql` mounted into
 `/docker-entrypoint-initdb.d/`. The app runs on the host.
 
 **Prod** (`docker-compose-prod.yml`): MySQL plus the app.
@@ -96,9 +97,69 @@ without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
 so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
-  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:22-27`).
+  `mysqladmin ping` healthcheck (`docker-compose-prod.yml:25-29`).
 - The app builds from `cloudcodex/Dockerfile`, waits on
-  `condition: service_healthy`, publishes 3000, and takes `env_file: .env`.
+  `condition: service_healthy`, publishes
+  `${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`, and takes
+  `env_file: .env`.
+
+**The app port is published on 127.0.0.1 in both production files**
+(GHSA-9fmx-frrf-xxmq). Docker's published ports are a DNAT rule in front of the
+host firewall, so the old host-less mapping was reachable from anywhere that
+could route to the machine, and a client reaching the app directly skipped the
+TLS proxy. Only this machine reaches it now (a browser here, or the reverse
+proxy); `APP_BIND` (`0.0.0.0`, or one interface's IPv4 address, never `::` or
+an IPv6 address) exposes it on purpose. `:-` rather than `-`, because
+`.env.example` ships `APP_BIND=` blank and
+a blank host address publishes on every interface. A reverse proxy in another
+container cannot reach the host's loopback: it joins this compose network,
+proxies to `app:3000`, and is listed in `TRUST_PROXY` by an address pinned with
+`ipv4_address`. `tests/compose-ports.test.js` parses every compose file at the
+repo root with js-yaml (a declared devDependency), found by name in both
+spellings Compose loads, `compose.yaml`/`compose.yml` (and `.override`) and
+`docker-compose*`, so a new one fails until it has an expectation. Every
+service in every file must not use `network_mode: host`, and no file may have a
+top-level `include:`, since an included file's ports merge in unread; both
+checks are proven on fixtures. For
+each service it pins the published mappings, reads each one's effective host
+in both the short syntax and the long one (`host_ip`), resolving `:-`
+fallbacks as a blank `.env` would, and fails on anything beyond loopback, so
+moving a pin and its file together to an all-interfaces default still fails.
+The prod and dev files' database is pinned to `${DB_BIND:-127.0.0.1}:3306:3306`,
+the release file's to none with `expose: ["3306"]`, and
+`docker-compose.linux.yml` to none: Compose appends an override's `ports` to
+the base file's, and the reader's non-vacuity cases prove it sees a flow list,
+a commented key, a quoted key, a merged anchor, the long syntax and a bare
+number. It also pins `.env.example`'s `APP_BIND=` and `DB_BIND=` blank.
+
+**Both production files pin the default network** to `172.29.0.0/16`, gateway
+`172.29.0.1` (distinct from Cloud Command's `172.28.0.0/16`). Docker presents
+a proxy on the host to the container as that gateway, and `TRUST_PROXY`'s
+default names `172.29.0.1/32`, so an unpinned network (Docker's next free
+subnet, `172.18.0.0/16` or later, or a `192.168` range once about fifteen
+networks exist) would leave the gateway untrusted and every client behind the
+proxy in one bucket. The ports test pins the `ipam` block and that its gateway
+is in the default, and that the app service joins no other network. Upgrading
+an install created before the pin takes the project `down` before migrating
+(`docs/deployment.md` "Upgrades"). Measured on a live 0.11.0 install with
+Compose 5.3.1: when the database container's own configuration is unchanged,
+the usual stop-then-migrate order makes `run` replace the network and
+reconnect the database without its `database` alias, so the migration fails
+with `ENOTFOUND database` and the app then boots unable to reach it (measured
+before the instance lock, while `/api/oauth/providers` still answered 200; with
+the lock it exits at boot and restarts); with `down` first it migrates and
+keeps both volumes.
+
+**The prod file's MySQL port is on 127.0.0.1 too**, for the same DNAT reason:
+it used to publish `3306:3306` on every interface, the database's own
+authentication the only thing between it and anything that could route to the
+host. It stays published because `docs/deployment.md` has operators run a
+mysql client or `npm run migrate` from the host against it; the app itself
+uses `DB_HOST: database` over the compose network. `DB_BIND` widens it on
+purpose. The dev file follows suit: its database runs with a development
+password, often on a laptop on a shared network, and everything that uses it
+(`npm run dev`, `make`, `start.sh`'s check, a `mysql` client) is on the same
+machine. `make` goes through `docker exec` and does not use the port at all.
 - `cloudcodex/Dockerfile` is a **two-stage** build on `node:20-slim`: the build
   stage runs `npm ci` and `npm run build`, and the runtime stage runs
   `npm ci --omit=dev`, copies the source, then copies `dist/` across from the
@@ -172,9 +233,9 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **90 files, 2015 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
-tree, against MySQL 8.4.11 at the server's default isolation and at
+Current state: the default run is **92 files, 2176 tests, all passing**; the
+integration project is **12 files, 92 tests** (measured 2026-09-28 on the 0.12.0
+release tree, against MySQL 8.4.11 at the server's default isolation and at
 `READ-COMMITTED`).
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
@@ -662,16 +723,17 @@ Verify from a logged-out client rather than trusting the workflow:
 
 ```
 docker logout ghcr.io
-docker pull ghcr.io/cloud-city-computing/cloud-codex:0.11.0
+docker pull ghcr.io/cloud-city-computing/cloud-codex:0.12.0
 ```
 
 `docker-compose-release.yml` consumes the published image instead of building,
-pinned to `${CLOUDCODEX_VERSION:-0.11.0}` so an evaluator's install does not
+pinned to `${CLOUDCODEX_VERSION:-0.12.0}` so an evaluator's install does not
 move under them on the next publish. It also differs from
-`docker-compose-prod.yml` in not publishing 3306: the app reaches MySQL over the
-compose network, and Docker's published ports are a DNAT rule that sits in front
-of the host firewall, so publishing it on a VPS exposes the database to the
-internet past a `ufw deny`.
+`docker-compose-prod.yml` in not publishing 3306 at all: the app reaches MySQL
+over the compose network, and Docker's published ports are a DNAT rule that sits
+in front of the host firewall, so publishing it on every interface of a VPS
+exposes the database to the internet past a `ufw deny`. The prod file publishes
+it on 127.0.0.1 only, for a client on the host.
 
 **Both** compose files mount a named volume `app_public` at `/app/public`.
 Uploaded avatars and extracted document images live only there:

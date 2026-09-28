@@ -12,26 +12,19 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
-**Upgrading: a production instance now refuses to start without `APP_URL`.**
-Check that `.env` sets it to the address people use before pulling.
-`.env.example` ships `http://localhost:3000`, which boots but now prints a
-warning in production, since emailed links would open only on the server
-itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
-is older pulls it and upgrades its data directory in place on first start, so
-back the database up first. This release also has three migrations and a
-backfill; see Migration below.
-
 ### Added
 
 - **Outbound webhooks, recorded.** Cloud Codex can now tell a receiver you run
   when a document is saved, published, restored, renamed, moved or deleted, or
-  an archive is renamed or deleted: each such change writes one JSON event (`codex.event.v1`, documented in `docs/api/webhooks.md`) to an
-  outbox, with one delivery per matching subscription. Titles and names are
-  cut to 255 characters, so no event exceeds 4 KiB, and an event carries ids,
-  that title or name, and the actor's user id and name, never an email or any
-  content. **Nothing is sent yet**: the delivery worker ships in a later
-  release. Off by default: with no subscription nothing is written and no
-  query is added. One subscription can be declared in the environment
+  an archive is renamed or deleted: each such change writes one JSON event
+  (`codex.event.v1`, documented in `docs/api/webhooks.md`) to an outbox, with
+  one delivery per matching subscription. Titles and names are cut to 255
+  characters, so no event exceeds 4 KiB, and an event carries ids, that title
+  or name, and the actor's user id and name, never an email or any content.
+  **Nothing is sent yet**: the delivery worker ships in a later release. Off
+  by default: with no subscription nothing is written and no query is added to
+  any request or change (the subscription list is re-read once a minute, and
+  at boot). One subscription can be declared in the environment
   (`WEBHOOK_URL`, `WEBHOOK_SECRET` of at least 32 characters, optional
   `WEBHOOK_WORKSPACE_ID`), reconciled at every boot, its secret never stored;
   instance admins manage more under `/api/admin/webhooks` (list, create,
@@ -43,6 +36,84 @@ backfill; see Migration below.
   dump can sign events to that receiver; the env subscription avoids it. A
   failure to write the outbox never affects the change that caused it. Needs
   the webhooks migration (see Migration).
+
+### Migration
+
+**The webhooks migration,**
+[`migrations/2026-09-28-webhooks.sql`](migrations/2026-09-28-webhooks.sql),
+adds three tables, `webhook_subscriptions`, `webhook_events` and
+`webhook_deliveries`, and changes nothing that exists. Apply it with `npm run
+migrate` before starting the new image (in containers, `docker compose ... run
+--rm app npm run migrate`); nothing else is run. Until it is applied the new
+image logs `webhook env subscription reconcile failed` at boot and `webhook
+subscriptions load failed` once a minute, and otherwise runs as before,
+emitting nothing. On an install `init.sql` builds fresh,
+`--adopt-fresh-install` checks that the three tables are there before it
+records the file. To undo it: `DROP TABLE webhook_deliveries, webhook_events,
+webhook_subscriptions;`.
+
+## [0.12.0] - 2026-09-28
+
+The hosting-readiness release. One security fix: anyone who could reach the
+app's port directly could choose their own address in `X-Forwarded-For` and
+step around every rate limiter, including the sign-in and two-factor limit
+([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+`TRUST_PROXY` now names the proxies it believes by address, the app port is
+published on `127.0.0.1`, and the production compose files pin their network.
+Alongside it: session tokens stored only as a digest, with one session per
+sign-in; document images served only to people who can read the document;
+`/healthz` and `/readyz`; a container that stops cleanly; one process per
+database; a reconciliation read for Cloud Command; and the configuration
+contract, with `APP_URL` required in production. **Upgrading from 0.11.0 is a
+breaking change for an install reached directly from another machine, or
+behind a proxy that does not connect from `127.0.0.1`, `::1` or `172.29.0.1`;
+it takes the project `down` before migrating, applies two migrations and runs
+one backfill. See below and Migration.**
+
+**Upgrading: a production instance now refuses to start without `APP_URL`.**
+Check that `.env` sets it to the address people use before pulling.
+`.env.example` ships `http://localhost:3000`, which boots but now prints a
+warning in production, since emailed links would open only on the server
+itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
+is older pulls it and upgrades its data directory in place on first start, so
+back the database up first. This release also has two migrations and a
+backfill; see Migration below.
+
+**Upgrading, BREAKING: the app port is published on `127.0.0.1`, and
+`X-Forwarded-For` is believed only from a proxy named by address.** An install
+reached directly on port 3000 from another machine stops answering there: put
+it behind a TLS-terminating proxy, or set `APP_BIND=0.0.0.0` in `.env` to
+expose it on purpose (an IPv4 address, never `::`), with `TRUST_PROXY=false`
+when nothing is in front of it. `docker-compose-prod.yml`
+publishes MySQL on `127.0.0.1` too, so a database client on another machine
+needs `DB_BIND` or an SSH tunnel. `TRUST_PROXY` now defaults to
+`127.0.0.1/32, ::1/128, 172.29.0.1/32`, which covers nginx or Caddy on the same
+host in front of either compose file and nothing else (an install run without
+Docker sets `127.0.0.1/32, ::1/128`): **a proxy running as
+another container, a load balancer, or the image run with `docker run`
+behind a proxy is no longer believed until you list its address** (worked
+values in "Rate limiters", `docs/deployment.md`); until then every client
+behind it shares one rate-limit bucket, and the server logs a warning naming
+it. For a single nginx, set `proxy_set_header X-Forwarded-For $remote_addr;`.
+The production compose files now pin their network to `172.29.0.0/16`, so
+**this upgrade takes the project down before migrating**:
+
+```bash
+docker compose -f docker-compose-release.yml pull app
+docker compose -f docker-compose-release.yml down     # never down -v
+docker compose -f docker-compose-release.yml run --rm app npm run migrate
+docker compose -f docker-compose-release.yml run --rm app npm run backfill:doc-images
+docker compose -f docker-compose-release.yml up -d
+```
+
+The usual stop-the-app-then-migrate order makes Compose replace the network
+under a running database and reconnect it without its `database` alias, so the
+migration and then the app cannot find it (see "Upgrades",
+`docs/deployment.md`). The backfill runs once, on an install that already has
+documents, between the migrations and the start (see Migration below).
+
+### Added
+
 - `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
   read for Cloud Command: for up to 100 document ids it returns the id, title,
   archive and last update of each one the caller can read in that workspace.
@@ -78,9 +149,10 @@ backfill; see Migration below.
   every stated default is checked against what the code does when the
   variable is unset or blank.
 - `TRUST_PROXY`, Express's `trust proxy` setting, which decides the address the
-  rate limiters count. Unset keeps today's `1`; a hop count, `true`, `false`,
-  `loopback` or an address list are accepted, and a value Express cannot parse
-  stops the boot with a sentence naming the variable.
+  rate limiters count: a list of addresses and CIDRs (subnet names such as
+  `loopback` are accepted too), or `false`. Unset is the address list
+  described under Security, and a value Express cannot parse stops the boot
+  with a sentence naming the variable.
 - `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
   anything but a whole number from 1 to 100 stops the boot.
 
@@ -126,6 +198,33 @@ backfill; see Migration below.
   run an earlier 8.4 (8.4.8 shipped before): it pulls 8.4.11, and MySQL
   upgrades the data directory in place on first start, so back it up first. A
   test fails on a floating tag or on two files disagreeing.
+
+- **Both production compose files publish the app port on `127.0.0.1`**
+  (`${APP_BIND:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}`), not on every
+  interface. A browser or reverse proxy on the same machine reaches
+  `http://localhost:3000` as before; another machine no longer does, and
+  neither does a proxy in another container that used the host's address (join
+  it to the compose network and proxy to `app:3000` instead). Production
+  belongs behind a TLS-terminating reverse proxy; to expose the port on
+  purpose, set `APP_BIND` in `.env` to `0.0.0.0` or one interface's IPv4
+  address (never `::` or an IPv6 address), and with nothing in front of it
+  `TRUST_PROXY=false`.
+  `docker-compose-prod.yml` also publishes MySQL as
+  `${DB_BIND:-127.0.0.1}:3306:3306` instead of `3306:3306`: a mysql client or
+  `npm run migrate` on the host still reaches it, and anything else needs
+  `DB_BIND` set on purpose (the release file publishes no database port). The
+  development file, `docker-compose.yaml`, does the same for its MySQL, which
+  runs with a development password: the dev server, `make` and a `mysql`
+  client on the same machine reach it as before, and nothing else on the
+  network does. A test reads every compose file at the root with a YAML
+  parser, pins every mapping, fails on any default beyond loopback in either
+  port syntax, and checks that `docker-compose.linux.yml` publishes nothing,
+  however it is spelled.
+- **Both production compose files pin their default network** to
+  `172.29.0.0/16`, gateway `172.29.0.1` (Cloud Command uses `172.28.0.0/16`),
+  so the address a proxy on the host arrives from is one `TRUST_PROXY`'s
+  default can name. An existing install's network is replaced by the `down`
+  and `up -d` the upgrade note above describes.
 
 ### Fixed
 
@@ -175,6 +274,62 @@ backfill; see Migration below.
 
 ### Security
 
+- **The rate limiters can no longer be walked around by choosing your own
+  address**
+  ([GHSA-9fmx-frrf-xxmq](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-9fmx-frrf-xxmq)).
+  Express's `trust proxy` was `1`, so every
+  limiter keyed on the rightmost `X-Forwarded-For` entry of any request that
+  carried one, and both production compose files published the app port on
+  every interface, where Docker's DNAT rule sits in front of the host
+  firewall. Anyone who could reach port 3000 directly could send a new address
+  with each request and get a fresh bucket every time: unlimited password and
+  two-factor guessing past the sign-in limit of 20 per 15 minutes, and
+  unlimited user search. The address recorded against each session came from
+  the same header. Now:
+  - `trust proxy` defaults to `127.0.0.1/32, ::1/128, 172.29.0.1/32`:
+    loopback, and the gateway of the network the production compose files now
+    pin, which is where Docker presents a proxy on the host. Every other peer
+    is counted by its own address, whatever `X-Forwarded-For` it sends: a
+    public client, a machine on the same LAN, VPN or VPC, and a sibling
+    container. A range is not trusted by default, because a client inside a
+    trusted range, behind a proxy that appends the header, could name its own
+    address with the left entry. The default bridge's gateway, `172.17.0.1`,
+    is not trusted either: `docker run -p PORT:PORT` publishes on IPv6 too,
+    that bridge is IPv4-only, and every IPv6 client arrives as its gateway.
+    An IPv4-only Docker network presents every IPv6 client of an
+    all-interfaces or IPv6 publish as its gateway, which is also why
+    `APP_BIND` must be an IPv4 address.
+  - `TRUST_PROXY` takes a list of addresses and CIDRs, subnet names, or
+    `false`. A hop count, `true`, or a range wider than an IPv4 /8, wider than
+    an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or holding more than an
+    IPv4 /8 of the IPv4-mapped `::ffff:0:0/96` (all of it is every IPv4
+    client) stops the boot with a sentence saying why, unless
+    `TRUST_PROXY_ALLOW_HOP_COUNT=true` says you accept that any client able to
+    reach the port can choose its own address. Those are the thresholds: a
+    public /8, or an IPv6 /16 to /31, is accepted. An entry not written in
+    standard notation always stops the boot, since Express reads `010.0.0.0/8`
+    as octal, public `8.0.0.0/8`.
+  - A peer `TRUST_PROXY` does not name that sends `X-Forwarded-For` is logged,
+    once per address (an IPv6 peer once per /64) and for at most 32 of them,
+    so a proxy left out of the list shows up in the log instead of silently
+    putting every client in one bucket. Once listening, the server also prints
+    what it trusts: `✔ Trusting proxies (the default): ...`, or
+    `(from TRUST_PROXY)`.
+  - The app port is published on `127.0.0.1` (Changed, above), and the prod
+    file's MySQL port is no longer published on every interface.
+
+  **If you run behind a proxy, check two things:** that `TRUST_PROXY` names the
+  address it connects from (nginx or Caddy on the same host needs nothing; a
+  proxy container, a load balancer or `docker run` must be listed), and that
+  the proxy **sets** `X-Forwarded-For` (for nginx alone, `$remote_addr`;
+  appending is also safe, and is what nginx behind a load balancer should do,
+  as long as the address it appends is the client's own and not one
+  `TRUST_PROXY` trusts). A proxy that sets nothing lets each client choose its
+  own address. Every process on the host that reaches the published port, and
+  with `APP_BIND` widened every container on the host, arrives as the gateway
+  and is trusted too; the loopback bind is what keeps that to this machine.
+  "Rate limiters" in `docs/deployment.md` has a check to run from outside,
+  with a forged `X-Forwarded-For`, and says what each result means.
 - **Session tokens are stored only as a SHA-256 digest, and every sign-in is
   its own session.** `sessions.id` held the raw token, so a copy of the table
   (a backup, a dump) was a list of working sign-ins; it now holds
@@ -259,18 +414,6 @@ first run. If the app has to start before it runs, set `DOC_IMAGES_PUBLIC=1`
 for that window (the backfill then runs without `--again`) and unset it after.
 A fresh install needs neither. See `docs/deployment.md`, "The document-images
 backfill, once".
-
-**The webhooks migration,**
-[`migrations/2026-09-28-webhooks.sql`](migrations/2026-09-28-webhooks.sql),
-adds three tables, `webhook_subscriptions`, `webhook_events` and
-`webhook_deliveries`, and changes nothing that exists. Apply it with
-`npm run migrate` before starting the new image (in containers,
-`docker compose ... run --rm app npm run migrate`); nothing else is run. Until
-it is applied the new image logs `webhook env subscription reconcile failed`
-at boot and `webhook subscriptions load failed` once a minute, and otherwise
-runs as before, emitting nothing. On an install `init.sql` builds fresh, `--adopt-fresh-install`
-checks that the three tables are there before it records the file. To undo it:
-`DROP TABLE webhook_deliveries, webhook_events, webhook_subscriptions;`.
 
 ## [0.11.0] - 2026-09-27
 
@@ -765,7 +908,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Cloud-City-Computing/c2/compare/alpharelease...v0.9.0

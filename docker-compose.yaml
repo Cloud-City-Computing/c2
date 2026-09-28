@@ -6,8 +6,13 @@
 services:
   database:
     image: 'mysql:8.4.11'
+    # On 127.0.0.1 unless DB_BIND says otherwise: the app (npm run dev), the
+    # mysql client and start.sh's check all run on this machine. Docker's
+    # published ports are a DNAT rule in front of the host firewall, so a
+    # mapping with no host address offers this database, with its dev
+    # password, to every network the machine joins.
     ports:
-      - 3306:3306
+      - "${DB_BIND:-127.0.0.1}:3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
       MYSQL_USER: ${DB_USER:-admin}
