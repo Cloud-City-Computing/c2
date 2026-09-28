@@ -53,12 +53,28 @@ describe('Dockerfile', () => {
   });
 });
 
+describe('.env.example', () => {
+  // Copied to .env, a blank NODE_ENV= line would override the image's ENV.
+  it('ships NODE_ENV commented out, never as a blank assignment', () => {
+    const example = readFileSync(path.join(REPO, '.env.example'), 'utf8');
+    expect(example).not.toMatch(/^NODE_ENV=/m);
+    expect(example).toMatch(/^# NODE_ENV=$/m);
+  });
+});
+
 describe('production compose files', () => {
   for (const file of ['docker-compose-release.yml', 'docker-compose-prod.yml']) {
     // Longer than the shutdown's own ten-second bound, so the process exits by
     // itself before Docker's SIGKILL; Docker's default is ten seconds, a tie.
     it(`${file} gives the app a 20-second stop grace period`, () => {
       expect(appService(file)).toMatch(/^ {4}stop_grace_period: 20s$/m);
+    });
+
+    // The image runs node directly (above), so NODE_ENV=production comes from
+    // its ENV alone, and Compose lets an env_file line `NODE_ENV=` replace that
+    // with an empty value. `environment` wins over `env_file`.
+    it(`${file} pins NODE_ENV=production on the app, over anything .env says`, () => {
+      expect(appService(file)).toMatch(/^ {4}environment:\n(?: {6}.*\n)*? {6}NODE_ENV: production$/m);
     });
   }
 });

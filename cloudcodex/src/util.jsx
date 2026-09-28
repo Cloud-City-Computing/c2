@@ -450,13 +450,18 @@ export async function exportDocument(logId, format, title, htmlContent) {
 </head>
 <body>
   ${safeHtml}
-  <script>
-    window.onafterprint = function() { window.close(); };
-    window.onload = function() { window.print(); };
-  ${"<"}/script>
 </body>
 </html>`);
     printWindow.document.close();
+    // Driven from here rather than by a script written into the window: an
+    // about:blank popup inherits this page's Content-Security-Policy, and in
+    // production its script-src 'self' blocks any inline script, so one
+    // written into the window would never run. Listeners go on after close(),
+    // because document.write() on the new window clears earlier ones.
+    printWindow.addEventListener('afterprint', () => printWindow.close());
+    const print = () => printWindow.print();
+    if (printWindow.document.readyState === 'complete') print();
+    else printWindow.addEventListener('load', print, { once: true });
     return;
   }
 

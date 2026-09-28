@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { contractDefault } from './contract-default.js';
 
 vi.unmock('../mysql_connect.js');
 
@@ -31,6 +32,7 @@ const getConnectionMock = vi.fn(async () => ({
   release: releaseMock,
 }));
 
+// A spy, so the DB_POOL_SIZE tests can read the config the pool was built with.
 const poolEndMock = vi.fn(async () => {});
 const createPoolMock = vi.fn(() => ({ execute: executeMock, getConnection: getConnectionMock, end: poolEndMock }));
 const dedicatedConnection = { query: vi.fn(), end: vi.fn() };
@@ -47,6 +49,7 @@ process.env.DB_PASS = process.env.DB_PASS || 'test_pass';
 
 const {
   c2_query,
+  poolSize,
   generateSessionToken,
   validateAndAutoLogin,
   getSessionProvider,
@@ -315,5 +318,102 @@ describe('openConnection', () => {
     // Non-vacuity: the pool really was configured from the environment.
     expect(poolOptions.user).toBe(process.env.DB_USER);
     expect(getConnectionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('DB_POOL_SIZE', () => {
+  it.each([
+    [undefined, 10],
+    ['', 10],
+    ['  ', 10],
+    ['1', 1],
+    ['25', 25],
+    [' 40 ', 40],
+    ['100', 100],
+  ])('poolSize(%j) is %j', (value, expected) => {
+    expect(poolSize(value)).toBe(expected);
+  });
+
+  it.each(['0', '101', '-5', '1.5', 'ten', '1e2', '0x10'])('poolSize(%j) throws naming the variable', (value) => {
+    expect(() => poolSize(value)).toThrow(/DB_POOL_SIZE/);
+  });
+
+  it('defaults to what the contract says an unset DB_POOL_SIZE behaves as', () => {
+    expect(poolSize(undefined)).toBe(Number(contractDefault('DB_POOL_SIZE')));
+  });
+
+  // The pool is built at import, so each case re-imports a fresh copy.
+  const importWithPoolSize = async (value) => {
+    const prior = process.env.DB_POOL_SIZE;
+    if (value === undefined) delete process.env.DB_POOL_SIZE;
+    else process.env.DB_POOL_SIZE = value;
+    try {
+      vi.resetModules();
+      createPoolMock.mockClear();
+      await import('../mysql_connect.js');
+      return createPoolMock.mock.calls[0][0];
+    } finally {
+      if (prior === undefined) delete process.env.DB_POOL_SIZE;
+      else process.env.DB_POOL_SIZE = prior;
+    }
+  };
+
+  it('reaches the pool: unset is 10 connections', async () => {
+    expect((await importWithPoolSize(undefined)).connectionLimit).toBe(10);
+  });
+
+  it('reaches the pool: a configured size', async () => {
+    expect((await importWithPoolSize('32')).connectionLimit).toBe(32);
+  });
+
+  it('exits at import with a sentence naming the variable on a bad value', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await importWithPoolSize('lots');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/DB_POOL_SIZE "lots"/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+// The contract states what an unset DB_HOST and DB_NAME behave as; a blank
+// one (a generated env file writes `KEY=` for a default it leaves alone)
+// must behave the same, not connect with no database selected.
+describe('DB_HOST and DB_NAME defaults', () => {
+  const poolConfigWith = async (env) => {
+    const saved = { ...process.env };
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    // A deleted key would otherwise be refilled from a developer's real .env.
+    vi.doMock('dotenv', () => ({ default: { config: vi.fn() } }));
+    try {
+      vi.resetModules();
+      createPoolMock.mockClear();
+      await import('../mysql_connect.js');
+      return createPoolMock.mock.calls[0][0];
+    } finally {
+      vi.doUnmock('dotenv');
+      process.env = saved;
+    }
+  };
+
+  it.each([undefined, '', '  '])('DB_HOST %j is the contract default', async (value) => {
+    expect((await poolConfigWith({ DB_HOST: value })).host).toBe(contractDefault('DB_HOST'));
+  });
+
+  it.each([undefined, '', '  '])('DB_NAME %j is the contract default', async (value) => {
+    expect((await poolConfigWith({ DB_NAME: value })).database).toBe(contractDefault('DB_NAME'));
+  });
+
+  it('honours both when set', async () => {
+    const config = await poolConfigWith({ DB_HOST: 'database', DB_NAME: 'codex' });
+    expect(config.host).toBe('database');
+    expect(config.database).toBe('codex');
   });
 });

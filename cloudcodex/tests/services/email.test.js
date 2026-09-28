@@ -10,6 +10,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import nodemailer from 'nodemailer';
+import { contractDefault } from '../contract-default.js';
 
 // Bypass the global email mock — we want the real module under test.
 vi.unmock('../../services/email.js');
@@ -188,5 +190,60 @@ describe('mail capability when SMTP is unconfigured', () => {
 
     process.env = saved;
     vi.resetModules();
+  });
+});
+
+// The contract states what an unset SMTP_PORT and SMTP_FROM behave as, and a
+// blank one (.env.example ships SMTP_FROM blank, and compose's env_file passes
+// the blank line through) must behave the same, or copying .env.example sends
+// every email with an empty From.
+describe('SMTP_PORT and SMTP_FROM defaults', () => {
+  const importWith = async (env) => {
+    const saved = { ...process.env };
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    // A deleted key would otherwise be refilled from a developer's real .env.
+    vi.doMock('dotenv', () => ({ default: { config: vi.fn() } }));
+    try {
+      vi.resetModules();
+      nodemailer.createTransport.mockClear();
+      sendMailMock.mockClear();
+      const mod = await import('../../services/email.js');
+      await mod.initMail();
+      await mod.sendEmail({ to: 'a@b.c', subject: 's', text: 't' });
+      return {
+        transport: nodemailer.createTransport.mock.calls[0][0],
+        mail: sendMailMock.mock.calls[0][0],
+      };
+    } finally {
+      vi.doUnmock('dotenv');
+      process.env = saved;
+      vi.resetModules();
+    }
+  };
+
+  it.each([undefined, '', '  '])('SMTP_PORT %j is the contract default', async (value) => {
+    const { transport } = await importWith({ SMTP_PORT: value });
+    expect(transport.port).toBe(Number(contractDefault('SMTP_PORT')));
+    expect(transport.secure).toBe(false);
+  });
+
+  it('SMTP_PORT 465 is implicit TLS', async () => {
+    const { transport } = await importWith({ SMTP_PORT: '465' });
+    expect(transport.port).toBe(465);
+    expect(transport.secure).toBe(true);
+  });
+
+  it.each([undefined, '', '  '])('SMTP_FROM %j is the contract default', async (value) => {
+    const { mail } = await importWith({ SMTP_FROM: value });
+    expect(mail.from).toBe(contractDefault('SMTP_FROM'));
+    expect(mail.replyTo).toBe(contractDefault('SMTP_FROM'));
+  });
+
+  it('SMTP_FROM set is the From on every email', async () => {
+    const { mail } = await importWith({ SMTP_FROM: 'Docs <docs@example.com>' });
+    expect(mail.from).toBe('Docs <docs@example.com>');
   });
 });

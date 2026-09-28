@@ -183,6 +183,9 @@ async function startServer(port) {
   const run = spawn(SERVER, childEnv({
     NODE_ENV: 'production',
     PORT: String(port),
+    // Production refuses to boot without APP_URL (W6-CDX-32). The address this
+    // test reaches the server on; a loopback URL boots with a warning.
+    APP_URL: `http://127.0.0.1:${port}`,
     ADMIN_USERNAME: ADMIN.username,
     ADMIN_PASSWORD: ADMIN.password,
     ADMIN_EMAIL: ADMIN.email,

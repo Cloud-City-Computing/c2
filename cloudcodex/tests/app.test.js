@@ -8,16 +8,204 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
-import app from '../app.js';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import app, { parseTrustProxy } from '../app.js';
+import { contractDefault } from './contract-default.js';
 import { resetMocks } from './helpers.js';
+
+const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// app.js decides some things once, at import: the trust proxy setting and
+// where Helmet is mounted. Each case sets the environment, re-imports a fresh
+// copy, and restores the environment before any request is sent, so the
+// requests themselves run as 'test' (the rate limiters stay skipped).
+async function importAppWith(env) {
+  const prior = {};
+  for (const [key, value] of Object.entries(env)) {
+    prior[key] = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    vi.resetModules();
+    return (await import('../app.js')).default;
+  } finally {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
 
 describe('app.js — Express configuration', () => {
   beforeEach(() => resetMocks());
 
   it('trusts the first proxy (req.ip honours X-Forwarded-For)', () => {
     expect(app.get('trust proxy')).toBe(1);
+  });
+
+  describe('TRUST_PROXY', () => {
+    it.each([
+      [undefined, 1],
+      ['', 1],
+      ['   ', 1],
+      ['0', 0],
+      ['2', 2],
+      [' 3 ', 3],
+      ['true', true],
+      ['false', false],
+      ['loopback', 'loopback'],
+      ['10.0.0.0/8, 127.0.0.1', '10.0.0.0/8, 127.0.0.1'],
+    ])('parses %j as %j', (value, expected) => {
+      expect(parseTrustProxy(value)).toBe(expected);
+    });
+
+    it('defaults to what the contract says an unset TRUST_PROXY behaves as', () => {
+      expect(parseTrustProxy(undefined)).toBe(Number(contractDefault('TRUST_PROXY')));
+    });
+
+    it('reaches Express: a hop count', async () => {
+      const configured = await importAppWith({ TRUST_PROXY: '2' });
+      expect(configured.get('trust proxy')).toBe(2);
+    });
+
+    it('reaches Express: a named range, which Express compiles', async () => {
+      const configured = await importAppWith({ TRUST_PROXY: 'loopback' });
+      expect(configured.get('trust proxy')).toBe('loopback');
+      expect(configured.get('trust proxy fn')('127.0.0.1', 0)).toBe(true);
+      expect(configured.get('trust proxy fn')('203.0.113.9', 0)).toBe(false);
+    });
+
+    it('exits naming the variable when Express rejects the value', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await importAppWith({ TRUST_PROXY: 'not-an-address' });
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/TRUST_PROXY "not-an-address"/);
+      } finally {
+        exitSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
+    });
+  });
+
+  // One Helmet policy, mounted on the whole app in production and on /api only
+  // otherwise (the Vite dev server's inline module scripts would not survive
+  // script-src 'self'). /avatars stands for every non-API response: the static
+  // mounts and the single-page app's HTML, which vite-express appends after
+  // everything in app.js at listen time.
+  describe('security header scope', () => {
+    const AVATAR_DIR = path.join(APP_DIR, 'public', 'avatars');
+    const FIXTURE = `csp-scope-fixture-${process.pid}.webp`;
+    let createdDir = false;
+
+    beforeAll(() => {
+      if (!existsSync(AVATAR_DIR)) {
+        mkdirSync(AVATAR_DIR, { recursive: true });
+        createdDir = true;
+      }
+      writeFileSync(path.join(AVATAR_DIR, FIXTURE), 'not really a webp');
+    });
+
+    afterAll(() => {
+      rmSync(path.join(AVATAR_DIR, FIXTURE), { force: true });
+      if (createdDir) rmSync(AVATAR_DIR, { recursive: true, force: true });
+    });
+
+    const expectProtected = (res) => {
+      const csp = res.headers['content-security-policy'];
+      expect(csp).toContain("frame-ancestors 'none'");
+      expect(csp).toContain("script-src 'self'");
+      expect(res.headers['x-frame-options']).toBe('DENY');
+    };
+    const expectUnprotected = (res) => {
+      expect(res.headers['content-security-policy']).toBeUndefined();
+      expect(res.headers['x-frame-options']).toBeUndefined();
+    };
+
+    // vite-express serves the built app by appending handlers to this same app
+    // at listen time, after everything app.js mounts. A handler appended the
+    // same way here stands in for it, so this proves the HTML the browser
+    // loads is covered without starting a listener.
+    const withSpaHandler = (configured) => {
+      configured.get('/spa-stand-in', (_req, res) => res.type('html').send('<!doctype html><title>x</title>'));
+      return configured;
+    };
+
+    it('production: a static file outside /api carries the policy', async () => {
+      const prod = await importAppWith({ NODE_ENV: 'production' });
+      const res = await request(prod).get(`/avatars/${FIXTURE}`);
+      expect(res.status).toBe(200);
+      expectProtected(res);
+    });
+
+    it('production: the single-page app HTML carries the policy', async () => {
+      const prod = withSpaHandler(await importAppWith({ NODE_ENV: 'production' }));
+      const res = await request(prod).get('/spa-stand-in');
+      expect(res.status).toBe(200);
+      expectProtected(res);
+    });
+
+    // Express's final handler replaces the CSP on its own 404 page with
+    // default-src 'none', stricter still, but leaves X-Frame-Options alone.
+    it('production: a 404 outside /api carries X-Frame-Options', async () => {
+      const prod = await importAppWith({ NODE_ENV: 'production' });
+      const res = await request(prod).get('/no-such-page');
+      expect(res.status).toBe(404);
+      expect(res.headers['x-frame-options']).toBe('DENY');
+    });
+
+    it('production: /api still carries the policy', async () => {
+      const prod = await importAppWith({ NODE_ENV: 'production' });
+      expectProtected(await request(prod).get('/api/oauth/providers'));
+    });
+
+    it('development: responses outside /api carry neither header', async () => {
+      const dev = withSpaHandler(await importAppWith({ NODE_ENV: 'development' }));
+      const file = await request(dev).get(`/avatars/${FIXTURE}`);
+      expect(file.status).toBe(200);
+      expectUnprotected(file);
+      expectUnprotected(await request(dev).get('/spa-stand-in'));
+      expect((await request(dev).get('/no-such-page')).headers['x-frame-options']).toBeUndefined();
+    });
+
+    it('development: /api carries both', async () => {
+      const dev = await importAppWith({ NODE_ENV: 'development' });
+      expectProtected(await request(dev).get('/api/oauth/providers'));
+    });
+
+    // Documents hold remote https images (pasted, or imported from GitHub) and
+    // a linked GitHub account's avatar is remote.
+    it('allows https images', async () => {
+      const prod = await importAppWith({ NODE_ENV: 'production' });
+      const csp = (await request(prod).get('/api/oauth/providers')).headers['content-security-policy'];
+      expect(csp).toMatch(/img-src 'self' data: blob: https:(;|$)/);
+    });
+
+    // Helmet's default would rewrite the built app's own http:// asset
+    // requests to https:// on an install with no TLS, and the release compose
+    // file serves http://localhost:3000.
+    it('does not send upgrade-insecure-requests', async () => {
+      const prod = await importAppWith({ NODE_ENV: 'production' });
+      const csp = (await request(prod).get('/api/oauth/providers')).headers['content-security-policy'];
+      expect(csp).toContain("default-src 'self'");
+      expect(csp).not.toContain('upgrade-insecure-requests');
+    });
+
+    // The draw.io editor opens as a popup on embed.diagrams.net and talks back
+    // through window.opener. Helmet's default Cross-Origin-Opener-Policy,
+    // same-origin, severs that link for a cross-origin popup, so on the HTML
+    // page the editor would open and never load the diagram or save it.
+    it('keeps the opener link for popups (the draw.io editor)', async () => {
+      const prod = withSpaHandler(await importAppWith({ NODE_ENV: 'production' }));
+      const res = await request(prod).get('/spa-stand-in');
+      expect(res.headers['cross-origin-opener-policy']).toBe('same-origin-allow-popups');
+    });
   });
 
   it('parses JSON request bodies on API routes', async () => {

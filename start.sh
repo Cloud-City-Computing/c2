@@ -181,8 +181,8 @@ fi
 cd "$SCRIPT_DIR"
 
 # Pull image if missing
-if ! $DOCKER_SUDO docker image inspect mysql:8 &>/dev/null 2>&1; then
-  info "Pulling mysql:8 image (first run)…"
+if ! $DOCKER_SUDO docker image inspect mysql:8.4.11 &>/dev/null 2>&1; then
+  info "Pulling mysql:8.4.11 image (first run)…"
   $COMPOSE_CMD pull
 fi
 

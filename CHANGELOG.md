@@ -12,6 +12,15 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+**Upgrading: a production instance now refuses to start without `APP_URL`.**
+Check that `.env` sets it to the address people use before pulling.
+`.env.example` ships `http://localhost:3000`, which boots but now prints a
+warning in production, since emailed links would open only on the server
+itself. MySQL is now pinned to `mysql:8.4.11`: an install whose cached `mysql:8`
+is older pulls it and upgrades its data directory in place on first start, so
+back the database up first. This release also has two migrations and a
+backfill; see Migration below.
+
 ### Added
 
 - `GET /api/documents/state?workspaceId=<id>&ids=<id,id,...>`, a reconciliation
@@ -40,6 +49,20 @@ initialises an empty data directory.
   server, and `npm run migrate`, never contend with it. If MySQL restarts, the
   app takes the lock back within a second; if another process got it first,
   the app that lost it stops and exits 1 rather than keep serving beside it.
+- `cloudcodex/env-contract.js`, the configuration contract: every environment
+  variable the server reads, whether it is required, required in production,
+  defaulted (and to what) or optional, whether linking an instance to its
+  workspace supplies it, and why. It is data only, so a paired product can pin
+  a copy. A test parses the whole server and fails on a variable read without
+  an entry, an entry nothing reads, or one missing from `.env.example`, and
+  every stated default is checked against what the code does when the
+  variable is unset or blank.
+- `TRUST_PROXY`, Express's `trust proxy` setting, which decides the address the
+  rate limiters count. Unset keeps today's `1`; a hop count, `true`, `false`,
+  `loopback` or an address list are accepted, and a value Express cannot parse
+  stops the boot with a sentence naming the variable.
+- `DB_POOL_SIZE`, the MySQL pool's connection limit. Unset keeps today's 10;
+  anything but a whole number from 1 to 100 stops the boot.
 
 ### Changed
 
@@ -56,6 +79,13 @@ initialises an empty data directory.
   pending document was written. A stop signal during startup, or a second
   Ctrl-C, ends it at once. The production compose files give it
   `stop_grace_period: 20s`.
+- **Both production compose files pin `NODE_ENV=production`**, and
+  `.env.example` ships it commented out. The image now runs `node server.js`
+  directly, so its own `ENV` is all that sets it, and a blank `NODE_ENV=` line
+  in `.env` (the `.env.example` of 0.9.0 to 0.11.0 has one) would have
+  replaced it with an empty value and started the container in development
+  mode. An install that runs the image some other way should delete that line
+  from its `.env`.
 - **The stop and the probes need nothing run on upgrade**, and no migration of
   their own. Two things read differently: a brand-new install reports
   `unhealthy` until its one-time
@@ -63,6 +93,19 @@ initialises an empty data directory.
   first-run step (the log says so once), and a container started without the
   `./migrations` mount the compose files provide reports `migrations`, because
   it cannot check.
+- **`APP_URL` is required in production.** With `NODE_ENV=production` (the
+  Docker image and `npm run start`) the server exits at boot when it is unset,
+  blank or not an `http`/`https` URL, instead of emailing invitation,
+  password-reset and notification links that point at `http://localhost:3000`.
+  One on `localhost`, `127.x.x.x`, `[::1]` or a `.localhost` name still boots,
+  with a warning. Development keeps the default.
+- MySQL is pinned to `mysql:8.4.11` in every compose file, both workflows and
+  `start.sh`, instead of the floating `mysql:8`. Both tags resolve to the same
+  image today, so an install that pulled `mysql:8` recently already has it.
+  Compose does not re-pull a tag it has cached, so an older install may still
+  run an earlier 8.4 (8.4.8 shipped before): it pulls 8.4.11, and MySQL
+  upgrades the data directory in place on first start, so back it up first. A
+  test fails on a floating tag or on two files disagreeing.
 
 ### Fixed
 
@@ -103,6 +146,12 @@ initialises an empty data directory.
   `User-level lock name ... should not exceed 64 characters`. Such a schema
   now gets a lock named by a digest; every shorter name keeps the lock it had,
   so an older runner and this one still exclude each other.
+- **A blank `SMTP_FROM` sends from the default address.** `.env.example` ships
+  `SMTP_FROM=` blank, and a blank value was used as the From, so an install
+  that turned email on from it sent every email with an empty From. Blank now
+  behaves as unset (`Cloud Codex <noreply@cloudcitycomputing.com>`), and so do
+  a blank `SMTP_PORT` (587), `DB_HOST` (`localhost`) and `DB_NAME` (`c2`), in
+  the server and in `npm run migrate`.
 
 ### Security
 
@@ -130,6 +179,18 @@ initialises an empty data directory.
   later save, publish or restore of that document by someone who can see it.
   Export inlines only the images the exporting user can see. `DOC_IMAGES_PUBLIC=1` restores the old public mount. Avatars stay
   public.
+- **In production the security headers cover the whole app, not only `/api`.**
+  The single-page app's HTML, its built assets and the `/avatars` and
+  `/doc-images` files now carry the Content-Security-Policy, including
+  `frame-ancestors 'none'`, and `X-Frame-Options: DENY`. The policy also
+  allows `https:` images (documents hold remote images, and a linked GitHub
+  account's avatar is remote), turns off Helmet's `upgrade-insecure-requests`
+  so an install served over plain `http` still loads, and sends
+  `Cross-Origin-Opener-Policy: same-origin-allow-popups` so the draw.io
+  editor popup can still answer the page. Development keeps the `/api`-only
+  scope for the Vite dev server. Exporting a document as PDF now prints its
+  window from the page rather than from a script written into the window,
+  which the policy would block.
 
 ### Migration
 

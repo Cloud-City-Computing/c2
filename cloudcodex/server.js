@@ -54,6 +54,40 @@ if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.A
   process.exit(1);
 }
 
+// ─── Require APP_URL in production ──────────────────────────
+//
+// Invitation, password-reset and notification links are built from APP_URL,
+// and unset it falls back to http://localhost:3000 (routes/helpers/shared.js).
+// That default is right for development and silently wrong anywhere else: a
+// production instance would email links pointing at the reader's own machine.
+if (process.env.NODE_ENV === 'production') {
+  const appUrl = process.env.APP_URL;
+  const isHttpUrl = (value) => {
+    try {
+      return ['http:', 'https:'].includes(new URL(value).protocol);
+    } catch {
+      return false;
+    }
+  };
+  if (appUrl === undefined || appUrl.trim() === '') {
+    console.error('✖ APP_URL is required in production: set it to the address people use to reach this instance.');
+    process.exit(1);
+  } else if (!isHttpUrl(appUrl)) {
+    console.error(
+      `✖ APP_URL "${appUrl}" is not an http or https URL: ` +
+      'set it to the address people use to reach this instance, such as https://docs.example.com.'
+    );
+    process.exit(1);
+  } else if (/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(new URL(appUrl).hostname)) {
+    // Allowed, since an evaluation run on one machine is legitimate, but a
+    // copied .env.example on a public host would otherwise go unnoticed.
+    console.error(
+      `⚠ APP_URL "${appUrl}" points at this machine, so emailed links open nowhere else. ` +
+      'Set it to the public address unless this instance is only used here.'
+    );
+  }
+}
+
 // ─── Validate the sign-in provider list ─────────────────────
 //
 // AUTH_PROVIDERS is optional and unset means today's set. A value that names

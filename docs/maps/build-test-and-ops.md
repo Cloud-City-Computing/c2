@@ -41,9 +41,12 @@ it (directly or transitively) before reading `process.env`.
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
-`NODE_ENV` matters in three places: CORS localhost allowance
-(`app.js:107`), rate-limiter `skip` when `'test'` (`app.js:139`,
-`app.js:177`, `app.js:191`), and Vite's dev-vs-prod mode. It is **not** in `.env.example`.
+`NODE_ENV` matters in five places: CORS localhost allowance
+(`app.js:131`), where Helmet is mounted (`app.js:177`: the whole app in
+production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:185`,
+`app.js:223`, `app.js:237`), the `APP_URL` boot gate (`server.js:63`), and
+Vite's dev-vs-prod mode. `.env.example` ships it commented out; `npm run start`
+and the Docker image set it, and both production compose files pin it (section 4).
 
 ## 3. Local development
 
@@ -78,11 +81,18 @@ them. See [data-model.md](data-model.md).
 
 ## 4. Docker topologies
 
-**Dev** (`docker-compose.yaml`): MySQL 8 only, port 3306 published, data in a
+**Dev** (`docker-compose.yaml`): MySQL only, port 3306 published, data in a
 bind mount `./db-data/`, `init.sql` mounted into
 `/docker-entrypoint-initdb.d/`. The app runs on the host.
 
-**Prod** (`docker-compose-prod.yml`): MySQL 8 plus the app.
+**Prod** (`docker-compose-prod.yml`): MySQL plus the app.
+
+**One MySQL release everywhere: `mysql:8.4.11`.** The three compose files, both
+workflows' service containers and `start.sh`'s pre-pull name that exact tag, so
+the server CI tests is the server every install runs, and a pull never moves an
+install to an untested patch. `tests/compose-pins.test.js` fails on a tag
+without a patch version (`mysql:8`, `mysql:8.4`) and on two files disagreeing,
+so moving the pin is one commit that changes all seven references.
 
 - MySQL uses a **named volume** `db_data`, not the bind mount, and gets a
   `mysqladmin ping` healthcheck (`docker-compose-prod.yml:22-27`).
@@ -100,6 +110,12 @@ bind mount `./db-data/`, `init.sql` mounted into
   `npm run start` script, because `vite-express` reads it when `server.js` is
   imported to decide between serving `dist/` and booting a Vite dev server. It
   is also why the image no longer needs the script at all.
+  Because that `ENV` is now the only thing setting it, both production compose
+  files pin `NODE_ENV: production` under the app's `environment`: Compose lets
+  an `env_file` line `NODE_ENV=` (the `.env.example` of 0.9.0 to 0.11.0
+  shipped it blank) replace an image `ENV` with an empty value, and
+  `environment` wins over `env_file`. `.env.example` now ships it commented
+  out. `tests/image-lifecycle.test.js` pins both.
 - A `HEALTHCHECK` probes `GET /readyz` every 10 s (3 s timeout, 20 s start
   period, 3 retries) with `node -e "fetch(...)"` on `PORT`, because
   `node:20-slim` has no curl or wget. Healthy means the instance lock is held,
@@ -155,9 +171,9 @@ container is the old image, with neither the script nor the mount.
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **88 files, 1913 tests, all passing**; the
+Current state: the default run is **90 files, 2015 tests, all passing**; the
 integration project is **12 files, 92 tests** (measured 2026-09-27 on the merged
-tree, against MySQL 8.4 at the server's default isolation and at
+tree, against MySQL 8.4.11 at the server's default isolation and at
 `READ-COMMITTED`).
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
@@ -166,7 +182,9 @@ real processes rather than a real server alone: it forks
 instance lock (a second process exits 1 naming the holder's connection id, a
 SIGKILLed holder frees it within two seconds, two schemas hold their own at
 once, a 64-character schema name gets an exclusive lock of its own), then
-boots `server.js` itself (`NODE_ENV=production`, a free port, the boot admin), signs in through `/api/login`, sends one Yjs update over
+boots `server.js` itself (`NODE_ENV=production`, a free port, an `APP_URL` on
+that port, which production requires, and the boot admin), signs in through
+`/api/login`, sends one Yjs update over
 `/collab`, delivers SIGTERM 200 ms later, inside the three-second debounce, and
 requires exit 0, close code 1001, the edit in `logs.ydoc_state` and the edit
 served by a restarted server. Its last test boots `server.js`, KILLs the lock's
@@ -445,19 +463,21 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:104-185`. The global floor is deliberately low because
+`vitest.config.js:105-188`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **35 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **36 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
 arrived with the identity seam; the 31st, `services/session-token.js` (95 on
 all four), with hashed sessions; the 32nd, `routes/doc-images-serve.js` (95
-lines, 92 branches), with the authorized image handler; `routes/health.js`,
-`services/shutdown.js` and `services/instance-lock.js` with W6-CDX-31. The security-critical and
+lines, 92 branches), with the authorized image handler; the 33rd to 35th,
+`routes/health.js`, `services/shutdown.js` and `services/instance-lock.js`,
+with W6-CDX-31; and the 36th, `env-contract.js`, with the configuration
+contract. The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -476,19 +496,20 @@ well-covered modules are ratcheted high:
 | `src/util.jsx` | 65 |
 
 Plus `services/email.js` and `email-templates.js` at 95, `app.js` at 75 lines
-but only 5 branches, `src/editorUtils.js` and `src/userPrefs.js` at 95,
+but only 5 branches, `env-contract.js` at 100 (it is data only, so importing it
+covers all of it), `src/editorUtils.js` and `src/userPrefs.js` at 95,
 `scripts/**` at 82, and five per-hook thresholds.
 
 `coverage.include` is an allowlist, so a directory absent from it is **invisible
 to coverage rather than under-covered**. `scripts/**/*.js` was added to it when
 the migration runner landed; anything new outside `routes/`, `middleware/`,
-`services/`, `scripts/`, `src/` and the three named root files needs the same
+`services/`, `scripts/`, `src/` and the four named root files needs the same
 treatment or it silently counts for nothing.
 
 **The practical consequence:** adding an uncovered branch to a high-threshold
 file fails CI even though every test passes. Write the test with the code. When
 you raise real coverage, ratchet the threshold up in the same PR; the comment at
-`vitest.config.js:98-103` explains the "achieved minus a small buffer" policy.
+`vitest.config.js:99-104` explains the "achieved minus a small buffer" policy.
 
 ## 6. CI
 
@@ -499,7 +520,7 @@ cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 npm ci -> npm run lint -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
 ```
 
-The job carries a `mysql:8.4` **service container** (root password
+The job carries a `mysql:8.4.11` **service container** (root password
 `ci-root-password`, published on 3306, health-checked with `mysqladmin ping`),
 and the `Integration tests (live MySQL)` step runs `npm run test:integration`
 against it with `IT_DB_HOST=127.0.0.1`. The password is not a secret: it guards
@@ -547,13 +568,13 @@ reports blocks a merge permanently rather than failing it.
 `.github/workflows/release.yml`, triggered by pushing a `v*` tag. Two jobs:
 
 1. **verify** re-runs `npm ci`, `npm run lint`, `npm test`,
-   `npm run test:integration` (against the same `mysql:8.4` service CI uses)
+   `npm run test:integration` (against the same `mysql:8.4.11` service CI uses)
    **and `npm run test:coverage`**. The integration step means a tag cannot
    publish an image whose `init.sql` does not build on MySQL 8.4, or whose
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 35 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 36 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
@@ -642,7 +663,8 @@ Before calling a change done:
    file needs its undo in `tests/integration/pre-runner-state.js`, or the
    upgrade-path test is red. That test runs on empty tables: a migration that
    rewrites existing rows needs its own seeded test.
-3. New env vars in `.env.example` with a comment.
+3. New env vars in `.env.example` with a comment, and an entry in
+   `cloudcodex/env-contract.js` (see `request-lifecycle.md` section 1).
 4. New heavy frontend deps added to `manualChunks` in `vite.config.js`.
 5. New SQL in **both** `migrations/` and `init.sql`. Never add the new file to
    `LEGACY_BASELINE` in `scripts/migrate.js`; that list is closed.

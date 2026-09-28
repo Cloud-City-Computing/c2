@@ -266,7 +266,7 @@ the list Cloud Command's operator link tool (W6-CMD-31) prints**, and its test a
 one, so a per-instance variable a later track adds without an entry fails here, and one with an
 entry that the tool does not yet supply fails there.
 
-- [ ] Run it before any other change. **Expected:** it fails, listing every variable that has no
+- [x] Run it before any other change. **Expected:** it fails, listing every variable that has no
       entry yet; add them all, then it passes.
 
 ### Task 2.2 `APP_URL`, `TRUST_PROXY`, `DB_POOL_SIZE`
@@ -284,11 +284,11 @@ Tests for each, including that `trust proxy` and the pool see the configured val
 
 ### Task 2.3 Pin MySQL
 
-- [ ] `docker pull mysql:8.4 && docker run --rm mysql:8.4 mysqld --version`; record the patch
+- [x] `docker pull mysql:8.4 && docker run --rm mysql:8.4 mysqld --version`; record the patch
       version.
-- [ ] Set `image: mysql:8.4.<patch>` in `docker-compose.yaml:8`, `docker-compose-prod.yml:3` and
+- [x] Set `image: mysql:8.4.<patch>` in `docker-compose.yaml:8`, `docker-compose-prod.yml:3` and
       `docker-compose-release.yml:12`, and the same tag for the CI service W6-CDX-10 added.
-- [ ] `tests/compose-pins.test.js`: no compose file and no workflow names a MySQL image without a
+- [x] `tests/compose-pins.test.js`: no compose file and no workflow names a MySQL image without a
       patch version.
 
 ### Task 2.4 The admin sync never promotes
@@ -368,22 +368,31 @@ Tests, `tests/app.test.js` (Supertest, with `NODE_ENV` set per case and `app.js`
 
 By hand, because `vite-express` serves the built app only in the image:
 
-- [ ] `docker build -t c2:headers ./cloudcodex`, run it with the release compose file, then
+- [x] `docker build -t c2:headers ./cloudcodex`, run it with the release compose file, then
       `curl -sI http://127.0.0.1:3000/ | grep -i -E 'content-security-policy|x-frame-options'`.
       **Expected:** both headers, on the HTML the browser loads.
-- [ ] In a browser against that container, over plain `http://localhost:3000`: home, a document
+- [x] In a browser against that container, over plain `http://localhost:3000`: home, a document
       with a pasted image, a remote `https` image and a draw.io diagram (whose editor opens as a
       popup, which the CSP does not govern), Account with a linked GitHub avatar, and the GitHub
       page. **Expected:** every image renders and there is no `Content-Security-Policy` violation
       in the console. Any violation is fixed by
       widening one directive with a comment saying why, never by dropping the policy.
-- [ ] `npm run dev`, then load the dev server. **Expected:** it loads as before.
-- [ ] `docs/security.md` "Security Headers" and `docs/maps/request-lifecycle.md` (the middleware
+- [x] `npm run dev`, then load the dev server. **Expected:** it loads as before.
+- [x] `docs/security.md` "Security Headers" and `docs/maps/request-lifecycle.md` (the middleware
       stack) state both scopes.
+
+Done 2026-09-27 on `track/w6-cdx-32-production-config`, with two changes the draft did not have, both
+found by the browser check. **`crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }`**:
+Helmet's default `same-origin`, once it reaches the HTML, severs the draw.io popup from its opener,
+so the editor never receives the diagram (measured: no `init` message arrives). **The PDF export's
+print window** is printed by the opener, because an `about:blank` popup inherits the page's CSP and
+`script-src 'self'` blocks the inline script it used to carry. The check ran on port 3932 rather than
+3000, beside the other sessions' containers, and found no CSP violation on any page listed above,
+nor on uploads, the imported file, the collab socket or the GitHub OAuth redirects.
 
 ### Task 2.6 Docs
 
-- [ ] `.env.example` comments for `APP_URL` (required in production), `TRUST_PROXY`,
+- [x] `.env.example` comments for `APP_URL` (required in production), `TRUST_PROXY`,
       `DB_POOL_SIZE`. `docs/deployment.md` "Required environment for production" points at
       `env-contract.js`. CHANGELOG. Lint, test, coverage, integration, build.
 

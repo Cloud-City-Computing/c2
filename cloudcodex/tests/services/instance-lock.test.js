@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { acquireInstanceLock } from '../../services/instance-lock.js';
+import { contractDefault } from '../contract-default.js';
 
 const originalFlag = process.env.C2_INSTANCE_LOCK;
 
@@ -115,6 +116,20 @@ describe('acquireInstanceLock: the escape', () => {
     expect(lock).toMatchObject({ held: false, disabled: true });
     await expect(lock.release()).resolves.toBeUndefined();
     expect(log.mock.calls.flat().join(' ')).toMatch(/C2_INSTANCE_LOCK=0.*diverge/s);
+  });
+
+  it('behaves unset exactly as the contract default it states (env-contract.js): the lock on', async () => {
+    for (const value of [undefined, contractDefault('C2_INSTANCE_LOCK')]) {
+      if (value === undefined) delete process.env.C2_INSTANCE_LOCK;
+      else process.env.C2_INSTANCE_LOCK = value;
+      const connect = vi.fn(async () => fakeConnection());
+
+      const lock = await acquireInstanceLock({ connect, log });
+
+      expect(connect).toHaveBeenCalledTimes(1);
+      expect(lock.held).toBe(true);
+      await lock.release();
+    }
   });
 
   it.each(['1', '', 'false', 'off'])('keeps the lock on for C2_INSTANCE_LOCK=%j: only 0 turns it off', async (value) => {

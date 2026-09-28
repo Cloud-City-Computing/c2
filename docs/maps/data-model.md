@@ -147,11 +147,11 @@ already has rows unless `--again` or `DOC_IMAGES_PUBLIC=1`;
 `sessions.id CHAR(64)` is the primary key and holds the **SHA-256 digest of
 the token**, lowercase hex, never the token itself (`init.sql`, `CREATE TABLE
 sessions`). The token is minted by `createNewSessionToken`
-(`mysql_connect.js:122-126`) and handed to the browser; `hashSessionToken`
+(`mysql_connect.js:154-158`) and handed to the browser; `hashSessionToken`
 (`services/session-token.js`) is the one definition of what is stored, and
 every lookup and delete by token binds its output. A hex digest is also 64
 characters, so the column did not change. There are **many rows per user by
-design**, one per sign-in: `generateSessionToken` (`mysql_connect.js:148-156`)
+design**, one per sign-in: `generateSessionToken` (`mysql_connect.js:180-188`)
 only ever inserts, and the `user_id` index serves the deletes that sign every
 device out (password reset, update-account).
 
@@ -229,7 +229,7 @@ Four rules follow, and all four are load-bearing:
   with no `DEFAULT` an implicit default of the **first** listed value even
   under `STRICT_TRANS_TABLES`, so an omitted purpose would silently become
   `password_reset`, which is the exact defect the column exists to close.
-  Measured on `mysql:8` (8.4.8), the shipped image.
+  Measured on `mysql:8` (8.4.8), the image shipped then.
 - Forgot-password's `UPDATE ... SET used = TRUE WHERE user_id = ?` is scoped to
   `purpose = 'password_reset'` too. Unscoped, asking for a password reset
   silently killed the user's in-flight 2FA login, TOTP enrolment or

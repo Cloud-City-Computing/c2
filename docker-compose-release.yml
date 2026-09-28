@@ -9,7 +9,7 @@
 
 services:
   database:
-    image: mysql:8
+    image: mysql:8.4.11
     container_name: cloudcodex-db
     restart: unless-stopped
     environment:
@@ -85,6 +85,10 @@ services:
       - .env
     environment:
       DB_HOST: database
+      # The image runs `node server.js` directly, so NODE_ENV comes from its ENV
+      # alone, and a blank `NODE_ENV=` in .env (older .env.example files ship
+      # one) would replace it with an empty value. environment wins over env_file.
+      NODE_ENV: production
     volumes:
       # Uploaded avatars and images extracted out of documents live on disk
       # here, and only the path to them lives in MySQL: routes/helpers/images.js

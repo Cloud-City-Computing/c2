@@ -25,10 +25,14 @@ const CONNECTION_TIMEOUT_MS = 10_000;
 const GREETING_TIMEOUT_MS = 10_000;
 const SOCKET_TIMEOUT_MS = 20_000;
 
+// A blank SMTP_PORT or SMTP_FROM behaves as unset: .env.example ships
+// SMTP_FROM blank, and Compose's env_file passes a blank line through.
+const SMTP_PORT = Number(process.env.SMTP_PORT?.trim() || 587);
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST ?? 'localhost',
-  port: Number(process.env.SMTP_PORT ?? 587),
-  secure: Number(process.env.SMTP_PORT ?? 587) === 465,
+  port: SMTP_PORT,
+  secure: SMTP_PORT === 465,
   auth: (process.env.SMTP_USER && process.env.SMTP_PASS) ? {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -38,7 +42,7 @@ const transporter = nodemailer.createTransport({
   socketTimeout: SOCKET_TIMEOUT_MS,
 });
 
-const DEFAULT_FROM = process.env.SMTP_FROM ?? 'Cloud Codex <noreply@cloudcitycomputing.com>';
+const DEFAULT_FROM = process.env.SMTP_FROM?.trim() || 'Cloud Codex <noreply@cloudcitycomputing.com>';
 
 // --- Mail capability ---
 //

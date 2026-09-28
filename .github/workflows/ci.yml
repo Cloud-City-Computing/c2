@@ -22,7 +22,7 @@ jobs:
     # for the length of this job.
     services:
       mysql:
-        image: mysql:8.4
+        image: mysql:8.4.11
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
         ports:

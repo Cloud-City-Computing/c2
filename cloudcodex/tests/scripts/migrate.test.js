@@ -388,6 +388,12 @@ describe('scripts/migrate', () => {
       });
     });
 
+    it('treats a blank DB_HOST or DB_NAME as unset, as the server does', () => {
+      const config = resolveDbConfig({ DB_USER: 'admin', DB_PASS: 'secret', DB_HOST: '', DB_NAME: '  ' });
+      expect(config.host).toBe('localhost');
+      expect(config.database).toBe('c2');
+    });
+
     it('honours DB_HOST and DB_NAME when set', () => {
       const config = resolveDbConfig({
         DB_USER: 'admin',

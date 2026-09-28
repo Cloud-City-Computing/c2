@@ -44,7 +44,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 35 per-glob coverage thresholds
+    ├── vitest.config.js         ← three projects + 36 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -328,7 +328,7 @@ make db-shell                # mysql CLI in the Docker container
 
 CI (`.github/workflows/ci.yml`) is one job, `Lint, test and build`, which runs
 `npm ci`, `npm run lint`, `npm test`, `npm run test:integration` (against a
-`mysql:8.4` service container in the same job), `npm run test:coverage` (the
+`mysql:8.4.11` service container in the same job), `npm run test:coverage` (the
 per-glob thresholds are the real gate) and `npm run build`. It runs on push to `main`
 and on every pull request whatever its base, and it is the required status
 check on `main`. **There are no pre-commit hooks**, so local lint and test are
@@ -509,7 +509,10 @@ Before claiming a change is done:
 
 1. `npm run lint` — clean, no new warnings.
 2. `npm test` — green.
-3. New env vars added to `.env.example` with a comment.
+3. New env vars added to `.env.example` with a comment, and an entry in
+   `cloudcodex/env-contract.js` (`tests/env-contract.test.js` fails without one).
+   A `default` entry also needs a test that reads its value through
+   `contractDefault('<NAME>')` and is listed in that test's `DEFAULT_PROVEN_IN`.
 4. New required dependencies added to `package.json` (and code-split in
    `vite.config.js` if they're heavy frontend libs — see `manualChunks`).
 5. Any new SQL columns/tables added as a migration in `migrations/` AND as
@@ -558,6 +561,6 @@ truth.** The maps carry `file:line` citations so you land on the right line.
 - **Why did that notification fire (or not)?** → `docs/maps/notifications-and-activity.md`.
 - **Why is CI red when my tests pass?** → `docs/maps/build-test-and-ops.md` (per-glob coverage thresholds).
 - **Is this a bug or is it meant to be like that?** → `docs/maps/open-questions.md`.
-- **What env vars exist?** → `.env.example`.
+- **What env vars exist?** → `cloudcodex/env-contract.js` (every variable the server reads, pinned by a test), then `.env.example`.
 - **What are the API contracts?** → `docs/api/*.md` (per-area).
 - **What's the security model?** → `docs/security.md`.
