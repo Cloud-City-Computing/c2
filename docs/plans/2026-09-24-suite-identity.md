@@ -939,7 +939,9 @@ Load-bearing details, each with a test:
   `expectedNonce`, `pkceCodeVerifier` and `idTokenExpected: true`; `sub` and `sid` from the ID
   token; `email`, `email_verified` and `name` from `fetchUserInfo`, falling back to the ID token's
   claims only when no access token came back. An unverified or missing email throws
-  `email_not_verified` before any database read.
+  `email_not_verified` before any database read. `emailVerified` is `email_verified === true`:
+  Cloud City ID's userinfo omits `email_verified` for an unverified address and never sends `false`
+  (W6-CCID-3, P2 and P8), so a check that refuses only `false` would accept every unverified one.
 
 ### Task 5.5 `returnTo`, one validator and one corpus
 
@@ -1111,16 +1113,31 @@ answer `{ success: true, endSessionUrl }` where
 
 ```javascript
 client.buildEndSessionUrl(configuration, {
+  id_token_hint: deletedRow.oidc_id_token,
   post_logout_redirect_uri: new URL('/?signedOut=1', APP_URL).href,
   state: randomState(),
 });
 ```
 
-(which adds `client_id` itself). No ID token is stored or sent. `AccountPanel.jsx`'s
-`performLogout` keeps ending locally first (it already clears the cookie before navigating), then
-navigates to `endSessionUrl` when present, else `/`. Tests: a local session gets no URL; an OIDC
-session gets exactly `client_id`, `post_logout_redirect_uri` and `state`; a failed request still
-ends locally (frontend test).
+(which adds `client_id` itself). **The ID token is kept and sent as `id_token_hint`**, corrected from
+"no ID token is stored or sent" by Cloud City ID's issuer-contract run (W6-CCID-3, Zitadel v4.19.1
+with its login v2 UI): an `end_session` request carrying only `client_id` ends no session there. The
+issuer shows a page asking the person to pick the account to sign out, and ends nothing, and sends
+no back-channel logout, until they click. With `id_token_hint` it ends that one session at once,
+sends back-channel logout to every relying party the session reached, and redirects to the
+post-logout URI with no page. An expired ID token is accepted as the hint (the session outlives the
+ID token), and so is the hint of a session that has already ended, which still redirects.
+
+So `sessions` gains `oidc_id_token TEXT NULL` (a dated migration and the `init.sql` edit, per the
+Global constraints), which the callback (Task 5.7) writes from the token response for an OIDC
+session, and which the session rotation carried from PR 2 passes on with the other provenance
+fields. Treat the value as a credential: seal it or at least never log it, and never send it
+anywhere except in this URL. (Whether it is good for anything at the issuer beyond ending its session
+was not measured; the issuer's discovery document advertises no token-exchange grant.) `AccountPanel.jsx`'s `performLogout` keeps ending locally first (it
+already clears the cookie before navigating), then navigates to `endSessionUrl` when present, else
+`/`. Tests: a local session gets no URL; an OIDC session gets exactly `client_id`, `id_token_hint`
+(the stored token), `post_logout_redirect_uri` and `state`; a rotated OIDC session keeps its token;
+a failed request still ends locally (frontend test).
 
 ### Task 6.2 The back-channel receiver
 
@@ -1136,6 +1153,7 @@ router.post(
     const claims = await verifyLogoutToken(req.body?.logout_token);   // null on any failure
     if (!claims) return res.status(400).json({ success: false, message: 'Invalid logout token' });
     const deleted = await revokeForLogoutToken(claims);                // digests of deleted rows
+    rememberJti(claims.jti);                                           // only once the delete committed
     closeCollabSocketsForSessions(deleted);
     closeUserChannelSocketsForSessions(deleted);
     return res.status(200).end();
@@ -1147,14 +1165,24 @@ router.post(
 the cached discovery document, with `issuer`, `audience: clientId`, `clockTolerance: 60`, and then
 requires: `iat` within the last 5 minutes; `events` has the member
 `http://schemas.openid.net/event/backchannel-logout`; **no** `nonce`; `sid` or `sub`; and a `jti`
-not seen before, recorded in a bounded in-process `Map` (10,000 entries, entries older than 10
-minutes evicted), which is correct for the single process CLAUDE.md decision 1 requires.
+not seen before, checked here and recorded (`rememberJti`) only after `revokeForLogoutToken` has
+committed, in a bounded in-process `Map` (10,000 entries, entries older than 10 minutes evicted),
+which is correct for the single process CLAUDE.md decision 1 requires. **Why after:** the issuer
+retries every delivery not answered 200, 202, 204 or 400 (a 5xx, a 401, a dropped connection, or
+no answer within about 5 seconds), exactly three attempts in all, **with the same `jti`**, and
+treats a 400 as final (measured in the same W6-CCID-3 run; 202 as a success is read from the
+issuer's source, not measured). That is also why an invalid token is
+answered 400 and never 401: a 401 is retried. A `jti` recorded before a delete that then fails turns the retry into a replay
+refusal, and the session survives. For the same reason the handler is idempotent: a slow first
+attempt can still be running when its retry arrives.
 `revokeForLogoutToken` deletes `WHERE auth_provider = 'oidc' AND provider_sid = ?` when `sid` is
 present, else every OIDC session of the `(iss, sub)` identity, and returns the deleted ids.
 
 `backchannelLimiter`: 300 requests per minute per IP, because every logout token arrives from the
 issuer's one address. Tests: one per validation rule, each deleting nothing; deletion by `sid` and
-by `sub`; a `requireAuth` route (`GET /api/permissions`) then answers 401 for the revoked session.
+by `sub`; a `requireAuth` route (`GET /api/permissions`) then answers 401 for the revoked session; a
+first delivery whose delete fails answers 5xx and records no `jti`, and the same token delivered
+again then deletes the session.
 
 ### Task 6.3 Sockets know their session
 
