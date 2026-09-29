@@ -11,6 +11,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import nodemailer from 'nodemailer';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { contractDefault } from '../contract-default.js';
 
 // Bypass the global email mock — we want the real module under test.
@@ -134,6 +136,7 @@ describe('services/email', () => {
       verifyMock.mockResolvedValueOnce(true);
       const result = await initMail();
       expect(result.enabled).toBe(true);
+      expect(result.configured).toBe(true);
       expect(result.reason).toBeNull();
       expect(isMailEnabled()).toBe(true);
     });
@@ -142,6 +145,7 @@ describe('services/email', () => {
       verifyMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
       const result = await initMail();
       expect(result.enabled).toBe(false);
+      expect(result.configured).toBe(true);
       expect(result.reason).toBe('SMTP connection failed');
       expect(isMailEnabled()).toBe(false);
     });
@@ -180,16 +184,23 @@ describe('mail capability when SMTP is unconfigured', () => {
     process.env.SMTP_PASS = '';
     vi.resetModules();
 
-    const mod = await import('../../services/email.js');
-    const result = await mod.initMail();
+    // Restored in finally, so a failure here cannot leave SMTP unset for the
+    // tests below and turn one red into a cascade.
+    try {
+      const mod = await import('../../services/email.js');
+      const result = await mod.initMail();
 
-    expect(mod.isMailConfigured()).toBe(false);
-    expect(result.enabled).toBe(false);
-    expect(result.reason).toBe('SMTP_HOST, SMTP_USER or SMTP_PASS not set');
-    expect(mod.isMailEnabled()).toBe(false);
-
-    process.env = saved;
-    vi.resetModules();
+      expect(mod.isMailConfigured()).toBe(false);
+      expect(result.enabled).toBe(false);
+      // server.js reports this documented mode as a choice, not a fault, and
+      // tells the two apart by this field rather than by the reason's wording.
+      expect(result.configured).toBe(false);
+      expect(result.reason).toBe('SMTP_HOST, SMTP_USER or SMTP_PASS not set');
+      expect(mod.isMailEnabled()).toBe(false);
+    } finally {
+      process.env = saved;
+      vi.resetModules();
+    }
   });
 });
 
@@ -245,5 +256,25 @@ describe('SMTP_PORT and SMTP_FROM defaults', () => {
   it('SMTP_FROM set is the From on every email', async () => {
     const { mail } = await importWith({ SMTP_FROM: 'Docs <docs@example.com>' });
     expect(mail.from).toBe('Docs <docs@example.com>');
+  });
+});
+
+// Same file and same reason as mysql_connect.js: the image has no .env, and
+// dotenv 17 logs a line and an advert for every config() call that loads
+// nothing, on every boot.
+describe('dotenv', () => {
+  it('loads the repository root .env without logging', async () => {
+    const config = vi.fn();
+    vi.doMock('dotenv', () => ({ default: { config } }));
+    try {
+      vi.resetModules();
+      await import('../../services/email.js');
+    } finally {
+      vi.doUnmock('dotenv');
+      vi.resetModules();
+    }
+    const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    expect(config).toHaveBeenCalledTimes(1);
+    expect(config).toHaveBeenCalledWith({ path: path.resolve(appDir, '..', '.env'), quiet: true });
   });
 });

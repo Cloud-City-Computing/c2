@@ -283,11 +283,15 @@ describe('Auth Routes', () => {
       expect(del[1]).toEqual([hashSessionToken('header-token')]);
     });
 
+    // A cookie-only write must carry an accepted Origin (app.js,
+    // requireOriginForCookieWrites), as a browser's own logout does.
     it('deletes the session for a sessionToken cookie with an empty body', async () => {
       c2_query.mockResolvedValueOnce([]); // DELETE session
 
       const res = await request(app)
         .post('/api/logout')
+        .set('Host', 'codex.example.com')
+        .set('Origin', 'https://codex.example.com')
         .set('Cookie', 'sessionToken=cookie-token')
         .send({});
 
@@ -348,6 +352,53 @@ describe('Auth Routes', () => {
         .send({});
 
       expect(res.status).toBe(400);
+    });
+
+    // The client promotes a legacy `sessionToken` cookie to __Host- only after
+    // asking here with legacyCookie: true. With the fallback off, a lone legacy
+    // cookie (possibly tossed by a sibling host) must not become a session.
+    describe('legacyCookie (W6-CDX-3)', () => {
+      const prior = process.env.LEGACY_SESSION_COOKIE;
+      afterEach(() => {
+        if (prior === undefined) delete process.env.LEGACY_SESSION_COOKIE;
+        else process.env.LEGACY_SESSION_COOKIE = prior;
+      });
+
+      it('answers valid=false without looking the token up when LEGACY_SESSION_COOKIE=0', async () => {
+        process.env.LEGACY_SESSION_COOKIE = '0';
+        validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
+
+        const res = await request(app)
+          .post('/api/validate-session')
+          .send({ token: 'good-token', legacyCookie: true });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ valid: false });
+        expect(validateAndAutoLogin).not.toHaveBeenCalled();
+      });
+
+      it('validates as usual while the fallback is on', async () => {
+        delete process.env.LEGACY_SESSION_COOKIE;
+        validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
+
+        const res = await request(app)
+          .post('/api/validate-session')
+          .send({ token: 'good-token', legacyCookie: true });
+
+        expect(res.body.valid).toBe(true);
+        expect(validateAndAutoLogin).toHaveBeenCalledWith('good-token');
+      });
+
+      it('leaves a token not from a legacy cookie alone when the fallback is off', async () => {
+        process.env.LEGACY_SESSION_COOKIE = '0';
+        validateAndAutoLogin.mockResolvedValueOnce(TEST_USER);
+
+        const res = await request(app)
+          .post('/api/validate-session')
+          .send({ token: 'good-token' });
+
+        expect(res.body.valid).toBe(true);
+      });
     });
   });
 

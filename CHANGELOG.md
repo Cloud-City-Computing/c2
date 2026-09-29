@@ -56,6 +56,160 @@ initialises an empty data directory.
   background named such a property and was already transparent; the
   declaration is deleted, with no visible change.
 
+## [0.13.0] - 2026-09-28
+
+The cookie-hardening release. One security fix: on an https instance, the
+cookie that ties a Google sign-in or a GitHub link to the browser that started
+it is now a `__Host-` cookie, read only under that exact name
+([GHSA-xq3x-556x-fr4q](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-xq3x-556x-fr4q)).
+On https the session cookie becomes `__Host-sessionToken` under the same rule,
+and a write authenticated by the session cookie alone must now carry an
+accepted `Origin`.
+Alongside them: a first boot on an empty volume that no longer restarts the
+app, a clean boot log and browser console, and self-hosting documentation that
+matches the code. **Upgrading from 0.12.0 applies no migration and needs
+nothing run, and signed-in browsers stay signed in. A script that posts to
+`/api` with only a session cookie now needs an `Origin` header or the bearer
+header; see Migration below.**
+
+### Added
+
+- `LEGACY_SESSION_COOKIE`: whether a lone `sessionToken` cookie, the name the
+  session cookie had before it became `__Host-sessionToken` on https (see
+  Security), still signs its holder in. Unset keeps it on; exactly `0` turns
+  it off, for an https instance that shares its domain with hosts you do not
+  control.
+
+### Fixed
+
+- **Signing in over plain `http` to an address other than `localhost` keeps
+  its session.** The page wrote the session cookie with `Secure` whatever the
+  scheme, and a browser drops a `Secure` cookie set over plain `http`, so the
+  sign-in reloaded signed out. The page now marks it `Secure` on https only,
+  and the Google callback decides `Secure` from `APP_URL`'s scheme (as its
+  state cookie already did) rather than from `NODE_ENV`.
+- **A first boot on an empty volume no longer restarts the app** (listed as a
+  known gap in 0.12.0's release notes). The MySQL healthcheck in both
+  production compose files pinged over the socket, which the image's temporary
+  initialisation server (networking off, while it runs `init.sql`) answers, so
+  the database reported healthy while nothing listened on 3306. The app then
+  exited with `Could not open a MySQL connection for the instance lock:
+  connect ECONNREFUSED` until `restart: unless-stopped` brought it back (the
+  0.11.0 image, which has no instance lock, started instead without its admin:
+  `admin user sync failed: ... ECONNREFUSED`). The check now pings `127.0.0.1`
+  over TCP, which only the real server answers, with a 300-second start period
+  so a slow initialisation is not marked unhealthy, and `start.sh` waits the
+  same way (for up to three minutes instead of one). Measured on fresh
+  volumes: `docker-compose-prod.yml` restarted the app 4 times in each of two
+  boots before and 0 after, and `docker-compose-release.yml` built locally 6
+  before and 0 after. A test pins the check in both files and in `start.sh`.
+- **The app's inline SVG icons declare the real SVG namespace.** The rename
+  from organizations to workspaces had reached inside a URL, so the sidebar's
+  icons and the search and explore boxes' declared `www.w3.workspace` where
+  `www.w3.org` belongs. React drew them anyway, which is why it went unnoticed,
+  but the markup was not valid SVG. A test now fails on any XML namespace
+  outside a short list of W3C ones, and on any URL whose host ends in a product
+  word (workspace, squad, archive, log).
+- **The container's log no longer opens with dotenv's banner.**
+  `mysql_connect.js` and `services/email.js` each call `dotenv.config()`, and
+  dotenv 17 printed `injecting env (0) from ../.env` and an advert for each
+  call on every boot, because the image has no `.env`. Both calls are quiet
+  now and still read the same file.
+- **No more refused GitHub requests in the browser console.** A signed-out
+  visitor's landing page asked `GET /api/github/status` and got a 401, and
+  every document view by a user with no GitHub account linked asked
+  `GET /api/github/link/:id` and got a 403. The layout now asks for the GitHub
+  status only once its sign-in check has found a user, and the editor asks for
+  a document's link only once that status says an account is linked. The
+  server refuses both exactly as before. The standalone editor route
+  (`/editor/:id`) now renders inside the layout the way the archive view's
+  embedded editor already did, so it also waits for the sign-in check.
+- **The self-hosting documentation matches the code.** `docs/deployment.md`,
+  `README.md` and `docs/architecture.md` now all say SMTP is optional and what
+  running without it turns off (emailed invitations, which become a link to
+  copy, password reset, email two-factor codes and notification emails).
+  Both first-install snippets in `docs/deployment.md` now include the one-time
+  `npm run migrate -- --adopt-fresh-install`. Its "Stop every writer first"
+  section appeared twice and is now one. The environment table in
+  `docs/getting-started.md` lists every variable in `env-contract.js` it
+  lacked (`PORT`, `C2_INSTANCE_LOCK`, `DOC_IMAGES_PUBLIC`, `SERVICE_TOKEN`,
+  `SERVICE_TOKEN_USER`), marks `ADMIN_USERNAME` required, and describes
+  `NODE_ENV`'s effect on CORS as `app.js` implements it, and a test now fails
+  when the table misses an entry or contradicts its kind.
+- **README's release quick start reaches a ready instance.** It ran compose in
+  the foreground and stopped there, so a reader who followed it alone never ran
+  the one-time `npm run migrate -- --adopt-fresh-install`: `/readyz` stayed 503
+  `migrations` and the container unhealthy. It now matches the 0.12.0 release
+  notes' "Run it" block (`up -d`, then the adopt step, with `APP_URL` named among
+  what to fill in), and both first-install blocks in `docs/deployment.md` name
+  `APP_URL` too. A test fails when any documented first install on a production
+  compose file leaves out one of the three.
+- **Running without SMTP no longer reads as an error in the boot log.** The
+  documented mail-off mode printed `✖ Email disabled: SMTP_HOST, SMTP_USER or
+  SMTP_PASS not set`, the same glyph as a boot that cannot start. It now
+  prints a report line styled like the trusted-proxy one, `✔ Email off (...)`,
+  naming what is unavailable. A configured SMTP server that fails verification
+  still prints `✖ Email disabled: SMTP connection failed`, since that is a
+  fault. `initMail()` now also returns `configured`, which is how the two are
+  told apart.
+- **The rate-limit tables list every limiter.** `docs/deployment.md` and
+  `docs/security.md` left out the one on `GET /api/documents/state`, 120
+  requests per 15 minutes counted before authentication, and `security.md`'s
+  "Search" row now says it is the user search it limits.
+- **The configuration contract describes `NODE_ENV` correctly.** Its entry in
+  `cloudcodex/env-contract.js` said production "arms the rate limiters", but
+  they are on in every mode except `test`. It now lists what production
+  actually changes: the built app, the security headers on every response,
+  `APP_URL` required, and no localhost origins.
+
+### Security
+
+- **On https the OAuth state cookies are `__Host-oauth_state_<provider>`, read
+  only under that exact name**
+  ([GHSA-xq3x-556x-fr4q](https://github.com/Cloud-City-Computing/c2/security/advisories/GHSA-xq3x-556x-fr4q)).
+  The cookie that ties a Google sign-in or a GitHub link to the browser that
+  started it is now `__Host-oauth_state_google` or `__Host-oauth_state_github`
+  when `APP_URL` is https: Secure, `Path=/` and no `Domain`, so no other host
+  under the same domain can set it, and the callback reads the state under
+  that name only. The protection needs https. A browser cannot hold a
+  `__Host-` cookie over plain http, so there the names stay
+  `oauth_state_google` and `oauth_state_github` at `Path=/api/oauth`, and an
+  instance served that way stays exposed to scripts on hosts under its domain.
+- **On https the session cookie is `__Host-sessionToken`, and a write
+  authenticated by that cookie alone must carry an accepted `Origin`.** Any
+  host under the same registrable domain could set a `sessionToken` cookie for
+  the whole domain with a longer path, which a browser sends first, and the
+  server and the page both took the first `sessionToken` they found, so a
+  sibling host could sign a visitor in as someone else. A browser refuses a
+  `__Host-` cookie with a `Domain`, so no other host can set this one; it wins
+  over a legacy `sessionToken` wherever the two sit, on the server and in the
+  page, and no writer sets `Domain`. Every cookie reader matches the name
+  exactly, stripping only the ASCII space and tab between cookies, so a cookie
+  whose name merely looks like `__Host-sessionToken` is never read as it.
+  What an operator sees: sessions under the old `sessionToken` name keep
+  working while `LEGACY_SESSION_COOKIE` is on (the default, `1`), and each is
+  upgraded to `__Host-sessionToken` on its browser's first visit over https,
+  with no new sign-in. (The page asks the server to confirm the old cookie
+  before moving it, waits at most five seconds for the answer, and asks once
+  per tab.) Over plain http the cookie keeps the old name, the only one a
+  browser can hold there. Separately, an `/api` `POST`, `PUT`, `PATCH` or
+  `DELETE` that carries the session cookie and no bearer header is refused
+  with `403` unless its `Origin` is one the CORS rule accepts; CORS admitted a
+  request with no `Origin` at all, and `SameSite=Strict` treats sibling hosts
+  as the same site. The app's own requests, which send a bearer header or an
+  `Origin`, and every server-to-server caller are unaffected. Both WebSockets
+  already refused an upgrade with no `Origin` or a sibling's; tests now pin it.
+
+### Migration
+
+**The cookie renames need nothing run.** Browsers that hold the older
+`sessionToken` stay signed in and move to `__Host-sessionToken` on their next
+visit over https. An https instance that sets `LEGACY_SESSION_COOKIE=0` signs
+those browsers out instead, once. A script that posts to `/api` with only a
+session cookie now needs an `Origin` header or the bearer header. On an https
+instance, a Google sign-in or GitHub link that was in progress while you
+upgraded fails once with `invalid_state` and works when started again.
+
 ## [0.12.0] - 2026-09-28
 
 The hosting-readiness release. One security fix: anyone who could reach the
@@ -912,7 +1066,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.9.0...v0.10.0

@@ -155,6 +155,9 @@ export default defineConfig({
         // The one definition of how a session token is stored (W6-CDX-2): one
         // function with no branches, measured at 100%.
         'services/session-token.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
+        // The one server-side definition of the session cookie's names and
+        // which one a request carries (W6-CDX-3). Measured at 100% on all four.
+        'services/session-cookie.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
         // The stop and the single-writer lock (W6-CDX-31). Measured after the
         // review round: shutdown.js 100 lines, 98.03 statements, 93.54
         // branches, 100 functions; instance-lock.js 100, 95.91, 93.93, 77.77

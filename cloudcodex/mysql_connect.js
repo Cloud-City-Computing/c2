@@ -13,8 +13,8 @@ import { fileURLToPath } from 'url';
 import { hashSessionToken } from './services/session-token.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-// Load .env from the archive root (one level up from cloudcodex/)
-dotenv.config({ path: path.resolve(dirname, '..', '.env') });
+// The repository root's .env, one level up; quiet, since the image has none to report.
+dotenv.config({ path: path.resolve(dirname, '..', '.env'), quiet: true });
 
 const DEFAULT_POOL_SIZE = 10;
 const MAX_POOL_SIZE = 100;

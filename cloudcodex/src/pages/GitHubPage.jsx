@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
-import { apiFetch, timeAgo } from '../util';
+import { apiFetch, timeAgo, getSessionTokenFromCookie } from '../util';
 import CIStatusBadge from '../components/CIStatusBadge';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -2550,7 +2550,7 @@ export default function GitHubPage() {
     }
     (async () => {
       try {
-        const token = document.cookie.split('; ').find(c => c.startsWith('session_token='))?.split('=')[1];
+        const token = getSessionTokenFromCookie();
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 

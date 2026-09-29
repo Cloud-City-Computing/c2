@@ -190,7 +190,7 @@ Publishing a version snapshot has its own dedicated check (`canPublish`). A user
 
 ## 2FA and Session Security
 
-Session tokens are 64-character cryptographically random strings stored directly as the session `id` in the `sessions` table. They are transmitted via the `Authorization: Bearer <token>` header (or a `sessionToken` cookie for browser redirects).
+Session tokens are 64-character cryptographically random strings, one per sign-in. The `sessions` table stores only a SHA-256 digest of each as its `id`. They are transmitted via the `Authorization: Bearer <token>` header (or the session cookie for browser redirects: `__Host-sessionToken` on https, `sessionToken` over plain http).
 
 When 2FA is enabled on an account:
 - **Email 2FA:** After a valid password login, a 6-digit code is emailed. The session is issued only after the code is verified.
