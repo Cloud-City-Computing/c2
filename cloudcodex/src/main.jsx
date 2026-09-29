@@ -6,6 +6,13 @@
  */
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from "react-router-dom";
+// The shared primitives first (core.css opens with the licence notice a
+// minifier keeps only at the head of the bundle), then the font faces, then
+// Codex's own bindings, then the app's styles. Vite hashes the font files
+// into dist/assets/, never public/, which the uploads volume shadows.
+import '../vendor/cloud-city-design/core.css'
+import '../vendor/cloud-city-design/fonts.css'
+import './codex.css'
 import './index.css'
 import { applyPrefsToDOM, loadUserPrefs } from './userPrefs'
 import { upgradeLegacySessionCookie } from './util'

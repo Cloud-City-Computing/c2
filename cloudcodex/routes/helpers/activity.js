@@ -18,6 +18,7 @@
 
 import { c2_query } from '../../mysql_connect.js';
 import { createNotification } from '../../services/notifications.js';
+import { emitEvent } from '../../services/webhooks.js';
 
 const UPDATE_COALESCE_WINDOW_SECONDS = 5 * 60;
 
@@ -88,6 +89,15 @@ async function doLogActivity(ctx) {
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [workspaceId, squadId ?? null, ctx.user.id, ctx.action, ctx.resourceType, ctx.resourceId, metadataJson]
   );
+
+  // Outbound events (services/webhooks.js). After the activity row, so a
+  // coalesced log.update (returned above) is never emitted, and before
+  // watchers, so neither can fail the other.
+  try {
+    await emitEvent(ctx, { workspaceId, squadId: squadId ?? null });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] webhook emit failed:`, err);
+  }
 
   await applyAutoWatch(ctx);
   await fanOutToWatchers(ctx);

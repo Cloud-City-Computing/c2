@@ -316,7 +316,7 @@ cloudcodex/                  — Application root
 
 | Technology                                    | Purpose                              |
 |-----------------------------------------------|--------------------------------------|
-| [Vitest](https://vitest.dev) 4                | Test runner (three projects)         |
+| [Vitest](https://vitest.dev) 4                | Test runner (four projects)          |
 | [Supertest](https://github.com/ladjs/supertest) 7 | HTTP endpoint testing            |
 | [@testing-library/react](https://testing-library.com/docs/react-testing-library/intro/) | Component testing |
 | `jsdom`                                       | Browser DOM in Node                  |
@@ -352,7 +352,7 @@ notification emails are off), Google and GitHub OAuth.
 | [notifications.md](./notifications.md) | Notifications subsystem deep-dive |
 | [frontend.md](./frontend.md) | React app routing, pages, hooks, components |
 | [security.md](./security.md) | Defense-in-depth model |
-| [testing.md](./testing.md) | Vitest projects (two default, one live-MySQL) + coverage thresholds |
+| [testing.md](./testing.md) | Vitest projects (three default, one live-MySQL) + coverage thresholds |
 | [deployment.md](./deployment.md) | Production operations |
 | [troubleshooting.md](./troubleshooting.md) | Common setup/runtime failures |
 | [api/auth.md](./api/auth.md) | Authentication endpoints |

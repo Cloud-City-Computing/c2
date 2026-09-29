@@ -1,0 +1,114 @@
+/*! cloud-city-design core.css | https://github.com/Cloud-City-Computing/cloud-city-design
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 Cloud City Computing, LLC
+ * No-alias rule: this file declares literal values on :root only; a consumer binds meanings in its own stylesheet and never redeclares a name defined here. */
+
+/* Shared primitives. Every value below is a literal: no theme selector, no
+   media query and no custom-property reference. Themes, semantic aliases and
+   component tokens belong to the consuming product, which imports this file
+   first so the notice above stays at the head of its built stylesheet. */
+
+:root {
+  /* ---- Brand ----
+     The signature blue. Brand moments only; it is too light for small text
+     on a light surface. */
+  --brand-blue: #2ca7db;
+
+  /* ---- Accent ramp ----
+     Hue around 230, tuned so the 400 step sits on the brand blue. The 600
+     step is the one that reads as text on light surfaces. */
+  --accent-100: oklch(0.95 0.03 230);
+  --accent-200: oklch(0.88 0.06 230);
+  --accent-300: oklch(0.78 0.1 230);
+  --accent-400: oklch(0.68 0.13 230);
+  --accent-500: oklch(0.58 0.13 235);
+  --accent-600: oklch(0.49 0.12 240);
+  --accent-700: oklch(0.41 0.1 242);
+
+  /* ---- Semantic ramp ----
+     Three steps per meaning. One lightness cannot serve both a near-white
+     and a near-black field, so each meaning is a small ramp:
+       -deep    for light surfaces
+       -bright  for dark surfaces
+       -pale    a lighter step for text on mid-dark surfaces (#1e1e1e to
+                #444444), where it clears 4.6:1; danger and violet give up
+                some chroma so they stay inside sRGB. */
+  --success-deep: oklch(0.6 0.15 150);
+  --success-bright: oklch(0.64 0.15 150);
+  --success-pale: oklch(0.76 0.15 150);
+  --warning-deep: oklch(0.62 0.14 78);
+  --warning-bright: oklch(0.72 0.14 78);
+  --warning-pale: oklch(0.78 0.14 78);
+  --danger-deep: oklch(0.55 0.19 25);
+  --danger-bright: oklch(0.63 0.19 25);
+  --danger-pale: oklch(0.8 0.11 25);
+  --violet-deep: oklch(0.6 0.15 300);
+  --violet-bright: oklch(0.62 0.15 300);
+  --violet-pale: oklch(0.79 0.12 300);
+
+  /* ---- Typography ----
+     The package ships two typefaces: Poppins for the brand (logo, headings)
+     and Inter for data. The monospace stack is system fonts only; no mono
+     face is bundled. Sizes are rem, 12 / 13 / 14 / 16 / 18 / 24 / 32 px at
+     the default root size. */
+  --font-brand: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --leading-tight: 1.3;
+  --leading-normal: 1.5;
+
+  /* ---- Spacing (4px base) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  /* ---- Radii ----
+     sm for chips and badges, md for buttons, inputs and cards, lg for
+     panels and dialogs. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ---- Motion ----
+     Short and eased, never bouncy. */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Identity tints ----
+     Eight hues at even 45-degree steps with equal lightness and chroma, so
+     no tint reads as louder or as meaning anything. They are fills behind
+     initials or a label, never text colours. */
+  --avatar-1: oklch(0.78 0.07 25);
+  --avatar-2: oklch(0.78 0.07 70);
+  --avatar-3: oklch(0.78 0.07 115);
+  --avatar-4: oklch(0.78 0.07 160);
+  --avatar-5: oklch(0.78 0.07 205);
+  --avatar-6: oklch(0.78 0.07 250);
+  --avatar-7: oklch(0.78 0.07 295);
+  --avatar-8: oklch(0.78 0.07 340);
+
+  /* ---- Stacking ----
+     One z-scale, lowest to highest. A menu sits above the scrim so that a
+     menu opened from inside an overlay belongs to the overlay; the skip link
+     sits above dialogs; a toast sits above everything. */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-scrim: 30;
+  --z-modal: 35;
+  --z-skip: 40;
+  --z-menu: 50;
+  --z-toast: 60;
+}

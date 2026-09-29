@@ -1234,6 +1234,39 @@ describe('Archive Routes', () => {
       expect(c2_query.mock.calls[0][0]).toMatch(/COALESCE\(p\.`system`, FALSE\)/);
     });
 
+    it('records log.delete for a log it removed', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])                         // write access
+        .mockResolvedValueOnce({ affectedRows: 1 })                  // DELETE
+        .mockResolvedValueOnce([{ workspace_id: 7, squad_id: 3 }]); // scope
+
+      const res = await request(app)
+        .delete('/api/archives/1/logs/10')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      await vi.waitFor(() => expect(activityInserts()).toHaveLength(1), { timeout: 500 });
+      expect(activityInserts()[0]).toEqual([7, 3, TEST_USER.id, 'log.delete', 'archive', 1, JSON.stringify({ log_id: 10 })]);
+    });
+
+    it('records nothing when the log is not in this archive, so no one can announce another archive\'s delete', async () => {
+      mockAuthenticated();
+      c2_query
+        .mockResolvedValueOnce([{ id: 1 }])          // write access to archive 1
+        .mockResolvedValueOnce({ affectedRows: 0 }); // DELETE: log 999 is elsewhere
+
+      const res = await request(app)
+        .delete('/api/archives/1/logs/999')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.status).toBe(200);
+      await flush();
+      await flush();
+      expect(activityInserts()).toEqual([]);
+      expect(c2_query.mock.calls.at(-1)[0]).toMatch(/DELETE FROM logs WHERE id = \? AND archive_id = \?/);
+    });
+
     it('rejects without write access', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([]);  // no access

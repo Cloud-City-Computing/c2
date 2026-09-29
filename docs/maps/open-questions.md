@@ -808,11 +808,11 @@ product, worth documenting in the ops runbook.
 
 `watches` has a FK on `user_id` only (`init.sql:449`); `resource_id` is
 polymorphic and unconstrained. Deleting a document orphans its watches. Harmless
-(`routes/helpers/activity.js:180-184` bails when the log is gone) but unbounded.
+(`routes/helpers/activity.js:190-194` bails when the log is gone) but unbounded.
 
 ### C5. Watcher fan-out is a sequential await loop
 
-`routes/helpers/activity.js:197-211`, one `createNotification` per watcher, inside a
+`routes/helpers/activity.js:207-221`, one `createNotification` per watcher, inside a
 fire-and-forget promise. Fine at current scale; a heavily-watched archive would
 make it slow.
 
@@ -897,6 +897,20 @@ them, `SELECT user_id, provider FROM oauth_accounts GROUP BY user_id, provider
 HAVING COUNT(*) > 1`. The operator resolves each pair by hand (the CHANGELOG's
 Migration section says how) and re-runs it. **It is still not reproduced
 against Google itself.**
+
+### C8. `index.css` redeclares four names the design package owns
+
+The vendored `core.css` (W6-CDX-21) says a consumer never redeclares a name it
+defines. `index.css`'s `:root` still declares `--brand-blue`, `--radius-sm`,
+`--radius-md` and `--radius-lg`, and because it loads after `core.css` on the
+same selector, Codex's values win for the whole page (the radii differ: 4, 8
+and 12 px against 6, 10 and 14). `applyPrefsToDOM` also writes `--brand-blue`
+on the root element. Nothing is wrong on screen today; the tension is that the
+suite UI plan's legacy-alias bridge (W6-CDX-22, its Task 2.1) keeps
+`--brand-blue` declared, as `var(--cx-accent)`, which is still a redeclaration
+of a primitive. Whether the bridge renames it or the package's rule gets a
+recorded exception is W6-CDX-22's call. `tests/design/codex-css.test.js` pins
+the overlap to exactly these four, so it can shrink but not grow.
 
 ## D. Stale claims in the root `CLAUDE.md`
 

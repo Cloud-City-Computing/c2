@@ -1,0 +1,28 @@
+{
+  "_rule": "The declared text-on-surface pairs of src/codex.css, each with its minimum WCAG 2.x ratio. tests/design/contrast.test.js resolves both tokens in the dark theme through the vendored contrast gate and fails any pair below its minimum, and any colour binding in codex.css that no pair or decorative entry names.",
+  "surfaces": ["--cx-surface-0", "--cx-surface-1", "--cx-surface-2", "--cx-surface-3", "--cx-surface-4"],
+  "groups": [
+    { "text": "--cx-text-primary", "on": "surfaces", "min": 7,
+      "reason": "Body text, AAA on every surface, the strongest hover included." },
+    { "text": "--cx-text-secondary", "on": "surfaces", "min": 4.5,
+      "reason": "Secondary text is still text: AA on every surface." },
+    { "text": "--cx-text-faint", "on": "surfaces", "min": 4.5,
+      "reason": "Faint is the quietest text, not decoration: AA on every surface, where Cloud Command's faint measures 2.57:1 on the strongest hover." },
+    { "text": "--cx-accent", "on": "surfaces", "min": 4.5,
+      "reason": "Links and accent text on any surface." },
+    { "text": "--cx-accent-hover", "on": "surfaces", "min": 4.5,
+      "reason": "A hovered link is still text." },
+    { "text": "--cx-danger", "on": "surfaces", "min": 4.5, "reason": "Error text on any surface." },
+    { "text": "--cx-success", "on": "surfaces", "min": 4.5, "reason": "Success text on any surface." },
+    { "text": "--cx-warning", "on": "surfaces", "min": 4.5, "reason": "Warning text on any surface." },
+    { "text": "--cx-info", "on": "surfaces", "min": 4.5, "reason": "Info text on any surface." },
+    { "text": "--cx-on-accent", "on": ["--cx-accent-fill"], "min": 4.5,
+      "reason": "A label on a filled accent control." },
+    { "text": "--cx-focus-ring", "on": "surfaces", "min": 3,
+      "reason": "A focus indicator is a non-text component: 3:1 against every surface it can sit on (WCAG 1.4.11)." }
+  ],
+  "decorative": {
+    "--cx-border": "A divider between surfaces; it carries no information, so it has no contrast minimum.",
+    "--cx-scrim": "A translucent wash behind a dialog; the dialog's own pairs are measured on its surface."
+  }
+}

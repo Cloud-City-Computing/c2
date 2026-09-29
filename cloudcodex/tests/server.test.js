@@ -50,6 +50,12 @@ vi.mock('../routes/admin.js', () => ({ default: {}, ensureAdminUser: vi.fn(), bo
 // server.js reads the resolved `trust proxy` from the app for its boot line.
 const appGet = vi.fn(() => undefined);
 vi.mock('../app.js', () => ({ default: { get: appGet } }));
+// The webhook boot steps read the database; here they are doubles, so the
+// boot tests below can order and fail them.
+vi.mock('../services/webhooks.js', () => ({
+  reconcileEnvSubscription: vi.fn(async () => 'none'),
+  loadSubscriptions: vi.fn(async () => true),
+}));
 vi.mock('../services/email.js', () => ({
   verifyEmailConnection: vi.fn(async () => true),
   initMail: vi.fn(async () => ({ enabled: false, configured: false, reason: 'SMTP_HOST, SMTP_USER or SMTP_PASS not set' })),
@@ -888,6 +894,56 @@ describe('server.js: the expired-session prune', () => {
     const logged = errorSpy.mock.calls.flat().map(String).join(' ');
     expect(logged).toMatch(/session prune failed/);
     expect(logged).toMatch(/db unreachable/);
+  });
+});
+
+// Outbound webhooks: the env subscription is reconciled and the cache filled
+// before the port opens, and the cache refreshed every minute after.
+describe('server.js: the webhook boot steps', () => {
+  const bootEnv = () => {
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+  };
+
+  it('reconciles the env subscription, then loads the cache, before listening, and refreshes it every minute', async () => {
+    const original = { ...process.env };
+    const intervalSpy = vi.spyOn(globalThis, 'setInterval');
+    try {
+      bootEnv();
+      const { bootstrapInstance } = await import('../routes/admin.js');
+      const { reconcileEnvSubscription, loadSubscriptions } = await import('../services/webhooks.js');
+      await import('../server.js');
+
+      const reconciled = reconcileEnvSubscription.mock.invocationCallOrder[0];
+      const loaded = loadSubscriptions.mock.invocationCallOrder[0];
+      expect(bootstrapInstance.mock.invocationCallOrder[0]).toBeLessThan(reconciled);
+      expect(reconciled).toBeLessThan(loaded);
+      expect(loaded).toBeLessThan(listenMock.mock.invocationCallOrder[0]);
+      expect(intervalSpy.mock.calls.filter(([fn]) => fn === loadSubscriptions).map(([, ms]) => ms)).toEqual([60 * 1000]);
+    } finally {
+      intervalSpy.mockRestore();
+      process.env = original;
+    }
+  });
+
+  it('logs and keeps booting when the reconcile throws', async () => {
+    const original = { ...process.env };
+    try {
+      bootEnv();
+      const { reconcileEnvSubscription, loadSubscriptions } = await import('../services/webhooks.js');
+      reconcileEnvSubscription.mockRejectedValueOnce(new Error('table missing'));
+      await import('../server.js');
+
+      expect(loadSubscriptions).toHaveBeenCalled();
+      expect(listenMock).toHaveBeenCalledTimes(1);
+      expect(exitSpy).not.toHaveBeenCalled();
+      const allLogs = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(allLogs).toMatch(/webhook env subscription reconcile failed/);
+      expect(allLogs).toMatch(/table missing/);
+    } finally {
+      process.env = original;
+    }
   });
 });
 

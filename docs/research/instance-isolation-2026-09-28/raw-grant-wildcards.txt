@@ -1,0 +1,13 @@
+server 8.4.11
+partial_revokes OFF (the default):
+  w_plain SELECT * FROM w_a.t -> rows [{"v":"w_a"}]
+  w_plain SELECT * FROM wXa.t -> rows [{"v":"wXa"}]
+  w_escaped SELECT * FROM w_a.t -> rows [{"v":"w_a"}]
+  w_escaped SELECT * FROM wXa.t -> error 1142 ER_TABLEACCESS_DENIED_ERROR
+partial_revokes ON:
+  w_plain SELECT * FROM w_a.t -> rows [{"v":"w_a"}]
+  w_plain SELECT * FROM wXa.t -> error 1142 ER_TABLEACCESS_DENIED_ERROR
+  w_escaped SELECT * FROM w_a.t -> error 1142 ER_TABLEACCESS_DENIED_ERROR
+  w_escaped SELECT * FROM wXa.t -> error 1142 ER_TABLEACCESS_DENIED_ERROR
+  w_escaped_on SELECT * FROM w_a.t -> error 1142 ER_TABLEACCESS_DENIED_ERROR
+  w_escaped_on SELECT * FROM wXa.t -> error 1142 ER_TABLEACCESS_DENIED_ERROR

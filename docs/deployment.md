@@ -141,6 +141,7 @@ Production-specific notes:
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
 | `AUTH_PROVIDERS`           | Leave unset. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which |
 | `LEGACY_SESSION_COOKIE`    | Leave unset. On https the session cookie is `__Host-sessionToken`; unset keeps a browser that still holds the older `sessionToken` signed in and moves it across on its next visit. `0` (https only) makes a lone `sessionToken` sign nobody in: set it when hosts you do not control share your domain. See [security.md](./security.md#the-session-cookie) |
+| `WEBHOOK_*`                | Optional outbound events ([api/webhooks.md](./api/webhooks.md)). `WEBHOOK_URL` must be `https` in production and `WEBHOOK_SECRET` at least 32 characters, or the env subscription is switched off with the reason logged; neither stops the boot. Leave `WEBHOOK_ALLOW_PRIVATE_TARGETS` unset unless the receiver has only a private address |
 
 Add new env vars to `.env.example` (with a comment) when introducing them.
 
@@ -295,38 +296,125 @@ browser that honours it, never a script calling the socket directly.
 
 There are **two** stateful volumes, and a MySQL dump alone is not a complete
 backup: `db_data` holds the database, and `app_public` holds uploaded avatars
-and the images extracted out of documents. Back up both.
+and the images extracted out of documents. When an image is pasted into a
+document, `routes/helpers/images.js` extracts it to disk and **replaces the
+base64 data URI in `html_content` with a `/doc-images/` URL**, so after
+extraction the file on disk is the only copy. Lose the volume and every
+affected document shows a broken image while the database still points at it.
+
+One command backs up both, and one restores both. From the repository root,
+with the stack's `.env` in place:
 
 ```bash
-# Logical dump (recommended — portable, point-in-time)
-docker exec -t <mysql-container> \
-   mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --single-transaction \
-            --routines --triggers c2 > c2-$(date +%F).sql
-
-# Restore
-docker exec -i <mysql-container> \
-   mysql -u root -p"$MYSQL_ROOT_PASSWORD" c2 < c2-2026-04-29.sql
+make backup OUT=backups/c2-$(date +%F).tar.gz     # scripts/backup.sh
+make restore IN=backups/c2-2026-09-28.tar.gz       # scripts/restore.sh
 ```
 
-Schedule the dump however suits your environment (cron on the host,
-managed snapshot on your cloud, GitHub Actions pulling a dump). The
-`db_data` volume can also be snapshotted at the volume-driver level if
-your storage supports it.
+Both drive the stack through `docker compose`, on
+`docker-compose-release.yml` unless `COMPOSE_FILE` names another (for example
+`COMPOSE_FILE=docker-compose-prod.yml` when you build from source), and
+`COMPOSE_PROJECT_NAME` works as it does for Compose. The two production files
+share this directory's project and container names, so each script compares
+`COMPOSE_FILE` with the file the stack's containers were created from and
+refuses a mismatch, naming the right one: a restore through the wrong file
+would migrate and restart your stack on the other file's image. Neither needs
+the MySQL root password: they run inside the database service as the app's own
+MySQL user (`DB_USER`), which the image grants everything on the app's database
+and nothing else, and both refuse a MySQL user that holds anything more.
 
-**Uploaded files are not in the dump.** Avatars and document images are written
-to `/app/public/avatars/` and `/app/public/doc-images/` inside the app
-container, and both compose files mount the named volume `app_public` there so
-they survive a container being recreated. They are not optional extras: when an
-image is pasted into a document, `routes/helpers/images.js` extracts it to disk
-and **replaces the base64 data URI in `html_content` with a `/doc-images/` URL**,
-so after extraction the file on disk is the only copy. Lose the volume and every
-affected document renders a broken image while the database still points at it.
+**What an archive holds.** One gzipped tar of three files: `database.sql`
+(`mysqldump --single-transaction --routines --triggers --hex-blob` of the app's
+database, including `schema_migrations`, so the migration ledger comes back
+with the data), `app_public.tar.gz` (the uploads volume) and `manifest.json`
+(the format, when it was taken, the database name, the app version, and the
+SHA-256 of the other two). No password is in any of them, and the manifest
+names no host or user; `database.sql`'s header comment does name the database
+host it was dumped from, as every `mysqldump` does.
+
+**Keep it the way you keep the database.** The archive is written readable by
+its owner only (mode 0600) and never over an existing file. It holds
+everything the database holds: password hashes, two-factor secrets, GitHub
+tokens (encrypted), session digests and every document. It does **not** hold
+`.env` or any key material, so back those up separately and just as carefully:
+`GITHUB_CLIENT_SECRET` in particular, because every stored GitHub token is
+encrypted under a key derived from it, and a restore under a different secret
+leaves each linked account to link again. `SERVICE_TOKEN`, the sign-in
+providers' client secrets, SMTP credentials and `ADMIN_PASSWORD` are in `.env`
+too.
+
+**What a backup is consistent to.**
+
+- The dump is one consistent snapshot of InnoDB tables, which is every table
+  `init.sql` creates. A table added by hand with another engine is not covered.
+- A backup can run while the app serves. But the app keeps up to the last
+  three seconds of live collaborative edits in memory before saving them, so
+  only a backup taken **after a graceful stop** (`docker compose stop app`,
+  see [Stopping cleanly](#stopping-cleanly)) is sure to have every edit. Stop,
+  back up, start is the safe rhythm for a nightly job.
+- The uploads are archived after the dump, so an image pasted between the two
+  is in the archive with no document pointing at it, which is harmless.
+
+**Restoring.** `make restore` restores into a stopped stack, then starts it:
 
 ```bash
-# Back the uploads up alongside the SQL dump
-docker run --rm -v cloudcodex_app_public:/data -v "$PWD":/backup alpine \
-   tar czf /backup/uploads-$(date +%F).tar.gz -C /data .
+docker compose -f docker-compose-release.yml stop app      # if it is running
+make restore IN=backups/c2-2026-09-28.tar.gz
+make restore IN=... ARGS="--replace"                        # over existing data
 ```
+
+It checks everything before it writes anything, and each check is a refusal:
+the archive holds exactly its three files and each matches the manifest's
+checksum; the uploads hold only plain files and directories; no line of the
+dump starts with a statement that switches, creates or drops a database or
+with a `mysql` client command (the client runs with `--binary-mode`, so a
+client command anywhere else on a line never runs either); the backup was not
+taken on a newer release than this stack runs (pass `--allow-newer-backup` to
+restore it anyway, knowing the older app does not know the newer schema); the
+archive is a backup of a database with the same name as this stack's (pass
+`--into <this stack's DB_NAME>` to restore it under a different name on
+purpose); the MySQL user holds privileges on that database and nothing else;
+the app is not running; and the database holds no rows.
+Tables with no rows at all are what the database service builds from
+`init.sql` when a new stack first starts, so a restore onto a new machine needs
+no flag. Over real data it needs `--replace`, which drops every table in the
+database and empties `avatars/` and `doc-images/` before loading. The load runs
+as that confined MySQL user, so a statement naming another database fails on
+the grant, wherever it sits on a line. Its first statement takes the database's
+[instance lock](#one-process-per-database), or fails with nothing written if
+any process holds it, and the load keeps it, so an app that starts meanwhile
+refuses. Then it runs `npm run migrate` (a backup from an older release is
+brought up to date) and `docker compose up -d`. `--no-start` stops after the data and prints the two
+commands instead.
+
+A load that fails part way leaves the database holding part of the backup, and
+says so; fix the cause and run the restore again with `--replace`.
+
+**Scheduling and keeping them.** Nothing here rotates or ships archives. A
+nightly cron entry, for example:
+
+```cron
+0 3 * * * cd /srv/cloudcodex && docker compose -f docker-compose-release.yml stop app && make backup OUT=/var/backups/cloudcodex/c2-$(date +\%F).tar.gz; docker compose -f docker-compose-release.yml start app
+```
+
+then copy the archive off the machine, encrypted, and prune old ones. A
+backup you have never restored is a guess: restore one onto a spare machine now
+and then. `cloudcodex/tests/integration/backup-restore.test.js` runs that drill
+in CI against a live MySQL, and the Compose path was drilled by hand when the
+scripts landed: both volumes destroyed, then every document, comment, image and
+avatar checked after the restore.
+
+**Without Docker.** `scripts/backup.sh --local [--uploads DIR] <file>` and
+`scripts/restore.sh --local [--uploads DIR] ... <file>` do the same with the
+`mysql` and `mysqldump` clients on `PATH`, connecting over TCP as `DB_USER`
+with `DB_PASS` to `DB_NAME` on `DB_HOST`, and with the uploads directory on
+disk (default `cloudcodex/public`). `DB_USER` must be granted on `DB_NAME`
+alone, as the app's own user should be (`GRANT ALL ON c2.* TO ...`): root, a
+global privilege, a grant on another database or a role is refused, because
+that grant is what keeps a restore inside its own database. They need MySQL's
+clients: MariaDB's `mysqldump` writes the values of generated columns
+(`logs.plain_content`), which MySQL refuses on restore, so `--local` refuses
+it. A MySQL server shared by several instances is backed up the same way, one
+instance at a time, each with its own user.
 
 ---
 
@@ -659,6 +747,142 @@ missed. Do not rerun it after go-live. If the app has to start first, set
 `DOC_IMAGES_PUBLIC=1` (images served to anyone with the address, as before),
 run the backfill (it runs without `--again` while that is set), then unset it
 and restart. A fresh install needs none of this.
+
+---
+
+## Several instances on one MySQL server
+
+The compose files give each install a MySQL server of its own, with one
+account (`MYSQL_USER`) that holds every privilege on `DB_NAME`. That is right
+for one instance on its own server. To run several instances against **one**
+server, give each its own schema and two accounts of its own: an app account
+that can read and write rows in that schema and nothing more, and a migration
+account that can change that schema's tables and nothing more. Neither account
+can read, write, list (in `SHOW DATABASES`) or grant anything in another
+instance's schema. Each can still learn the other schemas' **names**, and
+their tables' names, as the last part of this section explains.
+
+**Name the schema with lowercase letters and digits only, and make the name
+opaque.** In a database-level `GRANT`, MySQL reads `_` and `%` in the schema
+name as wildcards (unless the server runs with `partial_revokes`, which is off
+by default), so a grant on `c2_acme` would also cover `c2xacme`, or any schema
+whose name differs only where the underscore is. A name with neither character
+means the same thing whatever the server's settings. Since every account on
+the server can read the list of schema names, do not name a schema after the
+customer: use something like `c2` followed by `openssl rand -hex 6`
+(`c2a41f09c7d3e2`). The readable `c2acme` below stands in for that name.
+Account names are not patterns, so they may carry underscores. MySQL limits an
+account's user name to 32 characters, so with `_app` or `_mig` appended the
+schema name can be at most 28 characters.
+
+```sql
+-- As root, once per instance. Put the instance's schema name where c2acme is,
+-- and a generated password (openssl rand -hex 24) in place of each <...>.
+CREATE DATABASE c2acme;
+CREATE USER 'c2acme_app'@'%' IDENTIFIED BY '<app password>' WITH MAX_USER_CONNECTIONS 15;
+GRANT SELECT, INSERT, UPDATE, DELETE ON `c2acme`.* TO 'c2acme_app'@'%';
+CREATE USER 'c2acme_mig'@'%' IDENTIFIED BY '<migration password>' WITH MAX_USER_CONNECTIONS 3;
+GRANT ALL PRIVILEGES ON `c2acme`.* TO 'c2acme_mig'@'%';
+```
+
+`'%'` lets each account sign in from any address that reaches the server, so a
+leaked password works from anywhere with a route to MySQL. Where you know the
+address the instance connects from, put it in place of `%` in all four
+statements (`'c2acme_app'@'10.0.1.23'`, or a subnet such as `'10.0.1.%'`), and
+the account works from there alone.
+
+| Account | Holds | Used by |
+|---|---|---|
+| `c2acme_app` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `c2acme`; at most 15 connections | the running app: its `.env` sets `DB_HOST` to the shared server, `DB_USER=c2acme_app`, `DB_PASS` and `DB_NAME=c2acme` |
+| `c2acme_mig` | every privilege on `c2acme`, without `GRANT OPTION`; at most 3 connections | building the schema and `npm run migrate`, and nothing else. Its password never goes in the app's `.env` |
+
+Neither account holds anything global: no `PROCESS`, `FILE`, `SUPER`,
+`CREATE USER` and no `*.*` grant, so neither can list other sessions, read or
+write the server's files, change its settings or make accounts. The app account
+has no DDL even on its own schema, and the app needs none: every query it
+issues, at boot and after, is a `SELECT`, `INSERT`, `UPDATE` or `DELETE`, and
+the instance lock (`GET_LOCK`) needs no privilege.
+
+**Point the compose file at the shared server.** Both production compose files
+start their own `database` service and set the app's `DB_HOST` to it, which
+wins over `.env`. An instance on a shared server needs neither, so save this
+override next to the compose file as `shared-mysql.yml`:
+
+```yaml
+# The app's MySQL is a shared server, named by DB_HOST in .env.
+services:
+  database:
+    profiles: [bundled-database]   # never started unless asked for by name
+  app:
+    depends_on: !reset {}          # Compose 2.24 or later
+    environment:
+      DB_HOST: ${DB_HOST:?set DB_HOST in .env to the shared MySQL server}
+```
+
+and pass both files to **every** `docker compose` command for that instance,
+the ones under [Upgrades](#upgrades) included:
+`docker compose -f docker-compose-release.yml -f shared-mysql.yml up -d` (the
+override works the same over `docker-compose-prod.yml`).
+Leave `MYSQL_ROOT_PASSWORD` out of this instance's `.env`. A command that
+forgets the override then fails at the bundled database ("Database is
+uninitialized and password option is not specified") instead of starting a
+new, empty MySQL beside the shared one. It still stops the app: run it again
+with both files, then remove the stray container with
+`docker compose -f docker-compose-release.yml -f shared-mysql.yml rm -sf database`.
+The compose files name their containers (`cloudcodex-app`), so they run one
+instance per Docker host; the instances that share a MySQL server run on hosts
+of their own.
+
+**Build the schema as the migration account**, from a host with a `mysql`
+client that reaches the server, then record it as a fresh install with the
+runner, also as the migration account. The runner reads `DB_USER`, `DB_PASS`
+and `DB_NAME` like the app, so give it the migration account's in place of the
+app's:
+
+```bash
+mysql -h <mysql host> -u c2acme_mig -p c2acme < init.sql
+read -rs DB_PASS && export DB_PASS          # the migration password
+docker compose -f docker-compose-release.yml -f shared-mysql.yml run --rm \
+  -e DB_USER=c2acme_mig -e DB_PASS app npm run migrate -- --adopt-fresh-install
+```
+
+Every later [upgrade](#upgrades) runs `npm run migrate` the same way, as the
+migration account. A migration that created a trigger or a stored function
+would also need `log_bin_trust_function_creators` on a server that keeps a
+binary log (MySQL 8.4's default); none does, and the integration tests run every
+migration file as this account, so one that did would fail there first.
+
+**Connections.** The cap on the app account is what stops one instance taking
+every connection the server has. 15 covers the pool (`DB_POOL_SIZE`, 10 by
+default), the instance lock's own connection and room to reconnect; if you
+raise `DB_POOL_SIZE`, raise the cap to at least `DB_POOL_SIZE` + 5
+(`ALTER USER 'c2acme_app'@'%' WITH MAX_USER_CONNECTIONS 25;`). The server's
+`max_connections` (151 by default) must cover every instance's two caps, 18 at
+these values, plus what you keep for yourself: eight instances take 144 and
+leave 7 (MySQL holds one more back for `root`), and a ninth needs
+`max_connections` raised.
+
+**What this does not protect against.** Anyone holding the server's root
+password reaches every schema. Every account on the server, these included,
+can read `information_schema.TABLESPACES_EXTENSIONS`, which MySQL lists without
+any privilege check: it names every schema on the server and each of its tables
+(`c2a41f09c7d3e2/users`). That is the one system view that names another
+instance, and the reason for opaque schema names; the rows themselves stay out
+of reach. Server-wide counters (`SHOW GLOBAL STATUS`) are readable too, so one
+instance can see how busy the server as a whole is. Each instance also needs
+its own `app_public` volume, because avatars and document images live on disk,
+outside the grant. And the instances share the server's CPU, memory and disk,
+so one heavy instance slows the others. Section 9 of
+[`docs/maps/access-control.md`](maps/access-control.md) sets out where the
+boundary between instances is and where it is not.
+
+`cloudcodex/tests/integration/tenancy.test.js` runs the SQL block above, as it
+is written here, for two instances on one server, checks that every
+cross-schema statement it knows fails with MySQL's privilege error, and reads
+every system view the app account can, to show that `TABLESPACES_EXTENSIONS`
+is the only one naming the other instance; `grants-sufficient.test.js` runs the
+app on the app account alone. The record of the run is in
+[`docs/research/instance-isolation-2026-09-28/`](research/instance-isolation-2026-09-28/).
 
 ---
 

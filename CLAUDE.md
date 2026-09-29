@@ -32,8 +32,9 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
 ├── docker-compose.yaml          ← dev: MySQL only
 ├── docker-compose-prod.yml      ← prod: MySQL + app
 ├── docker-compose.linux.yml     ← native-Linux :Z override for the dev file (not WSL)
-├── Makefile                     ← seed, reset-db, db-shell
+├── Makefile                     ← seed, reset-db, db-shell, backup, restore
 ├── start.sh                     ← one-shot dev bootstrap
+├── scripts/                     ← backup.sh, restore.sh (Bash; docs/deployment.md, Backups)
 ├── init.sql / seed.sql          ← schema + sample data
 ├── migrations/                  ← incremental SQL migrations
 ├── docs/                        ← human-facing architecture docs
@@ -44,7 +45,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 37 per-glob coverage thresholds
+    ├── vitest.config.js         ← four projects + 40 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -69,7 +70,9 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     │   ├── lib/githubDiff.js    ← diff3 merge, imported by the BACKEND too
     │   ├── util.jsx             ← apiFetch + API wrappers — USE THIS for new calls
     │   ├── userPrefs.js         ← localStorage prefs + theme constants
-    │   └── editorUtils.js       ← editor-specific helpers
+    │   ├── editorUtils.js       ← editor-specific helpers
+    │   └── codex.css            ← --cx- theme bindings over the vendored primitives
+    ├── vendor/cloud-city-design/ ← vendored design package, pinned by checksum; NEVER edit here
     ├── public/                  ← uploaded avatars, document images
     └── tests/                   ← Vitest + Supertest, mirrors the source tree
 ```
@@ -167,12 +170,23 @@ Six types (`mention`, `comment_on_my_doc`, `watched_comment`, `watched_publish`,
 push-only and keyed by user, not by document.
 
 ### Activity & watches: `routes/helpers/activity.js`, `routes/activity.js`, `routes/watches.js`
-`logActivity()` is fire-and-forget and **does three things**: writes the
-`activity_log` row, auto-enrols the actor as a watcher, and fans notifications
-out to every other watcher. Adding a `logActivity` call to a route therefore
-starts sending people email. `log.update` events coalesce on a 5-minute window
+`logActivity()` is fire-and-forget and **does four things**: writes the
+`activity_log` row, emits an outbound webhook event (below), auto-enrols the
+actor as a watcher, and fans notifications out to every other watcher. Adding
+a `logActivity` call to a route therefore starts sending people email. `log.update` events coalesce on a 5-minute window
 (distinct from the notification funnel's 60 seconds). Watching an archive
 cascades to its documents. Retention is 365 days, pruned in-process daily.
+
+### Outbound webhooks: `services/webhooks.js`, `services/webhook-target.js`, `routes/webhooks.js`
+`emitEvent`, called once inside `logActivity` after the activity row, writes
+one outbox event (`webhook_events`, the exact body bytes) and its deliveries
+for eight document and archive actions, **only when a cached subscription
+matches**, so an install with none adds no query to any change. It never
+throws. Every receiver URL goes through `checkWebhookTarget` (the SSRF
+guard); do not build a second check. The env subscription's secret is never
+stored; an admin one's is returned only once. Contract:
+`docs/api/webhooks.md`; mechanism: `docs/maps/notifications-and-activity.md`
+section 2a. The delivery worker is not built yet (W6-CDX-14).
 
 ### Mentions: `routes/helpers/mentions.js`, `src/extensions/Mention.jsx`
 `<span data-mention-user-id="N">` nodes, diffed old-vs-new HTML so only newly
@@ -337,7 +351,8 @@ CI (`.github/workflows/ci.yml`) is one job, `Lint, test and build`, which runs
 `npm ci`, `npm audit --omit=dev --audit-level=moderate` (blocking: a moderate or
 worse advisory in a production dependency fails the build, even on a PR that
 touched no dependency; a plain `npm audit` follows, advisory only),
-`npm run lint`, `npm test`, `npm run test:integration` (against a
+`npm run lint`, ShellCheck over `scripts/*.sh`, `npm test`,
+`npm run test:integration` (against a
 `mysql:8.4.11` service container in the same job), `npm run test:coverage` (the
 per-glob thresholds are the real gate) and `npm run build`. It runs on push to `main`
 and on every pull request whatever its base, and it is the required status
@@ -369,6 +384,7 @@ existing one.**
 | Run a SQL query                            | `c2_query(sql, params)` in `mysql_connect.js`             |
 | Record an audit/activity event             | `logActivity` in `routes/helpers/activity.js`             |
 | Alert a user (inbox + push + email)        | `createNotification` in `services/notifications.js`       |
+| Check a webhook receiver URL (SSRF guard)  | `checkWebhookTarget` in `services/webhook-target.js`      |
 | Notify on new @mentions in saved content   | `processMentionsOnSave` in `routes/helpers/mentions.js`   |
 | Push a message to a user's open tabs       | `broadcastToUser` in `services/user-channel.js`           |
 | Push a message to a document's live editors| `broadcastToDoc` in `services/collab.js`                  |
@@ -480,7 +496,10 @@ New files match this pattern. Update the year only if the file is genuinely new.
 - Framework: **Vitest 4 + Supertest** for backend, **Vitest + jsdom +
   @testing-library/react** for frontend. The two suites run as separate
   Vitest **projects** (configured in `vitest.config.js`); a single
-  `npm test` runs both. A third, opt-in project, `integration`, runs
+  `npm test` runs both, and a third default project, `design`
+  (`tests/design/`), runs the vendored design gates against an exemption
+  ledger that may only shrink (lower `tests/design/ledger.json` by exactly
+  what a change fixes). A fourth, opt-in project, `integration`, runs
   `tests/integration/` against a live MySQL (`npm run test:integration`,
   `IT_DB_ROOT_PASSWORD` required; see `cloudcodex/tests/README.md`). It
   proves `init.sql` builds on MySQL 8.4, adoption agrees with it, app SQL

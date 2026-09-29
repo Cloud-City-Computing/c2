@@ -12,8 +12,92 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- **The shared Cloud City design package, vendored, and a design gate.**
+  `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
+  Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)
+  package at commit `2d52baa` (0.2.0): its primitives (`core.css`), the Inter
+  and Poppins faces under the SIL Open Font License, and its gates, pinned by
+  a SHA-256 `MANIFEST.json`. It builds offline with the image, and the fonts
+  are fingerprinted into `dist/assets/`, never `public/`. A new Vitest
+  project, `design`, runs in `npm test` and `npm run test:coverage` (alone:
+  `npm run test:design`): the vendored copy must match its manifest, literal
+  colours, accent fill shades in text positions and suppressed focus outlines
+  may not exceed an exemption ledger that starts at 745 and only shrinks
+  (`node tests/design/report.mjs` prints it), every `var()` with no fallback
+  must name a declared property, and Codex's new colour bindings must clear
+  their contrast minimums. `src/codex.css` holds those bindings (`--cx-`
+  names on `<html data-theme="dark">`); nothing uses them yet, so the
+  interface does not change. The built stylesheet now keeps licence comments,
+  so the package's notice heads it. No migration and no new setting.
+- **Backup and restore as one command each.** `make backup OUT=<file>`
+  (`scripts/backup.sh`) writes one archive holding a `mysqldump` of the
+  database, migration ledger included, the uploads volume (avatars and document
+  images) and a manifest with a checksum of each. It is readable by its owner
+  only, never written over an existing file, and holds no password; it does
+  hold everything the database does, so keep it as carefully. `make restore
+  IN=<file>` (`scripts/restore.sh`) restores into a stopped stack and starts it,
+  after refusing an archive that is damaged or altered, is a backup of a
+  differently named database (unless `--into` names this one), was taken on a
+  newer release than this install runs (unless `--allow-newer-backup`), or
+  would land on a database that holds data (unless `--replace`), a running
+  app, or a database whose instance lock is held. A new stack's empty tables
+  need no flag. Both run through Docker Compose (`COMPOSE_FILE`, default
+  `docker-compose-release.yml`, and a stack created from another compose file
+  is refused), or with `--local` through MySQL's `mysql` and `mysqldump`
+  clients for an install outside Docker, and both refuse a MySQL user granted
+  anything beyond the app's database, root included. See "Backups" in
+  `docs/deployment.md`, which replaces the manual recipe that was there. No
+  migration and no new setting.
+- **Several instances on one MySQL server.** `docs/deployment.md` has a recipe
+  for it: per instance, one schema with an opaque name of letters and digits
+  only, an app account holding `SELECT`, `INSERT`, `UPDATE` and `DELETE` on
+  that schema (capped at 15 connections), and a migration account holding
+  every privilege on that schema without `GRANT OPTION`, which builds the
+  schema and runs `npm run migrate`. Neither holds anything global. A small
+  compose override (`shared-mysql.yml`, in the recipe) points the app and the
+  migration runner at the shared server instead of the bundled database. The
+  integration suite runs the recipe as written: 54 statements reaching for the
+  other instance, for the server, or for DDL the app does not need all fail
+  with MySQL's privilege error, the app runs on the app account alone, and each
+  instance holds its own single-writer lock. The grant hides another
+  instance's rows, not its name: MySQL lists every schema's name and table
+  names to every account (`information_schema.TABLESPACES_EXTENSIONS`), which
+  the recipe states and the suite pins. Nothing changes for an install with a
+  MySQL server of its own.
+- **Outbound webhooks, recorded.** Cloud Codex can now tell a receiver you run
+  when a document is saved, published, restored, renamed, moved or deleted, or
+  an archive is renamed or deleted: each such change writes one JSON event
+  (`codex.event.v1`, documented in `docs/api/webhooks.md`) to an outbox, with
+  one delivery per matching subscription. Titles and names are cut to 255
+  characters, so no event exceeds 4 KiB, and an event carries ids, that title
+  or name, and the actor's user id and name, never an email or any content.
+  **Nothing is sent yet**: the delivery worker ships in a later release. Off
+  by default: with no subscription nothing is written and no query is added to
+  any request or change (the subscription list is re-read once a minute, and
+  at boot). One subscription can be declared in the environment
+  (`WEBHOOK_URL`, `WEBHOOK_SECRET` of at least 32 characters, optional
+  `WEBHOOK_WORKSPACE_ID`), reconciled at every boot, its secret never stored;
+  instance admins manage more under `/api/admin/webhooks` (list, create,
+  rotate the secret, enable or disable, delete), where a secret is shown once.
+  Every receiver URL must be `https` in production and resolve only to public
+  addresses: loopback and private ones need `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`,
+  and link-local and cloud-metadata ones are refused always. An admin
+  subscription's secret is stored in the database in plaintext, so a database
+  dump can sign events to that receiver; the env subscription avoids it. A
+  failure to write the outbox never affects the change that caused it. Needs
+  the webhooks migration (see Migration).
+
 ### Changed
 
+- The GitHub page's linked file path and its file picker, which asked for a
+  `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now
+  get the design package's monospace stack (`ui-monospace, SFMono-Regular,
+  Menlo, Consolas, monospace`). On Linux both stacks render the same face
+  (checked by rendering each). On macOS and Windows the new stack may pick
+  Menlo or Consolas where the old one used the browser's generic monospace
+  face; that was not checked.
 - **Running from source needs Node.js 20.9 or newer.** sharp 0.35 requires
   20.9 and nodemailer 10 requires 20 (see Security). The published image is
   unchanged on this point: it is `node:20-slim`, which is Node 20.20.
@@ -31,6 +115,30 @@ initialises an empty data directory.
   (`npm audit --omit=dev --audit-level=moderate`, the first step after
   `npm ci`), and reports the whole tree's audit without failing. Before this,
   `npm audit` ran nowhere. See `docs/maps/build-test-and-ops.md`, section 6.
+
+### Fixed
+
+- **Five rules that named a colour nothing defines now render, and a sixth
+  that never applied is removed.** A `var()` that names an undeclared property
+  makes its declaration invalid at computed-value time, so the property
+  computes as `unset`: transparent for a background, inherited for a colour.
+  The "Sign in with Google" button now has its border and background, the
+  "or" divider above it its two lines, the Linked Accounts rows in Account
+  settings their border and background, the active tab in Manage Archive
+  Access its accent underline, and a draw.io diagram's delete button turns red
+  on hover instead of transparent with a white edge. The avatar placeholder's
+  background named such a property and was already transparent; the
+  declaration is deleted, with no visible change.
+- **A failing comments request answers JSON.** `routes/comments.js` was the one
+  router without the shared error handler, so a database error there answered
+  Express's default HTML error page, and the error was not logged in the
+  project's format. It now answers `500` with
+  `{ "success": false, "message": "An internal server error occurred" }` like
+  every other route.
+- Deleting a document through `DELETE /api/archives/:archiveId/logs/:logId`
+  with an id that is not in that archive removes nothing, as before, and now
+  also records nothing: it used to add a "deleted" entry to the archive's
+  activity feed for a document that still exists.
 
 ### Security
 
@@ -189,6 +297,22 @@ initialises an empty data directory.
   [GHSA-73wf-gq98-2v4g](https://github.com/advisories/GHSA-73wf-gq98-2v4g),
   [GHSA-c83g-rgw3-j3cx](https://github.com/advisories/GHSA-c83g-rgw3-j3cx),
   [GHSA-hmw2-7cc7-3qxx](https://github.com/advisories/GHSA-hmw2-7cc7-3qxx).
+
+### Migration
+
+**The webhooks migration,**
+[`migrations/2026-09-28-webhooks.sql`](migrations/2026-09-28-webhooks.sql),
+adds three tables, `webhook_subscriptions`, `webhook_events` and
+`webhook_deliveries`, and changes nothing that exists. Apply it with `npm run
+migrate` before starting the new image (in containers, `docker compose ... run
+--rm app npm run migrate`); nothing else is run. Until it is applied the new
+image logs `webhook env subscription reconcile failed` at boot and `webhook
+subscriptions load failed` once a minute, and otherwise runs as before,
+emitting nothing. On an install `init.sql` builds fresh,
+`--adopt-fresh-install` checks that the three tables are there before it
+records the file. To undo it: `DROP TABLE webhook_deliveries, webhook_events,
+webhook_subscriptions;`.
+
 
 ## [0.13.0] - 2026-09-28
 

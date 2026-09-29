@@ -13,7 +13,7 @@ import react from 'eslint-plugin-react'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'vendor']), // vendor/ is a pinned byte copy, linted upstream (its fixtures are invalid on purpose)
   {
     files: ['**/*.{js,jsx}'],
     extends: [

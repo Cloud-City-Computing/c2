@@ -206,6 +206,10 @@ All seed accounts use the password **`password`**.
 | `NODE_ENV` | `production` serves the built frontend and puts the security headers on every response; the Docker image and `npm run start` set it. In every mode the API accepts the app's own origin, `APP_URL`'s and `CORS_ORIGIN`; outside production it also accepts any `localhost` or `127.0.0.1` origin, for the Vite dev server. `test` switches the rate limiters off | unset (development) |
 | `SERVICE_TOKEN` | Optional, and off unless `SERVICE_TOKEN_USER` is set too. A secret of at least 32 characters with which another service, such as Cloud Command, reads `GET /api/search`, `GET /api/browse` and `GET /api/documents/state`, and nothing else | unset (off) |
 | `SERVICE_TOKEN_USER` | The email of the existing non-admin user whose read access the service token acts with | unset (off) |
+| `WEBHOOK_URL` | With `WEBHOOK_SECRET`, the receiver the server's own webhook subscription sends events to ([webhooks](api/webhooks.md)); `https` in production | unset (optional) |
+| `WEBHOOK_SECRET` | That subscription's signing secret, at least 32 characters, never stored in the database | unset (optional) |
+| `WEBHOOK_WORKSPACE_ID` | Send only this workspace's events to it; unset sends every workspace's | unset (optional) |
+| `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `1` lets any webhook reach loopback and private addresses; link-local and metadata addresses are always refused | unset (optional) |
 
 ---
 

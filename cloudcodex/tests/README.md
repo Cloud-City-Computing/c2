@@ -17,11 +17,11 @@ npm run test:coverage    # full suite with v8 coverage and threshold check
 npm run test:integration # opt-in: tests/integration/ against a live MySQL
 ```
 
-CI runs `npm audit --omit=dev --audit-level=moderate && npm run lint && npm test && npm run test:integration && npm run test:coverage && npm run build`.
+CI runs `npm audit --omit=dev --audit-level=moderate && npm run lint && shellcheck -x scripts/*.sh && npm test && npm run test:integration && npm run test:coverage && npm run build` (ShellCheck from the repository root).
 Threshold violations fail the build.
 
-`test`, `test:watch` and `test:coverage` name `--project backend --project frontend`
-explicitly; a bare `vitest run` would run the integration project too.
+`test`, `test:watch` and `test:coverage` name `--project backend --project frontend
+--project design` explicitly; a bare `vitest run` would run the integration project too.
 `tests/test-projects.test.js` pins that split for all three.
 
 ## Layout
@@ -33,10 +33,21 @@ tests/
 ├── setup.frontend.js       ← frontend project setup: jest-dom, DOM/storage cleanup
 ├── setup.integration.js    ← integration project setup: a throwaway schema, NO mocks
 ├── test-projects.test.js   ← pins which projects the default run names
+├── design/                 ← the design project: the vendored cloud-city-design gates over src/
+│   ├── buckets.js          ← groups findings by file and index.css banner (report.mjs prints them)
+│   ├── ledger.json         ← exact per-bucket counts; lower it by what a change fixes
+│   ├── dangling-ledger.json, pairs.json ← the one dangling false positive; the contrast matrix
+│   └── *.test.js           ← vendored checksum, token discipline, dangling var(), contrast, codex.css wiring
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
 │   ├── admin-sync.test.js  ← the boot admin sync never promotes a member, in either row order
+│   ├── app-process.js      ← (not a test file) the backup drill's child processes and sign-in
+│   ├── backup-restore.test.js ← scripts/backup.sh and restore.sh for real: every refusal, and a byte-identical restore
 │   ├── documents-state.test.js ← the reconciliation read: workspace narrowing, the ACL, absence that is no oracle
-│   ├── global-setup.js     ← teardown: fails the run if a c2_it_ schema leaked
+│   ├── global-setup.js     ← teardown: fails the run if a c2_it_ or c2itrecipe<hex> schema, or a c2_it_ account, leaked
+│   ├── grants-sufficient.test.js ← server.js runs on the shared-server recipe's DML-only account
+│   ├── instance-recipe.js  ← (not a test file) runs docs/deployment.md's shared-server SQL block as written
+│   ├── lifecycle.test.js   ← one writer per schema, and a SIGTERM that flushes a live edit
+│   ├── lock-holder.js      ← (not a test file) a child that takes the instance lock and holds it
 │   ├── mysql-admin.js      ← admin connection, build-from-init.sql, drop helpers, row holder, lock-wait poller
 │   ├── pre-runner-state.js ← per post-baseline migration: the SQL that undoes it on init.sql
 │   ├── migrate.test.js     ← the migration runner on a real database
@@ -44,8 +55,13 @@ tests/
 │   ├── oauth-google-two-factor.test.js ← Google never links a two-factor account by email; linked ones still sign in
 │   ├── oauth-google-two-factor-read-committed.test.js ← the same link interleaves with the app pool on READ COMMITTED
 │   ├── google-link-races.js ← (not a test file) the lookup-then-INSERT interleaves both files above run
+│   ├── server-child.js     ← (not a test file) fork server.js or the lock holder, sign in, open /collab
+│   ├── tenancy.test.js     ← two instances on one server: every cross-schema statement is denied
 │   ├── update-account-sessions.test.js ← an email or password change leaves one session, the caller's new one
-│   └── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
+│   ├── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
+│   ├── webhooks-emit.test.js ← the outbound-event emit hook, driven through the HTTP routes, read from the outbox tables
+│   ├── webhooks-env.test.js ← the env-declared webhook subscription across boots
+│   └── webhooks-schema.test.js ← the webhook tables' CHECKs, unique keys and cascade, written directly
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests
 ├── services/               ← service-layer tests (email, notifications, collab)
@@ -264,7 +280,11 @@ build the install from the release before a migration and run just that file.
 normally; they bind to the file's schema. If a test needs a second schema (for
 example one deliberately missing a column), build it with
 `buildSchemaFromInitSql` from `tests/integration/mysql-admin.js` and drop it in
-the test's own `finally`. Hand the migration runner a `queryVia(connection)`
+the test's own `finally`. A test that needs an instance with its own accounts,
+as the shared-server recipe makes them, uses `newInstance`, `provision` and
+`buildFresh` from `tests/integration/instance-recipe.js` and `unprovision` in
+`afterAll`; any account a test creates is named with the `c2_it_` prefix so
+the teardown can find it if the test does not drop it. Hand the migration runner a `queryVia(connection)`
 executor over one connection, never a pool: its advisory lock is per
 connection. Tests in one file share a schema, so clean up rows you rely on
 being absent.

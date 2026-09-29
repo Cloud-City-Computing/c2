@@ -1,0 +1,83 @@
+{
+  "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
+  "_measured": "745 at W6-CDX-21 (646 literal colours, 77 accent fill shades in text or edge positions, 22 suppressed outlines), the same total the Wave 6 research measured at 91493a6. Regenerate a bucket with node tests/design/report.mjs.",
+  "src/components/AccountMenu.jsx": {
+    "(file)": 5
+  },
+  "src/components/CommentForm.jsx": {
+    "(file)": 2
+  },
+  "src/components/CommentHighlights.jsx": {
+    "(file)": 1
+  },
+  "src/components/CommentManager.jsx": {
+    "(file)": 2
+  },
+  "src/components/CommentSidebar.jsx": {
+    "(file)": 1
+  },
+  "src/components/Login.jsx": {
+    "(file)": 8
+  },
+  "src/components/github/CodeEmbedPickerModal.jsx": {
+    "(file)": 1
+  },
+  "src/index.css": {
+    "Design System Tokens": 19,
+    "Top Bar": 2,
+    "Sidebar": 3,
+    "Buttons": 8,
+    "Account Button (Top Bar)": 2,
+    "Mentions (inline @user chips)": 2,
+    "Notification bell": 10,
+    "Activity item": 2,
+    "Watch toggle (editor header)": 3,
+    "Log Headers": 2,
+    "Search (Inline - Top Bar)": 7,
+    "Modal + Overlay": 9,
+    "GitHub Integration": 194,
+    "Login Tabs": 4,
+    "Signup Validation Styles": 5,
+    "Settings Layout (archive/workspace/squad settings)": 26,
+    "Log Tree": 78,
+    "Editor Log": 41,
+    "Markdown Editor": 3,
+    "Version History": 5,
+    "Squad Members Panel": 2,
+    "Archive Access Panel": 8,
+    "User Preferences Panel": 3,
+    "Collaborative Editing - Presence UI": 12,
+    "Remote Cursors - Collaborative Editing": 2,
+    "Export Dropdown": 1,
+    "Explore / Browse": 26,
+    "Toast Notifications": 17,
+    "Comments & Annotations": 101,
+    "Admin Dashboard": 24,
+    "Page Tree": 10,
+    "Read-only Document View": 10,
+    "Code Block with Language Selector": 3,
+    "Syntax Highlighting (highlight.js compatible - dark theme)": 8,
+    "Draw.io Diagram Block": 9,
+    "Mobile Layout Overrides": 1,
+    "Error Boundary": 7,
+    "Footer": 1,
+    "Notifications / Activity / Preferences pages (shared shell)": 3,
+    "Cards + Grid": 1,
+    "Search Results": 2,
+    "Not Found Log": 1,
+    "Focus & Accessibility": 1,
+    "Mobile Bottom Navigation": 1
+  },
+  "src/pages/Editor.jsx": {
+    "(file)": 4
+  },
+  "src/pages/GitHubPage.jsx": {
+    "(file)": 4
+  },
+  "src/userPrefs.js": {
+    "(file)": 32
+  },
+  "src/util.jsx": {
+    "(file)": 6
+  }
+}

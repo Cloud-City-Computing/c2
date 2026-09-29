@@ -1416,7 +1416,7 @@ body {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--border-main);
+  background: var(--border-color);
 }
 
 .btn-oauth {
@@ -1425,10 +1425,10 @@ body {
   justify-content: center;
   gap: 0;
   padding: 10px 16px;
-  border: 1px solid var(--border-main);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: var(--bg-surface);
-  color: var(--text-main);
+  background: var(--bg-panel);
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -1454,9 +1454,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border: 1px solid var(--border-main);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: var(--bg-surface);
+  background: var(--bg-panel);
 }
 
 .linked-account-info {
@@ -7763,7 +7763,6 @@ body {
   font-size: 2rem;
   font-weight: 600;
   color: var(--text-muted);
-  background: var(--bg-secondary);
 }
 
 .avatar-upload__actions {
@@ -8794,9 +8793,9 @@ body {
 }
 
 .drawio-block__delete-btn:hover {
-  background: var(--red);
+  background: var(--color-danger);
   color: #fff;
-  border-color: var(--red);
+  border-color: var(--color-danger);
 }
 
 .drawio-block__preview {

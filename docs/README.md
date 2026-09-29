@@ -109,7 +109,8 @@ change the code, covering the wiring, the invariants, and the traps.
 | [api/search-favorites.md](./api/search-favorites.md) | Full-text search, browse, favorites |
 | [api/notifications.md](./api/notifications.md) | Inbox, unread badge, preferences |
 | [api/activity-watches.md](./api/activity-watches.md) | Workspace activity stream + per-user watches |
-| [api/admin.md](./api/admin.md) | User/workspace management, invitations, permissions, live presence telemetry |
+| [api/admin.md](./api/admin.md) | User/workspace management, invitations, permissions, live presence telemetry, webhook subscriptions |
+| [api/webhooks.md](./api/webhooks.md) | Outbound events: the signed envelope a webhook receiver gets, and when |
 | [api/oauth-github.md](./api/oauth-github.md) | Google SSO, GitHub OAuth, 40+ GitHub repo / PR / issue / embed proxy endpoints |
 
 

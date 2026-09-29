@@ -82,7 +82,7 @@ scope for unit tests today.
 cd cloudcodex
 
 npm run lint          # must be clean — CI fails otherwise
-npm test              # 2287 tests today; both backend and frontend
+npm test              # 2533 tests today: backend, frontend and design
 npm run test:coverage # if your change touches a glob with a per-glob
                       # threshold (see vitest.config.js)
 npm run test:integration  # if your change touches schema, migrations or SQL
@@ -94,8 +94,8 @@ There are **no pre-commit hooks** — local lint/test is on you. CI
 (`.github/workflows/ci.yml`) runs `npm ci`, then a dependency audit
 (`npm audit --omit=dev --audit-level=moderate`: any moderate or worse
 advisory in a production dependency fails the build), then
-`npm run lint`, `npm test`, the live-MySQL integration project, coverage
-and the production build, on push to `main` and on every PR. A second
+`npm run lint`, ShellCheck over `scripts/*.sh`, `npm test`, the live-MySQL
+integration project, coverage and the production build, on push to `main` and on every PR. A second
 audit over the whole tree, dev tools included, reports without failing.
 
 ---

@@ -199,8 +199,8 @@ Recorded in [open-questions.md](open-questions.md).
 
 `archive_repos` (`init.sql:269-284`) binds an archive to a repo, with a
 `docs_path` prefix (default `docs`) and `auto_link_imports`. Managed through
-`GET`/`POST`/`DELETE /api/archives/:archiveId/repos` (`archives.js:706`, `739`,
-`788`), all gated by `isArchiveOwner`.
+`GET`/`POST`/`DELETE /api/archives/:archiveId/repos` (`archives.js:710`, `743`,
+`792`), all gated by `isArchiveOwner`.
 
 `bulkImportArchiveRepo` (`github.js:1521-1616`) backs **both**
 `POST .../import` and `POST .../refresh` (`github.js:1618-1619`); they are the

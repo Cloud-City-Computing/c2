@@ -1,0 +1,15 @@
+/* Every spelling of a suppressed focus outline. */
+.fx-1:focus { outline: none; }
+.fx-2:focus { outline: 0; }
+.fx-3:focus { outline: 0px; }
+.fx-4:focus { outline: 0em; }
+.fx-5:focus { outline: 0rem; }
+.fx-6:focus { outline: 0%; }
+.fx-7:focus { outline-style: none; }
+.fx-8:focus { outline-width: 0; }
+.fx-9:focus { OUTLINE: NONE; }
+/* Not suppressed: */
+.fx-ok-1:focus-visible { outline: 2px solid var(--fx-ring); outline-offset: 2px; }
+.fx-ok-2 { border: none; }
+.fx-ok-3 { outline-offset: 0; }
+.fx-ok-4 { box-shadow: none; }

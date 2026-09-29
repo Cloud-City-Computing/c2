@@ -12,6 +12,7 @@ level down in `cloudcodex/`.
 
 ```
 c2/                          <- git root; docker, docs, SQL, Makefile, start.sh
+├── scripts/                 <- Bash: backup.sh, restore.sh, backup-common.sh (section 4)
 └── cloudcodex/              <- the npm package; package.json lives HERE
 ```
 
@@ -24,7 +25,7 @@ it with `path.resolve(dirname, '..', '.env')`. Importing `mysql_connect.js` is
 what loads env for the whole process, so any module that needs env must import
 it (directly or transitively) before reading `process.env`.
 
-## 2. npm scripts (`package.json:6-20`)
+## 2. npm scripts (`package.json:6-21`)
 
 | Script | Command | Notes |
 |---|---|---|
@@ -33,18 +34,19 @@ it (directly or transitively) before reading `process.env`.
 | `build` | `vite build` | frontend only; the backend is not bundled |
 | `preview` | `vite preview` | |
 | `lint` | `eslint .` | flat config, whole package |
-| `test` | `vitest run --project backend --project frontend` | the two default projects; never `integration` |
-| `test:watch` | `vitest --project backend --project frontend` | |
-| `test:coverage` | `vitest run --coverage --project backend --project frontend` | v8 provider, enforces thresholds |
+| `test` | `vitest run --project backend --project frontend --project design` | the three default projects; never `integration` |
+| `test:watch` | `vitest --project backend --project frontend --project design` | |
+| `test:coverage` | `vitest run --coverage --project backend --project frontend --project design` | v8 provider, enforces thresholds |
 | `test:integration` | `vitest run --project integration` | opt-in, needs a live MySQL; see section 5 |
-| `test:backend` / `test:frontend` | `vitest run --project <name>` | one project at a time |
+| `test:backend` / `test:frontend` / `test:design` | `vitest run --project <name>` | one project at a time |
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
-`NODE_ENV` matters in five places: CORS localhost allowance
+`NODE_ENV` matters in six places: CORS localhost allowance
 (`app.js:272`), where Helmet is mounted (`app.js:330`: the whole app in
 production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:360`,
-`app.js:398`, `app.js:412`), the `APP_URL` boot gate (`server.js:63`), and
+`app.js:398`, `app.js:412`), the `APP_URL` boot gate (`server.js:64`), the webhook SSRF
+guard's https-only rule (`webhookTargetOptions`, `services/webhooks.js`), and
 Vite's dev-vs-prod mode. `.env.example` ships it commented out; `npm run start`
 and the Docker image set it, and both production compose files pin it (section 4).
 
@@ -65,19 +67,21 @@ docker compose up -d          # from the root: MySQL only
 cd cloudcodex && npm install && npm run dev
 ```
 
-Make targets (`Makefile`) all shell into the running container:
+Make targets (`Makefile`); the first three shell into the running container:
 
 | Target | Effect |
 |---|---|
 | `make seed` | pipes `seed.sql` in |
 | `make reset-db` | pipes `init.sql` then `seed.sql` in |
 | `make db-shell` | interactive `mysql` CLI |
+| `make backup OUT=<file>` | `scripts/backup.sh <file>` (section 4, "Backup and restore") |
+| `make restore IN=<file> [ARGS=...]` | `scripts/restore.sh $(ARGS) <file>` |
 
 The Makefile does `include .env` / `export` at the top, so it needs a populated
 root `.env`, and it resolves the container via
 `docker compose ps -q database`.
 
-`init.sql`'s `DROP TABLE IF EXISTS` block now covers all 25 tables, including
+`init.sql`'s `DROP TABLE IF EXISTS` block now covers all 28 tables, including
 `github_links`, `activity_log`, `watches` and `notifications`, which used to be
 missing and made `make reset-db` fail partway on a database that already had
 them. See [data-model.md](data-model.md).
@@ -220,6 +224,92 @@ machine. `make` goes through `docker exec` and does not use the port at all.
   where the app runs on the host, and wrong inside the prod container).
   `environment` takes precedence over `env_file`.
 
+### Backup and restore (`scripts/`)
+
+`scripts/backup.sh <out>` and `scripts/restore.sh <archive>` (Bash, `set -euo
+pipefail`, `umask 077`) share `scripts/backup-common.sh`: the archive format
+(`ARCHIVE_MEMBERS`, `ARCHIVE_FORMAT`), `DUMP_FLAGS`, a copy of the instance
+lock's name (`INSTANCE_LOCK_NAME_SQL`, pinned equal to
+`services/instance-lock.js`'s by `tests/scripts/backup-common.test.js`) and two
+transports behind the same functions (`db_mysql`, `db_query`, `db_dump`,
+`uploads_out`, `uploads_in`, `app_version`, `target_database`), and two
+checks both scripts make before they write: `check_confined_user` (the MySQL
+user holds privileges on the instance's database and nothing else) and, with
+Compose, `check_compose_file` (the stack was created from the file
+`COMPOSE_FILE` names):
+
+- **Compose** (default): `docker compose` on `COMPOSE_FILE`, defaulting to
+  `docker-compose-release.yml`. The clients run inside the `database` service
+  as its `MYSQL_USER` with `MYSQL_PWD="$MYSQL_PASSWORD"`, never root and never a
+  password on argv, over `--protocol=TCP -h 127.0.0.1` (the temporary init
+  server above is socket-only). The uploads go through a one-off
+  `run --rm --no-deps -T app` streaming `tar` on stdin/stdout, so there is no
+  bind mount and no SELinux label to get right. Both production files share
+  the repo root's project name and the container names, so either file
+  reaches the other's stack; `check_compose_file` reads the
+  `com.docker.compose.project.config_files` label off the `database`
+  container and refuses when its file names differ from `COMPOSE_FILE`'s
+  (names, not paths, so a moved checkout still matches).
+- **`--local`**: the `mysql`/`mysqldump` on `PATH`, `DB_HOST`/`DB_USER`/
+  `DB_PASS`/`DB_NAME`, `--protocol=TCP`, and `--uploads DIR` (default
+  `cloudcodex/public`). This is what `tests/integration/backup-restore.test.js`
+  drives.
+
+The archive is `database.sql`, `app_public.tar.gz` and a one-key-per-line
+`manifest.json` (format, `created_at`, `database`, `app_version`, both
+SHA-256s). `backup.sh` builds it in a `mktemp -d` beside the output, checks the
+dump's last line is `-- Dump completed`, and publishes it with `ln` (atomic,
+and a refusal if the output appeared meanwhile); an existing output is refused
+up front. `restore.sh` does every check before any write (members, types,
+checksums, uploads types and paths, a line-start scan of the dump for client
+commands and database switches, the manifest's `app_version` against this
+install's (`version_is_newer`; a newer backup needs `--allow-newer-backup`,
+since `npm run migrate` only looks for missing ledger rows and would pass an
+older app over a newer schema), the target name against the manifest or
+`--into`, `check_confined_user`, a running `app` service, and rows), then
+loads in one session that starts with `TAKE_LOCK_SQL` (take the instance lock
+or fail: the only lock check, so a process holding it stops the load at line
+1 and the restore says nothing was written) and, under `--replace` or when
+every table is empty, drops every table first. It then requires as many tables
+as the dump has `CREATE TABLE` lines, unpacks the uploads (`--replace` empties
+only `avatars/` and `doc-images/`), and in Compose runs `npm run migrate` and
+`up -d` unless `--no-start`.
+
+Traps, each found while building it (2026-09-28):
+
+- **`--one-database` needs the database as the positional argument.** With
+  `-D <db>` both MySQL 8.4.11's and MariaDB 10.11's `mysql` skip **every**
+  statement and exit 0, so a restore "succeeds" into an empty database. The
+  scripts never pass `-D`, and the table-count check after the load catches a
+  load that silently did nothing.
+- **MariaDB's `mysqldump` cannot back up this schema for MySQL.** It writes the
+  value of the generated column `logs.plain_content`, and MySQL refuses every
+  such row (ERROR 3105). `--local` refuses a MariaDB `mysqldump`.
+- **`tar | grep -q` under `pipefail` can read a hit as a miss** (tar's SIGPIPE
+  wins), so every listing is captured into a variable first.
+- **The line-start scan does not see a client command later on a line.**
+  `SELECT 1; \T <file>` passed it and the client wrote `<file>` as whoever ran
+  it. `db_mysql` passes `--binary-mode`, which turns off every client command
+  in piped input except `delimiter` (a dump with triggers needs it) and
+  `charset`, wherever it sits; the shell escape is also turned off by feature
+  detection, `--skip-system-command` (MySQL) or `--sandbox` (MariaDB).
+- The load's confinement to one schema is the **grant**, not a parser:
+  `--one-database` ignores a qualified `db.table`, and the test proves a
+  `CREATE TABLE <other>.x` in the dump fails with access denied when the
+  restoring user has privileges on its own schema only.
+- **So the user has to be one the grant confines.** `--local` first took any
+  `DB_USER`, and as root a dump starting `SELECT 1; CREATE DATABASE x;` got
+  past the line-start scan and created `x` (found in review, 2026-09-28).
+  `check_confined_user` reads `SHOW GRANTS` (with `-r`, since batch mode
+  doubles the backslash the MySQL image's `c2\_name` grant spelling carries)
+  and allows only `USAGE ON *.*` and grants on `` `<db>`.* `` or its tables.
+  `SHOW GRANTS` with no `FOR` lists the session's active roles, a mandatory
+  one included, as `GRANT `role`` lines with their privileges (measured on
+  8.4.11), so a role is refused by the same loop; a separate
+  `CURRENT_ROLE()` check could never fire first, and was removed.
+
+CI runs `shellcheck -x scripts/*.sh` (section 6).
+
 One thing to get right when deploying: **`init.sql` only executes on a fresh
 volume.** The MySQL entrypoint skips `/docker-entrypoint-initdb.d/` when the
 data directory is already initialised. Editing `init.sql` and restarting
@@ -235,23 +325,72 @@ container is the old image, with neither the script nor the mount.
 
 ## 5. Testing
 
-**Vitest 4, three projects** in one config (`vitest.config.js:24-75`). A single
-`npm test` runs the two default ones, `backend` and `frontend`; the third,
-`integration`, is opt-in because it needs a MySQL server:
+**Vitest 4, four projects** in one config (`vitest.config.js:25-86`). A single
+`npm test` runs the three default ones, `backend`, `frontend` and `design`; the
+fourth, `integration`, is opt-in because it needs a MySQL server:
 
 | Project | Environment | Setup file | Includes |
 |---|---|---|---|
 | `backend` | node | `tests/setup.js` | `tests/routes/`, `tests/middleware/`, `tests/services/`, `tests/helpers/`, `tests/extensions/`, `tests/scripts/`, `tests/*.test.js` |
 | `frontend` | jsdom + `@vitejs/plugin-react` | `tests/setup.frontend.js` | `tests/src/**` |
+| `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **99 files, 2287 tests, all passing**; the
-integration project is **12 files, 92 tests** (measured 2026-09-28 on the 0.13.0
-release tree, against MySQL 8.4.11 at the server's default isolation and at
-`READ-COMMITTED`).
+Current state: the default run is **109 files, 2533 tests, all passing** (5
+files and 80 tests of it are `design`); the integration project is **18 files,
+217 tests** (measured 2026-09-29 on `chore/deps-audit`, the upgraded
+dependencies, with main merged in after W6-CDX-13, against a stock MySQL 8.4.11
+at the server's default isolation and at `READ-COMMITTED`, with MySQL's 8.4.11
+clients on `PATH`).
+
+The backup file's child-process helpers (`spawn`, `childEnv`, `holdLock`,
+`startServer`, `signIn`, `freePort`, `killChildren` and the boot `ADMIN`) live
+in `tests/integration/app-process.js`. The lifecycle, tenancy and
+grants-sufficient files use `tests/integration/server-child.js` instead (see
+below), a parallel copy of the same helpers that takes the boot admin as an
+argument and also opens `/collab`; the two were written on separate branches
+and have not been folded into one module.
+
+`tests/integration/backup-restore.test.js` is the backup and restore drill. It
+boots `server.js`, saves a document with a pasted PNG and some Unicode through
+`/api/save-document`, comments on it, stops the server with SIGTERM, writes a
+Yjs update into `ydoc_state`, and runs `scripts/backup.sh --local` as a MySQL
+user granted only on the file's schema. It pins the archive (mode 0600, exactly
+three members, manifest keys and checksums, no MySQL or admin password in any
+byte, no overwrite, no working files left) and the backup's refusal of root,
+then each refusal `restore.sh` makes with nothing written: another database's
+archive, a system schema, a held instance lock (by the load's own first
+statement), a checksum, an extra member, a line-start switch or client
+command, a client command after a statement, a user with more than its own
+database (root with a mid-line `CREATE DATABASE`, a grant elsewhere, a global
+privilege, a role, a mandatory role), a newer release's backup, and a link in
+the uploads. The drill proper drops the schema and deletes the image file,
+restores into an empty scratch schema as a user granted only on it, and
+requires `html_content` and `ydoc_state` byte-identical, the comment and
+`doc_images` rows equal, a server booted on the result to answer `/readyz`
+200, and the image served to its reader and 404 to an anonymous caller. Then
+`--replace`, a new install's empty tables restored without it (as a user
+granted the way the MySQL image grants, with `_` escaped), a dump that names
+another schema failing on the grant, and `--allow-newer-backup`.
+`TAKE_LOCK_SQL` is also run directly against a lock holder. **It needs MySQL's
+`mysql` and `mysqldump` on `PATH`** (the CI runner image has them; a MariaDB
+client fails the backup by design, see section 4); it passes with the 8.4.11
+and the 8.0.45 clients. `tests/scripts/backup-common.test.js` pins the lock
+name, `version_is_newer`, and `check_compose_file` through a stand-in `docker`
+on `PATH`.
+
+Mutation-checked 2026-09-28, each confirmed landed, then restored. These turn
+a test red: removing the checksum check, the name check, the dump scan, the
+row check, `check_confined_user` in either script, its escaped-name spelling,
+the version refusal, `TAKE_LOCK_SQL`'s line in the load, `--binary-mode`, or
+`check_compose_file` (the unit test); passing `-D`. The owner-only mode has two
+guards, `umask 077` and `chmod 600`, and removing either alone stays green;
+removing both turns the mode test red.
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
-real processes rather than a real server alone: it forks
+real processes rather than a real server alone (the fork, sign-in and
+`/collab` helpers it shares with `grants-sufficient.test.js` live in
+`tests/integration/server-child.js`): it forks
 `tests/integration/lock-holder.js` against the file's schema to prove the
 instance lock (a second process exits 1 naming the holder's connection id, a
 SIGKILLed holder frees it within two seconds, two schemas hold their own at
@@ -272,13 +411,61 @@ process in, and a lost lock that never reaches `onSuperseded`, or a `server.js`
 that ignores it, leaves the server running.
 
 **The default run is pinned by name, not by omission.** `test`,
-`test:watch` and `test:coverage` name `--project backend --project frontend`,
-because a bare `vitest run` runs every declared project, integration included.
+`test:watch` and `test:coverage` name `--project backend --project frontend
+--project design`, because a bare `vitest run` runs every declared project,
+integration included.
 `tests/test-projects.test.js` (a backend test) fails if a declared project other
 than `integration` is missing from `test`, `test:watch` or `test:coverage`, or if
-`test:integration` runs anything but `integration`. A fourth project added to
+`test:integration` runs anything but `integration`. A project added to
 `vitest.config.js` without joining those scripts turns it red instead of
-silently never running.
+silently never running; `design` (W6-CDX-21) joined them and the guard passed
+unedited.
+
+### The design project (`tests/design/`)
+
+It runs the gates of the vendored design package over `index.html` and `src/`,
+`.css`, `.js`, `.jsx` and `.html` alike (69 files when it landed). The package
+is `vendor/cloud-city-design/`, a byte copy of the public Apache-2.0
+`Cloud-City-Computing/cloud-city-design` at the commit its `MANIFEST.json`
+names under `upstream`; ESLint ignores `vendor/`, and `vendor/.gitattributes`
+keeps git from converting its line endings. **It is never edited here**: a
+change goes upstream, then a re-vendor PR copies exactly the files the upstream
+manifest lists.
+
+| File | Gate |
+|---|---|
+| `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy (run with the TAP reporter named and `NODE_OPTIONS` dropped, so the summary parses on Node 24, whose default reporter is spec) |
+| `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
+| `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
+| `contrast.test.js` | every pair in `pairs.json` clears its minimum in the dark theme, and every colour binding in `src/codex.css` is in a pair or named decorative |
+| `codex-css.test.js` | `codex.css` declares only `--cx-` custom properties, nothing else, under `[data-theme='dark']`, never a core name; `index.html` sets the attribute; `src/main.jsx` imports core, fonts, codex, index in that order; no font under `public/`; Vite keeps legal comments |
+
+**The ledger is exact, not a ceiling.** `ledger.json` holds a count per file,
+and per section banner inside `index.css` (`tests/design/buckets.js`,
+`banners`; an em dash in a banner title becomes a hyphen in the key). A bucket
+above its number fails as a regression and one below it fails as an unrecorded
+fix, so a burndown PR lowers the ledger by exactly what it burned, in the same
+PR. It started at 745 (646 literal colours, 77 accent positions, 22 outline
+suppressions); `node tests/design/report.mjs [file]` prints the live buckets.
+In `src/codex.css` (`TOKEN_DEFINITIONS`) the literal rule skips the
+custom-property declarations (`maskCustomProperties` blanks them first),
+because those literals are the definitions the contrast gate measures; a
+literal on any other property there still counts, and `codex-css.test.js`
+pins that the file declares custom properties and nothing else.
+
+Mutation-checked when it landed: a hex in `Toast.jsx`, an `outline: none` or a
+`color: var(--cx-accent-fill)` in `index.css`, a `var(--nope)`, one byte of the
+vendored `core.css`, `--cx-text-faint` below 4.5:1, an unpaired colour binding,
+a non-`--cx-` name, `data-theme` dropped, legal comments stripped, the import
+order swapped, a fixed dangling reference restored, and one literal removed
+without lowering the ledger each turned the named test red, as did two added
+after review: a literal on a plain property in `codex.css`, and `NODE_OPTIONS`
+passed through to the package suites. A first seed of the
+hex landed inside `Toast.jsx`'s doc comment and reddened nothing, correctly: the
+scanner masks comments.
+
+`coverage.include` does not reach `tests/` or `vendor/`, so the project adds no
+coverage threshold.
 
 **`tests/namespace-urls.test.js` reads every text file in the repository**
 (source, tests, docs, SQL, compose files and workflows; not `node_modules/`,
@@ -311,19 +498,44 @@ before each test file is imported and **does not** mock `mysql_connect.js`:
    already set, so a developer's `.env` cannot redirect it.
 4. Drops the schema in `afterAll`.
 
-The admin helpers (`adminConfig`, `buildSchemaFromInitSql`, `queryVia`,
-`dropSchema`, `throwawaySchemaName`) live in `tests/integration/mysql-admin.js`;
+The admin helpers (`adminConfig`, `buildSchemaFromInitSql`, `loadInitSql`,
+`queryVia`, `dropSchema`, `dropUser`, `throwawaySchemaName`) live in
+`tests/integration/mysql-admin.js`;
 a test that needs a second schema (as the adoption-refusal test does) builds it
 with them and drops it in its own `finally`. `queryVia` wraps **one**
 connection, never a pool, because the runner's advisory lock is per connection.
 
-The global teardown drops every `c2_it_` schema still on the server and fails
-the run naming them. **Trap: Vitest 4 only logs an error thrown from a
+The global teardown drops every `c2_it_` schema, every `c2itrecipe` schema
+followed by exactly 12 hex digits (`isThrowawaySchema` in `mysql-admin.js`
+checks the shape, so a developer's own `c2items` survives a run pointed at
+their server), and every `c2_it_` account, still on the server and fails the
+run naming them. **Trap: Vitest 4 only logs an error thrown from a
 globalSetup teardown ("error during close") and exits 0**, so the teardown sets
 `process.exitCode = 1` before it throws; the throw alone would leave a leak
 green (found by mutation, 2026-09-25). Because it counts every `c2_it_` schema,
 two integration runs sharing one server at once would report each other's; give
 each concurrent run its own server.
+
+**The shared-server recipe (W6-CDX-33).** `tests/integration/instance-recipe.js`
+reads the SQL block under "Several instances on one MySQL server" in
+`docs/deployment.md` and runs it as root with throwaway names (a `c2itrecipe<hex>`
+schema, since the recipe allows letters and digits only, and `c2_it_<hex>_app`
+and `_mig` accounts), then builds the schema as the migration account by the
+fresh-install path (`buildFresh`) or the upgrade path (`buildUpgraded`: every
+post-baseline file applied for real, as that account). `tenancy.test.js` does
+this for two instances and asserts the exact MySQL error for 54 statements
+from instance A's accounts that reach for B, for the server or for DDL, plus
+`SHOW DATABASES`, `information_schema`, the process list, `LOAD_FILE`, both
+accounts' `SHOW GRANTS`, the app account's connection cap (1226 past it) and
+each instance's lock held at once. It also reads every system view the app
+account can and pins `information_schema.TABLESPACES_EXTENSIONS` as the only
+one naming the other instance (MySQL lists every schema's tablespaces to every
+account), and requires the recipe to say so. Its last two tests demonstrate why
+the recipe bans `_` in schema names and pin the teardown's name filter. `grants-sufficient.test.js` boots `server.js` as the
+app account alone and runs a smoke path, a `/collab` edit and a SIGTERM, and
+fails on any privilege error in the child's log. Access-control section 9 has
+the boundary; `docs/research/instance-isolation-2026-09-28/` the run, its ten
+mutations and the recipe driven through the release compose file.
 
 `tests/integration/migrate.test.js` holds four tests: a canary that
 fails if `c2_query` is a mock, adoption recorded every migration file, a second
@@ -485,6 +697,33 @@ test red. Dropping `ORDER BY l.id` does not: MySQL returns id order on this
 data anyway, so that mutation is caught only by the SQL-shape pin in
 `tests/routes/documents.test.js`.
 
+Three files prove the outbound-events outbox (W6-CDX-13).
+`tests/integration/webhooks-schema.test.js` proves the tables' constraints: the
+`source` and `status` CHECKs, that only an `env` subscription goes without a
+stored secret, both unique keys, and the cascades from a subscription and from
+an event to their deliveries. `tests/integration/webhooks-emit.test.js` drives
+each of the eight emitted actions through its real route with a real session
+and reads exactly one `webhook_events` row and one `webhook_deliveries` row per
+matching subscription (made through the admin API, so its SQL runs too); a
+coalesced `log.update`, a `comment.create`, a subscription for another
+workspace or for other event types, a delete naming a log outside its archive,
+and no subscription at all each write nothing for that subscription or event;
+a subscription disabled in the database since the cache loaded gets no
+delivery, and an event it leaves with none is rolled back; the stored body is
+byte-stable and is the envelope its row describes (its `occurred_at` read back
+in UTC); a stored 30,000-character title is emitted as 255 code points; and with
+a test-created trigger that `SIGNAL`s on every outbox insert, a save still
+answers 200, writes its activity row and notifies its watcher.
+`tests/integration/webhooks-env.test.js` boots the env subscription through
+nothing configured, create, keep, a workspace change and a receiver change
+(each dropping the old queue), a missing secret, a mistyped workspace and a
+metadata address (each disabling it) and re-enable, with one row throughout and
+its secret never stored or logged. Mutation-checked on 2026-09-28: letting the
+emit throw out of `doLogActivity` turns the trigger test red (no watcher
+notification); the unit suites catch dropping the title bound, the workspace
+match, the no-subscription early return, the SQL re-check, the queue drop on a
+retarget, the IPv4-in-IPv6 check, the every-address check and the admin gate.
+
 `tests/integration/admin-sync.test.js` proves the boot admin sync never
 promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
 lookup returns first, and how `LOWER(name)` and the email collation compare,
@@ -548,22 +787,25 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:105-190`. The global floor is deliberately low because
+`vitest.config.js:116-210`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **37 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **40 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
 arrived with the identity seam; the 31st, `services/session-token.js` (95 on
 all four), with hashed sessions; the 32nd, `routes/doc-images-serve.js` (95
 lines, 92 branches), with the authorized image handler; the 33rd to 35th,
 `routes/health.js`, `services/shutdown.js` and `services/instance-lock.js`,
 with W6-CDX-31; the 36th, `env-contract.js`, with the configuration
-contract; and the 37th, `services/session-cookie.js` (95 on all four), with the
-`__Host-` session cookie (W6-CDX-3). The security-critical and
+contract; the 37th, `services/session-cookie.js` (95 on all four), with the
+`__Host-` session cookie (W6-CDX-3); and the 38th to 40th, `routes/webhooks.js`
+(97 lines), `services/webhooks.js` (95 lines, 90 branches) and
+`services/webhook-target.js` (95 lines, 88 branches), with the outbound-events
+outbox (W6-CDX-13). The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -595,7 +837,7 @@ treatment or it silently counts for nothing.
 **The practical consequence:** adding an uncovered branch to a high-threshold
 file fails CI even though every test passes. Write the test with the code. When
 you raise real coverage, ratchet the threshold up in the same PR; the comment at
-`vitest.config.js:99-104` explains the "achieved minus a small buffer" policy.
+`vitest.config.js:110-115` explains the "achieved minus a small buffer" policy.
 
 ## 6. CI
 
@@ -604,8 +846,13 @@ cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 
 ```
 npm ci -> npm audit --omit=dev --audit-level=moderate -> npm audit (advisory only)
-       -> npm run lint -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
+       -> npm run lint -> shellcheck -x scripts/*.sh -> npm test -> npm run test:integration
+       -> npm run test:coverage -> npm run build
 ```
+
+The ShellCheck step runs from the repository root (`working-directory: .`) with
+the runner image's own `shellcheck`; the Bash scripts are the only code no
+other step reads.
 
 **The dependency gate** is the step named `Dependency audit (production,
 blocking)`, first after `npm ci`, so a finding fails in seconds under its own
@@ -683,7 +930,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 37 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 40 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and
