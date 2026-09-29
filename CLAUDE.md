@@ -38,7 +38,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
 ├── migrations/                  ← incremental SQL migrations
 ├── docs/                        ← human-facing architecture docs
 │   └── maps/                    ← file:line-cited deep maps, READ THESE FIRST
-├── .github/workflows/ci.yml     ← lint, test, coverage, build; push to main + every PR
+├── .github/workflows/ci.yml     ← audit, lint, test, coverage, build; push to main + every PR
 └── cloudcodex/                  ← the Node application
     ├── app.js                   ← Express app (middleware, route mounting)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
@@ -334,7 +334,10 @@ make db-shell                # mysql CLI in the Docker container
 ```
 
 CI (`.github/workflows/ci.yml`) is one job, `Lint, test and build`, which runs
-`npm ci`, `npm run lint`, `npm test`, `npm run test:integration` (against a
+`npm ci`, `npm audit --omit=dev --audit-level=moderate` (blocking: a moderate or
+worse advisory in a production dependency fails the build, even on a PR that
+touched no dependency; a plain `npm audit` follows, advisory only),
+`npm run lint`, `npm test`, `npm run test:integration` (against a
 `mysql:8.4.11` service container in the same job), `npm run test:coverage` (the
 per-glob thresholds are the real gate) and `npm run build`. It runs on push to `main`
 and on every pull request whatever its base, and it is the required status
