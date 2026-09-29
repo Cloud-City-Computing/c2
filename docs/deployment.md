@@ -141,6 +141,7 @@ Production-specific notes:
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
 | `AUTH_PROVIDERS`           | Leave unset. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which |
 | `LEGACY_SESSION_COOKIE`    | Leave unset. On https the session cookie is `__Host-sessionToken`; unset keeps a browser that still holds the older `sessionToken` signed in and moves it across on its next visit. `0` (https only) makes a lone `sessionToken` sign nobody in: set it when hosts you do not control share your domain. See [security.md](./security.md#the-session-cookie) |
+| `WEBHOOK_*`                | Optional outbound events ([api/webhooks.md](./api/webhooks.md)). `WEBHOOK_URL` must be `https` in production and `WEBHOOK_SECRET` at least 32 characters, or the env subscription is switched off with the reason logged; neither stops the boot. Leave `WEBHOOK_ALLOW_PRIVATE_TARGETS` unset unless the receiver has only a private address |
 
 Add new env vars to `.env.example` (with a comment) when introducing them.
 

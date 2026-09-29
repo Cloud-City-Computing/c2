@@ -9,7 +9,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS doc_images;
+DROP TABLE IF EXISTS webhook_deliveries, webhook_events, webhook_subscriptions, doc_images;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS watches;
 DROP TABLE IF EXISTS activity_log;
@@ -483,5 +483,58 @@ CREATE TABLE notifications (
   INDEX idx_notifications_user_created (user_id, created_at),
   INDEX idx_notifications_user_unread (user_id, read_at, created_at),
   INDEX idx_notifications_resource (resource_type, resource_id)
+) ENGINE=InnoDB;
+
+-- Outbound webhooks (migrations/2026-09-28-webhooks.sql). An env subscription
+-- (source 'env') stores no secret; it is read from WEBHOOK_SECRET at send time.
+-- workspace_id on a subscription has no foreign key on purpose, and
+-- webhook_events.body holds the exact bytes every delivery sends.
+CREATE TABLE webhook_subscriptions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  url VARCHAR(2048) NOT NULL,
+  secret VARCHAR(255) NULL,
+  source VARCHAR(8) NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  event_types JSON NULL,
+  workspace_id INT NULL,
+  disabled_reason VARCHAR(255) NULL,
+  consecutive_failures INT NOT NULL DEFAULT 0,
+  paused_until DATETIME(3) NULL,
+  created_by INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_webhook_subscriptions_source CHECK (source IN ('env', 'admin')),
+  CONSTRAINT chk_webhook_subscriptions_secret CHECK ((source = 'env') = (secret IS NULL)),
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE webhook_events (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  event_uuid CHAR(36) NOT NULL,
+  type VARCHAR(32) NOT NULL,
+  workspace_id INT NOT NULL,
+  occurred_at DATETIME(3) NOT NULL,
+  body MEDIUMBLOB NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_webhook_events_uuid (event_uuid),
+  INDEX idx_webhook_events_created (created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE webhook_deliveries (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  subscription_id INT NOT NULL,
+  event_id BIGINT NOT NULL,
+  status VARCHAR(12) NOT NULL DEFAULT 'pending',
+  attempts INT NOT NULL DEFAULT 0,
+  leased_by CHAR(36) NULL,
+  lease_expires_at DATETIME(3) NULL,
+  last_status SMALLINT NULL,
+  last_error VARCHAR(255) NULL,
+  delivered_at DATETIME(3) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_webhook_deliveries_status CHECK (status IN ('pending', 'delivered', 'dead')),
+  UNIQUE KEY uq_webhook_deliveries_sub_event (subscription_id, event_id),
+  INDEX idx_webhook_deliveries_head (subscription_id, status, event_id),
+  FOREIGN KEY (subscription_id) REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+  FOREIGN KEY (event_id) REFERENCES webhook_events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

@@ -66,6 +66,28 @@ initialises an empty data directory.
   names to every account (`information_schema.TABLESPACES_EXTENSIONS`), which
   the recipe states and the suite pins. Nothing changes for an install with a
   MySQL server of its own.
+- **Outbound webhooks, recorded.** Cloud Codex can now tell a receiver you run
+  when a document is saved, published, restored, renamed, moved or deleted, or
+  an archive is renamed or deleted: each such change writes one JSON event
+  (`codex.event.v1`, documented in `docs/api/webhooks.md`) to an outbox, with
+  one delivery per matching subscription. Titles and names are cut to 255
+  characters, so no event exceeds 4 KiB, and an event carries ids, that title
+  or name, and the actor's user id and name, never an email or any content.
+  **Nothing is sent yet**: the delivery worker ships in a later release. Off
+  by default: with no subscription nothing is written and no query is added to
+  any request or change (the subscription list is re-read once a minute, and
+  at boot). One subscription can be declared in the environment
+  (`WEBHOOK_URL`, `WEBHOOK_SECRET` of at least 32 characters, optional
+  `WEBHOOK_WORKSPACE_ID`), reconciled at every boot, its secret never stored;
+  instance admins manage more under `/api/admin/webhooks` (list, create,
+  rotate the secret, enable or disable, delete), where a secret is shown once.
+  Every receiver URL must be `https` in production and resolve only to public
+  addresses: loopback and private ones need `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`,
+  and link-local and cloud-metadata ones are refused always. An admin
+  subscription's secret is stored in the database in plaintext, so a database
+  dump can sign events to that receiver; the env subscription avoids it. A
+  failure to write the outbox never affects the change that caused it. Needs
+  the webhooks migration (see Migration).
 
 ### Changed
 
@@ -96,6 +118,25 @@ initialises an empty data directory.
   project's format. It now answers `500` with
   `{ "success": false, "message": "An internal server error occurred" }` like
   every other route.
+- Deleting a document through `DELETE /api/archives/:archiveId/logs/:logId`
+  with an id that is not in that archive removes nothing, as before, and now
+  also records nothing: it used to add a "deleted" entry to the archive's
+  activity feed for a document that still exists.
+
+### Migration
+
+**The webhooks migration,**
+[`migrations/2026-09-28-webhooks.sql`](migrations/2026-09-28-webhooks.sql),
+adds three tables, `webhook_subscriptions`, `webhook_events` and
+`webhook_deliveries`, and changes nothing that exists. Apply it with `npm run
+migrate` before starting the new image (in containers, `docker compose ... run
+--rm app npm run migrate`); nothing else is run. Until it is applied the new
+image logs `webhook env subscription reconcile failed` at boot and `webhook
+subscriptions load failed` once a minute, and otherwise runs as before,
+emitting nothing. On an install `init.sql` builds fresh,
+`--adopt-fresh-install` checks that the three tables are there before it
+records the file. To undo it: `DROP TABLE webhook_deliveries, webhook_events,
+webhook_subscriptions;`.
 
 ## [0.13.0] - 2026-09-28
 

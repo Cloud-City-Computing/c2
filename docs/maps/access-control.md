@@ -237,8 +237,8 @@ destructive and administrative verbs. Admin, archive creator, workspace owner
 archive still cannot delete it or change its ACLs.
 
 Callers: delete archive (`archives.js:198`), manage access
-(`archives.js:259`), link and unlink archive repos (`archives.js:745`,
-`archives.js:794`).
+(`archives.js:259`), link and unlink archive repos (`archives.js:749`,
+`archives.js:798`).
 
 ### 3d. Squad management: `canManageSquad`, and its GitHub-only twin
 
@@ -390,7 +390,7 @@ rather than special-cased: an orphaned squad has no tenant, so "is this user
 inside its tenant?" is unanswerable, and failing closed is the right answer to
 an unanswerable question. It is also consistent with the orphaned-workspace
 rule above. All four `INSERT INTO squads` sites set `workspace_id`
-(`squads.js:116`, `workspaces.js:80`, `admin.js:161`, `admin.js:252`), so only
+(`squads.js:116`, `workspaces.js:80`, `admin.js:162`, `admin.js:253`), so only
 legacy or hand-edited rows can be in this state.
 
 **The fix is prospective.** It stops new cross-tenant rows and removes none of
@@ -555,7 +555,7 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 (`server.js`, a top-level `await` before the port opens; defined in
 `routes/admin.js`), which
 is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
-(`server.js:50-55`).
+(`server.js:51-56`).
 
 **The boot sync creates or syncs, and never promotes** (GHSA-w8q3-r34w-3pjh).
 It reads every row matching `LOWER(name) = LOWER(ADMIN_USERNAME)` or

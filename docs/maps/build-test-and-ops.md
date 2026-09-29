@@ -42,10 +42,11 @@ it (directly or transitively) before reading `process.env`.
 | `migrate` | `node scripts/migrate.js` | applies pending `migrations/*.sql`, records them in `schema_migrations`. One-time adoption first: `-- --adopt-fresh-install` on a database `init.sql` just built, `-- --baseline` on an install that predates the runner. Run it inside the app container on the release compose file (3306 is not published there). See [data-model.md](data-model.md) and `docs/deployment.md`. |
 | `backfill:doc-images` | `node scripts/backfill-doc-images.js` | once, after the `2026-09-27-who-may-see-doc-images.sql` migration: records a `doc_images` row for every `/doc-images/` image an existing document or version shows, so the authorized handler does not hide them from readers. Idempotent, but it refuses to run over a table that already has rows (run after go-live it would trust every reference saved since) unless `-- --again` or `DOC_IMAGES_PUBLIC=1`. In containers it runs like `migrate`, through `run --rm app`. |
 
-`NODE_ENV` matters in five places: CORS localhost allowance
+`NODE_ENV` matters in six places: CORS localhost allowance
 (`app.js:272`), where Helmet is mounted (`app.js:330`: the whole app in
 production, `/api` otherwise), rate-limiter `skip` when `'test'` (`app.js:360`,
-`app.js:398`, `app.js:412`), the `APP_URL` boot gate (`server.js:63`), and
+`app.js:398`, `app.js:412`), the `APP_URL` boot gate (`server.js:64`), the webhook SSRF
+guard's https-only rule (`webhookTargetOptions`, `services/webhooks.js`), and
 Vite's dev-vs-prod mode. `.env.example` ships it commented out; `npm run start`
 and the Docker image set it, and both production compose files pin it (section 4).
 
@@ -80,7 +81,7 @@ The Makefile does `include .env` / `export` at the top, so it needs a populated
 root `.env`, and it resolves the container via
 `docker compose ps -q database`.
 
-`init.sql`'s `DROP TABLE IF EXISTS` block now covers all 25 tables, including
+`init.sql`'s `DROP TABLE IF EXISTS` block now covers all 28 tables, including
 `github_links`, `activity_log`, `watches` and `notifications`, which used to be
 missing and made `make reset-db` fail partway on a database that already had
 them. See [data-model.md](data-model.md).
@@ -335,10 +336,10 @@ fourth, `integration`, is opt-in because it needs a MySQL server:
 | `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **105 files, 2385 tests, all passing** (5
-files and 80 tests of it are `design`); the integration project is **15 files,
-186 tests** (measured 2026-09-29 on `track/w6-cdx-33-shared-mysql` with main
-merged in after W6-CDX-35, against a stock MySQL 8.4.11 at the server's default
+Current state: the default run is **109 files, 2533 tests, all passing** (5
+files and 80 tests of it are `design`); the integration project is **18 files,
+217 tests** (measured 2026-09-29 on `track/w6-cdx-13-outbox` with main merged
+in after W6-CDX-33, against a stock MySQL 8.4.11 at the server's default
 isolation and at `READ-COMMITTED`, with MySQL's 8.4.11 clients on `PATH`).
 
 The backup file's child-process helpers (`spawn`, `childEnv`, `holdLock`,
@@ -695,6 +696,33 @@ test red. Dropping `ORDER BY l.id` does not: MySQL returns id order on this
 data anyway, so that mutation is caught only by the SQL-shape pin in
 `tests/routes/documents.test.js`.
 
+Three files prove the outbound-events outbox (W6-CDX-13).
+`tests/integration/webhooks-schema.test.js` proves the tables' constraints: the
+`source` and `status` CHECKs, that only an `env` subscription goes without a
+stored secret, both unique keys, and the cascades from a subscription and from
+an event to their deliveries. `tests/integration/webhooks-emit.test.js` drives
+each of the eight emitted actions through its real route with a real session
+and reads exactly one `webhook_events` row and one `webhook_deliveries` row per
+matching subscription (made through the admin API, so its SQL runs too); a
+coalesced `log.update`, a `comment.create`, a subscription for another
+workspace or for other event types, a delete naming a log outside its archive,
+and no subscription at all each write nothing for that subscription or event;
+a subscription disabled in the database since the cache loaded gets no
+delivery, and an event it leaves with none is rolled back; the stored body is
+byte-stable and is the envelope its row describes (its `occurred_at` read back
+in UTC); a stored 30,000-character title is emitted as 255 code points; and with
+a test-created trigger that `SIGNAL`s on every outbox insert, a save still
+answers 200, writes its activity row and notifies its watcher.
+`tests/integration/webhooks-env.test.js` boots the env subscription through
+nothing configured, create, keep, a workspace change and a receiver change
+(each dropping the old queue), a missing secret, a mistyped workspace and a
+metadata address (each disabling it) and re-enable, with one row throughout and
+its secret never stored or logged. Mutation-checked on 2026-09-28: letting the
+emit throw out of `doLogActivity` turns the trigger test red (no watcher
+notification); the unit suites catch dropping the title bound, the workspace
+match, the no-subscription early return, the SQL re-check, the queue drop on a
+retarget, the IPv4-in-IPv6 check, the every-address check and the admin gate.
+
 `tests/integration/admin-sync.test.js` proves the boot admin sync never
 promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
 lookup returns first, and how `LOWER(name)` and the email collation compare,
@@ -758,22 +786,25 @@ empties `document.body`.
 
 ### Coverage thresholds
 
-`vitest.config.js:116-201`. The global floor is deliberately low because
+`vitest.config.js:116-210`. The global floor is deliberately low because
 `src/pages/` and `src/extensions/` are untested by policy:
 
 ```
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **37 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **40 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
 arrived with the identity seam; the 31st, `services/session-token.js` (95 on
 all four), with hashed sessions; the 32nd, `routes/doc-images-serve.js` (95
 lines, 92 branches), with the authorized image handler; the 33rd to 35th,
 `routes/health.js`, `services/shutdown.js` and `services/instance-lock.js`,
 with W6-CDX-31; the 36th, `env-contract.js`, with the configuration
-contract; and the 37th, `services/session-cookie.js` (95 on all four), with the
-`__Host-` session cookie (W6-CDX-3). The security-critical and
+contract; the 37th, `services/session-cookie.js` (95 on all four), with the
+`__Host-` session cookie (W6-CDX-3); and the 38th to 40th, `routes/webhooks.js`
+(97 lines), `services/webhooks.js` (95 lines, 90 branches) and
+`services/webhook-target.js` (95 lines, 88 branches), with the outbound-events
+outbox (W6-CDX-13). The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |
@@ -874,7 +905,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 37 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 40 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and

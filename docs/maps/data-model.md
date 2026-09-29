@@ -1,6 +1,6 @@
 # Data Model Map
 
-25 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
+28 tables in one MySQL 8 schema, InnoDB throughout. `init.sql` is the canonical
 definition; `migrations/` is the incremental path for databases that already
 exist. Both must be kept in sync, and there is a live trap in how `init.sql` is
 re-applied.
@@ -325,7 +325,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 | Table | Key | Written by | Read by |
 |---|---|---|---|
 | `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google; never links a user with two-factor on by email), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
-| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:760` | bulk import |
+| `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:764` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
 | `github_pr_sessions` | unique `(repo_owner, repo_name, pr_number)` | `github.js:1677` | PR session lookup |
 | `github_embed_refs` | index on `(repo_owner, repo_name, embed_type)` | **nothing** | `/api/logs/by-github-ref` |
@@ -379,12 +379,44 @@ place, and the read query's access clause simply stops matching them.
 `watches` is likewise polymorphic, unique on
 `(user_id, resource_type, resource_id)`, with a FK on `user_id` only. Deleting a
 document therefore **orphans** its watch rows. They are harmless because
-`fanOutToWatchers` bails when the log row is gone (`activity.js:180-184`), but
+`fanOutToWatchers` bails when the log row is gone (`activity.js:190-194`), but
 they accumulate and nothing prunes them.
 
 `notifications` has FKs on both `user_id` (cascade) and `actor_id`
 (`SET NULL`), plus a covering index for the unread badge
 (`idx_notifications_user_unread`).
+
+### The webhook outbox (W6-CDX-13, `migrations/2026-09-28-webhooks.sql`)
+
+Three tables at the end of `init.sql` (`init.sql:488-539`), written only when a
+subscription matches an event (`notifications-and-activity.md` section 2a):
+
+- **`webhook_subscriptions`**: `url VARCHAR(2048)`, `secret`, `source`
+  (`env` or `admin`, `chk_webhook_subscriptions_source`), `enabled`,
+  `event_types JSON` (`NULL` means every emitted type), `workspace_id`
+  (`NULL` means every workspace), `disabled_reason`, and the per-subscription
+  backoff state `consecutive_failures` and `paused_until`.
+  `chk_webhook_subscriptions_secret` is `(source = 'env') = (secret IS NULL)`:
+  the env row's secret lives only in `WEBHOOK_SECRET`, and an admin row always
+  has one. **An admin row's secret is stored in plaintext**, write-only through
+  the API (deferred by the spec: whoever holds a dump can sign events to that
+  one receiver). `workspace_id` has **no FK on purpose**: the env row names a
+  workspace by number, and deleting that workspace must not delete the
+  subscription. `created_by` is `SET NULL`.
+- **`webhook_events`**: the outbox. `id BIGINT` is the envelope's `sequence`,
+  `event_uuid CHAR(36)` (unique) its `id`, and `body MEDIUMBLOB` the exact bytes
+  every delivery sends, so a retry is byte-identical. `occurred_at DATETIME(3)`
+  is stored **in UTC** from the Node clock (`utcDatetime` in
+  `services/webhooks.js`), not the session time zone, so compare it with
+  `UTC_TIMESTAMP(3)`, not `NOW(3)`. Indexed on `created_at` for the prune.
+- **`webhook_deliveries`**: one row per (subscription, event), unique on the
+  pair; `status` is `pending`, `delivered` or `dead`
+  (`chk_webhook_deliveries_status`), with `attempts`, the lease columns
+  `leased_by` and `lease_expires_at`, and `last_status`, `last_error`,
+  `delivered_at`. `idx_webhook_deliveries_head (subscription_id, status,
+  event_id)` is the head-of-queue read the delivery worker (W6-CDX-14) makes.
+  Both FKs cascade, so deleting a subscription or pruning an event removes its
+  deliveries.
 
 ## 9. `init.sql` versus `migrations/`
 
@@ -540,7 +572,8 @@ fails if any host bind mount in the prod or release file loses its label.
 
 `make reset-db` (`Makefile:19-22`) pipes `init.sql` then `seed.sql` into the
 running container. `init.sql`'s `DROP TABLE IF EXISTS` list (`init.sql:12-37`)
-now covers all 25 tables (`doc_images` joined it with its table). It used to omit `github_links`, `activity_log`,
+now covers all 28 tables (`doc_images` joined it with its table, and the three
+webhook tables share one multi-table `DROP` on its first line). It used to omit `github_links`, `activity_log`,
 `watches` and `notifications`, whose `CREATE TABLE` statements don't use
 `IF NOT EXISTS`, so `reset-db` failed partway through with a duplicate-table
 error on a database that already had those four. Fixed by adding them to the

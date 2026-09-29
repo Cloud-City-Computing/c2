@@ -13,6 +13,7 @@ import { c2_query, openConnection, endPool } from './mysql_connect.js';
 import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import { parseAuthProviders } from './services/identity.js';
 import { acquireInstanceLock } from './services/instance-lock.js';
+import { reconcileEnvSubscription, loadSubscriptions } from './services/webhooks.js';
 import { createShutdown } from './services/shutdown.js';
 import { readiness } from './routes/health.js';
 import app from './app.js';
@@ -174,6 +175,19 @@ try {
 } catch (err) {
   console.error(`[${new Date().toISOString()}] instance bootstrap failed:`, err);
 }
+
+// Outbound webhooks (services/webhooks.js): make the env subscription match
+// WEBHOOK_URL / WEBHOOK_SECRET / WEBHOOK_WORKSPACE_ID, then fill the cache
+// emitEvent matches against, and refresh it every minute. Neither may stop
+// the boot: without them no event is emitted, and nothing else changes.
+// loadSubscriptions logs its own failure and never throws.
+try {
+  await reconcileEnvSubscription();
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] webhook env subscription reconcile failed:`, err);
+}
+await loadSubscriptions();
+setInterval(loadSubscriptions, 60 * 1000).unref();
 
 // ─── Resolve the port ───────────────────────────────────────
 //

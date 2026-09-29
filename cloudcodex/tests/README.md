@@ -58,7 +58,10 @@ tests/
 │   ├── server-child.js     ← (not a test file) fork server.js or the lock holder, sign in, open /collab
 │   ├── tenancy.test.js     ← two instances on one server: every cross-schema statement is denied
 │   ├── update-account-sessions.test.js ← an email or password change leaves one session, the caller's new one
-│   └── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
+│   ├── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
+│   ├── webhooks-emit.test.js ← the outbound-event emit hook, driven through the HTTP routes, read from the outbox tables
+│   ├── webhooks-env.test.js ← the env-declared webhook subscription across boots
+│   └── webhooks-schema.test.js ← the webhook tables' CHECKs, unique keys and cascade, written directly
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests
 ├── services/               ← service-layer tests (email, notifications, collab)

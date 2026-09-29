@@ -680,18 +680,22 @@ router.delete('/archives/:archiveId/logs/:logId', requireAuth, asyncHandler(asyn
   );
   if (!archive) return res.status(403).json({ success: false, message: 'Write access denied' });
 
-  await c2_query(
+  const deleted = await c2_query(
     `DELETE FROM logs WHERE id = ? AND archive_id = ?`,
     [Number(logId), Number(archiveId)]
   );
 
-  logActivity({
-    user: req.user,
-    action: 'log.delete',
-    resourceType: 'archive',
-    resourceId: Number(archiveId),
-    metadata: { log_id: Number(logId) },
-  });
+  // Only a delete that removed this archive's log is recorded (and emitted as
+  // an event): an id from another archive matches no row here.
+  if (deleted?.affectedRows === 1) {
+    logActivity({
+      user: req.user,
+      action: 'log.delete',
+      resourceType: 'archive',
+      resourceId: Number(archiveId),
+      metadata: { log_id: Number(logId) },
+    });
+  }
 
   res.json({ success: true });
 }));
