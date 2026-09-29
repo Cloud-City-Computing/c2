@@ -12,6 +12,50 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- **The shared Cloud City design package, vendored, and a design gate.**
+  `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
+  Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)
+  package at commit `2d52baa` (0.2.0): its primitives (`core.css`), the Inter
+  and Poppins faces under the SIL Open Font License, and its gates, pinned by
+  a SHA-256 `MANIFEST.json`. It builds offline with the image, and the fonts
+  are fingerprinted into `dist/assets/`, never `public/`. A new Vitest
+  project, `design`, runs in `npm test` and `npm run test:coverage` (alone:
+  `npm run test:design`): the vendored copy must match its manifest, literal
+  colours, accent fill shades in text positions and suppressed focus outlines
+  may not exceed an exemption ledger that starts at 745 and only shrinks
+  (`node tests/design/report.mjs` prints it), every `var()` with no fallback
+  must name a declared property, and Codex's new colour bindings must clear
+  their contrast minimums. `src/codex.css` holds those bindings (`--cx-`
+  names on `<html data-theme="dark">`); nothing uses them yet, so the
+  interface does not change. The built stylesheet now keeps licence comments,
+  so the package's notice heads it. No migration and no new setting.
+
+### Changed
+
+- The GitHub page's linked file path and its file picker, which asked for a
+  `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now
+  get the design package's monospace stack (`ui-monospace, SFMono-Regular,
+  Menlo, Consolas, monospace`). On Linux both stacks render the same face
+  (checked by rendering each). On macOS and Windows the new stack may pick
+  Menlo or Consolas where the old one used the browser's generic monospace
+  face; that was not checked.
+
+### Fixed
+
+- **Five rules that named a colour nothing defines now render, and a sixth
+  that never applied is removed.** A `var()` that names an undeclared property
+  makes its declaration invalid at computed-value time, so the property
+  computes as `unset`: transparent for a background, inherited for a colour.
+  The "Sign in with Google" button now has its border and background, the
+  "or" divider above it its two lines, the Linked Accounts rows in Account
+  settings their border and background, the active tab in Manage Archive
+  Access its accent underline, and a draw.io diagram's delete button turns red
+  on hover instead of transparent with a white edge. The avatar placeholder's
+  background named such a property and was already transparent; the
+  declaration is deleted, with no visible change.
+
 ## [0.13.0] - 2026-09-28
 
 The cookie-hardening release. One security fix: on an https instance, the

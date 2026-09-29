@@ -11,12 +11,13 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run --project backend --project frontend",
-    "test:watch": "vitest --project backend --project frontend",
-    "test:coverage": "vitest run --coverage --project backend --project frontend",
+    "test": "vitest run --project backend --project frontend --project design",
+    "test:watch": "vitest --project backend --project frontend --project design",
+    "test:coverage": "vitest run --coverage --project backend --project frontend --project design",
     "test:integration": "vitest run --project integration",
     "test:backend": "vitest run --project backend",
-    "test:frontend": "vitest run --project frontend"
+    "test:frontend": "vitest run --project frontend",
+    "test:design": "vitest run --project design"
   },
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "^3.22.3",

@@ -1,0 +1,101 @@
+{
+ "html-desktop": "<html lang=\"en\" data-theme=\"dark\"><head>\n    <meta charset=\"UTF-8\">\n    <link rel=\"icon\" type=\"image/png\" href=\"/favicon",
+ "fonts-desktop": [
+  "Inter unloaded",
+  "Inter unloaded",
+  "Poppins unloaded",
+  "Poppins unloaded",
+  "Poppins unloaded",
+  "Poppins unloaded"
+ ],
+ "body-font-desktop": "system-ui, Avenir, Helvetica, Arial, sans-serif",
+ "login-opened-desktop": true,
+ "btn-oauth-desktop": [
+  {
+   "border-top-style": "solid",
+   "border-top-color": "rgb(68, 68, 68)",
+   "background-color": "rgb(46, 46, 46)",
+   "color": "rgba(255, 255, 255, 0.87)"
+  }
+ ],
+ "oauth-divider-desktop": "rgb(68, 68, 68)",
+ "avatar-placeholder-desktop": [
+  {
+   "background-color": "rgba(0, 0, 0, 0)"
+  }
+ ],
+ "linked-desktop": true,
+ "linked-row-desktop": [
+  {
+   "border-top-style": "solid",
+   "border-top-color": "rgb(68, 68, 68)",
+   "background-color": "rgb(46, 46, 46)"
+  },
+  {
+   "border-top-style": "solid",
+   "border-top-color": "rgb(68, 68, 68)",
+   "background-color": "rgb(46, 46, 46)"
+  }
+ ],
+ "access-opened-desktop": true,
+ "access-tab-desktop": [
+  {
+   "border-bottom-style": "solid",
+   "border-bottom-color": "rgb(44, 167, 219)"
+  }
+ ],
+ "html-phone": "<html lang=\"en\" data-theme=\"dark\"><head>\n    <meta charset=\"UTF-8\">\n    <link rel=\"icon\" type=\"image/png\" href=\"/favicon",
+ "fonts-phone": [
+  "Inter unloaded",
+  "Inter unloaded",
+  "Poppins unloaded",
+  "Poppins unloaded",
+  "Poppins unloaded",
+  "Poppins unloaded"
+ ],
+ "body-font-phone": "system-ui, Avenir, Helvetica, Arial, sans-serif",
+ "login-opened-phone": true,
+ "btn-oauth-phone": [
+  {
+   "border-top-style": "solid",
+   "border-top-color": "rgb(68, 68, 68)",
+   "background-color": "rgb(46, 46, 46)",
+   "color": "rgba(255, 255, 255, 0.87)"
+  }
+ ],
+ "oauth-divider-phone": "rgb(68, 68, 68)",
+ "avatar-placeholder-phone": [
+  {
+   "background-color": "rgba(0, 0, 0, 0)"
+  }
+ ],
+ "linked-phone": true,
+ "linked-row-phone": [
+  {
+   "border-top-style": "solid",
+   "border-top-color": "rgb(68, 68, 68)",
+   "background-color": "rgb(46, 46, 46)"
+  },
+  {
+   "border-top-style": "solid",
+   "border-top-color": "rgb(68, 68, 68)",
+   "background-color": "rgb(46, 46, 46)"
+  }
+ ],
+ "access-opened-phone": true,
+ "access-tab-phone": [
+  {
+   "border-bottom-style": "solid",
+   "border-bottom-color": "rgb(44, 167, 219)"
+  }
+ ],
+ "drawio-hover": true,
+ "drawio-delete": [
+  {
+   "background-color": "rgb(229, 69, 69)",
+   "border-top-color": "rgb(229, 69, 69)",
+   "color": "rgb(255, 255, 255)"
+  }
+ ],
+ "errors": []
+}
