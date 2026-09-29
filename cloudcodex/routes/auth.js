@@ -15,6 +15,7 @@ import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
 import { requireAuth, extractSessionToken } from '../middleware/auth.js';
+import { legacyCookieAllowed } from '../services/session-cookie.js';
 import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, TOKEN_PURPOSE, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
 
 const router = express.Router();
@@ -596,13 +597,22 @@ router.post('/logout', asyncHandler(async (req, res) => {
 
 /**
  * POST /api/validate-session
- * Body: { token }
+ * Body: { token, legacyCookie? }
+ *
+ * legacyCookie: true says the token came from a lone legacy `sessionToken`
+ * cookie that the client wants to move to __Host-sessionToken. With
+ * LEGACY_SESSION_COOKIE=0 that cookie authenticates nobody, since a sibling
+ * host could have planted it, so the answer is invalid without a lookup.
  */
 router.post('/validate-session', asyncHandler(async (req, res) => {
-  const { token } = req.body;
+  const { token, legacyCookie } = req.body;
 
   if (!token) {
     return res.status(400).json({ valid: false, message: 'Token is required' });
+  }
+
+  if (legacyCookie === true && !legacyCookieAllowed()) {
+    return res.json({ valid: false });
   }
 
   const user = await validateAndAutoLogin(token);

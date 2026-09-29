@@ -399,7 +399,7 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
       <div className="access-tabs" style={{ display: 'flex', gap: 0, marginBottom: 14, borderBottom: '1px solid var(--border-color)' }}>
         {['users', ...(archive.squad_id ? ['squads', 'workspace'] : [])].map((t) => (
           <button key={t} className={`btn btn-ghost btn-sm ${tab === t ? 'active' : ''}`}
-            style={{ borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', borderRadius: 0 }}
+            style={{ borderBottom: tab === t ? '2px solid var(--brand-blue)' : '2px solid transparent', borderRadius: 0 }}
             onClick={() => { setTab(t); setError(null); setStatus(null); }}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>

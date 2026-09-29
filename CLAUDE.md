@@ -45,7 +45,7 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     ├── server.js                ← entry point (verifies SMTP + admin, WS attach)
     ├── mysql_connect.js         ← DB pool, sessions, c2_query()
     ├── vite.config.js           ← code-splitting strategy (read before adding deps)
-    ├── vitest.config.js         ← three projects + 36 per-glob coverage thresholds
+    ├── vitest.config.js         ← four projects + 37 per-glob coverage thresholds
     ├── eslint.config.js         ← strict flat config
     ├── routes/                  ← API endpoints
     │   ├── helpers/             ← shared.js, ownership.js, images.js,
@@ -70,7 +70,9 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
     │   ├── lib/githubDiff.js    ← diff3 merge, imported by the BACKEND too
     │   ├── util.jsx             ← apiFetch + API wrappers — USE THIS for new calls
     │   ├── userPrefs.js         ← localStorage prefs + theme constants
-    │   └── editorUtils.js       ← editor-specific helpers
+    │   ├── editorUtils.js       ← editor-specific helpers
+    │   └── codex.css            ← --cx- theme bindings over the vendored primitives
+    ├── vendor/cloud-city-design/ ← vendored design package, pinned by checksum; NEVER edit here
     ├── public/                  ← uploaded avatars, document images
     └── tests/                   ← Vitest + Supertest, mirrors the source tree
 ```
@@ -109,7 +111,13 @@ AES-256-GCM encrypted at rest). Use `requireAuth` and `requireAdmin` from
 `middleware/auth.js` on any new protected route. **Never bind a raw session
 token into a `sessions` query**: hash it with `hashSessionToken` in
 `services/session-token.js` (`validateAndAutoLogin` and `touchSession` already
-do).
+do). The cookie is `__Host-sessionToken` on https (`sessionToken` over plain
+http); read it only through `extractSessionToken` on the server and
+`getSessionTokenFromCookie` on the client, write it only through
+`setSessionCookie`, and never give it a `Domain`
+(`services/session-cookie.js`). Match cookie names exactly: strip only ASCII
+space and tab (`COOKIE_OWS`), never `trim()`. An `/api` write authenticated by that cookie
+alone needs an accepted `Origin` (`requireOriginForCookieWrites` in `app.js`).
 
 **External sign-in** decides its local user in one seam, `resolveIdentity(claims,
 policy)` in `services/identity.js`: a provider route verifies the protocol and
@@ -472,7 +480,10 @@ New files match this pattern. Update the year only if the file is genuinely new.
 - Framework: **Vitest 4 + Supertest** for backend, **Vitest + jsdom +
   @testing-library/react** for frontend. The two suites run as separate
   Vitest **projects** (configured in `vitest.config.js`); a single
-  `npm test` runs both. A third, opt-in project, `integration`, runs
+  `npm test` runs both, and a third default project, `design`
+  (`tests/design/`), runs the vendored design gates against an exemption
+  ledger that may only shrink (lower `tests/design/ledger.json` by exactly
+  what a change fixes). A fourth, opt-in project, `integration`, runs
   `tests/integration/` against a live MySQL (`npm run test:integration`,
   `IT_DB_ROOT_PASSWORD` required; see `cloudcodex/tests/README.md`). It
   proves `init.sql` builds on MySQL 8.4, adoption agrees with it, app SQL

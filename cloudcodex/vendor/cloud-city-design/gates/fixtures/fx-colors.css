@@ -1,0 +1,23 @@
+/* Every colour notation the literal rule knows. Custom property names in
+   these fixtures are fixture names only. */
+.fx-swatches {
+  --fx-hex3: #abc;
+  --fx-hex4: #abcd;
+  --fx-hex6: #a1b2c3;
+  --fx-hex8: #a1b2c3d4;
+  --fx-rgb: rgb(10 20 30);
+  --fx-rgba: rgba(10, 20, 30, 0.5);
+  --fx-hsl: hsl(200 50% 50%);
+  --fx-hsla: hsla(200, 50%, 50%, 0.5);
+  --fx-oklch: oklch(0.6 0.1 240);
+  --fx-oklab: oklab(0.6 -0.05 0.02);
+  --fx-lch: lch(60 40 240);
+  --fx-lab: lab(60 -20 10);
+  --fx-hwb: hwb(200 10% 20%);
+  --fx-color: color(display-p3 0.2 0.4 0.6);
+  --fx-upper: RGB(1 2 3);
+  /* Not colours: five and nine hex digits, and an id selector below. */
+  --fx-five: #abcde;
+  --fx-nine: #a1b2c3d4e;
+}
+#root { display: block; }

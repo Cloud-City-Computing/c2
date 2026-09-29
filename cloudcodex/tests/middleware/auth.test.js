@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { c2_query, validateAndAutoLogin, touchSession } from '../../mysql_connect.js';
-import { requireAuth, machineOrAuth, extractSessionToken } from '../../middleware/auth.js';
+import { requireAuth, machineOrAuth, extractSessionToken, bearerToken } from '../../middleware/auth.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
 
 /**
@@ -53,6 +53,64 @@ describe('extractSessionToken', () => {
   it('ignores a token posted in the body', () => {
     const { req } = createMocks({ body: { token: 'body-token' } });
     expect(extractSessionToken(req)).toBeNull();
+  });
+
+  describe('the __Host- cookie (W6-CDX-3)', () => {
+    const prior = process.env.LEGACY_SESSION_COOKIE;
+    afterEach(() => {
+      if (prior === undefined) delete process.env.LEGACY_SESSION_COOKIE;
+      else process.env.LEGACY_SESSION_COOKIE = prior;
+    });
+
+    it('reads the __Host-sessionToken cookie', () => {
+      const { req } = createMocks({ headers: { cookie: 'theme=dark; __Host-sessionToken=host-token' } });
+      expect(extractSessionToken(req)).toBe('host-token');
+    });
+
+    // The browser sends a tossed `Path=/api` legacy cookie ahead of the real
+    // one; reading the first match would authenticate the tosser's session.
+    it('prefers the prefixed cookie over a tossed legacy one sent first', () => {
+      const { req } = createMocks({
+        headers: { cookie: 'sessionToken=tossed; __Host-sessionToken=host-token' },
+      });
+      expect(extractSessionToken(req)).toBe('host-token');
+    });
+
+    it('reads a lone legacy cookie while LEGACY_SESSION_COOKIE is unset', () => {
+      delete process.env.LEGACY_SESSION_COOKIE;
+      const { req } = createMocks({ headers: { cookie: 'sessionToken=old-token' } });
+      expect(extractSessionToken(req)).toBe('old-token');
+    });
+
+    it('authenticates nobody from a lone legacy cookie when LEGACY_SESSION_COOKIE=0', () => {
+      process.env.LEGACY_SESSION_COOKIE = '0';
+      const { req } = createMocks({ headers: { cookie: 'sessionToken=old-token' } });
+      expect(extractSessionToken(req)).toBeNull();
+    });
+
+    it('still takes the bearer header first', () => {
+      const { req } = createMocks({
+        headers: { authorization: 'Bearer header-token', cookie: '__Host-sessionToken=host-token' },
+      });
+      expect(extractSessionToken(req)).toBe('header-token');
+    });
+  });
+});
+
+describe('bearerToken', () => {
+  it('is the Authorization header\'s token', () => {
+    const { req } = createMocks({ headers: { authorization: 'Bearer header-token' } });
+    expect(bearerToken(req)).toBe('header-token');
+  });
+
+  it('is null for no header, and for a bare "Bearer " (which extractSessionToken falls through)', () => {
+    expect(bearerToken(createMocks().req)).toBeNull();
+    expect(bearerToken(createMocks({ headers: { authorization: 'Bearer ' } }).req)).toBeNull();
+  });
+
+  it('never reads the cookie', () => {
+    const { req } = createMocks({ headers: { cookie: '__Host-sessionToken=host-token' } });
+    expect(bearerToken(req)).toBeNull();
   });
 });
 

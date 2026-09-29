@@ -87,3 +87,52 @@ describe('services/user-channel: closeAll', () => {
     ]);
   });
 });
+
+// Pinned for W6-CDX-3: the inbox socket authenticates from a token the page
+// reads out of the cookie, so the Origin rule is the whole cross-site defence.
+// A sibling host under the same registrable domain is cross-origin here.
+describe('services/user-channel: the Origin rule, pinned', () => {
+  let server;
+  let port;
+
+  beforeEach(async () => {
+    server = http.createServer();
+    setupUserChannelServer(server);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = server.address().port;
+  });
+
+  afterEach(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const connect = (headers) => new WebSocket(`ws://127.0.0.1:${port}/notifications-ws`, { headers });
+
+  /** The refused upgrade's status, once the server has destroyed the socket. */
+  const refusal = (ws) => new Promise((resolve, reject) => {
+    ws.once('open', () => reject(new Error('upgrade was accepted')));
+    ws.once('unexpected-response', (_req, res) => {
+      res.socket.once('close', () => resolve({ status: res.statusCode, destroyed: res.socket.destroyed }));
+      res.resume();
+    });
+  });
+
+  it('refuses an upgrade with no Origin: 403, socket destroyed', async () => {
+    expect(await refusal(connect({}))).toEqual({ status: 403, destroyed: true });
+  });
+
+  it('refuses a sibling host\'s Origin: 403, socket destroyed', async () => {
+    const ws = connect({ Host: 'codex.example.com', Origin: 'https://command.example.com' });
+    expect(await refusal(ws)).toEqual({ status: 403, destroyed: true });
+  });
+
+  it('accepts the same Host with its own Origin (the control for the sibling case)', async () => {
+    const ws = connect({ Host: 'codex.example.com', Origin: 'https://codex.example.com' });
+    await new Promise((resolve, reject) => {
+      ws.once('open', resolve);
+      ws.once('unexpected-response', (_req, res) => reject(new Error(`refused: ${res.statusCode}`)));
+    });
+    ws.terminate();
+  });
+});

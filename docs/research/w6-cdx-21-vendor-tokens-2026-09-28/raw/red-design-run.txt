@@ -1,0 +1,105 @@
+
+ RUN  v4.1.5 <repo>/cloudcodex
+
+ ❯ |design| tests/design/codex-css.test.js (0 test)
+ ❯ |design| tests/design/contrast.test.js (0 test)
+ ❯ |design| tests/design/dangling.test.js (3 tests | 2 failed) 9ms
+     × lists nothing beyond the ledger 6ms
+     × read the code base, not nothing 1ms
+ ❯ |design| tests/design/token-discipline.test.js (7 tests | 1 failed) 9ms
+     × reads index.html, the stylesheets and the .js and .jsx sources 4ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |design| tests/design/codex-css.test.js [ tests/design/codex-css.test.js ]
+Error: ENOENT: no such file or directory, open '<repo>/cloudcodex/src/codex.css'
+ ❯ read tests/design/codex-css.test.js:15:35
+     13| import { ROOT } from './buckets.js';
+     14|
+     15| const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
+       |                                   ^
+     16| const coreNames = new Set(declaredNames(read('vendor/cloud-city-design…
+     17| const codex = read('src/codex.css');
+ ❯ tests/design/codex-css.test.js:17:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  |design| tests/design/contrast.test.js [ tests/design/contrast.test.js ]
+Error: ENOENT: no such file or directory, open '<repo>/cloudcodex/src/codex.css'
+ ❯ read tests/design/contrast.test.js:17:35
+     15| import { ROOT } from './buckets.js';
+     16|
+     17| const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
+       |                                   ^
+     18| const core = read('vendor/cloud-city-design/core.css');
+     19| const codex = read('src/codex.css');
+ ❯ tests/design/contrast.test.js:19:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |design| tests/design/dangling.test.js > dangling var() references > lists nothing beyond the ledger
+AssertionError: Point each reference at a declared name, or give it a fallback if it may really be absent. Only a false positive goes on tests/design/dangling-ledger.json.: expected [ …(6) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "src/index.css --border-main at line(s) 1419, 1428, 1457",
++   "src/index.css --bg-surface at line(s) 1430, 1459",
++   "src/index.css --text-main at line(s) 1431",
++   "src/index.css --bg-secondary at line(s) 7766",
++   "src/index.css --red at line(s) 8797, 8799",
++   "src/components/ArchiveBrowser.jsx --accent at line(s) 402",
++ ]
+
+ ❯ tests/design/dangling.test.js:37:95
+     35|       .map(([key, lines]) => `${key} at line(s) ${lines.join(', ')}`);
+     36|     expect(unexplained, 'Point each reference at a declared name, or g…
+     37|       + 'really be absent. Only a false positive goes on tests/design/…
+       |                                                                                               ^
+     38|   });
+     39|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  |design| tests/design/dangling.test.js > dangling var() references > read the code base, not nothing
+AssertionError: --cx-accent should be declared: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/design/dangling.test.js:60:75
+     58|     expect(inspection.referenceSites).toBeGreaterThanOrEqual(600);
+     59|     for (const name of ['--bg-main', '--accent-300', '--cx-accent']) {
+     60|       expect(inspection.declared.has(name), `${name} should be declare…
+       |                                                                           ^
+     61|     }
+     62|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  |design| tests/design/token-discipline.test.js > the scan is looking at the code base > reads index.html, the stylesheets and the .js and .jsx sources
+AssertionError: expected [ 'index.html', 'src/App.jsx', …(66) ] to include 'src/codex.css'
+ ❯ tests/design/token-discipline.test.js:58:21
+     56|     expect(targets).toContain('index.html');
+     57|     expect(targets).toContain('src/index.css');
+     58|     expect(targets).toContain('src/codex.css');
+       |                     ^
+     59|     expect(targets).toContain('src/userPrefs.js');
+     60|     // Measured at 69 files, 45 of them .jsx, when the gate landed.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  4 failed | 1 passed (5)
+      Tests  3 failed | 12 passed (15)
+   Start at  10:15:20
+   Duration  388ms (transform 130ms, setup 0ms, import 286ms, tests 226ms, environment 0ms)
+

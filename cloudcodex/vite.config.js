@@ -39,4 +39,9 @@ export default defineConfig( {
       },
     },
   },
+  // Vite's default drops every /*! licence comment when it minifies. The
+  // vendored cloud-city-design core.css opens with its Apache-2.0 notice and
+  // is imported first (src/main.jsx) so the notice heads the built
+  // stylesheet; keeping legal comments is what lets it survive.
+  esbuild: { legalComments: 'inline' },
 } )
