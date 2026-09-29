@@ -61,6 +61,43 @@ describe('useGitHubStatus', () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
+  // Std_Layout enables the provider only once the auth check finds a user, so
+  // a signed-out visitor never asks /api/github/status (it would answer 401).
+  // The gap between enabling and the answer must read as unknown (null), not
+  // as "not linked": the sidebar hides its GitHub link on false, and would
+  // flash it away for every linked user on every page.
+  it('reports false while disabled, then null until the first answer after enabling', async () => {
+    let resolve;
+    apiFetch.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+    let enabled = false;
+    const Wrap = ({ children }) => React.createElement(GitHubStatusProvider, { enabled }, children);
+    const { result, rerender } = renderHook(() => useGitHubStatus(), { wrapper: Wrap });
+    await waitFor(() => expect(result.current.connected).toBe(false));
+    expect(apiFetch).not.toHaveBeenCalled();
+
+    enabled = true;
+    rerender();
+    expect(result.current.connected).toBeNull();
+    expect(apiFetch).toHaveBeenCalledWith('GET', '/api/github/status');
+
+    await act(async () => { resolve({ connected: true }); });
+    expect(result.current.connected).toBe(true);
+  });
+
+  it('reports false again, and fetches nothing, once disabled', async () => {
+    let enabled = true;
+    const Wrap = ({ children }) => React.createElement(GitHubStatusProvider, { enabled }, children);
+    const { result, rerender } = renderHook(() => useGitHubStatus(), { wrapper: Wrap });
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+
+    enabled = false;
+    rerender();
+    expect(result.current.connected).toBe(false);
+    await act(async () => { result.current.refresh(); });
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
   it('exposes a refresh function that re-fetches', async () => {
     apiFetch.mockResolvedValueOnce({ connected: false });
     const { result } = renderHook(() => useGitHubStatus(), { wrapper });

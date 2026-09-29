@@ -1,0 +1,8 @@
+/* The dangling rule. */
+.fx-card { --fx-a: 1px; --fx-b: var(--fx-a); }
+.fx-card--fx-hot:hover { padding: var(--fx-hot); }
+.fx-card { margin: var(--fx-nope); }
+.fx-card { margin: var(--fx-missing, 1px); }
+.fx-card { margin: var( --fx-a ); }
+/* var(--fx-ghost) in a comment is masked. */
+.fx-card { content: "var(--fx-quoted)"; }

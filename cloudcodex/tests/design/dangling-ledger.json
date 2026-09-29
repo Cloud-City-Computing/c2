@@ -1,0 +1,9 @@
+{
+  "_rule": "Every var(--name) with no fallback names a custom property declared in a stylesheet the page loads, or it is listed here by file and name with its count and a reason. The count is exact, so a new site of a listed name still fails.",
+  "src/index.css": {
+    "--swatch-color": {
+      "count": 2,
+      "reason": "Not dangling: AccountMenu.jsx declares it per swatch through an inline style prop, which the gate cannot see because only .css files contribute declarations."
+    }
+  }
+}

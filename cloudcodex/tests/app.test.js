@@ -15,7 +15,8 @@ import http from 'node:http';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import app, { parseTrustProxy } from '../app.js';
+import app, { parseTrustProxy, isAllowedOrigin, requireOriginForCookieWrites } from '../app.js';
+import { c2_query, validateAndAutoLogin } from '../mysql_connect.js';
 import { contractDefault } from './contract-default.js';
 import { resetMocks } from './helpers.js';
 
@@ -769,5 +770,172 @@ describe('app.js — Express configuration', () => {
   it('returns 404 for unknown API paths (no fallthrough to other routers)', async () => {
     const res = await request(app).get('/api/this-endpoint-does-not-exist');
     expect(res.status).toBe(404);
+  });
+});
+
+// A browser attaches a cookie on its own; it attaches a bearer header only when
+// the page's own script does. So only a write authenticated by the cookie
+// ALONE can be forged, and only that must carry an Origin the CORS rule
+// accepts. SameSite=Strict adds nothing between sibling hosts under one
+// registrable domain, which is how the suite is hosted (W6-CDX-3).
+describe('app.js: Origin-required cookie writes', () => {
+  beforeEach(() => resetMocks());
+
+  const logoutDeletes = () => c2_query.mock.calls.filter(([sql]) => /DELETE FROM sessions/i.test(sql));
+  const REFUSED = { success: false, message: 'Cross-origin request refused' };
+
+  it.each(['sessionToken=cookie-token', '__Host-sessionToken=cookie-token'])(
+    'refuses a cookie-only POST with no Origin (%s), before any route runs',
+    async (cookie) => {
+      const res = await request(app).post('/api/logout').set('Cookie', cookie).send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual(REFUSED);
+      expect(logoutDeletes()).toEqual([]);
+    }
+  );
+
+  it.each(['put', 'patch', 'delete'])('refuses a cookie-only %s with no Origin', async (method) => {
+    const res = await request(app)[method]('/api/notifications/preferences')
+      .set('Cookie', '__Host-sessionToken=cookie-token')
+      .send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual(REFUSED);
+    expect(validateAndAutoLogin).not.toHaveBeenCalled();
+  });
+
+  it('passes a cookie-only POST carrying the app\'s own Origin', async () => {
+    c2_query.mockResolvedValueOnce([]);
+    const prior = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const res = await request(app)
+        .post('/api/logout')
+        .set('Host', 'codex.example.com')
+        .set('Origin', 'https://codex.example.com')
+        .set('Cookie', '__Host-sessionToken=cookie-token')
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(logoutDeletes()).toHaveLength(1);
+    } finally {
+      process.env.NODE_ENV = prior;
+    }
+  });
+
+  it('passes a bearer-only POST with no Origin (every apiFetch call, every machine caller)', async () => {
+    c2_query.mockResolvedValueOnce([]);
+    const res = await request(app).post('/api/logout').set('Authorization', 'Bearer header-token').send({});
+
+    expect(res.status).toBe(200);
+    expect(logoutDeletes()).toHaveLength(1);
+  });
+
+  it('passes a POST carrying a bearer header beside the cookie, with no Origin', async () => {
+    c2_query.mockResolvedValueOnce([]);
+    const res = await request(app)
+      .post('/api/logout')
+      .set('Authorization', 'Bearer header-token')
+      .set('Cookie', '__Host-sessionToken=cookie-token')
+      .send({});
+
+    expect(res.status).toBe(200);
+  });
+
+  it('passes a POST with no session cookie and no Origin (sign-in itself, a script)', async () => {
+    const res = await request(app).post('/api/validate-session').set('Cookie', 'theme=dark').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('leaves a cookie-only GET with no Origin alone', async () => {
+    const res = await request(app).get('/api/workspaces').set('Cookie', '__Host-sessionToken=cookie-token');
+    expect(res.status).toBe(401);
+    expect(validateAndAutoLogin).toHaveBeenCalledWith('cookie-token');
+  });
+
+  describe('requireOriginForCookieWrites, the rule itself', () => {
+    const run = (req) => {
+      const res = { statusCode: 200, body: null };
+      res.status = (code) => { res.statusCode = code; return res; };
+      res.json = (body) => { res.body = body; return res; };
+      const next = vi.fn();
+      requireOriginForCookieWrites({ method: 'POST', ...req }, res, next);
+      return { res, next };
+    };
+
+    // The CORS layer turns away a disallowed Origin before this rule sees it,
+    // so the rule's own Origin check is reached directly here.
+    it.each([
+      ['null', 'null'],
+      ['a sibling host', 'https://command.example.com'],
+      ['a malformed value', '://nope'],
+    ])('refuses a cookie-only write whose Origin is %s', (_label, origin) => {
+      const { res, next } = run({
+        headers: { host: 'codex.example.com', origin, cookie: '__Host-sessionToken=t' },
+      });
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(403);
+    });
+
+    // extractSessionToken falls through to the cookie on a bare "Bearer ", so
+    // such a request is authenticated by the cookie and must be treated as one.
+    // Reached directly: Node trims a header's trailing space, so over HTTP the
+    // value arrives as "Bearer", which both functions take as the token.
+    it('refuses a bare "Bearer " beside a cookie, with no Origin', () => {
+      const { res, next } = run({
+        headers: { authorization: 'Bearer ', cookie: '__Host-sessionToken=t' },
+      });
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toEqual(REFUSED);
+    });
+
+    it('passes the same write from the app\'s own Origin', () => {
+      const { res, next } = run({
+        headers: { host: 'codex.example.com', origin: 'https://codex.example.com', cookie: '__Host-sessionToken=t' },
+      });
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('passes GET, HEAD and OPTIONS as safe methods', () => {
+      for (const method of ['GET', 'HEAD', 'OPTIONS']) {
+        const { next } = run({ method, headers: { cookie: '__Host-sessionToken=t' } });
+        expect(next, method).toHaveBeenCalledTimes(1);
+      }
+    });
+  });
+
+  describe('isAllowedOrigin, the rule CORS and the cookie-write check share', () => {
+    const req = (host) => ({ headers: { host } });
+    const prior = { NODE_ENV: process.env.NODE_ENV, APP_URL: process.env.APP_URL, CORS_ORIGIN: process.env.CORS_ORIGIN };
+    afterEach(() => {
+      for (const [key, value] of Object.entries(prior)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it('allows the same host, APP_URL\'s host and an exact CORS_ORIGIN, and nothing else in production', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.APP_URL = 'https://codex.example.com';
+      process.env.CORS_ORIGIN = 'https://app.example.com';
+
+      expect(isAllowedOrigin(req('Codex.Example.com'), 'https://codex.example.com')).toBe(true);
+      expect(isAllowedOrigin(req('127.0.0.1:3000'), 'https://codex.example.com')).toBe(true);
+      expect(isAllowedOrigin(req('codex.example.com'), 'https://app.example.com')).toBe(true);
+      expect(isAllowedOrigin(req('codex.example.com'), 'https://command.example.com')).toBe(false);
+      expect(isAllowedOrigin(req('codex.example.com'), 'http://localhost:5173')).toBe(false);
+      expect(isAllowedOrigin(req('codex.example.com'), 'null')).toBe(false);
+    });
+
+    it('allows a localhost Origin outside production only', () => {
+      delete process.env.APP_URL;
+      delete process.env.CORS_ORIGIN;
+      process.env.NODE_ENV = 'development';
+      expect(isAllowedOrigin(req('codex.example.com'), 'http://localhost:5173')).toBe(true);
+      expect(isAllowedOrigin(req('codex.example.com'), 'http://127.0.0.1:5173')).toBe(true);
+    });
   });
 });

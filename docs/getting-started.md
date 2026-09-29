@@ -180,26 +180,32 @@ All seed accounts use the password **`password`**.
 | `DB_POOL_SIZE` | MySQL connections the app keeps open, 1 to 100; anything else stops the boot | `10` |
 | `MYSQL_ROOT_PASSWORD` | Root password for the Docker MySQL instance | — (required) |
 | `APP_URL` | Base URL used to build invitation/reset links, in emails and in the admin UI's copyable link. **Required in production**: the server will not start without an `http(s)` URL | `http://localhost:3000` in development |
+| `PORT` | The port the app listens on; a value that is not a valid port stops the boot | `3000` |
 | `TRUST_PROXY` | Which proxies Express believes about the client address, named by address (an address or CIDR list in standard notation, subnet names such as `loopback`, or `false`); the rate limiters count by that address. A hop count, `true`, or a range wider than an IPv4 /8 or an IPv6 /16 (outside `fc00::/7` and `fe80::/10`) stops the boot | `127.0.0.1/32, ::1/128, 172.29.0.1/32` (a proxy on this host, in front of either compose file) |
 | `TRUST_PROXY_ALLOW_HOP_COUNT` | `true` accepts a hop count, `true` or an over-wide range in `TRUST_PROXY` anyway, letting any client that can reach the port choose its own address | unset (off) |
 | `APP_BIND` | Docker Compose only: the host address the app port is published on. Set `0.0.0.0` only to reach the app from other machines on purpose; an IPv4 address only, never `::` | `127.0.0.1` |
 | `DB_BIND` | `docker-compose.yaml` (dev) and `docker-compose-prod.yml`: the host address MySQL's 3306 is published on | `127.0.0.1` |
-| `CORS_ORIGIN` | Allowed origin for API requests (auto-allows `localhost` in dev) | — |
+| `CORS_ORIGIN` | One more origin allowed to call the API, for a separate front end. The app's own origin and `APP_URL`'s are always allowed | unset |
+| `C2_INSTANCE_LOCK` | The one-process-per-database lock: a second process on the same schema refuses to start. Only `0` turns it off, as an escape, not a way to run replicas | `1` |
+| `DOC_IMAGES_PUBLIC` | Exactly `1` serves document images to anyone with their address, as releases before the per-reader check did. Only for an upgrade that has to start before `npm run backfill:doc-images` has run; see [deployment.md](./deployment.md#the-document-images-backfill-once) | unset (off) |
 | `SMTP_HOST` | SMTP server hostname | — (optional; leave blank to run without email) |
 | `SMTP_PORT` | SMTP server port | `587` |
 | `SMTP_USER` | SMTP username | — (optional; leave blank to run without email) |
 | `SMTP_PASS` | SMTP password | — (optional; leave blank to run without email) |
 | `SMTP_FROM` | Sender address for outbound email; blank uses the default | `Cloud Codex <noreply@cloudcitycomputing.com>` |
-| `ADMIN_USERNAME` | Username for the auto-created admin super-user | `admin` |
+| `ADMIN_USERNAME` | Username for the admin super-user. Boot creates it, or syncs an existing admin, and never promotes a non-admin (`.env.example` ships `admin`) | (required) |
 | `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — (required) |
 | `ADMIN_PASSWORD` | Password for the admin super-user | — (required) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (enables Google SSO) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | — |
 | `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
+| `LEGACY_SESSION_COOKIE` | Whether a lone `sessionToken` cookie from before the https session cookie became `__Host-sessionToken` still signs its holder in. Only `0` turns it off (for an https instance sharing its domain with hosts you do not control) | `1` (on) |
 | `AUTH_PROVIDERS` | Sign-in methods to offer, a comma list of `local` and `google`. Leave unset: the server derives it (local, plus Google when configured) and refuses to start on a value that disagrees with the Google variables | unset |
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |
-| `NODE_ENV` | `production` tightens CORS to `CORS_ORIGIN` only; anything else also allows localhost origins | — (optional) |
+| `NODE_ENV` | `production` serves the built frontend and puts the security headers on every response; the Docker image and `npm run start` set it. In every mode the API accepts the app's own origin, `APP_URL`'s and `CORS_ORIGIN`; outside production it also accepts any `localhost` or `127.0.0.1` origin, for the Vite dev server. `test` switches the rate limiters off | unset (development) |
+| `SERVICE_TOKEN` | Optional, and off unless `SERVICE_TOKEN_USER` is set too. A secret of at least 32 characters with which another service, such as Cloud Command, reads `GET /api/search`, `GET /api/browse` and `GET /api/documents/state`, and nothing else | unset (off) |
+| `SERVICE_TOKEN_USER` | The email of the existing non-admin user whose read access the service token acts with | unset (off) |
 
 ---
 

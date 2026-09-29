@@ -20,8 +20,8 @@ npm run test:integration # opt-in: tests/integration/ against a live MySQL
 CI runs `npm run lint && npm test && npm run test:integration && npm run test:coverage && npm run build`.
 Threshold violations fail the build.
 
-`test`, `test:watch` and `test:coverage` name `--project backend --project frontend`
-explicitly; a bare `vitest run` would run the integration project too.
+`test`, `test:watch` and `test:coverage` name `--project backend --project frontend
+--project design` explicitly; a bare `vitest run` would run the integration project too.
 `tests/test-projects.test.js` pins that split for all three.
 
 ## Layout
@@ -33,8 +33,15 @@ tests/
 ├── setup.frontend.js       ← frontend project setup: jest-dom, DOM/storage cleanup
 ├── setup.integration.js    ← integration project setup: a throwaway schema, NO mocks
 ├── test-projects.test.js   ← pins which projects the default run names
+├── design/                 ← the design project: the vendored cloud-city-design gates over src/
+│   ├── buckets.js          ← groups findings by file and index.css banner (report.mjs prints them)
+│   ├── ledger.json         ← exact per-bucket counts; lower it by what a change fixes
+│   ├── dangling-ledger.json, pairs.json ← the one dangling false positive; the contrast matrix
+│   └── *.test.js           ← vendored checksum, token discipline, dangling var(), contrast, codex.css wiring
 ├── integration/            ← live-MySQL tests (opt-in, npm run test:integration)
 │   ├── admin-sync.test.js  ← the boot admin sync never promotes a member, in either row order
+│   ├── app-process.js      ← (not a test file) the backup drill's child processes and sign-in
+│   ├── backup-restore.test.js ← scripts/backup.sh and restore.sh for real: every refusal, and a byte-identical restore
 │   ├── documents-state.test.js ← the reconciliation read: workspace narrowing, the ACL, absence that is no oracle
 │   ├── global-setup.js     ← teardown: fails the run if a c2_it_ or c2itrecipe<hex> schema, or a c2_it_ account, leaked
 │   ├── grants-sufficient.test.js ← server.js runs on the shared-server recipe's DML-only account

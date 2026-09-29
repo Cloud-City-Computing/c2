@@ -1,0 +1,20 @@
+cloud-city-design
+Copyright 2026 Cloud City Computing, LLC
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The Apache License 2.0 grants no rights to the Cloud City, Cloud Command or
+Cloud Codex names or marks (Apache License 2.0, section 6).
+
+This product bundles the following fonts, which are NOT licensed under the
+Apache License 2.0. They are licensed under the SIL Open Font License,
+Version 1.1, and each licence text sits beside the files it covers:
+
+  Inter (fonts/inter-latin.woff2, fonts/inter-latin-ext.woff2)
+    Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+    Licence: fonts/OFL-Inter.txt
+
+  Poppins (fonts/poppins-500-latin.woff2, fonts/poppins-500-latin-ext.woff2,
+           fonts/poppins-600-latin.woff2, fonts/poppins-600-latin-ext.woff2)
+    Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)
+    Licence: fonts/OFL-Poppins.txt

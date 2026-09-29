@@ -580,6 +580,43 @@ their readers.
 
 ## PR 5: W6-CDX-35, backup and restore as one command, with a drill
 
+**Status: shipped 2026-09-28** on `track/w6-cdx-35-backup-restore` (tasks 5.1 to 5.3 done; these
+tasks carry no checkboxes). Where the build goes past the text below, and why:
+
+- Neither script uses the MySQL root account or puts a password on a command line: the clients run
+  inside the `database` service as its `MYSQL_USER`, over TCP to `127.0.0.1`, with `MYSQL_PWD`. The
+  grant is then what confines a restore to its own schema, so both scripts refuse a MySQL user that
+  holds anything beyond it (root, a global privilege, a grant elsewhere, a role), in `--local` too.
+- With Compose, a stack whose containers were created from another compose file than `COMPOSE_FILE`
+  names is refused: both production files share the project and container names.
+- The uploads stream through `docker compose run --rm --no-deps -T app tar` on stdin and stdout,
+  not a bind mount, so there is no SELinux label to get right.
+- The archive carries a `manifest.json` with the SHA-256 of both payloads, and is written 0600 and
+  never over an existing file. `restore.sh` checks everything before it writes: members, checksums,
+  uploads that are only files and directories, a dump with no database switch or client command, a
+  backup not from a newer release than this install (unless `--allow-newer-backup`), a target that
+  is this instance's own database (or `--into`), no running app, and no rows unless `--replace`.
+  The client runs with `--binary-mode`, and the load's first statement takes the instance lock or
+  fails with nothing written.
+- A `--local` form (the `mysql` and `mysqldump` clients on `PATH`) is what the drill test drives,
+  so the test runs the real scripts rather than `mysqldump` by hand.
+- The Compose drill found the socket healthcheck calling `init.sql`'s temporary server healthy;
+  main's #69 fixed the same defect (a TCP ping with a start period) before this branch merged, so
+  the branch takes main's healthcheck and changes neither compose file.
+- The Compose drill, by hand on a clean clone of the branch (2026-09-28): populate (a document with
+  a pasted image, a comment, an avatar), stop, `make backup`, `down -v`, `make restore` onto the new
+  stack in 46 s; `/readyz` 200, the database fingerprint (tables, HTML and `ydoc_state`, comments,
+  `doc_images`, the ledger) identical, image and avatar bytes identical, the image still 404 to an
+  anonymous caller. Refusals seen: a running app, data without `--replace`, a wrong `--into`, a
+  tampered dump, an existing output file, and a hidden mid-line `\T`.
+- After review, again on a clean clone of the branch merged with main, with the release file and a
+  locally built image: populate through the API, stop, `make backup`, `down -v`, `make restore`
+  onto the new stack in 33 s, `/readyz` 200, image bytes identical and 404 anonymously; a
+  `--replace --no-start` restore then matched the pre-backup fingerprint exactly, password hashes
+  included (after a boot, the admin sync re-hashes the admin's password, as it always does).
+  Refusals seen through Compose: the prod file against the release-built stack (backup and
+  restore), a running app, data without `--replace`, and a backup marked 99.0.0.
+
 ### Task 5.1 The scripts
 
 `scripts/backup.sh`, in a new `scripts/` directory at the repository root (the Docker side of the

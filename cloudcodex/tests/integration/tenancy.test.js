@@ -47,6 +47,7 @@ const ER_TABLEACCESS_DENIED_ERROR = 1142;
 const ER_USER_LIMIT_REACHED = 1226;
 const ER_SPECIFIC_ACCESS_DENIED_ERROR = 1227;
 const ER_PROCACCESS_DENIED_ERROR = 1370;
+const ER_WRONG_STRING_LENGTH = 1470;
 
 const SECRET = 'instance b, not for instance a';
 
@@ -113,6 +114,24 @@ describe('the recipe, as written in docs/deployment.md', () => {
     const grants = recipeSql().match(/\bON\s+(\S+)\.\*/g);
     expect(grants).toHaveLength(2);
     for (const grant of grants) expect(grant).toMatch(/^ON `[a-z0-9]+`\.\*$/);
+  });
+
+  // Each account is the schema name plus _app or _mig, and MySQL refuses a
+  // user name longer than 32 characters, so the recipe has to cap the schema
+  // name at 28. A 28-character name gives a 32-character account, which MySQL
+  // takes; one character more is refused with ER_WRONG_STRING_LENGTH.
+  it('says an account name is at most 32 characters, so a schema name at most 28, as MySQL enforces', async () => {
+    expect(recipeSection()).toMatch(/user name to 32 characters, so with `_app` or `_mig` appended the\s+schema name can be at most 28 characters\./);
+    const schema = `${SCHEMA_PREFIX}${randomBytes(11).toString('hex')}`;
+    expect(schema).toHaveLength(28);
+    try {
+      for (const suffix of ['_app', '_mig']) {
+        await admin.query(`CREATE USER ?@'%' IDENTIFIED BY ?`, [`${schema}${suffix}`, randomBytes(18).toString('base64url')]);
+        expect(await errnoOf(admin, `CREATE USER '${schema}x${suffix}'@'%'`)).toBe(ER_WRONG_STRING_LENGTH);
+      }
+    } finally {
+      for (const suffix of ['_app', '_mig']) await dropUser(admin, `${schema}${suffix}`);
+    }
   });
 
   it('builds both ways as the migration account alone', async () => {

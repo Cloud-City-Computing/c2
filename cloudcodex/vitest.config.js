@@ -1,13 +1,14 @@
 /**
  * Cloud Codex - Vitest Configuration
  *
- * Three projects: a Node backend project for routes/middleware/services tests
+ * Four projects: a Node backend project for routes/middleware/services tests
  * (the database is mocked), a jsdom frontend project for src/ component, hook,
- * and utility tests, and an opt-in Node integration project that runs
- * tests/integration/ against a live MySQL server. `npm test` and
- * `npm run test:coverage` name backend and frontend explicitly, so a
- * contributor without a MySQL server is unaffected;
- * `npm run test:integration` runs the third (tests/test-projects.test.js
+ * and utility tests, a Node design project that runs the vendored
+ * cloud-city-design gates over src/ (tests/design/), and an opt-in Node
+ * integration project that runs tests/integration/ against a live MySQL
+ * server. `npm test` and `npm run test:coverage` name backend, frontend and
+ * design explicitly, so a contributor without a MySQL server is unaffected;
+ * `npm run test:integration` runs integration (tests/test-projects.test.js
  * pins that split). Coverage is configured at the top level so a single
  * `npm run test:coverage` run produces a unified report across the default
  * projects.
@@ -52,6 +53,16 @@ export default defineConfig({
           include: ['tests/src/**/*.test.{js,jsx}'],
           testTimeout: 10000,
           hookTimeout: 10000,
+        },
+      },
+      {
+        plugins: [],
+        test: {
+          name: 'design',
+          globals: true,
+          environment: 'node',
+          include: ['tests/design/**/*.test.js'],
+          testTimeout: 30000,
         },
       },
       {
@@ -144,6 +155,9 @@ export default defineConfig({
         // The one definition of how a session token is stored (W6-CDX-2): one
         // function with no branches, measured at 100%.
         'services/session-token.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
+        // The one server-side definition of the session cookie's names and
+        // which one a request carries (W6-CDX-3). Measured at 100% on all four.
+        'services/session-cookie.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
         // The stop and the single-writer lock (W6-CDX-31). Measured after the
         // review round: shutdown.js 100 lines, 98.03 statements, 93.54
         // branches, 100 functions; instance-lock.js 100, 95.91, 93.93, 77.77

@@ -37,8 +37,9 @@ export const ENV_CONTRACT = [
   { name: 'PORT', kind: 'default', default: '3000', perInstance: false,
     why: 'the port the app listens on; an invalid value exits at boot' },
   { name: 'NODE_ENV', kind: 'optional', perInstance: false,
-    why: 'production serves the built app, arms the rate limiters and puts the security headers '
-      + 'on every response; the Docker image and npm run start set it' },
+    why: 'production serves the built app, puts the security headers on every response, requires '
+      + 'APP_URL and stops allowing localhost origins; the rate limiters are on in every mode but '
+      + 'test; the Docker image and npm run start set it' },
   { name: 'TRUST_PROXY', kind: 'default', default: '127.0.0.1/32, ::1/128, 172.29.0.1/32',
     perInstance: false,
     why: 'Express trust proxy, which decides req.ip for the rate limiters: a list of addresses, CIDRs '
@@ -87,6 +88,9 @@ export const ENV_CONTRACT = [
     why: 'the Google OAuth client secret' },
   { name: 'GOOGLE_OAUTH_DOMAIN', kind: 'optional', perInstance: false,
     why: 'a Google Workspace domain whose users may sign up without an invitation' },
+  { name: 'LEGACY_SESSION_COOKIE', kind: 'default', default: '1', perInstance: false,
+    why: 'whether a lone sessionToken cookie from before __Host-sessionToken still signs its '
+      + 'holder in; only 0 turns it off, which a hosted instance on https sets' },
   { name: 'GITHUB_CLIENT_ID', kind: 'optional', perInstance: false,
     why: 'with GITHUB_CLIENT_SECRET, turns the GitHub integration on' },
   { name: 'GITHUB_CLIENT_SECRET', kind: 'optional', perInstance: false,

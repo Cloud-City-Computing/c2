@@ -48,9 +48,18 @@ jobs:
 
       - run: npm run lint
 
+      # scripts/backup.sh and scripts/restore.sh are Bash, which ESLint never
+      # reads. The runner image ships ShellCheck.
+      - name: ShellCheck the backup and restore scripts
+        working-directory: .
+        run: shellcheck -x scripts/*.sh
+
       - run: npm test
 
       # mysql_connect.js reads no DB_PORT, so the service must answer on 3306.
+      # The backup and restore drill runs the scripts with the runner image's
+      # own MySQL mysql and mysqldump clients (not MariaDB's; see
+      # scripts/backup-common.sh).
       - name: Integration tests (live MySQL)
         env:
           IT_DB_HOST: 127.0.0.1

@@ -1,0 +1,42 @@
+[raw hex in a .jsx] landed=True exit=1
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > has no bucket above its ledger number (a regression)
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > keeps the ledger total equal to the scanner count
+[outline: none in index.css] landed=True exit=1
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > has no bucket above its ledger number (a regression)
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > keeps the ledger total equal to the scanner count
+[fill alias in a text position] landed=True exit=1
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > has no bucket above its ledger number (a regression)
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > keeps the ledger total equal to the scanner count
+[dangling var(--nope)] landed=True exit=1
+   red: FAIL  |design| tests/design/dangling.test.js > dangling var() references > lists nothing beyond the ledger
+[one byte of vendored core.css] landed=True exit=1
+   red: FAIL  |design| tests/design/vendored.test.js > the vendored cloud-city-design package > holds every listed file with the SHA-256 the manifest records
+   red: FAIL  |design| tests/design/vendored.test.js > the vendored cloud-city-design package > passes the package's own node:test suites in this copy
+   red: FAIL  |design| tests/design/vendored.test.js > the vendored cloud-city-design package > reads the same counts whatever test reporter the environment asks for
+[a pair below its minimum] landed=True exit=1
+   red: FAIL  |design| tests/design/contrast.test.js > codex.css contrast > '--cx-text-faint' on '--cx-surface-3' clears 4.5:1
+   red: FAIL  |design| tests/design/contrast.test.js > codex.css contrast > '--cx-text-faint' on '--cx-surface-4' clears 4.5:1
+[a colour binding with no pair] landed=True exit=1
+   red: FAIL  |design| tests/design/contrast.test.js > codex.css contrast > measures every colour binding in codex.css, or says why it is decorative
+[a non --cx- name in codex.css] landed=True exit=1
+   red: FAIL  |design| tests/design/codex-css.test.js > src/codex.css > declares custom properties and nothing else
+   red: FAIL  |design| tests/design/codex-css.test.js > src/codex.css > declares only --cx- names
+   red: FAIL  |design| tests/design/contrast.test.js > codex.css contrast > measures every colour binding in codex.css, or says why it is decorative
+[data-theme dropped] landed=True exit=1
+   red: FAIL  |design| tests/design/codex-css.test.js > the page > pins the dark theme on the root element
+[legal comments stripped] landed=True exit=1
+   red: FAIL  |design| tests/design/codex-css.test.js > the page > keeps core.css's licence notice through the minifier
+[import order swapped] landed=True exit=1
+   red: FAIL  |design| tests/design/codex-css.test.js > the page > imports core, fonts and codex.css, in that order, before index.css
+[a fixed dangling reference reverted] landed=True exit=1
+   red: FAIL  |design| tests/design/dangling.test.js > dangling var() references > lists nothing beyond the ledger
+[an unrecorded fix (one literal removed)] landed=True exit=1
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > has no bucket below its ledger number (a fix nobody recorded)
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > keeps the ledger total equal to the scanner count
+[a literal on a plain property in codex.css] landed=True exit=1
+   red: FAIL  |design| tests/design/codex-css.test.js > src/codex.css > declares custom properties and nothing else
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > has no bucket above its ledger number (a regression)
+   red: FAIL  |design| tests/design/token-discipline.test.js > token discipline against the ledger > keeps the ledger total equal to the scanner count
+[NODE_OPTIONS kept for the package suites] landed=True exit=1
+   red: FAIL  |design| tests/design/vendored.test.js > the vendored cloud-city-design package > reads the same counts whatever test reporter the environment asks for
+after restore exit 0 []

@@ -1,0 +1,11 @@
+access-modal-desktop.png             changed px=   395 bbox=(341, 100, 402, 119)
+access-modal-phone.png               changed px=   391 bbox=(34, 81, 96, 100)
+account-linked-desktop.png           changed px=100877 bbox=(252, 56, 1280, 800)
+account-linked-phone.png             changed px= 56520 bbox=(16, 56, 374, 788)
+account-top-desktop.png              changed px=     0 bbox=None
+account-top-phone.png                changed px=     0 bbox=None
+drawio-delete-hover-desktop.png      changed px=   976 bbox=(647, 152, 1218, 419)
+home-desktop.png                     changed px=     0 bbox=None
+home-phone.png                       changed px=     0 bbox=None
+login-desktop.png                    changed px= 26800 bbox=(371, 147, 909, 669)
+login-phone.png                      changed px= 21637 bbox=(0, 169, 390, 691)
