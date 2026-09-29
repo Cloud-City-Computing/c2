@@ -444,12 +444,32 @@ single-writer lock (PR 1) is acquired, since `GET_LOCK` needs no privilege.
 
 ### Task 3.4 Prove the proof, and record it
 
-- [ ] Mutation: `GRANT SELECT ON *.* TO app_a`; `tenancy.test.js` goes red; revert.
-- [ ] `docs/maps/access-control.md` gains a tenancy section: the boundary between instances is the
+- [x] Mutation: `GRANT SELECT ON *.* TO app_a`; `tenancy.test.js` goes red; revert. (2026-09-28:
+      added to the recipe block the test reads, 26 tests red; four more mutations in the map.)
+- [x] `docs/maps/access-control.md` gains a tenancy section: the boundary between instances is the
       MySQL grant, the boundary inside an instance is the workspace (`isWorkspaceMember`), and what
       neither protects against (an operator with the root password, a shared `app_public` volume).
-- [ ] Record the run in `docs/research/instance-isolation-<date>/` (commands, versions, output), the
+      (Section 9.)
+- [x] Record the run in `docs/research/instance-isolation-<date>/` (commands, versions, output), the
       evidence the "one container and one schema per customer" decision rests on.
+      (`docs/research/instance-isolation-2026-09-28/`.)
+
+**As built (2026-09-28).** Tasks 3.1 to 3.3 shipped with four changes from the text above. The
+recipe's schema names are letters and digits only and its grants name them backticked
+(`` ON `c2acme`.* ``), because a database-level `GRANT` reads `_` and `%` as wildcards: the plan's
+`c2_acme.*` would also open `c2xacme`, and escaping the underscore breaks the app's own access
+under `partial_revokes`. Each account carries a `MAX_USER_CONNECTIONS` cap (15 for the app, 3 for
+the migration account), so one instance cannot take every connection on the server. The tests
+read the SQL block out of `docs/deployment.md` rather than repeat it, so the recipe proved is the
+recipe documented. And `grants-sufficient.test.js` boots `server.js` as a child process instead of
+driving `app.js` through Supertest, which is what puts boot (the lock, the admin sync, the seed)
+and a real `/collab` socket on the DML-only account too; its smoke path found the comments router
+had no error handler, fixed in the same branch. Review then found two more, both in the recipe:
+the release compose file hard-sets the app's `DB_HOST` to its bundled database, so the recipe
+carries a `shared-mysql.yml` override (driven for real, `raw-compose-run.txt`); and Task 3.2's
+`information_schema` check holds for rows but not names, since `TABLESPACES_EXTENSIONS` lists every
+schema's name and table names to every account, so the recipe asks for opaque schema names and
+`tenancy.test.js` sweeps every readable system view and pins that one.
 
 ---
 

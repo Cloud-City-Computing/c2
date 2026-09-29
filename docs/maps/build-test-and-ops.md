@@ -335,15 +335,19 @@ fourth, `integration`, is opt-in because it needs a MySQL server:
 | `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **105 files, 2384 tests, all passing** (5
-files and 80 tests of it are `design`); the integration project is **13 files,
-114 tests** (measured 2026-09-29 on the W6-CDX-35 branch with main merged in
-after W6-CDX-21, against MySQL 8.4.11 at the server's default isolation and at
-`READ-COMMITTED`, with MySQL's 8.4.11 clients on `PATH`).
+Current state: the default run is **105 files, 2385 tests, all passing** (5
+files and 80 tests of it are `design`); the integration project is **15 files,
+186 tests** (measured 2026-09-29 on `track/w6-cdx-33-shared-mysql` with main
+merged in after W6-CDX-35, against a stock MySQL 8.4.11 at the server's default
+isolation and at `READ-COMMITTED`, with MySQL's 8.4.11 clients on `PATH`).
 
-The child-process helpers (`spawn`, `childEnv`, `holdLock`, `startServer`,
-`signIn`, `freePort`, `killChildren` and the boot `ADMIN`) live in
-`tests/integration/app-process.js`, shared by the lifecycle and backup files.
+The backup file's child-process helpers (`spawn`, `childEnv`, `holdLock`,
+`startServer`, `signIn`, `freePort`, `killChildren` and the boot `ADMIN`) live
+in `tests/integration/app-process.js`. The lifecycle, tenancy and
+grants-sufficient files use `tests/integration/server-child.js` instead (see
+below), a parallel copy of the same helpers that takes the boot admin as an
+argument and also opens `/collab`; the two were written on separate branches
+and have not been folded into one module.
 
 `tests/integration/backup-restore.test.js` is the backup and restore drill. It
 boots `server.js`, saves a document with a pasted PNG and some Unicode through
@@ -382,7 +386,9 @@ guards, `umask 077` and `chmod 600`, and removing either alone stays green;
 removing both turns the mode test red.
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
-real processes rather than a real server alone: it forks
+real processes rather than a real server alone (the fork, sign-in and
+`/collab` helpers it shares with `grants-sufficient.test.js` live in
+`tests/integration/server-child.js`): it forks
 `tests/integration/lock-holder.js` against the file's schema to prove the
 instance lock (a second process exits 1 naming the holder's connection id, a
 SIGKILLed holder frees it within two seconds, two schemas hold their own at
@@ -490,19 +496,44 @@ before each test file is imported and **does not** mock `mysql_connect.js`:
    already set, so a developer's `.env` cannot redirect it.
 4. Drops the schema in `afterAll`.
 
-The admin helpers (`adminConfig`, `buildSchemaFromInitSql`, `queryVia`,
-`dropSchema`, `throwawaySchemaName`) live in `tests/integration/mysql-admin.js`;
+The admin helpers (`adminConfig`, `buildSchemaFromInitSql`, `loadInitSql`,
+`queryVia`, `dropSchema`, `dropUser`, `throwawaySchemaName`) live in
+`tests/integration/mysql-admin.js`;
 a test that needs a second schema (as the adoption-refusal test does) builds it
 with them and drops it in its own `finally`. `queryVia` wraps **one**
 connection, never a pool, because the runner's advisory lock is per connection.
 
-The global teardown drops every `c2_it_` schema still on the server and fails
-the run naming them. **Trap: Vitest 4 only logs an error thrown from a
+The global teardown drops every `c2_it_` schema, every `c2itrecipe` schema
+followed by exactly 12 hex digits (`isThrowawaySchema` in `mysql-admin.js`
+checks the shape, so a developer's own `c2items` survives a run pointed at
+their server), and every `c2_it_` account, still on the server and fails the
+run naming them. **Trap: Vitest 4 only logs an error thrown from a
 globalSetup teardown ("error during close") and exits 0**, so the teardown sets
 `process.exitCode = 1` before it throws; the throw alone would leave a leak
 green (found by mutation, 2026-09-25). Because it counts every `c2_it_` schema,
 two integration runs sharing one server at once would report each other's; give
 each concurrent run its own server.
+
+**The shared-server recipe (W6-CDX-33).** `tests/integration/instance-recipe.js`
+reads the SQL block under "Several instances on one MySQL server" in
+`docs/deployment.md` and runs it as root with throwaway names (a `c2itrecipe<hex>`
+schema, since the recipe allows letters and digits only, and `c2_it_<hex>_app`
+and `_mig` accounts), then builds the schema as the migration account by the
+fresh-install path (`buildFresh`) or the upgrade path (`buildUpgraded`: every
+post-baseline file applied for real, as that account). `tenancy.test.js` does
+this for two instances and asserts the exact MySQL error for 54 statements
+from instance A's accounts that reach for B, for the server or for DDL, plus
+`SHOW DATABASES`, `information_schema`, the process list, `LOAD_FILE`, both
+accounts' `SHOW GRANTS`, the app account's connection cap (1226 past it) and
+each instance's lock held at once. It also reads every system view the app
+account can and pins `information_schema.TABLESPACES_EXTENSIONS` as the only
+one naming the other instance (MySQL lists every schema's tablespaces to every
+account), and requires the recipe to say so. Its last two tests demonstrate why
+the recipe bans `_` in schema names and pin the teardown's name filter. `grants-sufficient.test.js` boots `server.js` as the
+app account alone and runs a smoke path, a `/collab` edit and a SIGTERM, and
+fails on any privilege error in the child's log. Access-control section 9 has
+the boundary; `docs/research/instance-isolation-2026-09-28/` the run, its ten
+mutations and the recipe driven through the release compose file.
 
 `tests/integration/migrate.test.js` holds four tests: a canary that
 fails if `c2_query` is a mock, adoption recorded every migration file, a second

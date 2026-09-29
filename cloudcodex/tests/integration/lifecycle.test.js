@@ -14,18 +14,21 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import WebSocket from 'ws';
 import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
-import * as decoding from 'lib0/decoding';
 import mysql from 'mysql2/promise';
 import { c2_query, openConnection } from '../../mysql_connect.js';
 import { INSTANCE_LOCK_NAME_SQL } from '../../services/instance-lock.js';
 import { SCHEMA_PREFIX, dropSchema, openAdminConnection, throwawaySchemaName } from './mysql-admin.js';
-import { children, freePort, holdLock, kill, killChildren, signIn, startServer } from './app-process.js';
+import { freePort, holdLock as holdLockWith, kill, killChildren, openCollab, signIn, startServer } from './server-child.js';
 
 afterEach(killChildren);
+
+/** Start a lock holder on `dbName`, this file's schema unless named. */
+function holdLock(dbName = process.env.DB_NAME) {
+  return holdLockWith({ DB_NAME: dbName });
+}
 
 describe('the single-writer lock, across processes', () => {
   it('a second process on the same schema exits non-zero and names the holder', async () => {
@@ -68,7 +71,7 @@ describe('the single-writer lock, across processes', () => {
       expect(there.held).toBe(true);
       expect(there.connectionId).not.toBe(here.connectionId);
     } finally {
-      for (const child of children) child.kill('SIGKILL');
+      await killChildren();
       await dropSchema(admin, other);
       await admin.end();
     }
@@ -90,7 +93,7 @@ describe('the single-writer lock, across processes', () => {
       expect(second.held).toBe(false);
       expect(second.stderr).toContain(`MySQL connection ${holding.connectionId}`);
     } finally {
-      for (const child of children) child.kill('SIGKILL');
+      await killChildren();
       await dropSchema(admin, long);
       await admin.end();
     }
@@ -99,6 +102,7 @@ describe('the single-writer lock, across processes', () => {
 
 // ── the edit survives a stop ────────────────────────────────
 
+const ADMIN = { username: 'lcadmin', password: 'Lifecycle-Passw0rd!', email: 'lcadmin@example.com' };
 const MARKER = 'typed two hundred milliseconds before SIGTERM';
 
 /** `n` random lowercase hex characters. */
@@ -106,42 +110,11 @@ function randomHex(n) {
   return Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 }
 
-/**
- * Open /collab for `logId`, authenticate, and resolve once the server has
- * sent both its sync steps and the JSON `sync` frame. `doc` receives the
- * server's state.
- */
-async function openCollab(port, logId, token, doc) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/collab?logId=${logId}`, {
-    headers: { Origin: `http://127.0.0.1:${port}` },
-  });
-  ws.binaryType = 'arraybuffer';
-  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
-  const synced = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('no sync frame within 5 s')), 5000);
-    ws.on('message', (data, isBinary) => {
-      if (isBinary) {
-        syncProtocol.readSyncMessage(decoding.createDecoder(new Uint8Array(data)), encoding.createEncoder(), doc, 'server');
-        return;
-      }
-      const msg = JSON.parse(data.toString());
-      if (msg.type === 'sync') {
-        clearTimeout(timer);
-        resolve(msg);
-      }
-    });
-  });
-  ws.send(JSON.stringify({ type: 'auth', token }));
-  const meta = await synced;
-  expect(meta.canWrite).toBe(true);
-  return ws;
-}
-
 describe('a stop in the middle of an edit', () => {
   it('flushes the pending save: the edit is in ydoc_state and in the restarted server', { timeout: 120_000 }, async () => {
     const port = await freePort();
-    const first = await startServer(port);
-    const token = await signIn(port);
+    const first = await startServer(port, ADMIN);
+    const token = await signIn(port, ADMIN);
     // bootstrapInstance seeded one document for the admin on this empty schema.
     const [log] = await c2_query('SELECT id FROM logs ORDER BY id LIMIT 1', []);
     expect(log).toBeDefined();
@@ -172,9 +145,9 @@ describe('a stop in the middle of an edit', () => {
     expect(saved.getText('body').toString()).toBe(MARKER);
 
     // And a restart serves it: the lock the stopped process held is free.
-    const second = await startServer(port);
+    const second = await startServer(port, ADMIN);
     const reader = new Y.Doc();
-    const ws2 = await openCollab(port, log.id, await signIn(port), reader);
+    const ws2 = await openCollab(port, log.id, await signIn(port, ADMIN), reader);
     expect(reader.getText('body').toString()).toBe(MARKER);
     ws2.terminate();
     const again = await kill(second, 'SIGTERM');
@@ -185,7 +158,7 @@ describe('a stop in the middle of an edit', () => {
 describe('a lock lost to another process', () => {
   it('the server that lost it stops through its shutdown and exits 1, naming the new holder', { timeout: 120_000 }, async () => {
     const port = await freePort();
-    const server = await startServer(port);
+    const server = await startServer(port, ADMIN);
     const [{ holder }] = await c2_query(`SELECT IS_USED_LOCK(${INSTANCE_LOCK_NAME_SQL}) AS holder`, []);
     expect(holder).toEqual(expect.any(Number));
 

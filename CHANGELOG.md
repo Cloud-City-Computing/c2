@@ -50,6 +50,22 @@ initialises an empty data directory.
   anything beyond the app's database, root included. See "Backups" in
   `docs/deployment.md`, which replaces the manual recipe that was there. No
   migration and no new setting.
+- **Several instances on one MySQL server.** `docs/deployment.md` has a recipe
+  for it: per instance, one schema with an opaque name of letters and digits
+  only, an app account holding `SELECT`, `INSERT`, `UPDATE` and `DELETE` on
+  that schema (capped at 15 connections), and a migration account holding
+  every privilege on that schema without `GRANT OPTION`, which builds the
+  schema and runs `npm run migrate`. Neither holds anything global. A small
+  compose override (`shared-mysql.yml`, in the recipe) points the app and the
+  migration runner at the shared server instead of the bundled database. The
+  integration suite runs the recipe as written: 54 statements reaching for the
+  other instance, for the server, or for DDL the app does not need all fail
+  with MySQL's privilege error, the app runs on the app account alone, and each
+  instance holds its own single-writer lock. The grant hides another
+  instance's rows, not its name: MySQL lists every schema's name and table
+  names to every account (`information_schema.TABLESPACES_EXTENSIONS`), which
+  the recipe states and the suite pins. Nothing changes for an install with a
+  MySQL server of its own.
 
 ### Changed
 
@@ -74,6 +90,12 @@ initialises an empty data directory.
   on hover instead of transparent with a white edge. The avatar placeholder's
   background named such a property and was already transparent; the
   declaration is deleted, with no visible change.
+- **A failing comments request answers JSON.** `routes/comments.js` was the one
+  router without the shared error handler, so a database error there answered
+  Express's default HTML error page, and the error was not logged in the
+  project's format. It now answers `500` with
+  `{ "success": false, "message": "An internal server error occurred" }` like
+  every other route.
 
 ## [0.13.0] - 2026-09-28
 
