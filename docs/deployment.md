@@ -295,38 +295,125 @@ browser that honours it, never a script calling the socket directly.
 
 There are **two** stateful volumes, and a MySQL dump alone is not a complete
 backup: `db_data` holds the database, and `app_public` holds uploaded avatars
-and the images extracted out of documents. Back up both.
+and the images extracted out of documents. When an image is pasted into a
+document, `routes/helpers/images.js` extracts it to disk and **replaces the
+base64 data URI in `html_content` with a `/doc-images/` URL**, so after
+extraction the file on disk is the only copy. Lose the volume and every
+affected document shows a broken image while the database still points at it.
+
+One command backs up both, and one restores both. From the repository root,
+with the stack's `.env` in place:
 
 ```bash
-# Logical dump (recommended — portable, point-in-time)
-docker exec -t <mysql-container> \
-   mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --single-transaction \
-            --routines --triggers c2 > c2-$(date +%F).sql
-
-# Restore
-docker exec -i <mysql-container> \
-   mysql -u root -p"$MYSQL_ROOT_PASSWORD" c2 < c2-2026-04-29.sql
+make backup OUT=backups/c2-$(date +%F).tar.gz     # scripts/backup.sh
+make restore IN=backups/c2-2026-09-28.tar.gz       # scripts/restore.sh
 ```
 
-Schedule the dump however suits your environment (cron on the host,
-managed snapshot on your cloud, GitHub Actions pulling a dump). The
-`db_data` volume can also be snapshotted at the volume-driver level if
-your storage supports it.
+Both drive the stack through `docker compose`, on
+`docker-compose-release.yml` unless `COMPOSE_FILE` names another (for example
+`COMPOSE_FILE=docker-compose-prod.yml` when you build from source), and
+`COMPOSE_PROJECT_NAME` works as it does for Compose. The two production files
+share this directory's project and container names, so each script compares
+`COMPOSE_FILE` with the file the stack's containers were created from and
+refuses a mismatch, naming the right one: a restore through the wrong file
+would migrate and restart your stack on the other file's image. Neither needs
+the MySQL root password: they run inside the database service as the app's own
+MySQL user (`DB_USER`), which the image grants everything on the app's database
+and nothing else, and both refuse a MySQL user that holds anything more.
 
-**Uploaded files are not in the dump.** Avatars and document images are written
-to `/app/public/avatars/` and `/app/public/doc-images/` inside the app
-container, and both compose files mount the named volume `app_public` there so
-they survive a container being recreated. They are not optional extras: when an
-image is pasted into a document, `routes/helpers/images.js` extracts it to disk
-and **replaces the base64 data URI in `html_content` with a `/doc-images/` URL**,
-so after extraction the file on disk is the only copy. Lose the volume and every
-affected document renders a broken image while the database still points at it.
+**What an archive holds.** One gzipped tar of three files: `database.sql`
+(`mysqldump --single-transaction --routines --triggers --hex-blob` of the app's
+database, including `schema_migrations`, so the migration ledger comes back
+with the data), `app_public.tar.gz` (the uploads volume) and `manifest.json`
+(the format, when it was taken, the database name, the app version, and the
+SHA-256 of the other two). No password is in any of them, and the manifest
+names no host or user; `database.sql`'s header comment does name the database
+host it was dumped from, as every `mysqldump` does.
+
+**Keep it the way you keep the database.** The archive is written readable by
+its owner only (mode 0600) and never over an existing file. It holds
+everything the database holds: password hashes, two-factor secrets, GitHub
+tokens (encrypted), session digests and every document. It does **not** hold
+`.env` or any key material, so back those up separately and just as carefully:
+`GITHUB_CLIENT_SECRET` in particular, because every stored GitHub token is
+encrypted under a key derived from it, and a restore under a different secret
+leaves each linked account to link again. `SERVICE_TOKEN`, the sign-in
+providers' client secrets, SMTP credentials and `ADMIN_PASSWORD` are in `.env`
+too.
+
+**What a backup is consistent to.**
+
+- The dump is one consistent snapshot of InnoDB tables, which is every table
+  `init.sql` creates. A table added by hand with another engine is not covered.
+- A backup can run while the app serves. But the app keeps up to the last
+  three seconds of live collaborative edits in memory before saving them, so
+  only a backup taken **after a graceful stop** (`docker compose stop app`,
+  see [Stopping cleanly](#stopping-cleanly)) is sure to have every edit. Stop,
+  back up, start is the safe rhythm for a nightly job.
+- The uploads are archived after the dump, so an image pasted between the two
+  is in the archive with no document pointing at it, which is harmless.
+
+**Restoring.** `make restore` restores into a stopped stack, then starts it:
 
 ```bash
-# Back the uploads up alongside the SQL dump
-docker run --rm -v cloudcodex_app_public:/data -v "$PWD":/backup alpine \
-   tar czf /backup/uploads-$(date +%F).tar.gz -C /data .
+docker compose -f docker-compose-release.yml stop app      # if it is running
+make restore IN=backups/c2-2026-09-28.tar.gz
+make restore IN=... ARGS="--replace"                        # over existing data
 ```
+
+It checks everything before it writes anything, and each check is a refusal:
+the archive holds exactly its three files and each matches the manifest's
+checksum; the uploads hold only plain files and directories; no line of the
+dump starts with a statement that switches, creates or drops a database or
+with a `mysql` client command (the client runs with `--binary-mode`, so a
+client command anywhere else on a line never runs either); the backup was not
+taken on a newer release than this stack runs (pass `--allow-newer-backup` to
+restore it anyway, knowing the older app does not know the newer schema); the
+archive is a backup of a database with the same name as this stack's (pass
+`--into <this stack's DB_NAME>` to restore it under a different name on
+purpose); the MySQL user holds privileges on that database and nothing else;
+the app is not running; and the database holds no rows.
+Tables with no rows at all are what the database service builds from
+`init.sql` when a new stack first starts, so a restore onto a new machine needs
+no flag. Over real data it needs `--replace`, which drops every table in the
+database and empties `avatars/` and `doc-images/` before loading. The load runs
+as that confined MySQL user, so a statement naming another database fails on
+the grant, wherever it sits on a line. Its first statement takes the database's
+[instance lock](#one-process-per-database), or fails with nothing written if
+any process holds it, and the load keeps it, so an app that starts meanwhile
+refuses. Then it runs `npm run migrate` (a backup from an older release is
+brought up to date) and `docker compose up -d`. `--no-start` stops after the data and prints the two
+commands instead.
+
+A load that fails part way leaves the database holding part of the backup, and
+says so; fix the cause and run the restore again with `--replace`.
+
+**Scheduling and keeping them.** Nothing here rotates or ships archives. A
+nightly cron entry, for example:
+
+```cron
+0 3 * * * cd /srv/cloudcodex && docker compose -f docker-compose-release.yml stop app && make backup OUT=/var/backups/cloudcodex/c2-$(date +\%F).tar.gz; docker compose -f docker-compose-release.yml start app
+```
+
+then copy the archive off the machine, encrypted, and prune old ones. A
+backup you have never restored is a guess: restore one onto a spare machine now
+and then. `cloudcodex/tests/integration/backup-restore.test.js` runs that drill
+in CI against a live MySQL, and the Compose path was drilled by hand when the
+scripts landed: both volumes destroyed, then every document, comment, image and
+avatar checked after the restore.
+
+**Without Docker.** `scripts/backup.sh --local [--uploads DIR] <file>` and
+`scripts/restore.sh --local [--uploads DIR] ... <file>` do the same with the
+`mysql` and `mysqldump` clients on `PATH`, connecting over TCP as `DB_USER`
+with `DB_PASS` to `DB_NAME` on `DB_HOST`, and with the uploads directory on
+disk (default `cloudcodex/public`). `DB_USER` must be granted on `DB_NAME`
+alone, as the app's own user should be (`GRANT ALL ON c2.* TO ...`): root, a
+global privilege, a grant on another database or a role is refused, because
+that grant is what keeps a restore inside its own database. They need MySQL's
+clients: MariaDB's `mysqldump` writes the values of generated columns
+(`logs.plain_content`), which MySQL refuses on restore, so `--local` refuses
+it. A MySQL server shared by several instances is backed up the same way, one
+instance at a time, each with its own user.
 
 ---
 

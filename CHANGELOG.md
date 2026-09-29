@@ -31,6 +31,25 @@ initialises an empty data directory.
   names on `<html data-theme="dark">`); nothing uses them yet, so the
   interface does not change. The built stylesheet now keeps licence comments,
   so the package's notice heads it. No migration and no new setting.
+- **Backup and restore as one command each.** `make backup OUT=<file>`
+  (`scripts/backup.sh`) writes one archive holding a `mysqldump` of the
+  database, migration ledger included, the uploads volume (avatars and document
+  images) and a manifest with a checksum of each. It is readable by its owner
+  only, never written over an existing file, and holds no password; it does
+  hold everything the database does, so keep it as carefully. `make restore
+  IN=<file>` (`scripts/restore.sh`) restores into a stopped stack and starts it,
+  after refusing an archive that is damaged or altered, is a backup of a
+  differently named database (unless `--into` names this one), was taken on a
+  newer release than this install runs (unless `--allow-newer-backup`), or
+  would land on a database that holds data (unless `--replace`), a running
+  app, or a database whose instance lock is held. A new stack's empty tables
+  need no flag. Both run through Docker Compose (`COMPOSE_FILE`, default
+  `docker-compose-release.yml`, and a stack created from another compose file
+  is refused), or with `--local` through MySQL's `mysql` and `mysqldump`
+  clients for an install outside Docker, and both refuse a MySQL user granted
+  anything beyond the app's database, root included. See "Backups" in
+  `docs/deployment.md`, which replaces the manual recipe that was there. No
+  migration and no new setting.
 
 ### Changed
 

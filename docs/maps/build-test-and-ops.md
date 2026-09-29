@@ -12,6 +12,7 @@ level down in `cloudcodex/`.
 
 ```
 c2/                          <- git root; docker, docs, SQL, Makefile, start.sh
+├── scripts/                 <- Bash: backup.sh, restore.sh, backup-common.sh (section 4)
 └── cloudcodex/              <- the npm package; package.json lives HERE
 ```
 
@@ -65,13 +66,15 @@ docker compose up -d          # from the root: MySQL only
 cd cloudcodex && npm install && npm run dev
 ```
 
-Make targets (`Makefile`) all shell into the running container:
+Make targets (`Makefile`); the first three shell into the running container:
 
 | Target | Effect |
 |---|---|
 | `make seed` | pipes `seed.sql` in |
 | `make reset-db` | pipes `init.sql` then `seed.sql` in |
 | `make db-shell` | interactive `mysql` CLI |
+| `make backup OUT=<file>` | `scripts/backup.sh <file>` (section 4, "Backup and restore") |
+| `make restore IN=<file> [ARGS=...]` | `scripts/restore.sh $(ARGS) <file>` |
 
 The Makefile does `include .env` / `export` at the top, so it needs a populated
 root `.env`, and it resolves the container via
@@ -220,6 +223,92 @@ machine. `make` goes through `docker exec` and does not use the port at all.
   where the app runs on the host, and wrong inside the prod container).
   `environment` takes precedence over `env_file`.
 
+### Backup and restore (`scripts/`)
+
+`scripts/backup.sh <out>` and `scripts/restore.sh <archive>` (Bash, `set -euo
+pipefail`, `umask 077`) share `scripts/backup-common.sh`: the archive format
+(`ARCHIVE_MEMBERS`, `ARCHIVE_FORMAT`), `DUMP_FLAGS`, a copy of the instance
+lock's name (`INSTANCE_LOCK_NAME_SQL`, pinned equal to
+`services/instance-lock.js`'s by `tests/scripts/backup-common.test.js`) and two
+transports behind the same functions (`db_mysql`, `db_query`, `db_dump`,
+`uploads_out`, `uploads_in`, `app_version`, `target_database`), and two
+checks both scripts make before they write: `check_confined_user` (the MySQL
+user holds privileges on the instance's database and nothing else) and, with
+Compose, `check_compose_file` (the stack was created from the file
+`COMPOSE_FILE` names):
+
+- **Compose** (default): `docker compose` on `COMPOSE_FILE`, defaulting to
+  `docker-compose-release.yml`. The clients run inside the `database` service
+  as its `MYSQL_USER` with `MYSQL_PWD="$MYSQL_PASSWORD"`, never root and never a
+  password on argv, over `--protocol=TCP -h 127.0.0.1` (the temporary init
+  server above is socket-only). The uploads go through a one-off
+  `run --rm --no-deps -T app` streaming `tar` on stdin/stdout, so there is no
+  bind mount and no SELinux label to get right. Both production files share
+  the repo root's project name and the container names, so either file
+  reaches the other's stack; `check_compose_file` reads the
+  `com.docker.compose.project.config_files` label off the `database`
+  container and refuses when its file names differ from `COMPOSE_FILE`'s
+  (names, not paths, so a moved checkout still matches).
+- **`--local`**: the `mysql`/`mysqldump` on `PATH`, `DB_HOST`/`DB_USER`/
+  `DB_PASS`/`DB_NAME`, `--protocol=TCP`, and `--uploads DIR` (default
+  `cloudcodex/public`). This is what `tests/integration/backup-restore.test.js`
+  drives.
+
+The archive is `database.sql`, `app_public.tar.gz` and a one-key-per-line
+`manifest.json` (format, `created_at`, `database`, `app_version`, both
+SHA-256s). `backup.sh` builds it in a `mktemp -d` beside the output, checks the
+dump's last line is `-- Dump completed`, and publishes it with `ln` (atomic,
+and a refusal if the output appeared meanwhile); an existing output is refused
+up front. `restore.sh` does every check before any write (members, types,
+checksums, uploads types and paths, a line-start scan of the dump for client
+commands and database switches, the manifest's `app_version` against this
+install's (`version_is_newer`; a newer backup needs `--allow-newer-backup`,
+since `npm run migrate` only looks for missing ledger rows and would pass an
+older app over a newer schema), the target name against the manifest or
+`--into`, `check_confined_user`, a running `app` service, and rows), then
+loads in one session that starts with `TAKE_LOCK_SQL` (take the instance lock
+or fail: the only lock check, so a process holding it stops the load at line
+1 and the restore says nothing was written) and, under `--replace` or when
+every table is empty, drops every table first. It then requires as many tables
+as the dump has `CREATE TABLE` lines, unpacks the uploads (`--replace` empties
+only `avatars/` and `doc-images/`), and in Compose runs `npm run migrate` and
+`up -d` unless `--no-start`.
+
+Traps, each found while building it (2026-09-28):
+
+- **`--one-database` needs the database as the positional argument.** With
+  `-D <db>` both MySQL 8.4.11's and MariaDB 10.11's `mysql` skip **every**
+  statement and exit 0, so a restore "succeeds" into an empty database. The
+  scripts never pass `-D`, and the table-count check after the load catches a
+  load that silently did nothing.
+- **MariaDB's `mysqldump` cannot back up this schema for MySQL.** It writes the
+  value of the generated column `logs.plain_content`, and MySQL refuses every
+  such row (ERROR 3105). `--local` refuses a MariaDB `mysqldump`.
+- **`tar | grep -q` under `pipefail` can read a hit as a miss** (tar's SIGPIPE
+  wins), so every listing is captured into a variable first.
+- **The line-start scan does not see a client command later on a line.**
+  `SELECT 1; \T <file>` passed it and the client wrote `<file>` as whoever ran
+  it. `db_mysql` passes `--binary-mode`, which turns off every client command
+  in piped input except `delimiter` (a dump with triggers needs it) and
+  `charset`, wherever it sits; the shell escape is also turned off by feature
+  detection, `--skip-system-command` (MySQL) or `--sandbox` (MariaDB).
+- The load's confinement to one schema is the **grant**, not a parser:
+  `--one-database` ignores a qualified `db.table`, and the test proves a
+  `CREATE TABLE <other>.x` in the dump fails with access denied when the
+  restoring user has privileges on its own schema only.
+- **So the user has to be one the grant confines.** `--local` first took any
+  `DB_USER`, and as root a dump starting `SELECT 1; CREATE DATABASE x;` got
+  past the line-start scan and created `x` (found in review, 2026-09-28).
+  `check_confined_user` reads `SHOW GRANTS` (with `-r`, since batch mode
+  doubles the backslash the MySQL image's `c2\_name` grant spelling carries)
+  and allows only `USAGE ON *.*` and grants on `` `<db>`.* `` or its tables.
+  `SHOW GRANTS` with no `FOR` lists the session's active roles, a mandatory
+  one included, as `GRANT `role`` lines with their privileges (measured on
+  8.4.11), so a role is refused by the same loop; a separate
+  `CURRENT_ROLE()` check could never fire first, and was removed.
+
+CI runs `shellcheck -x scripts/*.sh` (section 6).
+
 One thing to get right when deploying: **`init.sql` only executes on a fresh
 volume.** The MySQL entrypoint skips `/docker-entrypoint-initdb.d/` when the
 data directory is already initialised. Editing `init.sql` and restarting
@@ -246,12 +335,51 @@ fourth, `integration`, is opt-in because it needs a MySQL server:
 | `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **104 files, 2367 tests, all passing**
-(measured 2026-09-28 on the W6-CDX-21 branch with the 0.13.0 release merged in;
-5 files and 80 tests of it are `design`); the integration project is **12 files,
-92 tests** (measured 2026-09-28 on the same tree, against MySQL 8.4.11 at the
-server's default isolation and at
-`READ-COMMITTED`).
+Current state: the default run is **105 files, 2384 tests, all passing** (5
+files and 80 tests of it are `design`); the integration project is **13 files,
+114 tests** (measured 2026-09-29 on the W6-CDX-35 branch with main merged in
+after W6-CDX-21, against MySQL 8.4.11 at the server's default isolation and at
+`READ-COMMITTED`, with MySQL's 8.4.11 clients on `PATH`).
+
+The child-process helpers (`spawn`, `childEnv`, `holdLock`, `startServer`,
+`signIn`, `freePort`, `killChildren` and the boot `ADMIN`) live in
+`tests/integration/app-process.js`, shared by the lifecycle and backup files.
+
+`tests/integration/backup-restore.test.js` is the backup and restore drill. It
+boots `server.js`, saves a document with a pasted PNG and some Unicode through
+`/api/save-document`, comments on it, stops the server with SIGTERM, writes a
+Yjs update into `ydoc_state`, and runs `scripts/backup.sh --local` as a MySQL
+user granted only on the file's schema. It pins the archive (mode 0600, exactly
+three members, manifest keys and checksums, no MySQL or admin password in any
+byte, no overwrite, no working files left) and the backup's refusal of root,
+then each refusal `restore.sh` makes with nothing written: another database's
+archive, a system schema, a held instance lock (by the load's own first
+statement), a checksum, an extra member, a line-start switch or client
+command, a client command after a statement, a user with more than its own
+database (root with a mid-line `CREATE DATABASE`, a grant elsewhere, a global
+privilege, a role, a mandatory role), a newer release's backup, and a link in
+the uploads. The drill proper drops the schema and deletes the image file,
+restores into an empty scratch schema as a user granted only on it, and
+requires `html_content` and `ydoc_state` byte-identical, the comment and
+`doc_images` rows equal, a server booted on the result to answer `/readyz`
+200, and the image served to its reader and 404 to an anonymous caller. Then
+`--replace`, a new install's empty tables restored without it (as a user
+granted the way the MySQL image grants, with `_` escaped), a dump that names
+another schema failing on the grant, and `--allow-newer-backup`.
+`TAKE_LOCK_SQL` is also run directly against a lock holder. **It needs MySQL's
+`mysql` and `mysqldump` on `PATH`** (the CI runner image has them; a MariaDB
+client fails the backup by design, see section 4); it passes with the 8.4.11
+and the 8.0.45 clients. `tests/scripts/backup-common.test.js` pins the lock
+name, `version_is_newer`, and `check_compose_file` through a stand-in `docker`
+on `PATH`.
+
+Mutation-checked 2026-09-28, each confirmed landed, then restored. These turn
+a test red: removing the checksum check, the name check, the dump scan, the
+row check, `check_confined_user` in either script, its escaped-name spelling,
+the version refusal, `TAKE_LOCK_SQL`'s line in the load, `--binary-mode`, or
+`check_compose_file` (the unit test); passing `-D`. The owner-only mode has two
+guards, `umask 077` and `chmod 600`, and removing either alone stays green;
+removing both turns the mode test red.
 
 `tests/integration/lifecycle.test.js` is the fourth test group that needs
 real processes rather than a real server alone: it forks
@@ -654,8 +782,12 @@ you raise real coverage, ratchet the threshold up in the same PR; the comment at
 cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 
 ```
-npm ci -> npm run lint -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
+npm ci -> npm run lint -> shellcheck -x scripts/*.sh -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
 ```
+
+The ShellCheck step runs from the repository root (`working-directory: .`) with
+the runner image's own `shellcheck`; the Bash scripts are the only code no
+other step reads.
 
 The job carries a `mysql:8.4.11` **service container** (root password
 `ci-root-password`, published on 3306, health-checked with `mysqladmin ping`),

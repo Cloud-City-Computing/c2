@@ -32,8 +32,9 @@ c2/                              ← repo root (Docker, docs, SQL, Make)
 ├── docker-compose.yaml          ← dev: MySQL only
 ├── docker-compose-prod.yml      ← prod: MySQL + app
 ├── docker-compose.linux.yml     ← native-Linux :Z override for the dev file (not WSL)
-├── Makefile                     ← seed, reset-db, db-shell
+├── Makefile                     ← seed, reset-db, db-shell, backup, restore
 ├── start.sh                     ← one-shot dev bootstrap
+├── scripts/                     ← backup.sh, restore.sh (Bash; docs/deployment.md, Backups)
 ├── init.sql / seed.sql          ← schema + sample data
 ├── migrations/                  ← incremental SQL migrations
 ├── docs/                        ← human-facing architecture docs

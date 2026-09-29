@@ -802,6 +802,16 @@ a connection, so a process killed with SIGKILL releases it as soon as MySQL
 sees the socket close: `tests/integration/lifecycle.test.js` measures the next
 process taking it within two seconds.
 
+**`scripts/restore.sh` uses the same name**, through a copy of the
+expression in `scripts/backup-common.sh` that `tests/scripts/backup-common.test.js`
+pins equal to `INSTANCE_LOCK_NAME_SQL`. Its load runs in one `mysql` session
+whose first statement is `TAKE_LOCK_SQL` (`scripts/backup-common.sh`):
+`DO UUID_TO_BIN(IF(GET_LOCK(<name>, 0) = 1, <a valid UUID>, 'another process
+holds the instance lock'))`, which errors unless the lock was granted. That is
+the restore's only lock check: a process holding the lock stops the load at
+line 1, before it drops anything, and the restore says nothing was written;
+a server that starts during a restore refuses to boot until the load is over.
+
 ### Shutdown
 
 `services/shutdown.js` exports `createShutdown(deps)`, which returns
