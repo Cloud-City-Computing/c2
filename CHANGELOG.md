@@ -12,6 +12,184 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Changed
+
+- **Running from source needs Node.js 20.9 or newer.** sharp 0.35 requires
+  20.9 and nodemailer 10 requires 20 (see Security). The published image is
+  unchanged on this point: it is `node:20-slim`, which is Node 20.20.
+- **In the editor, Tab at the start of a paragraph that directly follows a
+  list moves that paragraph into the list's last item.** This is Tiptap
+  3.30's list keymap, which the editor loads through StarterKit; inside a
+  list item Tab still nests the item as before.
+- **Uploads (avatars, document images and imports):** a file of exactly the
+  size limit (5 MB for an avatar, 10 MB otherwise) is now accepted rather
+  than refused, a file sent under an unexpected form field is refused with
+  `Unexpected file field` (was `Unexpected field`), and characters a browser
+  escapes in a file name, such as a `"` sent as `%22`, are decoded, which
+  reaches the title of an imported document.
+- **CI fails on any moderate or worse advisory in a production dependency**
+  (`npm audit --omit=dev --audit-level=moderate`, the first step after
+  `npm ci`), and reports the whole tree's audit without failing. Before this,
+  `npm audit` ran nowhere. See `docs/maps/build-test-and-ops.md`, section 6.
+
+### Security
+
+- **Production dependencies with published advisories are upgraded.** Each
+  package below, old version to new, with the advisories it closes:
+  - ws 8.20.0 to 8.22.0, the library under both WebSockets (`/collab` and
+    `/notifications-ws`):
+    [GHSA-96hv-2xvq-fx4p](https://github.com/advisories/GHSA-96hv-2xvq-fx4p),
+    [GHSA-58qx-3vcg-4xpx](https://github.com/advisories/GHSA-58qx-3vcg-4xpx).
+  - multer 2.1.1 to 2.4.0 (every upload route):
+    [GHSA-535w-7cp7-47q4](https://github.com/advisories/GHSA-535w-7cp7-47q4),
+    [GHSA-72gw-mp4g-v24j](https://github.com/advisories/GHSA-72gw-mp4g-v24j),
+    [GHSA-wc9g-mqfw-jrwm](https://github.com/advisories/GHSA-wc9g-mqfw-jrwm),
+    [GHSA-3p4h-7m6x-2hcm](https://github.com/advisories/GHSA-3p4h-7m6x-2hcm),
+    [GHSA-qvfw-j98x-7q72](https://github.com/advisories/GHSA-qvfw-j98x-7q72).
+  - mysql2 3.17.2 to 3.24.4:
+    [GHSA-3f6p-5ww8-9rcr](https://github.com/advisories/GHSA-3f6p-5ww8-9rcr)
+    (a server could downgrade the connection to `mysql_clear_password` and
+    read the database password),
+    [GHSA-rgwj-5xj2-c3m3](https://github.com/advisories/GHSA-rgwj-5xj2-c3m3).
+    Password sign-in to MySQL 8.4's default `caching_sha2_password` is
+    unchanged.
+  - nodemailer 8.0.4 to 10.0.12 (two majors; no 8.x release fixes these):
+    [GHSA-2x7j-588g-ccc2](https://github.com/advisories/GHSA-2x7j-588g-ccc2),
+    [GHSA-p6gq-j5cr-w38f](https://github.com/advisories/GHSA-p6gq-j5cr-w38f),
+    [GHSA-268h-hp4c-crq3](https://github.com/advisories/GHSA-268h-hp4c-crq3),
+    [GHSA-6vj9-mwq6-2f5v](https://github.com/advisories/GHSA-6vj9-mwq6-2f5v),
+    [GHSA-8m3c-c648-2xjj](https://github.com/advisories/GHSA-8m3c-c648-2xjj),
+    [GHSA-cc9r-2j5m-2m83](https://github.com/advisories/GHSA-cc9r-2j5m-2m83),
+    [GHSA-r7g4-qg5f-qqm2](https://github.com/advisories/GHSA-r7g4-qg5f-qqm2),
+    [GHSA-vvjj-xcjg-gr5g](https://github.com/advisories/GHSA-vvjj-xcjg-gr5g),
+    [GHSA-wmmp-3585-3rmp](https://github.com/advisories/GHSA-wmmp-3585-3rmp),
+    [GHSA-wqvq-jvpq-h66f](https://github.com/advisories/GHSA-wqvq-jvpq-h66f).
+    Codex's SMTP settings and message fields need no change.
+  - sharp 0.34.5 to 0.35.5, with libvips 8.17.3 to 8.18.7 (a major; no 0.34
+    release fixes these):
+    [GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj),
+    [GHSA-rgj7-g3m4-5g8c](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c).
+    Avatars and document images are still webp at quality 85; PNG, JPEG, GIF
+    and WebP inputs came out at the same dimensions and byte length on both
+    versions.
+  - dompurify 3.3.3 to 3.4.16, the sanitizer in the browser and, through
+    isomorphic-dompurify, on the server. Most of these concern options Codex
+    does not set (`IN_PLACE`, hooks, `CUSTOM_ELEMENT_HANDLING`,
+    `SAFE_FOR_TEMPLATES`, Trusted Types):
+    [GHSA-39q2-94rc-95cp](https://github.com/advisories/GHSA-39q2-94rc-95cp),
+    [GHSA-55q2-fjhq-7xh7](https://github.com/advisories/GHSA-55q2-fjhq-7xh7),
+    [GHSA-76mc-f452-cxcm](https://github.com/advisories/GHSA-76mc-f452-cxcm),
+    [GHSA-cmwh-pvxp-8882](https://github.com/advisories/GHSA-cmwh-pvxp-8882),
+    [GHSA-crv5-9vww-q3g8](https://github.com/advisories/GHSA-crv5-9vww-q3g8),
+    [GHSA-h7mw-gpvr-xq4m](https://github.com/advisories/GHSA-h7mw-gpvr-xq4m),
+    [GHSA-hpcv-96wg-7vj8](https://github.com/advisories/GHSA-hpcv-96wg-7vj8),
+    [GHSA-r47g-fvhr-h676](https://github.com/advisories/GHSA-r47g-fvhr-h676),
+    [GHSA-rp9w-3fw7-7cwq](https://github.com/advisories/GHSA-rp9w-3fw7-7cwq),
+    [GHSA-v9jr-rg53-9pgp](https://github.com/advisories/GHSA-v9jr-rg53-9pgp),
+    [GHSA-c2j3-45gr-mqc4](https://github.com/advisories/GHSA-c2j3-45gr-mqc4),
+    [GHSA-gvmj-g25r-r7wr](https://github.com/advisories/GHSA-gvmj-g25r-r7wr),
+    [GHSA-vxr8-fq34-vvx9](https://github.com/advisories/GHSA-vxr8-fq34-vvx9),
+    [GHSA-x4vx-rjvf-j5p4](https://github.com/advisories/GHSA-x4vx-rjvf-j5p4).
+  - react-router and react-router-dom 7.13.0 to 7.18.4. Most of these apply
+    to framework mode, server rendering or React Server Components, which
+    Codex does not use; GHSA-wrjc-x8rr-h8h6 (a backslash in a `<Link>` or
+    `useNavigate` target) is the one that reaches declarative routing like
+    Codex's:
+    [GHSA-49rj-9fvp-4h2h](https://github.com/advisories/GHSA-49rj-9fvp-4h2h),
+    [GHSA-8646-j5j9-6r62](https://github.com/advisories/GHSA-8646-j5j9-6r62),
+    [GHSA-8x6r-g9mw-2r78](https://github.com/advisories/GHSA-8x6r-g9mw-2r78),
+    [GHSA-chx6-hx7r-mcp5](https://github.com/advisories/GHSA-chx6-hx7r-mcp5),
+    [GHSA-qwww-vcr4-c8h2](https://github.com/advisories/GHSA-qwww-vcr4-c8h2),
+    [GHSA-rxv8-25v2-qmq8](https://github.com/advisories/GHSA-rxv8-25v2-qmq8),
+    [GHSA-2j2x-hqr9-3h42](https://github.com/advisories/GHSA-2j2x-hqr9-3h42),
+    [GHSA-337j-9hxr-rhxg](https://github.com/advisories/GHSA-337j-9hxr-rhxg),
+    [GHSA-f22v-gfqf-p8f3](https://github.com/advisories/GHSA-f22v-gfqf-p8f3),
+    [GHSA-h8fp-f39c-q6mh](https://github.com/advisories/GHSA-h8fp-f39c-q6mh),
+    [GHSA-wrjc-x8rr-h8h6](https://github.com/advisories/GHSA-wrjc-x8rr-h8h6),
+    [GHSA-84g9-w2xq-vcv6](https://github.com/advisories/GHSA-84g9-w2xq-vcv6).
+  - express-rate-limit 8.3.1 to 8.7.0, and with it ip-address 10.1.0 to
+    10.7.2:
+    [GHSA-mwp4-54f8-5fhr](https://github.com/advisories/GHSA-mwp4-54f8-5fhr),
+    [GHSA-rpw4-54j3-4h4q](https://github.com/advisories/GHSA-rpw4-54j3-4h4q),
+    [GHSA-v2v4-37r5-5v8g](https://github.com/advisories/GHSA-v2v4-37r5-5v8g).
+  - @tiptap/core and @tiptap/pm 3.22.3 to 3.31.3, and every other @tiptap
+    package to the same version so the editor's packages stay in step:
+    [GHSA-j95f-988m-3j2f](https://github.com/advisories/GHSA-j95f-988m-3j2f),
+    [GHSA-cp6q-959q-f8rh](https://github.com/advisories/GHSA-cp6q-959q-f8rh).
+  - @xmldom/xmldom 0.8.12 to 0.8.15, which parses DOCX imports (through
+    mammoth):
+    [GHSA-27p8-2357-5qqv](https://github.com/advisories/GHSA-27p8-2357-5qqv),
+    [GHSA-2v35-w6hq-6mfw](https://github.com/advisories/GHSA-2v35-w6hq-6mfw),
+    [GHSA-4w3w-2rp5-g8jm](https://github.com/advisories/GHSA-4w3w-2rp5-g8jm),
+    [GHSA-8344-3jmq-59r6](https://github.com/advisories/GHSA-8344-3jmq-59r6),
+    [GHSA-93r5-fhx6-vmg9](https://github.com/advisories/GHSA-93r5-fhx6-vmg9),
+    [GHSA-965w-775f-mr7g](https://github.com/advisories/GHSA-965w-775f-mr7g),
+    [GHSA-c7q8-3ch8-vqpv](https://github.com/advisories/GHSA-c7q8-3ch8-vqpv),
+    [GHSA-f6ww-3ggp-fr8h](https://github.com/advisories/GHSA-f6ww-3ggp-fr8h),
+    [GHSA-j759-j44w-7fr8](https://github.com/advisories/GHSA-j759-j44w-7fr8),
+    [GHSA-w2rr-34g9-rvrj](https://github.com/advisories/GHSA-w2rr-34g9-rvrj),
+    [GHSA-x4fp-j954-r2f4](https://github.com/advisories/GHSA-x4fp-j954-r2f4),
+    [GHSA-x6wf-f3px-wcqx](https://github.com/advisories/GHSA-x6wf-f3px-wcqx),
+    [GHSA-6gmq-8vp8-gcm6](https://github.com/advisories/GHSA-6gmq-8vp8-gcm6),
+    [GHSA-6h8r-xr42-gp59](https://github.com/advisories/GHSA-6h8r-xr42-gp59).
+  - undici 7.25.0 to 7.30.0, under the server-side sanitizer's jsdom:
+    [GHSA-4cwx-7wf7-3272](https://github.com/advisories/GHSA-4cwx-7wf7-3272),
+    [GHSA-hm92-r4w5-c3mj](https://github.com/advisories/GHSA-hm92-r4w5-c3mj),
+    [GHSA-vmh5-mc38-953g](https://github.com/advisories/GHSA-vmh5-mc38-953g),
+    [GHSA-vxpw-j846-p89q](https://github.com/advisories/GHSA-vxpw-j846-p89q),
+    [GHSA-8xcm-r25x-g524](https://github.com/advisories/GHSA-8xcm-r25x-g524),
+    [GHSA-jr45-8vmc-qm54](https://github.com/advisories/GHSA-jr45-8vmc-qm54),
+    [GHSA-m8rv-5g2x-5cg5](https://github.com/advisories/GHSA-m8rv-5g2x-5cg5),
+    [GHSA-p88m-4jfj-68fv](https://github.com/advisories/GHSA-p88m-4jfj-68fv),
+    [GHSA-pr7r-676h-xcf6](https://github.com/advisories/GHSA-pr7r-676h-xcf6),
+    [GHSA-v3r7-h72x-cjcm](https://github.com/advisories/GHSA-v3r7-h72x-cjcm),
+    [GHSA-35p6-xmwp-9g52](https://github.com/advisories/GHSA-35p6-xmwp-9g52),
+    [GHSA-g8m3-5g58-fq7m](https://github.com/advisories/GHSA-g8m3-5g58-fq7m).
+  - Express's qs 6.15.0 to 6.16.0 and body-parser 2.2.2 to 2.3.0:
+    [GHSA-4mjr-xmp4-gh2g](https://github.com/advisories/GHSA-4mjr-xmp4-gh2g),
+    [GHSA-q8mj-m7cp-5q26](https://github.com/advisories/GHSA-q8mj-m7cp-5q26),
+    [GHSA-x5fp-wj9c-mxmx](https://github.com/advisories/GHSA-x5fp-wj9c-mxmx),
+    [GHSA-v422-hmwv-36x6](https://github.com/advisories/GHSA-v422-hmwv-36x6).
+  - markdown-it and linkify-it leave the tree, because @tiptap/pm 3.31 no
+    longer depends on prosemirror-markdown:
+    [GHSA-6v5v-wf23-fmfq](https://github.com/advisories/GHSA-6v5v-wf23-fmfq),
+    [GHSA-22p9-wv53-3rq4](https://github.com/advisories/GHSA-22p9-wv53-3rq4),
+    [GHSA-v245-v573-v5vm](https://github.com/advisories/GHSA-v245-v573-v5vm).
+- **Build and test tooling with published advisories is upgraded too:**
+  vite 7.3.1 to 7.3.6, with esbuild 0.27.3 to 0.28.2, and postcss 8.5.6 to
+  8.5.28 with its nanoid 3.3.11 to 3.3.19;
+  vitest and @vitest/coverage-v8 4.1.5 to 4.1.11; js-yaml 4.1.1 to 4.3.2;
+  @babel/core 7.29.0 to 7.29.7; @humanfs/node 0.16.7 to 0.16.8;
+  baseline-browser-mapping 2.9.19 to 2.11.26; brace-expansion 1.1.13 to
+  1.1.21; browserslist 4.28.1 to 4.29.2; form-data 4.0.5 to 4.0.6. They close
+  [GHSA-fx2h-pf6j-xcff](https://github.com/advisories/GHSA-fx2h-pf6j-xcff),
+  [GHSA-p9ff-h696-f583](https://github.com/advisories/GHSA-p9ff-h696-f583),
+  [GHSA-v2wj-q39q-566r](https://github.com/advisories/GHSA-v2wj-q39q-566r),
+  [GHSA-4w7w-66w2-5vf9](https://github.com/advisories/GHSA-4w7w-66w2-5vf9),
+  [GHSA-v6wh-96g9-6wx3](https://github.com/advisories/GHSA-v6wh-96g9-6wx3),
+  [GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr),
+  [GHSA-6g55-p6wh-862q](https://github.com/advisories/GHSA-6g55-p6wh-862q),
+  [GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849),
+  [GHSA-fxqj-rqcc-2cmp](https://github.com/advisories/GHSA-fxqj-rqcc-2cmp),
+  [GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93),
+  [GHSA-28wg-ghj8-5hjv](https://github.com/advisories/GHSA-28wg-ghj8-5hjv),
+  [GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8),
+  [GHSA-xwg4-73v4-xw9w](https://github.com/advisories/GHSA-xwg4-73v4-xw9w),
+  [GHSA-82fw-gwwq-j7x9](https://github.com/advisories/GHSA-82fw-gwwq-j7x9),
+  [GHSA-2883-xcg3-v3hh](https://github.com/advisories/GHSA-2883-xcg3-v3hh),
+  [GHSA-52cp-r559-cp3m](https://github.com/advisories/GHSA-52cp-r559-cp3m),
+  [GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj),
+  [GHSA-h67p-54hq-rp68](https://github.com/advisories/GHSA-h67p-54hq-rp68),
+  [GHSA-4x5r-pxfx-6jf8](https://github.com/advisories/GHSA-4x5r-pxfx-6jf8),
+  [GHSA-p498-v437-472g](https://github.com/advisories/GHSA-p498-v437-472g),
+  [GHSA-w5vr-8v7q-w6rv](https://github.com/advisories/GHSA-w5vr-8v7q-w6rv),
+  [GHSA-3jxr-9vmj-r5cp](https://github.com/advisories/GHSA-3jxr-9vmj-r5cp),
+  [GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg),
+  [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895),
+  [GHSA-73wf-gq98-2v4g](https://github.com/advisories/GHSA-73wf-gq98-2v4g),
+  [GHSA-c83g-rgw3-j3cx](https://github.com/advisories/GHSA-c83g-rgw3-j3cx),
+  [GHSA-hmw2-7cc7-3qxx](https://github.com/advisories/GHSA-hmw2-7cc7-3qxx).
+
 ## [0.13.0] - 2026-09-28
 
 The cookie-hardening release. One security fix: on an https instance, the
