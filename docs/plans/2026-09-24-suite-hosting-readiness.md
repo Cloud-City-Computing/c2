@@ -444,12 +444,32 @@ single-writer lock (PR 1) is acquired, since `GET_LOCK` needs no privilege.
 
 ### Task 3.4 Prove the proof, and record it
 
-- [ ] Mutation: `GRANT SELECT ON *.* TO app_a`; `tenancy.test.js` goes red; revert.
-- [ ] `docs/maps/access-control.md` gains a tenancy section: the boundary between instances is the
+- [x] Mutation: `GRANT SELECT ON *.* TO app_a`; `tenancy.test.js` goes red; revert. (2026-09-28:
+      added to the recipe block the test reads, 26 tests red; four more mutations in the map.)
+- [x] `docs/maps/access-control.md` gains a tenancy section: the boundary between instances is the
       MySQL grant, the boundary inside an instance is the workspace (`isWorkspaceMember`), and what
       neither protects against (an operator with the root password, a shared `app_public` volume).
-- [ ] Record the run in `docs/research/instance-isolation-<date>/` (commands, versions, output), the
+      (Section 9.)
+- [x] Record the run in `docs/research/instance-isolation-<date>/` (commands, versions, output), the
       evidence the "one container and one schema per customer" decision rests on.
+      (`docs/research/instance-isolation-2026-09-28/`.)
+
+**As built (2026-09-28).** Tasks 3.1 to 3.3 shipped with four changes from the text above. The
+recipe's schema names are letters and digits only and its grants name them backticked
+(`` ON `c2acme`.* ``), because a database-level `GRANT` reads `_` and `%` as wildcards: the plan's
+`c2_acme.*` would also open `c2xacme`, and escaping the underscore breaks the app's own access
+under `partial_revokes`. Each account carries a `MAX_USER_CONNECTIONS` cap (15 for the app, 3 for
+the migration account), so one instance cannot take every connection on the server. The tests
+read the SQL block out of `docs/deployment.md` rather than repeat it, so the recipe proved is the
+recipe documented. And `grants-sufficient.test.js` boots `server.js` as a child process instead of
+driving `app.js` through Supertest, which is what puts boot (the lock, the admin sync, the seed)
+and a real `/collab` socket on the DML-only account too; its smoke path found the comments router
+had no error handler, fixed in the same branch. Review then found two more, both in the recipe:
+the release compose file hard-sets the app's `DB_HOST` to its bundled database, so the recipe
+carries a `shared-mysql.yml` override (driven for real, `raw-compose-run.txt`); and Task 3.2's
+`information_schema` check holds for rows but not names, since `TABLESPACES_EXTENSIONS` lists every
+schema's name and table names to every account, so the recipe asks for opaque schema names and
+`tenancy.test.js` sweeps every readable system view and pins that one.
 
 ---
 
@@ -559,6 +579,43 @@ their readers.
 ---
 
 ## PR 5: W6-CDX-35, backup and restore as one command, with a drill
+
+**Status: shipped 2026-09-28** on `track/w6-cdx-35-backup-restore` (tasks 5.1 to 5.3 done; these
+tasks carry no checkboxes). Where the build goes past the text below, and why:
+
+- Neither script uses the MySQL root account or puts a password on a command line: the clients run
+  inside the `database` service as its `MYSQL_USER`, over TCP to `127.0.0.1`, with `MYSQL_PWD`. The
+  grant is then what confines a restore to its own schema, so both scripts refuse a MySQL user that
+  holds anything beyond it (root, a global privilege, a grant elsewhere, a role), in `--local` too.
+- With Compose, a stack whose containers were created from another compose file than `COMPOSE_FILE`
+  names is refused: both production files share the project and container names.
+- The uploads stream through `docker compose run --rm --no-deps -T app tar` on stdin and stdout,
+  not a bind mount, so there is no SELinux label to get right.
+- The archive carries a `manifest.json` with the SHA-256 of both payloads, and is written 0600 and
+  never over an existing file. `restore.sh` checks everything before it writes: members, checksums,
+  uploads that are only files and directories, a dump with no database switch or client command, a
+  backup not from a newer release than this install (unless `--allow-newer-backup`), a target that
+  is this instance's own database (or `--into`), no running app, and no rows unless `--replace`.
+  The client runs with `--binary-mode`, and the load's first statement takes the instance lock or
+  fails with nothing written.
+- A `--local` form (the `mysql` and `mysqldump` clients on `PATH`) is what the drill test drives,
+  so the test runs the real scripts rather than `mysqldump` by hand.
+- The Compose drill found the socket healthcheck calling `init.sql`'s temporary server healthy;
+  main's #69 fixed the same defect (a TCP ping with a start period) before this branch merged, so
+  the branch takes main's healthcheck and changes neither compose file.
+- The Compose drill, by hand on a clean clone of the branch (2026-09-28): populate (a document with
+  a pasted image, a comment, an avatar), stop, `make backup`, `down -v`, `make restore` onto the new
+  stack in 46 s; `/readyz` 200, the database fingerprint (tables, HTML and `ydoc_state`, comments,
+  `doc_images`, the ledger) identical, image and avatar bytes identical, the image still 404 to an
+  anonymous caller. Refusals seen: a running app, data without `--replace`, a wrong `--into`, a
+  tampered dump, an existing output file, and a hidden mid-line `\T`.
+- After review, again on a clean clone of the branch merged with main, with the release file and a
+  locally built image: populate through the API, stop, `make backup`, `down -v`, `make restore`
+  onto the new stack in 33 s, `/readyz` 200, image bytes identical and 404 anonymously; a
+  `--replace --no-start` restore then matched the pre-backup fingerprint exactly, password hashes
+  included (after a boot, the admin sync re-hashes the admin's password, as it always does).
+  Refusals seen through Compose: the prod file against the release-built stack (backup and
+  restore), a running app, data without `--replace`, and a backup marked 99.0.0.
 
 ### Task 5.1 The scripts
 

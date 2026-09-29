@@ -60,6 +60,7 @@ import CommentSidebar from '../components/CommentSidebar';
 import CommentForm from '../components/CommentForm';
 import CommentManager from '../components/CommentManager';
 import useGitHubLink from '../hooks/useGitHubLink';
+import useGitHubStatus from '../hooks/useGitHubStatus';
 import GitHubSyncBanner from '../components/GitHubSyncBanner';
 import GitHubCodeEmbed from '../extensions/GitHubCodeEmbed';
 import GitHubIssueEmbed from '../extensions/GitHubIssueEmbed';
@@ -647,7 +648,7 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
 
 const isMobileDevice = () => window.matchMedia('(max-width: 768px)').matches;
 
-export default function Editor({ embedded = false } = {}) {
+function EditorView({ embedded = false } = {}) {
   const params = useParams();
   const logId = params.logId;
   const navigate = useNavigate();
@@ -668,7 +669,10 @@ export default function Editor({ embedded = false } = {}) {
   const [viewMode, setViewMode] = useState(embedded ? 'read' : 'edit'); // 'read' | 'edit'
 
   // --- GitHub sync (link, status, pull/push/resolve) ---
-  const ghSync = useGitHubLink(logId ? Number(logId) : null);
+  // Only once the user is known to have GitHub linked: every /api/github
+  // route answers 403 to anyone else.
+  const { connected: githubConnected } = useGitHubStatus();
+  const ghSync = useGitHubLink(logId ? Number(logId) : null, { enabled: githubConnected === true });
 
   // --- Auto-save state ---
   const dirtyRef = useRef(false);          // true when local edits haven't been saved yet
@@ -1337,6 +1341,15 @@ export default function Editor({ embedded = false } = {}) {
       </div>
   );
 
-  if (embedded) return editorContent;
-  return <StdLayout>{editorContent}</StdLayout>;
+  return editorContent;
+}
+
+/**
+ * The editor page. Standalone it wraps the view in StdLayout, as ArchiveView
+ * already does when it embeds it, so in both cases the view renders inside
+ * the layout's GitHub status provider, once the auth check has found a user.
+ */
+export default function Editor({ embedded = false } = {}) {
+  if (embedded) return <EditorView embedded />;
+  return <StdLayout><EditorView /></StdLayout>;
 }

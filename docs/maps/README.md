@@ -14,13 +14,13 @@ verify before trusting either.
 | Map | When you need it |
 |---|---|
 | [request-lifecycle.md](request-lifecycle.md) | Boot order, the middleware stack in mount order, how `requireAuth` resolves a session, the two WebSocket upgrade paths, the per-router error-handler pattern, rate limiters, `/healthz` and `/readyz`, the instance lock, and the graceful shutdown. |
-| [access-control.md](access-control.md) | **Read before touching any permission code.** The 7-clause `readAccessWhere`/`writeAccessWhere` fragments, their fixed param arity, the four *other* permission systems that exist alongside them, and why `logs.read_access` is a write-only column. Plus machine principals: the service-token seam and the never-admin rule. |
+| [access-control.md](access-control.md) | **Read before touching any permission code.** The 7-clause `readAccessWhere`/`writeAccessWhere` fragments, their fixed param arity, the four *other* permission systems that exist alongside them, and why `logs.read_access` is a write-only column. Plus machine principals: the service-token seam and the never-admin rule. And the boundary between instances sharing one MySQL server, which is the grant, not the code. |
 | [documents-and-collab.md](documents-and-collab.md) | Dual-state storage (`html_content` vs `ydoc_state`), the Yjs binary sync protocol, the JSON side-channel message taxonomy, the debounce/cleanup timers, save vs publish, presence. |
 | [github-integration.md](github-integration.md) | Token encryption and the `req.gh` helper, the 5-state sync machine, pull/push/resolve with diff3, live code embeds, PR-as-document sessions, squad to GitHub-Team sync, and the error handler this router does *not* share. |
 | [notifications-and-activity.md](notifications-and-activity.md) | The activity taxonomy, auto-watch rules, watcher fan-out, the notification funnel with its two independent coalescing windows, email preference resolution, the user-scoped WebSocket. |
 | [data-model.md](data-model.md) | All 25 tables, the ACL column families, the generated `plain_content` column that powers FULLTEXT, cascade behaviour, and the `init.sql` vs `migrations/` contract. |
 | [frontend-architecture.md](frontend-architecture.md) | Route table and lazy-chunk boundaries, the `util.jsx` API layer, the six hooks, the Tiptap extension stack, preference plumbing, and the Vite `manualChunks` strategy. |
-| [build-test-and-ops.md](build-test-and-ops.md) | The dual-root quirk, npm scripts, the Docker topologies, `start.sh`, the three Vitest projects (two default, one live-MySQL) and every per-glob coverage threshold, CI. |
+| [build-test-and-ops.md](build-test-and-ops.md) | The dual-root quirk, npm scripts, the Docker topologies, `start.sh`, the backup and restore scripts, the four Vitest projects (three default including the design gate, one live-MySQL) and every per-glob coverage threshold, CI. |
 | [open-questions.md](open-questions.md) | **Read before trusting a single citation as gospel.** What is unverified, what looks like a defect, what the root `CLAUDE.md` says that the code does not. |
 
 ## How to use these

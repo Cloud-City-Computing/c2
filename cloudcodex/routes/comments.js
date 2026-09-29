@@ -8,7 +8,7 @@
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isValidId, asyncHandler, checkLogReadAccess, checkLogWriteAccess } from './helpers/shared.js';
+import { isValidId, asyncHandler, checkLogReadAccess, checkLogWriteAccess, errorHandler } from './helpers/shared.js';
 import { extractMentions, extractContextSnippet } from './helpers/mentions.js';
 import { createNotification } from '../services/notifications.js';
 import { logActivity } from './helpers/activity.js';
@@ -516,5 +516,7 @@ router.delete('/replies/:replyId', requireAuth, asyncHandler(async (req, res) =>
   await c2_query(`DELETE FROM comment_replies WHERE id = ?`, [Number(replyId)]);
   res.json({ success: true });
 }));
+
+router.use(errorHandler);
 
 export default router;

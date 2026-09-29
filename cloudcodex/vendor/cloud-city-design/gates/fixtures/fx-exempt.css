@@ -1,0 +1,8 @@
+/* Exemption markers in the block-comment form. */
+.fx-a { color: #111111; } /* invariant-exempt: a documented one-off */
+/* invariant-exempt: the line below is exempt */
+.fx-b { color: #222222; }
+.fx-c { color: #333333; }
+/* invariant-exempt: */
+.fx-d { color: #444444; }
+.fx-e { color: #555555; }

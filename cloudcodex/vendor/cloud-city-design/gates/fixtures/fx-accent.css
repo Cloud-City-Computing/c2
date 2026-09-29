@@ -1,0 +1,16 @@
+/* The accent fill shades in every position the rule watches. */
+.fx-p1 { color: var(--brand-blue); }
+.fx-p2 { fill: var(--accent-100); }
+.fx-p3 { stroke: var(--accent-200); }
+.fx-p4 { outline: 2px solid var(--accent-300); }
+.fx-p5 { outline-color: var(--accent-400); }
+.fx-p6 { box-shadow: 0 0 0 2px var( --accent-200 ); }
+.fx-p7 { border-color: var(--brand-blue); }
+/* Not reported: a fill shade as a fill, a text-safe step, a name that is
+   banned only when the caller passes it, and a longhand the rule does not
+   watch. */
+.fx-ok-1 { background-color: var(--accent-100); }
+.fx-ok-2 { background: var(--brand-blue); }
+.fx-ok-3 { color: var(--accent-600); }
+.fx-ok-4 { color: var(--fx-fill); }
+.fx-ok-5 { border-top-color: var(--accent-200); }

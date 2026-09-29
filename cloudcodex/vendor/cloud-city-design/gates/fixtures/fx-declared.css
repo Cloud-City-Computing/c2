@@ -1,0 +1,12 @@
+/* Declarations the other fixtures reference, so the dangling rule reports
+   only the references that are meant to dangle. */
+:root {
+  --brand-blue: 0;
+  --accent-100: 0;
+  --accent-200: 0;
+  --accent-300: 0;
+  --accent-400: 0;
+  --accent-600: 0;
+  --fx-fill: 0;
+  --fx-ring: 0;
+}

@@ -404,7 +404,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 |---|---|---|---|
 | W6-CDX-10 | A live-MySQL integration test project (**shipped 2026-09-25**; `npm run test:integration`, inside CI's required job) | nothing | yes |
 | W6-CDX-2 | One session per sign-in, stored hashed (**shipped 2026-09-27** in #64; `sessions.id` holds a SHA-256 digest, one row per sign-in, `sessions.auth_provider`, a daily prune, closing open question C2) | W6-CDX-10 | yes |
-| W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes | W6-CDX-2 | yes |
+| W6-CDX-3 | A `__Host-` cookie, and Origin-required cookie writes (**shipped 2026-09-28** in #70; `__Host-sessionToken` on https with `LEGACY_SESSION_COOKIE` for the old name, a cookie-only `/api` write needs an accepted `Origin`, the WebSocket Origin refusals pinned) | W6-CDX-2 | yes |
 | W6-CDX-4 | An identity-resolution seam, Google moved onto it (**shipped 2026-09-25** in #56, released in 0.11.0; Google now refuses a second Google subject as `identity_conflict`, closing open question C7) | nothing | yes |
 | W6-CDX-5 | The OIDC relying party and `user_identities` | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3, W6-CMD-24 (the `returnTo` corpus) | yes |
 | W6-CDX-6 | Sign-out that propagates | W6-CDX-5; W6-CCID-3 | yes |
@@ -412,11 +412,11 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-8 | Hosted mode: OIDC only, invitations bind on verified email | W6-CDX-5, W6-CDX-32; W6-CCID-3 | yes |
 | W6-CDX-9 | Machine membership endpoints for the automatic sync | W6-CDX-7, W6-CDX-8 | yes |
 | W6-CDX-12 | Three activity gaps fixed at the source (**shipped 2026-09-27** in #62; `archive.delete` reaches the table, the tree route logs `log.rename` and `log.move` and caps titles at 255, and every route that sets a parent keeps it in the archive) | W6-CDX-10 | yes |
-| W6-CDX-13 | The outbox, subscriptions and the emit hook (**shipped 2026-09-28** on `track/w6-cdx-13-outbox`; three webhook tables, `emitEvent` in `logActivity`, the env subscription, the SSRF guard and `/api/admin/webhooks`; nothing is sent until W6-CDX-14) | W6-CDX-12 | yes |
+| W6-CDX-13 | The outbox, subscriptions and the emit hook (**shipped 2026-09-28** in #74; three webhook tables, `emitEvent` in `logActivity`, the env subscription, the SSRF guard and `/api/admin/webhooks`; nothing is sent until W6-CDX-14) | W6-CDX-12 | yes |
 | W6-CDX-14 | The delivery worker | W6-CDX-13 | yes |
 | W6-CDX-15 | Webhooks in the admin console | W6-CDX-14 | no |
 | W6-CDX-16 | A machine read for reconciliation (**shipped 2026-09-27** in #63; `GET /api/documents/state`, the third `machineOrAuth` route) | W6-CDX-10 | no |
-| W6-CDX-21 | Vendor the tokens, fonts and gates | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
+| W6-CDX-21 | Vendor the tokens, fonts and gates (**shipped 2026-09-28** in #71; `cloud-city-design` 0.2.0 at `2d52baa` in `cloudcodex/vendor/`, the `design` Vitest project with a 745-finding ledger, `src/codex.css`, and ten dangling references fixed) | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
 | W6-CDX-22 | The palette bridge and the accent picker | W6-CDX-21 | yes |
 | W6-CDX-23 | Focus, buttons and the Toast | W6-CDX-22 | yes |
 | W6-CDX-24 | Dialogs with real semantics | W6-CDX-23 | yes |
@@ -427,9 +427,9 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-29 | Admin and settings surfaces, and the UI track retires | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
 | W6-CDX-31 | Signals, health, readiness, the single-writer lock (**shipped 2026-09-27** in #65; `node server.js` as the process, a bounded SIGTERM flush, `/healthz` and `/readyz`, and a per-schema `GET_LOCK`) | W6-CDX-10 | yes |
 | W6-CDX-32 | Production configuration and the per-instance contract (**shipped 2026-09-27** in #66: `cloudcodex/env-contract.js` and its test, `APP_URL` required in production, `TRUST_PROXY` and `DB_POOL_SIZE`, `mysql:8.4.11` everywhere, and in production the security headers on the whole app. Task 2.4, the admin sync never promotes, landed early 2026-09-25 in #58 and was released in 0.11.0 with GHSA-w8q3-r34w-3pjh) | W6-CDX-10 | yes |
-| W6-CDX-33 | The grant recipe and the isolation proof | W6-CDX-32 | no: before a fourth instance |
+| W6-CDX-33 | The grant recipe and the isolation proof (**shipped 2026-09-28** in #73: the "Several instances on one MySQL server" recipe in `docs/deployment.md`, with opaque letters-and-digits schema names, per-account connection caps and a `shared-mysql.yml` compose override that points the app at the shared server; `tenancy.test.js` runs it as written and 54 statements reaching for the other instance, the server or DDL all fail with MySQL's privilege errors, and the one system view that still lists other schemas' names is pinned and documented; `grants-sufficient.test.js` runs the app on the DML-only account; the comments router gets its error handler) | W6-CDX-32 | no: before a fourth instance |
 | W6-CDX-34 | Document images for readers only (**shipped 2026-09-27** in #67) | W6-CDX-10 | yes |
-| W6-CDX-35 | Backup and restore, with a drill | W6-CDX-31 | yes |
+| W6-CDX-35 | Backup and restore, with a drill (**shipped 2026-09-28** in #72: `scripts/backup.sh` and `scripts/restore.sh`, `make backup` and `make restore`, the live-MySQL drill in `tests/integration/backup-restore.test.js`, and the Compose drill by hand) | W6-CDX-31 | yes |
 | W6-CDX-36 | The Wave 6 Codex release the test box pins | every session marked yes above | yes |
 
 Two releases, deliberately separate: **0.10.0** carries C2-0 to C2-5 and

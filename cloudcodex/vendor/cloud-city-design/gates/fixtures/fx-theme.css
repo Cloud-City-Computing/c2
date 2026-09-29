@@ -1,0 +1,23 @@
+/* Theme parsing and colour resolution. */
+:root {
+  --fx-bg: #fff;
+  --fx-ink: #1a1a1a;
+  --fx-accent: oklch(62% 0.1 240);
+  --fx-accent-soft: oklch(0.62 25% 240 / 50%);
+  --fx-link: var( --fx-accent );
+  --fx-chain: var(--fx-link);
+  --fx-loop-a: var(--fx-loop-b);
+  --fx-loop-b: var(--fx-loop-a);
+  --fx-fallback: var(--fx-absent, #000);
+  --fx-short-alpha: #fff8;
+  --fx-long-alpha: #ffffff80;
+  --fx-rgb: rgb(0 0 0);
+  --fx-upper: OKLCH(0.5 0.1 240);
+}
+[data-theme='dark'] {
+  --fx-ink: #f0f0f0;
+}
+[data-theme="dark"] {
+  --fx-bg: #121212;
+  --fx-accent: oklch(72% 0.1 240);
+}

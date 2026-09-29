@@ -215,7 +215,7 @@ auth + access-control machinery.
 cloudcodex/                  — Application root
 ├── app.js                   — Express app setup (middleware, route mounting)
 ├── server.js                — Entry point: starts HTTP + 2 WS servers,
-│                              verifies SMTP, bootstraps admin, schedules
+│                              checks SMTP if set, bootstraps admin, schedules
 │                              the daily activity_log prune
 ├── mysql_connect.js         — DB pool, session management, c2_query()
 ├── middleware/
@@ -316,7 +316,7 @@ cloudcodex/                  — Application root
 
 | Technology                                    | Purpose                              |
 |-----------------------------------------------|--------------------------------------|
-| [Vitest](https://vitest.dev) 4                | Test runner (three projects)         |
+| [Vitest](https://vitest.dev) 4                | Test runner (four projects)          |
 | [Supertest](https://github.com/ladjs/supertest) 7 | HTTP endpoint testing            |
 | [@testing-library/react](https://testing-library.com/docs/react-testing-library/intro/) | Component testing |
 | `jsdom`                                       | Browser DOM in Node                  |
@@ -333,8 +333,10 @@ cloudcodex/                  — Application root
 ## Environment Configuration
 
 Copy `.env.example` to `.env`. See [getting-started.md](./getting-started.md)
-for the full annotated walkthrough. Required at minimum: DB credentials,
-SMTP credentials, admin super-user. Optional: Google + GitHub OAuth.
+for the full annotated walkthrough. Required at minimum: DB credentials and
+the admin super-user, plus `APP_URL` in production. Optional: SMTP (without it
+invitations show a link to copy, and password reset, email two-factor codes and
+notification emails are off), Google and GitHub OAuth.
 
 ---
 
@@ -350,7 +352,7 @@ SMTP credentials, admin super-user. Optional: Google + GitHub OAuth.
 | [notifications.md](./notifications.md) | Notifications subsystem deep-dive |
 | [frontend.md](./frontend.md) | React app routing, pages, hooks, components |
 | [security.md](./security.md) | Defense-in-depth model |
-| [testing.md](./testing.md) | Vitest projects (two default, one live-MySQL) + coverage thresholds |
+| [testing.md](./testing.md) | Vitest projects (three default, one live-MySQL) + coverage thresholds |
 | [deployment.md](./deployment.md) | Production operations |
 | [troubleshooting.md](./troubleshooting.md) | Common setup/runtime failures |
 | [api/auth.md](./api/auth.md) | Authentication endpoints |

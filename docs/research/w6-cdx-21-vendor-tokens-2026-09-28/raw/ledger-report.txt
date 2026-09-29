@@ -1,0 +1,56 @@
+  19  src/index.css :: Design System Tokens
+   2  src/index.css :: Top Bar
+   3  src/index.css :: Sidebar
+   8  src/index.css :: Buttons
+   2  src/index.css :: Account Button (Top Bar)
+   2  src/index.css :: Mentions (inline @user chips)
+  10  src/index.css :: Notification bell
+   2  src/index.css :: Activity item
+   3  src/index.css :: Watch toggle (editor header)
+   2  src/index.css :: Log Headers
+   7  src/index.css :: Search (Inline - Top Bar)
+   9  src/index.css :: Modal + Overlay
+ 194  src/index.css :: GitHub Integration
+   4  src/index.css :: Login Tabs
+   5  src/index.css :: Signup Validation Styles
+  26  src/index.css :: Settings Layout (archive/workspace/squad settings)
+  78  src/index.css :: Log Tree
+  41  src/index.css :: Editor Log
+   3  src/index.css :: Markdown Editor
+   5  src/index.css :: Version History
+   2  src/index.css :: Squad Members Panel
+   8  src/index.css :: Archive Access Panel
+   3  src/index.css :: User Preferences Panel
+  12  src/index.css :: Collaborative Editing - Presence UI
+   2  src/index.css :: Remote Cursors - Collaborative Editing
+   1  src/index.css :: Export Dropdown
+  26  src/index.css :: Explore / Browse
+  17  src/index.css :: Toast Notifications
+ 101  src/index.css :: Comments & Annotations
+  24  src/index.css :: Admin Dashboard
+  10  src/index.css :: Page Tree
+  10  src/index.css :: Read-only Document View
+   3  src/index.css :: Code Block with Language Selector
+   8  src/index.css :: Syntax Highlighting (highlight.js compatible - dark theme)
+   9  src/index.css :: Draw.io Diagram Block
+   1  src/index.css :: Mobile Layout Overrides
+   7  src/index.css :: Error Boundary
+   1  src/index.css :: Footer
+   3  src/index.css :: Notifications / Activity / Preferences pages (shared shell)
+   1  src/index.css :: Cards + Grid
+   2  src/index.css :: Search Results
+   1  src/index.css :: Not Found Log
+   1  src/index.css :: Focus & Accessibility
+   1  src/index.css :: Mobile Bottom Navigation
+  32  src/userPrefs.js :: (file)
+   6  src/util.jsx :: (file)
+   5  src/components/AccountMenu.jsx :: (file)
+   2  src/components/CommentForm.jsx :: (file)
+   1  src/components/CommentHighlights.jsx :: (file)
+   2  src/components/CommentManager.jsx :: (file)
+   1  src/components/CommentSidebar.jsx :: (file)
+   8  src/components/Login.jsx :: (file)
+   4  src/pages/Editor.jsx :: (file)
+   4  src/pages/GitHubPage.jsx :: (file)
+   1  src/components/github/CodeEmbedPickerModal.jsx :: (file)
+ 745  total

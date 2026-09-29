@@ -1,0 +1,69 @@
+/**
+ * Cloud Codex - theme bindings over the shared cloud-city-design primitives
+ *
+ * All Rights Reserved to Cloud City Computing, LLC 2026
+ * https://cloudcitycomputing.com
+ */
+
+/*
+ * Loaded after vendor/cloud-city-design/core.css and before index.css
+ * (src/main.jsx). core.css declares literal primitives only; every meaning
+ * Codex gives them is bound here. Rules this file keeps:
+ *
+ *  - Every name is --cx- prefixed, so none can collide with a name index.css
+ *    declares or with an undeclared name some rule already reads with a
+ *    fallback. tests/design/codex-css.test.js pins it.
+ *  - Nothing here redeclares a core.css name. A primitive that should change
+ *    is changed upstream and vendored again.
+ *  - Codex is dark only through Wave 6, so there is one block, on the theme
+ *    attribute index.html sets. A bare [data-theme] selector, not
+ *    :root[data-theme], because the vendored contrast parser files any
+ *    selector that mentions :root under its base map.
+ *  - Every text colour clears its minimum on every surface below, measured by
+ *    tests/design/contrast.test.js over tests/design/pairs.json.
+ *
+ * No component reads these names yet (W6-CDX-22 repoints index.css onto
+ * them), so loading this file changes nothing on screen.
+ */
+
+[data-theme='dark'] {
+  /* Surfaces: Codex's five lightness steps (#242424 the page, #1e1e1e the
+     elevated bar, #2e2e2e a panel, #3a3a3a a hover, #444444 a strong hover)
+     with Cloud Command's blue-grey neutral tint, each at the lightness that
+     keeps it within 1.002:1 of the grey it replaces. */
+  --cx-surface-0: oklch(0.26 0.014 240);
+  --cx-surface-1: oklch(0.234 0.014 240);
+  --cx-surface-2: oklch(0.301 0.014 240);
+  --cx-surface-3: oklch(0.348 0.014 240);
+  --cx-surface-4: oklch(0.386 0.014 240);
+
+  /* Text. Primary clears 7:1 on every surface; secondary and faint clear
+     4.5:1 on every surface, the strongest hover included. */
+  --cx-text-primary: oklch(0.92 0.005 240);
+  --cx-text-secondary: oklch(0.84 0.005 240);
+  --cx-text-faint: oklch(0.77 0.005 240);
+
+  /* Accent. --accent-300 is the step that reads as text on these surfaces
+     (--accent-400 would measure 3.46:1 on the strongest hover). The fill is
+     a background only; the token-discipline gate bans it from text, icon and
+     edge positions. */
+  --cx-accent: var(--accent-300);
+  --cx-accent-hover: var(--accent-200);
+  --cx-accent-fill: var(--accent-400);
+  --cx-on-accent: oklch(0.16 0.03 240);
+
+  /* Lines and the overlay wash: flat and tinted. */
+  --cx-border: oklch(0.386 0.014 240);
+  --cx-scrim: oklch(0.12 0.02 240 / 0.6);
+
+  /* Status, on the package's pale step, the one that reads as text on
+     surfaces from #1e1e1e to #444444. The package has no info ramp, so info
+     reads as the accent. */
+  --cx-danger: var(--danger-pale);
+  --cx-success: var(--success-pale);
+  --cx-warning: var(--warning-pale);
+  --cx-info: var(--accent-300);
+
+  /* The focus ring follows the accent. */
+  --cx-focus-ring: var(--cx-accent);
+}

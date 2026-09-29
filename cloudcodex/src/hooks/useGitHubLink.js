@@ -20,7 +20,12 @@ import {
 
 /**
  * @param {number|null} logId - the document being edited
- * @param {{ remoteEventsRef?: { current: { onGithubPulled: ((msg: object) => void) | null } } }} [opts]
+ * @param {{
+ *   enabled?: boolean,
+ *   remoteEventsRef?: { current: { onGithubPulled: ((msg: object) => void) | null } },
+ * }} [opts] - `enabled` (default true) is false while the user is not known to
+ *   have a GitHub account linked: every /api/github route refuses such a user
+ *   with a 403, so the hook asks nothing and reports no link.
  * @returns {{
  *   link: object|null,
  *   status: object|null,
@@ -41,9 +46,10 @@ export default function useGitHubLink(logId, opts = {}) {
   const [error, setError] = useState(null);
   const [conflict, setConflict] = useState(null);
   const mountedRef = useRef(true);
+  const enabled = opts.enabled !== false;
 
   const refresh = useCallback(async () => {
-    if (!logId) {
+    if (!logId || !enabled) {
       setLink(null);
       setStatus(null);
       return;
@@ -72,7 +78,7 @@ export default function useGitHubLink(logId, opts = {}) {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [logId]);
+  }, [logId, enabled]);
 
   useEffect(() => {
     mountedRef.current = true;

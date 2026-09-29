@@ -2,7 +2,8 @@
 
 React 19 + React Router 7, served by `vite-express` from the same Node process
 that serves the API. No SSR, no state library, no CSS framework. Roughly 73 JSX
-files plus a single 8844-line `src/index.css`.
+files plus a single 9070-line `src/index.css`, on top of the vendored design
+primitives (section 6).
 
 ---
 
@@ -30,7 +31,7 @@ not a general catch-all.
 |---|---|---|
 | `/` | HomePage | eager |
 | `/reset-password` | ResetPasswordPage | |
-| `/editor/:logId` | Editor | wrapped in `MobileEditorGuard` |
+| `/editor/:logId` | Editor | wrapped in `MobileEditorGuard`; the page wraps its `EditorView` in `Std_Layout`, which `ArchiveView` also embeds it in |
 | `/account`, `/settings` → `/account` | AccountSettings | `/settings` is a redirect |
 | `/archives`, `/archives/:archiveId` | ArchivesPage | |
 | `/archives/:archiveId/doc/:logId`, `/archives/:archiveId/doc` | ArchiveView | |
@@ -68,20 +69,35 @@ Rollup's default chunking.
 
 ## 2. The API layer: `src/util.jsx`
 
-667 lines, and the single place any component should talk to the server from.
+727 lines, and the single place any component should talk to the server from.
 
 `apiFetch(method, url, data)` (`util.jsx:28-52`) reads the session token from
-the cookie via `getSessionTokenFromCookie()` (`util.jsx:630`), sets
+the cookie via `getSessionTokenFromCookie()` (`util.jsx:661`), sets
 `Authorization: Bearer`, JSON-encodes the body for non-GET, and on a non-2xx
 throws an `Error` carrying `.status` and `.body`. `getErrorMessage(err)`
 (`util.jsx:102`) is the standard way to render that.
 
-`setSessionCookie(token)` (`util.jsx:647`) is the one client-side writer of the
-`sessionToken` cookie (`path=/`, seven-day `max-age`, `secure`,
-`samesite=strict`). Sign-in (`Login.jsx`, all three success paths) and the
-account panel's session rotation both call it, so a token rotated after an
-email or password change lives exactly as long as a fresh sign-in's. Write
-the cookie any other way and the two drift.
+`setSessionCookie(token)` (`util.jsx:676`) is the one client-side writer of the
+session cookie: `__Host-sessionToken` with `secure` on an https page,
+`sessionToken` without it on plain http (a browser keeps neither a `__Host-`
+nor a `Secure` cookie there), both `path=/`, seven-day `max-age`,
+`samesite=strict`, never a `Domain`. Sign-in (`Login.jsx`, all three success
+paths) and the account panel's session rotation both call it, so a token
+rotated after an email or password change lives exactly as long as a fresh
+sign-in's. Write the cookie any other way and the two drift.
+`clearSessionCookie()` (`util.jsx:688`) expires both names, and sign-out
+(`AccountPanel.jsx`) goes through it.
+
+`getSessionTokenFromCookie()` prefers the prefixed name and, on an https page,
+does not read a lone legacy `sessionToken` at all, since a sibling host could
+have planted it. `upgradeLegacySessionCookie()` (`util.jsx:706`) moves a real
+one across: `main.jsx` awaits it before the first render, it asks
+`POST /api/validate-session` with `legacyCookie: true`, and it rewrites the
+token under the prefixed name only on a yes. It gives up after 5 seconds, so a
+silent server cannot hold the first render, and remembers a refusal for the
+tab. Every cookie name is matched exactly by `readCookie` (`util.jsx:645`),
+which strips only ASCII space and tab, never Unicode whitespace (W6-CDX-3;
+[request-lifecycle.md](request-lifecycle.md) section 3, "The session cookie").
 
 `serverReq` (`util.jsx:62`) is the legacy predecessor. It does **not** attach
 auth. Do not use it in new code; it exists for the handful of pre-auth calls.
@@ -122,8 +138,8 @@ should use React components (`ConfirmDialog`, `Toast`) instead.
 | `useCollab.js` | the `/collab` WebSocket and the shared `Y.Doc`; returns connection state, presence, cursors, and five senders |
 | `usePresence.js` | polls `/api/presence` for who is in which document, for browse/archive views |
 | `useNotificationChannel.js` | the `/notifications-ws` socket, feeding `NotificationBell` |
-| `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance |
-| `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner` |
+| `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
+| `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
 | `useFirstRun.js` | fetches `GET /api/first-run` once per mount, exposes `{ firstRun, loading, complete }` |
 
@@ -137,6 +153,20 @@ a 10-second timeout (`useCollab.js:252-283`).
 
 `useGitHubStatus` is a `.jsx` file, not `.js`, because it exports a context
 provider alongside the hook.
+
+**The layout and the editor do not ask a GitHub route that would refuse.** The
+status route (`routes/oauth.js`) is behind `requireAuth`, a 401 signed out, and
+every route in `routes/github.js` is behind `requireGitHub` as well, a 403 with
+no account linked. Both used to ask anyway: every signed-out landing page logged
+a 401 and every document view by an unlinked user a 403. `Std_Layout` now mounts
+`GitHubStatusProvider` inside itself with `enabled={Boolean(user)}`, so nothing
+is asked until its auth check finds a user (a stale session cookie included),
+and the editor passes `{ enabled: connected === true }` to `useGitHubLink`. The
+server's gates are unchanged; the client only stopped asking. The provider holds
+`null` from enabling until its answer, so the sidebar, which hides its GitHub
+link on `false`, does not flash it away for linked users.
+`tests/src/page_layouts/Std_Layout.test.jsx` pins the signed-out and
+stale-cookie cases.
 
 `useFirstRun` dismisses locally before the completion request resolves:
 `complete()` sets local state to null immediately, then fires
@@ -197,8 +227,12 @@ one:
   renderers over the same collab cursor data.
 
 `src/page_layouts/Std_Layout.jsx` is the shell (nav, sidebar, content slot) that
-every page composes. Its authenticated branch renders `<FirstRunGate />`
-ahead of `children`, which is the mount point that finally makes the welcome
+every page composes, and the home of `GitHubStatusProvider` (section 3); its
+`Sidebar` and `MobileNav` read the status from it. Because `children` render
+only once the auth check has found a user, the standalone editor route wraps
+`EditorView` in it rather than the other way round, which puts the view's hooks
+inside the provider exactly as `ArchiveView`'s embedded editor already was. Its
+authenticated branch renders `<FirstRunGate />` ahead of `children`, which is the mount point that finally makes the welcome
 reachable for the admin, who is synced from `.env` at boot rather than
 signing up through an invitation and so never passed through the old
 imperative call in `Login.jsx`.
@@ -248,9 +282,43 @@ adding its option map here, handling it in `applyPrefsToDOM`, and extending
 
 ## 6. Styling
 
-One file: `src/index.css`, 8844 lines. No CSS modules, no preprocessor, no
-utility framework. Theming works entirely through CSS custom properties set by
-`applyPrefsToDOM`, which is why preferences apply instantly without a re-render.
+Four stylesheets, imported by `src/main.jsx` in this order, which is
+load-bearing:
+
+1. `vendor/cloud-city-design/core.css`, the suite's 61 literal primitives on
+   `:root` (accent and semantic ramps, type scale, spacing, radii, motion, the
+   z-scale). It opens with its Apache-2.0 notice; Vite keeps it at the head of
+   the built stylesheet only because it is imported first and
+   `vite.config.js` sets `esbuild.legalComments: 'inline'` (Vite's default
+   strips it).
+2. `vendor/cloud-city-design/fonts.css`, `@font-face` for Inter and Poppins
+   with relative URLs, so Vite fingerprints the six `.woff2` files into
+   `dist/assets/`. Never `public/`, which the `app_public` volume shadows.
+   Nothing sets either family yet, so no font is fetched.
+3. `src/codex.css`, Codex's bindings: every name `--cx-` prefixed, all under
+   `[data-theme='dark']`, which `index.html` sets on `<html>` (Codex is dark
+   only through Wave 6). Five surfaces, three text levels, the accent
+   (`--accent-300`), its hover and fill, the status colours on the pale step,
+   the border, the scrim and the focus ring. **No rule reads a `--cx-` name
+   yet**; W6-CDX-22 repoints the legacy names onto them.
+4. `src/index.css`, 9070 lines, the whole app. No CSS modules, no
+   preprocessor, no utility framework. Its `:root` block declares the 27
+   legacy names every rule reads.
+
+**Four names overlap.** `index.css` redeclares `--brand-blue` and
+`--radius-sm`, `-md`, `-lg`, which `core.css` also declares; loaded later on
+the same selector, Codex's values win (radii 4, 8, 12 px against core's 6, 10,
+14). `tests/design/codex-css.test.js` pins the set so it can only shrink.
+**One name changed meaning:** `--font-mono`, which two GitHub-page rules read
+with a fallback, now resolves to core's monospace stack.
+
+Theming works through CSS custom properties set by `applyPrefsToDOM` on the
+root element, which is why preferences apply instantly without a re-render.
+The design gate (`tests/design/`, see
+[build-test-and-ops.md](build-test-and-ops.md) section 5) holds `src/` to an
+exemption ledger of literal colours, accent fill shades in text positions and
+suppressed outlines that can only shrink, and fails on any `var()` without a
+fallback that names nothing.
 
 Mobile is a recent investment area; UI changes should be checked at both
 desktop and mobile widths.

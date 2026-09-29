@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- An HTML comment is masked: #123456 and rgb(1 2 3) are not findings. -->
+    <style>
+      .fx-hero { background: #fedcba; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <a href="#abc">A fragment that happens to be hex</a>
+    <a href='#bad'>A single-quoted fragment</a>
+    <a href = "#cafe">A spaced fragment</a>
+    <p style="color: #0f0f0f">An inline literal</p>
+  </body>
+</html>

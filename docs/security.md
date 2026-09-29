@@ -22,7 +22,9 @@ even if the DB is compromised.
    │  edge:    helmet: every response in prod, /api in dev    │
    │           (CSP, X-Frame DENY, X-CT, Referrer, COOP)      │
    │           CORS allowlist (no localhost in prod)          │
-   │           express-rate-limit (auth 20/15m, search 60/15m)│
+   │           Origin required on a cookie-only /api write    │
+   │           express-rate-limit (auth 20/15m, user search   │
+   │           60/15m, documents/state 120/15m)               │
    └──────────────────────────────────────────────────────────┘
       │
       ▼
@@ -33,7 +35,7 @@ even if the DB is compromised.
       │
       ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  auth:    requireAuth (Bearer token / sessionToken cookie)│
+   │  auth:    requireAuth (Bearer token / session cookie)    │
    │           validateAndAutoLogin → user object on req      │
    │           requireAdmin / requirePermission               │
    │           workspace tenant check on a body squad_id      │
@@ -85,6 +87,21 @@ Session tokens are 64-character cryptographically random strings (`crypto.getRan
 
 A successful password reset deletes every session of the user.
 
+### The session cookie
+
+In the browser the token lives in a cookie. **On https it is named `__Host-sessionToken`**, which a browser accepts only with `Secure`, `Path=/` and no `Domain`, so no other host under your domain can set it. Over plain http it is `sessionToken`, the name every earlier release used, because a browser keeps neither a `__Host-` nor a `Secure` cookie there. It is `SameSite=Strict` and never carries a `Domain`. It is not `HttpOnly`: the page reads the token to authenticate its two WebSockets.
+
+The prefix matters when other sites share your registrable domain (`docs.example.com` beside `app.example.com`). Script on any of them can set `sessionToken=<its own>; Domain=example.com; Path=/api`, and a browser sends the cookie with the longer path first. The server and the page both take the prefixed cookie over a legacy one wherever it sits, and match the name exactly: a cookie whose name only looks like `__Host-sessionToken` (one that starts with a Unicode space, say) is a different cookie to the browser, free of the prefix rules, and is never read as this one. A lone legacy cookie authenticates only while `LEGACY_SESSION_COOKIE` allows it:
+
+- **Unset (the default)**, a browser still holding the older `sessionToken` stays signed in. On its next visit over https the page asks the server to confirm that session and moves it to `__Host-sessionToken`; it never uses a lone legacy cookie before the server has said yes.
+- **`LEGACY_SESSION_COOKIE=0`** makes a lone `sessionToken` authenticate nobody, on the server and in the page. Set it on an https instance that shares its domain with hosts you do not fully control. Browsers that have not visited since the upgrade sign in again.
+
+The same rule covers the short-lived cookie that ties a Google sign-in or a GitHub link to the browser that started it. On https it is `__Host-oauth_state_google` or `__Host-oauth_state_github` (Secure, `Path=/`, `HttpOnly`, `SameSite=Lax`), and the callback reads the state under that exact name only, so another host under your domain cannot hand a browser a state of its own. Over plain http the names stay `oauth_state_google` and `oauth_state_github`, at `Path=/api/oauth`.
+
+### Cross-site request forgery
+
+There are no CSRF tokens; two rules do the job instead. CORS refuses any `Origin` that is not the app's own host, `APP_URL`'s host, `CORS_ORIGIN`, or (outside production) localhost. And **an `/api` write (`POST`, `PUT`, `PATCH`, `DELETE`) whose only credential is the session cookie is refused with 403 unless it carries an `Origin` that the same rule accepts**. A browser attaches a cookie by itself but a bearer header only when the page's own script adds one, so a request carrying `Authorization: Bearer` (every call the app makes through its API helper, and every server-to-server caller) is not affected, and a browser sends `Origin` on every same-origin write. `SameSite=Strict` alone would not be enough: it treats sibling hosts under one registrable domain as the same site. A script that posts with only a cookie must send an `Origin` or use the bearer header.
+
 ---
 
 ## Account Changes
@@ -96,7 +113,7 @@ A successful password reset deletes every session of the user.
 - **After an email change, a notice goes to the old address** when mail is enabled, so the owner hears about a change that was not theirs.
 - **An account with no password** (one an external sign-in created) has no current password to give. Its email change is confirmed with a 6-digit code emailed to its **current** address (ten minutes, one pending change at a time, the new address bound to the confirmation token so the code applies exactly the address it was sent for), completed at `POST /api/update-account/confirm-email`, which rotates sessions the same way. With mail disabled that change is refused with a sentence saying why. Such an account sets a first password only through Forgot Password.
 
-`POST /api/logout` deletes the `sessions` row for the presented token, and only that one: other devices stay signed in. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then `sessionToken` cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
+`POST /api/logout` deletes the `sessions` row for the presented token, and only that one: other devices stay signed in. It resolves the token through the same exported `extractSessionToken` that `requireAuth` uses (Authorization header, then the session cookie, then a `req.body.token` fallback), so a logout terminates the server-side session and not just the client's copy of the token.
 
 ---
 
@@ -237,7 +254,8 @@ A violation found later is fixed by widening the one directive it needs, with a 
 | Scope | Limit |
 | --- | --- |
 | Auth endpoints (sign-in, sign-up, password reset, 2FA verification and confirmations, the Google callback, account changes and their email confirmation, the reader check) | 20 requests / 15 min, one bucket per IP |
-| Search | 60 requests / 15 min |
+| User search (`GET /api/users/search`) | 60 requests / 15 min |
+| The reconciliation read (`GET /api/documents/state`), counted before authentication, so an unauthenticated caller spends it too | 120 requests / 15 min |
 | WebSocket messages | 60 messages / second |
 
 "Per IP" is the address that connected, unless that peer is a proxy `TRUST_PROXY` names, in which case it is the client the proxy names in `X-Forwarded-For`. The default names proxies by address and nothing else: loopback and the gateway of the network the production compose files pin (`127.0.0.1/32, ::1/128, 172.29.0.1/32`), which is where a proxy on the host arrives from. So a public client, a LAN, VPN or VPC neighbour, and a sibling container reaching the app over the compose network cannot pick their own key, even behind a proxy that appends the header. That holds while the app port stays on its loopback publish: every process on the host that reaches the published port, and with `APP_BIND` widened every container on the host (a sibling going to the gateway address, or a container on another Docker network going to the host's address), arrives as the gateway and is trusted. The default bridge's gateway, `172.17.0.1`, is not trusted: an IPv4-only Docker network presents every IPv6 client of an all-interfaces or IPv6 publish as its gateway, which `docker run -p PORT:PORT` does. A hop count, `true`, or a range wider than an IPv4 /8, wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or holding more than an IPv4 /8 of `::ffff:0:0/96` is refused at boot unless `TRUST_PROXY_ALLOW_HOP_COUNT=true`, and an entry not in standard notation always is; a peer the list leaves out that sends the header is logged once, and the resolved list is printed at boot (GHSA-9fmx-frrf-xxmq). The production compose files publish the app port on `127.0.0.1` unless `APP_BIND` says otherwise, and `docker-compose-prod.yml` publishes MySQL on `127.0.0.1` unless `DB_BIND` says otherwise. See [deployment.md](deployment.md#rate-limiters).
@@ -246,7 +264,7 @@ A violation found later is fixed by widening the one directive it needs, with a 
 
 ## WebSocket Hardening
 
-- Origin validation on connection upgrade
+- Origin validation on connection upgrade: an upgrade with no `Origin`, or one whose host is not the request's `Host` (a sibling host included), is refused with 403
 - Authentication timeout (unauthenticated connections are closed after a short window)
 - 5 MB message size limit
 - Per-user connection caps to prevent resource exhaustion
@@ -264,7 +282,7 @@ A violation found later is fixed by widening the one directive it needs, with a 
 
 ## CORS
 
-Allowed origins are configured via the `CORS_ORIGIN` environment variable. The `localhost` bypass that is active in development is disabled in production builds.
+The API allows a request with no `Origin` (a same-origin read, a server-to-server call) and one whose `Origin` is the app's own host, `APP_URL`'s host, or exactly `CORS_ORIGIN`. The `localhost` bypass that is active in development is disabled in production builds. The same rule decides whether a cookie-only write may proceed (see [Cross-site request forgery](#cross-site-request-forgery)).
 
 ---
 
@@ -323,6 +341,18 @@ Two refusals are deliberate:
 resolution table, the behaviour change that came with the orphaned-squad rule,
 and the reason the archive-derived squad is deliberately not checked in the
 middleware.
+
+**Between instances**, when several share one MySQL server, the boundary is
+not in the application at all: it is the MySQL grant. Each instance's app
+account holds `SELECT`, `INSERT`, `UPDATE` and `DELETE` on its own schema and
+nothing else, per the recipe in
+[deployment.md](deployment.md#several-instances-on-one-mysql-server), and
+`tests/integration/tenancy.test.js` proves that recipe against a live server.
+The grant keeps another instance's rows out of reach, not its name: every
+MySQL account can list every schema's name and table names, so the recipe
+names schemas opaquely.
+Section 9 of [maps/access-control.md](maps/access-control.md) says what it
+does and does not cover.
 
 ---
 
