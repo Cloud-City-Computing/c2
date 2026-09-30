@@ -87,12 +87,16 @@ npm run test:coverage # if your change touches a glob with a per-glob
                       # threshold (see vitest.config.js)
 npm run test:integration  # if your change touches schema, migrations or SQL
                           # behaviour; needs a MySQL 8.4 (cloudcodex/tests/README.md)
+npm audit --omit=dev --audit-level=moderate  # if you add or upgrade a dependency
 ```
 
 There are **no pre-commit hooks** — local lint/test is on you. CI
-(`.github/workflows/ci.yml`) runs `npm ci && npm run lint && npm test`,
-the live-MySQL integration project, coverage and the production build on
-push to `main` and on every PR.
+(`.github/workflows/ci.yml`) runs `npm ci`, then a dependency audit
+(`npm audit --omit=dev --audit-level=moderate`: any moderate or worse
+advisory in a production dependency fails the build), then
+`npm run lint`, ShellCheck over `scripts/*.sh`, `npm test`, the live-MySQL
+integration project, coverage and the production build, on push to `main` and on every PR. A second
+audit over the whole tree, dev tools included, reports without failing.
 
 ---
 
@@ -141,8 +145,11 @@ should understand the motivation in two minutes. Mention:
 - Areas that need extra eyes if the change touches access control,
   the editor, the collab WS, or the auth flow
 
-CI must be green before merge. There's no magic — `npm run lint &&
-npm test` is the full bar.
+CI must be green before merge; the CI steps under Tests are the full bar.
+The audit step can turn red on a PR that touched no dependency, when an
+advisory is published against one already in the tree: fix it by
+upgrading that package, in its own PR if it is unrelated, never by
+lowering the audit level.
 
 ---
 

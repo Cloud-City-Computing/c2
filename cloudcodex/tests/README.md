@@ -17,7 +17,7 @@ npm run test:coverage    # full suite with v8 coverage and threshold check
 npm run test:integration # opt-in: tests/integration/ against a live MySQL
 ```
 
-CI runs `npm run lint && npm test && npm run test:integration && npm run test:coverage && npm run build`.
+CI runs `npm audit --omit=dev --audit-level=moderate && npm run lint && shellcheck -x scripts/*.sh && npm test && npm run test:integration && npm run test:coverage && npm run build` (ShellCheck from the repository root).
 Threshold violations fail the build.
 
 `test`, `test:watch` and `test:coverage` name `--project backend --project frontend

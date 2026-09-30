@@ -338,9 +338,10 @@ fourth, `integration`, is opt-in because it needs a MySQL server:
 
 Current state: the default run is **109 files, 2533 tests, all passing** (5
 files and 80 tests of it are `design`); the integration project is **18 files,
-217 tests** (measured 2026-09-29 on `track/w6-cdx-13-outbox` with main merged
-in after W6-CDX-33, against a stock MySQL 8.4.11 at the server's default
-isolation and at `READ-COMMITTED`, with MySQL's 8.4.11 clients on `PATH`).
+217 tests** (measured 2026-09-29 on `chore/deps-audit`, the upgraded
+dependencies, with main merged in after W6-CDX-13, against a stock MySQL 8.4.11
+at the server's default isolation and at `READ-COMMITTED`, with MySQL's 8.4.11
+clients on `PATH`).
 
 The backup file's child-process helpers (`spawn`, `childEnv`, `holdLock`,
 `startServer`, `signIn`, `freePort`, `killChildren` and the boot `ADMIN`) live
@@ -844,12 +845,36 @@ you raise real coverage, ratchet the threshold up in the same PR; the comment at
 cache keyed on `cloudcodex/package-lock.json`, working directory `cloudcodex`:
 
 ```
-npm ci -> npm run lint -> shellcheck -x scripts/*.sh -> npm test -> npm run test:integration -> npm run test:coverage -> npm run build
+npm ci -> npm audit --omit=dev --audit-level=moderate -> npm audit (advisory only)
+       -> npm run lint -> shellcheck -x scripts/*.sh -> npm test -> npm run test:integration
+       -> npm run test:coverage -> npm run build
 ```
 
 The ShellCheck step runs from the repository root (`working-directory: .`) with
 the runner image's own `shellcheck`; the Bash scripts are the only code no
 other step reads.
+
+**The dependency gate** is the step named `Dependency audit (production,
+blocking)`, first after `npm ci`, so a finding fails in seconds under its own
+name. It fails on any advisory of moderate severity or worse against a package
+`npm ci --omit=dev` would install, which is the tree the Docker image ships.
+Dev tools are excluded so that an advisory in a lint or test dependency does
+not turn every PR red; the next step, `Dependency audit (all, advisory only)`,
+runs a plain `npm audit` with `continue-on-error: true`, which leaves a red
+mark on that step and a green job. Cloud Command runs the same pair. Before
+the gate, `npm audit` ran nowhere, and 19 production findings had
+accumulated by 2026-09-28.
+
+What it does and does not catch:
+
+- It turns red **without a code change** when an advisory is published
+  against a package already in the lockfile. The fix is an upgrade
+  (`npm audit fix`, or a major read against its changelog), never a lower
+  `--audit-level`.
+- It needs the registry: an npm outage fails the step, which a re-run
+  clears.
+- `release.yml` does not run it, so a tag cut from a commit that predates
+  an advisory still publishes.
 
 The job carries a `mysql:8.4.11` **service container** (root password
 `ci-root-password`, published on 3306, health-checked with `mysqladmin ping`),

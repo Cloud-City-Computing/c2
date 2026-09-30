@@ -46,6 +46,24 @@ jobs:
 
       - run: npm ci
 
+      # The dependency gate, first after install so a new advisory fails in
+      # seconds under its own name rather than after the suite. Before it,
+      # npm audit ran nowhere, and 19 production findings piled up unseen.
+      # Blocking and production-only: moderate is the floor GitHub's own
+      # advisory severity uses, and a dev-tool advisory must not turn every
+      # PR red. Cloud Command runs the same command. Clear it by upgrading
+      # the package the step names (npm audit fix, or a major with its
+      # changelog read), never by lowering the level.
+      - name: Dependency audit (production, blocking)
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # The whole tree, dev tools included, for visibility only:
+      # continue-on-error keeps a red result on the step without failing
+      # the job.
+      - name: Dependency audit (all, advisory only)
+        run: npm audit
+        continue-on-error: true
+
       - run: npm run lint
 
       # scripts/backup.sh and scripts/restore.sh are Bash, which ESLint never
