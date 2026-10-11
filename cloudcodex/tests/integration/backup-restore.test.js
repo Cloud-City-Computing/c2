@@ -524,6 +524,22 @@ describe('scripts/restore.sh refuses before it writes anything', () => {
   });
 });
 
+/**
+ * Poll IS_FREE_LOCK on the instance lock until MySQL has released it after a
+ * SIGKILLed holder, or fail with a clear message at the bound.
+ */
+async function waitForInstanceLockFree(conn, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const [[row]] = await conn.query(`SELECT IS_FREE_LOCK(${INSTANCE_LOCK_NAME_SQL}) AS free`);
+    if (Number(row.free) === 1) return;
+    if (Date.now() >= deadline) {
+      throw new Error(`the instance lock was still held ${timeoutMs} ms after its holder was SIGKILLed`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 describe('the restore\'s load session', () => {
   /** TAKE_LOCK_SQL as scripts/backup-common.sh defines it, expanded by Bash. */
   function takeLockSql() {
@@ -546,6 +562,9 @@ describe('the restore\'s load session', () => {
       await expect(conn.query(sql)).rejects.toThrow(/instance lock/);
 
       await kill(holder, 'SIGKILL');
+      // MySQL frees a GET_LOCK only when it notices the dead connection, which
+      // can trail the child's exit, so wait for the lock to be free first.
+      await waitForInstanceLockFree(conn);
       await conn.query(sql);
       const [[row]] = await conn.query(`SELECT IS_USED_LOCK(${INSTANCE_LOCK_NAME_SQL}) = CONNECTION_ID() AS mine`);
       expect(Number(row.mine)).toBe(1);
