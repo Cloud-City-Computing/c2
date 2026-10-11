@@ -38,7 +38,8 @@ initialises an empty data directory.
   whose secret is shown once with a copy button, turns one on or off, rotates a secret, deletes one,
   and lists its recent deliveries with Redeliver on a dead one. Every change asks first. The Cancel
   button of a confirmation now takes focus when it opens. The admin console stacks its sidebar above
-  the content on a narrow screen.
+  the content on a narrow screen. Its times are UTC whatever the server's zone. A failed action is toasted, not
+  dropped, and a 404 reloads the list; create and rotate pause while a secret is on screen.
 - **The shared Cloud City design package, vendored, and a design gate.**
   `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
   Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)

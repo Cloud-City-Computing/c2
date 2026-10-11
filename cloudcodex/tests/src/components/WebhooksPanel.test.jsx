@@ -341,7 +341,8 @@ describe('WebhooksPanel: the env subscription, the server-decided expiry and the
     await user.click(within(card).getByRole('button', { name: /rotate secret/i }));
     const dialog = renderLastModal();
     await user.click(within(dialog.container).getByRole('button', { name: /rotate secret/i }));
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith(err));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Webhook not found', 'error', 5000));
+    expect(toastError).not.toHaveBeenCalled();
     expect(api.destroyModal).toHaveBeenCalled();
     expect(api.fetchWebhooks.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
@@ -356,11 +357,11 @@ describe('WebhooksPanel: the env subscription, the server-decided expiry and the
     await user.click(within(card).getByRole('button', { name: /delete/i }));
     let dialog = renderLastModal();
     await user.click(within(dialog.container).getByRole('button', { name: /^delete$/i }));
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith(gone));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Webhook not found', 'error', 5000));
     await user.click(within(card).getByRole('button', { name: /turn off/i }));
     dialog = renderLastModal();
     await user.click(within(dialog.container).getByRole('button', { name: /turn off/i }));
-    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(showToast).toHaveBeenCalledTimes(2));
   });
 
   it('keeps a failed action visible after the dialog is dismissed mid-flight: it is toasted, not swallowed', async () => {

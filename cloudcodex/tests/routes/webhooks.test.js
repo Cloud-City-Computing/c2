@@ -29,7 +29,7 @@ const row = (over = {}) => ({
   consecutive_failures: 0,
   paused_until: null,
   created_by: 1,
-  created_at: '2026-09-28T00:00:00.000Z',
+  created_at_seconds: Date.parse('2026-09-28T00:00:00.000Z') / 1000,
   ...over,
 });
 
@@ -436,6 +436,10 @@ describe('the subscription cap and the expired redelivery (review follow-ups)', 
 });
 
 describe('the console read in UTC, and the environment delivery refusal (W6-CDX-15 review)', () => {
+  beforeEach(() => {
+    resetMocks();
+  });
+
   it('lists paused_until as UTC text with milliseconds, and created_at from epoch seconds', async () => {
     mockAuthenticated(ADMIN_USER);
     c2_query.mockResolvedValueOnce([

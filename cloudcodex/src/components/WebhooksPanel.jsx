@@ -39,8 +39,6 @@ const EVENT_LABELS = {
 
 const STATE_LABELS = { delivering: 'Delivering', stalled: 'Stalled', off: 'Off' };
 const DELIVERY_LABELS = { pending: 'Waiting to send', delivered: 'Delivered', dead: 'Not delivered' };
-// The worker's own text for an event that outlived the 72-hour window.
-const EXPIRED_ERROR = 'expired after 72h';
 
 /** A subscription's state for the admin: off, stalled (failing in a row) or delivering. */
 function stateOf(webhook) {
@@ -49,9 +47,9 @@ function stateOf(webhook) {
   return 'delivering';
 }
 
-/** The newest delivery that recorded a failure, or undefined. */
+/** The newest delivery that recorded a receiver's answer, or undefined. An expiry is not an answer. */
 function lastFailure(rows) {
-  return rows?.find((d) => d.last_error && d.last_error !== EXPIRED_ERROR);
+  return rows?.find((d) => d.last_error && !d.expired);
 }
 
 /** The receiver's last answer, in words an admin can act on. */
@@ -63,9 +61,12 @@ function describeAnswer(delivery) {
   return `${error}.`;
 }
 
-/** Whether a dead delivery can go out again: an expired one cannot, the API would refuse it. */
+/**
+ * Whether a dead delivery can go out again. `expired` is the server's own test
+ * of the 72-hour window, the one its redeliver route answers 409 by.
+ */
 function canRedeliver(delivery) {
-  return delivery.status === 'dead' && delivery.last_error !== EXPIRED_ERROR;
+  return delivery.status === 'dead' && !delivery.expired;
 }
 
 function EventsSummary({ types }) {
@@ -196,7 +197,7 @@ function DeliveriesTable({ webhook, entry, onRedeliver }) {
               <td>{d.last_error ?? '-'}</td>
               <td>{timeAgo(d.created_at)}</td>
               <td>
-                {canRedeliver(d) && (
+                {!webhook.managed && canRedeliver(d) && (
                   <button className="btn btn-ghost btn-sm" onClick={() => onRedeliver(webhook, d)}>Redeliver</button>
                 )}
               </td>
@@ -208,7 +209,7 @@ function DeliveriesTable({ webhook, entry, onRedeliver }) {
   );
 }
 
-function WebhookCard({ webhook, entry, expanded, onToggle, onRedeliver, onToggleEnabled, onRotate, onDelete }) {
+function WebhookCard({ webhook, entry, expanded, revealOpen, onToggle, onRedeliver, onToggleEnabled, onRotate, onDelete }) {
   const state = stateOf(webhook);
   const managed = webhook.managed;
   const urlId = `webhook-${webhook.id}-url`;
@@ -249,7 +250,7 @@ function WebhookCard({ webhook, entry, expanded, onToggle, onRedeliver, onToggle
             <button className="btn btn-ghost btn-sm" onClick={() => onToggleEnabled(webhook)}>
               {webhook.enabled ? 'Turn off' : 'Turn on'}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => onRotate(webhook)}>Rotate secret</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => onRotate(webhook)} disabled={revealOpen}>Rotate secret</button>
             <button className="btn btn-ghost btn-sm btn-danger" onClick={() => onDelete(webhook)}>Delete</button>
           </>
         )}
@@ -312,6 +313,24 @@ export default function WebhooksPanel() {
     load();
   };
 
+  /**
+   * Runs a confirmed action. However it ends, the dialog closes, so a failure is
+   * never left behind a dimmer the user dismissed: it is reported as a toast, and
+   * the list reloads, because a 404 means the row is already gone.
+   */
+  const settle = (action, { onDone = load, onFail = load } = {}) => async () => {
+    try {
+      await action();
+      destroyModal();
+      onDone();
+    } catch (err) {
+      destroyModal();
+      if (err.status === 404) showToast(err.body?.message || 'That webhook no longer exists', 'error', 5000);
+      else toastError(err);
+      onFail();
+    }
+  };
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(reveal.secret);
@@ -328,12 +347,10 @@ export default function WebhooksPanel() {
         message="The current secret stops working at once. Set the new one on the receiver straight after; it is shown once."
         confirmLabel="Rotate secret"
         danger
-        onConfirm={async () => {
+        onConfirm={settle(async () => {
           const res = await rotateWebhook(webhook.id);
-          destroyModal();
           setReveal({ title: `New secret for ${webhook.url}`, secret: res.secret });
-          load();
-        }}
+        })}
       />
     );
   };
@@ -348,11 +365,7 @@ export default function WebhooksPanel() {
           : 'Cloud Codex stops sending to this receiver. Events keep queuing, and go out in order if you turn it on again.'}
         confirmLabel={turningOn ? 'Turn on' : 'Turn off'}
         danger={false}
-        onConfirm={async () => {
-          await setWebhookEnabled(webhook.id, turningOn);
-          destroyModal();
-          load();
-        }}
+        onConfirm={settle(() => setWebhookEnabled(webhook.id, turningOn))}
       />
     );
   };
@@ -364,11 +377,7 @@ export default function WebhooksPanel() {
         message="Its queued and past deliveries are removed too, and the receiver stops getting events at once. This cannot be undone."
         confirmLabel="Delete"
         danger
-        onConfirm={async () => {
-          await deleteWebhook(webhook.id);
-          destroyModal();
-          load();
-        }}
+        onConfirm={settle(() => deleteWebhook(webhook.id))}
       />
     );
   };
@@ -380,13 +389,17 @@ export default function WebhooksPanel() {
         message="It goes back in the queue and is sent again, in order, before newer events for this webhook. Only do this once the receiver is fixed."
         confirmLabel="Redeliver"
         danger={false}
-        onConfirm={async () => {
-          await redeliverWebhook(delivery.id);
-          destroyModal();
-          showToast('Queued to send again', 'success');
-          loadDeliveries(webhook.id);
-          load();
-        }}
+        onConfirm={settle(() => redeliverWebhook(delivery.id), {
+          onDone: () => {
+            showToast('Queued to send again', 'success');
+            loadDeliveries(webhook.id);
+            load();
+          },
+          onFail: () => {
+            loadDeliveries(webhook.id);
+            load();
+          },
+        })}
       />
     );
   };
@@ -401,7 +414,7 @@ export default function WebhooksPanel() {
     <div className="admin-panel webhooks-panel">
       <div className="admin-panel__header">
         <h3>Webhooks</h3>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)} disabled={showCreate}>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)} disabled={showCreate || Boolean(reveal)}>
           + New Webhook
         </button>
       </div>
@@ -418,6 +431,7 @@ export default function WebhooksPanel() {
             <code className="webhook-reveal__secret">{reveal.secret}</code>
             <button className="btn btn-ghost btn-sm" onClick={handleCopy}>Copy secret</button>
           </div>
+          <p className="text-muted webhook-reveal__pause">Create and rotate are paused until you choose Done.</p>
           <button className="btn btn-primary btn-sm" onClick={() => setReveal(null)}>Done</button>
         </section>
       )}
@@ -436,6 +450,7 @@ export default function WebhooksPanel() {
               webhook={w}
               entry={deliveries[w.id]}
               expanded={Boolean(expanded[w.id])}
+              revealOpen={Boolean(reveal)}
               onToggle={handleToggleDeliveries}
               onRedeliver={handleRedeliver}
               onToggleEnabled={handleToggleEnabled}

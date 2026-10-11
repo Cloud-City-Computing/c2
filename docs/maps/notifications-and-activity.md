@@ -293,8 +293,8 @@ the deliveries of every stalled subscription (`consecutive_failures > 0`) up fro
 stalled card states the last failure. A subscription is Stalled while it is enabled and
 `consecutive_failures > 0`, Off when disabled (the reason is shown), otherwise Delivering. The
 secret appears only in the reveal box returned by create or rotate; the panel never fetches it.
-Enable, disable, rotate, delete and redeliver all go through `ConfirmDialog`. A dead delivery whose
-`last_error` is `expired after 72h` offers no Redeliver, because the route would refuse it.
+Enable, disable, rotate, delete and redeliver all go through `ConfirmDialog`. A dead delivery whose event
+is `expired` (the server's own 72-hour test, the one the redeliver route answers 409 by) offers no Redeliver, and the env subscription's deliveries never do, because the route refuses them too. The console reads the UTC columns as text and the TIMESTAMP columns as epoch seconds, so the driver's local-time parse never touches them (see `docs/maps/open-questions.md` C9).
 
 Tests: `tests/services/webhook-worker.test.js` (the three signature vectors, and each
 outcome, the backoff SQL, the 72-hour expiry, the budgets, the lapsed-lease write count, the

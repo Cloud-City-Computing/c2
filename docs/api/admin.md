@@ -316,15 +316,15 @@ Deletes the subscription and every delivery queued for it.
 
 ### `GET /api/admin/webhooks/:id/deliveries`
 
-The last 50 deliveries of one subscription, newest first. Each has `id`, `event_id`, `type`, `status` (`pending`, `delivered` or `dead`), `attempts` (failed sends so far), `last_status`, `last_error`, `delivered_at` and `created_at`. The event body is never returned.
+The last 50 deliveries of one subscription, newest first. Each has `id`, `event_id`, `type`, `status` (`pending`, `delivered` or `dead`), `attempts` (failed sends so far), `last_status`, `last_error`, `delivered_at`, `created_at`, `occurred_at` (the event's time) and `expired`. The times are ISO 8601 in UTC, with milliseconds. `expired` is `true` when the event is older than 72 hours, the same test the redeliver route applies. The event body is never returned.
 
 **Response:** `{ success: true, deliveries: [...] }`. `404` for no such subscription, `400` for a bad id. Works for the env-declared subscription too.
 
 ### `POST /api/admin/webhooks/deliveries/:id/redeliver`
 
-Returns a dead-lettered delivery to `pending` with its attempts reset to 0. The delivery is then sent in order, so a redelivered older event goes ahead of newer ones for its subscription.
+Returns a dead-lettered delivery to `pending` with its attempts reset to 0. The delivery is then sent in order, so a redelivered older event goes ahead of newer ones for its subscription. A delivery of the server-environment subscription is refused (`409`): that subscription is changed in the environment, not here.
 
-**Response:** `{ success: true, id }`. `409` if the delivery is not dead, `409` with a reason if its event is older than 72 hours (redelivering it would expire it again at once), `404` for no such delivery, `400` for a bad id.
+**Response:** `{ success: true, id }`. `409` if the delivery is not dead, `409` with a reason if its event is older than 72 hours (redelivering it would expire it again at once), `409` for a delivery of the environment subscription, `404` for no such delivery, `400` for a bad id.
 
 ---
 

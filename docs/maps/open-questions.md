@@ -912,6 +912,27 @@ of a primitive. Whether the bridge renames it or the package's rule gets a
 recorded exception is W6-CDX-22's call. `tests/design/codex-css.test.js` pins
 the overlap to exactly these four, so it can shrink but not grow.
 
+### C9. The pool parses DATETIME as Node local time, so every DATETIME read is right only while Node runs in UTC
+
+Found 2026-10-11 in W6-CDX-15 review. `mysql_connect.js` builds the pool from
+`connectionOptions` (`mysql_connect.js:53-58`) and sets no `timezone`, so mysql2
+parses each DATETIME as a local-time `Date` in the Node process. Every write of
+these columns is UTC by convention (`UTC_TIMESTAMP(3)` in `services/webhook-worker.js`
+and `routes/webhooks.js`). A
+DATETIME read in a process whose zone is not UTC is therefore off by that zone's
+offset. The image sets no `TZ` (`cloudcodex/Dockerfile`, `node:20-slim` base), so Node
+runs in the container's default zone, UTC unless the host overrides it. Today's
+deployments are correct for that reason, not by design.
+
+The webhook console avoids the driver's parse: its UTC columns are read as text
+(`utcText` in `routes/webhooks.js`, `DATE_FORMAT`) and its TIMESTAMP columns as
+epoch seconds (`UNIX_TIMESTAMP`), and `tests/integration/webhooks-console-time.test.js`
+proves a stored UTC instant reads back unchanged under `TZ=Europe/London`. Nothing
+else does. Setting `timezone: 'Z'` on the pool would fix the reads but reinterpret
+every DATETIME in the codebase at once, so it is a deliberate, separate change, not
+a side effect of a webhook session. Until then, a deployment that sets `TZ` for any
+reason breaks those reads.
+
 ### C9b. `users.email` is unique under an accent-insensitive collation
 
 `init.sql:52` declares `email VARCHAR(255) NOT NULL UNIQUE` under the database default,
