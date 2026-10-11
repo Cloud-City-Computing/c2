@@ -11,7 +11,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { scanTargets, relativePath } from './buckets.js';
+import path from 'node:path';
+import { scanTargets, relativePath, ROOT } from './buckets.js';
 import { maskComments } from '../../vendor/cloud-city-design/gates/token-discipline.mjs';
 
 const CORE = new URL('../../vendor/cloud-city-design/core.css', import.meta.url);
@@ -53,5 +54,34 @@ describe('stacking order', () => {
     expect(js.length).toBeGreaterThanOrEqual(2);
     const raw = js.filter((d) => !/^var\(--z-[a-z]+\)$/.test(d.value));
     expect(raw.map((d) => `${d.rel}: zIndex: ${d.value}`)).toEqual([]);
+  });
+});
+
+// The layering the editor and the shell depend on, read from the real rules in src/index.css. A
+// rule's z-index is the first one declared inside its own braces, so a bare `.mobile-nav { display: none }`
+// is skipped and the media-query override is the one read.
+const INDEX = readFileSync(path.join(ROOT, 'src/index.css'), 'utf8');
+function ruleZ(selector) {
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = new RegExp(`(?:^|\\n)[ \\t]*${esc}\\s*\\{[^}]*?z-index:\\s*var\\((--z-[a-z]+)\\)`).exec(INDEX);
+  if (!m) throw new Error(`${selector} declares no z-index token in src/index.css`);
+  return m[1];
+}
+const rank = (token) => SCALE.indexOf(token);
+
+describe('the shell layers that the editor overlays depend on', () => {
+  it('the top bar sits above the sidebar and the mobile bottom nav, and its dropdowns stay above both', () => {
+    expect(rank(ruleZ('.topbar'))).toBeGreaterThan(rank(ruleZ('.mobile-nav')));
+    expect(rank(ruleZ('.topbar'))).toBeGreaterThanOrEqual(rank(ruleZ('.sidebar')));
+  });
+
+  it('the mobile bottom nav sits below the top bar, so a dropdown that reaches it stays on top', () => {
+    expect(ruleZ('.mobile-nav')).toBe('--z-base');
+  });
+
+  it('the sidebar is above the editor overlays (comment highlights and remote cursors), so its hover panel is not painted under them', () => {
+    expect(ruleZ('.sidebar')).toBe('--z-sticky');
+    expect(rank(ruleZ('.sidebar'))).toBeGreaterThan(rank(ruleZ('.comment-highlights')));
+    expect(rank(ruleZ('.sidebar'))).toBeGreaterThan(rank(ruleZ('.remote-cursors')));
   });
 });

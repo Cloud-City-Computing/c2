@@ -174,6 +174,13 @@ describe('server.js: suite mode', () => {
     });
   });
 
+  it('exits 1 with the not-a-URL sentence when SUITE_COMMAND_WORKSPACE_URL is not a URL', async () => {
+    await withEnv({ SUITE_COMMAND_WORKSPACE_URL: 'command workspace, not a url', SUITE_NAME: 'Example Suite' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().join('\n')).toContain('SUITE_COMMAND_WORKSPACE_URL is not a URL.');
+    });
+  });
+
   it('exits 1 when suite mode has no name', async () => {
     await withEnv({ SUITE_COMMAND_WORKSPACE_URL: 'https://command.example.test/w/1' }, () => {
       expect(exitSpy).toHaveBeenCalledWith(1);

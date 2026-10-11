@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
-  contrastRatio, parseColor, parseThemeTokens, relativeLuminance, resolveTokenValue, round,
+  compositeOver, contrastRatio, parseColor, parseThemeTokens, relativeLuminance, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { ACCENTS, accentValue, accentFill, accentDark } from '../../src/tokens/accents.js';
 import { ROOT } from './buckets.js';
@@ -329,5 +329,45 @@ describe('the toast dismiss target', () => {
   it('is at least 24 by 24 CSS pixels', () => {
     expect(parseFloat(declared('.toast__dismiss', 'min-width'))).toBeGreaterThanOrEqual(24);
     expect(parseFloat(declared('.toast__dismiss', 'min-height'))).toBeGreaterThanOrEqual(24);
+  });
+});
+
+describe('the suite cluster labels (W6-CDX-25) are measured on the surface that paints them', () => {
+  const TOPBAR = '.topbar';
+  const PANEL = '.cc-suite__panel';
+
+  it('reads each label, its surface and the current-product state from the real declarations', () => {
+    expect(declared(TOPBAR, 'background')).toBe('var(--bg-elevated)');
+    expect(declared('.cc-suite__name', 'color')).toBe('var(--text-primary)');
+    expect(declared('.cc-suite__eyebrow', 'color')).toBe('var(--text-muted)');
+    expect(declared(PANEL, 'background')).toBe('var(--bg-secondary)');
+    expect(declared('.cc-suite__link', 'color')).toBe('var(--text-primary)');
+    expect(declared('.cc-suite__link[aria-current="true"]', 'color')).toBe('var(--cx-accent)');
+    expect(declared('.cc-suite__link:hover', 'color')).toBe('var(--cx-accent)');
+    expect(declared('.cc-suite__link:hover', 'background')).toBe('var(--cx-tint-accent-soft)');
+  });
+
+  it('measures the name, the eyebrow and the panel links at 4.5:1 or more on their surfaces', () => {
+    const topbar = paint(declared(TOPBAR, 'background'), base);
+    const panel = paint(declared(PANEL, 'background'), base);
+    for (const [site, surface] of [['.cc-suite__name', topbar], ['.cc-suite__eyebrow', topbar], ['.cc-suite__link', panel]]) {
+      const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
+      expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('measures the current product and the hovered link on every accent, the tint composited over the panel', () => {
+    const measured = [];
+    for (const [name, tokens] of ACCENT_TOKENS) {
+      const panel = paint(declared(PANEL, 'background'), tokens);
+      const current = contrastRatio(paint(declared('.cc-suite__link[aria-current="true"]', 'color'), tokens), panel);
+      const tint = paint(declared('.cc-suite__link:hover', 'background'), tokens);
+      const hovered = contrastRatio(paint(declared('.cc-suite__link:hover', 'color'), tokens), compositeOver(tint, panel));
+      for (const [site, ratio] of [['current product', current], ['hovered link', hovered]]) {
+        measured.push(ratio);
+        expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    expect(measured.length).toBe(ACCENT_TOKENS.length * 2);
   });
 });

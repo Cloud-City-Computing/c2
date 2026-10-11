@@ -166,3 +166,18 @@ describe('SuiteCluster: closing', () => {
     expect(toggle()).toHaveAttribute('aria-expanded', 'false');
   });
 });
+
+describe('SuiteCluster: a long suite name', () => {
+  const LONG = 'a'.repeat(40);
+
+  it('keeps the full name in the accessible name and in a title on the visible eyebrow', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <SuiteCluster suiteName={LONG} commandWorkspaceUrl={COMMAND} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('button', { name: `Cloud Codex, ${LONG}: switch app` })).toBeInTheDocument();
+    expect(document.querySelector('.cc-suite__eyebrow')).toHaveAttribute('title', LONG);
+    expect(document.querySelector('.cc-suite__eyebrow').textContent).toBe(LONG);
+  });
+});
