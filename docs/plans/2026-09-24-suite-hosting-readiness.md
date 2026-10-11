@@ -665,8 +665,9 @@ is backed up separately. CHANGELOG.
 ### Task 6.1 The precondition, checked
 
 - [ ] PRs 1, 2, 4 and 5 of this plan have merged (PR 3 is not a precondition, per D-O), and so have
-      the deploy-path PRs of the identity plan (PRs 1 to 9), the events plan (PRs 1 to 3) and the UI
-      plan (PRs 1 to 9).
+      the deploy-path PRs of the identity plan (PRs 1 to 9), the events plan (PRs 1 to 3), the UI
+      plan (PRs 1 to 9) and, added 2026-10-11, the UI alignment plan
+      ([`2026-10-11-suite-ui-alignment.md`](2026-10-11-suite-ui-alignment.md), PRs 1 to 7).
 - [ ] `git log --oneline v0.10.0..origin/main` (or the latest tag) lists them.
 
 ### Task 6.2 Prepare the release
