@@ -20,15 +20,13 @@ const ISSUER = 'https://id.example.test';
 const SUBJECT = 'sub-0192f5a0';
 
 const HIT_SQL = 'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1';
-const USER_EMAIL_SQL = 'SELECT email FROM users WHERE id = ? LIMIT 1';
-const EMAIL_HOLDER_SQL = 'SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id <> ? LIMIT 1';
-const UPDATE_EMAIL_SQL = 'UPDATE users SET email = ? WHERE id = ?';
-const TOUCH_SQL = 'UPDATE user_identities SET last_login_at = NOW() WHERE id = ?';
-const EMAIL_LOOKUP_SQL = 'SELECT id, email, two_factor_method FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1';
+const TOUCH_SQL = 'UPDATE user_identities SET last_login_at = NOW(), email_at_last_signin = ? WHERE id = ?';
+const EMAIL_LOOKUP_SQL = 'SELECT id, email, two_factor_method FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin LIMIT 1';
+const RECHECK_SQL = 'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1';
 const SAME_ISSUER_SQL = 'SELECT id FROM user_identities WHERE user_id = ? AND issuer = ? LIMIT 1';
 const LINK_SQL =
-  'INSERT INTO user_identities (user_id, issuer, subject, email_at_link) ' +
-  'SELECT id, ?, ?, ? FROM users WHERE id = ? AND LOWER(email) = LOWER(?) ' +
+  'INSERT INTO user_identities (user_id, issuer, subject, email_at_link, email_at_last_signin) ' +
+  'SELECT id, ?, ?, ?, ? FROM users WHERE id = ? AND LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin ' +
   "AND (two_factor_method IS NULL OR two_factor_method = 'none') FOR SHARE";
 
 const POLICY = { linkByVerifiedEmail: true, autoCreate: false };
@@ -81,64 +79,67 @@ describe('resolveIdentity (oidc)', () => {
   });
 
   describe('step 1: an identity already linked', () => {
-    it('signs in the user, touching last_login_at, when the email matches', async () => {
+    it('signs the user in and touches the identity, with no read or write of users.email', async () => {
       c2_query
         .mockResolvedValueOnce([{ id: 7, user_id: 42 }]) // HIT
-        .mockResolvedValueOnce([{ email: 'ada@example.com' }]) // USER_EMAIL
         .mockResolvedValueOnce({ affectedRows: 1 }); // TOUCH
 
       const result = await resolveIdentity(oidcClaims(), POLICY);
 
       expect(result).toEqual({ ok: true, userId: 42, created: false, identityId: 7 });
-      expect(sqlCalls().map(([sql]) => sql)).toEqual([HIT_SQL, USER_EMAIL_SQL, TOUCH_SQL]);
+      expect(sqlCalls().map(([sql]) => sql)).toEqual([HIT_SQL, TOUCH_SQL]);
       expect(sqlCalls()[0][1]).toEqual([ISSUER, SUBJECT]);
-      expect(sqlCalls()[2][1]).toEqual([7]);
+      expect(sqlCalls()[1][1]).toEqual(['ada@example.com', 7]);
+      expect(writes().some(([sql]) => /UPDATE users/.test(sql))).toBe(false);
     });
 
-    it('follows an issuer-side email change when no other row holds the address', async () => {
+    it('leaves users.email alone when the issuer reports a different verified email', async () => {
       c2_query
         .mockResolvedValueOnce([{ id: 7, user_id: 42 }])
-        .mockResolvedValueOnce([{ email: 'old@example.com' }])
-        .mockResolvedValueOnce([]) // EMAIL_HOLDER: nobody
-        .mockResolvedValueOnce({ affectedRows: 1 }) // UPDATE_EMAIL
-        .mockResolvedValueOnce({ affectedRows: 1 }); // TOUCH
+        .mockResolvedValueOnce({ affectedRows: 1 });
 
-      const result = await resolveIdentity(oidcClaims({ email: 'new@example.com' }), POLICY);
+      const result = await resolveIdentity(oidcClaims({ email: 'new-at-issuer@example.com' }), POLICY);
 
       expect(result).toEqual({ ok: true, userId: 42, created: false, identityId: 7 });
-      expect(sqlCalls().map(([sql]) => sql)).toEqual([
-        HIT_SQL,
-        USER_EMAIL_SQL,
-        EMAIL_HOLDER_SQL,
-        UPDATE_EMAIL_SQL,
-        TOUCH_SQL,
-      ]);
-      expect(sqlCalls()[2][1]).toEqual(['new@example.com', 42]);
-      expect(sqlCalls()[3][1]).toEqual(['new@example.com', 42]);
+      expect(sqlCalls().map(([sql]) => sql)).toEqual([HIT_SQL, TOUCH_SQL]);
+      expect(sqlCalls()[1][1]).toEqual(['new-at-issuer@example.com', 7]);
+      expect(writes().some(([sql]) => /UPDATE users/.test(sql))).toBe(false);
     });
 
-    it('refuses email_conflict, and writes nothing, when another row holds the new address', async () => {
+    it('does not refuse a changed issuer email that another row holds, because it never writes it', async () => {
       c2_query
         .mockResolvedValueOnce([{ id: 7, user_id: 42 }])
-        .mockResolvedValueOnce([{ email: 'old@example.com' }])
-        .mockResolvedValueOnce([{ id: 99 }]); // EMAIL_HOLDER: someone else
+        .mockResolvedValueOnce({ affectedRows: 1 });
 
-      const result = await resolveIdentity(oidcClaims({ email: 'taken@example.com' }), POLICY);
+      const result = await resolveIdentity(oidcClaims({ email: 'someone-elses@example.com' }), POLICY);
 
-      expect(result).toEqual({ ok: false, reason: 'email_conflict' });
-      expect(writes()).toEqual([]);
+      expect(result).toEqual({ ok: true, userId: 42, created: false, identityId: 7 });
     });
 
     it('signs in a linked user whose two-factor is on, with no local challenge', async () => {
       c2_query
         .mockResolvedValueOnce([{ id: 7, user_id: 42 }])
-        .mockResolvedValueOnce([{ email: 'ada@example.com' }])
         .mockResolvedValueOnce({ affectedRows: 1 });
 
       const result = await resolveIdentity(oidcClaims(), { ...POLICY, linkByVerifiedEmail: false });
 
       expect(result).toEqual({ ok: true, userId: 42, created: false, identityId: 7 });
       expect(sqlCalls().map(([sql]) => sql)).not.toContain(EMAIL_LOOKUP_SQL);
+    });
+  });
+
+  describe('a recycled address', () => {
+    it('does not hand a local account back to a new subject that claims its old address; the unique key refuses it', async () => {
+      // The local account of subject A, whose issuer email moved on, still holds the old address.
+      // A new subject B now verifies that old address. Link-by-email finds A, and A already holds
+      // another subject at this issuer: identity_conflict, with nothing written.
+      c2_query
+        .mockResolvedValueOnce([]) // HIT: B has no identity
+        .mockResolvedValueOnce([{ id: 42, email: 'ada@example.com', two_factor_method: 'none' }]) // EMAIL: A
+        .mockResolvedValueOnce([{ id: 7 }]); // SAME_ISSUER: A holds subject A
+      const result = await resolveIdentity(oidcClaims({ subject: 'subject-b' }), POLICY);
+      expect(result).toEqual({ ok: false, reason: 'identity_conflict' });
+      expect(writes()).toEqual([]);
     });
   });
 
@@ -175,7 +176,7 @@ describe('resolveIdentity (oidc)', () => {
 
       expect(result).toEqual({ ok: true, userId: 42, created: false, identityId: 55 });
       expect(sqlCalls().map(([sql]) => sql)).toEqual([HIT_SQL, EMAIL_LOOKUP_SQL, SAME_ISSUER_SQL, LINK_SQL]);
-      expect(sqlCalls()[3][1]).toEqual([ISSUER, SUBJECT, 'ada@example.com', 42, 'ada@example.com']);
+      expect(sqlCalls()[3][1]).toEqual([ISSUER, SUBJECT, 'ada@example.com', 'ada@example.com', 42, 'ada@example.com']);
     });
 
     it('links an email match with two-factor NULL', async () => {
@@ -210,12 +211,41 @@ describe('resolveIdentity (oidc)', () => {
       expect(writes()).toEqual([]);
     });
 
+    it('answers ok, naming the same identity, when the key refuses a link the same person just made', async () => {
+      c2_query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 42, email: 'ada@example.com', two_factor_method: 'none' }])
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(duplicateKeyError('user_identities.uq_user_identities_issuer_subject'))
+        .mockResolvedValueOnce([{ id: 61, user_id: 42 }]); // RECHECK: the winner, same user
+
+      expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({
+        ok: true,
+        userId: 42,
+        created: false,
+        identityId: 61,
+      });
+      expect(sqlCalls().map(([sql]) => sql).at(-1)).toBe(RECHECK_SQL);
+    });
+
+    it('answers identity_conflict when the key refuses a link that names a different user', async () => {
+      c2_query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 42, email: 'ada@example.com', two_factor_method: 'none' }])
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(duplicateKeyError('user_identities.uq_user_identities_issuer_subject'))
+        .mockResolvedValueOnce([{ id: 61, user_id: 99 }]); // RECHECK: another user
+
+      expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: false, reason: 'identity_conflict' });
+    });
+
     it('answers identity_conflict when the unique key refuses a second link at the issuer', async () => {
       c2_query
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ id: 42, email: 'ada@example.com', two_factor_method: 'none' }])
         .mockResolvedValueOnce([])
-        .mockRejectedValueOnce(duplicateKeyError('user_identities.uq_user_identities_user_issuer'));
+        .mockRejectedValueOnce(duplicateKeyError('user_identities.uq_user_identities_user_issuer'))
+        .mockResolvedValueOnce([]); // RECHECK: nothing for this subject
 
       expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: false, reason: 'identity_conflict' });
     });

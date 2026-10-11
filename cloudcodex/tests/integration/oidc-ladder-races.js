@@ -105,5 +105,17 @@ export function describeOidcLadderRaces(label) {
       expect(lost).toEqual([{ ok: false, reason: 'identity_conflict' }]);
       expect(await identityRowsFor(user.id)).toBe(1);
     });
+
+    it('answers ok to both of two concurrent links of the same person at one issuer, naming one identity', async () => {
+      // The same subject twice: the key refuses the second INSERT, and the re-read finds the winner, which
+      // names this same user, so the refused attempt is the same sign-in and not a conflict (review item 4).
+      const user = await createUser('oidc_r_same', 'none');
+
+      const answers = await Promise.all([attempt(user, 'sub-same'), attempt(user, 'sub-same')]);
+
+      expect(answers.every(answer => answer.ok === true)).toBe(true);
+      expect(answers[0].identityId).toBe(answers[1].identityId);
+      expect(await identityRowsFor(user.id)).toBe(1);
+    });
   });
 }

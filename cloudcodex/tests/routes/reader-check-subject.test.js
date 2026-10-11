@@ -56,22 +56,22 @@ describe('reader-check by subject', () => {
     expect(params).toEqual([7, 7, ISSUER, 'zitadel-user-0192']);
   });
 
-  it('falls back to the email when no identity matches the subject, exactly as before', async () => {
+  it('answers false for an unknown subject even when a local account holds the email (the ladder refuses it too)', async () => {
     c2_query
       .mockResolvedValueOnce([SERVICE_ROW])
-      .mockResolvedValueOnce([]) // the subject matches nobody
-      .mockResolvedValueOnce(answer({ inASquad: 1 }));
+      .mockResolvedValueOnce([]); // the subject matches nobody
 
     const res = await ask(7, 'subject=nobody&email=member%40example.com');
 
-    expect(res.body).toEqual({ canRead: true });
-    const [sql, params] = c2_query.mock.calls[2];
-    expect(sql).toMatch(/LOWER\(u\.email\)\s*=\s*LOWER\(\?\)/);
-    expect(params).toEqual([7, 7, 'member@example.com']);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ canRead: false });
+    // The email is never consulted once a subject is sent: no lookup by address, no answer from it.
+    expect(c2_query.mock.calls.some(([sql]) => /LOWER\(u\.email\)/.test(sql))).toBe(false);
+    expect(c2_query.mock.calls).toHaveLength(2);
   });
 
-  it('answers the same false for an unknown subject and an unknown email, status and body alike', async () => {
-    c2_query.mockResolvedValueOnce([SERVICE_ROW]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+  it('answers the same false for an unknown subject, status and body alike, whatever email accompanies it', async () => {
+    c2_query.mockResolvedValueOnce([SERVICE_ROW]).mockResolvedValueOnce([]);
     const unknownSubject = await ask(7, 'subject=ghost&email=ghost%40example.com');
 
     c2_query.mockResolvedValueOnce([SERVICE_ROW]).mockResolvedValueOnce([]);
@@ -99,11 +99,11 @@ describe('reader-check by subject', () => {
     expect(res.status).toBe(400);
   });
 
-  it('does not consult user_identities when OIDC is not configured', async () => {
+  it('answers false for a subject when OIDC is not configured, and queries neither table by address', async () => {
     delete process.env.OIDC_ISSUER_URL;
-    c2_query.mockResolvedValueOnce([SERVICE_ROW]).mockResolvedValueOnce([]);
-    const res = await ask(7, 'subject=zitadel-user-0192');
+    c2_query.mockResolvedValueOnce([SERVICE_ROW]);
+    const res = await ask(7, 'subject=zitadel-user-0192&email=member%40example.com');
     expect(res.body).toEqual({ canRead: false });
-    expect(c2_query.mock.calls.some(([sql]) => /user_identities/.test(sql))).toBe(false);
+    expect(c2_query.mock.calls).toHaveLength(1);
   });
 });

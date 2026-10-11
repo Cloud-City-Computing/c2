@@ -37,28 +37,65 @@ describe('the OIDC ladder, end to end on real rows', () => {
     expect(row.last_login_at).not.toBeNull();
   });
 
-  it('follows an issuer-side email change, and writes the new address to the user row', async () => {
+  it("never moves users.email when the issuer's email changes, so password reset still mails the old address", async () => {
+    // Review item 1: a changed issuer email is recorded on the identity, and the local account keeps the
+    // address password reset mails. POST /api/forgot-password looks the user up by that column, verbatim.
     const user = await createUser('oidc_l_follow', 'none');
-    await resolveIdentity(claims('sub-follow', user.email), POLICY);
+    const linked = await resolveIdentity(claims('sub-follow', user.email), POLICY);
 
-    const moved = `oidc_l_follow_new@example.com`;
+    const moved = 'oidc_l_follow_new@example.com';
     const answer = await resolveIdentity(claims('sub-follow', moved), POLICY);
 
-    expect(answer).toMatchObject({ ok: true, userId: user.id });
+    expect(answer).toEqual({ ok: true, userId: user.id, created: false, identityId: linked.identityId });
     const [row] = await c2_query('SELECT email FROM users WHERE id = ?', [user.id]);
-    expect(row.email).toBe(moved);
+    expect(row.email).toBe(user.email);
+    const [byOld] = await c2_query('SELECT id FROM users WHERE email = ? LIMIT 1', [user.email]);
+    const [byNew] = await c2_query('SELECT id FROM users WHERE email = ? LIMIT 1', [moved]);
+    expect(byOld).toEqual({ id: user.id });
+    expect(byNew).toBeUndefined();
+    const [identity] = await c2_query('SELECT email_at_last_signin FROM user_identities WHERE id = ?', [linked.identityId]);
+    expect(identity.email_at_last_signin).toBe(moved);
   });
 
-  it('refuses an issuer-side email another account holds, and changes nothing', async () => {
+  it('signs in on the identity when the issuer reports an address another account holds, and changes neither', async () => {
     const user = await createUser('oidc_l_clash', 'none');
     const other = await createUser('oidc_l_clash_other', 'none');
     await resolveIdentity(claims('sub-clash', user.email), POLICY);
 
     const answer = await resolveIdentity(claims('sub-clash', other.email), POLICY);
 
-    expect(answer).toEqual({ ok: false, reason: 'email_conflict' });
+    expect(answer).toMatchObject({ ok: true, userId: user.id });
+    const [mine] = await c2_query('SELECT email FROM users WHERE id = ?', [user.id]);
+    const [theirs] = await c2_query('SELECT email FROM users WHERE id = ?', [other.id]);
+    expect(mine.email).toBe(user.email);
+    expect(theirs.email).toBe(other.email);
+  });
+
+  it('does not hand a local account to a new subject that verifies its old address (a recycled address)', async () => {
+    // Subject A is linked to the account and then changes its issuer address away. The address the account
+    // still holds (its old one) is later verified by a different subject B at the same issuer.
+    const user = await createUser('oidc_l_recycle', 'none');
+    await resolveIdentity(claims('sub-recycle-a', user.email), POLICY);
+    await resolveIdentity(claims('sub-recycle-a', 'oidc_l_recycle_gone@example.com'), POLICY);
+
+    const answer = await resolveIdentity(claims('sub-recycle-b', user.email), POLICY);
+
+    expect(answer).toEqual({ ok: false, reason: 'identity_conflict' });
+    expect(await identityRowsFor(user.id)).toBe(1);
     const [row] = await c2_query('SELECT email FROM users WHERE id = ?', [user.id]);
     expect(row.email).toBe(user.email);
+  });
+
+  it('refuses a verified address that differs only by an accent from an account, which is another mailbox', async () => {
+    // users.email compares accent-insensitively under the default collation. The identity lookups compare
+    // the lowercased address in binary, so 'é' and 'e' are two mailboxes here.
+    const user = await createUser('oidc_l_accent', 'none');
+    const accented = user.email.replace('oidc_l_accent@', 'oidc_l_accént@');
+
+    const answer = await resolveIdentity(claims('sub-accent', accented), POLICY);
+
+    expect(answer).toEqual({ ok: false, reason: 'no_account' });
+    expect(await identityRowsFor(user.id)).toBe(0);
   });
 
   it('signs in a linked identity whose user turned two-factor on afterwards, with no refusal', async () => {

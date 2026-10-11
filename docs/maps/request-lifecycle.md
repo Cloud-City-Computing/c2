@@ -500,8 +500,9 @@ client value or `APP_URL`, a non-numeric lifetime). The callback is on
   current one refuses.
 - `resolveIdentity` with `provider: 'oidc'` (`services/identity.js:95`) runs
   the oidc ladder: a `user_identities` hit on `(issuer, subject)` signs in with no
-  local second factor, follows a changed verified email unless another row holds
-  it (`email_conflict`, nothing written) and touches `last_login_at`. Otherwise,
+  local second factor, never writes `users.email` (a changed issuer email is recorded
+  as `email_at_last_signin` only, so password reset keeps mailing the local address), and
+  touches `last_login_at`. Otherwise,
   with `linkByVerifiedEmail` on, an account matched by email with two-factor on
   is `two_factor_enabled`, one that already holds another subject at this issuer
   is `identity_conflict`, and the rest links through a conditional `INSERT ...

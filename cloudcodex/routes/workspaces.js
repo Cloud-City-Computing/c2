@@ -224,14 +224,15 @@ router.get('/workspaces/:workspaceId/reader-check', requireMachine, asyncHandler
   const canReadOf = row => Boolean(row) && Boolean(row.isAdmin || row.ownsIt || row.inASquad);
 
   /*
-   * By subject first (W6-CDX-5): an OIDC subject names one person at this
-   * instance's configured issuer, which an email does not. Only when OIDC is
-   * configured, and only when a subject is given. A subject that matches nobody
-   * falls through to the email, and an unknown subject with no email answers the
-   * same false as an unknown email.
+   * A subject answers alone (W6-CDX-5). It names one person at this instance's configured issuer, which an
+   * email does not, and the sign-in ladder refuses an identity it cannot find by subject, so the reader
+   * check must not fall back to an address that the ladder would not accept. An unknown subject is the same
+   * false as an unknown email. Without OIDC configured there is no issuer to resolve a subject against, so
+   * a subject answers false too. Only when no subject is sent does the email decide.
    */
-  const oidc = getOidcConfig();
-  if (subject && oidc !== null) {
+  if (subject) {
+    const oidc = getOidcConfig();
+    if (oidc === null) return res.json({ canRead: false });
     const [bySubject] = await c2_query(
       `SELECT ${readerColumns}
      FROM users u
@@ -240,9 +241,8 @@ router.get('/workspaces/:workspaceId/reader-check', requireMachine, asyncHandler
      LIMIT 1`,
       [Number(workspaceId), Number(workspaceId), oidc.issuer, subject]
     );
-    if (bySubject) return res.json({ canRead: canReadOf(bySubject) });
+    return res.json({ canRead: canReadOf(bySubject) });
   }
-  if (!email) return res.json({ canRead: false });
 
   /*
    * LOWER() on both sides. MySQL's default collation is already

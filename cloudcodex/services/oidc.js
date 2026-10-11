@@ -44,6 +44,9 @@ const CLOCK_TOLERANCE_SECONDS = 60;
  */
 export const FLOW_COOKIE_MAX_CHARS = 3800;
 
+/** The most characters the sid column holds (user_identities and sessions.provider_sid). */
+const MAX_SID_LENGTH = 255;
+
 /** A `sub` this relying party will store: 1 to 255 printable ASCII characters, no whitespace. */
 const SUBJECT_RE = /^[\x21-\x7e]{1,255}$/;
 
@@ -371,6 +374,11 @@ export async function completeLogin(config, currentUrl, flowCookieValue) {
   const name = typeof source.name === 'string' ? source.name : null;
   // An empty sid is no sid; the column's length rule would refuse it as a constraint error.
   const sid = typeof claims.sid === 'string' && claims.sid !== '' ? claims.sid : null;
+  // provider_sid is VARCHAR(255). An oversize sid is refused here, before the identity is resolved
+  // and before any write, rather than failing the link INSERT halfway through the sign-in.
+  if (sid !== null && sid.length > MAX_SID_LENGTH) {
+    throw new OidcLoginError('invalid_sid', 'The issuer returned a session id this server cannot store.');
+  }
 
   return {
     issuer: claims.iss,

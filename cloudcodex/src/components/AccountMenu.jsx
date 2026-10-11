@@ -328,6 +328,8 @@ export function AccountInfoUpdatePanel() {
 
 export function AccountPreferencesPanel() {
   const [method, setMethod] = useState('none'); // 'none' | 'email' | 'totp'
+  const [managedBy, setManagedBy] = useState(null); // 'oidc' when an OIDC session governs sign-in
+  const [providerName, setProviderName] = useState('SSO');
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [totpSetup, setTotpSetup] = useState(null); // { setupToken } when awaiting TOTP confirmation
@@ -339,10 +341,18 @@ export function AccountPreferencesPanel() {
     (async () => {
       try {
         const res = await apiFetch('GET', '/api/2fa/status');
-        if (res.success) setMethod(res.method ?? 'none');
+        if (res.success) {
+          setMethod(res.method ?? 'none');
+          setManagedBy(res.managed_by ?? null);
+        }
       } catch { /* ignore */ }
       setLoading(false);
     })();
+    // The configured sign-in label (OIDC_PROVIDER_NAME), named only for an OIDC-managed account.
+    fetch('/api/oauth/providers')
+      .then(r => r.json())
+      .then(data => { if (data?.providers?.oidc?.name) setProviderName(data.providers.oidc.name); })
+      .catch(() => {});
   }, []);
 
   const handleDisable = async () => {
@@ -431,6 +441,11 @@ export function AccountPreferencesPanel() {
   return (
     <div className="settings-panel">
       <h2 className="panel-title">Two-Factor Authentication</h2>
+      {managedBy === 'oidc' && (
+        <p className="text-sm text-muted">
+          Sign-in to this account is managed by {providerName}. Two-factor set here applies only when you sign in with a password.
+        </p>
+      )}
       {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
 
       <div className="tfa-method-options">

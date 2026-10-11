@@ -239,7 +239,9 @@ The sign-in flow is protected by a signed, ten-minute flow cookie (state, nonce,
 PKCE verifier and the validated `returnTo`), `__Host-oidcFlow` on https. The
 `returnTo` is validated at login and again at the callback, by one rule
 (`services/return-to.js`), and a refused value lands on `/`. Plain `http` is
-accepted for an issuer only on a loopback host. The ID token is not stored by
+accepted for an issuer only on a loopback host. A change of email at the issuer does not change the
+local account's address: sign-in is keyed on `(issuer, subject)`, and password reset keeps mailing the
+address the account holds, so an issuer-side change cannot take over a local account. The ID token is not stored by
 this release; sign-out ending the issuer session is a later change.
 
 ## Security Headers

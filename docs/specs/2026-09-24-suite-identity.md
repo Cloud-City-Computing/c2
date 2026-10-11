@@ -479,9 +479,12 @@ There is none; see "No OIDC client" above.
   of those, bounded length) and sealed in the flow cookie; the callback never redirects to a host
   taken from input. Its hostile-input corpus is the one Cloud Command commits for W6-CMD-24,
   copied verbatim.
-- The ladder in Decision 3, through `resolveIdentity`. On an identity hit, the issuer's verified
-  email replaces `users.email` when it has changed, unless another row holds that address, which
-  refuses as `email_conflict` and changes nothing. The link-by-email rung refuses an account with
+- The ladder in Decision 3, through `resolveIdentity`. On an identity hit, the sign-in is keyed on
+  `(issuer, subject)` and **never writes `users.email`** (amended in W6-CDX-5 after review: the issuer's
+  email can change, and `users.email` is what password reset mails and what the local email-change rules
+  guard, so following the issuer would let a change there reach the local account, and a recycled address
+  could be pulled back). The issuer's current email is recorded on the identity row as
+  `email_at_last_signin`, for display and audit only. The link-by-email rung refuses an account with
   two-factor on as `two_factor_enabled`, in Decision 3's order, and its `user_identities` INSERT
   is conditional in the same way as the Google rung's (read `FOR SHARE`, two-factor still off, the
   looked-up email still held), anything but exactly one row answering the same refusal.
@@ -491,7 +494,10 @@ There is none; see "No OIDC client" above.
 - `OIDC_SESSION_TTL_HOURS`, default 24, sets an OIDC session's absolute expiry.
 - `GET /api/oauth/providers` gains `oidc: { enabled, name }`, and `Login.jsx` renders the button.
 - The C2-5 reader check accepts an optional `subject` query parameter, matched through
-  `user_identities` before the email. The unknown-subject answer is the same `false`.
+  `user_identities`, and **answered from the subject alone** when one is sent (amended in W6-CDX-5 after
+  review: the ladder refuses an identity it cannot find by subject, so the reader check must not fall
+  back to an address). An unknown subject is the same `false`, even when an email matches. Email decides
+  only when no subject is sent. With OIDC not configured, a subject answers `false`.
 - Every `OIDC_*` variable joins the hosting track's configuration contract (`ENV_CONTRACT`,
   W6-CDX-32) with its per-instance flag, as the plan's Task 5.10 lists them: the issuer and the
   instance's client id and secret are per instance, because Cloud Command's operator link tool
@@ -506,7 +512,8 @@ There is none; see "No OIDC client" above.
   pattern), signs a user in end to end. A real sign-in against the local Cloud City ID stack is
   recorded in `docs/research/`.
 - Linking tests: an existing local user links; a same-issuer different `sub` is refused; an
-  unverified email is refused; an issuer-side email change is followed; a collision is refused.
+  unverified email is refused; an issuer-side email change is recorded and not followed, so `users.email`
+  is unchanged; a collision is answered by the identity, not by the address.
 - Two-factor tests: an email match with `totp`, and one with `email`, is refused as
   `two_factor_enabled` with no `user_identities` row; `'none'` and NULL link; the conditional
   INSERT's zero rows gets the same refusal, including on real MySQL with two-factor turned on, and

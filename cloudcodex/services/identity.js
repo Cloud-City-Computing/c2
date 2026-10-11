@@ -92,6 +92,9 @@ export async function resolveIdentity(claims, policy) {
  *
  * The email must be verified before any read, and missing or unverified is email_not_verified.
  */
+/** The identity row for (issuer, subject), re-read after a refused INSERT. */
+const RECHECK_SQL = 'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1';
+
 async function resolveOidcIdentity(claims, policy) {
   const { issuer, subject, email, emailVerified } = claims;
 
@@ -105,27 +108,21 @@ async function resolveOidcIdentity(claims, policy) {
   );
 
   if (identity) {
-    const [current] = await c2_query('SELECT email FROM users WHERE id = ? LIMIT 1', [identity.user_id]);
-    if (!current) {
-      return { ok: false, reason: 'no_account' };
-    }
-    const emailChanged = current.email !== email;
-    if (emailChanged) {
-      const [holder] = await c2_query(
-        'SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id <> ? LIMIT 1',
-        [email, identity.user_id]
-      );
-      if (holder) {
-        return { ok: false, reason: 'email_conflict' };
-      }
-      await c2_query('UPDATE users SET email = ? WHERE id = ?', [email, identity.user_id]);
-    }
-    await c2_query('UPDATE user_identities SET last_login_at = NOW() WHERE id = ?', [identity.id]);
+    // The issuer's email is recorded for display and audit, and users.email is never written here.
+    // A change at the issuer does not move the local account's address: password reset mails that
+    // address, and the local email-change rules (current password, confirmation to the new address,
+    // notice to the old one) are the only way it changes. Authority rests on (issuer, subject).
+    await c2_query(
+      'UPDATE user_identities SET last_login_at = NOW(), email_at_last_signin = ? WHERE id = ?',
+      [email, identity.id]
+    );
     return { ok: true, userId: identity.user_id, created: false, identityId: identity.id };
   }
 
+  // Binary comparison of the lowercased address. users.email's default collation is accent-insensitive,
+  // so a plain LOWER(email) = LOWER(?) would treat 'é' and 'e' as one mailbox.
   const [existingUser] = await c2_query(
-    'SELECT id, email, two_factor_method FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1',
+    'SELECT id, email, two_factor_method FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin LIMIT 1',
     [email]
   );
 
@@ -149,16 +146,23 @@ async function resolveOidcIdentity(claims, policy) {
     let linked;
     try {
       linked = await c2_query(
-        `INSERT INTO user_identities (user_id, issuer, subject, email_at_link)
-         SELECT id, ?, ?, ? FROM users
-          WHERE id = ? AND LOWER(email) = LOWER(?)
+        `INSERT INTO user_identities (user_id, issuer, subject, email_at_link, email_at_last_signin)
+         SELECT id, ?, ?, ?, ? FROM users
+          WHERE id = ? AND LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin
             AND (two_factor_method IS NULL OR two_factor_method = 'none')
           FOR SHARE`,
-        [issuer, subject, existingUser.email, existingUser.id, existingUser.email]
+        [issuer, subject, existingUser.email, email, existingUser.id, existingUser.email]
       );
     } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY') return { ok: false, reason: 'identity_conflict' };
-      throw err;
+      if (err.code !== 'ER_DUP_ENTRY') throw err;
+      // Two links raced. The key refused this one, so either the same person's concurrent sign-in won
+      // (the same subject, the same user: the same identity, so ok) or a different identity holds the
+      // user or the subject (refused). Re-reading the subject's row decides which.
+      const [winner] = await c2_query(RECHECK_SQL, [issuer, subject]);
+      if (winner && winner.user_id === existingUser.id) {
+        return { ok: true, userId: existingUser.id, created: false, identityId: winner.id };
+      }
+      return { ok: false, reason: 'identity_conflict' };
     }
     if (linked.affectedRows !== 1) {
       return { ok: false, reason: 'two_factor_enabled' };

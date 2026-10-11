@@ -122,7 +122,7 @@ async function handleIssuer(req, res) {
     const now = Math.floor(Date.now() / 1000);
     const idClaims = {
       sub: grant.claims.sub,
-      sid: faults.emptySid ? '' : 'zitadel-session-7',
+      sid: faults.emptySid ? '' : faults.longSid ? 'x'.repeat(300) : 'zitadel-session-7',
       nonce: faults.wrongNonce ? 'a-different-nonce' : grant.nonce,
       auth_time: now,
       azp: CLIENT_ID,
@@ -361,16 +361,20 @@ describe('OIDC sign-in, end to end against an issuer that speaks the protocol', 
     expect(generateSessionToken).not.toHaveBeenCalled();
   });
 
-  it('refuses an issuer-side email that another row already holds, as email_conflict, with no write', async () => {
+  it('signs in on the identity when the issuer reports an email another row holds, and writes no users row', async () => {
+    // The issuer's email never moves the local account (W6-CDX-5, review item 1): the sign-in is keyed
+    // on (issuer, subject), and the new address is only recorded on the identity row.
     person.email = 'taken@example.com';
     c2_query
-      .mockResolvedValueOnce([{ id: 7, user_id: 42 }])
-      .mockResolvedValueOnce([{ email: 'ada@example.com' }])
-      .mockResolvedValueOnce([{ id: 99 }]); // EMAIL_HOLDER
+      .mockResolvedValueOnce([{ id: 7, user_id: 42 }]) // HIT
+      .mockResolvedValueOnce({ affectedRows: 1 }); // TOUCH, with the issuer's email
     const { callback } = await signIn({ cookieName: 'oidcFlow' });
-    expect(callback.headers.location).toBe('/?oauth_error=email_conflict&oauth_provider=oidc');
+    expect(callback.headers.location).toBe('/');
+    expect(generateSessionToken.mock.calls[0][3]).toMatchObject({ provider: 'oidc', identityId: 7 });
     const writes = c2_query.mock.calls.filter(([sql]) => /^\s*(INSERT|UPDATE)/i.test(sql));
-    expect(writes).toEqual([]);
+    expect(writes.map(([sql]) => sql)).toEqual([
+      'UPDATE user_identities SET last_login_at = NOW(), email_at_last_signin = ? WHERE id = ?',
+    ]);
   });
 
   it('does not create a session when the issuer has no account for the person', async () => {
@@ -399,6 +403,16 @@ describe('OIDC sign-in, end to end against an issuer that speaks the protocol', 
     for (const key of ENV_KEYS) delete process.env[key];
     const start = await request(app).get('/api/auth/oidc/start');
     expect(start.status).toBe(404);
+  });
+
+  it('refuses a sid longer than the column holds, before any write, as invalid_sid', async () => {
+    faults.longSid = true;
+    queueLinkedHit();
+    const { callback } = await signIn({ cookieName: 'oidcFlow' });
+    expect(callback.headers.location).toBe('/?oauth_error=invalid_sid&oauth_provider=oidc');
+    expect(generateSessionToken).not.toHaveBeenCalled();
+    const writes = c2_query.mock.calls.filter(([sql]) => /^\s*(INSERT|UPDATE|DELETE)/i.test(sql));
+    expect(writes).toEqual([]);
   });
 
   it('answers the start route with a redirect to the issuer carrying PKCE and a fresh state', async () => {

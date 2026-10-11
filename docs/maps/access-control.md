@@ -675,11 +675,12 @@ the answer has to come from the system that owns the rules. Its consuming half i
 repo.
 
 **The subject path (W6-CDX-5, `routes/workspaces.js`).** The reader check takes an optional
-`subject`, the OIDC `sub` a Cloud Command person signed in with. When OIDC is configured and a subject is
-given, the person is first resolved through `user_identities` at this instance's configured issuer
-(`JOIN user_identities ui ON ui.user_id = u.id WHERE ui.issuer = ? AND ui.subject = ?`), and only when
-that matches nobody by email, as before. A subject with no match and no email answers the same
-`{ canRead: false }` as an unknown email. The subject is at most 255 characters. The principal is still
+`subject`, the OIDC `sub` a Cloud Command person signed in with. When a subject is sent, the answer comes
+from the subject alone: the person is resolved through `user_identities` at this instance's configured
+issuer (`JOIN user_identities ui ON ui.user_id = u.id WHERE ui.issuer = ? AND ui.subject = ?`). An unknown
+subject answers `{ canRead: false }` even when an email matches it, because the sign-in ladder refuses an
+identity it cannot find by subject, and without OIDC configured a subject answers `false`. Email decides
+only when no subject is sent. The subject is at most 255 characters. The principal is still
 the machine credential, so the subject path is an oracle about a third party exactly as the email path
 is, and it is no wider.
 

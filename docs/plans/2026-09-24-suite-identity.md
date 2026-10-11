@@ -988,10 +988,12 @@ passes every case, including the `/api` ones, and the snippet above is supersede
 Google rung gives, since the plan did not say which refusal applies there:
 
 1. `SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ?`. A hit: update
-   `last_login_at`; if the verified email differs from `users.email`, update it unless another row
-   holds that address (`SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id <> ?`), which
-   refuses `email_conflict` and changes nothing. Return the user. No local second factor is asked
-   for, whatever `two_factor_method` holds: the issuer's own MFA governs a linked identity.
+   `last_login_at` and `email_at_last_signin` (the issuer's current email, for display and audit).
+   **As amended in W6-CDX-5 after review: the hit never writes `users.email`.** Following the issuer
+   would let a change there reach the local account, which password reset mails and the local
+   email-change rules guard, and would let a recycled address be pulled back. Return the user. No local
+   second factor is asked for, whatever `two_factor_method` holds: the issuer's own MFA governs a linked
+   identity.
 2. With `linkByVerifiedEmail`: `SELECT id, two_factor_method FROM users WHERE LOWER(email) =
    LOWER(?)`. A hit with two-factor on, `(two_factor_method ?? 'none') !== 'none'`, refuses
    `two_factor_enabled` and writes nothing (spec Decision 3; the Google rung's rule, after any
@@ -1076,8 +1078,9 @@ with a route test per field and a live test that rotates an OIDC session and rea
 `routes/workspaces.js` reader check: an optional `subject` query parameter (at most 255
 characters). When present, the user is resolved first through
 `JOIN user_identities ui ON ui.user_id = u.id WHERE ui.issuer = ? AND ui.subject = ?` with the
-configured issuer, then by email as today. Unknown subject and unknown email answer the same
-`{ canRead: false }`. The existing 14 reader-check tests pass unedited; new ones cover the subject
+configured issuer, and **answered from the subject alone** when one is sent (amended in W6-CDX-5 after
+review, to match the spec: an unknown subject is `{ canRead: false }` even when an email matches, since
+the ladder refuses such an identity too). Email decides only when no subject is sent. The existing 14 reader-check tests pass unedited; new ones cover the subject
 path and that the answer is identical when the subject matches nobody.
 
 ### Task 5.9 The fake issuer, and a real one
