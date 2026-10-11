@@ -912,6 +912,11 @@ of a primitive. Whether the bridge renames it or the package's rule gets a
 recorded exception is W6-CDX-22's call. `tests/design/codex-css.test.js` pins
 the overlap to exactly these four, so it can shrink but not grow.
 
+**Resolved in W6-CDX-22:** the bridge keeps the redeclaration as a recorded
+exception (`--brand-blue` is `var(--cx-accent)`, and the three radii point at
+Codex's own `--cx-radius-*`). The names stay because the 27 legacy names are
+the bridge's contract; the overlap test is unchanged.
+
 ### C9. The pool parses DATETIME as Node local time, so every DATETIME read is right only while Node runs in UTC
 
 Found 2026-10-11 in W6-CDX-15 review. `mysql_connect.js` builds the pool from

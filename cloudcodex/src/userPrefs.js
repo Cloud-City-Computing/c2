@@ -9,15 +9,30 @@
  * https://cloudcitycomputing.com
  */
 
+import {
+  ACCENTS, accentValue, accentHover, accentFill, accentDark, isAccent, successorOf,
+} from './tokens/accents.js';
+
 const PREFS_KEY = 'c2-user-prefs';
 
-/** Load user preferences from localStorage. Returns an empty object if none are stored. */
+/**
+ * Load user preferences from localStorage. Returns an empty object if none are stored.
+ * A renamed accent key maps to its one successor; an accent key this build does not
+ * offer is dropped, so the default palette applies.
+ */
 export function loadUserPrefs() {
+  let prefs;
   try {
-    return JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    prefs = JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
   } catch {
     return {};
   }
+  if (prefs.accentColor !== undefined) {
+    const accent = successorOf(prefs.accentColor);
+    if (isAccent(accent)) prefs.accentColor = accent;
+    else delete prefs.accentColor;
+  }
+  return prefs;
 }
 
 /** Persist user preferences to localStorage. */
@@ -27,16 +42,10 @@ export function saveUserPrefs(prefs) {
 
 // --- Preference option constants (single source of truth) ---
 
-export const ACCENT_COLORS = {
-  blue:    { value: '#2ca7db', light: '#5ac0e8', dark: '#1e7a9c', hover: '#21779c' },
-  violet:  { value: '#8b5cf6', light: '#a78bfa', dark: '#6d3ad4', hover: '#7c3aed' },
-  emerald: { value: '#10b981', light: '#34d399', dark: '#059669', hover: '#047857' },
-  rose:    { value: '#f43f5e', light: '#fb7185', dark: '#e11d48', hover: '#be123c' },
-  amber:   { value: '#f59e0b', light: '#fbbf24', dark: '#d97706', hover: '#b45309' },
-  cyan:    { value: '#06b6d4', light: '#22d3ee', dark: '#0891b2', hover: '#0e7490' },
-  pink:    { value: '#d946ef', light: '#e879f9', dark: '#c026d3', hover: '#a21caf' },
-  lime:    { value: '#84cc16', light: '#a3e635', dark: '#65a30d', hover: '#4d7c0f' },
-};
+// A view over ACCENTS (src/tokens/accents.js): the three steps Codex's picker writes.
+export const ACCENT_COLORS = Object.fromEntries(Object.entries(ACCENTS).map(([id, hue]) => [id, {
+  value: accentValue(hue), hover: accentHover(hue), fill: accentFill(hue), dark: accentDark(hue),
+}]));
 
 export const FONT_SIZES = {
   sm: '13px',
@@ -58,17 +67,19 @@ export const DENSITIES = {
 export function applyPrefsToDOM(prefs) {
   const root = document.documentElement;
 
-  const color = ACCENT_COLORS[prefs.accentColor];
+  // Codex's own alias tokens, never a shared primitive: the bridge in index.css
+  // points --brand-blue* at these, so the focus ring follows the picked accent.
+  const color = isAccent(prefs.accentColor) ? ACCENT_COLORS[prefs.accentColor] : undefined;
   if (color) {
-    root.style.setProperty('--brand-blue', color.value);
-    root.style.setProperty('--brand-blue-light', color.light);
-    root.style.setProperty('--brand-blue-dark', color.dark);
-    root.style.setProperty('--brand-blue-hover', color.hover);
+    root.style.setProperty('--cx-accent', color.value);
+    root.style.setProperty('--cx-accent-hover', color.hover);
+    root.style.setProperty('--cx-accent-fill', color.fill);
+    root.style.setProperty('--cx-accent-dark', color.dark);
   } else {
-    root.style.removeProperty('--brand-blue');
-    root.style.removeProperty('--brand-blue-light');
-    root.style.removeProperty('--brand-blue-dark');
-    root.style.removeProperty('--brand-blue-hover');
+    root.style.removeProperty('--cx-accent');
+    root.style.removeProperty('--cx-accent-hover');
+    root.style.removeProperty('--cx-accent-fill');
+    root.style.removeProperty('--cx-accent-dark');
   }
 
   const fontSize = FONT_SIZES[prefs.fontSize];

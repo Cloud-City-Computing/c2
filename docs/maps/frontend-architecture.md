@@ -263,17 +263,25 @@ exports breaks the server, not just the client.
 ## 5. Preferences
 
 `src/userPrefs.js`. One localStorage key, `c2-user-prefs`
-(`userPrefs.js:12`). Three exported option maps that are the single source of
-truth: `ACCENT_COLORS` (8 colours, each with value/light/dark/hover),
+(`userPrefs.js:16`). Three exported option maps that are the single source of
+truth: `ACCENT_COLORS` (8 colours, each with value/hover/fill, a view over
+`ACCENTS` in `src/tokens/accents.js`, the one data file for the picker's hues),
 `FONT_SIZES` (sm/md/lg), `DENSITIES` (compact/comfortable/spacious).
 
-`applyPrefsToDOM(prefs)` (`userPrefs.js:58-91`) writes CSS custom properties on
-`document.documentElement` (`--brand-blue*`, `--editor-font-size`,
-`--density-scale`) and a `data-sidebar-default` attribute on `body`. Crucially
-it **removes** each property when the preference is unset rather than writing a
-default, so the stylesheet's own defaults win.
+`loadUserPrefs()` (`userPrefs.js:23`) maps a renamed accent key through
+`LEGACY_ACCENT` (rose to coral, amber to apricot, emerald to jade, violet to
+iris) and drops an accent key this build does not offer, so the default
+palette applies.
 
-`getPreferredEditorMode()` (`userPrefs.js:96`) returns `'markdown'` or
+`applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes `--cx-accent`,
+`--cx-accent-hover`, `--cx-accent-fill` and `--cx-accent-dark` on
+`document.documentElement` (the index.css bridge points `--brand-blue*` at
+them), `--editor-font-size`, `--density-scale`, and a
+`data-sidebar-default` attribute on `body`. Crucially it **removes** each
+property when the preference is unset rather than writing a default, so the
+stylesheet's own defaults win.
+
+`getPreferredEditorMode()` (`userPrefs.js:105`) returns `'markdown'` or
 `'richtext'`, defaulting to rich text.
 
 **Never write to `localStorage` directly from a component.** Go through
@@ -301,16 +309,28 @@ load-bearing:
    `[data-theme='dark']`, which `index.html` sets on `<html>` (Codex is dark
    only through Wave 6). Five surfaces, three text levels, the accent
    (`--accent-300`), its hover and fill, the status colours on the pale step,
-   the border, the scrim and the focus ring. **No rule reads a `--cx-` name
-   yet**; W6-CDX-22 repoints the legacy names onto them.
-4. `src/index.css`, 9070 lines, the whole app. No CSS modules, no
-   preprocessor, no utility framework. Its `:root` block declares the 27
-   legacy names every rule reads.
+   the border, the scrim, the focus ring, Codex's radii (4, 8, 12 px), its
+   drop-shadow inks, and its layout sizes and transition.
+4. `src/index.css`, about 8,700 lines, the whole app. No CSS modules, no
+   preprocessor, no utility framework. Its `:root` block (`index.css:12`) is
+   the **legacy-alias bridge** (W6-CDX-22): the 27 legacy names every rule
+   reads, plus five undeclared names that carried the heaviest literal
+   fallbacks (`--bg-secondary`, `--bg-tertiary`, `--border`, `--color-accent`,
+   `--accent-color`). Each points at one `var()` into `codex.css` or `core.css`
+   and holds no literal, pinned by `tests/design/bridge.test.js`. Rules that
+   paint white labels on an accent or danger background read the dark step
+   (`--brand-blue-hover`, `--color-danger-hover`), not the pale text step.
+   The accent-fill labels paint `--cx-on-accent` (a dark ink), since white on
+   the pale fill measures 2.7 to 3.1:1; the danger labels sit on
+   `--cx-danger-fill` (rest) and `--cx-danger-fill-hover`. Avatar initials sit
+   on `--brand-blue-dark`, which is `--cx-accent-dark` and follows the picker.
 
 **Four names overlap.** `index.css` redeclares `--brand-blue` and
 `--radius-sm`, `-md`, `-lg`, which `core.css` also declares; loaded later on
 the same selector, Codex's values win (radii 4, 8, 12 px against core's 6, 10,
 14). `tests/design/codex-css.test.js` pins the set so it can only shrink.
+This is a recorded exception, decided in W6-CDX-22: the bridge keeps the names
+so no rule or test changes, and `--brand-blue` now points at `--cx-accent`.
 **One name changed meaning:** `--font-mono`, which two GitHub-page rules read
 with a fallback, now resolves to core's monospace stack.
 

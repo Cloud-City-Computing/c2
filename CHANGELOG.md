@@ -166,6 +166,20 @@ initialises an empty data directory.
 - **Node 22.** The image (`node:22-slim`), CI and the release workflow run Node 22, and
   `package.json` declares `engines` `>=22`. openid-client 6 and jose 6 need it.
 
+- **The palette now resolves from the shared tokens, and the accent picker has
+  eight hues.** The legacy colour names keep their names but point at Codex's
+  bindings of the vendored package (a legacy-alias bridge in `index.css`), so
+  the surfaces, text, status colours and focus ring read one source. Codex's
+  own radii, shadows and layout sizes moved to `codex.css` at their old values.
+  Fifty-seven CSS rules that no markup could match were deleted. Four accent
+  hues moved off the status colours and were renamed (rose is now coral,
+  amber is now apricot, emerald is now jade, violet is now iris); blue, cyan,
+  pink and lime keep their names. Nothing was removed: the picker still offers
+  eight choices, and a saved rose, amber, emerald or violet loads as its
+  successor. The default accent is now the package's blue step, a little
+  lighter than before, and the surfaces take the package's blue-grey tint.
+  Labels on the accent fill are now a dark ink (white on the pale fill failed
+  4.5:1), and the danger button is a deeper red so its white label passes.
 - The GitHub page's linked file path and its file picker, which asked for a
   `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now
   get the design package's monospace stack (`ui-monospace, SFMono-Regular,

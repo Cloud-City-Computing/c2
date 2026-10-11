@@ -14,48 +14,64 @@
   line-height: 1.5;
   font-weight: 400;
 
-  /* Colors */
-  --bg-main: #242424;
-  --bg-elevated: #1e1e1e;
-  --bg-panel: #2e2e2e;
-  --bg-hover: #3a3a3a;
-  --bg-hover-strong: #444;
+  /* Legacy-alias bridge (W6-CDX-22). Every name below keeps its name, so
+     rules and tests that use them are unchanged; each one now points at a
+     token from src/codex.css or the vendored core.css, and holds no literal.
+     tests/design/bridge.test.js pins the 27 declared names, the five
+     fallback names bridged here, and their targets. */
 
-  --border-color: #444;
+  /* Surfaces */
+  --bg-main: var(--cx-surface-0);
+  --bg-elevated: var(--cx-surface-1);
+  --bg-panel: var(--cx-surface-2);
+  --bg-hover: var(--cx-surface-3);
+  --bg-hover-strong: var(--cx-surface-4);
+  --border-color: var(--cx-border);
 
-  --text-primary: rgba(255, 255, 255, 0.87);
-  --text-secondary: #ccc;
-  --text-muted: #888;
+  /* Text */
+  --text-primary: var(--cx-text-primary);
+  --text-secondary: var(--cx-text-secondary);
+  --text-muted: var(--cx-text-faint);
 
-  /* Cloud City Brand Colors */
-  --brand-blue: #2ca7db;
-  --brand-blue-light: #5ac0e8;
-  --brand-blue-dark: #1e7a9c;
-  --brand-blue-hover: #21779c;
+  /* Brand. --brand-blue is the picked accent; the dark step is the
+     package's accent-600, the one that carries a white label. */
+  --brand-blue: var(--cx-accent);
+  --brand-blue-light: var(--cx-accent-hover);
+  --brand-blue-dark: var(--cx-accent-dark);
+  --brand-blue-hover: var(--cx-accent-fill);
 
   /* Semantic */
-  --color-danger: #e54545;
-  --color-danger-hover: #c93636;
-  --color-success: #4caf50;
+  --color-danger: var(--cx-danger);
+  --color-danger-hover: var(--cx-danger-fill-hover);
+  --color-success: var(--cx-success);
 
   /* Radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: var(--cx-radius-sm);
+  --radius-md: var(--cx-radius-md);
+  --radius-lg: var(--cx-radius-lg);
 
   /* Shadows */
-  --shadow-sm: 0 2px 4px rgba(0,0,0,0.5);
-  --shadow-md: 0 4px 8px rgba(0,0,0,0.7);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
+  --shadow-sm: var(--cx-shadow-sm);
+  --shadow-md: var(--cx-shadow-md);
+  --shadow-lg: var(--cx-shadow-lg);
 
   /* Layout */
-  --topbar-height: 56px;
-  --sidebar-width: 220px;
-  --sidebar-collapsed: 56px;
-  --footer-height: 44px;
+  --topbar-height: var(--cx-topbar-height);
+  --sidebar-width: var(--cx-sidebar-width);
+  --sidebar-collapsed: var(--cx-sidebar-collapsed);
+  --footer-height: var(--cx-footer-height);
 
   /* Shared transition */
-  --transition: all 0.2s ease;
+  --transition: var(--cx-transition);
+
+  /* Undeclared names that carried the heaviest literal fallbacks. Declared
+     here so the fallback is no longer the value that paints; the fallback
+     literals come out with the burndown in PR 8. */
+  --bg-secondary: var(--cx-surface-1);
+  --bg-tertiary: var(--cx-surface-2);
+  --border: var(--cx-border);
+  --color-accent: var(--cx-accent);
+  --accent-color: var(--cx-accent);
 
   background-color: var(--bg-main);
   color: var(--text-primary);
@@ -377,8 +393,8 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-hover));
-  color: #fff;
+  background: var(--brand-blue-hover);
+  color: var(--cx-on-accent);
 }
 .btn-primary:hover {
   filter: brightness(1.1);
@@ -401,7 +417,7 @@ body {
 }
 
 .btn-danger {
-  background: var(--color-danger);
+  background: var(--cx-danger-fill);
   color: #fff;
 }
 .btn-danger:hover {
@@ -410,7 +426,6 @@ body {
 }
 
 .btn-sm { padding: 5px 12px; font-size: 12px; }
-.btn-xs { padding: 3px 8px; font-size: 11px; }
 
 .stretched-button {
   margin-top: 10px;
@@ -418,22 +433,6 @@ body {
 }
 
 /* Keep legacy c2-btn for any remaining usage */
-.c2-btn {
-  display: inline-block;
-  padding: 8px 18px;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-hover));
-  color: #fff;
-  cursor: pointer;
-  transition: var(--transition);
-}
-.c2-btn:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 0 12px rgba(44, 167, 219, 0.35);
-}
 
 /* =========================
    Account Button (Top Bar)
@@ -573,7 +572,7 @@ body {
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  background: var(--color-danger);
+  background: var(--cx-danger-fill);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -978,32 +977,9 @@ body {
   font-weight: 700;
 }
 
-.archive-back-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 18px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  line-height: 1;
-  flex-shrink: 0;
-  transition: var(--transition);
-}
-.archive-back-btn:hover {
-  color: var(--brand-blue);
-  background: rgba(44, 167, 219, 0.12);
-}
-
 /* =========================
    Cards + Grid
 ========================= */
-
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
 
 .card {
   background: var(--bg-panel);
@@ -1177,11 +1153,6 @@ body {
    Search Results
 ========================= */
 
-.results-section {
-  width: 100%;
-  margin-top: 20px;
-}
-
 .search-result-item {
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
@@ -1266,7 +1237,6 @@ body {
 
 .modal-md { width: 90vw; max-width: 480px; }
 .modal-lg { width: 90vw; max-width: 640px; }
-.modal-xl { width: 95vw; max-width: 900px; }
 
 .close-button {
   font-size: 24px;
@@ -1826,23 +1796,6 @@ body {
 
 /* ── Welcome (no file selected) ── */
 
-.gh-welcome {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 64px 24px;
-  text-align: center;
-  flex: 1;
-  color: var(--text-muted, #888);
-}
-
-.gh-welcome h2 {
-  margin: 0;
-  color: var(--text-primary, #fff);
-}
-
 /* ── File View ── */
 
 .gh-file-view {
@@ -2107,21 +2060,6 @@ body {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-muted, #888);
-}
-
-.gh-commit-panel {
-  border-top: 1px solid var(--border-color, #333);
-  padding: 16px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: var(--bg-secondary, #1e1e1e);
-  flex-shrink: 0;
-}
-
-.gh-commit-panel h3 {
-  margin: 0;
-  font-size: 16px;
 }
 
 .gh-commit-mode {
@@ -2405,18 +2343,6 @@ body {
 .gh-new-file-btn svg {
   width: 12px;
   height: 12px;
-}
-
-.gh-welcome__actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  align-items: center;
-}
-
-.gh-welcome__actions .btn svg {
-  vertical-align: -2px;
-  margin-right: 4px;
 }
 
 /* ── Commit History Panel ── */
@@ -3020,10 +2946,6 @@ body {
   padding: 16px 24px;
 }
 
-.gh-pr-files__list {
-  border-radius: 8px;
-}
-
 /* Clickable file rows */
 .gh-history__file-row.clickable {
   cursor: pointer;
@@ -3480,24 +3402,6 @@ body {
 }
 
 /* Legacy login-form (backward compat) */
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  text-align: left;
-  margin-top: 8px;
-}
-.login-form label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.login-form input {
-  width: 100%; padding: 9px 10px; font-size: 14px;
-  border: 1px solid var(--border-color); border-radius: var(--radius-sm);
-  background: var(--bg-elevated); color: var(--text-primary);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.login-form input:focus {
-  outline: none; border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
-}
 
 /* =========================
    Signup Validation Styles
@@ -3632,72 +3536,6 @@ body {
    Settings Layout (archive/workspace/squad settings)
 ========================= */
 
-.settings-layout {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-.settings-menu {
-  flex-shrink: 0;
-  width: 220px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  box-shadow: var(--shadow-sm);
-}
-
-.settings-menu h3 {
-  margin: 0 0 14px;
-  padding: 0 8px 10px;
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.settings-menu ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.settings-menu ul li .btn-ghost {
-  width: 100%;
-  justify-content: flex-start;
-  padding: 10px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  transition: var(--transition);
-  border-left: 3px solid transparent;
-}
-
-.settings-menu ul li .btn-ghost:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-  border-left-color: var(--brand-blue-dark);
-}
-
-.settings-menu ul li.active .btn-ghost {
-  color: var(--brand-blue);
-  background: rgba(44, 167, 219, 0.1);
-  border-left-color: var(--brand-blue);
-  font-weight: 600;
-}
-
-.settings-layout__content {
-  flex: 1;
-  min-width: 0;
-}
-
 .settings-panel {
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
@@ -3708,12 +3546,6 @@ body {
 .settings-panel:hover { border-color: var(--brand-blue-dark); }
 
 /* Split view inside a settings panel (list + detail) */
-.settings-split {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-  margin-top: 16px;
-}
 
 .settings-item-list {
   list-style: none;
@@ -3761,46 +3593,6 @@ body {
   font-size: 11px;
 }
 
-.settings-detail {
-  flex: 1;
-  min-width: 0;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 24px;
-}
-
-.settings-detail h3 {
-  margin: 0 0 4px;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.settings-section {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-}
-
-.settings-section h4 {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-}
-
-.settings-danger-zone {
-  border-top-color: var(--color-danger);
-}
-
-.settings-danger-zone h4 {
-  color: var(--color-danger);
-  text-transform: none;
-  letter-spacing: normal;
-}
-
 .inline-form {
   display: flex;
   align-items: center;
@@ -3841,67 +3633,8 @@ body {
 .text-sm { font-size: 12px; }
 
 /* Permissions toggles */
-.permissions-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.permission-toggle {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.permission-toggle:hover {
-  border-color: var(--brand-blue-dark);
-  background: var(--bg-hover);
-  box-shadow: 0 0 0 1px rgba(44, 167, 219, 0.1);
-}
-
-.permission-toggle input[type="checkbox"] {
-  margin-top: 3px;
-  accent-color: var(--brand-blue);
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.permission-toggle strong {
-  font-size: 14px;
-  display: block;
-  margin-bottom: 2px;
-}
-
-.permission-toggle p {
-  margin: 0;
-}
 
 /* Permissions sections */
-.permissions-section {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border-color);
-}
-
-.permissions-section:first-of-type {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
-}
-
-.permissions-section h3 {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-}
 
 /* User search component */
 .user-search {
@@ -3965,13 +3698,6 @@ body {
 }
 
 /* Access selected user display */
-.access-selected-user {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-}
 
 .panel-title {
   margin: 0 0 20px;
@@ -4033,15 +3759,6 @@ body {
   border-color: var(--brand-blue);
   box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
-
-.checkbox-group label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.checkbox-group input[type="checkbox"] { accent-color: var(--brand-blue); }
 
 /* 2FA Method Selection */
 .tfa-method-options {
@@ -4646,23 +4363,6 @@ body {
 
 /* --- Squad Team binding panel (P3) --- */
 
-.squad-team-binding {
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid var(--border, #3a3a4e);
-  border-radius: 6px;
-}
-.squad-team-binding__diff {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 12px;
-}
-.squad-team-binding__diff h5 {
-  margin: 0 0 6px;
-  font-size: 13px;
-}
-
 /* --- GitHub reconnect banner (revoked token) --- */
 
 .gh-reconnect-banner {
@@ -4803,20 +4503,7 @@ body {
   right: 8px;
 }
 
-
 /* Home page favorites section */
-.home-favorites {
-  margin-bottom: 32px;
-}
-.home-favorites h2 {
-  font-size: 20px;
-  margin: 0 0 16px;
-}
-.favorites-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
 
 .editor-toolbar {
   display: flex;
@@ -5586,7 +5273,7 @@ body {
 }
 .btn-ghost.btn-danger:hover {
   color: #fff;
-  background: var(--color-danger);
+  background: var(--cx-danger-fill);
 }
 
 /* =========================
@@ -5606,10 +5293,6 @@ body {
   margin: 0 0 8px;
   font-size: 32px;
   font-weight: 700;
-}
-
-.home-quicklinks {
-  margin-top: 20px;
 }
 
 /* =========================
@@ -5698,16 +5381,12 @@ body {
     flex-wrap: wrap;
   }
 
-  .account-settings, .settings-layout {
-    flex-direction: column;
-  }
-  .account-menu, .settings-menu { width: 100%; }
-  .settings-split { flex-direction: column; }
+  
+  
+  
   .settings-item-list { width: 100%; }
 
-  .card-grid {
-    grid-template-columns: 1fr;
-  }
+  
 
   .modal-md,
   .modal-lg { width: 95vw; }
@@ -6284,8 +5963,8 @@ body {
 }
 
 .pref-toggle-btn.active {
-  background: var(--brand-blue);
-  color: #fff;
+  background: var(--brand-blue-hover);
+  color: var(--cx-on-accent);
 }
 
 /* =========================
@@ -6922,15 +6601,15 @@ body {
 }
 
 .explore-pagination__num--active {
-  background: var(--brand-blue);
-  color: #fff;
+  background: var(--brand-blue-hover);
+  color: var(--cx-on-accent);
   border-color: var(--brand-blue);
   font-weight: 600;
 }
 
 .explore-pagination__num--active:hover {
-  background: var(--brand-blue);
-  color: #fff;
+  background: var(--brand-blue-hover);
+  color: var(--cx-on-accent);
 }
 
 .explore-pagination__dots {
@@ -9040,8 +8719,8 @@ body {
 }
 
 .drawio-block__edit-btn:hover:not(:disabled) {
-  background: var(--brand-blue);
-  color: #fff;
+  background: var(--brand-blue-hover);
+  color: var(--cx-on-accent);
   border-color: var(--brand-blue);
 }
 
@@ -9063,7 +8742,7 @@ body {
 }
 
 .drawio-block__delete-btn:hover {
-  background: var(--color-danger);
+  background: var(--color-danger-hover);
   color: #fff;
   border-color: var(--color-danger);
 }

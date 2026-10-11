@@ -51,6 +51,13 @@
   --cx-accent-hover: var(--accent-200);
   --cx-accent-fill: var(--accent-400);
   --cx-on-accent: oklch(0.16 0.03 240);
+  /* The dark step behind a white avatar label, and the danger fills behind a
+     white label: rest and hover. Each measures in tests/design/painted.test.js
+     (white at 4.5:1 or more on every accent dark; white at 4.5:1 or more on
+     each danger step, the hover darker than the rest). */
+  --cx-accent-dark: oklch(0.45 0.13 240);
+  --cx-danger-fill: oklch(0.5 0.19 25);
+  --cx-danger-fill-hover: oklch(0.44 0.19 25);
 
   /* Lines and the overlay wash: flat and tinted. */
   --cx-border: oklch(0.386 0.014 240);
@@ -66,4 +73,21 @@
 
   /* The focus ring follows the accent. */
   --cx-focus-ring: var(--cx-accent);
+
+  /* Radii, kept at Codex's own 4, 8 and 12px (core's steps are 6, 10, 14px). */
+  --cx-radius-sm: 4px;
+  --cx-radius-md: 8px;
+  --cx-radius-lg: 12px;
+
+  /* Drop shadows: the ink is black at Codex's three strengths. */
+  --cx-shadow-sm: 0 2px 4px oklch(0 0 0 / 0.5);
+  --cx-shadow-md: 0 4px 8px oklch(0 0 0 / 0.7);
+  --cx-shadow-lg: 0 8px 24px oklch(0 0 0 / 0.6);
+
+  /* Layout and motion, kept at Codex's values. */
+  --cx-topbar-height: 56px;
+  --cx-sidebar-width: 220px;
+  --cx-sidebar-collapsed: 56px;
+  --cx-footer-height: 44px;
+  --cx-transition: all 0.2s ease;
 }
