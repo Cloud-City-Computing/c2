@@ -3,12 +3,12 @@
 # Two stages so the published image carries the built frontend and the
 # production dependency tree, but not the toolchain that produced them.
 # The single-stage version of this file produced a 2.86 GB image: the full
-# node:20 base, devDependencies that are only needed to run Vite and Vitest,
+# node:22 base, devDependencies that are only needed to run Vite and Vitest,
 # and, because there was no .dockerignore, a second copy of node_modules
 # carried in from the host.
 
 # ---- build stage: full dependency tree, produces dist/ ----
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ COPY . .
 RUN npm run build
 
 # ---- runtime stage: production dependencies plus the built assets ----
-FROM node:20-slim
+FROM node:22-slim
 
 # vite-express switches to serving the prebuilt dist/ instead of booting a Vite
 # dev server off this, so it has to be set before server.js is imported, not
@@ -44,7 +44,7 @@ EXPOSE 3000
 
 # Readiness, not just liveness: /readyz answers 503 until the instance lock is
 # held, MySQL answers and every file in /migrations is applied, and from the
-# moment a stop signal arrives (routes/health.js). node:20-slim ships no curl
+# moment a stop signal arrives (routes/health.js). node:22-slim ships no curl
 # or wget, so the probe is Node's own fetch, on whatever PORT the app binds.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/readyz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"

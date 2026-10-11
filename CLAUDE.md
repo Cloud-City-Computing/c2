@@ -17,7 +17,7 @@ team documentation. Differentiating capabilities:
 - **Invite-only registration** (no public signup; admin issues invite tokens).
 - **GitHub integration** as a live API proxy: browse repos, edit files, manage
   branches/PRs, link documents to GitHub files. No webhooks, no background sync.
-- **Self-hosted**: Docker Compose for dev and prod. MySQL 8 + Node 20.
+- **Self-hosted**: Docker Compose for dev and prod. MySQL 8 + Node 22.
 
 The "c2" repo name is a legacy codename — refer to the product as **Cloud Codex**
 in user-facing strings, comments, and commit messages.
