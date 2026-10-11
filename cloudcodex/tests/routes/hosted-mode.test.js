@@ -17,7 +17,7 @@ import app from '../../app.js';
 import { c2_query, validateAndAutoLogin } from '../../mysql_connect.js';
 import { mockAuthenticated, resetMocks, TEST_USER } from '../helpers.js';
 
-const KEYS = ['AUTH_PROVIDERS', 'OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
+const KEYS = ['AUTH_PROVIDERS', 'APP_URL', 'OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
 
 /** Every local-only route, with a body that would be valid if the route were mounted. */
 const LOCAL_ROUTES = [
@@ -44,6 +44,7 @@ describe('hosted mode (AUTH_PROVIDERS without local)', () => {
     for (const k of KEYS) delete process.env[k];
     process.env.AUTH_PROVIDERS = 'oidc';
     process.env.OIDC_ISSUER_URL = 'https://id.example.test';
+    process.env.APP_URL = 'https://codex.example.test';
     process.env.OIDC_CLIENT_ID = 'test-client';
     process.env.OIDC_CLIENT_SECRET = 'test-secret';
   });

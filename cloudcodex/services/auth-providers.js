@@ -57,6 +57,18 @@ export function offeredProviders() {
 }
 
 /**
+ * Whether a sign-in route for `name` is allowed to answer. Unset AUTH_PROVIDERS allows it, so the route's
+ * own configuration check decides, exactly as before. A set list allows only what it names, so a
+ * configured provider the list leaves out has no door.
+ * @param {'google'|'oidc'} name
+ * @returns {boolean}
+ */
+export function providerListed(name) {
+  const names = listedNames();
+  return names === null || names.includes(name);
+}
+
+/**
  * Whether local sign-in (password, sign-up, reset, 2FA, local email change) is on. False is hosted
  * mode: AUTH_PROVIDERS is set and does not list local.
  * @returns {boolean}

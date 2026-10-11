@@ -14,12 +14,13 @@ import { c2_query, generateSessionToken, getSessionProvider, getSessionProvenanc
 import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
-import { requireAuth, extractSessionToken } from '../middleware/auth.js';
+import { requireAuth, requireLocalSignIn, extractSessionToken } from '../middleware/auth.js';
 import { legacyCookieAllowed } from '../services/session-cookie.js';
 import { getOidcConfig } from '../services/oidc.js';
 import { endSessionUrlFor } from '../services/sign-out.js';
 import { closeSocketsForSessions as closeCollabSockets } from '../services/collab.js';
 import { closeSocketsForSessions as closeUserChannelSockets } from '../services/user-channel.js';
+import { localSignInEnabled } from '../services/auth-providers.js';
 import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, TOKEN_PURPOSE, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
 
 /**
@@ -110,7 +111,7 @@ function generate2FACode() {
  * Body: { username, password, email, inviteToken }
  * Requires a valid invitation token to create an account.
  */
-router.post('/create-account', asyncHandler(async (req, res) => {
+router.post('/create-account', requireLocalSignIn, asyncHandler(async (req, res) => {
   const { username, password, email, inviteToken } = req.body;
 
   if (!username || !password || !email) {
@@ -237,7 +238,7 @@ router.post('/create-account', asyncHandler(async (req, res) => {
  * GET /api/check-username/:username
  * Returns whether a username is available and valid.
  */
-router.get('/check-username/:username', asyncHandler(async (req, res) => {
+router.get('/check-username/:username', requireLocalSignIn, asyncHandler(async (req, res) => {
   const { username } = req.params;
 
   if (!isValidUsername(username)) {
@@ -374,6 +375,15 @@ router.post('/update-account', asyncHandler(async (req, res) => {
   const emailChanging = email !== undefined && email !== sessionUser.email;
   const passwordChanging = password !== undefined;
 
+  // Hosted mode (no local sign-in): the issuer owns the address and the credential, so neither changes
+  // here, with or without the current password. The display name is not a credential and still renames.
+  if (!localSignInEnabled() && emailChanging) {
+    return res.status(403).json({ success: false, message: 'Your email is managed by your sign-in provider on this instance, so it cannot be changed here.' });
+  }
+  if (!localSignInEnabled() && passwordChanging) {
+    return res.status(403).json({ success: false, message: 'Your password is managed by your sign-in provider on this instance, so it cannot be changed here.' });
+  }
+
   // Shape first. None of these reads anything about another account.
   if (name !== undefined && !isValidUsername(name)) {
     return res.status(400).json({ success: false, message: 'Username must be 3-32 characters: letters, numbers, and underscores only' });
@@ -491,7 +501,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
  * does: every session of the user deleted, a fresh `token` (tagged like the
  * caller's session) in the answer, and a notice to the old address. Modelled on POST /api/2fa/disable/confirm.
  */
-router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (req, res) => {
+router.post('/update-account/confirm-email', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
   const { confirmToken, code } = req.body;
 
   if (!confirmToken || !code) {
@@ -554,7 +564,7 @@ router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (re
  * Body: { username, password }
  * If 2FA is enabled, returns { requires_2fa: true, twoFactorToken } instead of a session.
  */
-router.post('/login', asyncHandler(async (req, res) => {
+router.post('/login', requireLocalSignIn, asyncHandler(async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -994,7 +1004,7 @@ function generateResetToken() {
  * identical for every address, existing or not, to prevent email enumeration.
  * Refuses honestly, before any lookup, when mail is disabled instance-wide.
  */
-router.post('/forgot-password', asyncHandler(async (req, res) => {
+router.post('/forgot-password', requireLocalSignIn, asyncHandler(async (req, res) => {
   const { email } = req.body;
 
   if (!email || !isValidEmail(email)) {
@@ -1070,7 +1080,7 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
  * Body: { token, password }
  * Validates the reset token and updates the user's password.
  */
-router.post('/reset-password', asyncHandler(async (req, res) => {
+router.post('/reset-password', requireLocalSignIn, asyncHandler(async (req, res) => {
   const { token, password } = req.body;
 
   if (!token || !password) {
@@ -1112,7 +1122,7 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
  * Body: { twoFactorToken, code }
  * Verifies the 2FA code (email or TOTP) and issues a session token.
  */
-router.post('/2fa/verify', asyncHandler(async (req, res) => {
+router.post('/2fa/verify', requireLocalSignIn, asyncHandler(async (req, res) => {
   const { twoFactorToken, code } = req.body;
 
   if (!twoFactorToken || !code) {
@@ -1191,7 +1201,7 @@ router.post('/2fa/verify', asyncHandler(async (req, res) => {
  * For 'totp': generates a secret, emails the QR code to the user, returns a setup token.
  *   The user must then call POST /api/2fa/totp/confirm with the setup token and a code from their app.
  */
-router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/enable', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
   const method = req.body.method || 'email';
 
   // Email 2FA on a mail-less instance is a lockout: the login code and the
@@ -1283,7 +1293,7 @@ router.post('/2fa/enable', requireAuth, asyncHandler(async (req, res) => {
  * Body: { setupToken, code }
  * Verifies the user's first TOTP code to activate authenticator-app-based 2FA.
  */
-router.post('/2fa/totp/confirm', requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/totp/confirm', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
   const { setupToken, code } = req.body;
 
   if (!setupToken || !code) {
@@ -1338,7 +1348,7 @@ router.post('/2fa/totp/confirm', requireAuth, asyncHandler(async (req, res) => {
  * The user must call POST /api/2fa/disable/confirm with the token and code to complete.
  * Refuses, without minting anything, when mail is disabled instance-wide.
  */
-router.post('/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/disable', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
   const [userRow] = await c2_query(`SELECT email, two_factor_method FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
   if (!userRow || userRow.two_factor_method === 'none') {
     return res.json({ success: true, message: 'Two-factor authentication is already disabled.' });
@@ -1396,7 +1406,7 @@ router.post('/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
  * Body: { confirmToken, code }
  * Validates the email code and disables 2FA.
  */
-router.post('/2fa/disable/confirm', requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/disable/confirm', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
   const { confirmToken, code } = req.body;
 
   if (!confirmToken || !code) {
@@ -1438,7 +1448,7 @@ router.post('/2fa/disable/confirm', requireAuth, asyncHandler(async (req, res) =
  * GET /api/2fa/status
  * Returns the authenticated user's current 2FA method.
  */
-router.get('/2fa/status', requireAuth, asyncHandler(async (req, res) => {
+router.get('/2fa/status', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
   const [row] = await c2_query(
     `SELECT two_factor_method FROM users WHERE id = ? LIMIT 1`,
     [req.user.id]

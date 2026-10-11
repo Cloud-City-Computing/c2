@@ -38,7 +38,7 @@ import watchesRouter from './routes/watches.js';
 import firstRunRouter from './routes/first-run.js';
 import healthRouter from './routes/health.js';
 import { warnUntrustedForwarders, ipv6Groups } from './middleware/forwarded-for.js';
-import { bearerToken } from './middleware/auth.js';
+import { bearerToken, requireLocalSignIn } from './middleware/auth.js';
 import { readSessionCookie } from './services/session-cookie.js';
 import { getOidcConfig } from './services/oidc.js';
 
@@ -366,13 +366,13 @@ const authLimiter = rateLimit({
 app.use(express.json({ limit: '2mb' }));
 
 // Apply auth rate limiter
-app.use('/api/login', authLimiter);
-app.use('/api/create-account', authLimiter);
-app.use('/api/forgot-password', authLimiter);
-app.use('/api/reset-password', authLimiter);
-app.use('/api/2fa/verify', authLimiter);
-app.use('/api/2fa/totp/confirm', authLimiter);
-app.use('/api/2fa/disable/confirm', authLimiter);
+app.use('/api/login', requireLocalSignIn, authLimiter);
+app.use('/api/create-account', requireLocalSignIn, authLimiter);
+app.use('/api/forgot-password', requireLocalSignIn, authLimiter);
+app.use('/api/reset-password', requireLocalSignIn, authLimiter);
+app.use('/api/2fa/verify', requireLocalSignIn, authLimiter);
+app.use('/api/2fa/totp/confirm', requireLocalSignIn, authLimiter);
+app.use('/api/2fa/disable/confirm', requireLocalSignIn, authLimiter);
 app.use('/api/oauth/google/callback', authLimiter);
 app.use('/api/auth/oidc/callback', authLimiter);
 // update-account checks the current password for an email or password change,
