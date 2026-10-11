@@ -42,6 +42,22 @@ initialises an empty data directory.
   `/api/auth/oidc/start` with the link as `returnTo`, once per tab, and an error return renders the landing.
   `GET /api/oauth/providers` reports `local`.
 
+- **The suite front door: deep links survive sign-in (W6-CDX-26).** In suite mode a signed-out deep link
+  goes once per tab to the sign-in, even when local login is also on. Without OIDC the Login modal opens, and a
+  successful sign-in returns to the link. The sign-in modal leads with the suite's name (or `OIDC_PROVIDER_NAME`
+  when set), with local login secondary. `/?signedOut=1` says "You're signed out of <suite name>." in suite mode,
+  and a local sign-out lands there. Every target goes through the one validator the server uses.
+- **Suite mode: Linked tasks from a document.** In suite mode a document's meta line has a
+  "Linked tasks" link to Cloud Command's page for that document. It is a same-tab link built from the
+  Cloud Command workspace URL, and it is absent outside suite mode. `GET /api/suite/links` supplies
+  the URL to a signed-in page.
+- **Suite mode: a suite cluster in the top bar.** Setting `SUITE_COMMAND_WORKSPACE_URL`
+  (with `SUITE_NAME`) turns it on. A signed-in user sees a disclosure in the brand slot that lists
+  Cloud Codex, Cloud Command, and All workspaces. `GET /api/suite` answers the name, and
+  `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot,
+  and so does a URL that is not exactly an origin plus `/w/<workspace id>`.
+  With suite mode off the top bar is unchanged. The chrome sections are on the design tokens, and
+  every `z-index` is on the shared scale.
 - **Machine JWTs from Cloud City ID (W6-CDX-7).** A client-credentials access token from the
   issuer now authenticates the machine routes (`GET /api/search`, `GET /api/browse`,
   `GET /api/documents/state`, and the reader check). It is verified with `jose` against the

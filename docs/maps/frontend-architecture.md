@@ -169,6 +169,7 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 | `useNotificationChannel.js` | the `/notifications-ws` socket, feeding `NotificationBell` |
 | `useSuite.js` | suite mode: `GET /api/suite` once per page load, and `GET /api/suite/links` only for a signed-in user while suite mode is on. Any failure reads as off. `__resetSuiteCache` is the test seam |
 | `useSuiteLinks(signedIn)` (`src/hooks/useSuite.js:80`) | the same two requests for a page outside the layout's user state (the editor), made only when `signedIn` (a signed-out viewer makes no request): `{ commandWorkspaceUrl }` in suite mode, `null` otherwise or on any failure |
+| `useSignedOutTarget.js` | the signed-out deep-link decision (W6-CDX-8, W6-CDX-26). `useSignedOutTarget()` (`:170`) asks `/api/oauth/providers` and `suiteEnabled()`, then `resolveSignedOut` (`:94`) returns `bounced`, `login` or `landing`. The pure rule is `decideSignedOut` (`:48`); every target goes through `safeReturnTo` (`services/return-to.js`), the one validator the server uses |
 | `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
 | `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
@@ -231,6 +232,33 @@ archive id is known, for a signed-out viewer, when the URL is not http(s), or wh
 positive int4. The archive id is passed only once the loaded document's id is the route's log id. It
 is mounted once in the document meta line of `Editor.jsx:1153`; the class `.suite-doc-link` is
 in `src/index.css`, and its colour is measured in `tests/design/painted.test.js`.
+
+## 3c. The signed-out front door (W6-CDX-26)
+
+A signed-out visitor's deep link has three outcomes, decided by `decideSignedOut`
+(`src/hooks/useSignedOutTarget.js:48`). The root and `/404` always answer `landing`, and never ask
+the server. Where OIDC is offered and is the only sign-in (`isOidcOnly`, `:35`), or suite mode is on,
+the link bounces once per tab to `/api/auth/oidc/start?returnTo=`. The marker is
+`sessionStorage["c2-oidc-bounce"]`, cleared on a successful sign-in (`clearOidcBounce`, called from
+`Std_Layout.jsx` `checkAuth`). An `oauth_error` return renders the landing. Where no OIDC is offered,
+the validated target is kept under `c2-sign-in-target` (`keepSignInTarget`, `:124`) and the caller
+opens the Login modal; `Login.jsx` `finishSignIn` (`:39`) sends a successful sign-in to the kept
+target (`takeSignInTarget`, `:136`), or reloads. A `bounced` result needs no other work.
+
+The target is `safeReturnTo(pathname + search)` on the client too, so an encoded path (a `%`
+anywhere in the path) falls back to `/` and the bounce still happens, as Cloud Command does. The bare
+`/` is never bounced. That matches Cloud Command's current default (`BOUNCE_BARE_ROOT = false`,
+`src/lib/silent-sign-in.ts`, pending Kyle's D4); flipping D4 is a separate, deliberate change.
+
+- **The landing after a sign-out.** `?signedOut=1` on `/` shows "You're signed out of <name>." in
+  suite mode only (`NoLoginMessage`, `Std_Layout.jsx:247`; the name is `useSuite`'s, never a literal).
+  Outside suite mode the landing is unchanged. `AccountPanel.jsx` sends a local sign-out to
+  `/?signedOut=1` (the OIDC path sends the issuer's end-session URL, which returns there too).
+- **The OIDC button's name.** `GET /api/oauth/providers` names the button `OIDC_PROVIDER_NAME` when it
+  is set, else the suite's name in suite mode, else `SSO` (`oidcButtonName`, `routes/oauth.js:190`).
+- **The Login modal in suite mode.** `Login.jsx` reads `useSuite(null)`. With OIDC offered, the SSO
+  link is `btn-primary` and leads the modal, and the local submit is `btn-ghost`. Suite off, the markup
+  is the snapshot in `tests/src/components/__snapshots__/Login-front-door.test.jsx.snap`.
 
 ## 4. Components
 
