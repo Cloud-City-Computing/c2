@@ -22,7 +22,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import { SignJWT, generateKeyPair, exportJWK } from 'jose';
 import { c2_query, generateSessionToken } from '../../mysql_connect.js';
 import { resetOidcCache } from '../../services/oidc.js';
+import { openIdToken, sealIdToken } from '../../services/id-token-seal.js';
+import { resetLogoutTokenState } from '../../services/backchannel-logout.js';
 import oidcRouter from '../../routes/oidc.js';
+import authRouter from '../../routes/auth.js';
+import { hashSessionToken } from '../../services/session-token.js';
 import { errorHandler } from '../../routes/helpers/shared.js';
 
 const CLIENT_ID = 'codex-web';
@@ -44,6 +48,8 @@ let issuerServer;
 let issuerOrigin;
 let signingKey;
 let jwk;
+/** The last ID token the issuer minted, so a sign-out test can check what was hinted. */
+let lastIdToken;
 /** Per-test behaviour: the claims the issuer will vouch for, and the faults to inject. */
 let person;
 let faults;
@@ -80,7 +86,10 @@ async function handleIssuer(req, res) {
     });
   }
 
-  if (url.pathname === '/jwks') return send(200, { keys: [jwk] });
+  if (url.pathname === '/jwks') {
+    if (faults.jwksDown) return send(500, { error: 'server_error' });
+    return send(200, { keys: [jwk] });
+  }
 
   if (url.pathname === '/authorize') {
     const p = url.searchParams;
@@ -135,6 +144,7 @@ async function handleIssuer(req, res) {
       .setIssuedAt(now)
       .setExpirationTime(now + 300)
       .sign(signingKey);
+    lastIdToken = idToken;
     const accessToken = `at-${randomBytes(12).toString('hex')}`;
     accessTokens.set(accessToken, grant.claims);
     return send(200, {
@@ -161,6 +171,7 @@ async function handleIssuer(req, res) {
 // --- the app under test ---
 
 const app = express();
+app.use('/api', authRouter);
 app.use('/api', oidcRouter);
 app.use('/api', errorHandler);
 
@@ -240,10 +251,12 @@ beforeEach(() => {
   c2_query.mockReset();
   c2_query.mockResolvedValue([]);
   generateSessionToken.mockClear();
+  resetLogoutTokenState();
 });
 
 afterEach(() => {
   resetOidcCache();
+  resetLogoutTokenState();
 });
 
 /** Queues the ladder's reads for a linked identity whose email matches (the common sign-in). */
@@ -264,7 +277,17 @@ describe('OIDC sign-in, end to end against an issuer that speaks the protocol', 
     expect(generateSessionToken).toHaveBeenCalledTimes(1);
     const [user, , , options] = generateSessionToken.mock.calls[0];
     expect(user).toEqual({ id: 42 });
-    expect(options).toEqual({ provider: 'oidc', identityId: 7, providerSid: 'zitadel-session-7', ttlHours: 24 });
+    expect(options).toEqual({
+      provider: 'oidc',
+      identityId: 7,
+      providerSid: 'zitadel-session-7',
+      ttlHours: 24,
+      oidcIdToken: expect.any(String),
+    });
+    // The ID token reaches the session only sealed: it opens to the JWT the issuer signed, and the
+    // stored value is not that JWT (W6-CDX-6).
+    expect(options.oidcIdToken).not.toMatch(/^eyJ/);
+    expect(openIdToken(options.oidcIdToken, CLIENT_SECRET).split('.')).toHaveLength(3);
     const session = callback.headers['set-cookie'].find(c => c.startsWith('sessionToken='));
     expect(session).toBeDefined();
     expect(session).toMatch(/SameSite=Strict/);
@@ -305,6 +328,7 @@ describe('OIDC sign-in, end to end against an issuer that speaks the protocol', 
       identityId: 88,
       providerSid: 'zitadel-session-7',
       ttlHours: 24,
+      oidcIdToken: expect.any(String),
     });
   });
 
@@ -427,4 +451,292 @@ describe('OIDC sign-in, end to end against an issuer that speaks the protocol', 
     expect(url.searchParams.get('nonce')).toMatch(/^[A-Za-z0-9_-]{20,}$/);
     expect(cookieFrom(start.headers['set-cookie'], 'oidcFlow')).toBeDefined();
   });
+});
+
+// --- sign-out that propagates (W6-CDX-6) ---
+
+const LOGOUT_EVENT = 'http://schemas.openid.net/event/backchannel-logout';
+
+/** Signs a logout token like the issuer does, with any claim overridden or removed (undefined). */
+async function logoutToken(overrides = {}, { key = signingKey, kid = jwk.kid, alg = 'RS256' } = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    iss: issuerOrigin,
+    aud: CLIENT_ID,
+    iat: now,
+    exp: now + 900,
+    jti: randomBytes(12).toString('hex'),
+    events: { [LOGOUT_EVENT]: {} },
+    sid: 'zitadel-session-7',
+    sub: person.sub,
+    ...overrides,
+  };
+  for (const [name, value] of Object.entries(claims)) if (value === undefined) delete claims[name];
+  return new SignJWT(claims).setProtectedHeader({ alg, kid, typ: 'logout+jwt' }).sign(key);
+}
+
+/** Delivers a logout token the way the issuer does: a form POST with only logout_token. */
+function deliver(token) {
+  return request(app).post('/api/auth/oidc/backchannel-logout').type('form').send({ logout_token: token });
+}
+
+/** A sign-in that mints an OIDC session, so the sealed ID token and the real issuer's JWT are both at hand. */
+async function signInForSealedToken() {
+  queueLinkedHit();
+  await signIn({ cookieName: 'oidcFlow' });
+  const [, , , options] = generateSessionToken.mock.calls[0];
+  return { sealed: options.oidcIdToken, idToken: lastIdToken };
+}
+
+describe('POST /api/logout, the end-session URL (W6-CDX-6)', () => {
+  beforeEach(() => {
+    setIssuerEnv();
+    c2_query.mockReset();
+    c2_query.mockResolvedValue([]);
+  });
+
+  it('gives a local session no end-session URL: the local sign-out is all there is', async () => {
+    c2_query.mockResolvedValueOnce([{ auth_provider: 'local', oidc_id_token: null }]);
+
+    const res = await request(app).post('/api/logout').set('Authorization', 'Bearer local-token').send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true });
+    const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
+    expect(del[1]).toEqual([hashSessionToken('local-token')]);
+  });
+
+  it('gives an OIDC session exactly client_id, id_token_hint (the stored token), post_logout_redirect_uri and state', async () => {
+    const { sealed, idToken } = await signInForSealedToken();
+    c2_query.mockReset();
+    c2_query.mockResolvedValue([]);
+    c2_query.mockResolvedValueOnce([{ auth_provider: 'oidc', oidc_id_token: sealed }]);
+
+    const res = await request(app).post('/api/logout').set('Authorization', 'Bearer oidc-token').send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.headers['cache-control']).toBe('no-store');
+    const url = new URL(res.body.endSessionUrl);
+    expect(url.origin + url.pathname).toBe(`${issuerOrigin}/end-session`);
+    expect([...url.searchParams.keys()].sort()).toEqual(['client_id', 'id_token_hint', 'post_logout_redirect_uri', 'state']);
+    expect(url.searchParams.get('client_id')).toBe(CLIENT_ID);
+    expect(url.searchParams.get('id_token_hint')).toBe(idToken);
+    expect(url.searchParams.get('post_logout_redirect_uri')).toBe('http://localhost:3000/?signedOut=1');
+    expect(url.searchParams.get('state')).toMatch(/^[A-Za-z0-9_-]{20,}$/);
+  });
+
+  it('ends the local session and names no URL when the stored token will not open', async () => {
+    const sealed = sealIdToken('a.b.c', 'a-different-client-secret');
+    c2_query.mockResolvedValueOnce([{ auth_provider: 'oidc', oidc_id_token: sealed }]);
+
+    const res = await request(app).post('/api/logout').set('Authorization', 'Bearer oidc-token').send({});
+
+    expect(res.body).toEqual({ success: true, endSessionUrl: null });
+    expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM sessions/.test(sql))).toBe(true);
+  });
+
+  it('gives no URL for an OIDC session that has no stored token (signed in before W6-CDX-6)', async () => {
+    c2_query.mockResolvedValueOnce([{ auth_provider: 'oidc', oidc_id_token: null }]);
+
+    const res = await request(app).post('/api/logout').set('Authorization', 'Bearer oidc-token').send({});
+
+    expect(res.body).toEqual({ success: true, endSessionUrl: null });
+  });
+
+  it('does not keep a discovery that failed: once the issuer answers, the next sign-out gets its URL', async () => {
+    const { sealed, idToken } = await signInForSealedToken();
+    c2_query.mockReset();
+    c2_query.mockResolvedValue([]);
+
+    // A new issuer is a new process's view: forget the configuration the sign-in discovered.
+    resetOidcCache();
+    process.env.OIDC_ISSUER_URL = 'http://127.0.0.1:1';
+    c2_query.mockResolvedValueOnce([{ auth_provider: 'oidc', oidc_id_token: sealed }]);
+    const down = await request(app).post('/api/logout').set('Authorization', 'Bearer t1').send({});
+    expect(down.body).toEqual({ success: true, endSessionUrl: null });
+
+    setIssuerEnv();
+    c2_query.mockResolvedValueOnce([{ auth_provider: 'oidc', oidc_id_token: sealed }]);
+    const up = await request(app).post('/api/logout').set('Authorization', 'Bearer t2').send({});
+    expect(new URL(up.body.endSessionUrl).searchParams.get('id_token_hint')).toBe(idToken);
+  });
+
+  it('gives up on a discovery that never answers after the bound, and still signs out locally', async () => {
+    const { sealed } = await signInForSealedToken();
+    const silent = http.createServer(() => {});
+    await new Promise(resolve => silent.listen(0, '127.0.0.1', resolve));
+    resetOidcCache();
+    process.env.OIDC_ISSUER_URL = `http://127.0.0.1:${silent.address().port}`;
+    c2_query.mockReset();
+    c2_query.mockResolvedValue([]);
+    c2_query.mockResolvedValueOnce([{ auth_provider: 'oidc', oidc_id_token: sealed }]);
+    try {
+      const started = Date.now();
+      const res = await request(app).post('/api/logout').set('Authorization', 'Bearer t3').send({});
+      expect(res.body).toEqual({ success: true, endSessionUrl: null });
+      expect(Date.now() - started).toBeLessThan(4500);
+      expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM sessions/.test(sql))).toBe(true);
+    } finally {
+      silent.closeAllConnections();
+      await new Promise(resolve => silent.close(resolve));
+    }
+  }, 15000);
+});
+
+describe('POST /api/auth/oidc/backchannel-logout (W6-CDX-6)', () => {
+  beforeEach(() => {
+    setIssuerEnv();
+    c2_query.mockReset();
+    c2_query.mockResolvedValue([]);
+  });
+
+  it('ends the sessions of one sid, bounded by the token iat, and answers 200 with no-store', async () => {
+    const token = await logoutToken();
+    const iat = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).iat;
+    c2_query.mockResolvedValueOnce([{ id: 'digest-a' }]);
+
+    const res = await deliver(token);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    const [selectSql, selectParams] = c2_query.mock.calls[0];
+    expect(selectSql).toMatch(/provider_sid = \?/);
+    expect(selectSql).toMatch(/auth_provider = 'oidc'/);
+    expect(selectSql).toMatch(/UNIX_TIMESTAMP\(created_at\) <= \?/);
+    expect(selectParams).toEqual(['zitadel-session-7', iat + 60]);
+    const [delSql, delParams] = c2_query.mock.calls[1];
+    expect(delSql).toMatch(/DELETE FROM sessions/);
+    expect(delSql).toMatch(/auth_provider = 'oidc'/);
+    expect(delParams).toEqual(['digest-a']);
+  });
+
+  it('ends every oidc session of the (issuer, sub) identity when the token names no sid', async () => {
+    const token = await logoutToken({ sid: undefined });
+    c2_query.mockResolvedValueOnce([{ id: 'digest-b' }]);
+
+    const res = await deliver(token);
+
+    expect(res.status).toBe(200);
+    const [selectSql, selectParams] = c2_query.mock.calls[0];
+    expect(selectSql).toMatch(/user_identities/);
+    expect(selectSql).toMatch(/ui\.issuer = \?/);
+    expect(selectSql).toMatch(/ui\.subject = \?/);
+    expect(selectParams.slice(0, 2)).toEqual([issuerOrigin, person.sub]);
+  });
+
+  it.each([
+    ['another issuer', { iss: 'https://id.elsewhere.test' }],
+    ['another audience', { aud: 'some-other-client' }],
+    ['an iat older than the five-minute window', { iat: Math.floor(Date.now() / 1000) - 900 }],
+    ['an iat in the future past the skew', { iat: Math.floor(Date.now() / 1000) + 600 }],
+    ['an expired exp', { exp: Math.floor(Date.now() / 1000) - 600 }],
+    ['no exp', { exp: undefined }],
+    ['no events member', { events: undefined }],
+    ['a nonce (an ID token, not a logout token)', { nonce: 'n-1' }],
+    ['neither sid nor sub', { sid: undefined, sub: undefined }],
+    ['no jti', { jti: undefined }],
+    ['a sub the callback would refuse', { sid: undefined, sub: 'has a space' }],
+  ])('refuses a token with %s as 400, deleting nothing', async (_name, overrides) => {
+    const res = await deliver(await logoutToken(overrides));
+
+    expect(res.status).toBe(400);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('refuses an HMAC-signed token (a symmetric algorithm) as 400', async () => {
+    const hmacKey = new TextEncoder().encode('a-shared-secret-that-must-never-verify-a-logout');
+    const token = await logoutToken({}, { key: hmacKey, alg: 'HS256' });
+    expect((await deliver(token)).status).toBe(400);
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unsigned token (alg none) as 400', async () => {
+    const enc = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    const token = `${enc({ alg: 'none' })}.${enc({ iss: issuerOrigin, aud: CLIENT_ID, iat: now, exp: now + 900, jti: 'x', events: { [LOGOUT_EVENT]: {} }, sid: 's' })}.`;
+    expect((await deliver(token)).status).toBe(400);
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('refuses a token signed by a key the issuer does not publish as 400', async () => {
+    const other = await generateKeyPair('RS256', { extractable: true });
+    expect((await deliver(await logoutToken({}, { key: other.privateKey }))).status).toBe(400);
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('refuses a body that is not a form posting, and a request with no logout_token, as 400', async () => {
+    const token = await logoutToken();
+    expect((await request(app).post('/api/auth/oidc/backchannel-logout').send({ logout_token: token })).status).toBe(400);
+    expect((await request(app).post('/api/auth/oidc/backchannel-logout').type('form').send({})).status).toBe(400);
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('answers 503, not 400, when the issuer\'s keys cannot be fetched, and records nothing', async () => {
+    faults.jwksDown = true;
+    const token = await logoutToken();
+    const down = await deliver(token);
+    expect(down.status).toBe(503);
+    expect(down.headers['cache-control']).toBe('no-store');
+    expect(c2_query).not.toHaveBeenCalled();
+
+    faults.jwksDown = false;
+    c2_query.mockResolvedValueOnce([{ id: 'digest-c' }]);
+    expect((await deliver(token)).status).toBe(200);
+  });
+
+  it('records no jti when the delete fails, so the issuer\'s retry with the same token ends the session', async () => {
+    const token = await logoutToken();
+    c2_query.mockResolvedValueOnce([{ id: 'digest-d' }]);
+    c2_query.mockRejectedValueOnce(new Error('connection lost'));
+    const failed = await deliver(token);
+    expect(failed.status).toBe(500);
+
+    c2_query.mockResolvedValueOnce([{ id: 'digest-d' }]);
+    const retried = await deliver(token);
+    expect(retried.status).toBe(200);
+    expect(c2_query.mock.calls.filter(([sql]) => /DELETE FROM sessions/.test(sql))).toHaveLength(2);
+  });
+
+  it('refuses a replay of a delivered token as 400, and deletes nothing the second time', async () => {
+    const token = await logoutToken();
+    c2_query.mockResolvedValueOnce([{ id: 'digest-e' }]);
+    expect((await deliver(token)).status).toBe(200);
+    c2_query.mockClear();
+
+    expect((await deliver(token)).status).toBe(400);
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('refuses a form body over 16 KB as 400, before any verification', async () => {
+    const big = 'x'.repeat(20 * 1024);
+    const res = await request(app).post('/api/auth/oidc/backchannel-logout').type('form').send({ logout_token: big });
+    expect(res.status).toBe(400);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 once OIDC is no longer configured, since the receiver has no issuer to check against', async () => {
+    delete process.env.OIDC_ISSUER_URL;
+    const res = await deliver(await logoutToken());
+    expect(res.status).toBe(404);
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('refuses the 301st refused delivery from one address with 429 and no-store, and does not count successes', async () => {
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      const bad = await logoutToken({ aud: 'wrong-client' });
+      for (let i = 0; i < 300; i += 1) {
+        expect((await deliver(bad)).status).toBe(400);
+      }
+      const limited = await deliver(bad);
+      expect(limited.status).toBe(429);
+      expect(limited.headers['cache-control']).toBe('no-store');
+    } finally {
+      process.env.NODE_ENV = saved;
+    }
+  }, 60000);
 });

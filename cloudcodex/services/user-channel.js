@@ -78,6 +78,27 @@ export function isUserConnected(userId) {
 }
 
 /**
+ * Close every user-channel socket that authenticated with one of these sessions, with 4004
+ * "Signed out" (W6-CDX-6). Only those sockets; the same user's other sessions stay connected.
+ * @param {Iterable<string>} digests - sessions.id values, the digests a sign-out deleted
+ * @returns {number} how many sockets were closed
+ */
+export function closeSocketsForSessions(digests) {
+  const wanted = new Set(digests);
+  let closed = 0;
+  if (wanted.size === 0) return closed;
+  for (const wss of servers) {
+    for (const ws of wss.clients) {
+      if (ws.sessionId !== undefined && wanted.has(ws.sessionId)) {
+        ws.close(4004, 'Signed out');
+        closed += 1;
+      }
+    }
+  }
+  return closed;
+}
+
+/**
  * Close every socket on every user-channel server, authenticated or not, with
  * the given close code (1001, "going away", on shutdown), and stop the servers.
  * @param {number} code
@@ -163,6 +184,9 @@ export function setupUserChannelServer(server) {
         ws.close(4003, 'Unauthorized');
         return;
       }
+
+      // The session this socket authenticated with, so a sign-out can close exactly its sockets (W6-CDX-6).
+      ws.sessionId = user.sessionId;
 
       const existing = channels.get(user.id);
       if (existing && existing.size >= MAX_CONNECTIONS_PER_USER) {

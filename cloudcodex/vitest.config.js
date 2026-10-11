@@ -167,6 +167,11 @@ export default defineConfig({
         'services/return-to.js': { lines: 98, statements: 98, branches: 95, functions: 98 },
         // The OIDC routes (W6-CDX-5). Measured at 100 lines, 94 statements, 75 branches.
         'routes/oidc.js': { lines: 96, statements: 92, branches: 72, functions: 95 },
+        // Sign-out that propagates (W6-CDX-6). Measured at 96.5 lines and 93.8 branches for the back-channel
+        // verifier and revoker; 93.8 lines and 100 branches for the end-session URL; 100 for the ID-token seal.
+        'services/backchannel-logout.js': { lines: 92, statements: 92, branches: 88, functions: 95 },
+        'services/sign-out.js': { lines: 90, statements: 90, branches: 95, functions: 95 },
+        'services/id-token-seal.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
         // Outbound webhooks (W6-CDX-13): the emit hook, the env subscription and
         // the SSRF guard every receiver address passes. Measured when they
         // landed: webhooks.js 99.03 lines, 99.19 statements, 94.3 branches, 100

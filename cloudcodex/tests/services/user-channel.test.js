@@ -16,6 +16,7 @@ import {
   getConnectedUserCount,
   setupUserChannelServer,
   closeAll,
+  closeSocketsForSessions,
 } from '../../services/user-channel.js';
 
 describe('services/user-channel (broadcast helpers)', () => {
@@ -133,6 +134,70 @@ describe('services/user-channel: the Origin rule, pinned', () => {
       ws.once('open', resolve);
       ws.once('unexpected-response', (_req, res) => reject(new Error(`refused: ${res.statusCode}`)));
     });
+    ws.terminate();
+  });
+});
+
+describe('services/user-channel: closeSocketsForSessions (W6-CDX-6)', () => {
+  let server;
+  let port;
+
+  beforeEach(async () => {
+    server = http.createServer();
+    setupUserChannelServer(server);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = server.address().port;
+  });
+
+  afterEach(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const open = async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/notifications-ws`, {
+      headers: { Origin: `http://127.0.0.1:${port}` },
+    });
+    await new Promise((r) => ws.once('open', r));
+    return ws;
+  };
+
+  /** Authenticates a socket as `sessionId`, and waits for the server to confirm it. */
+  const authenticate = async (ws, userId, sessionId) => {
+    validateAndAutoLogin.mockResolvedValueOnce(Object.defineProperty({ id: userId, name: 'u' }, 'sessionId', { value: sessionId }));
+    const connected = new Promise((r) => ws.once('message', r));
+    ws.send(JSON.stringify({ type: 'auth', token: `t-${sessionId}` }));
+    await connected;
+  };
+
+  const closed = (ws) => new Promise((resolve) => {
+    ws.once('close', (code, reason) => resolve({ code, reason: reason.toString() }));
+  });
+
+  it('closes only the sockets of the revoked session, and leaves the same user\'s other device open', async () => {
+    const phone = await open();
+    const laptop = await open();
+    await authenticate(phone, 9301, 'digest-phone');
+    await authenticate(laptop, 9301, 'digest-laptop');
+
+    const phoneClosed = closed(phone);
+    const closedCount = closeSocketsForSessions(['digest-phone']);
+    expect(closedCount).toBe(1);
+    expect(await phoneClosed).toEqual({ code: 4004, reason: 'Signed out' });
+
+    // The laptop socket is still open and still receives this user's messages.
+    expect(laptop.readyState).toBe(WebSocket.OPEN);
+    expect(broadcastToUser(9301, { type: 'ping' })).toBe(1);
+    laptop.terminate();
+  });
+
+  it('closes nothing for an empty set of digests, or for sessions with no open socket', async () => {
+    const ws = await open();
+    await authenticate(ws, 9302, 'digest-live');
+
+    expect(closeSocketsForSessions([])).toBe(0);
+    expect(closeSocketsForSessions(['digest-nobody'])).toBe(0);
+    expect(ws.readyState).toBe(WebSocket.OPEN);
     ws.terminate();
   });
 });

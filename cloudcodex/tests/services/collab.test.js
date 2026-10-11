@@ -31,6 +31,7 @@ import {
   getAllPresence,
   flushPendingSaves,
   closeAll,
+  closeSocketsForSessions,
 } from '../../services/collab.js';
 
 // Spin up a fresh HTTP server + WS upgrade handler per test so the in-memory
@@ -930,5 +931,23 @@ describe('services/collab: closeAll', () => {
     for (const result of await Promise.all(closes)) {
       expect(result).toEqual({ type: 'close', code: 1001, reason: 'Server shutting down' });
     }
+  });
+});
+
+describe('services/collab: closeSocketsForSessions (W6-CDX-6)', () => {
+  it('closes only the sockets of the revoked session, and leaves the same user\'s other device open', async () => {
+    const withSession = (digest) => Object.defineProperty({ ...TEST_USER }, 'sessionId', { value: digest });
+    const phone = await authenticatedClient(131, withSession('digest-phone'));
+    const laptop = await authenticatedClient(131, withSession('digest-laptop'));
+
+    const phoneClosed = new Promise((resolve) => {
+      phone.once('close', (code, reason) => resolve({ code, reason: reason.toString() }));
+    });
+    expect(closeSocketsForSessions(['digest-phone'])).toBe(1);
+    expect(await phoneClosed).toEqual({ code: 4004, reason: 'Signed out' });
+
+    expect(laptop.readyState).toBe(WebSocket.OPEN);
+    laptop.close();
+    await new Promise((r) => laptop.once('close', r));
   });
 });
