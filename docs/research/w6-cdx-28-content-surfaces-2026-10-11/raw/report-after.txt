@@ -1,0 +1,33 @@
+   2  src/index.css :: Top Bar
+   3  src/index.css :: Sidebar
+   2  src/index.css :: Account Button (Top Bar)
+   2  src/index.css :: Mentions (inline @user chips)
+  10  src/index.css :: Notification bell
+   2  src/index.css :: Activity item
+   3  src/index.css :: Watch toggle (editor header)
+   5  src/index.css :: Modal + Overlay
+ 186  src/index.css :: GitHub Integration
+   3  src/index.css :: Signup Validation Styles
+  14  src/index.css :: Settings Layout (archive/workspace/squad settings)
+  40  src/index.css :: Editor Log
+   2  src/index.css :: Markdown Editor
+   5  src/index.css :: Version History
+   2  src/index.css :: Squad Members Panel
+   8  src/index.css :: Archive Access Panel
+   2  src/index.css :: User Preferences Panel
+  12  src/index.css :: Collaborative Editing - Presence UI
+   2  src/index.css :: Remote Cursors - Collaborative Editing
+   1  src/index.css :: Export Dropdown
+  11  src/index.css :: Toast Notifications
+ 100  src/index.css :: Comments & Annotations
+  23  src/index.css :: Admin Dashboard
+  10  src/index.css :: Read-only Document View
+   3  src/index.css :: Code Block with Language Selector
+   8  src/index.css :: Syntax Highlighting (highlight.js compatible - dark theme)
+   8  src/index.css :: Draw.io Diagram Block
+   1  src/index.css :: Mobile Layout Overrides
+   1  src/index.css :: Footer
+   3  src/index.css :: Notifications / Activity / Preferences pages (shared shell)
+   1  src/index.css :: Login Tabs
+   1  src/index.css :: Mobile Bottom Navigation
+ 510  total

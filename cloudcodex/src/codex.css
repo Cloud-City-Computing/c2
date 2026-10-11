@@ -22,8 +22,9 @@
  *  - Every text colour clears its minimum on every surface below, measured by
  *    tests/design/contrast.test.js over tests/design/pairs.json.
  *
- * No component reads these names yet (W6-CDX-22 repoints index.css onto
- * them), so loading this file changes nothing on screen.
+ * index.css reads these names through its :root bridge (W6-CDX-22), and the
+ * content banners read them directly (W6-CDX-28), so every colour on the page
+ * comes from this file or core.css.
  */
 
 [data-theme='dark'] {
@@ -64,6 +65,36 @@
   /* Lines and the overlay wash: flat and tinted. */
   --cx-border: oklch(0.386 0.014 240);
   --cx-scrim: oklch(0.12 0.02 240 / 0.6);
+
+  /* Tints: translucent washes behind a label, each the hue and chroma of the
+     bare rgba() it replaces (W6-CDX-28). Every tint is measured with its label
+     over all five surfaces in tests/design/tints.test.js. The accent tints keep
+     the old fixed blue, as the rgba() did, and do not follow the picker. */
+  --cx-tint-accent-soft: oklch(0.686 0.128 231.9 / 0.08);
+  --cx-tint-accent: oklch(0.686 0.128 231.9 / 0.12);
+  --cx-tint-accent-mid: oklch(0.686 0.128 231.9 / 0.15);
+  --cx-tint-accent-strong: oklch(0.686 0.128 231.9 / 0.2);
+  --cx-tint-accent-strongest: oklch(0.686 0.128 231.9 / 0.25);
+  --cx-tint-warning-soft: oklch(0.793 0.171 70.7 / 0.08);
+  --cx-tint-warning: oklch(0.793 0.171 70.7 / 0.12);
+  --cx-tint-warning-mid: oklch(0.793 0.171 70.7 / 0.15);
+  --cx-tint-danger-soft: oklch(0.639 0.181 25.9 / 0.08);
+  --cx-tint-danger: oklch(0.639 0.181 25.9 / 0.12);
+  --cx-tint-danger-strong: oklch(0.639 0.181 25.9 / 0.22);
+  --cx-tint-success: oklch(0.745 0.158 151.5 / 0.12);
+  --cx-tint-violet: oklch(0.697 0.17 288.9 / 0.15);
+
+  /* Labels on a tint, one step lighter than the status text they replace: the
+     tint lightens the surface under a label, and these clear 4.5:1 on the
+     strongest surface where the status step does not. --cx-warning-bright is
+     the old #ffc832 label, and --cx-success-bright is the same lift for a CI badge. Each is listed in tests/design/pairs.json. */
+  --cx-warning-bright: oklch(0.86 0.16 87);
+  --cx-danger-bright: oklch(0.87 0.1 25);
+  --cx-success-bright: oklch(0.86 0.15 151);
+  /* The violet of a content-match badge's label, and the shadow under a
+     popover. The label is measured on the surfaces in tests/design/pairs.json. */
+  --cx-violet: oklch(0.86 0.1 291);
+  --cx-shadow-popover: 0 4px 12px oklch(0 0 0 / 0.3);
 
   /* Status, on the package's pale step, the one that reads as text on
      surfaces from #1e1e1e to #444444. The package has no info ramp, so info

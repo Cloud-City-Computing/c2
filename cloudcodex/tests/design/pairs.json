@@ -63,6 +63,30 @@
       "reason": "Info text on any surface."
     },
     {
+      "text": "--cx-warning-bright",
+      "on": "surfaces",
+      "min": 4.5,
+      "reason": "A warning label on a filter tint, on the strongest surface too: the bright step, one lighter than --cx-warning."
+    },
+    {
+      "text": "--cx-danger-bright",
+      "on": "surfaces",
+      "min": 4.5,
+      "reason": "A danger label on a clear-filters tint, on hover: one step lighter than --cx-danger, the one that clears 4.5:1 on the strongest surface."
+    },
+    {
+      "text": "--cx-success-bright",
+      "on": "surfaces",
+      "min": 4.5,
+      "reason": "A success label on a CI-badge tint, on the strongest surface too: the bright step, one lighter than --cx-success."
+    },
+    {
+      "text": "--cx-violet",
+      "on": "surfaces",
+      "min": 4.5,
+      "reason": "The violet label of a content-match badge: a label, so AA on every surface."
+    },
+    {
       "text": "--cx-on-accent",
       "on": [
         "--cx-accent-fill"
@@ -95,6 +119,20 @@
     "--cx-shadow-lg": "A drop shadow's ink; a shadow falls on a surface and carries no text.",
     "--cx-accent-dark": "A dark step behind a white avatar label; the label is measured on it in painted.test.js.",
     "--cx-danger-fill": "A background behind a white label at rest; measured on it in painted.test.js.",
-    "--cx-danger-fill-hover": "A background behind a white label on hover; measured in painted.test.js and darker than the rest."
+    "--cx-danger-fill-hover": "A background behind a white label on hover; measured in painted.test.js and darker than the rest.",
+    "--cx-tint-accent-soft": "A translucent accent wash behind a label; each label is measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-accent": "A translucent accent wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-accent-mid": "A translucent accent wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-accent-strong": "A translucent accent wash behind a label, the hover of a row; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-accent-strongest": "A translucent accent wash behind a matched word; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-warning-soft": "A translucent warning wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-warning": "A translucent warning wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-warning-mid": "A translucent warning wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-danger-soft": "A translucent danger wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-danger": "A translucent danger wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-danger-strong": "A translucent danger wash behind a label, on hover; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-success": "A translucent success wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-violet": "A translucent violet wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-shadow-popover": "A drop shadow's ink; a shadow falls on a surface and carries no text."
   }
 }

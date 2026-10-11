@@ -165,6 +165,9 @@ initialises an empty data directory.
 
 - **Node 22.** The image (`node:22-slim`), CI and the release workflow run Node 22, and
   `package.json` declares `engines` `>=22`. openid-client 6 and jose 6 need it.
+- **The content surfaces read the tokens.** The Log Tree, Explore, Page Tree, search, top-bar search, Error Boundary and 404 banners in `src/index.css` take their colours from the Codex tokens instead of literals, and the ledger goes from 631 findings to 510. Labels on a translucent tint are measured over every surface: where a tint would sink a label below 4.5:1, the label steps one shade lighter (a bright warning, success or danger step, or the accent-hover step on the Page Tree and Log Tree rows). The highlight.js comment and keyword hues lift one step for the same reason, measured on the code background.
+- **The content surfaces read the tokens.** The Log Tree, Explore, Page Tree, search, top-bar search, Error Boundary and 404 banners in `src/index.css` take their colours from the Codex tokens instead of literals, and the ledger goes from 631 findings to 510. Labels on a translucent tint are measured over every surface: where a tint would sink a label below 4.5:1, the label steps one shade lighter. Highlight.js colours that sat on the 4.5:1 line lift a step, measured on the code wash. Components whose colours change: GitHub sync banners and menu (the info edge now uses the info token, not the picked accent), the reconnect banner, the releases panel, failing code and issue embeds, the merge dialog, the PR discussion and doc link, the Error Boundary, the Log Tree, Page Tree and Explore rows and badges, CI badges and code blocks.
+
 - **Every dialog is a real dialog.** Each modal is a `role="dialog"` with
   `aria-modal="true"`, named from its heading. Focus moves into it on open,
   Tab is trapped inside it, Escape closes it where it can be dismissed, and
