@@ -124,8 +124,8 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
     expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: false, reason: 'identity_conflict' });
   });
 
-  it('rethrows a duplicate on any key other than the identity pair, since that is a different failure', async () => {
-    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'x' for key 'users.email'" });
+  it('rethrows a duplicate on any key the invitation path does not name, since that is a different failure', async () => {
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'x' for key 'users.id'" });
     c2_query
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
@@ -134,6 +134,53 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
       .mockRejectedValueOnce(dup);
 
     await expect(resolveIdentity(oidcClaims(), POLICY)).rejects.toThrow('dup');
+  });
+
+  it('answers the winner when a racing sign-in created the user first on the derived name', async () => {
+    // Two first sign-ins derived the same username. The second user INSERT hits the unique name key; the
+    // winner's identity is already committed, so it answers in place of this one.
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'ada' for key 'users.name'" });
+    c2_query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([INVITATION])
+      .mockResolvedValueOnce([])      // deriveUniqueUsername: free when read
+      .mockRejectedValueOnce(dup)     // INSERT users: the racer took it
+      .mockResolvedValueOnce([{ id: 6, user_id: 99, deactivated_at: null }]); // the re-read: the winner's identity
+
+    expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: true, userId: 99, created: false, identityId: 6 });
+  });
+
+  it('retries once with a fresh derived name when the name collision has no identity behind it', async () => {
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'ada' for key 'users.name'" });
+    c2_query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([INVITATION])
+      .mockResolvedValueOnce([])      // derive, first attempt
+      .mockRejectedValueOnce(dup)     // INSERT users, first attempt: a local account took the name
+      .mockResolvedValueOnce([])      // the re-read: no identity behind it
+      .mockResolvedValueOnce([])      // derive, second attempt: free
+      .mockResolvedValueOnce({ insertId: 78 })        // INSERT users
+      .mockResolvedValueOnce({ insertId: 1 })         // permissions
+      .mockResolvedValueOnce({ affectedRows: 1 })     // invitation accepted
+      .mockResolvedValueOnce({ insertId: 5 })         // squad member
+      .mockResolvedValueOnce({ insertId: 90 });       // identity
+
+    expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: true, userId: 78, created: true, identityId: 90 });
+  });
+
+  it('answers email_conflict when a local account took the address during the invitation sign-in', async () => {
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'ada@example.com' for key 'users.email'" });
+    c2_query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([INVITATION])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(dup)
+      .mockResolvedValueOnce([]);     // the re-read: no identity behind that address
+
+    expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: false, reason: 'email_conflict' });
   });
 
   it('answers no_account, linking nothing, when the invitation was revoked before its conditional UPDATE', async () => {

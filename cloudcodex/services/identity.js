@@ -208,24 +208,49 @@ class InvitationGone extends Error {}
 /** Thrown inside the invitation transaction when the identity pair was linked by a racing sign-in. */
 class IdentityRace extends Error {}
 
+/** Thrown inside the invitation transaction when a racing insert took the user's name or address. */
+class UserRace extends Error {
+  constructor(column) {
+    super(`users.${column} was taken by a racing insert`);
+    this.column = column;
+  }
+}
+
 /** The identity key names, as MySQL reports them in a duplicate-entry message (init.sql). */
 const IDENTITY_PAIR_KEYS = ['user_identities.uq_user_identities_issuer_subject', 'user_identities.uq_user_identities_user_issuer'];
+
+/** The answer for an identity a racing sign-in committed: the same person, unless it is deactivated. */
+function answerForIdentity(identity) {
+  if (identity.deactivated_at) return { ok: false, reason: 'account_deactivated' };
+  return { ok: true, userId: identity.user_id, created: false, identityId: identity.id };
+}
 
 /**
  * Create the user an invitation admits, in one transaction, as POST /api/create-account does: the user
  * with the derived username and no password, its default permissions, the invitation marked accepted
  * (conditionally, and checked), the squad membership when the invitation names one, and the identity.
- * A transaction that cannot see the invitation still open refuses with nothing written.
+ * A transaction that cannot see the invitation still open refuses with nothing written. A racing sign-in
+ * for the same subject answers with the identity it committed; a racing name collision with no identity
+ * behind it is retried once with a fresh derived name; a racing address collision is email_conflict.
  */
-async function createFromInvitation(claims, invitation) {
+async function createFromInvitation(claims, invitation, attempt = 0) {
   const { issuer, subject, email } = claims;
   const username = await deriveUniqueUsername(email);
   try {
     return await withTransaction(async (query) => {
-      const created = await query(
-        'INSERT INTO users (name, email, created_at) VALUES (?, ?, NOW())',
-        [username, email]
-      );
+      let created;
+      try {
+        created = await query(
+          'INSERT INTO users (name, email, created_at) VALUES (?, ?, NOW())',
+          [username, email]
+        );
+      } catch (userErr) {
+        if (userErr.code !== 'ER_DUP_ENTRY') throw userErr;
+        const message = String(userErr.sqlMessage);
+        if (message.includes('users.name')) throw new UserRace('name');
+        if (message.includes('users.email')) throw new UserRace('email');
+        throw userErr;
+      }
       const userId = created.insertId;
       await createDefaultPermissions(userId, query);
 
@@ -257,13 +282,17 @@ async function createFromInvitation(claims, invitation) {
     });
   } catch (err) {
     if (err instanceof InvitationGone) return { ok: false, reason: 'no_account' };
-    if (err instanceof IdentityRace) {
-      // The identity that won is the same person's sign-in, so it answers in place of this one. Only the key
-      // on (issuer, subject) can refuse this insert for a new user; the one on (user, issuer) cannot.
+    if (err instanceof IdentityRace || err instanceof UserRace) {
+      // The racing sign-in for this subject, if it committed, is the answer: the same person's identity. The
+      // subject key is the only one that can refuse this new user's identity insert.
       const [winner] = await c2_query(HIT_SQL, [issuer, subject]);
-      if (!winner) return { ok: false, reason: 'identity_conflict' };
-      if (winner.deactivated_at) return { ok: false, reason: 'account_deactivated' };
-      return { ok: true, userId: winner.user_id, created: false, identityId: winner.id };
+      if (winner) return answerForIdentity(winner);
+      if (err instanceof UserRace) {
+        if (err.column === 'email') return { ok: false, reason: 'email_conflict' };
+        if (attempt === 0) return await createFromInvitation(claims, invitation, 1);
+        return { ok: false, reason: 'identity_conflict' };
+      }
+      return { ok: false, reason: 'identity_conflict' };
     }
     throw err;
   }
