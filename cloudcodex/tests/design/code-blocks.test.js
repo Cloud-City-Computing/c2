@@ -67,7 +67,35 @@ describe('the code wash is read from the real declaration, not from a copy of it
   });
 });
 
+// The highlight.js classes highlight.js emits with no colour rule of their own: each inherits the text colour of its code block.
+const INHERITED = ['hljs-code', 'hljs-function', 'hljs-params', 'hljs-property', 'hljs-punctuation', 'hljs-operator', 'hljs-tag'];
+
+describe('the highlight.js classes with no colour rule inherit a colour that clears 4.5:1 on the wash', () => {
+  it.each(INHERITED)('.%s has no colour rule of its own', (cls) => {
+    const rule = new RegExp(`\\.${cls}(?![\\w-])[^{}]*\\{[^}]*\\bcolor\\s*:`);
+    expect(rule.test(index), `.${cls} sets a colour, so it is not inherited`).toBe(false);
+  });
+
+  it('inherits --text-primary from the editor pre and from the page root, and that clears 4.5:1 over every surface', () => {
+    expect(declared('.editor-container .tiptap', 'color')).toBe('var(--text-primary)');
+    expect(declared(':root', 'color')).toBe('var(--text-primary)');
+    const wash = paint(declared('.editor-container .tiptap pre', 'background'));
+    for (const surface of SURFACES) {
+      const ratio = contrastRatio(paint('var(--cx-text-primary)'), compositeOver(wash, paint(`var(${surface})`)));
+      expect(ratio, `inherited text on ${surface} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
 describe('every highlight.js token colour is at 4.5:1 or more on the code wash, over every surface', () => {
+  it('keeps each token clear of the 4.5:1 line: 4.6:1 or more on the strongest surface, not a knife-edge', () => {
+    const wash = paint(declared('.editor-container .tiptap pre', 'background'));
+    for (const { colour, selectors } of HLJS) {
+      const ratio = contrastRatio(parseColor(colour), compositeOver(wash, paint('var(--cx-surface-4)')));
+      expect(ratio, `${selectors} ${colour} measures ${round(ratio)}:1 on the strongest surface`).toBeGreaterThanOrEqual(4.6);
+    }
+  });
+
   it('reads the token rules from src/index.css', () => {
     expect(HLJS.length).toBeGreaterThanOrEqual(8);
     expect(HLJS.map((r) => r.colour)).toContain('#78a763');

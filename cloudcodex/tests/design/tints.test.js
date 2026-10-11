@@ -18,7 +18,9 @@ import path from 'node:path';
 import {
   compositeOver, contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
-import { ACCENTS, accentValue, accentFill, accentDark } from '../../src/tokens/accents.js';
+import {
+  ACCENTS, accentValue, accentHover, accentFill, accentDark,
+} from '../../src/tokens/accents.js';
 import { ROOT } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
@@ -53,6 +55,7 @@ function paint(value, tokens) {
 const onAccent = (hue) => ({
   ...base,
   '--cx-accent': accentValue(hue),
+  '--cx-accent-hover': accentHover(hue),
   '--cx-accent-fill': accentFill(hue),
   '--cx-accent-dark': accentDark(hue),
 });
