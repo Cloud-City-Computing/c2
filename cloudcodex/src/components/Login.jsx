@@ -7,6 +7,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { destroyModal, serverReq, setSessionCookie } from '../util';
+import useSuite from '../hooks/useSuite';
+import { takeSignInTarget } from '../hooks/useSignedOutTarget';
 
 /* ─── Password rules (mirrored from server) ─── */
 const PASSWORD_RULES = [
@@ -20,17 +22,29 @@ const PASSWORD_RULES = [
 function getPasswordStrength(password) {
   if (!password) return { score: 0, label: '', color: '' };
   const passed = PASSWORD_RULES.filter(r => r.test(password)).length;
-  if (passed <= 1) return { score: 1, label: 'Weak', color: 'var(--color-danger)' };
-  if (passed <= 2) return { score: 2, label: 'Fair', color: '#f0a030' };
-  if (passed <= 3) return { score: 3, label: 'Good', color: '#e0c020' };
-  if (passed <= 4) return { score: 4, label: 'Strong', color: '#6cbf6c' };
-  return { score: 5, label: 'Excellent', color: '#4caf50' };
+  if (passed <= 1) return { score: 1, label: 'Weak', color: 'var(--cx-danger)' };
+  if (passed <= 2) return { score: 2, label: 'Fair', color: 'var(--cx-warning)' };
+  if (passed <= 3) return { score: 3, label: 'Good', color: 'var(--cx-warning-bright)' };
+  if (passed <= 4) return { score: 4, label: 'Strong', color: 'var(--cx-success)' };
+  return { score: 5, label: 'Excellent', color: 'var(--cx-success-bright)' };
 }
 
 const isValidUsername = (name) => /^[a-zA-Z0-9_]{3,32}$/.test(name);
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+/**
+ * After a successful sign-in: the deep link the person opened while signed out (kept by the signed-out
+ * decision, validated there and again on read), or the same page again. The session cookie is already set.
+ */
+function finishSignIn() {
+  const kept = takeSignInTarget();
+  if (kept) window.location.assign(kept);
+  else window.location.reload();
+}
+
 export default function Login({ inviteToken: propInviteToken, inviteEmail: propInviteEmail }) {
+  // Suite mode makes the one sign-in the primary action (W6-CDX-26). Off, nothing below changes.
+  const suiteOn = useSuite(null).enabled;
   const [tab, setTab] = useState(propInviteToken ? 'signup' : 'login'); // 'login' | 'signup' | 'forgot' | '2fa'
   const [fields, setFields] = useState({
     username: '', email: propInviteEmail || '', confirmEmail: propInviteEmail || '', password: '', confirmPassword: '', code: ''
@@ -121,7 +135,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
     }
     if (res.success) {
       setSessionCookie(res.token);
-      window.location.reload();
+      finishSignIn();
     } else {
       setError(res.message ?? 'Login failed.');
     }
@@ -138,7 +152,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
       const res = await serverReq('POST', '/api/2fa/verify', { twoFactorToken, code: fields.code });
       if (res.success) {
         setSessionCookie(res.token);
-        window.location.reload();
+        finishSignIn();
       } else {
         setError(res.message ?? 'Verification failed.');
       }
@@ -191,7 +205,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
       destroyModal();
       // The welcome is mounted by Std_Layout for every user, so reloading into
       // the authenticated app is all this needs to do.
-      window.location.reload();
+      finishSignIn();
     } else {
       setError(res.message ?? 'Error creating account.');
     }
@@ -219,6 +233,17 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
       setError(res.message ?? 'Something went wrong.');
     }
   };
+
+  // In suite mode with OIDC offered, the SSO link leads and the local login is secondary (ghost).
+  const oidcLeads = suiteOn && tab === 'login' && Boolean(oauthProviders.oidc?.enabled);
+  const oidcBlock = tab === 'login' && oauthProviders.oidc?.enabled ? (
+    <>
+      {!oauthProviders.google && !oidcLeads && <div className="oauth-divider"><span>or</span></div>}
+      <a href="/api/auth/oidc/start" className={`btn ${oidcLeads ? 'btn-primary' : 'btn-oauth'} stretched-button`}>
+        Sign in with {oauthProviders.oidc.name || 'SSO'}
+      </a>
+    </>
+  ) : null;
 
   const handleSubmit = tab === 'forgot' ? handleForgotPassword : tab === '2fa' ? handleVerify2FA : tab === 'login' ? handleLogin : handleSignup;
 
@@ -267,6 +292,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
           </div>
           {error && <p className="form-error">{error}</p>}
           <div className="modal-form">
+            {oidcLeads && oidcBlock}
             <label htmlFor="username">Username:</label>
             <div className="input-with-status">
               <input type="text" id="username" name="username" value={fields.username}
@@ -352,7 +378,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
               </>
             )}
 
-            <button className="btn btn-primary stretched-button" onClick={handleSubmit}>
+            <button className={`btn ${oidcLeads ? 'btn-ghost' : 'btn-primary'} stretched-button`} onClick={handleSubmit}>
               {tab === 'login' ? 'Login' : 'Create Account'}
             </button>
             {tab === 'login' && (
@@ -365,23 +391,16 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
                 <div className="oauth-divider"><span>or</span></div>
                 <a href="/api/oauth/google" className="btn btn-oauth btn-google stretched-button">
                   <svg viewBox="0 0 24 24" width="18" height="18" style={{ marginRight: 8, flexShrink: 0 }}>
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    <path style={{ fill: 'var(--cx-brand-google-blue)' }} d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                    <path style={{ fill: 'var(--cx-brand-google-green)' }} d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path style={{ fill: 'var(--cx-brand-google-yellow)' }} d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path style={{ fill: 'var(--cx-brand-google-red)' }} d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                   </svg>
                   Sign in with Google
                 </a>
               </>
             )}
-            {tab === 'login' && oauthProviders.oidc?.enabled && (
-              <>
-                {!oauthProviders.google && <div className="oauth-divider"><span>or</span></div>}
-                <a href="/api/auth/oidc/start" className="btn btn-oauth stretched-button">
-                  Sign in with {oauthProviders.oidc.name || 'SSO'}
-                </a>
-              </>
-            )}
+            {!oidcLeads && oidcBlock}
           </div>
         </>
       ) : (
