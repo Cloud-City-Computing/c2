@@ -8,15 +8,18 @@
  *   - The JWT path (W6-CDX-7): a JWS-shaped token is an OIDC client-credentials
  *     access token from Cloud City ID, verified with jose against the issuer's
  *     cached key set. It is taken only when OIDC_ISSUER_URL,
- *     MACHINE_OIDC_AUDIENCE and MACHINE_OIDC_SUBJECTS are all set, and it never
- *     falls through to the static comparison. The audience pins this instance's
+ *     MACHINE_OIDC_AUDIENCE and MACHINE_OIDC_SUBJECTS are all set. It is reached
+ *     only after the static digest has missed, so a dotted SERVICE_TOKEN still
+ *     matches as the secret it is. The audience pins this instance's
  *     own project; it is NOT the tenant boundary, because Zitadel lets any
  *     client request any project's audience. The subject allowlist is the
  *     control: a token must name one of this instance's service users.
  *
- * A key set that cannot be read raises MachineAuthUnavailable, which the
- * middleware answers as 503. It is never a null, so a caller cannot read an
- * outage as a revoked credential.
+ * An outage (discovery or the key set cannot be read) raises
+ * MachineAuthUnavailable where it happens, opens a 30-second window in which
+ * the issuer is not asked again, and is answered 503. It is never a null, so a
+ * caller cannot read an outage as a revoked credential. Every other error jose
+ * reports about a token is a refusal.
  *
  * Two things make the blast radius small:
  *
@@ -56,6 +59,9 @@ const JWKS_TIMEOUT_MS = 5000;
 const JWKS_COOLDOWN_MS = 30000;
 const JWKS_MAX_AGE_MS = 10 * 60 * 1000;
 
+/** The key set answering that the token's kid is not published: a refusal of the token, not an outage. */
+const KEY_MISS_CODES = new Set(['ERR_JWKS_NO_MATCHING_KEY', 'ERR_JWKS_MULTIPLE_MATCHING_KEYS']);
+
 /**
  * Asymmetric algorithms only. HS256 is absent on purpose: a token MACed with the public key, or with
  * any shared secret, must never verify here. jose also refuses alg none outright.
@@ -63,23 +69,6 @@ const JWKS_MAX_AGE_MS = 10 * 60 * 1000;
 const ASYMMETRIC_ALGORITHMS = [
   'RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512', 'EdDSA',
 ];
-
-/**
- * The jose codes that mean "this token is not acceptable". Anything else from verification (a
- * failed key-set fetch, a timeout, a malformed key set) is an outage, and is thrown as
- * MachineAuthUnavailable. An allowlist of refusals, not a list of outages, so a new failure mode
- * from jose defaults to the safe side: 503, not a permanent 401.
- */
-const TOKEN_REFUSAL_CODES = new Set([
-  'ERR_JWT_CLAIM_VALIDATION_FAILED',
-  'ERR_JWT_EXPIRED',
-  'ERR_JWT_INVALID',
-  'ERR_JWS_INVALID',
-  'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
-  'ERR_JOSE_ALG_NOT_ALLOWED',
-  'ERR_JWKS_NO_MATCHING_KEY',
-  'ERR_JWKS_MULTIPLE_MATCHING_KEYS',
-]);
 
 /**
  * The issuer's keys could not be read, so the caller's token is unknown, not refused. The middleware
@@ -166,24 +155,22 @@ function resolveConfig() {
 export async function verifyMachineCredential(token) {
   if (typeof token !== 'string' || token.length === 0) return null;
 
-  // W6-CDX-7: a JWS-shaped token goes to the JWT path when it is configured, and
-  // never falls through to the static comparison. A 64-character session token
-  // has no dots, so it never reaches jose.
+  // The static digest is compared first, in constant time over two SHA-256 digests. Hashing first
+  // means the buffers are always 32 bytes, so a token of the wrong length is rejected without
+  // timingSafeEqual throwing and without leaking the configured token's length. Never `===`. A
+  // SERVICE_TOKEN with dots is therefore matched as the secret it is.
+  const config = resolveConfig();
+  if (config.enabled && crypto.timingSafeEqual(sha256(token), config.digest)) {
+    // Deliberately after the comparison: a caller who does not hold the secret never reaches the
+    // database, so a wrong token costs no query.
+    return await principalFor(config.email);
+  }
+
+  // W6-CDX-7: only a token that missed the static digest and is JWS-shaped goes to jose, and only
+  // when the JWT path is configured. A 64-character session token has no dots, so it never does.
   const jwt = jwtConfig();
   if (jwt !== null && JWS_SHAPE.test(token)) return await verifyMachineJwt(token, jwt);
-
-  const config = resolveConfig();
-  if (!config.enabled) return null;
-
-  // Constant-time comparison over two SHA-256 digests. Hashing first means the
-  // buffers are always 32 bytes, so a presented token of the wrong length is
-  // rejected without timingSafeEqual throwing and without the comparison
-  // itself leaking the configured token's length. Never `===`.
-  if (!crypto.timingSafeEqual(sha256(token), config.digest)) return null;
-
-  // Deliberately after the comparison: a caller who does not hold the secret
-  // never reaches the database, so a wrong token costs no query.
-  return await principalFor(config.email);
+  return null;
 }
 
 /**
@@ -240,10 +227,13 @@ async function principalFor(email) {
  * @param {{ issuer: string, audience: string, subjects: Set<string> }} jwt
  */
 async function verifyMachineJwt(token, jwt) {
+  // Inside the cooldown after an outage the answer comes from memory: no fetch, no token parsing,
+  // and no log line, so a flood of bearers costs one fetch per window.
+  if (coolingDown()) throw new MachineAuthUnavailable('the issuer is unavailable (cooling down)');
   let payload;
   try {
     const keys = await remoteKeySet(jwt.issuer);
-    ({ payload } = await jwtVerify(token, keys, {
+    ({ payload } = await jwtVerify(token, guardedKeys(keys), {
       issuer: jwt.issuer,
       audience: jwt.audience,
       algorithms: ASYMMETRIC_ALGORITHMS,
@@ -251,11 +241,13 @@ async function verifyMachineJwt(token, jwt) {
       requiredClaims: ['exp', 'iat', 'sub'],
     }));
   } catch (err) {
+    // Outages were already thrown as MachineAuthUnavailable where they happened: discovery, the
+    // key set fetch in guardedKeys. Every other error jose reports is about this token (an unknown
+    // crit header, a bad signature, a claim), so it is a refusal whatever its code.
     if (err instanceof MachineAuthUnavailable) throw err;
-    if (TOKEN_REFUSAL_CODES.has(err?.code)) return null;
-    // Never the token, and never a bare message from a library: the code says what failed.
-    throw unavailable(`the key set could not be used (${err?.code || err?.name || 'error'})`);
+    return null;
   }
+  outageUntil = 0;
 
   // jose checks exp and nbf but not iat, so a token dated in the future is refused here.
   const now = Math.floor(Date.now() / 1000);
@@ -298,17 +290,29 @@ function jwtConfig() {
 let jwksCache = null;
 let pendingJwks = null;
 
+/**
+ * After an outage (discovery or the key set failing), calls answer 503 from memory for this long, and
+ * the issuer is not asked again. One window, one fetch, one log line.
+ */
+const OUTAGE_COOLDOWN_MS = 30 * 1000;
+let outageUntil = 0;
+
 function remoteKeySet(issuer) {
   if (jwksCache !== null && jwksCache.issuer === issuer) return jwksCache.keys;
   if (pendingJwks !== null && pendingJwks.issuer === issuer) return pendingJwks.promise;
 
   const promise = discoverJwksUri(issuer)
     .then((uri) => {
-      const keys = createRemoteJWKSet(new URL(uri), {
-        timeoutDuration: JWKS_TIMEOUT_MS,
-        cooldownDuration: JWKS_COOLDOWN_MS,
-        cacheMaxAge: JWKS_MAX_AGE_MS,
-      });
+      let keys;
+      try {
+        keys = createRemoteJWKSet(new URL(uri), {
+          timeoutDuration: JWKS_TIMEOUT_MS,
+          cooldownDuration: JWKS_COOLDOWN_MS,
+          cacheMaxAge: JWKS_MAX_AGE_MS,
+        });
+      } catch {
+        throw markOutage('the discovery document names an unusable key set URL');
+      }
       jwksCache = { issuer, keys };
       return keys;
     })
@@ -338,24 +342,50 @@ async function discoverJwksUri(issuer) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     document = await res.json();
   } catch (err) {
-    throw unavailable(`discovery failed (${err?.name || 'error'})`);
+    throw markOutage(`discovery failed (${err?.name || 'error'})`);
   }
   if (document?.issuer !== issuer || typeof document.jwks_uri !== 'string') {
-    throw unavailable('the discovery document names another issuer or no key set');
+    throw markOutage('the discovery document names another issuer or no key set');
   }
   return document.jwks_uri;
 }
 
-/** Logs the outage (the code and what failed, never the token) and returns the error to throw. */
-function unavailable(detail) {
+/**
+ * The key set as jose sees it. A fetch or parse failure inside the key set is an outage, marked
+ * where it happens. A key miss (no matching kid) is about the token, and passes through as a
+ * refusal.
+ */
+function guardedKeys(keys) {
+  return async (header, token) => {
+    try {
+      return await keys(header, token);
+    } catch (err) {
+      if (KEY_MISS_CODES.has(err?.code)) throw err;
+      throw markOutage(`the key set could not be read (${err?.code || err?.name || 'error'})`);
+    }
+  };
+}
+
+/**
+ * Records an outage: opens the cooldown window, logs the detail (never the token) once, and returns
+ * the error to throw. Callers inside an open window do not come here, so a window logs once.
+ */
+function markOutage(detail) {
+  outageUntil = Date.now() + OUTAGE_COOLDOWN_MS;
   console.error(`[${new Date().toISOString()}] machine-auth: the issuer is unavailable (${detail}), answering 503`);
   return new MachineAuthUnavailable(detail);
 }
 
+function coolingDown() {
+  return Date.now() < outageUntil;
+}
+
 /**
- * Test-only: forget the cached discovery and key set, so the next call fetches them again.
+ * Test-only: forget the cached discovery, key set and any open outage window, so the next call
+ * fetches them again.
  */
 export function resetMachineJwtCache() {
   jwksCache = null;
   pendingJwks = null;
+  outageUntil = 0;
 }
