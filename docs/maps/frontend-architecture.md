@@ -183,7 +183,18 @@ the picker modals. The reusable primitives worth knowing before you build a new
 one:
 
 - `<Toast>` and `toastError()` for transient feedback, `<ConfirmDialog>` for
-  destructive confirmation. **`no-alert` is an ESLint error**
+  destructive confirmation. The Toast is the suite's shared toast primitive
+  (W6-CDX-23, Kyle's D-V): Codex's is the reference and Cloud Command matches
+  it. Its dismiss is a real `<button class="toast__dismiss" aria-label="Dismiss
+  notification">`, so Tab reaches it and Enter or Space dismisses; the toast body
+  is not clickable. Each toast is its own live region: `role="alert"` for an error,
+  `role="status"` for success and info (`Toast.jsx`, the `role` on the toast div),
+  and the container carries no `aria-live`, so one announcement is made, not two.
+  A toast holds (its timers pause) while the pointer is on it or focus is inside
+  it, and resumes with the time it had left; a dismiss that drops focus sends it
+  back to where focus came from, or to the container. These are pinned in
+  `tests/src/components/Toast.test.jsx` with fake timers. The toast CSS is on tokens
+  at `src/index.css` (the `.toast` block, after `Toast Notifications`). **`no-alert` is an ESLint error**
   (`eslint.config.js:45`); there are two legacy disables in `Editor.jsx` and
   `GitHubPage.jsx` and no more should be added.
 - `<PresenceAvatars>` pairs with `usePresence`.
@@ -312,7 +323,13 @@ load-bearing:
    the border, the scrim, the focus ring, Codex's radii (4, 8, 12 px), its
    drop-shadow inks, and its layout sizes and transition.
 4. `src/index.css`, about 8,700 lines, the whole app. No CSS modules, no
-   preprocessor, no utility framework. Its `:root` block (`index.css:12`) is
+   preprocessor, no utility framework. Its one focus ring is the global
+   `:focus-visible` rule (`index.css:5376`), on `--cx-focus-ring`; no source under
+   `src/` removes an outline, and `painted.test.js` pins both. A container that clips
+   (`.editor-container`, `.markdown-editor__textarea-wrapper`, `.sidebar`,
+   `.gh-browser__sidebar`, `.gh-modal`, `.gh-sync-menu`) draws its controls' rings
+   inside the control (`outline-offset: -2px`), since a ring outside a flush control
+   is cut off by the clip; text fields sit at `outline-offset: 0` against their border. Its `:root` block (`index.css:12`) is
    the **legacy-alias bridge** (W6-CDX-22): the 27 legacy names every rule
    reads, plus five undeclared names that carried the heaviest literal
    fallbacks (`--bg-secondary`, `--bg-tertiary`, `--border`, `--color-accent`,

@@ -387,23 +387,20 @@ body {
   white-space: nowrap;
 }
 
-.btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(44, 167, 219, 0.35);
-}
-
 .btn-primary {
   background: var(--brand-blue-hover);
   color: var(--cx-on-accent);
+  border-color: var(--cx-border);
 }
-.btn-primary:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 0 12px rgba(44, 167, 219, 0.35);
-  transform: translateY(-1px);
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
-.btn-primary:active {
-  transform: translateY(0);
-  filter: brightness(0.95);
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-blue);
+}
+.btn-primary:active:not(:disabled) {
+  background: var(--cx-accent-hover);
 }
 
 .btn-ghost {
@@ -411,18 +408,23 @@ body {
   color: var(--text-secondary);
   border-color: var(--border-color);
 }
-.btn-ghost:hover {
+.btn-ghost:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+.btn-ghost:active:not(:disabled) {
+  background: var(--bg-hover-strong);
 }
 
 .btn-danger {
   background: var(--cx-danger-fill);
-  color: #fff;
+  color: var(--cx-on-danger);
 }
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   background: var(--color-danger-hover);
-  box-shadow: 0 0 10px rgba(229, 69, 69, 0.3);
+}
+.btn-danger:active:not(:disabled) {
+  background: var(--cx-danger-fill-press);
 }
 
 .btn-sm { padding: 5px 12px; font-size: 12px; }
@@ -431,8 +433,6 @@ body {
   margin-top: 10px;
   width: 100%;
 }
-
-/* Keep legacy c2-btn for any remaining usage */
 
 /* =========================
    Account Button (Top Bar)
@@ -1060,9 +1060,7 @@ body {
 }
 .search-inline .search-input::placeholder { color: var(--text-muted); }
 .search-inline .search-input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .search-inline .search-icon-btn {
@@ -1144,9 +1142,7 @@ body {
   transition: var(--transition);
 }
 .search-box .search-input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 /* =========================
@@ -1282,9 +1278,7 @@ body {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .modal-form input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .modal-form__textarea {
@@ -1301,9 +1295,7 @@ body {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .modal-form__textarea:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .preview-content {
@@ -1558,7 +1550,6 @@ body {
 }
 
 .gh-search-input:focus {
-  outline: none;
   border-color: var(--color-accent, #2ca7db);
 }
 
@@ -1708,7 +1699,6 @@ body {
 }
 
 .gh-branch-select:focus {
-  outline: none;
   border-color: var(--color-accent, #2ca7db);
 }
 
@@ -1971,10 +1961,6 @@ body {
   tab-size: 2;
 }
 
-.gh-editor-textarea:focus {
-  outline: none;
-}
-
 .gh-editor-textarea--plain {
   flex: 1 1 0;
   min-height: 200px;
@@ -2116,7 +2102,6 @@ body {
 }
 
 .gh-input:focus {
-  outline: none;
   border-color: var(--color-accent, #2ca7db);
 }
 
@@ -3425,16 +3410,9 @@ body {
 .modal-form input.input--available {
   border-color: #4caf50;
 }
-.modal-form input.input--available:focus {
-  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
-}
 .modal-form input.input--taken,
 .modal-form input.input--invalid {
   border-color: var(--color-danger);
-}
-.modal-form input.input--taken:focus,
-.modal-form input.input--invalid:focus {
-  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
 }
 
 /* Password strength bar */
@@ -3610,9 +3588,7 @@ body {
   min-width: 120px;
 }
 .inline-form input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .form-select {
@@ -3625,7 +3601,6 @@ body {
   width: 100%;
 }
 .form-select:focus {
-  outline: none;
   border-color: var(--brand-blue);
   box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
@@ -3653,9 +3628,7 @@ body {
   box-sizing: border-box;
 }
 .user-search__input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .user-search__results {
@@ -3755,9 +3728,7 @@ body {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .form-group input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 /* 2FA Method Selection */
@@ -3827,9 +3798,7 @@ body {
   color: var(--text-primary);
 }
 .totp-code-input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .totp-setup-inline {
@@ -4648,7 +4617,6 @@ body {
   min-height: 360px;
   line-height: 1.65;
   font-size: var(--editor-font-size, 15px);
-  outline: none;
 }
 
 .editor-container .tiptap p.is-editor-empty:first-child::before {
@@ -4973,7 +4941,6 @@ body {
   color: var(--text-primary);
   background: var(--bg-main);
   border: none;
-  outline: none;
   tab-size: 2;
 }
 
@@ -5403,8 +5370,38 @@ body {
    Focus & Accessibility
 ========================= */
 
+/* A text field's ring sits against its own border, so the border and the ring read as one edge. */
+input:focus-visible {
+  outline-offset: 0;
+}
+textarea:focus-visible {
+  outline-offset: 0;
+}
+
+/* A ring is drawn outside its control, so a container that clips (overflow: hidden) cuts it off
+   on a flush control. A control inside one of these draws its ring inside its own edge, where
+   the container's clip cannot reach. Each container is measured as clipping in painted.test.js. */
+.editor-container :focus-visible {
+  outline-offset: -2px;
+}
+.markdown-editor__textarea-wrapper :focus-visible {
+  outline-offset: -2px;
+}
+.sidebar :focus-visible {
+  outline-offset: -2px;
+}
+.gh-browser__sidebar :focus-visible {
+  outline-offset: -2px;
+}
+.gh-modal :focus-visible {
+  outline-offset: -2px;
+}
+.gh-sync-menu :focus-visible {
+  outline-offset: -2px;
+}
+
 :focus-visible {
-  outline: 2px solid var(--brand-blue);
+  outline: 2px solid var(--cx-focus-ring);
   outline-offset: 2px;
 }
 
@@ -6291,9 +6288,7 @@ body {
 .explore-search-input::placeholder { color: var(--text-muted); }
 
 .explore-search-input:focus {
-  outline: none;
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .explore-clear-btn {
@@ -6327,7 +6322,6 @@ body {
 }
 
 .explore-sort:focus {
-  outline: none;
   border-color: var(--brand-blue);
 }
 
@@ -6429,7 +6423,6 @@ body {
 }
 
 .explore-filter-select:focus {
-  outline: none;
   border-color: var(--brand-blue);
 }
 
@@ -6662,32 +6655,27 @@ body {
   border-radius: var(--radius-md);
   font-size: 14px;
   line-height: 1.5;
-  cursor: pointer;
   pointer-events: auto;
   animation: toast-slide-in 0.25s ease-out;
   box-shadow: var(--shadow-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
 }
 
 .toast--exit {
   animation: toast-fade-out 0.3s ease-in forwards;
 }
 
-.toast--info {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-}
-
+/* The status is carried by the edge and the text, both on the package's pale steps. */
 .toast--success {
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #4ade80;
+  border-color: var(--cx-success);
+  color: var(--cx-success);
 }
 
 .toast--error {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
+  border-color: var(--cx-danger);
+  color: var(--cx-danger);
 }
 
 .toast__icon {
@@ -6700,6 +6688,28 @@ body {
 
 .toast__message {
   flex: 1;
+}
+
+.toast__dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.toast__dismiss:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 @keyframes toast-slide-in {
@@ -7141,7 +7151,6 @@ body {
   font-family: inherit;
 }
 .comment-textarea:focus {
-  outline: none;
   border-color: var(--accent-color, #4a9eff);
 }
 
@@ -7697,7 +7706,6 @@ body {
 
 .admin-filter-input:focus {
   border-color: var(--brand-blue);
-  outline: none;
 }
 
 /* Tables */

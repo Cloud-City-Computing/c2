@@ -1,0 +1,4 @@
+iris shoot http://127.0.0.1:5179/cdx23-harness.html?toast=1 -> cdx23-buttons-toast.png
+  verdict pass | reason rendered, console clean | png_bytes 32401 | console_errors [] | network-clean (16 in-scope, none failed)
+iris shoot http://127.0.0.1:5179/cdx23-harness.html?focus=1 -> cdx23-focus-ring.png
+  verdict pass | reason rendered, console clean | png_bytes 18947 | console_errors [] | network-clean (16 in-scope, none failed)
