@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WebhooksPanel from '../../../src/components/WebhooksPanel.jsx';
+import { showToast, toastError } from '../../../src/components/Toast.jsx';
 
 const api = vi.hoisted(() => ({
   fetchWebhooks: vi.fn(),
@@ -52,15 +53,21 @@ const DISABLED = {
   secret_fingerprint: '00ff00ff',
 };
 
+// A dead delivery of the env-declared subscription: no Redeliver, the server refuses it too.
+const ENV_DEAD_DELIVERY = {
+  id: 77, event_id: 990, type: 'log.update', status: 'dead', attempts: 0, last_status: 422,
+  last_error: 'receiver answered 422', delivered_at: null, created_at: CREATED, occurred_at: CREATED, expired: false,
+};
+
 const STALLED_DELIVERIES = {
   success: true,
   deliveries: [
     { id: 31, event_id: 905, type: 'log.update', status: 'pending', attempts: 4, last_status: 401,
-      last_error: 'HTTP 401', delivered_at: null, created_at: CREATED },
+      last_error: 'HTTP 401', delivered_at: null, created_at: CREATED, occurred_at: CREATED, expired: false },
     { id: 30, event_id: 904, type: 'log.rename', status: 'dead', attempts: 0, last_status: 422,
-      last_error: 'receiver answered 422', delivered_at: null, created_at: CREATED },
+      last_error: 'receiver answered 422', delivered_at: null, created_at: CREATED, occurred_at: CREATED, expired: false },
     { id: 29, event_id: 900, type: 'log.move', status: 'dead', attempts: 0, last_status: null,
-      last_error: 'expired after 72h', delivered_at: null, created_at: CREATED },
+      last_error: null, delivered_at: null, created_at: CREATED, occurred_at: CREATED, expired: true },
   ],
 };
 
@@ -73,9 +80,11 @@ function renderLastModal() {
 beforeEach(() => {
   vi.clearAllMocks();
   api.fetchWebhooks.mockResolvedValue({ success: true, webhooks: [ENV_ROW, HEALTHY, STALLED, DISABLED] });
-  api.fetchWebhookDeliveries.mockImplementation(async (id) =>
-    id === STALLED.id ? STALLED_DELIVERIES : { success: true, deliveries: [] }
-  );
+  api.fetchWebhookDeliveries.mockImplementation(async (id) => {
+    if (id === STALLED.id) return STALLED_DELIVERIES;
+    if (id === ENV_ROW.id) return { success: true, deliveries: [ENV_DEAD_DELIVERY] };
+    return { success: true, deliveries: [] };
+  });
 });
 
 describe('WebhooksPanel: rendering', () => {
@@ -262,7 +271,7 @@ describe('WebhooksPanel: deliveries and redeliver', () => {
     const deadRow = (await within(card).findByText('receiver answered 422')).closest('tr');
     expect(within(deadRow).getByRole('button', { name: /redeliver/i })).toBeInTheDocument();
 
-    const expiredRow = within(card).getByText('expired after 72h').closest('tr');
+    const expiredRow = within(card).getByText('Document moved').closest('tr');
     expect(within(expiredRow).queryByRole('button', { name: /redeliver/i })).toBeNull();
   });
 
@@ -281,10 +290,11 @@ describe('WebhooksPanel: deliveries and redeliver', () => {
     await waitFor(() => expect(api.redeliverWebhook).toHaveBeenCalledWith(30));
   });
 
-  it('shows a refusal from the redeliver route inside the confirmation', async () => {
+  it('toasts a refusal from the redeliver route, and closes the dialog it came from', async () => {
     const user = userEvent.setup();
     const message = 'This event is older than 72 hours, so redelivering it would expire it again; it is not queued';
-    api.redeliverWebhook.mockRejectedValue(Object.assign(new Error(message), { status: 409, body: { message } }));
+    const err = Object.assign(new Error(message), { status: 409, body: { message } });
+    api.redeliverWebhook.mockRejectedValue(err);
     render(<WebhooksPanel />);
     const card = (await screen.findByText('https://stalled.example/hook')).closest('article');
     await user.click(within(card).getByRole('button', { name: /recent deliveries/i }));
@@ -292,6 +302,100 @@ describe('WebhooksPanel: deliveries and redeliver', () => {
     await user.click(within(deadRow).getByRole('button', { name: /redeliver/i }));
     const dialog = renderLastModal();
     await user.click(within(dialog.container).getByRole('button', { name: /^redeliver$/i }));
-    expect(await screen.findByText(message)).toBeInTheDocument();
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(err));
+    expect(api.destroyModal).toHaveBeenCalled();
+  });
+});
+
+describe('WebhooksPanel: the env subscription, the server-decided expiry and the 404 path (W6-CDX-15 review)', () => {
+  it('shows no Redeliver on the env-declared subscription, even for a dead delivery', async () => {
+    const user = userEvent.setup();
+    render(<WebhooksPanel />);
+    const card = (await screen.findByText('https://env.example/hook')).closest('article');
+    await user.click(within(card).getByRole('button', { name: /recent deliveries/i }));
+    expect(await within(card).findByText('receiver answered 422')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: /redeliver/i })).toBeNull();
+  });
+
+  it('decides expiry from the server flag, not from the text of the error', async () => {
+    const user = userEvent.setup();
+    api.fetchWebhookDeliveries.mockImplementation(async (id) => (id === STALLED.id
+      ? { success: true, deliveries: [
+        { id: 40, event_id: 1, type: 'log.rename', status: 'dead', attempts: 0, last_status: 422,
+          last_error: 'receiver answered 422', delivered_at: null, created_at: CREATED, occurred_at: CREATED, expired: true },
+      ] }
+      : { success: true, deliveries: [] }));
+    render(<WebhooksPanel />);
+    const card = (await screen.findByText('https://stalled.example/hook')).closest('article');
+    await user.click(within(card).getByRole('button', { name: /recent deliveries/i }));
+    const row = (await within(card).findByText('receiver answered 422')).closest('tr');
+    expect(within(row).queryByRole('button', { name: /redeliver/i })).toBeNull();
+  });
+
+  it('closes the dialog, reloads the list and toasts when the webhook is gone (404)', async () => {
+    const user = userEvent.setup();
+    const err = Object.assign(new Error('Webhook not found'), { status: 404, body: { message: 'Webhook not found' } });
+    api.rotateWebhook.mockRejectedValue(err);
+    render(<WebhooksPanel />);
+    const card = (await screen.findByText('https://healthy.example/hook')).closest('article');
+    await user.click(within(card).getByRole('button', { name: /rotate secret/i }));
+    const dialog = renderLastModal();
+    await user.click(within(dialog.container).getByRole('button', { name: /rotate secret/i }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(err));
+    expect(api.destroyModal).toHaveBeenCalled();
+    expect(api.fetchWebhooks.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('does the same for a delete that finds nothing, and a toggle', async () => {
+    const user = userEvent.setup();
+    const gone = Object.assign(new Error('Webhook not found'), { status: 404, body: { message: 'Webhook not found' } });
+    api.deleteWebhook.mockRejectedValue(gone);
+    api.setWebhookEnabled.mockRejectedValue(gone);
+    render(<WebhooksPanel />);
+    const card = (await screen.findByText('https://healthy.example/hook')).closest('article');
+    await user.click(within(card).getByRole('button', { name: /delete/i }));
+    let dialog = renderLastModal();
+    await user.click(within(dialog.container).getByRole('button', { name: /^delete$/i }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(gone));
+    await user.click(within(card).getByRole('button', { name: /turn off/i }));
+    dialog = renderLastModal();
+    await user.click(within(dialog.container).getByRole('button', { name: /turn off/i }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps a failed action visible after the dialog is dismissed mid-flight: it is toasted, not swallowed', async () => {
+    const user = userEvent.setup();
+    const boom = Object.assign(new Error('Database is busy'), { status: 500, body: { message: 'Database is busy' } });
+    let fail;
+    api.deleteWebhook.mockImplementation(() => new Promise((_, reject) => { fail = () => reject(boom); }));
+    render(<WebhooksPanel />);
+    const card = (await screen.findByText('https://healthy.example/hook')).closest('article');
+    await user.click(within(card).getByRole('button', { name: /delete/i }));
+    const dialog = renderLastModal();
+    await user.click(within(dialog.container).getByRole('button', { name: /^delete$/i }));
+    // The dimmer closes the dialog while the request is in flight.
+    api.destroyModal.mockClear();
+    fail();
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(boom));
+    expect(api.destroyModal).toHaveBeenCalled();
+  });
+
+  it('pauses create and rotate while a secret is on screen, and resumes on Done', async () => {
+    const user = userEvent.setup();
+    api.createWebhook.mockResolvedValue({ success: true, webhook: { ...HEALTHY, id: 9 }, secret: SECRET_A });
+    render(<WebhooksPanel />);
+    await screen.findByText('https://healthy.example/hook');
+    await user.click(screen.getByRole('button', { name: /new webhook/i }));
+    await user.type(screen.getByLabelText(/receiver url/i), 'https://new.example/hook');
+    await user.click(screen.getByRole('button', { name: /create webhook/i }));
+    expect(await screen.findByText(SECRET_A)).toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: /new webhook/i })).toBeDisabled();
+    const card = screen.getByText('https://healthy.example/hook').closest('article');
+    expect(within(card).getByRole('button', { name: /rotate secret/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /^done$/i }));
+    expect(screen.getByRole('button', { name: /new webhook/i })).toBeEnabled();
+    expect(within(card).getByRole('button', { name: /rotate secret/i })).toBeEnabled();
   });
 });

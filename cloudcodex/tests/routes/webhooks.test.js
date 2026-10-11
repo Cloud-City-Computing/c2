@@ -434,3 +434,55 @@ describe('the subscription cap and the expired redelivery (review follow-ups)', 
     expect(sqls()[0]).toMatch(/UTC_TIMESTAMP\(3\) - INTERVAL 72 HOUR/);
   });
 });
+
+describe('the console read in UTC, and the environment delivery refusal (W6-CDX-15 review)', () => {
+  it('lists paused_until as UTC text with milliseconds, and created_at from epoch seconds', async () => {
+    mockAuthenticated(ADMIN_USER);
+    c2_query.mockResolvedValueOnce([
+      row({ id: 4, paused_until: '2026-10-11T05:12:47.366Z', created_at_seconds: 1791000000, secret: undefined, secret_fingerprint: undefined }),
+    ]);
+    const res = await request(app).get('/api/admin/webhooks').set('Authorization', 'Bearer t');
+
+    expect(res.status).toBe(200);
+    expect(res.body.webhooks[0].paused_until).toBe('2026-10-11T05:12:47.366Z');
+    expect(res.body.webhooks[0].created_at).toBe(new Date(1791000000 * 1000).toISOString());
+    const sql = sqls()[0];
+    expect(sql).toMatch(/UNIX_TIMESTAMP\(created_at\) AS created_at_seconds/);
+    expect(sql).toMatch(/DATE_FORMAT\(paused_until, '%Y-%m-%dT%H:%i:%s\.'\)/);
+    expect(sql).not.toMatch(/SELECT[^]*\bcreated_at,/);
+  });
+
+  it('lists each delivery with UTC occurred_at and delivered_at, epoch-second created_at, and the server expiry flag', async () => {
+    mockAuthenticated(ADMIN_USER);
+    c2_query.mockResolvedValueOnce([{ id: 4 }]);
+    c2_query.mockResolvedValueOnce([
+      {
+        id: 90, event_id: 12, type: 'log.rename', status: 'dead', attempts: 0, last_status: 422,
+        last_error: 'receiver answered 422', delivered_at: null, created_at_seconds: 1791000000,
+        occurred_at: '2026-10-10T12:00:00.250Z', expired: 1,
+      },
+    ]);
+    const res = await request(app).get('/api/admin/webhooks/4/deliveries').set('Authorization', 'Bearer t');
+
+    expect(res.body.deliveries).toEqual([{
+      id: 90, event_id: 12, type: 'log.rename', status: 'dead', attempts: 0, last_status: 422,
+      last_error: 'receiver answered 422', delivered_at: null,
+      created_at: new Date(1791000000 * 1000).toISOString(),
+      occurred_at: '2026-10-10T12:00:00.250Z', expired: true,
+    }]);
+    const list = sqls()[1];
+    expect(list).toMatch(/CONCAT\(DATE_FORMAT\(e\.occurred_at, '%Y-%m-%dT%H:%i:%s\.'\)/);
+    expect(list).toMatch(/UNIX_TIMESTAMP\(d\.created_at\) AS created_at_seconds/);
+    expect(list).toMatch(/\(e\.occurred_at < UTC_TIMESTAMP\(3\) - INTERVAL 72 HOUR\) AS expired/);
+  });
+
+  it('refuses to redeliver a delivery of the environment subscription, and writes nothing', async () => {
+    mockAuthenticated(ADMIN_USER);
+    c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead', source: 'env', expired: 0 }]);
+    const res = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/server environment/);
+    expect(sqls()).toHaveLength(1);
+  });
+});
