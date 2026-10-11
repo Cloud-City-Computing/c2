@@ -57,7 +57,7 @@ describe('useSuite', () => {
 describe('useSuiteLinks', () => {
   it('is null, and asks for no links, when suite mode is off', async () => {
     apiFetch.mockResolvedValue({ enabled: false, name: null });
-    const { result } = renderHook(() => useSuiteLinks(USER));
+    const { result } = renderHook(() => useSuiteLinks(true));
     await waitFor(() => expect(apiFetch).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
     expect(result.current).toBeNull();
@@ -68,19 +68,18 @@ describe('useSuiteLinks', () => {
     apiFetch.mockImplementation(async (_m, url) => (url === '/api/suite'
       ? { enabled: true, name: 'Example Suite' }
       : { commandWorkspaceUrl: 'https://command.example.test/w/1' }));
-    const { result } = renderHook(() => useSuiteLinks(USER));
+    const { result } = renderHook(() => useSuiteLinks(true));
     await waitFor(() => expect(result.current).toEqual({ commandWorkspaceUrl: 'https://command.example.test/w/1' }));
   });
 
-  it('asks for no links, and is null, when no one is signed in', async () => {
+  it('makes no request at all, and is null, when no one is signed in', async () => {
     apiFetch.mockImplementation(async (_m, url) => (url === '/api/suite'
       ? { enabled: true, name: 'Example Suite' }
       : { commandWorkspaceUrl: 'https://command.example.test/w/1' }));
-    const { result } = renderHook(() => useSuiteLinks(null));
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('GET', '/api/suite'));
+    const { result } = renderHook(() => useSuiteLinks(false));
     await new Promise((r) => setTimeout(r, 0));
     expect(result.current).toBeNull();
-    expect(apiFetch.mock.calls.map(([, url]) => url)).toEqual(['/api/suite']);
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
   it('stays null when the links request fails, and never throws', async () => {
@@ -88,7 +87,7 @@ describe('useSuiteLinks', () => {
       if (url === '/api/suite') return { enabled: true, name: 'Example Suite' };
       throw new Error('unauthorized');
     });
-    const { result } = renderHook(() => useSuiteLinks(USER));
+    const { result } = renderHook(() => useSuiteLinks(true));
     await new Promise((r) => setTimeout(r, 0));
     expect(result.current).toBeNull();
   });

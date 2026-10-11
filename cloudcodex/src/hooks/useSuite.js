@@ -70,16 +70,18 @@ export default function useSuite(user) {
 }
 
 /**
- * The Cloud Command links for a page that is already signed in: { commandWorkspaceUrl }, or null
- * when suite mode is off or the links request fails (no session, or any other error). Used by a
- * page that is not inside the layout's user state, such as the document editor.
+ * The Cloud Command links for a signed-in page: { commandWorkspaceUrl }, or null when no one is
+ * signed in, suite mode is off, or the links request fails. A signed-out viewer never asks for the
+ * links (the request would only come back 401).
  *
+ * @param {boolean} signedIn whether a session is present (the same answer useSuite gets from the user)
  * @returns {{ commandWorkspaceUrl: string }|null}
  */
-export function useSuiteLinks() {
+export function useSuiteLinks(signedIn) {
   const [links, setLinks] = useState(null);
 
   useEffect(() => {
+    if (!signedIn) return undefined;
     let live = true;
     loadSuite()
       .then((s) => (s.enabled ? apiFetch('GET', '/api/suite/links') : null))
@@ -90,7 +92,7 @@ export function useSuiteLinks() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [signedIn]);
 
-  return links;
+  return signedIn ? links : null;
 }

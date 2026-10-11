@@ -8,7 +8,11 @@
  * https://cloudcitycomputing.com
  */
 
+// Cloud Command's c2 ids are positive int4 (cloudcommand/src/lib/c2-id.ts): a larger id is refused
+// there, so a link to it would be a dead one.
 const POSITIVE_INT = /^[1-9]\d*$/;
+const INT4_MAX = 2147483647;
+const isId = (value) => POSITIVE_INT.test(value) && Number(value) <= INT4_MAX;
 
 /**
  * The Linked tasks address for one document, or null when any input is unusable. The workspace
@@ -24,7 +28,7 @@ export function suiteDocHref(commandWorkspaceUrl, archiveId, logId) {
   if (!commandWorkspaceUrl) return null;
   const a = String(archiveId ?? '');
   const l = String(logId ?? '');
-  if (!POSITIVE_INT.test(a) || !POSITIVE_INT.test(l)) return null;
+  if (!isId(a) || !isId(l)) return null;
   let base;
   try {
     base = new URL(commandWorkspaceUrl);

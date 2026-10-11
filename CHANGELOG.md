@@ -93,7 +93,8 @@ initialises an empty data directory.
 - **Suite mode: a suite cluster in the top bar.** Setting `SUITE_COMMAND_WORKSPACE_URL`
   (with `SUITE_NAME`) turns it on. A signed-in user sees a disclosure in the brand slot that lists
   Cloud Codex, Cloud Command, and All workspaces. `GET /api/suite` answers the name, and
-  `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot.
+  `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot,
+  and so does a URL that is not exactly an origin plus `/w/<workspace id>`.
   With suite mode off the top bar is unchanged. The chrome sections are on the design tokens, and
   every `z-index` is on the shared scale.
 - **The shared Cloud City design package, vendored, and a design gate.**

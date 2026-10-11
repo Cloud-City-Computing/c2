@@ -13,9 +13,11 @@
 
 import { useSuiteLinks } from '../hooks/useSuite.js';
 import { suiteDocHref } from '../lib/suite-doc-href.js';
+import { getSessionTokenFromCookie } from '../util.jsx';
 
 export default function SuiteDocLink({ archiveId, logId }) {
-  const links = useSuiteLinks();
+  // A signed-out viewer has no session cookie, so the links request is never made for them.
+  const links = useSuiteLinks(Boolean(getSessionTokenFromCookie()));
   const href = suiteDocHref(links?.commandWorkspaceUrl ?? null, archiveId, logId);
   if (href === null) return null;
   return <a className="suite-doc-link" href={href}>Linked tasks</a>;

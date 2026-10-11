@@ -13,9 +13,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 
-vi.mock('../../../src/util.jsx', () => ({ apiFetch: vi.fn() }));
+vi.mock('../../../src/util.jsx', () => ({ apiFetch: vi.fn(), getSessionTokenFromCookie: vi.fn(() => 'session') }));
 
-import { apiFetch } from '../../../src/util.jsx';
+import { apiFetch, getSessionTokenFromCookie } from '../../../src/util.jsx';
 import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import SuiteDocLink from '../../../src/components/SuiteDocLink.jsx';
 import { suiteDocHref } from '../../../src/lib/suite-doc-href.js';
@@ -33,6 +33,7 @@ function suiteAnswers({ enabled = true, links = { commandWorkspaceUrl: COMMAND }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getSessionTokenFromCookie.mockReturnValue('session');
   __resetSuiteCache();
 });
 
@@ -91,6 +92,15 @@ describe('SuiteDocLink', () => {
     expect(link).toHaveAttribute('href', 'https://command.example.test/w/1/docs/7/42');
     expect(link).toHaveClass('suite-doc-link');
     expect(link).not.toHaveAttribute('target');
+  });
+
+  it('makes no links request, and renders nothing, when no one is signed in', async () => {
+    suiteAnswers();
+    getSessionTokenFromCookie.mockReturnValue(null);
+    const { container } = render(<SuiteDocLink archiveId={7} logId={42} />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(container).toBeEmptyDOMElement();
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
   it('renders nothing when the links request fails (no session), rather than a dead link', async () => {

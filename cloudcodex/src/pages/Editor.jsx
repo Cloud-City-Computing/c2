@@ -1150,7 +1150,7 @@ function EditorView({ embedded = false } = {}) {
                 <span>v{documentData.version ?? 1} &middot; {new Date(documentData.created_at).toLocaleString()}</span>
               </>
             )}
-            <SuiteDocLink archiveId={documentData?.archive_id} logId={logId} />
+            <SuiteDocLink archiveId={String(documentData?.id) === String(logId) ? documentData.archive_id : undefined} logId={logId} />
             {viewMode === 'edit' && <CollabPresence users={collabUsers} connected={collabConnected} />}
             {documentData && (
               <button
