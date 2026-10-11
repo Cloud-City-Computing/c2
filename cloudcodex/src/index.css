@@ -4590,6 +4590,14 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
 }
 
+/* Linked tasks: suite mode's link from a document to its tasks in Cloud Command (W6-CDX-27). The
+   page surface is --bg-main, measured for every accent in tests/design/painted.test.js. */
+.suite-doc-link {
+  color: var(--cx-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Favorite star button */
 .btn-favorite {
   background: none;

@@ -1,0 +1,3 @@
+     × writes one archive that only its owner can read, and leaves no working files behind 16ms
+     × holds exactly the dump, the uploads and a manifest whose checksums match them 4ms
+     × carries no credential: not the MySQL password it connected with, root's or the boot admin's 3ms

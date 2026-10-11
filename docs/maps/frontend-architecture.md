@@ -168,6 +168,7 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 | `usePresence.js` | polls `/api/presence` for who is in which document, for browse/archive views |
 | `useNotificationChannel.js` | the `/notifications-ws` socket, feeding `NotificationBell` |
 | `useSuite.js` | suite mode: `GET /api/suite` once per page load, and `GET /api/suite/links` only for a signed-in user while suite mode is on. Any failure reads as off. `__resetSuiteCache` is the test seam |
+| `useSuiteLinks(signedIn)` (`src/hooks/useSuite.js:80`) | the same two requests for a page outside the layout's user state (the editor), made only when `signedIn` (a signed-out viewer makes no request): `{ commandWorkspaceUrl }` in suite mode, `null` otherwise or on any failure |
 | `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
 | `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
@@ -221,6 +222,15 @@ and suite mode is on with a URL; otherwise the brand slot is the old markup, whi
 (`aria-current="true"`), Cloud Command, a separator, All workspaces (`/?switch=1`, Cloud Command's
 choice). Its panel is absolutely positioned under the toggle inside `.cc-suite`, unclipped
 because `.topbar` does not clip. Open state resets on every history entry (`location.key`).
+
+`SuiteDocLink` (`src/components/SuiteDocLink.jsx:18`, W6-CDX-27) is the link out to Cloud
+Command's Linked tasks page for a document (W6-CMD-25), `<workspace URL>/docs/<archiveId>/<logId>`,
+built by `suiteDocHref` (`src/lib/suite-doc-href.js:27`, kept out of the component file so the
+fast-refresh lint rule holds). It renders nothing outside suite mode, before the
+archive id is known, for a signed-out viewer, when the URL is not http(s), or when an id is not a
+positive int4. The archive id is passed only once the loaded document's id is the route's log id. It
+is mounted once in the document meta line of `Editor.jsx:1153`; the class `.suite-doc-link` is
+in `src/index.css`, and its colour is measured in `tests/design/painted.test.js`.
 
 ## 4. Components
 

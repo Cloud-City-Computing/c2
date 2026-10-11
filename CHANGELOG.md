@@ -86,10 +86,15 @@ initialises an empty data directory.
   button of a confirmation now takes focus when it opens. The admin console stacks its sidebar above
   the content on a narrow screen. Its times are UTC whatever the server's zone. A failed action is toasted, not
   dropped, and a 404 reloads the list; create and rotate pause while a secret is on screen.
+- **Suite mode: Linked tasks from a document.** In suite mode a document's meta line has a
+  "Linked tasks" link to Cloud Command's page for that document. It is a same-tab link built from the
+  Cloud Command workspace URL, and it is absent outside suite mode. `GET /api/suite/links` supplies
+  the URL to a signed-in page.
 - **Suite mode: a suite cluster in the top bar.** Setting `SUITE_COMMAND_WORKSPACE_URL`
   (with `SUITE_NAME`) turns it on. A signed-in user sees a disclosure in the brand slot that lists
   Cloud Codex, Cloud Command, and All workspaces. `GET /api/suite` answers the name, and
-  `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot.
+  `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot,
+  and so does a URL that is not exactly an origin plus `/w/<workspace id>`.
   With suite mode off the top bar is unchanged. The chrome sections are on the design tokens, and
   every `z-index` is on the shared scale.
 - **The shared Cloud City design package, vendored, and a design gate.**

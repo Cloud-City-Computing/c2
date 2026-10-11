@@ -29,6 +29,15 @@ export function readSuiteConfig() {
     throw new Error('SUITE_COMMAND_WORKSPACE_URL must be https (http only outside production), with no user or password.');
   }
 
+  // The value is the workspace's Cloud Command URL: an origin plus /w/<workspace id> (Cloud Command's
+  // W6-CMD-25 route family), nothing more. An origin alone, a query, a fragment or any other path
+  // would build a link Cloud Command answers with a 404 (shape brief section 7, ADR decision 11).
+  const workspacePath = /^\/w\/[^/]+\/?$/.test(url.pathname);
+  if (url.search !== '' || raw.includes('?') || url.hash !== '' || raw.includes('#') || !workspacePath) {
+    throw new Error('SUITE_COMMAND_WORKSPACE_URL must be the workspace URL: an origin plus /w/<workspace id>, '
+      + 'with no query, fragment or further path.');
+  }
+
   const name = process.env.SUITE_NAME?.trim() ?? '';
   // eslint-disable-next-line no-control-regex
   if (!name || name.length > NAME_MAX || /[\u0000-\u001f\u007f]/.test(name)) {
