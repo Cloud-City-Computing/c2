@@ -37,7 +37,7 @@ export default function PublishModal({ onPublish, onCancel, githubLink }) {
 
   return (
     <div className="modal-content modal-md">
-      <span className="close-button" onClick={onCancel}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={onCancel}>&times;</button>
       <h2>Publish Version</h2>
       <p className="text-muted" style={{ fontSize: '14px', marginBottom: '8px' }}>
         Create a formal version snapshot of the current document.

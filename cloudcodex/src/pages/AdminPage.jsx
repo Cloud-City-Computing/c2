@@ -126,7 +126,7 @@ function OverviewPanel() {
 
 // ─── Modals ───────────────────────────────────────────────
 
-function NewWorkspaceModal({ onCreated }) {
+export function NewWorkspaceModal({ onCreated }) {
   const [name, setName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [squadName, setSquadName] = useState('');
@@ -153,7 +153,7 @@ function NewWorkspaceModal({ onCreated }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -200,7 +200,7 @@ function NewWorkspaceModal({ onCreated }) {
   );
 }
 
-function InviteUserModal({ onInvited }) {
+export function InviteUserModal({ onInvited }) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -252,7 +252,7 @@ function InviteUserModal({ onInvited }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Invite User</h2>
       {error && <p className="form-error">{error}</p>}
       {success && <p className="form-success">{success}</p>}
@@ -309,7 +309,7 @@ function InviteUserModal({ onInvited }) {
 
 // ─── User Permissions Modal ─────────────────────────────────
 
-function UserPermissionsModal({ user, onUpdated }) {
+export function UserPermissionsModal({ user, onUpdated }) {
   const [perms, setPerms] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -335,7 +335,7 @@ function UserPermissionsModal({ user, onUpdated }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Permissions — {user.name}</h2>
       <div className="modal-form admin-perms-form">
         <label className="setup-checkbox">
@@ -363,7 +363,7 @@ function UserPermissionsModal({ user, onUpdated }) {
 
 // ─── Squad Member Editor Modal ──────────────────────────────
 
-function EditMemberModal({ squadId, member, onUpdated }) {
+export function EditMemberModal({ squadId, member, onUpdated }) {
   const [role, setRole] = useState(member.role);
   const [perms, setPerms] = useState({
     can_read: member.can_read, can_write: member.can_write,
@@ -395,7 +395,7 @@ function EditMemberModal({ squadId, member, onUpdated }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Edit Member — {member.name}</h2>
       <div className="modal-form admin-perms-form">
         <label htmlFor="member-role">Role:</label>

@@ -181,4 +181,67 @@ describe('FirstRunGate', () => {
     await user.click(screen.getByRole('link', { name: /welcome to cloud codex/i }));
     await waitFor(() => expect(screen.getByText('Doc Page')).toBeInTheDocument());
   });
+
+  describe('as a dialog', () => {
+    const adminFirstRun = {
+      needsOnboarding: true, isAdmin: false,
+      squad: { id: 3, name: 'General' }, archive: null, log: null, pendingSquadInvites: 0,
+    };
+
+    function mountInsideAppRoot() {
+      const appRoot = document.createElement('div');
+      appRoot.id = 'root';
+      const container = document.createElement('div');
+      appRoot.appendChild(container);
+      document.body.appendChild(appRoot);
+      return { appRoot, container };
+    }
+
+    it('is a role dialog, aria-modal, named by the welcome heading', () => {
+      hookState.firstRun = adminFirstRun;
+      wrap(<FirstRunGate />);
+      const dialog = screen.getByRole('dialog', { name: /welcome to cloud codex/i });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+    });
+
+    it('is not inside the app root, so the inert root cannot freeze the welcome itself', () => {
+      hookState.firstRun = adminFirstRun;
+      const { appRoot, container } = mountInsideAppRoot();
+      const { unmount } = render(<MemoryRouter><FirstRunGate /></MemoryRouter>, { container });
+      const dialog = screen.getByRole('dialog');
+      expect(appRoot.hasAttribute('inert')).toBe(true);
+      expect(dialog.closest('[inert]')).toBeNull();
+      unmount();
+      expect(appRoot.hasAttribute('inert')).toBe(false);
+      appRoot.remove();
+    });
+
+    it('moves focus into the welcome on mount, to a control that is not a close button', () => {
+      hookState.firstRun = adminFirstRun;
+      wrap(<FirstRunGate />);
+      const active = document.activeElement;
+      expect(screen.getByRole('dialog')).toContainElement(active);
+      expect(active.classList.contains('close-button')).toBe(false);
+    });
+
+    it('traps Tab inside the welcome, keyboard only', async () => {
+      hookState.firstRun = adminFirstRun;
+      const user = userEvent.setup();
+      wrap(<FirstRunGate />);
+      const dialog = screen.getByRole('dialog');
+      for (let i = 0; i < 40; i += 1) {
+        await user.tab();
+        expect(dialog).toContainElement(document.activeElement);
+      }
+    });
+
+    it('is not dismissed by Escape; the Get started button is its way out', async () => {
+      hookState.firstRun = adminFirstRun;
+      const user = userEvent.setup();
+      wrap(<FirstRunGate />);
+      await user.keyboard('{Escape}');
+      expect(hookState.complete).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+  });
 });

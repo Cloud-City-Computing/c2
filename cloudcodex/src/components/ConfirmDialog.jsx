@@ -37,7 +37,7 @@ export default function ConfirmDialog({ title, message, onConfirm, onCancel, con
 
   return (
     <div className="modal-content confirm-dialog">
-      <span className="close-button" onClick={handleCancel}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={handleCancel}>&times;</button>
       <h2>{title}</h2>
       <p>{message}</p>
       {error && <p className="form-error">{error}</p>}

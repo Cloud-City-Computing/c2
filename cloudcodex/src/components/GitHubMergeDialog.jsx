@@ -34,7 +34,7 @@ export default function GitHubMergeDialog({ conflict, link, onCancel, onResolved
 
   return (
     <div className="modal-content modal-lg gh-merge-dialog">
-      <span className="close-button" onClick={onCancel}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={onCancel}>&times;</button>
       <h2>Resolve GitHub conflict</h2>
       <p className="text-muted" style={{ fontSize: '14px', marginBottom: '8px' }}>
         Both you and the remote branch changed the same hunks of{' '}

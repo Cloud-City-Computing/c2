@@ -9,10 +9,12 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import { apiFetch, timeAgo, getSessionTokenFromCookie } from '../util';
 import CIStatusBadge from '../components/CIStatusBadge';
+import useDialog from '../hooks/useDialog';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -408,7 +410,7 @@ const MarkdownEditorPane = React.memo(function MarkdownEditorPane({ content, onC
 
 // ─── Commit Modal ─────────────────────────────────────
 
-function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommitted, onClose }) {
+export function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommitted, onClose }) {
   const [mode, setMode] = useState('direct'); // 'direct' | 'branch'
   const [message, setMessage] = useState('');
   const [newBranchName, setNewBranchName] = useState('');
@@ -424,13 +426,6 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
   useEffect(() => {
     if (result || error) modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [result, error]);
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !committing) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [committing, onClose]);
 
   const handleCommit = async () => {
     setError(null);
@@ -511,9 +506,11 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
     setCommitting(false);
   };
 
-  return (
+  const dialogRef = useRef(null);
+  useDialog(dialogRef, { onEscape: committing ? null : onClose });
+  return createPortal(
     <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !committing) onClose(); }}>
-      <div className="gh-modal">
+      <div className="gh-modal" role="dialog" aria-modal="true" ref={dialogRef}>
         <div className="gh-modal__header">
           <h3>Commit changes</h3>
           <button className="gh-modal__close" onClick={onClose} disabled={committing} aria-label="Close">&times;</button>
@@ -618,13 +615,14 @@ function CommitPanel({ owner, repo, filePath, fileSha, content, branch, onCommit
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 // ─── New File Modal ───────────────────────────────────
 
-function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initialContent, initialPath, githubLink, exportLogId, repoTree }) {
+export function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initialContent, initialPath, githubLink, exportLogId, repoTree }) {
   const isLinked = Boolean(githubLink);
   const [filePath, setFilePath] = useState(initialPath || '');
   const [content, setContent] = useState(initialContent || '');
@@ -650,20 +648,6 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
   useEffect(() => {
     if (result || error) modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [result, error]);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape' && !creating) {
-        if (hasWork && !result) {
-          // eslint-disable-next-line no-alert
-          if (!window.confirm('You have unsaved work. Discard and close?')) return;
-        }
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [creating, onClose, hasWork, result]);
 
   const isMarkdown = /\.(md|mdx|markdown)$/i.test(filePath);
 
@@ -822,9 +806,21 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
     if (!selectedSha) setPickerOpen(true);
   };
 
-  return (
+  const dialogRef = useRef(null);
+  // Escape is the dialog's close, so it gets the same guards as the button: nothing while a create
+  // is in flight, and a discard prompt when there is typed work the user has not saved.
+  const handleEscape = () => {
+    if (creating) return;
+    if (hasWork && !result) {
+      // eslint-disable-next-line no-alert
+      if (!window.confirm('You have unsaved work. Discard and close?')) return;
+    }
+    onClose();
+  };
+  useDialog(dialogRef, { onEscape: handleEscape });
+  return createPortal(
     <div className="gh-modal-backdrop" onClick={handleBackdropClick}>
-      <div className="gh-modal gh-modal--wide">
+      <div className="gh-modal gh-modal--wide" role="dialog" aria-modal="true" ref={dialogRef}>
         <div className="gh-modal__header">
           <h3>{isUpdate ? 'Update on GitHub' : initialContent ? 'Push to GitHub' : 'Create new file'}</h3>
           <button className="gh-modal__close" onClick={handleBackdropClick} disabled={creating} aria-label="Close">&times;</button>
@@ -1007,22 +1003,17 @@ function NewFileModal({ owner, repo, branch, branches, onCreated, onClose, initi
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 // ─── Delete File Modal ────────────────────────────────
 
-function DeleteFileModal({ owner, repo, filePath, fileSha, branch, onDeleted, onClose }) {
+export function DeleteFileModal({ owner, repo, filePath, fileSha, branch, onDeleted, onClose }) {
   const [message, setMessage] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !deleting) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [deleting, onClose]);
 
   const handleDelete = async () => {
     setError(null);
@@ -1041,9 +1032,11 @@ function DeleteFileModal({ owner, repo, filePath, fileSha, branch, onDeleted, on
     setDeleting(false);
   };
 
-  return (
+  const dialogRef = useRef(null);
+  useDialog(dialogRef, { onEscape: deleting ? null : onClose });
+  return createPortal(
     <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !deleting) onClose(); }}>
-      <div className="gh-modal">
+      <div className="gh-modal" role="dialog" aria-modal="true" ref={dialogRef}>
         <div className="gh-modal__header">
           <h3>Delete file</h3>
           <button className="gh-modal__close" onClick={onClose} disabled={deleting} aria-label="Close">&times;</button>
@@ -1076,23 +1069,18 @@ function DeleteFileModal({ owner, repo, filePath, fileSha, branch, onDeleted, on
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 // ─── Rename/Move File Modal ──────────────────────────
 
-function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onClose }) {
+export function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onClose }) {
   const [newPath, setNewPath] = useState(filePath);
   const [message, setMessage] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !renaming) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [renaming, onClose]);
 
   const handleRename = async () => {
     const trimmed = newPath.trim().replace(/^\//, '');
@@ -1121,9 +1109,11 @@ function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onClose }) 
     setRenaming(false);
   };
 
-  return (
+  const dialogRef = useRef(null);
+  useDialog(dialogRef, { onEscape: renaming ? null : onClose });
+  return createPortal(
     <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !renaming) onClose(); }}>
-      <div className="gh-modal">
+      <div className="gh-modal" role="dialog" aria-modal="true" ref={dialogRef}>
         <div className="gh-modal__header">
           <h3>Rename / Move file</h3>
           <button className="gh-modal__close" onClick={onClose} disabled={renaming} aria-label="Close">&times;</button>
@@ -1172,7 +1162,8 @@ function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onClose }) 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1637,7 +1628,7 @@ function CommitHistory({ owner, repo, filePath, branch, branches, onClose, fullW
 
 // ─── Import to Codex Modal ────────────────────────────
 
-function ImportToCodexModal({ owner, repo, filePath, branch, onClose, onImported }) {
+export function ImportToCodexModal({ owner, repo, filePath, branch, onClose, onImported }) {
   const navigate = useNavigate();
   const [archives, setArchives] = useState([]);
   const [archiveId, setArchiveId] = useState('');
@@ -1645,12 +1636,6 @@ function ImportToCodexModal({ owner, repo, filePath, branch, onClose, onImported
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !importing) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [importing, onClose]);
 
   useEffect(() => {
     (async () => {
@@ -1688,9 +1673,11 @@ function ImportToCodexModal({ owner, repo, filePath, branch, onClose, onImported
     setImporting(false);
   };
 
-  return (
+  const dialogRef = useRef(null);
+  useDialog(dialogRef, { onEscape: importing ? null : onClose });
+  return createPortal(
     <div className="gh-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !importing) onClose(); }}>
-      <div className="gh-modal">
+      <div className="gh-modal" role="dialog" aria-modal="true" ref={dialogRef}>
         <div className="gh-modal__header">
           <h3>Import to Cloud Codex</h3>
           <button className="gh-modal__close" onClick={onClose} disabled={importing} aria-label="Close">&times;</button>
@@ -1755,7 +1742,8 @@ function ImportToCodexModal({ owner, repo, filePath, branch, onClose, onImported
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

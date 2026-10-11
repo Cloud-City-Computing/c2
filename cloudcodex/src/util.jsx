@@ -7,6 +7,7 @@
 
 import { createRoot } from 'react-dom/client';
 import DOMPurify from 'dompurify';
+import { openDialog, closeDialog } from './lib/dialog.js';
 
 // --- Constants ---
 
@@ -546,10 +547,16 @@ export function hideModalDimmer() {
   if (dimmer) dimmer.style.display = 'none';
 }
 
+// The dialog entry of the open modal (see lib/dialog.js), so destroyModal closes that one even
+// when an in-page dialog has been opened on top of it.
+let modalEntry = null;
+
 export function destroyModal() {
   const modalRoot = getModalRoot();
   if (modalRoot) clearInner(modalRoot);
   hideModalDimmer();
+  closeDialog(modalEntry);
+  modalEntry = null;
 }
 
 export function showModalDimmer(onClose) {
@@ -563,29 +570,25 @@ export function showModalDimmer(onClose) {
 }
 
 /**
- * Render a React element inside the global modal overlay.
- * The modal is dismissed on Escape key or clicking the dimmer backdrop.
- * @param {import('react').ReactNode} content — React element to render inside the modal
- * @param {string} [extraClass] — Additional CSS class for the modal wrapper
+ * Render a React element inside the global modal overlay. The wrapper is a dialog (role,
+ * aria-modal, a name from its heading or `labelledBy`), focus moves into it and is trapped
+ * there, and the app root is inert until it closes. Escape, the dimmer and destroyModal all
+ * close it, and focus returns to whatever opened the first modal of the stack.
+ * @param {import('react').ReactNode} content, React element to render inside the modal
+ * @param {string} [extraClass], Additional CSS class for the modal wrapper
+ * @param {{ labelledBy?: string }} [options], id of the element that names the dialog
  */
-export function showModal(content, extraClass = '') {
+export function showModal(content, extraClass = '', { labelledBy } = {}) {
   const modalRoot = getModalRoot();
   if (!modalRoot) return;
 
+  // Captured before the content renders, so an autoFocus inside it cannot become the opener.
+  const opener = document.activeElement;
   clearInner(modalRoot);
   const wrapper = createAndAppend(modalRoot, 'div', `modal-content-wrapper ${extraClass}`.trim());
   getOrCreateRoot(wrapper).render(content);
   showModalDimmer(destroyModal);
-
-  // Close on Escape key
-  const handler = (e) => {
-    if (e.key === 'Escape') {
-      destroyModal();
-      document.removeEventListener('keydown', handler);
-    }
-  };
-  document.removeEventListener('keydown', handler);
-  document.addEventListener('keydown', handler);
+  modalEntry = openDialog(wrapper, { labelledBy, onEscape: destroyModal, opener });
 }
 
 /**

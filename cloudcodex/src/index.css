@@ -1193,9 +1193,18 @@ body {
    Modal + Overlay
 ========================= */
 
+/* The modal scrim is a plain token, not a blur: what is behind a dialog is not read by the eye,
+   and a blur over it cost paint on every open. */
 #modal-dimmer,
-#dropdown-backshadow,
 .first-run-dimmer {
+  position: fixed;
+  inset: 0;
+  background: var(--cx-scrim);
+  z-index: 999;
+  animation: fadeIn 0.15s ease;
+}
+
+#dropdown-backshadow {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -1235,6 +1244,13 @@ body {
 .modal-lg { width: 90vw; max-width: 640px; }
 
 .close-button {
+  /* A real button (keyboard reachable, named Close), drawn as the span it replaced. */
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
   font-size: 24px;
   font-weight: 600;
   color: var(--text-muted);
@@ -5394,6 +5410,9 @@ textarea:focus-visible {
   outline-offset: -2px;
 }
 .gh-modal :focus-visible {
+  outline-offset: -2px;
+}
+.gh-merge-dialog__pane :focus-visible {
   outline-offset: -2px;
 }
 .gh-sync-menu :focus-visible {

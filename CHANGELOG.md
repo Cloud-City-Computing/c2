@@ -165,6 +165,18 @@ initialises an empty data directory.
 
 - **Node 22.** The image (`node:22-slim`), CI and the release workflow run Node 22, and
   `package.json` declares `engines` `>=22`. openid-client 6 and jose 6 need it.
+- **Every dialog is a real dialog.** Each modal is a `role="dialog"` with
+  `aria-modal="true"`, named from its heading. Focus moves into it on open,
+  Tab is trapped inside it, Escape closes it where it can be dismissed, and
+  focus returns to whatever opened it, even when that element has since
+  unmounted. The page behind it is inert and does not scroll. The 22 close
+  controls that were `<span>`s are buttons named Close, reachable from the
+  keyboard. The modal backdrop is a flat scrim token rather than a blur. The
+  GitHub modals and the image crop, which were bare `div` overlays, are now
+  dialogs too, and the first-run welcome is one; it is not dismissed by Escape,
+  since Get started is its exit. A listener that used to be added on every open
+  is now installed once.
+
 - **One focus ring, buttons without the lift, and a Toast that can be dismissed
   from the keyboard.** Every focus ring is the global `:focus-visible` outline
   on the shared focus token, and no rule removes an outline any more. The

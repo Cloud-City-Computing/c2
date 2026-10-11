@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchArchives, createArchive, updateArchive, deleteArchive,
@@ -29,7 +29,7 @@ import CommentManager from './CommentManager';
 
 // --- New Archive Form ---
 
-function NewArchiveModal({ onCreated, squadId }) {
+export function NewArchiveModal({ onCreated, squadId }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
 
@@ -47,7 +47,7 @@ function NewArchiveModal({ onCreated, squadId }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -61,7 +61,7 @@ function NewArchiveModal({ onCreated, squadId }) {
   );
 }
 
-function RenameArchiveModal({ archive, onRenamed }) {
+export function RenameArchiveModal({ archive, onRenamed }) {
   const [name, setName] = useState(archive.name);
   const [error, setError] = useState(null);
 
@@ -79,7 +79,7 @@ function RenameArchiveModal({ archive, onRenamed }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Rename Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -387,7 +387,7 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Manage Archive Access</h2>
       <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
         Archive: <strong>{archive.name}</strong>
@@ -623,7 +623,7 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
 
 // --- Upload Document Modal ---
 
-function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
+export function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -644,7 +644,7 @@ function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Upload Document</h2>
       <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
         Supported formats: HTML, Markdown, Plain Text, PDF, Word (DOCX)
@@ -677,9 +677,25 @@ function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
 // ExploreCard: the tree row is the piece worth testing on its own.
 export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, getLogUsers }) {
   const [expanded, setExpanded] = useState(depth === 0);
+  const rowRef = useRef(null);
   const [commentCount, setCommentCount] = useState(0);
   const navigate = useNavigate();
   const activeUsers = getLogUsers(log.id);
+
+  // A deleted row unmounts with focus still in it (its dialog returned focus to the delete button,
+  // and the refresh removes the row). Removed, that focus would fall to <body>, so move it first, to
+  // the next row, which stays. The cleanup runs before the row leaves the DOM, so the move can see it.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    return () => {
+      if (!row || !row.contains(document.activeElement)) return;
+      const stable = row.nextElementSibling ?? row.previousElementSibling;
+      const target = stable?.querySelector('button, a[href]') ?? row.parentElement;
+      if (!target) return;
+      if (target === row.parentElement) target.tabIndex = -1;
+      target.focus();
+    };
+  }, []);
 
   // Load open comment count
   useEffect(() => {
@@ -728,7 +744,7 @@ export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDele
   };
 
   return (
-    <li className="log-tree-item" style={{ paddingLeft: `${depth * 16}px` }}>
+    <li className="log-tree-item" ref={rowRef} style={{ paddingLeft: `${depth * 16}px` }}>
       <div className="log-tree-row">
         {log.children?.length > 0 && (
           <button className="log-tree-toggle" onClick={() => setExpanded(e => !e)}
@@ -848,7 +864,7 @@ function LogTree({ archiveId, onLogCreated, getLogUsers }) {
 
 // --- Link Repo Modal ---
 
-function LinkRepoModal({ archiveId, onLinked }) {
+export function LinkRepoModal({ archiveId, onLinked }) {
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -889,7 +905,7 @@ function LinkRepoModal({ archiveId, onLinked }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Link GitHub Repo</h2>
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="text-muted">Loading your GitHub repos...</p>}
