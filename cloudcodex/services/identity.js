@@ -68,12 +68,105 @@ import { createDefaultPermissions } from '../routes/helpers/shared.js';
  *                   | { ok: false, reason: string }>}
  */
 export async function resolveIdentity(claims, policy) {
-  if (claims.provider !== 'google') {
-    // A programming error, not a refusal: no route may hand this seam a
-    // provider it has no ladder for.
-    throw new Error(`resolveIdentity: provider "${claims.provider}" is not implemented`);
+  if (claims.provider === 'google') return await resolveGoogleIdentity(claims, policy);
+  if (claims.provider === 'oidc') return await resolveOidcIdentity(claims, policy);
+  // A programming error, not a refusal: no route may hand this seam a
+  // provider it has no ladder for.
+  throw new Error(`resolveIdentity: provider "${claims.provider}" is not implemented`);
+}
+
+/**
+ * The oidc ladder (W6-CDX-5, spec Decision 3), for a verified (issuer, subject).
+ *
+ * 1. An identity already linked: the user signs in with no local second factor, whatever
+ *    two_factor_method holds, because the issuer's own MFA governs a linked identity. If the verified
+ *    email differs from users.email, it follows the issuer, unless another row holds the address
+ *    (email_conflict, nothing written).
+ * 2. With linkByVerifiedEmail: an account matched by email with two-factor on is refused
+ *    (two_factor_enabled); one that already holds another subject at this issuer is refused
+ *    (identity_conflict); otherwise the link is a conditional INSERT, which links only while the row
+ *    still has two-factor off and still holds the matched email. Anything but one affected row is
+ *    two_factor_enabled. A unique-key refusal on the link is identity_conflict.
+ *    Without linkByVerifiedEmail, an account that holds the address is email_conflict.
+ * 3. Otherwise no_account. OIDC never auto-creates an account.
+ *
+ * The email must be verified before any read, and missing or unverified is email_not_verified.
+ */
+async function resolveOidcIdentity(claims, policy) {
+  const { issuer, subject, email, emailVerified } = claims;
+
+  if (!emailVerified) {
+    return { ok: false, reason: 'email_not_verified' };
   }
-  return await resolveGoogleIdentity(claims, policy);
+
+  const [identity] = await c2_query(
+    'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1',
+    [issuer, subject]
+  );
+
+  if (identity) {
+    const [current] = await c2_query('SELECT email FROM users WHERE id = ? LIMIT 1', [identity.user_id]);
+    if (!current) {
+      return { ok: false, reason: 'no_account' };
+    }
+    const emailChanged = current.email !== email;
+    if (emailChanged) {
+      const [holder] = await c2_query(
+        'SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id <> ? LIMIT 1',
+        [email, identity.user_id]
+      );
+      if (holder) {
+        return { ok: false, reason: 'email_conflict' };
+      }
+      await c2_query('UPDATE users SET email = ? WHERE id = ?', [email, identity.user_id]);
+    }
+    await c2_query('UPDATE user_identities SET last_login_at = NOW() WHERE id = ?', [identity.id]);
+    return { ok: true, userId: identity.user_id, created: false, identityId: identity.id };
+  }
+
+  const [existingUser] = await c2_query(
+    'SELECT id, email, two_factor_method FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1',
+    [email]
+  );
+
+  if (existingUser) {
+    if (!policy.linkByVerifiedEmail) {
+      return { ok: false, reason: 'email_conflict' };
+    }
+    // Two-factor is checked before identity_conflict, as the Google rung does: it reads the row
+    // already in hand and still holds once a conflicting link is cleared.
+    if ((existingUser.two_factor_method ?? 'none') !== 'none') {
+      return { ok: false, reason: 'two_factor_enabled' };
+    }
+    const [sameIssuer] = await c2_query(
+      'SELECT id FROM user_identities WHERE user_id = ? AND issuer = ? LIMIT 1',
+      [existingUser.id, issuer]
+    );
+    if (sameIssuer) {
+      return { ok: false, reason: 'identity_conflict' };
+    }
+
+    let linked;
+    try {
+      linked = await c2_query(
+        `INSERT INTO user_identities (user_id, issuer, subject, email_at_link)
+         SELECT id, ?, ?, ? FROM users
+          WHERE id = ? AND LOWER(email) = LOWER(?)
+            AND (two_factor_method IS NULL OR two_factor_method = 'none')
+          FOR SHARE`,
+        [issuer, subject, existingUser.email, existingUser.id, existingUser.email]
+      );
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY') return { ok: false, reason: 'identity_conflict' };
+      throw err;
+    }
+    if (linked.affectedRows !== 1) {
+      return { ok: false, reason: 'two_factor_enabled' };
+    }
+    return { ok: true, userId: existingUser.id, created: false, identityId: linked.insertId };
+  }
+
+  return { ok: false, reason: 'no_account' };
 }
 
 /**
@@ -252,8 +345,8 @@ export async function deriveUniqueUsername(email) {
   return `user_${crypto.randomBytes(4).toString('hex')}`;
 }
 
-/** Sign-in providers this version knows. `oidc` joins with the relying party. */
-const KNOWN_AUTH_PROVIDERS = ['local', 'google'];
+/** Sign-in providers this version knows. */
+const KNOWN_AUTH_PROVIDERS = ['local', 'google', 'oidc'];
 
 /**
  * Google counts as configured on the same rule routes/oauth.js applies: both
@@ -261,6 +354,15 @@ const KNOWN_AUTH_PROVIDERS = ['local', 'google'];
  */
 function isGoogleConfigured() {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+/**
+ * The OIDC relying party counts as configured when an issuer is set. The full
+ * settings are checked by getOidcConfig() when the app mounts its routes.
+ */
+function isOidcConfigured() {
+  const issuer = process.env.OIDC_ISSUER_URL;
+  return issuer !== undefined && issuer.trim() !== '';
 }
 
 /**
@@ -278,10 +380,15 @@ function isGoogleConfigured() {
  */
 export function parseAuthProviders() {
   const googleConfigured = isGoogleConfigured();
+  const oidcConfigured = isOidcConfigured();
   const raw = process.env.AUTH_PROVIDERS;
 
   if (raw === undefined || raw.trim() === '') {
-    return new Set(googleConfigured ? ['local', 'google'] : ['local']);
+    return new Set([
+      'local',
+      ...(googleConfigured ? ['google'] : []),
+      ...(oidcConfigured ? ['oidc'] : []),
+    ]);
   }
 
   const names = raw.split(',').map(name => name.trim().toLowerCase()).filter(name => name !== '');
@@ -316,6 +423,20 @@ export function parseAuthProviders() {
       'AUTH_PROVIDERS does not list google, but GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are ' +
       'set, so Google sign-in would still be offered; add google to AUTH_PROVIDERS, or unset ' +
       'the Google variables.'
+    );
+  }
+
+  if (providers.has('oidc') && !oidcConfigured) {
+    throw new Error(
+      'AUTH_PROVIDERS lists oidc, but OIDC_ISSUER_URL is not set; set the OIDC_ variables, or ' +
+      'remove oidc from AUTH_PROVIDERS.'
+    );
+  }
+
+  if (!providers.has('oidc') && oidcConfigured) {
+    throw new Error(
+      'AUTH_PROVIDERS does not list oidc, but OIDC_ISSUER_URL is set, so OIDC sign-in would still ' +
+      'be offered; add oidc to AUTH_PROVIDERS, or unset OIDC_ISSUER_URL.'
     );
   }
 

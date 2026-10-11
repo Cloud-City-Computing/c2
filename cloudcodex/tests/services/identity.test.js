@@ -516,8 +516,9 @@ describe('resolveIdentity (google)', () => {
     });
 
     it('throws for a provider it does not implement, before any query', async () => {
-      await expect(resolveIdentity(googleClaims({ provider: 'oidc', issuer: 'https://issuer.example' }), OPEN_POLICY))
-        .rejects.toThrow(/oidc/);
+      // oidc has a ladder since W6-CDX-5; a provider with none is the case this pins.
+      await expect(resolveIdentity(googleClaims({ provider: 'saml', issuer: 'https://issuer.example' }), OPEN_POLICY))
+        .rejects.toThrow(/saml/);
       expect(c2_query).not.toHaveBeenCalled();
     });
   });
@@ -642,9 +643,10 @@ describe('parseAuthProviders', () => {
       expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS.*"saml"/);
     });
 
-    it('refuses oidc until the relying party exists', () => {
+    it('refuses oidc when no issuer is configured, naming the variable', () => {
+      // oidc is a known provider since W6-CDX-5; listing it without an issuer is the refusal.
       process.env.AUTH_PROVIDERS = 'local,oidc';
-      expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS.*"oidc"/);
+      expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS lists oidc.*OIDC_ISSUER_URL/);
     });
 
     it('refuses a list without local', () => {
