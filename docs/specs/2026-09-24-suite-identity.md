@@ -170,7 +170,9 @@ token (`routes/auth.js:52-66`), then joins the invited squad in the same transac
 5. **One session row per sign-in, stored as a SHA-256 digest.** Existing rows are hashed in place,
    so nobody is signed out by the upgrade.
 6. **Sign-out propagates both ways.** RP-initiated logout sends `client_id`,
-   `post_logout_redirect_uri` and `state`; **no ID token is stored**. A back-channel logout
+   `post_logout_redirect_uri` and `state`, and **the ID token is kept, sealed, and sent as
+   `id_token_hint`** (corrected in W6-CDX-6: an `end_session` request with `client_id` alone ends no
+   session at the issuer, measured in W6-CCID-3). A back-channel logout
    receiver deletes the named sessions and closes exactly their sockets.
 7. **The session cookie becomes `__Host-sessionToken` whenever it is Secure**, with the legacy name
    read only as a fallback behind `LEGACY_SESSION_COOKIE` (on for self-hosters, off for hosted).

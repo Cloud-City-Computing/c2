@@ -170,6 +170,14 @@ that adds a column because `--adopt-fresh-install` refuses any post-baseline
 file it cannot check against the schema. Expired rows are deleted daily by
 `pruneExpiredSessions` in `server.js`; nothing else removes them.
 
+**Sealed ID token (W6-CDX-6, `migrations/2026-10-13-session-id-token.sql`).** `oidc_id_token
+TEXT NULL` holds the OIDC ID token, sealed by `services/id-token-seal.js` (AES-256-GCM, the key
+scrypt-derived from `OIDC_CLIENT_SECRET`), that sign-out sends as `id_token_hint`. It is never the
+raw token. `chk_sessions_id_token_oidc_only` says a sealed token belongs to an oidc session; nothing
+requires one, so rows signed in before this migration keep NULL and sign out locally. The column is
+read by `getSessionOidcIdToken` (`mysql_connect.js:302`) and by the logout route, and it is carried
+by the update-account rotation.
+
 **OIDC session provenance (W6-CDX-5, `migrations/2026-10-11-user-identities.sql`).**
 Three columns are added to `sessions`. `identity_id INT NULL` is the
 `user_identities` row an OIDC sign-in used, with `fk_sessions_identity ON DELETE

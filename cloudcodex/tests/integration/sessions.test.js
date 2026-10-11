@@ -150,9 +150,11 @@ describe(`${MIGRATION} applied for real`, () => {
 
       // The install before this file: no column, no CHECK, not recorded. The
       // pairing CHECK that migrations/2026-10-11-user-identities.sql adds names
-      // auth_provider, so it goes first (MySQL refuses to drop the column under it).
+      // auth_provider, and so does migrations/2026-10-13-session-id-token.sql's
+      // oidc-only CHECK, so both go first (MySQL refuses to drop the column under
+      // them). oidc_id_token itself stays; only the CHECK that names auth_provider goes.
       await query(
-        'ALTER TABLE sessions DROP CHECK chk_sessions_identity_pairing, DROP CHECK chk_sessions_auth_provider, DROP COLUMN auth_provider'
+        'ALTER TABLE sessions DROP CHECK chk_sessions_id_token_oidc_only, DROP CHECK chk_sessions_identity_pairing, DROP CHECK chk_sessions_auth_provider, DROP COLUMN auth_provider'
       );
       await query('DELETE FROM schema_migrations WHERE filename = ?', [MIGRATION]);
 

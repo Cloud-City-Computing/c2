@@ -32,6 +32,17 @@ initialises an empty data directory.
   served round-robin, so one with a backlog cannot starve the others. Outbox ids are allocated in
   commit order. A receiver that rejects the signature stalls its subscription until fixed or
   expired, and is never dropped silently.
+- **Sign-out that propagates (W6-CDX-6).** Signing out of Codex ends the issuer's session too
+  when the account signed in through OIDC: `POST /api/logout` answers an `endSessionUrl` that
+  carries the stored ID token as `id_token_hint`, and the browser goes there after the local
+  sign-out. The ID token is kept sealed (AES-256-GCM, keyed from `OIDC_CLIENT_SECRET`), never in
+  the clear. `POST /api/auth/oidc/backchannel-logout` receives the issuer's back-channel logout:
+  it verifies the logout token with its keys (asymmetric algorithms only), ends the sessions it
+  names by sid or by subject, and answers 400 for an invalid or replayed token and 503 when the
+  keys are unavailable, so the issuer retries. Every delete is bounded by the token's `iat`, so a
+  replay cannot end a session opened after the logout. Sockets of an ended session close with
+  4004. A sign-out never fails because the issuer is unreachable: it ends locally and says why in
+  the log. Migration `2026-10-13-session-id-token.sql` adds `sessions.oidc_id_token`.
 - **OIDC sign-in through one issuer per instance (W6-CDX-5).** Set `OIDC_ISSUER_URL`,
   `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` (with `APP_URL`) and the sign-in screen
   offers "Sign in with <OIDC_PROVIDER_NAME>". Identities are keyed on `(issuer, subject)`

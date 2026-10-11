@@ -174,6 +174,16 @@ count, rebroadcast awareness, and if this was the last connection schedule both
 a final save and cleanup. Cleanup after 30s destroys the `Y.Doc` and removes the
 map entry, but only if no one reconnected (`collab.js:251-261`).
 
+**Sign-out closes the sockets of one session (W6-CDX-6).** Each socket records the digest of
+the session it authenticated with (`ws.sessionId = user.sessionId`, `collab.js:438`, from the
+non-enumerable `sessionId` that `validateAndAutoLogin` attaches). `closeSocketsForSessions(digests)`
+(`collab.js:195`) closes, with 4004 "Signed out", exactly the sockets whose digest is in the set,
+across every collab server. `POST /api/logout` calls it for the one session it deleted, and the
+back-channel receiver calls it for every row a logout token ended (`routes/auth.js:608`,
+`routes/oidc.js`, section 3 of `request-lifecycle.md`). The same user's other devices stay open,
+which the tests pin. The user channel has the same closer (`services/user-channel.js:86`, socket
+recorded at `user-channel.js:189`).
+
 **All of this is per-process, in-memory.** Restarting the server drops every
 in-memory doc; state survives only through `ydoc_state`. A graceful stop
 (SIGTERM or SIGINT) writes every pending debounced save first
