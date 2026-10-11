@@ -148,6 +148,8 @@
     "--cx-tint-slate": "A translucent slate wash behind a label; measured over every surface in tests/design/tints.test.js.",
     "--cx-tint-neutral": "A translucent neutral wash behind a label; measured over every surface in tests/design/tints.test.js.",
     "--cx-ring-light": "A pale ring around a hovered swatch; a non-text indicator over the swatch, not text, so it has no contrast minimum.",
-    "--cx-white": "A solid white for a label on a dark fill (measured in painted.test.js), a mark, and the sheet under a QR code; the labels it sets are measured where they sit."
+    "--cx-white": "A solid white for a label on a dark fill (measured in painted.test.js), a mark, and the sheet under a QR code; the labels it sets are measured where they sit.",
+    "--cx-presence": "The presence dot on the archive and explore pages, a status mark rather than text, so it has no contrast minimum.",
+    "--cx-presence-glow": "The soft glow around the presence dot; a shadow falls on a surface and carries no text."
   }
 }

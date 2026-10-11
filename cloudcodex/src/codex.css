@@ -99,6 +99,9 @@
   --cx-tint-slate: oklch(0.711 0.035 256.8 / 0.1);
   --cx-tint-neutral: oklch(0.627 0 0 / 0.15);
   --cx-ring-light: oklch(1 0 0 / 0.15);
+  /* The presence dot and its glow (the online green, on the archive and explore pages). Decorative: a dot and a glow carry no text. */
+  --cx-presence: oklch(0.745 0.158 151.5);
+  --cx-presence-glow: oklch(0.745 0.158 151.5 / 0.5);
 
   /* Labels on a tint, one step lighter than the status text they replace: the
      tint lightens the surface under a label, and these clear 4.5:1 on the

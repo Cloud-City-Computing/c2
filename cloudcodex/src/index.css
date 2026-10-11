@@ -1340,7 +1340,7 @@ h1, h2, h3, h4, h5, h6 {
 #dropdown-backshadow {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--cx-scrim);
   backdrop-filter: blur(4px);
   z-index: var(--z-scrim);
   animation: fadeIn 0.15s ease;
@@ -1394,7 +1394,7 @@ h1, h2, h3, h4, h5, h6 {
   transition: color 0.2s;
   line-height: 1;
 }
-.close-button:hover { color: var(--brand-blue); }
+.close-button:hover { color: var(--cx-accent); }
 
 .modal-content h2 {
   margin: 0 0 12px;
@@ -1427,7 +1427,7 @@ h1, h2, h3, h4, h5, h6 {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .modal-form input:focus {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
 }
 
 .modal-form__textarea {
@@ -1444,7 +1444,7 @@ h1, h2, h3, h4, h5, h6 {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .modal-form__textarea:focus {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
 }
 
 .preview-content {
@@ -1464,7 +1464,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .form-success {
-  color: #4caf50;
+  color: var(--cx-success);
   font-size: 13px;
   margin: 4px 0;
 }
@@ -3528,7 +3528,7 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: -2px;
 }
 .login-tab.active {
-  color: var(--brand-blue);
+  color: var(--cx-accent);
   border-bottom-color: var(--brand-blue);
 }
 .login-tab:hover:not(.active) {
@@ -3552,12 +3552,12 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.3;
 }
 .input-hint--checking { color: var(--text-muted); }
-.input-hint--available { color: #4caf50; }
+.input-hint--available { color: var(--cx-success); }
 .input-hint--taken,
 .input-hint--invalid { color: var(--color-danger); }
 
 .modal-form input.input--available {
-  border-color: #4caf50;
+  border-color: var(--cx-success);
 }
 .modal-form input.input--taken,
 .modal-form input.input--invalid {
@@ -3611,7 +3611,7 @@ h1, h2, h3, h4, h5, h6 {
   text-align: center;
   flex-shrink: 0;
 }
-.rule--pass { color: #4caf50; }
+.rule--pass { color: var(--cx-success); }
 .rule--fail { color: var(--text-muted); }
 
 /* =========================
@@ -6901,7 +6901,7 @@ textarea:focus-visible {
 }
 
 .welcome-subtitle {
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   margin-bottom: 20px;
   font-size: 0.95rem;
 }
@@ -6930,7 +6930,7 @@ textarea:focus-visible {
 .setup-checkbox input[type="checkbox"] {
   width: auto;
   margin: 0;
-  accent-color: var(--accent, #4a9eff);
+  accent-color: var(--cx-accent);
   cursor: pointer;
 }
 
@@ -6948,8 +6948,8 @@ textarea:focus-visible {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #50c878;
-  box-shadow: 0 0 5px rgba(80, 200, 120, 0.5);
+  background: var(--cx-presence);
+  box-shadow: 0 0 5px var(--cx-presence-glow);
   flex-shrink: 0;
 }
 
@@ -6962,8 +6962,8 @@ textarea:focus-visible {
   justify-content: center;
   font-size: 0.65rem;
   font-weight: 600;
-  color: #fff;
-  border: 2px solid var(--bg-primary, #1a1a2e);
+  color: var(--cx-white);
+  border: 2px solid var(--cx-surface-0);
   margin-left: -5px;
   flex-shrink: 0;
 }
@@ -6982,7 +6982,7 @@ textarea:focus-visible {
 
 .presence-overflow {
   font-size: 0.7rem;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   margin-left: 2px;
 }
 
@@ -6990,12 +6990,12 @@ textarea:focus-visible {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  background: var(--bg-secondary, #2a2a3e);
-  border: 1px solid var(--border-color, #3a3a4e);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 6px 0;
   min-width: 150px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--cx-shadow-popover);
   z-index: var(--z-menu);
   pointer-events: none;
 }
@@ -7006,7 +7006,7 @@ textarea:focus-visible {
   gap: 8px;
   padding: 4px 12px;
   font-size: 0.8rem;
-  color: var(--text-primary, #e0e0e0);
+  color: var(--text-primary);
   white-space: nowrap;
 }
 

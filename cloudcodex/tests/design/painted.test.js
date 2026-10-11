@@ -311,7 +311,7 @@ describe('a dialog close control is measured on the panel it sits on', () => {
   it('reads the control and the panel from the real declarations', () => {
     expect(declared('.close-button', 'color'), 'the rest colour').toBe('var(--text-muted)');
     expect(declared(PANEL, 'background'), 'the panel').toBe('var(--bg-panel)');
-    expect(declared('.close-button:hover', 'color'), 'the hover colour').toBe('var(--brand-blue)');
+    expect(declared('.close-button:hover', 'color'), 'the hover colour').toBe('var(--cx-accent)');
   });
 
   it('measures at least 4.5:1 at rest and on hover, on the default accent and all eight picker hues', () => {
