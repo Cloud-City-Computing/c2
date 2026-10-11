@@ -35,6 +35,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A modal left open would hold the dialog stack, the overlay and the opener claim into the next test.
+  destroyModal();
   vi.unstubAllGlobals();
 });
 
@@ -96,6 +98,76 @@ describe('showModal', () => {
   it('is a no-op when there is no #modal-root', () => {
     modalRoot.remove();
     expect(() => showModal(<div>x</div>)).not.toThrow();
+  });
+
+  it('is a role dialog, aria-modal, named by its heading', async () => {
+    await act(async () => { showModal(<div><h2>Delete archive?</h2><button>Delete</button></div>); });
+    const wrapper = modalRoot.querySelector('.modal-content-wrapper');
+    expect(wrapper.getAttribute('role')).toBe('dialog');
+    expect(wrapper.getAttribute('aria-modal')).toBe('true');
+    const heading = wrapper.querySelector('h2');
+    expect(wrapper.getAttribute('aria-labelledby')).toBe(heading.id);
+    expect(heading.id).not.toBe('');
+  });
+
+  it('takes an explicit labelledBy over the heading', async () => {
+    await act(async () => { showModal(<div><h2 id="given">Named</h2></div>, '', { labelledBy: 'given' }); });
+    expect(modalRoot.querySelector('.modal-content-wrapper').getAttribute('aria-labelledby')).toBe('given');
+  });
+
+  it('moves focus into the modal on open, and back to the opener on close', async () => {
+    const opener = document.createElement('button');
+    opener.textContent = 'open';
+    document.body.appendChild(opener);
+    opener.focus();
+    await act(async () => { showModal(<div><button className="close-button" aria-label="Close">×</button><input data-testid="field" /></div>); });
+    expect(document.activeElement.getAttribute('data-testid')).toBe('field');
+    expect(modalRoot.contains(document.activeElement)).toBe(true);
+    await act(async () => { destroyModal(); });
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it('traps Tab inside the modal, both ways', async () => {
+    await act(async () => { showModal(<div><button>first</button><button>last</button></div>); });
+    const [first, last] = modalRoot.querySelectorAll('button');
+    last.focus();
+    const forward = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    last.dispatchEvent(forward);
+    expect(forward.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first);
+    const back = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    first.dispatchEvent(back);
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('makes #root inert while open, and clears it after close, including across a replacement', async () => {
+    const appRoot = document.createElement('div');
+    appRoot.id = 'root';
+    document.body.appendChild(appRoot);
+    await act(async () => { showModal(<div><button>one</button></div>); });
+    expect(appRoot.hasAttribute('inert')).toBe(true);
+    expect(document.body.style.overflow).toBe('hidden');
+    await act(async () => { showModal(<div><button>two</button></div>); });
+    await act(async () => { destroyModal(); });
+    expect(appRoot.hasAttribute('inert')).toBe(false);
+    expect(document.body.style.overflow).toBe('');
+    appRoot.remove();
+  });
+
+  it('adds one keydown listener to the document, however many modals open and close', async () => {
+    vi.resetModules();
+    const fresh = await import('../../src/util.jsx');
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    for (let i = 0; i < 2; i += 1) {
+      await act(async () => { fresh.showModal(<div>x</div>); });
+      await act(async () => { dimmer.click(); });
+    }
+    expect(add.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(1);
+    expect(remove.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(0);
+    add.mockRestore();
+    remove.mockRestore();
   });
 });
 

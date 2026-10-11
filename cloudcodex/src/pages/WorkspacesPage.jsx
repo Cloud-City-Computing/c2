@@ -31,7 +31,7 @@ import {
 import ConfirmDialog from '../components/ConfirmDialog';
 import { toastError } from '../components/Toast';
 
-function NewOrgModal({ onCreated }) {
+export function NewOrgModal({ onCreated }) {
   const [name, setName] = useState('');
   const [squadName, setSquadName] = useState('');
   const [archiveName, setArchiveName] = useState('');
@@ -56,7 +56,7 @@ function NewOrgModal({ onCreated }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -103,7 +103,7 @@ function NewOrgModal({ onCreated }) {
   );
 }
 
-function RenameOrgModal({ workspace, onRenamed }) {
+export function RenameOrgModal({ workspace, onRenamed }) {
   const [name, setName] = useState(workspace.name);
   const [error, setError] = useState(null);
 
@@ -121,7 +121,7 @@ function RenameOrgModal({ workspace, onRenamed }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Rename Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -137,7 +137,7 @@ function RenameOrgModal({ workspace, onRenamed }) {
   );
 }
 
-function NewSquadModal({ workspaceId, onCreated }) {
+export function NewSquadModal({ workspaceId, onCreated }) {
   const [name, setName] = useState('');
   const [archiveName, setArchiveName] = useState('');
   const [addArchive, setAddArchive] = useState(false);
@@ -159,7 +159,7 @@ function NewSquadModal({ workspaceId, onCreated }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Squad</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -185,7 +185,7 @@ function NewSquadModal({ workspaceId, onCreated }) {
   );
 }
 
-function RenameSquadModal({ squad, onRenamed }) {
+export function RenameSquadModal({ squad, onRenamed }) {
   const [name, setName] = useState(squad.name);
   const [error, setError] = useState(null);
 
@@ -203,7 +203,7 @@ function RenameSquadModal({ squad, onRenamed }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Rename Squad</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -219,7 +219,7 @@ function RenameSquadModal({ squad, onRenamed }) {
 
 // --- Invite Member Modal ---
 
-function InviteMemberModal({ squadId, onInvited }) {
+export function InviteMemberModal({ squadId, onInvited }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -255,7 +255,7 @@ function InviteMemberModal({ squadId, onInvited }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Invite Member</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">

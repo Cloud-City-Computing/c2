@@ -125,11 +125,35 @@ production that policy is `script-src 'self'` (`request-lifecycle.md` section
 listeners go on after `document.close()`, because `document.write()` on the new
 window clears any added before it.
 
-The tail of the file (`util.jsx:506-621`) is imperative DOM helpers predating
+The tail of the file (`util.jsx:514-621`) is imperative DOM helpers predating
 the React migration: `showModal`, `showModalDimmer`, `destroyModal`,
 `showDropdownMenu`, plus session-storage wrappers. They cache React roots in a
 module-level `Map` (`util.jsx:17`) to avoid double-rooting the same node. New UI
 should use React components (`ConfirmDialog`, `Toast`) instead.
+
+**Every dialog is a dialog (W6-CDX-24).** `showModal` (`util.jsx:570`) renders
+into `#modal-root` and hands the wrapper to `openDialog` (`src/lib/dialog.js`),
+which sets `role="dialog"` and `aria-modal="true"`, names the dialog from its
+first heading (or the `labelledBy` option), moves focus to the first control that
+is not the close button, traps Tab, closes on Escape, and makes `#root` inert.
+`destroyModal` (`util.jsx:544`) closes it and returns focus to the opener of the
+first modal of the stack, which `showModal` claims before the content renders so
+an `autoFocus` inside it cannot become the opener. A dialog that replaces another
+keeps the one overlay and the one claim. The contract is four plain modules:
+`src/lib/focus-trap.js` (`FOCUSABLE`, `trapTab`), `src/lib/overlay.js` (the
+inert-and-no-scroll counter), `src/lib/focus-claim.js` (the opener; a detached
+opener falls back to the first control in `#root`), and `src/lib/dialog.js`
+(`openDialog`, `closeDialog`, one keydown listener for the page's life).
+
+A dialog that renders in the page instead (the GitHub modals in `GitHubPage.jsx`,
+`ImageCropModal`, the `FirstRunGate` welcome) uses `useDialog`
+(`src/hooks/useDialog.js`) and is **portalled to `document.body`**: `#root` is
+inert while any dialog is open, so a dialog left inside it would be inert too.
+`FirstRunGate` has no close control, so Escape does not dismiss it; Get started
+is its exit. `tests/design/dialogs.test.js` scans every file under `src/` for a
+dialog wrapper without its role, and for a close control that is not a button
+named Close. `tests/src/components/dialog-contract.test.jsx` drives each dialog
+from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 
 ## 3. Hooks (`src/hooks/`)
 
@@ -220,7 +244,9 @@ one:
 - Some inner components are exported purely so they can be unit-tested without
   mounting their data-fetching parent: `ExploreCard` and `Pagination` from
   `ExploreBrowser.jsx`, and `LogTreeItem` plus `ManageArchiveAccessModal` from
-  `ArchiveBrowser.jsx`.
+  `ArchiveBrowser.jsx`. W6-CDX-24 added the dialogs inside `AdminPage.jsx`,
+  `WorkspacesPage.jsx`, `ArchiveBrowser.jsx`, `SearchResultItem.jsx` and
+  `GitHubPage.jsx`, so each one's close control is keyboard-tested.
 - **`ManageArchiveAccessModal` lists the grants it can revoke.** It is modal
   content rendered through `showModal`, which owns a single slot, so its
   destructive confirmation swaps `<ConfirmDialog>` in for the panel rather than
@@ -251,8 +277,9 @@ signing up through an invitation and so never passed through the old
 imperative call in `Login.jsx`.
 
 `FirstRunGate` holds no copy of its own: it calls `useFirstRun`, renders
-nothing while loading or once `needsOnboarding` is false, and otherwise wraps
-`WelcomeSetup` in the shared modal-dimmer markup. `WelcomeSetup` is
+nothing while loading or once `needsOnboarding` is false, and otherwise portals
+`WelcomeSetup` to `document.body` as a dialog (`role="dialog"`, opened with
+`openDialog`) inside the shared modal-dimmer markup. `WelcomeSetup` is
 payload-driven, not imperative: it takes the `firstRun` object
 (`{ isAdmin, squad, archive, log, pendingSquadInvites }`) as a prop and
 `onFinish` as a callback, and renders one of two branches depending on
@@ -324,10 +351,10 @@ load-bearing:
    drop-shadow inks, and its layout sizes and transition.
 4. `src/index.css`, about 8,700 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
-   `:focus-visible` rule (`index.css:5376`), on `--cx-focus-ring`; no source under
+   `:focus-visible` rule (`index.css:5422`), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips
    (`.editor-container`, `.markdown-editor__textarea-wrapper`, `.sidebar`,
-   `.gh-browser__sidebar`, `.gh-modal`, `.gh-sync-menu`) draws its controls' rings
+   `.gh-browser__sidebar`, `.gh-modal`, `.gh-merge-dialog__pane`, `.gh-sync-menu`) draws its controls' rings
    inside the control (`outline-offset: -2px`), since a ring outside a flush control
    is cut off by the clip; text fields sit at `outline-offset: 0` against their border. Its `:root` block (`index.css:12`) is
    the **legacy-alias bridge** (W6-CDX-22): the 27 legacy names every rule

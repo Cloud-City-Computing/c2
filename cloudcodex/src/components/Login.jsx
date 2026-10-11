@@ -224,7 +224,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       {tab === '2fa' ? (
         <>
           <h2 className="forgot-password-title">Two-Factor Verification</h2>

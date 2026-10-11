@@ -29,7 +29,7 @@ import CommentManager from './CommentManager';
 
 // --- New Archive Form ---
 
-function NewArchiveModal({ onCreated, squadId }) {
+export function NewArchiveModal({ onCreated, squadId }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
 
@@ -47,7 +47,7 @@ function NewArchiveModal({ onCreated, squadId }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -61,7 +61,7 @@ function NewArchiveModal({ onCreated, squadId }) {
   );
 }
 
-function RenameArchiveModal({ archive, onRenamed }) {
+export function RenameArchiveModal({ archive, onRenamed }) {
   const [name, setName] = useState(archive.name);
   const [error, setError] = useState(null);
 
@@ -79,7 +79,7 @@ function RenameArchiveModal({ archive, onRenamed }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Rename Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -387,7 +387,7 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Manage Archive Access</h2>
       <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
         Archive: <strong>{archive.name}</strong>
@@ -623,7 +623,7 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
 
 // --- Upload Document Modal ---
 
-function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
+export function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -644,7 +644,7 @@ function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Upload Document</h2>
       <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
         Supported formats: HTML, Markdown, Plain Text, PDF, Word (DOCX)
@@ -848,7 +848,7 @@ function LogTree({ archiveId, onLogCreated, getLogUsers }) {
 
 // --- Link Repo Modal ---
 
-function LinkRepoModal({ archiveId, onLinked }) {
+export function LinkRepoModal({ archiveId, onLinked }) {
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -889,7 +889,7 @@ function LinkRepoModal({ archiveId, onLinked }) {
 
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Link GitHub Repo</h2>
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="text-muted">Loading your GitHub repos...</p>}

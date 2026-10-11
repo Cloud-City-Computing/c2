@@ -9,10 +9,10 @@ import { useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { destroyModal, showModal, docUrl } from '../util';
 
-function DocumentPreviewModal({ doc, onOpen }) {
+export function DocumentPreviewModal({ doc, onOpen }) {
   return (
     <div className="modal-content">
-      <span className="close-button" onClick={destroyModal}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>{doc.title}</h2>
       {doc.archive_name && <p className="text-muted">Archive: {doc.archive_name}</p>}
       <p>Created by: {doc.author} on {new Date(doc.created_at).toLocaleDateString()}</p>

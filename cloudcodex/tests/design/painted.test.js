@@ -263,6 +263,7 @@ describe('a container that clips its contents draws the ring inside the control'
     '.gh-browser__sidebar',
     '.gh-modal',
     '.gh-sync-menu',
+    '.gh-merge-dialog__pane',
   ];
   it.each(CLIPPING)('%s clips, and its focused controls use a negative outline offset', (container) => {
     expect(declared(container, 'overflow')).toBe('hidden');
@@ -298,6 +299,29 @@ describe('the button states: disabled, hover, pressed', () => {
     const label = paint(declared('.btn-danger', 'color'), base);
     expect(contrastRatio(label, press), 'danger pressed label').toBeGreaterThanOrEqual(4.5);
     expect(luminance(press)).toBeLessThan(luminance(paint(declared('.btn-danger:hover:not(:disabled)', 'background'), base)));
+  });
+});
+
+describe('a dialog close control is measured on the panel it sits on', () => {
+  // The × is 24px and bold, and it sits on the dialog's own panel; at rest it is the muted text and on hover the accent.
+  const PANEL = '.modal-content';
+  it('reads the control and the panel from the real declarations', () => {
+    expect(declared('.close-button', 'color'), 'the rest colour').toBe('var(--text-muted)');
+    expect(declared(PANEL, 'background'), 'the panel').toBe('var(--bg-panel)');
+    expect(declared('.close-button:hover', 'color'), 'the hover colour').toBe('var(--brand-blue)');
+  });
+
+  it('measures at least 4.5:1 at rest and on hover, on the default accent and all eight picker hues', () => {
+    const measured = [];
+    for (const site of ['.close-button', '.close-button:hover']) {
+      for (const [name, tokens] of ACCENT_TOKENS) {
+        const panel = paint(declared(PANEL, 'background'), tokens);
+        const ratio = contrastRatio(paint(declared(site, 'color'), tokens), panel);
+        measured.push(ratio);
+        expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    expect(measured.length).toBe(2 * 9);
   });
 });
 

@@ -48,7 +48,7 @@ export default function IssuePickerModal({ onInsert, onCancel }) {
 
   return (
     <div className="modal-content modal-md">
-      <span className="close-button" onClick={onCancel}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={onCancel}>&times;</button>
       <h2>Insert GitHub Issue</h2>
       <p className="text-muted" style={{ fontSize: '14px', marginBottom: '8px' }}>
         Search across repos you have access to. Inserts an inline reference

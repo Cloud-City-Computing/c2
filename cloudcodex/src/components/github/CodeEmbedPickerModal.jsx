@@ -86,7 +86,7 @@ export default function CodeEmbedPickerModal({ onInsert, onCancel }) {
 
   return (
     <div className="modal-content modal-md">
-      <span className="close-button" onClick={onCancel}>&times;</span>
+      <button type="button" className="close-button" aria-label="Close" onClick={onCancel}>&times;</button>
       <h2>Insert GitHub Code Reference</h2>
       <p className="text-muted" style={{ fontSize: '14px', marginBottom: '8px' }}>
         Embed a live snippet from a repository file. The snippet refetches when

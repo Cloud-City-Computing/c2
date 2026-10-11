@@ -4,6 +4,8 @@
  * Uses canvas to produce the cropped output as a File.
  */
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import useDialog from '../hooks/useDialog';
 
 const MIN_CROP = 20; // minimum crop dimension in display pixels
 const MAX_DISPLAY = 600; // max display width/height inside the modal
@@ -16,6 +18,7 @@ export default function ImageCropModal({ file, onConfirm, onCancel }) {
   const [dragging, setDragging] = useState(null);
   const imgRef = useRef(null);
   const dragStartRef = useRef(null);
+  const dialogRef = useRef(null);
 
   // Load image from file
   useEffect(() => {
@@ -109,13 +112,16 @@ export default function ImageCropModal({ file, onConfirm, onCancel }) {
     }, file.type || 'image/png');
   };
 
+  // The dialog opens once the image has loaded into it. Escape cancels, as a click outside does.
+  useDialog(dialogRef, { open: Boolean(imageSrc), onEscape: onCancel });
+
   if (!imageSrc) return null;
 
   const ready = displaySize && crop;
 
-  return (
+  return createPortal(
     <div className="image-crop-overlay" onMouseDown={onCancel}>
-      <div className="image-crop-modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="image-crop-modal" role="dialog" aria-modal="true" ref={dialogRef} onMouseDown={(e) => e.stopPropagation()}>
         <h3 className="image-crop-title">Crop Image</h3>
 
         <div
@@ -169,7 +175,8 @@ export default function ImageCropModal({ file, onConfirm, onCancel }) {
           <button className="btn btn--ghost" onClick={onCancel}>Cancel</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
