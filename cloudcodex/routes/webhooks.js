@@ -205,6 +205,52 @@ router.delete('/admin/webhooks/:id', requireAuth, requireAdmin, asyncHandler(asy
   res.json({ success: true });
 }));
 
+/**
+ * GET /api/admin/webhooks/:id/deliveries
+ * The last 50 deliveries of one subscription, newest first, with their
+ * status, attempts, last status and error. Never the event body.
+ */
+router.get('/admin/webhooks/:id/deliveries', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid webhook id' });
+  }
+  const [subscription] = await c2_query('SELECT id FROM webhook_subscriptions WHERE id = ?', [Number(req.params.id)]);
+  if (!subscription) return res.status(404).json({ success: false, message: 'Webhook not found' });
+
+  const deliveries = await c2_query(
+    `SELECT d.id, d.event_id, e.type, d.status, d.attempts, d.last_status, d.last_error, d.delivered_at, d.created_at
+       FROM webhook_deliveries d
+       JOIN webhook_events e ON e.id = d.event_id
+      WHERE d.subscription_id = ?
+      ORDER BY d.id DESC
+      LIMIT 50`,
+    [subscription.id]
+  );
+  res.json({ success: true, deliveries });
+}));
+
+/**
+ * POST /api/admin/webhooks/deliveries/:id/redeliver
+ * A dead-lettered delivery back to pending with its attempts reset. Any other
+ * status is refused, so a delivery already queued or sent is not queued twice.
+ */
+router.post('/admin/webhooks/deliveries/:id/redeliver', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid delivery id' });
+  }
+  const [delivery] = await c2_query('SELECT id, status FROM webhook_deliveries WHERE id = ?', [Number(req.params.id)]);
+  if (!delivery) return res.status(404).json({ success: false, message: 'Delivery not found' });
+  if (delivery.status !== 'dead') {
+    return res.status(409).json({ success: false, message: 'Only a dead-lettered delivery can be redelivered' });
+  }
+  await c2_query(
+    `UPDATE webhook_deliveries SET status = 'pending', attempts = 0, leased_by = NULL, lease_expires_at = NULL
+      WHERE id = ? AND status = 'dead'`,
+    [delivery.id]
+  );
+  res.json({ success: true, id: delivery.id });
+}));
+
 router.use(errorHandler);
 
 export default router;
