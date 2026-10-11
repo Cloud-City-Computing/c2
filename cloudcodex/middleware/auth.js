@@ -9,6 +9,7 @@ import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
 import { verifyMachineCredential, MachineAuthUnavailable } from '../services/machine-auth.js';
 import { readSessionCookie, legacyCookieAllowed } from '../services/session-cookie.js';
 import { localSignInEnabled, providerListed } from '../services/auth-providers.js';
+import { DEAD_SESSION_MESSAGE } from '../services/session-messages.js';
 
 /**
  * A machine credential the issuer's keys could not verify (W6-CDX-7) is an outage, not a refusal:
@@ -69,7 +70,7 @@ export function requireAuth(req, res, next) {
   validateAndAutoLogin(token)
     .then(user => {
       if (!user) {
-        return res.status(401).json({ success: false, message: 'Invalid or expired session' });
+        return res.status(401).json({ success: false, message: DEAD_SESSION_MESSAGE });
       }
       req.user = user;
       req.sessionToken = token;

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie,
+  getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie, uploadAvatar,
 } from '../util';
 import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES, DENSITIES } from '../userPrefs';
 
@@ -53,17 +53,7 @@ export function AvatarUploadPanel() {
     setUploading(true);
     setStatus(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const token = getSessionTokenFromCookie();
-      const response = await fetch(`/api/users/${userId}/avatar`, {
-        method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-        body: formData,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Upload failed');
+      const data = await uploadAvatar(userId, file);
 
       // Cache-bust: append timestamp
       setAvatarUrl(data.avatar_url + '?t=' + Date.now());

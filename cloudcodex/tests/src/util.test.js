@@ -14,8 +14,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   apiFetch,
-  uploadDocument,
-  exportDocument,
   uploadDocImage,
   uploadAvatar,
   serverReq,
@@ -48,6 +46,7 @@ import {
   fetchLogActivity,
   fetchNotifications,
   exportDocument,
+  uploadDocument,
   fetchWebhooks,
   createWebhook,
   rotateWebhook,

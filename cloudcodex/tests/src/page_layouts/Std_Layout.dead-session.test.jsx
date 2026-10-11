@@ -181,7 +181,7 @@ describe('a dead session while the editor holds unsaved changes', () => {
     renderPage();
     expect(await screen.findByText(/your session ended/i)).toBeTruthy();
     expect(screen.getByText(/your unsaved changes are still here/i)).toBeTruthy();
-    expect(screen.getByText('Loading Document...')).toBeTruthy();
+    expect(screen.getByText('Invalid or expired session')).toBeTruthy(); // the page is still mounted, not unmounted by a bounce
     expect(tab.fake.assign).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem('c2-oidc-bounce')).toBeNull();
     expect(showModal).not.toHaveBeenCalled();

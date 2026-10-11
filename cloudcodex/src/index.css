@@ -336,6 +336,52 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* =========================
+   Session notice (W6 review: a dead session with unsaved changes)
+========================= */
+
+/* Blocks the page without moving it: the editor stays where it is, its content with it. */
+.session-notice-dimmer {
+  position: fixed;
+  inset: 0;
+  background: var(--cx-scrim);
+  z-index: var(--z-scrim);
+}
+
+.session-notice {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: var(--z-modal);
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px 22px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.session-notice__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.session-notice__body,
+.session-notice__status {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.session-notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* =========================
    Sidebar
 ========================= */
 

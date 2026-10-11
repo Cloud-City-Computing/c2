@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   setUnsaved,
   hasUnsavedChanges,

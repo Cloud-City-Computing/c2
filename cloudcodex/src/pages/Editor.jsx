@@ -25,6 +25,7 @@ import DrawioBlock from '../components/DrawioBlock';
 import { getPreferredEditorMode } from '../userPrefs';
 import SuiteDocLink from '../components/SuiteDocLink';
 import useCollab from '../hooks/useCollab';
+import { setUnsaved } from '../lib/unsaved-changes.js';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollabPresence from '../components/CollabPresence';
 import { RichTextCursors, MarkdownCursors } from '../components/RemoteCursors';
@@ -46,7 +47,7 @@ import {
   addCommentReply,
   deleteCommentReply,
   getSessStorage,
-  getSessionTokenFromCookie,
+  uploadDocImage,
   checkFavorite,
   addFavorite,
   checkWatch,
@@ -69,36 +70,9 @@ import Mention, { MentionPicker } from '../extensions/Mention';
 import CodeEmbedPickerModal from '../components/github/CodeEmbedPickerModal';
 import IssuePickerModal from '../components/github/IssuePickerModal';
 
-
-/**
- * Upload an image file to the server and return the served URL.
- * Used by the markdown editor's paste handler.
- * @param {File} file
- * @param {string} logId - the document the image goes into; the server
- *   requires write access to it and serves the image to its readers
- * @returns {Promise<string|null>} The image URL, or null on failure
- */
-async function uploadImageFile(file, logId) {
-  const token = getSessionTokenFromCookie();
-  const formData = new FormData();
-  formData.append('logId', logId);
-  formData.append('files', file);
-  try {
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch('/api/doc-images/upload', {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-    const json = await res.json();
-    if (json.success && json.urls?.length) {
-      return json.urls[0];
-    }
-  } catch (err) {
-    console.error('[editor] Image upload failed:', err);
-  }
-  return null;
+/** The text of an HTML body, for the copy fallback when the session has ended. */
+function plainText(html) {
+  return new DOMParser().parseFromString(html || '', 'text/html').body.textContent ?? '';
 }
 
 /**
@@ -116,7 +90,7 @@ async function insertImagePlaceholderAndUpload(editor, file, insertPos, logId) {
     attrs: { src: placeholderSrc, alt: 'Uploading…' },
   }).run();
 
-  const url = await uploadImageFile(file, logId);
+  const url = await uploadDocImage(file, logId);
   URL.revokeObjectURL(placeholderSrc);
 
   if (url) {
@@ -589,7 +563,7 @@ function MarkdownEditor({ content, setContent, contentRef, onLocalChange, onCurs
         const withPlaceholder = val.substring(0, start) + placeholder + val.substring(ta.selectionEnd);
         setMd(withPlaceholder);
 
-        const url = await uploadImageFile(file, logId);
+        const url = await uploadDocImage(file, logId);
         if (url) {
           const imgMarkdown = `![image](${url})`;
           const newVal = withPlaceholder.replace(placeholder, imgMarkdown);
@@ -677,6 +651,7 @@ function EditorView({ embedded = false } = {}) {
 
   // --- Auto-save state ---
   const dirtyRef = useRef(false);          // true when local edits haven't been saved yet
+  const userTouchedRef = useRef(false);    // true once this tab's user has given input since the last save
   const lastSavedRef = useRef(null);       // timestamp of last successful save
   const [autoSaveLabel, setAutoSaveLabel] = useState(''); // shown next to save button
 
@@ -752,9 +727,32 @@ function EditorView({ embedded = false } = {}) {
 
   // Local change handler — CRDT sync is automatic via Y.Doc, so this only
   // sets the dirty flag for auto-save tracking.  No more debounced sendUpdate.
+  // The unsaved text the layout copies when the session ends: the markdown if there is one, else the body's text.
+  const unsavedText = useCallback(() => markdownContentRef.current || plainText(contentRef.current), []);
+
+  // The registry is marked only after this tab's user has done something since the last save (userTouchedRef).
+  // Tiptap also reports the initial population and a collaborator's edits as updates, and those are not this tab's
+  // unsaved work; a user edit always follows a user input, so it is never missed.
   const handleLocalChange = useCallback(() => {
     dirtyRef.current = true;
+    if (userTouchedRef.current) setUnsaved('editor', true, unsavedText);
+  }, [unsavedText]);
+
+  // Opening edit mode is itself a click, and the editor's first population follows it: that click is not an edit.
+  useEffect(() => { userTouchedRef.current = false; }, [viewMode]);
+
+  useEffect(() => {
+    const touch = () => { userTouchedRef.current = true; };
+    const events = ['pointerdown', 'keydown', 'beforeinput', 'paste', 'drop'];
+    for (const type of events) document.addEventListener(type, touch, true);
+    return () => {
+      for (const type of events) document.removeEventListener(type, touch, true);
+    };
   }, []);
+
+  // The layout reads the registry when the session ends with unsaved content (lib/unsaved-changes.js). Forgotten
+  // when the editor leaves the page, so a later page is not held by this one's changes.
+  useEffect(() => () => setUnsaved('editor', false), []);
 
   // Debounced cursor position broadcast
   const cursorTimerRef = useRef(null);
@@ -973,6 +971,8 @@ function EditorView({ embedded = false } = {}) {
       if (sent) {
         setContent(latestContent);
         dirtyRef.current = false;
+        userTouchedRef.current = false;
+        setUnsaved('editor', false);
         lastSavedRef.current = Date.now();
         if (!silent) setStatus({ type: 'success', message: 'Document saved.' });
         savingRef.current = false;
@@ -987,6 +987,8 @@ function EditorView({ embedded = false } = {}) {
       await saveDocument(Number(logId), latestContent, markdownContentRef.current);
       setContent(latestContent);
       dirtyRef.current = false;
+      userTouchedRef.current = false;
+      setUnsaved('editor', false);
       lastSavedRef.current = Date.now();
       if (!silent) setStatus({ type: 'success', message: 'Document saved.' });
     } catch (e) {

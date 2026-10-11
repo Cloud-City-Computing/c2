@@ -18,7 +18,8 @@ import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
-import { getSessionTokenFromCookie } from '../util';
+import { getSessionTokenFromCookie, endDeadSession } from '../util';
+import { SIGNED_OUT_SOCKET_CLOSE } from '../../services/session-messages.js';
 
 /**
  * @param {number|string} logId  — The document/log ID to collaborate on
@@ -185,11 +186,17 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         ydoc.off('update', docUpdateHandler);
         if (!disposed) {
           setCollabConnected(false);
           setSynced(false);
+          // The server closed this socket as signed out: the session has ended, so a reconnect would be refused
+          // again. Stop, and end the session once; the layout decides between the notice and the front door.
+          if (event?.code === SIGNED_OUT_SOCKET_CLOSE.code && event?.reason === SIGNED_OUT_SOCKET_CLOSE.reason) {
+            endDeadSession();
+            return;
+          }
           // Reconnect after a delay
           reconnectTimer.current = setTimeout(connect, 2000);
         }

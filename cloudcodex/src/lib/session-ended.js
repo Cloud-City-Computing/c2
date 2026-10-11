@@ -11,10 +11,11 @@
  * https://cloudcitycomputing.com
  */
 
-export const SESSION_ENDED_EVENT = 'c2:session-ended';
+import { DEAD_SESSION_MESSAGE } from '../../services/session-messages.js';
 
-/** The server's message for a request whose session row is gone or expired (middleware/auth.js). */
-export const DEAD_SESSION_MESSAGE = 'Invalid or expired session';
+export { DEAD_SESSION_MESSAGE };
+
+export const SESSION_ENDED_EVENT = 'c2:session-ended';
 
 /** Tells the layout that this tab's session has ended on the server. */
 export function announceSessionEnded() {
