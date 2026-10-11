@@ -3,8 +3,8 @@
  *
  * Authorization code with PKCE, through openid-client 6. This module answers "who is this
  * (issuer, subject), and what is their verified email", and nothing else: it never stores a
- * password, never stores the ID token or refresh token (sign-out, W6-CDX-6, decides that), and
- * never decides what the person may do. services/identity.js decides which local user the
+ * password, never stores a refresh token, and never decides what the person may do. The ID token
+ * goes back to the callback, which seals it for sign-out (W6-CDX-6, services/id-token-seal.js). services/identity.js decides which local user the
  * identity is.
  *
  * State, nonce and the PKCE verifier travel in a signed, HTTP-only flow cookie, not in server
@@ -238,7 +238,7 @@ let cachedConfiguration;
  * @param {{ issuer: string, clientId: string, clientSecret: string }} config
  * @returns {Promise<client.Configuration>}
  */
-function loadConfiguration(config) {
+export function loadConfiguration(config) {
   if (cachedConfiguration === undefined) {
     const issuer = new URL(config.issuer);
     const metadata = { client_secret: config.clientSecret, [client.clockTolerance]: CLOCK_TOLERANCE_SECONDS };
@@ -317,7 +317,7 @@ export async function beginLogin(config, { returnTo }) {
  * @param {URL} currentUrl - the callback URL with its query, as the issuer redirected to it
  * @param {string | undefined} flowCookieValue
  * @returns {Promise<{ issuer: string, subject: string, email: string, emailVerified: true,
- *   name: string | null, sid: string | null, returnTo: string }>}
+ *   name: string | null, sid: string | null, idToken: string, returnTo: string }>}
  */
 export async function completeLogin(config, currentUrl, flowCookieValue) {
   const flow = verifyFlowCookie(flowCookieValue, config.clientSecret);
@@ -387,6 +387,9 @@ export async function completeLogin(config, currentUrl, flowCookieValue) {
     emailVerified: true,
     name,
     sid,
+    // The raw ID token. The callback seals it before it reaches the database (W6-CDX-6); this module
+    // never writes it, and no refusal or log line carries it.
+    idToken: tokens.id_token,
     // Validated again at the callback: a seal written under an older rule cannot redirect anywhere
     // the current rule refuses.
     returnTo: safeReturnTo(flow.returnTo),

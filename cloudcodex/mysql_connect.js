@@ -186,18 +186,30 @@ function isTokenShaped(value) {
  * @returns { Promise<String> }
  */
 export async function generateSessionToken(user, ip = null, userAgent = null, options = {}) {
-  const { provider = 'local', identityId = null, providerSid = null, ttlHours, expiresAt } = options;
+  const { provider = 'local', identityId = null, providerSid = null, ttlHours, expiresAt, oidcIdToken = null } = options;
   if ((provider === 'oidc') !== (identityId !== null && identityId !== undefined)) {
     throw new Error('generateSessionToken: an oidc session needs an identityId, and only an oidc session has one');
+  }
+  if (oidcIdToken !== null && provider !== 'oidc') {
+    throw new Error('generateSessionToken: a sealed ID token belongs to an oidc session only');
   }
 
   const token = createNewSessionToken();
   if (provider === 'oidc') {
     const expiry = expiresAt ?? new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+    // The sealed ID token is bound only when there is one (W6-CDX-6). A row without it keeps NULL.
+    if (oidcIdToken === null) {
+      await c2_query(
+        `INSERT INTO sessions (user_id, id, auth_provider, identity_id, provider_sid, created_at, expires_at, ip_address, user_agent)
+         VALUES (?, ?, 'oidc', ?, ?, NOW(), ?, ?, ?)`,
+        [user.id, hashSessionToken(token), identityId, providerSid, expiry, ip, userAgent]
+      );
+      return token;
+    }
     await c2_query(
-      `INSERT INTO sessions (user_id, id, auth_provider, identity_id, provider_sid, created_at, expires_at, ip_address, user_agent)
-       VALUES (?, ?, 'oidc', ?, ?, NOW(), ?, ?, ?)`,
-      [user.id, hashSessionToken(token), identityId, providerSid, expiry, ip, userAgent]
+      `INSERT INTO sessions (user_id, id, auth_provider, identity_id, provider_sid, created_at, expires_at, ip_address, user_agent, oidc_id_token)
+       VALUES (?, ?, 'oidc', ?, ?, NOW(), ?, ?, ?, ?)`,
+      [user.id, hashSessionToken(token), identityId, providerSid, expiry, ip, userAgent, oidcIdToken]
     );
     return token;
   }
@@ -233,7 +245,11 @@ export async function validateAndAutoLogin(sessionToken) {
     [session.user_id]
   );
 
-  return user ?? null;
+  if (!user) return null;
+  // The session's digest, so a socket can record which session it belongs to (W6-CDX-6).
+  // Non-enumerable: every existing caller spreads or compares the user as it always was.
+  Object.defineProperty(user, 'sessionId', { value: hashSessionToken(sessionToken), enumerable: false });
+  return user;
 }
 
 /**
@@ -275,6 +291,21 @@ export async function getSessionProvenance(sessionToken) {
     providerSid: session.provider_sid ?? null,
     expiresAt: session.expires_at ?? null,
   };
+}
+
+/**
+ * The sealed ID token an OIDC session kept at sign-in (W6-CDX-6), or null for a local or Google
+ * session, a missing row, or a value that cannot be a token. Read before a rotation deletes the row.
+ * @param { String } sessionToken
+ * @returns { Promise<String|null> }
+ */
+export async function getSessionOidcIdToken(sessionToken) {
+  if (!isTokenShaped(sessionToken)) return null;
+  const [session] = await c2_query(
+    `SELECT oidc_id_token FROM sessions WHERE id = ? LIMIT 1`,
+    [hashSessionToken(sessionToken)]
+  );
+  return session?.oidc_id_token ?? null;
 }
 
 /**

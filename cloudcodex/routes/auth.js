@@ -10,24 +10,31 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
-import { c2_query, generateSessionToken, getSessionProvider, getSessionProvenance, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
+import { c2_query, generateSessionToken, getSessionProvider, getSessionProvenance, getSessionOidcIdToken, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
 import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
 import { requireAuth, extractSessionToken } from '../middleware/auth.js';
 import { legacyCookieAllowed } from '../services/session-cookie.js';
+import { getOidcConfig } from '../services/oidc.js';
+import { endSessionUrlFor } from '../services/sign-out.js';
+import { closeSocketsForSessions as closeCollabSockets } from '../services/collab.js';
+import { closeSocketsForSessions as closeUserChannelSockets } from '../services/user-channel.js';
 import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, TOKEN_PURPOSE, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
 
 /**
  * The options a rotated session is minted with (update-account, confirm-email). A local or Google
  * session keeps its flow tag, exactly as before. An OIDC session also keeps the identity it signed in
  * through, the issuer's sid (back-channel logout matches on it) and its absolute expiry, so the
- * rotation cannot quietly widen or detach it. Call before the rotation deletes the row.
+ * rotation cannot quietly widen or detach it, and it keeps the sealed ID token sign-out needs
+ * (W6-CDX-6). Call before the rotation deletes the row. The token key is present only when the
+ * session has one, so a row signed in before W6-CDX-6 keeps the options it always had.
  */
 async function rotationOptionsFor(token, provider) {
   if (provider !== 'oidc') return { provider };
   const { identityId, providerSid, expiresAt } = await getSessionProvenance(token);
-  return { provider, identityId, providerSid, expiresAt };
+  const oidcIdToken = await getSessionOidcIdToken(token);
+  return { provider, identityId, providerSid, expiresAt, ...(oidcIdToken ? { oidcIdToken } : {}) };
 }
 
 const router = express.Router();
@@ -591,6 +598,12 @@ router.post('/login', asyncHandler(async (req, res) => {
  * POST /api/logout
  * Reads the session token from the Authorization header or the sessionToken
  * cookie, with a body fallback.
+ *
+ * Ends the local session first, then closes that session's sockets (W6-CDX-6). For an OIDC session it
+ * also answers the end-session URL, which carries the stored ID token as id_token_hint, so the issuer
+ * ends its own session and back-channel logout reaches the other relying parties. The URL is only a
+ * hint: a local-only session, or any failure building it, answers without endSessionUrl. The answer is
+ * no-store, because the URL carries the ID token.
  */
 router.post('/logout', asyncHandler(async (req, res) => {
   // The client sends its session token as a bearer header, never in the body
@@ -604,9 +617,28 @@ router.post('/logout', asyncHandler(async (req, res) => {
   }
 
   // sessions.id holds the digest, never the token (services/session-token.js).
-  await c2_query(`DELETE FROM sessions WHERE id = ?`, [hashSessionToken(token)]);
+  const digest = hashSessionToken(token);
+  const [row] = await c2_query(
+    `SELECT auth_provider, oidc_id_token FROM sessions WHERE id = ? LIMIT 1`,
+    [digest]
+  );
+  await c2_query(`DELETE FROM sessions WHERE id = ?`, [digest]);
+  closeCollabSockets([digest]);
+  closeUserChannelSockets([digest]);
 
-  res.json({ success: true });
+  res.set('Cache-Control', 'no-store');
+  if (row?.auth_provider !== 'oidc') return res.json({ success: true });
+
+  const config = getOidcConfig();
+  if (config === null) {
+    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: sign-out ended the local session only (OIDC is no longer configured)`);
+    return res.json({ success: true, endSessionUrl: null });
+  }
+  const { url, failure } = await endSessionUrlFor(config, row.oidc_id_token);
+  if (failure !== null) {
+    console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: sign-out ended the local session only (${failure})`);
+  }
+  res.json({ success: true, endSessionUrl: url });
 }));
 
 /**

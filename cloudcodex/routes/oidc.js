@@ -12,11 +12,21 @@
  */
 
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { generateSessionToken } from '../mysql_connect.js';
 import { asyncHandler, errorHandler } from './helpers/shared.js';
 import { resolveIdentity } from '../services/identity.js';
 import { sessionCookieName } from '../services/session-cookie.js';
 import { safeReturnTo } from '../services/return-to.js';
+import { sealIdToken } from '../services/id-token-seal.js';
+import {
+  verifyLogoutToken,
+  revokeForLogoutToken,
+  rememberJti,
+  LogoutTokenUnavailable,
+} from '../services/backchannel-logout.js';
+import { closeSocketsForSessions as closeCollabSockets } from '../services/collab.js';
+import { closeSocketsForSessions as closeUserChannelSockets } from '../services/user-channel.js';
 import {
   getOidcConfig,
   beginLogin,
@@ -29,6 +39,40 @@ import {
 } from '../services/oidc.js';
 
 const router = express.Router();
+
+/*
+ * Its own bucket, never authLimiter: every logout token arrives from the issuer's one address, and a
+ * deprovisioning sweep sends a burst of them. Only a refused delivery (a 400) counts, so a verified
+ * delivery, a 503 the issuer retries, and a 429 never spend the budget (Command's back-channel ADR).
+ * The key is req.ip, which honours X-Forwarded-For only from a TRUST_PROXY peer, so behind the host
+ * proxy one client's failures cannot exhaust another's budget.
+ */
+const backchannelLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (req, res) => res.statusCode !== 400,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: { success: false, message: 'Too many logout deliveries, please try again later' },
+});
+
+const parseLogoutForm = express.urlencoded({ extended: false, limit: '16kb' });
+
+/** Every answer on the back-channel receiver carries no-store, the 429 and the 400 included. */
+function noStore(req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  next();
+}
+
+/** An unparseable or oversize body is one refused delivery, not a server fault. */
+function parseOrRefuse(req, res, next) {
+  parseLogoutForm(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, message: 'Invalid logout token' });
+    return next();
+  });
+}
 
 /**
  * GET /api/auth/oidc/start?returnTo=
@@ -102,6 +146,8 @@ router.get('/auth/oidc/callback', asyncHandler(async (req, res) => {
     identityId: resolved.identityId,
     providerSid: identity.sid,
     ttlHours: config.sessionTtlHours,
+    // Sealed, never the raw token: sign-out sends it as id_token_hint (W6-CDX-6).
+    oidcIdToken: sealIdToken(identity.idToken, config.clientSecret),
   });
 
   // The session cookie is set exactly as the Google callback sets it (services/session-cookie.js).
@@ -115,6 +161,40 @@ router.get('/auth/oidc/callback', asyncHandler(async (req, res) => {
 
   res.redirect(identity.returnTo);
 }));
+
+/**
+ * POST /api/auth/oidc/backchannel-logout
+ * The issuer's back-channel logout (OIDC Back-Channel Logout 1.0). Mounted only with OIDC. A verified
+ * token ends the oidc sessions it names and closes their sockets; an invalid one is 400 and final for
+ * the issuer; a key the relying party cannot fetch is 503, which the issuer retries. The jti is
+ * recorded only after the delete commits, so a retry of a delivery that failed still runs.
+ */
+router.post(
+  '/auth/oidc/backchannel-logout',
+  noStore,
+  backchannelLimiter,
+  parseOrRefuse,
+  asyncHandler(async (req, res) => {
+    const config = getOidcConfig();
+    if (config === null) return res.status(404).json({ success: false, message: 'OIDC sign-in is not configured' });
+
+    let claims;
+    try {
+      claims = await verifyLogoutToken(config, req.body?.logout_token);
+    } catch (err) {
+      if (!(err instanceof LogoutTokenUnavailable)) throw err;
+      console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}: back-channel logout deferred (${err.message})`);
+      return res.status(503).json({ success: false, message: 'Logout token could not be checked, try again' });
+    }
+    if (claims === null) return res.status(400).json({ success: false, message: 'Invalid logout token' });
+
+    const deleted = await revokeForLogoutToken(claims);
+    rememberJti(claims.jti);
+    closeCollabSockets(deleted);
+    closeUserChannelSockets(deleted);
+    return res.status(200).end();
+  })
+);
 
 router.use(errorHandler);
 

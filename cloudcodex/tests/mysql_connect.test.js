@@ -56,6 +56,7 @@ const {
   validateAndAutoLogin,
   getSessionProvider,
   getSessionProvenance,
+  getSessionOidcIdToken,
   touchSession,
   withTransaction,
   endPool,
@@ -510,5 +511,75 @@ describe('getSessionProvenance', () => {
   it('answers without querying for a value that cannot be a token', async () => {
     expect(await getSessionProvenance(undefined)).toEqual({ provider: 'local', identityId: null, providerSid: null, expiresAt: null });
     expect(executeMock).not.toHaveBeenCalled();
+  });
+});
+
+// W6-CDX-6: an OIDC session keeps its sealed ID token, so sign-out can send it as id_token_hint.
+describe('generateSessionToken, the sealed ID token (W6-CDX-6)', () => {
+  it('stores the sealed ID token it is given on an oidc session', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 1 }, []]);
+
+    const token = await generateSessionToken({ id: 7 }, '1.2.3.4', 'agent', {
+      provider: 'oidc',
+      identityId: 3,
+      providerSid: 'sid-1',
+      ttlHours: 24,
+      oidcIdToken: 'iv:tag:ct',
+    });
+
+    const [sql, params] = executeMock.mock.calls[0];
+    expect(sql).toMatch(/oidc_id_token/);
+    expect(params).toEqual([7, hashSessionToken(token), 3, 'sid-1', expect.any(Date), '1.2.3.4', 'agent', 'iv:tag:ct']);
+  });
+
+  it('leaves the column NULL when an oidc session has no sealed token to keep', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 1 }, []]);
+
+    await generateSessionToken({ id: 7 }, null, null, { provider: 'oidc', identityId: 3, providerSid: 's', ttlHours: 1 });
+
+    // The column is left to its NULL default: the statement does not name it.
+    expect(executeMock.mock.calls[0][0]).not.toMatch(/oidc_id_token/);
+    expect(executeMock.mock.calls[0][1]).toHaveLength(7);
+  });
+
+  it('refuses a sealed ID token on a session that is not oidc, before any SQL', async () => {
+    await expect(generateSessionToken({ id: 7 }, null, null, { provider: 'local', oidcIdToken: 'x' }))
+      .rejects.toThrow(/oidc/);
+    expect(executeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getSessionOidcIdToken (W6-CDX-6)', () => {
+  it('reads the sealed ID token of a session, by the digest of the token', async () => {
+    executeMock.mockResolvedValueOnce([[{ oidc_id_token: 'iv:tag:ct' }], []]);
+
+    expect(await getSessionOidcIdToken('raw')).toBe('iv:tag:ct');
+    expect(executeMock.mock.calls[0][1]).toEqual([hashSessionToken('raw')]);
+  });
+
+  it('answers null for a local session, a missing row, or a value that cannot be a token', async () => {
+    executeMock.mockResolvedValueOnce([[{ oidc_id_token: null }], []]);
+    expect(await getSessionOidcIdToken('local-one')).toBeNull();
+
+    executeMock.mockResolvedValueOnce([[], []]);
+    expect(await getSessionOidcIdToken('gone')).toBeNull();
+
+    expect(await getSessionOidcIdToken(undefined)).toBeNull();
+    expect(executeMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('validateAndAutoLogin, the session digest (W6-CDX-6)', () => {
+  it('carries the digest as a non-enumerable sessionId, so spreads and toEqual are unchanged', async () => {
+    const future = new Date(Date.now() + 60_000);
+    executeMock
+      .mockResolvedValueOnce([[{ user_id: 1, expires_at: future }], []])
+      .mockResolvedValueOnce([[{ id: 1, name: 'Alice' }], []]);
+
+    const user = await validateAndAutoLogin('tok');
+
+    expect(user.sessionId).toBe(hashSessionToken('tok'));
+    expect(Object.keys(user)).toEqual(['id', 'name']);
+    expect({ ...user }).toEqual({ id: 1, name: 'Alice' });
   });
 });

@@ -34,7 +34,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
-import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, getSessionProvenance, withTransaction } from '../../mysql_connect.js';
+import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, getSessionProvenance, getSessionOidcIdToken, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
@@ -385,6 +385,29 @@ describe('POST /api/update-account', () => {
       const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
       const deleteOrder = c2_query.mock.invocationCallOrder[c2_query.mock.calls.indexOf(del)];
       expect(getSessionProvenance.mock.invocationCallOrder[0]).toBeLessThan(deleteOrder);
+    });
+
+    it('keeps the sealed ID token of an OIDC session on its replacement, read before the delete (W6-CDX-6)', async () => {
+      fakeAccount({ providers: { [CALLER]: 'oidc' } });
+      getSessionProvenance.mockResolvedValueOnce({ provider: 'oidc', identityId: 55, providerSid: 'sid-9', expiresAt: new Date('2031-01-02T03:04:05Z') });
+      getSessionOidcIdToken.mockResolvedValueOnce('iv:tag:sealed');
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(getSessionOidcIdToken).toHaveBeenCalledWith(CALLER);
+      expect(generateSessionToken.mock.calls[0][3]).toMatchObject({ provider: 'oidc', oidcIdToken: 'iv:tag:sealed' });
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
+      const deleteOrder = c2_query.mock.invocationCallOrder[c2_query.mock.calls.indexOf(del)];
+      expect(getSessionOidcIdToken.mock.invocationCallOrder[0]).toBeLessThan(deleteOrder);
+    });
+
+    it('omits the sealed token key for an OIDC session that has none (a row from before W6-CDX-6)', async () => {
+      fakeAccount({ providers: { [CALLER]: 'oidc' } });
+      getSessionProvenance.mockResolvedValueOnce({ provider: 'oidc', identityId: 55, providerSid: 'sid-9', expiresAt: null });
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(generateSessionToken.mock.calls[0][3]).not.toHaveProperty('oidcIdToken');
     });
 
     it('mints no token when the transaction fails, so the caller is not handed a session for a change that did not land', async () => {

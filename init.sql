@@ -125,6 +125,10 @@ CREATE TABLE sessions (
   -- together.
   identity_id INT NULL,
   provider_sid VARCHAR(255) NULL,
+  -- The sealed ID token a sign-out sends as id_token_hint (migrations/2026-10-13-session-id-token.sql,
+  -- services/id-token-seal.js). NULL for local and Google sessions, and for OIDC sessions signed in
+  -- before it. Never the token itself.
+  oidc_id_token TEXT NULL,
   ip_address VARCHAR(45),
   user_agent TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -133,6 +137,7 @@ CREATE TABLE sessions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google', 'oidc')),
   CONSTRAINT chk_sessions_identity_pairing CHECK ((auth_provider = 'oidc') = (identity_id IS NOT NULL)),
+  CONSTRAINT chk_sessions_id_token_oidc_only CHECK (oidc_id_token IS NULL OR auth_provider = 'oidc'),
   CONSTRAINT fk_sessions_identity FOREIGN KEY (identity_id) REFERENCES user_identities(id) ON DELETE CASCADE,
   INDEX (user_id),
   INDEX (expires_at),
