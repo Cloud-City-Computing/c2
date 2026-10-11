@@ -57,6 +57,12 @@ describe('suiteDocHref', () => {
     expect(suiteDocHref('data:text/html,hi', 7, 42)).toBeNull();
   });
 
+  it('accepts ids up to the int4 maximum that Cloud Command accepts, and refuses one above it', () => {
+    expect(suiteDocHref(COMMAND, 2147483647, 2147483647)).toBe('https://command.example.test/w/1/docs/2147483647/2147483647');
+    expect(suiteDocHref(COMMAND, 2147483648, 42)).toBeNull();
+    expect(suiteDocHref(COMMAND, 7, '99999999999')).toBeNull();
+  });
+
   it('is null when an id is missing or not a positive integer, so no path is built from junk', () => {
     expect(suiteDocHref(COMMAND, undefined, 42)).toBeNull();
     expect(suiteDocHref(COMMAND, 7, null)).toBeNull();

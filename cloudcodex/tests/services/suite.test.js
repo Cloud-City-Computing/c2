@@ -116,3 +116,64 @@ describe('readSuiteConfig: refusals', () => {
     expect(() => readSuiteConfig()).toThrow('SUITE_NAME is required in suite mode');
   });
 });
+
+describe('readSuiteConfig: the URL is the workspace URL, origin plus /w/<id>', () => {
+  const SHAPE = 'SUITE_COMMAND_WORKSPACE_URL must be the workspace URL: an origin plus /w/<workspace id>, '
+    + 'with no query, fragment or further path.';
+
+  beforeEach(() => {
+    process.env.SUITE_NAME = 'Example Suite';
+  });
+
+  it('refuses an origin with no workspace path', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test';
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('refuses an origin with a trailing slash and no workspace path', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test/';
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('refuses a query string', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = `${URL_OK}?x=1`;
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('refuses an empty query marker, which the URL parser keeps as a bare question mark', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = `${URL_OK}?`;
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('refuses a fragment', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = `${URL_OK}#top`;
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('refuses extra path segments after the workspace id', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = `${URL_OK}/docs`;
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+    process.env.SUITE_COMMAND_WORKSPACE_URL = `${URL_OK}/docs/7/42`;
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('refuses a path that is not /w/ at all', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test/workspaces/1';
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('refuses a /w/ path with no id', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test/w/';
+    expect(() => readSuiteConfig()).toThrow(SHAPE);
+  });
+
+  it('accepts /w/<id> without a trailing slash', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = URL_OK;
+    expect(readSuiteConfig().commandWorkspaceUrl).toBe(URL_OK);
+  });
+
+  it('accepts /w/<id> with a trailing slash', () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = `${URL_OK}/`;
+    expect(readSuiteConfig().enabled).toBe(true);
+  });
+});
