@@ -585,6 +585,10 @@ See "One machine credential per install" above.
   `MACHINE_OIDC_SUBJECTS` (the allowlisted service-user ids) are all set.
 - `jose` verifies it against the cached JWKS with `iss`, `aud` and a 60-second tolerance; then
   `sub` must be in the allowlist.
+- An issuer whose key set or discovery document cannot be read answers **503**
+  (`MachineAuthUnavailable`), never 401: an outage is marked where it happens and opens a 30-second
+  window answered 503 from memory; every other error jose reports about the token is a refusal, so a
+  caller reads an outage as "retry", not as a revoked credential.
 - The principal stays `SERVICE_TOKEN_USER`'s non-admin user: the admin row is refused and
   `is_admin` is the literal `false`, exactly as today. The static `SERVICE_TOKEN` path is unchanged
   for self-hosters, and **no call site changes**.

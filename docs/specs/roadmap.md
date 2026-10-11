@@ -408,7 +408,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-4 | An identity-resolution seam, Google moved onto it (**shipped 2026-09-25** in #56, released in 0.11.0; Google now refuses a second Google subject as `identity_conflict`, closing open question C7) | nothing | yes |
 | W6-CDX-5 | The OIDC relying party, `user_identities` and session provenance (**shipped 2026-10-11** on `track/w6-cdx-5-oidc-rp`, unmerged; one issuer per instance through `OIDC_*`, the `(issuer, subject)` ladder, a `returnTo` validator checked against Command's corpus, the reader check by subject, and `chk_sessions_identity_pairing`; a real Cloud City ID sign-in is not yet recorded) | W6-CDX-2, W6-CDX-4; W6-CCID-1, W6-CCID-2, W6-CCID-3, W6-CMD-24 (the `returnTo` corpus) | yes |
 | W6-CDX-6 | Sign-out that propagates | W6-CDX-5; W6-CCID-3 | yes |
-| W6-CDX-7 | Machine JWTs through `verifyMachineCredential` | W6-CDX-5; W6-CCID-2, W6-CCID-3 | yes |
+| W6-CDX-7 | Machine JWTs through `verifyMachineCredential` (**shipped 2026-10-11** on `track/w6-cdx-7-machine-jwt`, unmerged: the JWT branch of the one seam, verified against the issuer's key set with the audience and a subject allowlist, an outage answered 503, the static path unchanged) | W6-CDX-5; W6-CCID-2, W6-CCID-3 | yes |
 | W6-CDX-8 | Hosted mode: OIDC only, invitations bind on verified email | W6-CDX-5, W6-CDX-32; W6-CCID-3 | yes |
 | W6-CDX-9 | Machine membership endpoints for the automatic sync | W6-CDX-7, W6-CDX-8 | yes |
 | W6-CDX-12 | Three activity gaps fixed at the source (**shipped 2026-09-27** in #62; `archive.delete` reaches the table, the tree route logs `log.rename` and `log.move` and caps titles at 255, and every route that sets a parent keeps it in the archive) | W6-CDX-10 | yes |

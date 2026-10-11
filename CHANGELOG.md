@@ -14,6 +14,13 @@ initialises an empty data directory.
 
 ### Added
 
+- **Machine JWTs from Cloud City ID (W6-CDX-7).** A client-credentials access token from the
+  issuer now authenticates the machine routes (`GET /api/search`, `GET /api/browse`,
+  `GET /api/documents/state`, and the reader check). It is verified with `jose` against the
+  issuer's cached key set: the issuer and this instance's own project id as `aud`, asymmetric
+  algorithms only, 60 seconds of skew, and the `sub` on the `MACHINE_OIDC_SUBJECTS` allowlist.
+  It needs `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS`; the static
+  `SERVICE_TOKEN` is unchanged. An issuer whose keys cannot be read answers 503, never 401.
 - **The outbound webhook delivery worker.** An in-process worker, started by `server.js`, sends
   the queued events every two seconds: per subscription, in event order, one lease at a time,
   signed with `X-Codex-Signature-256`, with the send-time SSRF check and a 10-second timeout. A

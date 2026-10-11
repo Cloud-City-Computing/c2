@@ -390,13 +390,17 @@ and it wraps it rather than replacing it:
 
 1. Token from the same `extractSessionToken(req)`. No token at all, straight to
    `requireAuth`, which 401s.
-2. `verifyMachineCredential(token)` (`services/machine-auth.js`). A match sets
+2. `verifyMachineCredential(token)` (`services/machine-auth.js`). A JWS-shaped
+   token that misses the static digest takes the JWT path when it is configured
+   (W6-CDX-7, access-control section 7). A match sets
    `req.user` to a machine principal and calls `next()`, so
    `validateAndAutoLogin` is never reached and a service token cannot be
    mistaken for a session row.
 3. Anything else, including every ordinary session token, falls through to
    `requireAuth` unchanged. A rejected lookup goes to `next(err)` and lands in
-   the router's `errorHandler`, never in a silent pass.
+   the router's `errorHandler`, never in a silent pass. The exception is an
+   issuer whose key set cannot be read: `machineFailure` answers 503 first, so
+   it never reaches `requireAuth` or `errorHandler`.
 
 A machine principal is `{ id, name, email, is_admin: false, is_machine: true }`
 and carries **no `req.sessionToken`**: there is no session row, so
