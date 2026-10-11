@@ -220,6 +220,8 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
   padding: 4px 8px 4px 0;
   background: none;
   border: none;
@@ -234,11 +236,25 @@ h1, h2, h3, h4, h5, h6 {
   width: auto;
 }
 
+/* A suite name is up to 40 characters. The text column takes at most 180px and cuts a longer
+   name with an ellipsis, so the top bar's right-hand controls stay in the viewport at 390 wide.
+   The full name is the toggle's accessible name and the eyebrow's title. */
 .cc-suite__text {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  min-width: 0;
+  max-width: 180px;
   line-height: 1.2;
+}
+
+.cc-suite__name,
+.cc-suite__eyebrow {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cc-suite__name {
@@ -246,7 +262,6 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
-  white-space: nowrap;
 }
 
 .cc-suite__eyebrow {
@@ -254,7 +269,6 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
-  white-space: nowrap;
 }
 
 .cc-suite__chevron {
@@ -333,7 +347,7 @@ h1, h2, h3, h4, h5, h6 {
   border-right: 1px solid var(--border-color);
   padding: calc(12px * var(--density-scale, 1)) 0;
   overflow: hidden;
-  z-index: var(--z-base);
+  z-index: var(--z-sticky);
 }
 
 .sidebar__toggle {
@@ -9003,6 +9017,12 @@ textarea:focus-visible {
 
 @media (max-width: 768px) {
 
+  /* The footer row sits under the fixed bottom nav. The footer is a static box here, so the nav (a
+     positioned box at --z-base) paints over it: a positioned footer would win the DOM-order tie. */
+  .log-footer {
+    position: static;
+  }
+
   /* Show bottom nav */
   .mobile-nav {
     display: flex;
@@ -9013,7 +9033,7 @@ textarea:focus-visible {
     height: 56px;
     background: var(--bg-elevated);
     border-top: 1px solid var(--border-color);
-    z-index: var(--z-sticky);
+    z-index: var(--z-base);
     align-items: stretch;
     box-shadow: var(--cx-shadow-nav);
   }

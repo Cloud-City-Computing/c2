@@ -436,7 +436,7 @@ manifest lists.
 |---|---|
 | `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy (run with the TAP reporter named and `NODE_OPTIONS` dropped, so the summary parses on Node 24, whose default reporter is spec) |
 | `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
-| `z-index.test.js` | every CSS `z-index` and React `zIndex` is a `var(--z-*)` that the vendored `core.css` declares, with a floor of 12 CSS declarations (W6-CDX-25) |
+| `z-index.test.js` | every CSS `z-index` and React `zIndex` is a `var(--z-*)` that the vendored `core.css` declares, with a floor of 12 CSS declarations; the shell's layering (topbar above the mobile nav, the nav at base, the sidebar above editor overlays, the footer static on phones) is read from the real rules (W6-CDX-25) |
 | `suite-name.test.js` | no application source (`src`, `routes`, `services`, `middleware`, `scripts`, the root files) spells the suite name outside a `Cloud City Computing` header (W6-CDX-25, Decision 8) |
 | `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
 | `contrast.test.js` | every pair in `pairs.json` clears its minimum in the dark theme, and every colour binding in `src/codex.css` is in a pair or named decorative |

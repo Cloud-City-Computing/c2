@@ -85,3 +85,12 @@ describe('the shell layers that the editor overlays depend on', () => {
     expect(rank(ruleZ('.sidebar'))).toBeGreaterThan(rank(ruleZ('.remote-cursors')));
   });
 });
+
+describe('the mobile bottom nav over the footer row it overlaps', () => {
+  it('the footer is not a positioned box in the phone block that shows the nav, so the nav at base paints over it', () => {
+    const phone = [...INDEX.matchAll(/@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n/g)]
+      .map((m) => m[1]).find((block) => /\.mobile-nav \{/.test(block));
+    expect(phone, 'the 768px block that shows .mobile-nav is in src/index.css').toBeDefined();
+    expect(phone).toMatch(/\.log-footer \{\s*position:\s*static;/);
+  });
+});

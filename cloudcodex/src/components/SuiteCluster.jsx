@@ -151,7 +151,7 @@ export default function SuiteCluster({ suiteName, commandWorkspaceUrl }) {
         <img src={transparent_logo} alt="" aria-hidden="true" className="cc-suite__logo" />
         <span className="cc-suite__text">
           <span className="cc-suite__name">{PRODUCT_NAME}</span>
-          <span className="cc-suite__eyebrow">{suiteName}</span>
+          <span className="cc-suite__eyebrow" title={suiteName}>{suiteName}</span>
         </span>
         <svg className="cc-suite__chevron" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

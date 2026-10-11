@@ -1,0 +1,15 @@
+suite name length: 40
+eyebrow text-overflow: ellipsis
+right rect 390: {"x":284,"y":9.5,"width":80,"height":36,"top":9.5,"right":364,"bottom":45.5,"left":284} viewport 390
+left rect 390: {"x":20,"y":7.3125,"width":248,"height":40.375,"top":7.3125,"right":268,"bottom":47.6875,"left":20}
+bell dropdown rect: {"x":8,"y":56,"width":358,"height":772,"top":56,"right":366,"bottom":828,"left":8}
+mobile nav rect: {"x":0,"y":788,"width":390,"height":56,"top":788,"right":390,"bottom":844,"left":0}
+topmost at mobile-nav top band (x=195,y=800): <A> (a notification link inside the open dropdown)
+topmost at dropdown bottom band: notification-bell__footer <DIV> in dropdown: true
+toggle expanded: true accessible name: Cloud Codex, Northwind Partners Shared Workspace Suit: switch app
+h1 font-family: Poppins, ui-sans-serif, system-ui, sans-serif
+body font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif
+topmost at the nav icon row (40,815) on the document: mobile-nav <path>
+collapsed: app-shell sidebar-collapsed
+sidebar hover applies: fixed
+topmost at (30,400) with the hover panel open: sidebar   (the script label says 100; the probe point is 30)

@@ -1,20 +1,26 @@
 # W6-CDX-25: the suite cluster in the top bar, dark theme
 
 Captured 2026-10-11 against a throwaway Codex (`NODE_ENV=development`, MySQL 8 in a container,
-suite mode on with `SUITE_NAME` "Example Suite" and a placeholder Cloud Command URL), signed in as
-the admin. The browser was headless, and the page was read after each capture.
+suite mode on, the admin signed in). The browser was headless, and every PNG was read after capture.
+Raw output and the scripts that produced it are in `raw/`.
 
-- `suite-open-1280.png`: the disclosure open at 1280 wide. The panel lists Cloud Codex (current,
-  ticked, blue), Cloud Command, a separator, and All workspaces, over the sidebar and the content,
-  not clipped by the top bar.
-- `suite-open-390.png`: the same at 390 wide. The panel sits whole under the toggle, above the
-  mobile bottom navigation's content.
-- `raw/capture-output.txt`: the scripted read-back. The toggle's accessible name, the link order,
-  `aria-current`, Escape closing the panel and returning focus to the toggle, and the panel's
-  bounds at 390 wide.
-- `raw/capture-script.mjs`: the script that produced them (a headless shell over the DevTools
-  protocol, with the session cookie set from a real login).
+First pass (open disclosure, 1280 and 390 wide, "Example Suite"):
+- `suite-open-1280.png`: the disclosure open, unclipped over the sidebar and content.
+- `suite-open-390.png`: the same at 390 wide.
 
-Not captured here: Cloud Command's sidebar beside it (that needs Command's stack running), and a
-suite-off render (the suite-off top bar is held by the DOM snapshot in
-`tests/src/page_layouts/top-bar.test.jsx`, taken from the pre-change code).
+Review pass (the coordinator's three findings, plus the footer regression they exposed):
+- `bell-open-390x844.png`: the notification dropdown open with twelve unread notifications at
+  390x844. Its footer and "View all" sit above the mobile bottom nav, which the dropdown covers.
+  `topmost` at the nav band is the dropdown, not the nav.
+- `cluster-long-name-390x844.png`: a 40-character suite name ("Northwind Partners Shared Workspace
+  Suit", the last character is the 40th) at 390 wide. The eyebrow ends in an ellipsis; the bell and
+  account controls stay inside the viewport (`.topbar__right` at x 284 to 364 of 390).
+- `document-390x844.png`: a document page at 390 wide. Headings are Poppins (the plan's decision
+  9 face for headings), body text is Inter. The mobile nav's icon row is topmost over the footer row.
+- `sidebar-hover-over-highlight-1280.png`: the collapsed sidebar hover-expanded at 1280 wide over a
+  red editor overlay. The overlay is a stand-in for a real comment highlight: the page injects a
+  `comment-highlights` element with the real class (its stylesheet z-index is what is measured), and
+  the sidebar covers it. Stated plainly because a real highlight needs a comment on the document.
+
+Not captured: Cloud Command's sidebar beside the cluster (needs Command's stack), and a suite-off render
+(the DOM snapshot in `tests/src/page_layouts/top-bar.test.jsx` holds it).
