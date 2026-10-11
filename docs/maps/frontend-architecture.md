@@ -169,6 +169,7 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 | `useNotificationChannel.js` | the `/notifications-ws` socket, feeding `NotificationBell` |
 | `useSuite.js` | suite mode: `GET /api/suite` once per page load, and `GET /api/suite/links` only for a signed-in user while suite mode is on. Any failure reads as off. `__resetSuiteCache` is the test seam |
 | `useSuiteLinks(signedIn)` (`src/hooks/useSuite.js:80`) | the same two requests for a page outside the layout's user state (the editor), made only when `signedIn` (a signed-out viewer makes no request): `{ commandWorkspaceUrl }` in suite mode, `null` otherwise or on any failure |
+| `src/lib/sign-in-target.js` | the kept deep link under `c2-sign-in-target`; `getStorage()` returns null when sessionStorage throws, which every caller treats as refused (fail closed) |
 | `useSignedOutTarget.js` | the signed-out deep-link decision (W6-CDX-8, W6-CDX-26). `useSignedOutTarget()` (`:170`) asks `/api/oauth/providers` and `suiteEnabled()`, then `resolveSignedOut` (`:94`) returns `bounced`, `login` or `landing`. The pure rule is `decideSignedOut` (`:48`); every target goes through `safeReturnTo` (`services/return-to.js`), the one validator the server uses |
 | `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
 | `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
@@ -241,11 +242,11 @@ the server. Where OIDC is offered and is the only sign-in (`isOidcOnly`, `:35`),
 the link bounces once per tab to `/api/auth/oidc/start?returnTo=`. The marker is
 `sessionStorage["c2-oidc-bounce"]`, cleared on a successful sign-in (`clearOidcBounce`, called from
 `Std_Layout.jsx` `checkAuth`). An `oauth_error` return renders the landing. Where no OIDC is offered,
-the validated target is kept under `c2-sign-in-target` (`keepSignInTarget`, `:124`) and the caller
-opens the Login modal; `Login.jsx` `finishSignIn` (`:39`) sends a successful sign-in to the kept
-target (`takeSignInTarget`, `:136`), or reloads. A `bounced` result needs no other work.
+the validated target is kept under `c2-sign-in-target` (`src/lib/sign-in-target.js`) and the caller
+opens the Login modal. That also covers OIDC offered beside local login outside suite mode, so a deep link
+never redirects to `/`. Dismissing the modal (`destroyModal`, `util.jsx`) forgets the kept target; `Login.jsx` `finishSignIn` sends a successful sign-in to the kept target, or reloads. A `bounced` result needs no other work.
 
-The target is `safeReturnTo(pathname + search)` on the client too, so an encoded path (a `%`
+The target is `safeReturnTo(pathname + search + hash)` on the client too (the fragment is carried because a browser never sends it), so an encoded path (a `%`
 anywhere in the path) falls back to `/` and the bounce still happens, as Cloud Command does. The bare
 `/` is never bounced. That matches Cloud Command's current default (`BOUNCE_BARE_ROOT = false`,
 `src/lib/silent-sign-in.ts`, pending Kyle's D4); flipping D4 is a separate, deliberate change.

@@ -8,6 +8,7 @@
 import { createRoot } from 'react-dom/client';
 import DOMPurify from 'dompurify';
 import { openDialog, closeDialog } from './lib/dialog.js';
+import { clearSignInTarget } from './lib/sign-in-target.js';
 
 // --- Constants ---
 
@@ -552,6 +553,8 @@ export function hideModalDimmer() {
 let modalEntry = null;
 
 export function destroyModal() {
+  // A dismissed Login modal forgets the deep link it was opened for (W6-CDX-26), so a later sign-in does not jump to it.
+  clearSignInTarget();
   const modalRoot = getModalRoot();
   if (modalRoot) clearInner(modalRoot);
   hideModalDimmer();

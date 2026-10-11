@@ -94,6 +94,7 @@ describe('Std_Layout and /api/github/status', () => {
 describe('Std_Layout, the signed-out front door (W6-CDX-26)', () => {
   const ONLY_OIDC = { google: false, github: false, local: false, oidc: { enabled: true, name: 'SSO' } };
   const LOCAL_ONLY = { google: false, github: false, local: true, oidc: { enabled: false, name: 'SSO' } };
+  const OIDC_AND_LOCAL = { google: false, github: false, local: true, oidc: { enabled: true, name: 'SSO' } };
 
   function stubWorld({ suiteOn, providers }) {
     apiFetch.mockImplementation((method, url) => Promise.resolve(
@@ -136,6 +137,15 @@ describe('Std_Layout, the signed-out front door (W6-CDX-26)', () => {
 
   it('opens the Login modal on a deep link when no OIDC is offered, and keeps the target', async () => {
     stubWorld({ suiteOn: false, providers: LOCAL_ONLY });
+    window.history.replaceState({}, '', '/doc/9');
+    renderLayout();
+    await waitFor(() => expect(showModal).toHaveBeenCalledOnce());
+    expect(standardRedirect).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem('c2-sign-in-target')).toBe('/doc/9');
+  });
+
+  it('opens the modal, and does not redirect to "/", on a deep link with OIDC beside local login outside suite mode', async () => {
+    stubWorld({ suiteOn: false, providers: OIDC_AND_LOCAL });
     window.history.replaceState({}, '', '/doc/9');
     renderLayout();
     await waitFor(() => expect(showModal).toHaveBeenCalledOnce());

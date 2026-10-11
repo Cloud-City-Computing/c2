@@ -202,10 +202,10 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
     }
     if (res.success) {
       setSessionCookie(res.token);
-      destroyModal();
-      // The welcome is mounted by Std_Layout for every user, so reloading into
-      // the authenticated app is all this needs to do.
+      // The kept target is taken before the modal closes, because closing it forgets the target.
+      // The welcome is mounted by Std_Layout for every user, so reloading into the app is all this needs to do.
       finishSignIn();
+      destroyModal();
     } else {
       setError(res.message ?? 'Error creating account.');
     }

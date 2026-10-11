@@ -31,10 +31,21 @@ import {
   useSignedOutTarget,
 } from '../../../src/hooks/useSignedOutTarget.js';
 import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
+import { safeReturnTo } from '../../../services/return-to.js';
 
 const corpus = JSON.parse(
   readFileSync(path.resolve('tests/fixtures/return-to-corpus.json'), 'utf8'),
 );
+
+/** Replaces window.sessionStorage with a getter that throws. Returns the function that restores the original. */
+function stubStorageThrows() {
+  const original = Object.getOwnPropertyDescriptor(window, 'sessionStorage');
+  Object.defineProperty(window, 'sessionStorage', { configurable: true, get() { throw new Error('denied'); } });
+  return () => {
+    if (original) Object.defineProperty(window, 'sessionStorage', original);
+    else delete window.sessionStorage;
+  };
+}
 
 const ONLY_OIDC = { google: false, github: false, local: false, oidc: { enabled: true, name: 'SSO' } };
 const OIDC_AND_LOCAL = { google: false, github: false, local: true, oidc: { enabled: true, name: 'SSO' } };
@@ -101,8 +112,18 @@ describe('decideSignedOut', () => {
     expect(returnToOf(decision.url)).toBe('/doc/9');
   });
 
-  it('renders the landing when OIDC is offered beside local login outside suite mode (unchanged)', () => {
-    expect(decideSignedOut({ ...deepLink, oidcOnly: false, suiteOn: false })).toEqual({ action: 'landing' });
+  it('opens the Login modal, keeping the target, when OIDC is offered beside local login outside suite mode', () => {
+    // Before W6-CDX-26's fix this stayed on the deep URL with the landing (or redirected to "/"). It is the modal now.
+    expect(decideSignedOut({ ...deepLink, oidcOnly: false, suiteOn: false, search: '?x=1' })).toEqual({
+      action: 'login',
+      target: '/doc/9?x=1',
+    });
+  });
+
+  it('keeps the URL fragment in the target, because a browser never sends it to the server', () => {
+    const decision = decideSignedOut({ ...deepLink, search: '?x=1', hash: '#top' });
+    expect(decision.action).toBe('bounce');
+    expect(returnToOf(decision.url)).toBe('/doc/9?x=1#top');
   });
 
   it('opens the Login modal, keeping the validated target, when no OIDC is offered', () => {
@@ -125,12 +146,31 @@ describe('decideSignedOut', () => {
     expect(returnToOf(decision.url)).toBe('/');
   });
 
-  // Every corpus entry is the hostile-input contract: the bounce's returnTo must be the corpus answer.
+  // Every corpus entry is the hostile-input contract, fed the way production feeds it: the browser's
+  // location, split by the URL parser into pathname, search and hash. The corpus answer is what the
+  // validator gives a RAW value. The browser normalises some values first (dot segments, backslashes,
+  // characters it percent-encodes, an empty "?" or "#"), so the production target can differ from the
+  // corpus answer. The test pins the production target, and checks it is always "/" or a same-origin path.
   const cases = corpus.cases.filter((c) => c.input !== '/' && c.input !== '/404');
-  it.each(cases.map((c, i) => [i, c.input, c.expected]))('corpus case %i bounces with the corpus answer as returnTo', (_i, input, expected) => {
-    const decision = decideSignedOut({ ...deepLink, pathname: input, search: '' });
+  const productionTarget = (input) => {
+    if (!(input.startsWith('/') && !input.startsWith('//'))) return { parts: { pathname: input, search: '', hash: '' }, expected: '/' };
+    const { pathname, search, hash } = new URL(input, 'http://app.test');
+    const joined = pathname + search + hash;
+    return { parts: { pathname, search, hash }, expected: safeReturnTo(joined) };
+  };
+  it.each(cases.map((c, i) => [i, c.input, c.expected]))('corpus case %i bounces with the production target as returnTo', (_i, input, corpusAnswer) => {
+    const { parts, expected } = productionTarget(input);
+    const decision = decideSignedOut({ ...deepLink, ...parts });
+    // The browser can resolve the input to the root (for example "/\\evil.example" becomes "//evil.example", a host,
+    // so the pathname is "/"). The root is the landing, never a bounce, exactly as the browser sees it.
+    if (parts.pathname === '/') {
+      expect(decision, JSON.stringify(input)).toEqual({ action: 'landing' });
+      return;
+    }
     expect(decision.action, JSON.stringify(input)).toBe('bounce');
-    expect(returnToOf(decision.url), JSON.stringify(input)).toBe(expected);
+    expect(returnToOf(decision.url), `${JSON.stringify(input)} (corpus answer ${JSON.stringify(corpusAnswer)})`).toBe(expected);
+    const safe = expected === '/' || (expected.startsWith('/') && !expected.startsWith('//') && !expected.includes('\\'));
+    expect(safe, JSON.stringify(expected)).toBe(true);
   });
 });
 
@@ -244,6 +284,34 @@ describe('useSignedOutTarget', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('treats a sessionStorage whose getter throws as refused: no bounce, and the landing still renders', async () => {
+    const restore = stubStorageThrows();
+    try {
+      window.history.replaceState({}, '', '/doc/9');
+      const { result } = renderHook(() => useSignedOutTarget());
+      expect(await result.current()).toBe('landing');
+      expect(fetchMock).toHaveBeenCalledWith('/api/oauth/providers');
+    } finally {
+      restore();
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
+  it('with the getter throwing and no OIDC offered, still opens the Login modal', async () => {
+    fetchMock.mockImplementation((url) => Promise.resolve({ json: () => Promise.resolve(
+      url === '/api/oauth/providers' ? { success: true, providers: LOCAL_ONLY } : { enabled: false, name: null },
+    ) }));
+    const restore = stubStorageThrows();
+    try {
+      window.history.replaceState({}, '', '/doc/9');
+      const { result } = renderHook(() => useSignedOutTarget());
+      expect(await result.current()).toBe('login');
+    } finally {
+      restore();
+      window.history.replaceState({}, '', '/');
+    }
   });
 
   it('answers landing on the root without asking the server, so the landing is untouched', async () => {

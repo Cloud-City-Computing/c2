@@ -19,12 +19,12 @@
 import { useCallback } from 'react';
 import { safeReturnTo } from '../../services/return-to.js';
 import { suiteEnabled } from './useSuite.js';
+import { SIGN_IN_TARGET_KEY, getStorage, keepSignInTarget, takeSignInTarget, clearSignInTarget } from '../lib/sign-in-target.js';
+
+export { SIGN_IN_TARGET_KEY, keepSignInTarget, takeSignInTarget, clearSignInTarget };
 
 /** The sessionStorage key whose presence means this tab has already been bounced once. */
 export const OIDC_BOUNCE_MARKER = 'c2-oidc-bounce';
-
-/** The sessionStorage key holding the validated deep link a local sign-in returns to. */
-export const SIGN_IN_TARGET_KEY = 'c2-sign-in-target';
 
 /**
  * OIDC is the only sign-in when the providers route reports it enabled, and neither Google nor local is
@@ -36,21 +36,24 @@ export function isOidcOnly(providers) {
   return providers?.oidc?.enabled === true && providers.google !== true && providers.local === false;
 }
 
-/** The path and query a signed-out visit asked for, reduced by the one validator; "/" for anything refused. */
-function targetOf(pathname, search) {
-  return safeReturnTo(`${pathname}${search}`);
+/**
+ * The path, query and fragment a signed-out visit asked for, reduced by the one validator; "/" for anything
+ * refused. The fragment is part of the target, because a browser never sends it to the server.
+ */
+function targetOf(pathname, search, hash = '') {
+  return safeReturnTo(`${pathname}${search}${hash}`);
 }
 
 /**
  * What a signed-out visit does. The root and the 404 page never bounce and never open the modal.
  * @returns {{ action: 'bounce', url: string } | { action: 'login', target: string } | { action: 'landing' }}
  */
-export function decideSignedOut({ pathname, search, oidcOffered, oidcOnly, suiteOn, bounced, oauthError }) {
+export function decideSignedOut({ pathname, search, hash = '', oidcOffered, oidcOnly, suiteOn, bounced, oauthError }) {
   if (pathname === '/' || pathname === '/404') return { action: 'landing' };
-  const target = targetOf(pathname, search);
-  if (!oidcOffered) return { action: 'login', target };
+  const target = targetOf(pathname, search, hash);
+  // No OIDC, or OIDC beside local login outside suite mode: the modal offers the sign-ins and keeps the link.
+  if (!oidcOffered || (!oidcOnly && !suiteOn && !bounced && !oauthError)) return { action: 'login', target };
   if (bounced || oauthError) return { action: 'landing' };
-  if (!oidcOnly && !suiteOn) return { action: 'landing' };
   return { action: 'bounce', url: `/api/auth/oidc/start?returnTo=${encodeURIComponent(target)}` };
 }
 
@@ -59,7 +62,8 @@ export function decideSignedOut({ pathname, search, oidcOffered, oidcOnly, suite
  * when the marker cannot be stored, because a bounce that cannot remember itself would loop.
  * @returns {boolean} true when the browser was sent to the sign-in start
  */
-export function startOidcBounce({ pathname, search, providers, suiteOn = false, storage, assign }) {
+export function startOidcBounce({ pathname, search, hash = '', providers, suiteOn = false, storage, assign }) {
+  if (!storage) return false;
   let bounced;
   try {
     bounced = storage.getItem(OIDC_BOUNCE_MARKER) !== null;
@@ -70,6 +74,7 @@ export function startOidcBounce({ pathname, search, providers, suiteOn = false, 
   const decision = decideSignedOut({
     pathname,
     search,
+    hash,
     oidcOffered: providers?.oidc?.enabled === true,
     oidcOnly: isOidcOnly(providers),
     suiteOn,
@@ -91,14 +96,15 @@ export function startOidcBounce({ pathname, search, providers, suiteOn = false, 
  * (no OIDC; the validated target was kept and the caller should open the Login modal), or 'landing'.
  * With no providers answer, OIDC is not known to be offered, so the Login modal is the safe outcome.
  */
-export function resolveSignedOut({ pathname, search, providers, suiteOn = false, storage, assign }) {
-  if (startOidcBounce({ pathname, search, providers, suiteOn, storage, assign })) return 'bounced';
+export function resolveSignedOut({ pathname, search, hash = '', providers, suiteOn = false, storage, assign }) {
+  if (startOidcBounce({ pathname, search, hash, providers, suiteOn, storage, assign })) return 'bounced';
   const oidcOffered = providers?.oidc?.enabled === true;
   const bounced = readFlag(storage, OIDC_BOUNCE_MARKER);
   const oauthError = new URLSearchParams(search).has('oauth_error');
   const decision = decideSignedOut({
     pathname,
     search,
+    hash,
     oidcOffered,
     oidcOnly: isOidcOnly(providers),
     suiteOn,
@@ -112,7 +118,9 @@ export function resolveSignedOut({ pathname, search, providers, suiteOn = false,
   return 'landing';
 }
 
+/** Whether a flag is set. Refused storage (null, or a read that throws) reads as set, so no bounce happens. */
 function readFlag(storage, key) {
+  if (!storage) return true;
   try {
     return storage.getItem(key) !== null;
   } catch {
@@ -120,31 +128,9 @@ function readFlag(storage, key) {
   }
 }
 
-/** Keeps the validated target a local sign-in returns to. Storage that refuses the write keeps nothing. */
-export function keepSignInTarget(storage, target) {
-  try {
-    storage.setItem(SIGN_IN_TARGET_KEY, safeReturnTo(target));
-  } catch {
-    // Without storage the sign-in reloads the page it is on, which is the same deep link.
-  }
-}
-
-/**
- * The kept target, validated again, or null. Read once: a successful sign-in forgets it.
- * @returns {string|null}
- */
-export function takeSignInTarget(storage = window.sessionStorage) {
-  try {
-    const kept = storage.getItem(SIGN_IN_TARGET_KEY);
-    storage.removeItem(SIGN_IN_TARGET_KEY);
-    return kept === null ? null : safeReturnTo(kept);
-  } catch {
-    return null;
-  }
-}
-
 /** Forgets the bounce, so a later signed-out visit in this tab can bounce again. */
-export function clearOidcBounce(storage = window.sessionStorage) {
+export function clearOidcBounce(storage = getStorage()) {
+  if (!storage) return;
   try {
     storage.removeItem(OIDC_BOUNCE_MARKER);
   } catch {
@@ -169,15 +155,16 @@ async function fetchProviders() {
  */
 export function useSignedOutTarget() {
   return useCallback(async () => {
-    const { pathname, search } = window.location;
+    const { pathname, search, hash } = window.location;
     if (pathname === '/' || pathname === '/404') return 'landing';
     const [providers, suiteOn] = await Promise.all([fetchProviders(), suiteEnabled()]);
     return resolveSignedOut({
       pathname,
       search,
+      hash,
       providers,
       suiteOn,
-      storage: window.sessionStorage,
+      storage: getStorage(),
       assign: (url) => window.location.assign(url),
     });
   }, []);
