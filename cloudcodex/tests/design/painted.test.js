@@ -111,9 +111,12 @@ describe('a label on the accent fill is measured in the colour the page paints',
 
 describe('a white label on the accent dark is measured on the avatar that paints it', () => {
   it('reads each avatar site from the real declarations', () => {
+    // W6-CDX-29 moved the notification and activity avatars onto the --cx-white token; the mention
+    // avatar (editor-adjacent, deferred) still carries the literal, and both measure the same white.
     for (const site of ACCENT_DARK_SITES) {
       expect(declared(site, 'background'), site).toBe('var(--brand-blue-dark)');
-      expect(declared(site, 'color'), site).toBe('#fff');
+      const white = site === '.mention-picker__avatar--placeholder' ? '#fff' : 'var(--cx-white)';
+      expect(declared(site, 'color'), site).toBe(white);
     }
   });
 

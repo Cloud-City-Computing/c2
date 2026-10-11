@@ -1,9 +1,6 @@
 {
   "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
-  "_measured": "500 after W6-CDX-25 burned the shell chrome (Top Bar, Sidebar, Account Button, Footer, Mobile Bottom Navigation and Mobile Layout Overrides, 10 findings), from 510 after W6-CDX-28, 631 at W6-CDX-23's review fixes, from 642 after the first pass, from 674 at W6-CDX-22.",
-  "src/components/AccountMenu.jsx": {
-    "(file)": 5
-  },
+  "_measured": "419 after W6-CDX-29 burned the admin, settings, notification, activity, watch, archive-access, squad, export, preferences and account-swatch surfaces (73 findings: 68 in src/index.css, 5 in src/components/AccountMenu.jsx). Before it, 492 by this ledger's own sum (the earlier 500 note was stale): 500 after W6-CDX-25, 510 after W6-CDX-28, 631 at W6-CDX-23's review fixes, 674 at W6-CDX-22.",
   "src/components/CommentForm.jsx": {
     "(file)": 2
   },
@@ -21,31 +18,21 @@
   },
   "src/index.css": {
     "Mentions (inline @user chips)": 2,
-    "Notification bell": 10,
-    "Activity item": 2,
-    "Watch toggle (editor header)": 3,
     "Modal + Overlay": 5,
     "GitHub Integration": 186,
     "Login Tabs": 1,
     "Signup Validation Styles": 3,
-    "Settings Layout (archive/workspace/squad settings)": 14,
     "Editor Log": 40,
     "Markdown Editor": 2,
     "Version History": 5,
-    "Squad Members Panel": 2,
-    "Archive Access Panel": 8,
-    "User Preferences Panel": 2,
     "Collaborative Editing - Presence UI": 12,
     "Remote Cursors - Collaborative Editing": 2,
-    "Export Dropdown": 1,
     "Toast Notifications": 11,
     "Comments & Annotations": 100,
-    "Admin Dashboard": 23,
     "Read-only Document View": 10,
     "Code Block with Language Selector": 3,
     "Syntax Highlighting (highlight.js compatible - dark theme)": 8,
-    "Draw.io Diagram Block": 8,
-    "Notifications / Activity / Preferences pages (shared shell)": 3
+    "Draw.io Diagram Block": 8
   },
   "src/pages/Editor.jsx": {
     "(file)": 4
@@ -55,5 +42,31 @@
   },
   "src/util.jsx": {
     "(file)": 6
+  },
+  "_later": {
+    "src/components/CommentForm.jsx :: (file)": "The comment components, deferred with the editor canvas.",
+    "src/components/CommentHighlights.jsx :: (file)": "The comment components, deferred with the editor canvas.",
+    "src/components/CommentManager.jsx :: (file)": "The comment components, deferred with the editor canvas.",
+    "src/components/CommentSidebar.jsx :: (file)": "The comment components, deferred with the editor canvas.",
+    "src/components/github/CodeEmbedPickerModal.jsx :: (file)": "The GitHub embed picker, deferred with the GitHub surface.",
+    "src/index.css :: Mentions (inline @user chips)": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Modal + Overlay": "Not in W6-CDX-29's banner list and not burned by an earlier session: a leftover that the W6-CDX-29 plan did not name. Burn it in a follow-up before the ledger reaches zero.",
+    "src/index.css :: GitHub Integration": "The GitHub surface, deferred until track E2 extracts GitHubPage.jsx (out of test scope); the suite UI spec, Deferred to a later wave.",
+    "src/index.css :: Login Tabs": "Not in W6-CDX-29's banner list and not burned by an earlier session: a leftover that the W6-CDX-29 plan did not name. Burn it in a follow-up before the ledger reaches zero.",
+    "src/index.css :: Signup Validation Styles": "Not in W6-CDX-29's banner list and not burned by an earlier session: a leftover that the W6-CDX-29 plan did not name. Burn it in a follow-up before the ledger reaches zero.",
+    "src/index.css :: Editor Log": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Markdown Editor": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Version History": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Collaborative Editing - Presence UI": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Remote Cursors - Collaborative Editing": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Toast Notifications": "The Welcome Setup block that follows the toast CSS (the Toast itself is burned, W6-CDX-23); not in W6-CDX-29's list. Burn it in a follow-up.",
+    "src/index.css :: Comments & Annotations": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Read-only Document View": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Code Block with Language Selector": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Syntax Highlighting (highlight.js compatible - dark theme)": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/index.css :: Draw.io Diagram Block": "The editor canvas (annotation, syntax, diff and remote-cursor families): deferred to a later wave by the suite UI spec, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no coverage.",
+    "src/pages/Editor.jsx :: (file)": "The editor page, deferred with the editor canvas.",
+    "src/pages/GitHubPage.jsx :: (file)": "The GitHub page (out of test scope), deferred with the GitHub surface.",
+    "src/util.jsx :: (file)": "The print stylesheet, not a surface; a later wave owns print."
   }
 }
