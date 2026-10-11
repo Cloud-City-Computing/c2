@@ -23,7 +23,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { c2_query } from '../mysql_connect.js';
-import { checkWebhookTarget, pinnedLookup } from './webhook-target.js';
+import { checkWebhookTarget, pinnedLookup, withDeadline } from './webhook-target.js';
 import { webhookTargetOptions } from './webhooks.js';
 
 /** How often a tick runs. */
@@ -32,8 +32,18 @@ export const TICK_MS = 2000;
 export const MAX_SENDS_PER_TICK = 100;
 /** A tick starts no new send after this long. */
 export const TICK_BUDGET_MS = 5000;
-/** A receiver that has not answered by then counts as a failure (a lease lasts 30 seconds). */
+/** A receiver that has not answered by then counts as a failure. */
 export const SEND_TIMEOUT_MS = 10000;
+/**
+ * Every query the worker makes has this long to answer. A query that hangs
+ * fails the tick instead of stalling the loop; the lease and every guarded
+ * write keep an abandoned query from doing harm.
+ */
+export const QUERY_TIMEOUT_MS = 10000;
+/** A skipped tick is logged at most this often. */
+export const SKIP_LOG_MS = 60000;
+/** Outcomes after which a subscription's run goes on in the same tick. */
+const CONTINUE = new Set(['delivered', 'dead', 'expired']);
 
 // last_error is a VARCHAR(255). Counted in code points, as the envelope is.
 const ERROR_BOUND = 255;
@@ -87,8 +97,16 @@ export function postWebhook({ url, body, headers, addresses }) {
   });
 }
 
-// The head query. occurred_at is UTC (W6-CDX-13), so its age is compared with
-// UTC_TIMESTAMP, never NOW() and never a mysql2 Date, which is local time.
+// One clock for every time the worker stores or compares: UTC_TIMESTAMP(3).
+// NOW() follows the server's session time zone, so it must not be mixed with
+// the UTC occurred_at or with these columns. (created_at is a TIMESTAMP, which
+// MySQL converts to the session zone on comparison; it is pruned with NOW(),
+// which is correct for it, in pruneWebhookRows.)
+const SUBS_SQL = `
+  SELECT id, url, source, secret FROM webhook_subscriptions
+   WHERE enabled = TRUE AND (paused_until IS NULL OR paused_until <= UTC_TIMESTAMP(3))
+   ORDER BY id`;
+
 const HEAD_SQL = `
   SELECT d.id, d.attempts, e.id AS sequence, e.type, e.body,
          (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
@@ -100,9 +118,16 @@ const HEAD_SQL = `
 
 const LEASE_SQL = `
   UPDATE webhook_deliveries
-     SET leased_by = ?, lease_expires_at = NOW(3) + INTERVAL 30 SECOND
+     SET leased_by = ?, lease_expires_at = UTC_TIMESTAMP(3) + INTERVAL 30 SECOND
    WHERE id = ? AND status = 'pending'
-     AND (lease_expires_at IS NULL OR lease_expires_at < NOW(3))`;
+     AND (lease_expires_at IS NULL OR lease_expires_at < UTC_TIMESTAMP(3))`;
+
+// Taken again after the DNS check and before the send, so the send starts with
+// the full 30 seconds whatever the check took. Guarded like every later write.
+const RENEW_SQL = `
+  UPDATE webhook_deliveries
+     SET lease_expires_at = UTC_TIMESTAMP(3) + INTERVAL 30 SECOND
+   WHERE id = ? AND leased_by = ? AND status = 'pending'`;
 
 // Every write after the lease carries the owner token, so a lapsed lease
 // writes nothing. Each returns affectedRows; 0 means the lease was lost.
@@ -113,7 +138,7 @@ const EXPIRE_SQL = `
 
 const DELIVERED_SQL = `
   UPDATE webhook_deliveries
-     SET status = 'delivered', delivered_at = NOW(3), last_status = ?, last_error = NULL,
+     SET status = 'delivered', delivered_at = UTC_TIMESTAMP(3), last_status = ?, last_error = NULL,
          leased_by = NULL, lease_expires_at = NULL
    WHERE id = ? AND leased_by = ?`;
 
@@ -137,11 +162,16 @@ const FAILED_SQL = `
 // the count from before this failure was added.
 const BACKOFF_SQL = `
   UPDATE webhook_subscriptions
-     SET paused_until = DATE_ADD(NOW(3), INTERVAL LEAST(10 * POW(2, consecutive_failures), 3600) SECOND),
+     SET paused_until = DATE_ADD(UTC_TIMESTAMP(3), INTERVAL LEAST(10 * POW(2, consecutive_failures), 3600) SECOND),
          consecutive_failures = consecutive_failures + 1
    WHERE id = ?`;
 
-const RESET_SQL = 'UPDATE webhook_subscriptions SET consecutive_failures = 0, paused_until = NULL WHERE id = ?';
+// A delivered write clears the backoff only when no pause is live. A success
+// that was slow to write must not clear a pause another worker set after its
+// own failure: while a pause is live, the failure is the newer fact.
+const RESET_SQL = `
+  UPDATE webhook_subscriptions SET consecutive_failures = 0, paused_until = NULL
+   WHERE id = ? AND (paused_until IS NULL OR paused_until <= UTC_TIMESTAMP(3))`;
 const DISABLE_SQL = 'UPDATE webhook_subscriptions SET enabled = FALSE, disabled_reason = ? WHERE id = ?';
 
 /**
@@ -154,13 +184,16 @@ const DISABLE_SQL = 'UPDATE webhook_subscriptions SET enabled = FALSE, disabled_
  * @returns { { owner: String, tick: () => Promise<{ sent: Number, stale: Number }> } }
  */
 export function createWebhookWorker({
-  query = c2_query,
+  query: rawQuery = c2_query,
   send = postWebhook,
   now = () => Date.now(),
   owner = randomUUID(),
   resolve,
   targetOptions,
+  queryTimeoutMs = QUERY_TIMEOUT_MS,
 } = {}) {
+  const query = (sql, params) => withDeadline(rawQuery(sql, params), queryTimeoutMs, 'ETIMEOUT');
+  let cursor = 0;
   const checkTarget = (url) =>
     checkWebhookTarget(url, { ...(targetOptions ?? webhookTargetOptions()), resolve });
 
@@ -213,6 +246,11 @@ export function createWebhookWorker({
     }
     if (!check.ok) return fail(counts, head, subscription, null, check.reason);
 
+    // The lease was taken before the DNS check; renew it now, so the send has
+    // its full window. A renewal that touches no row lost the lease: no send.
+    const renewed = await query(RENEW_SQL, [head.id, owner]);
+    if (renewed.affectedRows !== 1) return stale(counts);
+
     const body = Buffer.isBuffer(head.body) ? head.body : Buffer.from(head.body);
     const headers = {
       'Content-Type': 'application/json',
@@ -251,26 +289,33 @@ export function createWebhookWorker({
     return fail(counts, head, subscription, status, `HTTP ${status}${note}`);
   }
 
+  /**
+   * One tick, round-robin: each round takes one step for every subscription
+   * that is still going, so a subscription with an endless backlog cannot
+   * starve the others. The tick stops at the send cap or the time budget,
+   * whichever comes first. The first subscription of each round rotates from
+   * tick to tick, so a tick cut short does not always serve the same one first.
+   */
   async function tick() {
     const started = now();
     const counts = { sent: 0, stale: 0 };
-    const subscriptions = await query(
-      `SELECT id, url, source, secret FROM webhook_subscriptions
-        WHERE enabled = TRUE AND (paused_until IS NULL OR paused_until <= NOW(3))
-        ORDER BY id LIMIT 20`,
-      []
-    );
+    const result = () => ({ sent: counts.sent, stale: counts.stale });
+    const subscriptions = await query(SUBS_SQL, []);
+    if (subscriptions.length === 0) return result();
 
-    for (const subscription of subscriptions) {
-      for (;;) {
-        if (counts.sent >= MAX_SENDS_PER_TICK || now() - started >= TICK_BUDGET_MS) {
-          return { sent: counts.sent, stale: counts.stale };
-        }
+    const first = cursor % subscriptions.length;
+    cursor += 1;
+    let active = [...subscriptions.slice(first), ...subscriptions.slice(0, first)];
+    while (active.length > 0) {
+      const next = [];
+      for (const subscription of active) {
+        if (counts.sent >= MAX_SENDS_PER_TICK || now() - started >= TICK_BUDGET_MS) return result();
         const step = await deliverHead(subscription, counts);
-        if (step !== 'delivered' && step !== 'dead') break;
+        if (CONTINUE.has(step)) next.push(subscription);
       }
+      active = next;
     }
-    return { sent: counts.sent, stale: counts.stale };
+    return result();
   }
 
   return { owner, tick };
@@ -286,8 +331,23 @@ export function createWebhookWorker({
 export function startWebhookWorker(deps = {}) {
   const worker = createWebhookWorker(deps);
   let running = false;
+  let skipped = 0;
+  let lastLogged = -Infinity;
   const timer = setInterval(async () => {
-    if (running) return;
+    if (running) {
+      // A tick still running when the next one is due: counted, and logged at
+      // most once a minute, so a hung query is visible rather than silent.
+      skipped += 1;
+      const at = Date.now();
+      if (at - lastLogged >= SKIP_LOG_MS) {
+        console.error(
+          `[${new Date(at).toISOString()}] webhook delivery: ${skipped} tick(s) skipped, the previous tick has not finished`
+        );
+        skipped = 0;
+        lastLogged = at;
+      }
+      return;
+    }
     running = true;
     try {
       await worker.tick();

@@ -9,7 +9,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS webhook_deliveries, webhook_events, webhook_subscriptions, doc_images;
+DROP TABLE IF EXISTS webhook_deliveries, webhook_events, webhook_sequence_lock, webhook_subscriptions, doc_images;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS watches;
 DROP TABLE IF EXISTS activity_log;
@@ -537,4 +537,13 @@ CREATE TABLE webhook_deliveries (
   FOREIGN KEY (subscription_id) REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
   FOREIGN KEY (event_id) REFERENCES webhook_events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- The emit order lock (migrations/2026-10-10-webhook-sequence-lock.sql): emits
+-- take this row FOR UPDATE, so their ids are allocated in commit order.
+CREATE TABLE webhook_sequence_lock (
+  id TINYINT PRIMARY KEY,
+  CONSTRAINT chk_webhook_sequence_lock_row CHECK (id = 1)
+) ENGINE=InnoDB;
+
+INSERT INTO webhook_sequence_lock (id) VALUES (1);
 

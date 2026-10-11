@@ -20,9 +20,31 @@ import { lookup } from 'node:dns/promises';
 /** The longest receiver URL a subscription stores (webhook_subscriptions.url). */
 export const MAX_WEBHOOK_URL_LENGTH = 2048;
 
-// Refused whatever WEBHOOK_ALLOW_PRIVATE_TARGETS says: cloud metadata lives in
-// link-local space, and "this network" and the reserved ranges are never a
-// real receiver. So are the IPv6 transition forms whose embedded IPv4 address
+/** How long a name may take to resolve before the check gives up (a transient refusal). */
+export const DNS_TIMEOUT_MS = 5000;
+
+/**
+ * `promise`, or a rejection with `code` once `ms` pass. The timer never holds
+ * the process open, and a late settlement of `promise` is ignored.
+ * @param { Promise } promise
+ * @param { Number } ms
+ * @param { String } [code]
+ */
+export function withDeadline(promise, ms, code = 'ETIMEOUT') {
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(`timed out after ${ms} ms`), { code })), ms);
+    timer.unref?.();
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+// Refused whatever WEBHOOK_ALLOW_PRIVATE_TARGETS says: IPv4 cloud metadata
+// lives in link-local space (169.254.0.0/16, and fe80::/10 for IPv6). AWS's
+// IPv6 metadata endpoint, fd00:ec2::254, is not link-local: it sits in the
+// unique-local range, so it is listed by address here, ahead of the PRIVATE
+// ranges below that a private receiver is allowed to reach. "This network" and
+// the reserved ranges are never a real receiver either. So are the IPv6 transition forms whose embedded IPv4 address
 // is not checked below: 6to4 (2002::/16), Teredo (2001::/32) and the local-use
 // NAT64 prefix (64:ff9b:1::/48), where a relay or a local translator would
 // carry the request on to an IPv4 host, the metadata address included.
@@ -34,6 +56,7 @@ ALWAYS.addSubnet('240.0.0.0', 4, 'ipv4');
 ALWAYS.addAddress('::', 'ipv6');
 ALWAYS.addSubnet('fe80::', 10, 'ipv6');
 ALWAYS.addSubnet('ff00::', 8, 'ipv6');
+ALWAYS.addAddress('fd00:ec2::254', 'ipv6');
 ALWAYS.addSubnet('2002::', 16, 'ipv6');
 ALWAYS.addSubnet('2001::', 32, 'ipv6');
 ALWAYS.addSubnet('64:ff9b:1::', 48, 'ipv6');
@@ -130,7 +153,10 @@ const refuse = (reason, extra = {}) => ({ ok: false, reason, ...extra });
  * @returns { Promise<{ ok: true, url: String, addresses: Array<{ address: String, family: Number }> } |
  *   { ok: false, reason: String, transient?: true }> }
  */
-export async function checkWebhookTarget(raw, { allowPrivate = false, production = false, resolve = lookup } = {}) {
+export async function checkWebhookTarget(
+  raw,
+  { allowPrivate = false, production = false, resolve = lookup, dnsTimeoutMs = DNS_TIMEOUT_MS } = {}
+) {
   if (typeof raw !== 'string' || raw.trim() === '') return refuse('The webhook URL is required.');
   const text = raw.trim();
   if (text.length > MAX_WEBHOOK_URL_LENGTH) {
@@ -161,7 +187,10 @@ export async function checkWebhookTarget(raw, { allowPrivate = false, production
     resolved = [{ address: host }];
   } else {
     try {
-      resolved = await resolve(host, { all: true, verbatim: true });
+      resolved = await withDeadline(
+        Promise.resolve().then(() => resolve(host, { all: true, verbatim: true })),
+        dnsTimeoutMs
+      );
     } catch {
       resolved = [];
     }

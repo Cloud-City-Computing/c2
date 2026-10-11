@@ -17,7 +17,12 @@ import { c2_query } from '../mysql_connect.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { isValidId, asyncHandler, errorHandler } from './helpers/shared.js';
 import { checkWebhookTarget } from '../services/webhook-target.js';
-import { EMITTED_TYPES, loadSubscriptions, webhookTargetOptions } from '../services/webhooks.js';
+import {
+  EMITTED_TYPES,
+  MAX_WEBHOOK_SUBSCRIPTIONS,
+  loadSubscriptions,
+  webhookTargetOptions,
+} from '../services/webhooks.js';
 
 const router = express.Router();
 
@@ -131,11 +136,20 @@ router.post('/admin/webhooks', requireAuth, requireAdmin, asyncHandler(async (re
   }
 
   const secret = newSecret();
+  // The cap is checked in the insert itself, so a count read before it cannot
+  // be overtaken by a second admin's create in between.
   const created = await c2_query(
     `INSERT INTO webhook_subscriptions (url, secret, source, event_types, workspace_id, created_by)
-     VALUES (?, ?, 'admin', ?, ?, ?)`,
-    [check.url, secret, types ? JSON.stringify(types) : null, workspace, req.user.id]
+     SELECT ?, ?, 'admin', ?, ?, ? FROM DUAL
+      WHERE (SELECT COUNT(*) FROM webhook_subscriptions) < ?`,
+    [check.url, secret, types ? JSON.stringify(types) : null, workspace, req.user.id, MAX_WEBHOOK_SUBSCRIPTIONS]
   );
+  if (created?.affectedRows === 0) {
+    return res.status(409).json({
+      success: false,
+      message: `This instance already has the maximum of ${MAX_WEBHOOK_SUBSCRIPTIONS} webhook subscriptions; remove one first`,
+    });
+  }
   await loadSubscriptions();
 
   res.status(201).json({ success: true, webhook: await readView(created.insertId), secret });
@@ -238,10 +252,24 @@ router.post('/admin/webhooks/deliveries/:id/redeliver', requireAuth, requireAdmi
   if (!isValidId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid delivery id' });
   }
-  const [delivery] = await c2_query('SELECT id, status FROM webhook_deliveries WHERE id = ?', [Number(req.params.id)]);
+  const [delivery] = await c2_query(
+    `SELECT d.id, d.status, (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
+       FROM webhook_deliveries d
+       JOIN webhook_events e ON e.id = d.event_id
+      WHERE d.id = ?`,
+    [Number(req.params.id)]
+  );
   if (!delivery) return res.status(404).json({ success: false, message: 'Delivery not found' });
   if (delivery.status !== 'dead') {
     return res.status(409).json({ success: false, message: 'Only a dead-lettered delivery can be redelivered' });
+  }
+  // Pending again, it would be dead-lettered by the next tick without a send;
+  // refusing says so, rather than queueing a delivery that cannot go out.
+  if (Number(delivery.expired) === 1) {
+    return res.status(409).json({
+      success: false,
+      message: 'This event is older than 72 hours, so redelivering it would expire it again; it is not queued',
+    });
   }
   await c2_query(
     `UPDATE webhook_deliveries SET status = 'pending', attempts = 0, leased_by = NULL, lease_expires_at = NULL

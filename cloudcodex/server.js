@@ -193,7 +193,7 @@ setInterval(loadSubscriptions, 60 * 1000).unref();
 // The delivery worker (services/webhook-worker.js) sends what the outbox
 // holds, every two seconds. It never throws, and an install with no
 // subscription runs a query per tick that finds nothing.
-startWebhookWorker();
+const webhookWorker = startWebhookWorker();
 
 // ─── Resolve the port ───────────────────────────────────────
 //
@@ -284,6 +284,7 @@ shutdown = createShutdown({
     closeCollabSockets(code, reason);
     closeUserChannelSockets(code, reason);
   },
+  stopWorkers: () => webhookWorker.stop(),
   releaseLock: () => instanceLock?.release(),
   endPool,
   exit: (code) => process.exit(code),
