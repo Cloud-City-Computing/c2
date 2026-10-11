@@ -6307,7 +6307,7 @@ textarea:focus-visible {
 .explore-search-input::placeholder { color: var(--text-muted); }
 
 .explore-search-input:focus {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
 }
 
 .explore-clear-btn {
@@ -6341,7 +6341,7 @@ textarea:focus-visible {
 }
 
 .explore-sort:focus {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
 }
 
 /* Filter toggle button */
@@ -6365,13 +6365,13 @@ textarea:focus-visible {
 
 .btn-filter-toggle:hover {
   color: var(--text-primary);
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
 }
 
 .btn-filter-toggle--active {
   color: var(--brand-blue-light);
-  border-color: var(--brand-blue);
-  background: rgba(44, 167, 219, 0.08);
+  border-color: var(--cx-accent);
+  background: var(--cx-tint-accent-soft);
 }
 
 .filter-active-dot {
@@ -6419,14 +6419,14 @@ textarea:focus-visible {
 }
 
 .btn-fav-filter:hover {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
   color: var(--text-primary);
 }
 
 .btn-fav-filter--active {
-  background: rgba(255, 200, 50, 0.12);
-  border-color: #e6b800;
-  color: #ffc832;
+  background: var(--cx-tint-warning);
+  border-color: var(--cx-warning);
+  color: var(--cx-warning);
 }
 
 .explore-filter-select {
@@ -6442,7 +6442,7 @@ textarea:focus-visible {
 }
 
 .explore-filter-select:focus {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
 }
 
 .btn-clear-filters {
@@ -6451,15 +6451,15 @@ textarea:focus-visible {
   font-weight: 500;
   border: none;
   border-radius: var(--radius-sm);
-  background: rgba(255, 80, 80, 0.12);
-  color: #ff6b6b;
+  background: var(--cx-tint-danger);
+  color: var(--cx-danger);
   cursor: pointer;
   transition: var(--transition);
   white-space: nowrap;
 }
 
 .btn-clear-filters:hover {
-  background: rgba(255, 80, 80, 0.22);
+  background: var(--cx-tint-danger-strong);
 }
 
 .explore-status-bar {
@@ -6496,7 +6496,7 @@ textarea:focus-visible {
 }
 
 .explore-card:hover {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -6515,7 +6515,7 @@ textarea:focus-visible {
   transition: color 0.15s;
 }
 
-.explore-card:hover .explore-card__title { color: var(--brand-blue); }
+.explore-card:hover .explore-card__title { color: var(--cx-accent); }
 
 /* The card stays clickable for the mouse; this link is what the keyboard reaches.
    Colour is inherited so the card-hover rule above still tints the title. */
@@ -6534,13 +6534,13 @@ textarea:focus-visible {
 }
 
 .explore-badge--title {
-  background: rgba(44, 167, 219, 0.15);
+  background: var(--cx-tint-accent-mid);
   color: var(--brand-blue-light);
 }
 
 .explore-badge--content {
-  background: rgba(156, 136, 255, 0.15);
-  color: #b4a4ff;
+  background: var(--cx-tint-violet);
+  color: var(--cx-violet);
 }
 
 .explore-card__meta {
@@ -6569,7 +6569,7 @@ textarea:focus-visible {
 }
 
 .explore-match {
-  background: rgba(44, 167, 219, 0.25);
+  background: var(--cx-tint-accent-strongest);
   color: var(--brand-blue-light);
   border-radius: 2px;
   padding: 0 2px;
@@ -6615,7 +6615,7 @@ textarea:focus-visible {
 .explore-pagination__num--active {
   background: var(--brand-blue-hover);
   color: var(--cx-on-accent);
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
   font-weight: 600;
 }
 
