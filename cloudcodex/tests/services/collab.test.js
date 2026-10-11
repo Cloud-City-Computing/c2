@@ -22,6 +22,7 @@ import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import { c2_query, validateAndAutoLogin } from '../../mysql_connect.js';
+import { hashSessionToken } from '../../services/session-token.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
 import {
   setupCollabServer,
@@ -244,7 +245,7 @@ describe('services/collab — broadcastToDoc behaviour', () => {
  * Open a real ws client, complete the auth handshake, and resolve once
  * the server's awareness/sync messages have arrived.
  */
-async function authenticatedClient(logId, user = TEST_USER, dbStubs = [], loadedHtml = '<p>hi</p>') {
+async function authenticatedClient(logId, user = TEST_USER, dbStubs = [], loadedHtml = '<p>hi</p>', token = 'good') {
   validateAndAutoLogin.mockResolvedValue(user);
   // The real order: the read-access check, the write-access check, then the
   // doc load (SELECT ydoc_state, html_content), which a second client on an
@@ -258,7 +259,7 @@ async function authenticatedClient(logId, user = TEST_USER, dbStubs = [], loaded
   const ws = new WebSocket(url(logId), { headers: { Origin: origin() } });
   ws.binaryType = 'arraybuffer';
   await new Promise((r) => ws.once('open', r));
-  ws.send(JSON.stringify({ type: 'auth', token: 'good' }));
+  ws.send(JSON.stringify({ type: 'auth', token }));
 
   // Wait for the JSON `sync` frame that confirms auth completed.
   await new Promise((resolve, reject) => {
@@ -936,18 +937,39 @@ describe('services/collab: closeAll', () => {
 
 describe('services/collab: closeSocketsForSessions (W6-CDX-6)', () => {
   it('closes only the sockets of the revoked session, and leaves the same user\'s other device open', async () => {
-    const withSession = (digest) => Object.defineProperty({ ...TEST_USER }, 'sessionId', { value: digest });
-    const phone = await authenticatedClient(131, withSession('digest-phone'));
-    const laptop = await authenticatedClient(131, withSession('digest-laptop'));
+    const phone = await authenticatedClient(131, TEST_USER, [], '<p>hi</p>', 'phone-token');
+    const laptop = await authenticatedClient(131, TEST_USER, [], '<p>hi</p>', 'laptop-token');
 
     const phoneClosed = new Promise((resolve) => {
       phone.once('close', (code, reason) => resolve({ code, reason: reason.toString() }));
     });
-    expect(closeSocketsForSessions(['digest-phone'])).toBe(1);
+    expect(closeSocketsForSessions([hashSessionToken('phone-token')])).toBe(1);
     expect(await phoneClosed).toEqual({ code: 4004, reason: 'Signed out' });
 
     expect(laptop.readyState).toBe(WebSocket.OPEN);
     laptop.close();
     await new Promise((r) => laptop.once('close', r));
+  });
+
+  // W6-CDX-6 review: a sign-out that lands while the socket is still authenticating must not leave it live.
+  it('closes a socket whose sign-out lands mid-auth, and never registers it on the document', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    validateAndAutoLogin.mockImplementationOnce(() => gate.then(() => TEST_USER));
+
+    const ws = new WebSocket(url(133), { headers: { Origin: origin() } });
+    ws.binaryType = 'arraybuffer';
+    await new Promise((r) => ws.once('open', r));
+    const closedSocket = new Promise((resolve) => {
+      ws.once('close', (code, reason) => resolve({ code, reason: reason.toString() }));
+    });
+    ws.send(JSON.stringify({ type: 'auth', token: 't-race-doc' }));
+    await vi.waitFor(() => expect(validateAndAutoLogin).toHaveBeenCalledWith('t-race-doc'));
+
+    expect(closeSocketsForSessions([hashSessionToken('t-race-doc')])).toBe(1);
+    release();
+
+    expect(await closedSocket).toEqual({ code: 4004, reason: 'Signed out' });
+    expect(getActiveUsers(133)).toEqual([]);
   });
 });

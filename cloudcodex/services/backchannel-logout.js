@@ -46,6 +46,25 @@ export class LogoutTokenUnavailable extends Error {
   }
 }
 
+/**
+ * The token names a key id the issuer did not publish, on a key set fetched for this very request.
+ * A forged kid is a refused token (400): the issuer must not retry it forever.
+ */
+class UnknownKeyId extends Error {
+  constructor() {
+    super('The token names a key the issuer does not publish.');
+    this.name = 'UnknownKeyId';
+  }
+}
+
+/**
+ * How long after a key fetch an unknown kid is answered 503 rather than refetched and refused. A
+ * key rotation can publish a new kid moments before the token that uses it, so inside this window the
+ * answer is "try again" (the issuer retries), not "never".
+ */
+const KEY_REFRESH_COOLDOWN_MS = 30 * 1000;
+const KEY_FETCH_TIMEOUT_MS = 5000;
+
 /** The jose classes that mean the token itself is refused, as opposed to the keys being unavailable. */
 const TOKEN_REFUSALS = [
   jose.errors.JWTClaimValidationFailed,
@@ -56,17 +75,64 @@ const TOKEN_REFUSALS = [
   jose.errors.JOSEAlgNotAllowed,
 ];
 
-/** The remote key set for the discovered jwks_uri, kept for the process (jose caches the keys in it). */
-let remoteKeys = null;
+/** The key set per discovered jwks_uri: { local, fetchedAt }, kept for the process. */
+const keySets = new Map();
 
 /** jti -> the time it was recorded. Insertion order is age order, so eviction walks from the front. */
 const seenJtis = new Map();
 
-function remoteKeySet(jwksUri) {
-  if (remoteKeys === null || remoteKeys.uri !== jwksUri) {
-    remoteKeys = { uri: jwksUri, keys: jose.createRemoteJWKSet(new URL(jwksUri)) };
+/**
+ * Fetches the issuer's key set and makes it the one used for this process. Any failure (the network,
+ * a non-200, a body that is not a JWKS) is LogoutTokenUnavailable.
+ * @param {string} jwksUri
+ * @returns {Promise<{ local: Function, fetchedAt: number }>}
+ */
+async function fetchKeySet(jwksUri) {
+  let body;
+  try {
+    const response = await fetch(jwksUri, { signal: AbortSignal.timeout(KEY_FETCH_TIMEOUT_MS) });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    body = await response.json();
+    const entry = { local: jose.createLocalJWKSet(body), fetchedAt: Date.now() };
+    keySets.set(jwksUri, entry);
+    return entry;
+  } catch {
+    throw new LogoutTokenUnavailable('The issuer\'s keys could not be fetched.');
   }
-  return remoteKeys.keys;
+}
+
+/**
+ * The jwt key resolver for one jwks_uri. A kid already cached verifies. An unknown kid is refetched
+ * once, unless the cached set was fetched within the cooldown before this request (then it is a
+ * 503), and a kid still unknown after a fresh fetch is UnknownKeyId.
+ * @param {string} jwksUri
+ * @returns {Function}
+ */
+function keyResolver(jwksUri) {
+  return async (header, token) => {
+    let entry = keySets.get(jwksUri);
+    let fetchedNow = false;
+    if (entry === undefined) {
+      entry = await fetchKeySet(jwksUri);
+      fetchedNow = true;
+    }
+    try {
+      return await entry.local(header, token);
+    } catch (err) {
+      if (!(err instanceof jose.errors.JWKSNoMatchingKey)) throw err;
+      if (fetchedNow) throw new UnknownKeyId();
+      if (Date.now() - entry.fetchedAt < KEY_REFRESH_COOLDOWN_MS) {
+        throw new LogoutTokenUnavailable('An unknown key id arrived inside the key refresh cooldown.');
+      }
+      entry = await fetchKeySet(jwksUri);
+      try {
+        return await entry.local(header, token);
+      } catch (retryErr) {
+        if (retryErr instanceof jose.errors.JWKSNoMatchingKey) throw new UnknownKeyId();
+        throw retryErr;
+      }
+    }
+  };
 }
 
 function pruneJtis(now) {
@@ -98,9 +164,9 @@ export function rememberJti(jti) {
   pruneJtis(now);
 }
 
-/** Test-only: forget the key set and the jtis, so each test starts as a fresh process would. */
+/** Test-only: forget the key sets and the jtis, so each test starts as a fresh process would. */
 export function resetLogoutTokenState() {
-  remoteKeys = null;
+  keySets.clear();
   seenJtis.clear();
 }
 
@@ -125,7 +191,7 @@ export async function verifyLogoutToken(config, token) {
 
   let payload;
   try {
-    ({ payload } = await jose.jwtVerify(token, remoteKeySet(metadata.jwks_uri), {
+    ({ payload } = await jose.jwtVerify(token, keyResolver(metadata.jwks_uri), {
       issuer: metadata.issuer,
       audience: config.clientId,
       clockTolerance: CLOCK_TOLERANCE_SECONDS,
@@ -134,8 +200,10 @@ export async function verifyLogoutToken(config, token) {
       requiredClaims: ['iat', 'exp', 'jti'],
     }));
   } catch (err) {
+    if (err instanceof LogoutTokenUnavailable) throw err;
+    if (err instanceof UnknownKeyId) return null;
     if (TOKEN_REFUSALS.some(refusal => err instanceof refusal)) return null;
-    throw new LogoutTokenUnavailable('The issuer\'s keys could not be fetched or matched.');
+    throw new LogoutTokenUnavailable('The token could not be checked against the issuer\'s keys.');
   }
 
   const events = payload.events;
@@ -159,30 +227,34 @@ export async function verifyLogoutToken(config, token) {
  * Ends the oidc sessions a verified logout token names, in one transaction, and returns the
  * digests (sessions.id) of the rows it deleted, so the caller can close their sockets.
  *
- * A token with a sid ends the sessions that carry that sid (pinned to oidc). A token with only a sub
+ * A token with a sid ends the oidc sessions that carry that sid at this issuer. A token with only a sub
  * ends every oidc session of that (issuer, subject) identity. Both shapes are bounded by
- * created_at <= iat + 60 s: a session the person opened after this logout was issued is never
- * ended by a replay.
+ * signed_in_at (created_at for a row without one) <= iat + 60 s: a session the person signed in to
+ * after this logout was issued is never ended by a replay, and a rotated session still is.
  * @param {{ iss: string, sid: string | null, sub: string | null, iat: number }} claims
  * @returns {Promise<string[]>}
  */
 export function revokeForLogoutToken(claims) {
-  const createdBy = claims.iat + CREATED_AT_SLACK_SECONDS;
+  const signedBy = claims.iat + CREATED_AT_SLACK_SECONDS;
   return withTransaction(async (query) => {
+    // signed_in_at, not created_at: a password or email change re-mints the session (created_at = the
+    // change), and the bound must still see the sign-in the logout ended (W6-CDX-6 review).
     let rows;
     if (claims.sid !== null) {
       rows = await query(
-        `SELECT id FROM sessions
-          WHERE auth_provider = 'oidc' AND provider_sid = ? AND UNIX_TIMESTAMP(created_at) <= ?`,
-        [claims.sid, createdBy]
+        `SELECT s.id FROM sessions s
+           JOIN user_identities ui ON ui.id = s.identity_id
+          WHERE s.auth_provider = 'oidc' AND s.provider_sid = ? AND ui.issuer = ?
+            AND UNIX_TIMESTAMP(COALESCE(s.signed_in_at, s.created_at)) <= ?`,
+        [claims.sid, claims.iss, signedBy]
       );
     } else {
       rows = await query(
         `SELECT s.id FROM sessions s
            JOIN user_identities ui ON ui.id = s.identity_id
           WHERE s.auth_provider = 'oidc' AND ui.issuer = ? AND ui.subject = ?
-            AND UNIX_TIMESTAMP(s.created_at) <= ?`,
-        [claims.iss, claims.sub, createdBy]
+            AND UNIX_TIMESTAMP(COALESCE(s.signed_in_at, s.created_at)) <= ?`,
+        [claims.iss, claims.sub, signedBy]
       );
     }
     const ids = rows.map(row => row.id);

@@ -327,13 +327,16 @@ the default leaves out `172.17.0.1`.
 ### Sign-out propagates (W6-CDX-6)
 
 Signing out of Codex ends the Codex session, and for an OIDC session also the issuer's
-session, which sends back-channel logout to the other relying parties it reached. Three
+session, which sends back-channel logout to the other relying parties it reached. Four
 parts, each keyed on a named function.
 
-**`POST /api/logout` (`routes/auth.js:608`).** It reads the digest of the presented
-token, then `SELECT auth_provider, oidc_id_token`, then `DELETE` by the same digest,
-then closes the sockets of that session (`closeCollabSockets`, `closeUserChannelSockets`,
-section 5 and `documents-and-collab.md`). The response is `Cache-Control: no-store`
+**`POST /api/logout` (`routes/auth.js:657`).** It reads the digest of the presented
+token, then `SELECT auth_provider, oidc_id_token`, then the sessions a rotation named it
+in (`rotated_from = digest`), then `DELETE` by the digest and `DELETE ... WHERE rotated_from
+= digest`, then closes the sockets of every ended digest (`closeCollabSockets`,
+`closeUserChannelSockets`, section 5 and `documents-and-collab.md`). The second delete is
+what makes a logout reach the replacement a password change minted when the change committed
+first. The response is `Cache-Control: no-store`
 on every outcome, because an OIDC answer carries the ID token in its URL. A local
 or Google session answers `{ success: true }`. An OIDC session answers
 `{ success: true, endSessionUrl }`, where the URL comes from `endSessionUrlFor`
@@ -355,6 +358,16 @@ a lockout. The callback seals the token (`routes/oidc.js`, the `oidcIdToken` opt
 `TEXT NULL` with `chk_sessions_id_token_oidc_only` (the value belongs to an oidc session;
 it is not required, so older rows keep NULL). `migrations/2026-10-13-session-id-token.sql`.
 
+**Rotation (`routes/auth.js:57`, `rotateSessionsInTransaction`).** A password or email change
+(`update-account`, `confirm-email`) locks the caller's own row (`SELECT ... FOR UPDATE`) and
+refuses with 401, minting nothing, when it is gone (a logout won the race). Otherwise, in the same
+transaction, it applies the change, reads and deletes every session of the user, and mints the
+replacement with `generateSessionToken(..., rotation, { query, rotatedFrom })`, so the replacement
+commits or rolls back with the delete. The replacement keeps the original `signed_in_at`
+(`getSessionSignedInAt`, `mysql_connect.js:321`) and names the digest it replaced
+(`rotated_from`, migration `2026-10-14-session-rotation.sql`). After the commit the ended digests
+close their sockets. Nothing else changes for a local or Google session.
+
 **`POST /api/auth/oidc/backchannel-logout` (`routes/oidc.js:172`).** Mounted only with OIDC
 (`app.js:444`). Order: `noStore`, `backchannelLimiter`, `parseOrRefuse` (a
 `urlencoded` parser at 16 KB, where a body it cannot read is a 400), then the handler.
@@ -369,29 +382,38 @@ The handler answers:
   logout.
 - **500** when the delete fails. No jti is recorded, so the issuer's retry runs.
 
-`verifyLogoutToken` (`services/backchannel-logout.js:115`) runs `jose.jwtVerify` against
-the discovered `jwks_uri` (`createRemoteJWKSet`, one set per process), with `issuer`,
+`verifyLogoutToken` (`services/backchannel-logout.js:181`) runs `jose.jwtVerify` with the
+key resolver `keyResolver` (`:111`) against the discovered `jwks_uri`, with `issuer`,
 `audience: clientId`, `clockTolerance: 60`, `maxTokenAge: '5m'`, the asymmetric algorithms
-only, and `requiredClaims: ['iat', 'exp', 'jti']`. Errors of token-level classes
-(`JWTClaimValidationFailed`, `JWTExpired`, `JWTInvalid`, `JWSInvalid`,
+only, and `requiredClaims: ['iat', 'exp', 'jti']`. The key sets are fetched by `fetchKeySet`
+(5 s timeout) and kept per `jwks_uri`. A kid already cached verifies. An unknown kid is
+refused (400, `UnknownKeyId`) when the set was fetched for this very request, and refetched
+once when the cache is older than the 30 s cooldown; an unknown kid inside the cooldown is a 503,
+because a key rotation may be in flight. A fetch failure is `LogoutTokenUnavailable` (503). Token-
+level classes (`JWTClaimValidationFailed`, `JWTExpired`, `JWTInvalid`, `JWSInvalid`,
 `JWSSignatureVerificationFailed`, `JOSEAlgNotAllowed`) are refusals, and any other error is
 `LogoutTokenUnavailable` (503). Then the back-channel rules: the `events` object has the
 logout member, no `nonce`, a string `sid` or a `sub` that matches the callback's subject shape
 (and a present `sub` must match it), and a jti not in `seenJtis`.
 
-`revokeForLogoutToken` (`services/backchannel-logout.js:169`) runs in one `withTransaction`:
-a token with a sid selects `sessions` with `auth_provider = 'oidc' AND provider_sid = ?`;
-one with only a sub joins `user_identities` on `(issuer, subject)`. Both are bounded by
-`UNIX_TIMESTAMP(created_at) <= iat + 60`, so a session the person opened after the logout
-is never ended by a replay, even when the jti map is empty after a restart. It then deletes
+`revokeForLogoutToken` (`services/backchannel-logout.js:237`) runs in one `withTransaction`:
+a token with a sid selects `sessions` joined to `user_identities` with `auth_provider = 'oidc'
+AND provider_sid = ? AND ui.issuer = <the configured issuer>`; one with only a sub joins on
+`(issuer, subject)`. Both are bounded by `UNIX_TIMESTAMP(COALESCE(signed_in_at, created_at)) <=
+iat + 60`. The bound measures the sign-in, not the replacement a password change minted, so a
+rotated session is still ended by the logout that preceded the rotation, while a session signed
+in after the logout never is, even when the jti map is empty after a restart. It then deletes
 by the selected ids and returns their digests. `rememberJti` records a jti only after the
 commit, and `seenJtis` holds 10,000 entries for 10 minutes. The map is per process, which is
 correct only while the instance runs one process (CLAUDE.md decision 1).
 
 Tests: `tests/routes/oidc-callback.real-issuer.test.js` (an in-process issuer, jose-signed
-tokens, every validation rule refused, the 503 and the replay), `tests/integration/sign-out.test.js`
-(the real SQL, the created_at bound, the case-sensitive subject, `validateAndAutoLogin` null
-after a revocation, and the CHECK in the schema).
+tokens, every validation rule refused, the forged kid at 400 and inside the cooldown at 503, the
+replay, and the logout that reaches a rotated-from replacement), `tests/integration/sign-out.test.js`
+(the real SQL, the signed-in-at bound against a rotated replacement, the issuer pin on a sid, the
+case-sensitive subject, `validateAndAutoLogin` null after a revocation, and the CHECK in the
+schema), `tests/routes/auth-update-account.test.js` (the locked caller, the refusal after a logout
+won, the in-transaction mint, the closed sockets).
 
 ### Router mounting
 

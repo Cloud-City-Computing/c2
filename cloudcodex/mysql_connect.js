@@ -185,8 +185,15 @@ function isTokenShaped(value) {
  *   ttlHours?: number, expiresAt?: Date } } [options] - the flow that minted it
  * @returns { Promise<String> }
  */
-export async function generateSessionToken(user, ip = null, userAgent = null, options = {}) {
-  const { provider = 'local', identityId = null, providerSid = null, ttlHours, expiresAt, oidcIdToken = null } = options;
+export async function generateSessionToken(user, ip = null, userAgent = null, options = {}, context = {}) {
+  const {
+    provider = 'local', identityId = null, providerSid = null, ttlHours, expiresAt,
+    oidcIdToken = null, signedInAt = null,
+  } = options;
+  // `query` runs the insert inside a caller's transaction (a rotation, W6-CDX-6 review); `rotatedFrom`
+  // names the digest of the session this one replaces, so a logout that presents the old token can
+  // still reach it.
+  const { query = c2_query, rotatedFrom = null } = context;
   if ((provider === 'oidc') !== (identityId !== null && identityId !== undefined)) {
     throw new Error('generateSessionToken: an oidc session needs an identityId, and only an oidc session has one');
   }
@@ -195,21 +202,32 @@ export async function generateSessionToken(user, ip = null, userAgent = null, op
   }
 
   const token = createNewSessionToken();
+  const digest = hashSessionToken(token);
   if (provider === 'oidc') {
     const expiry = expiresAt ?? new Date(Date.now() + ttlHours * 60 * 60 * 1000);
-    // The sealed ID token is bound only when there is one (W6-CDX-6). A row without it keeps NULL.
-    if (oidcIdToken === null) {
-      await c2_query(
+    // The original sign-in time and the replaced digest are bound only when there are some, so a plain
+    // sign-in keeps its statement; a row without them takes the column defaults (signed_in_at = now).
+    if (oidcIdToken === null && signedInAt === null && rotatedFrom === null) {
+      await query(
         `INSERT INTO sessions (user_id, id, auth_provider, identity_id, provider_sid, created_at, expires_at, ip_address, user_agent)
          VALUES (?, ?, 'oidc', ?, ?, NOW(), ?, ?, ?)`,
-        [user.id, hashSessionToken(token), identityId, providerSid, expiry, ip, userAgent]
+        [user.id, digest, identityId, providerSid, expiry, ip, userAgent]
       );
       return token;
     }
-    await c2_query(
-      `INSERT INTO sessions (user_id, id, auth_provider, identity_id, provider_sid, created_at, expires_at, ip_address, user_agent, oidc_id_token)
-       VALUES (?, ?, 'oidc', ?, ?, NOW(), ?, ?, ?, ?)`,
-      [user.id, hashSessionToken(token), identityId, providerSid, expiry, ip, userAgent, oidcIdToken]
+    await query(
+      `INSERT INTO sessions (user_id, id, auth_provider, identity_id, provider_sid, created_at, signed_in_at, expires_at, ip_address, user_agent, oidc_id_token, rotated_from)
+       VALUES (?, ?, 'oidc', ?, ?, NOW(), COALESCE(?, NOW()), ?, ?, ?, ?, ?)`,
+      [user.id, digest, identityId, providerSid, signedInAt, expiry, ip, userAgent, oidcIdToken, rotatedFrom]
+    );
+    return token;
+  }
+
+  if (rotatedFrom !== null) {
+    await query(
+      `INSERT INTO sessions (user_id, id, auth_provider, created_at, expires_at, ip_address, user_agent, rotated_from)
+       VALUES (?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), ?, ?, ?)`,
+      [user.id, digest, provider, ip, userAgent, rotatedFrom]
     );
     return token;
   }
@@ -217,7 +235,7 @@ export async function generateSessionToken(user, ip = null, userAgent = null, op
   await c2_query(
     `INSERT INTO sessions (user_id, id, auth_provider, created_at, expires_at, ip_address, user_agent)
      VALUES (?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), ?, ?)`,
-    [user.id, hashSessionToken(token), provider, ip, userAgent]
+    [user.id, digest, provider, ip, userAgent]
   );
   return token;
 }
@@ -291,6 +309,22 @@ export async function getSessionProvenance(sessionToken) {
     providerSid: session.provider_sid ?? null,
     expiresAt: session.expires_at ?? null,
   };
+}
+
+/**
+ * The original sign-in time of a session (signed_in_at), kept across a rotation so the back-channel
+ * bound measures the sign-in and not the replacement. Null when the session is missing or the value
+ * cannot be a token.
+ * @param { String } sessionToken
+ * @returns { Promise<Date|null> }
+ */
+export async function getSessionSignedInAt(sessionToken) {
+  if (!isTokenShaped(sessionToken)) return null;
+  const [session] = await c2_query(
+    `SELECT signed_in_at FROM sessions WHERE id = ? LIMIT 1`,
+    [hashSessionToken(sessionToken)]
+  );
+  return session?.signed_in_at ?? null;
 }
 
 /**

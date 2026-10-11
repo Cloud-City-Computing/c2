@@ -132,9 +132,15 @@ CREATE TABLE sessions (
   ip_address VARCHAR(45),
   user_agent TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  -- When the person signed in. A rotation keeps it (migrations/2026-10-14-session-rotation.sql), so the
+  -- back-channel bound measures the sign-in, not the replacement's created_at.
+  signed_in_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  -- The digest of the session this one replaced; a logout presenting the old token ends it too.
+  rotated_from CHAR(64) NULL,
   last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   expires_at TIMESTAMP NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_sessions_rotated_from (rotated_from),
   CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google', 'oidc')),
   CONSTRAINT chk_sessions_identity_pairing CHECK ((auth_provider = 'oidc') = (identity_id IS NOT NULL)),
   CONSTRAINT chk_sessions_id_token_oidc_only CHECK (oidc_id_token IS NULL OR auth_provider = 'oidc'),

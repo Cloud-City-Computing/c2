@@ -18,6 +18,8 @@
 
 import { WebSocketServer } from 'ws';
 import { validateAndAutoLogin } from '../mysql_connect.js';
+import { hashSessionToken } from './session-token.js';
+import { markSessionsClosed, sessionClosedRecently } from './closed-sessions.js';
 
 const AUTH_TIMEOUT_MS = 5000;
 const MAX_CONNECTIONS_PER_USER = 10;
@@ -87,6 +89,7 @@ export function closeSocketsForSessions(digests) {
   const wanted = new Set(digests);
   let closed = 0;
   if (wanted.size === 0) return closed;
+  markSessionsClosed(wanted);
   for (const wss of servers) {
     for (const ws of wss.clients) {
       if (ws.sessionId !== undefined && wanted.has(ws.sessionId)) {
@@ -173,6 +176,12 @@ export function setupUserChannelServer(server) {
         return;
       }
 
+      // The session digest is recorded before the auth read's first await, so a sign-out that runs at any
+      // point finds this socket (W6-CDX-6 review). After the read, a socket whose sign-out already closed
+      // it is refused before it registers anywhere.
+      const digest = hashSessionToken(msg.token);
+      ws.sessionId = digest;
+
       let user;
       try {
         user = await validateAndAutoLogin(msg.token);
@@ -185,8 +194,10 @@ export function setupUserChannelServer(server) {
         return;
       }
 
-      // The session this socket authenticated with, so a sign-out can close exactly its sockets (W6-CDX-6).
-      ws.sessionId = user.sessionId;
+      if (ws.readyState !== 1 || sessionClosedRecently(digest)) {
+        ws.close(4004, 'Signed out');
+        return;
+      }
 
       const existing = channels.get(user.id);
       if (existing && existing.size >= MAX_CONNECTIONS_PER_USER) {

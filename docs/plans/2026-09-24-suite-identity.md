@@ -1255,6 +1255,27 @@ Tests: two sockets for one user from two sessions; revoking one closes only its 
   `loadConfiguration` is exported for the logout and receiver modules. No behaviour of the sign-in changed.
 - **`tests/setup.js` gained one default**, `getSessionOidcIdToken: vi.fn(async () => null)`, because a
   mocked module with a missing export throws when a route imports it.
+- **Review round (W6-CDX-6, momus on 691106b), three medium findings and three hardening items:**
+  - *The back-channel bound measures the sign-in.* `sessions.signed_in_at` is copied by every rotation
+    and the bound reads `COALESCE(signed_in_at, created_at)`. `sessions.rotated_from` names the digest a
+    replacement replaced (`migrations/2026-10-14-session-rotation.sql`, `init.sql`, undo registered).
+  - *A rotation mints in its own transaction.* `rotateSessionsInTransaction` (`routes/auth.js`) locks the
+    caller's row with `FOR UPDATE`, answers 401 and mints nothing when it is gone, and inserts the
+    replacement with the delete. The sessions it ended close their sockets after the commit.
+  - *Logout reaches a replacement that rotation committed first.* It also deletes `rotated_from = digest`
+    and closes those sockets. One level only: a token rotated away twice ago is not reached.
+  - *The socket digest is set before the first await,* and a socket whose sign-out closed it during auth
+    is refused before it registers (`services/closed-sessions.js`, five-minute set).
+  - *The sid branch is pinned to the configured issuer* in addition to `auth_provider = 'oidc'`.
+  - *Unknown kids:* 400 after a fresh key fetch for the request, 503 inside the 30 s refresh cooldown.
+    The key sets are our own (`fetchKeySet`, `keyResolver`), not jose's remote set, to state that rule.
+  - *Existing expectations changed, each for the new behaviour:* the update-account transaction now
+    starts with the locked read and reads the user's sessions before the delete (its exact-match test
+    lists them); the real-issuer sid query binds the issuer and names the sign-in-time bound; the
+    sealed-token insert in `mysql_connect.test.js` binds the two new columns; `app.test.js` counts the
+    by-id delete only; `tests/setup.js` gained `getSessionSignedInAt`.
+  - *Not run:* the containerised integration project is the gate for the rotation and back-channel SQL
+    against MySQL; see the commit message for its result.
 - **Not verified here:** Task 6.4's live check against a local Cloud City ID stack (sign out of Cloud
   Command, then Codex answers 401 and both sockets close). It needs that stack and was not run in this
   session. It is the open item in the roadmap row.

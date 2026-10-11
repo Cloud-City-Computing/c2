@@ -10,7 +10,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
-import { c2_query, generateSessionToken, getSessionProvider, getSessionProvenance, getSessionOidcIdToken, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
+import { c2_query, generateSessionToken, getSessionProvider, getSessionProvenance, getSessionOidcIdToken, getSessionSignedInAt, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
 import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
@@ -34,7 +34,46 @@ async function rotationOptionsFor(token, provider) {
   if (provider !== 'oidc') return { provider };
   const { identityId, providerSid, expiresAt } = await getSessionProvenance(token);
   const oidcIdToken = await getSessionOidcIdToken(token);
-  return { provider, identityId, providerSid, expiresAt, ...(oidcIdToken ? { oidcIdToken } : {}) };
+  // The original sign-in time (W6-CDX-6 review): the back-channel bound measures it, not the replacement.
+  const signedInAt = await getSessionSignedInAt(token);
+  return {
+    provider, identityId, providerSid, expiresAt,
+    ...(oidcIdToken ? { oidcIdToken } : {}),
+    ...(signedInAt ? { signedInAt } : {}),
+  };
+}
+
+/**
+ * Ends every session of a user and mints the replacement for the caller, in ONE transaction
+ * (W6-CDX-6 review). The caller's own row is locked and must still exist: a logout that committed
+ * first leaves nothing to rotate, so this mints nothing and answers null. The replacement records the
+ * digest it replaces, so a logout that later presents the old token still reaches it. The digests of
+ * every session that ended are returned to the caller, which closes their sockets after the commit.
+ * @param {import('express').Request} req
+ * @param {{ userId: number, callerToken: string, rotation: object, user: object,
+ *   change: (query: Function) => Promise<void> }} args
+ * @returns {Promise<null | { token: string, ended: string[] }>}
+ */
+async function rotateSessionsInTransaction(req, { userId, callerToken, rotation, user, change }) {
+  const callerDigest = hashSessionToken(callerToken);
+  let outcome = null;
+  await withTransaction(async (query) => {
+    const [caller] = await query(`SELECT id FROM sessions WHERE id = ? FOR UPDATE`, [callerDigest]);
+    if (!caller) return;
+    await change(query);
+    const rows = await query(`SELECT id FROM sessions WHERE user_id = ?`, [userId]);
+    await query(`DELETE FROM sessions WHERE user_id = ?`, [userId]);
+    const token = await generateSessionToken(user, req.ip, req.headers['user-agent'], rotation, {
+      query,
+      rotatedFrom: callerDigest,
+    });
+    outcome = { token, ended: rows.map(row => row.id) };
+  });
+  if (outcome !== null) {
+    closeCollabSockets(outcome.ended);
+    closeUserChannelSockets(outcome.ended);
+  }
+  return outcome;
 }
 
 const router = express.Router();
@@ -418,24 +457,28 @@ router.post('/update-account', asyncHandler(async (req, res) => {
     return res.json({ success: true });
   }
 
-  // Read before the delete below removes the row it is read from.
+  // Read before the rotation below removes the row it is read from.
   const provider = await getSessionProvider(token);
   const rotation = await rotationOptionsFor(token, provider);
 
-  await withTransaction(async (query) => {
-    await query(updateSql, params);
-    await query(`DELETE FROM sessions WHERE user_id = ?`, [sessionUser.id]);
+  // The change, the delete of every old session and the replacement's insert commit together, so the
+  // caller is handed a token only for a change that landed (W6-CDX-6 review).
+  const outcome = await rotateSessionsInTransaction(req, {
+    userId: sessionUser.id,
+    callerToken: token,
+    rotation,
+    user: sessionUser,
+    change: query => query(updateSql, params),
   });
-
-  // Only after the commit, as create-account does: the token is the caller's
-  // proof that the change landed, and every old one is already gone.
-  const freshToken = await generateSessionToken(sessionUser, req.ip, req.headers['user-agent'], rotation);
+  if (outcome === null) {
+    return res.status(401).json({ success: false, message: 'Your session has ended. Sign in again.' });
+  }
 
   if (emailChanging) {
     await sendEmailChangedNotice(req, { oldEmail: sessionUser.email, recipientName: name ?? sessionUser.name, newEmail: email });
   }
 
-  res.json({ success: true, token: freshToken });
+  res.json({ success: true, token: outcome.token });
 }));
 
 /**
@@ -486,18 +529,24 @@ router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (re
   const provider = await getSessionProvider(req.sessionToken);
   const rotation = await rotationOptionsFor(req.sessionToken, provider);
 
-  await withTransaction(async (query) => {
-    await query(`UPDATE two_factor_codes SET used = TRUE WHERE id = ?`, [codeRecord.id]);
-    await query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [tokenRecord.id]);
-    await query(`UPDATE users SET email = ? WHERE id = ?`, [tokenRecord.new_email, req.user.id]);
-    await query(`DELETE FROM sessions WHERE user_id = ?`, [req.user.id]);
+  const outcome = await rotateSessionsInTransaction(req, {
+    userId: req.user.id,
+    callerToken: req.sessionToken,
+    rotation,
+    user: req.user,
+    change: async (query) => {
+      await query(`UPDATE two_factor_codes SET used = TRUE WHERE id = ?`, [codeRecord.id]);
+      await query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ?`, [tokenRecord.id]);
+      await query(`UPDATE users SET email = ? WHERE id = ?`, [tokenRecord.new_email, req.user.id]);
+    },
   });
-
-  const freshToken = await generateSessionToken(req.user, req.ip, req.headers['user-agent'], rotation);
+  if (outcome === null) {
+    return res.status(401).json({ success: false, message: 'Your session has ended. Sign in again.' });
+  }
 
   await sendEmailChangedNotice(req, { oldEmail: req.user.email, recipientName: req.user.name, newEmail: tokenRecord.new_email });
 
-  res.json({ success: true, token: freshToken, email: tokenRecord.new_email, message: 'Your email address has been changed.' });
+  res.json({ success: true, token: outcome.token, email: tokenRecord.new_email, message: 'Your email address has been changed.' });
 }));
 
 /**
@@ -622,9 +671,14 @@ router.post('/logout', asyncHandler(async (req, res) => {
     `SELECT auth_provider, oidc_id_token FROM sessions WHERE id = ? LIMIT 1`,
     [digest]
   );
+  // A rotation may have committed first, leaving this token's session replaced by one that names it
+  // (rotated_from). Ending the replacement too is what makes the sign-out reach it (W6-CDX-6 review).
+  const successors = (await c2_query(`SELECT id FROM sessions WHERE rotated_from = ?`, [digest])).map(r => r.id);
   await c2_query(`DELETE FROM sessions WHERE id = ?`, [digest]);
-  closeCollabSockets([digest]);
-  closeUserChannelSockets([digest]);
+  await c2_query(`DELETE FROM sessions WHERE rotated_from = ?`, [digest]);
+  const ended = [digest, ...successors];
+  closeCollabSockets(ended);
+  closeUserChannelSockets(ended);
 
   res.set('Cache-Control', 'no-store');
   if (row?.auth_provider !== 'oidc') return res.json({ success: true });

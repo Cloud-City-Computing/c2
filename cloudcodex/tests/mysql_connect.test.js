@@ -57,6 +57,7 @@ const {
   getSessionProvider,
   getSessionProvenance,
   getSessionOidcIdToken,
+  getSessionSignedInAt,
   touchSession,
   withTransaction,
   endPool,
@@ -529,7 +530,8 @@ describe('generateSessionToken, the sealed ID token (W6-CDX-6)', () => {
 
     const [sql, params] = executeMock.mock.calls[0];
     expect(sql).toMatch(/oidc_id_token/);
-    expect(params).toEqual([7, hashSessionToken(token), 3, 'sid-1', expect.any(Date), '1.2.3.4', 'agent', 'iv:tag:ct']);
+    // signed_in_at (null: the column defaults to now) sits before expires_at; rotated_from is null.
+    expect(params).toEqual([7, hashSessionToken(token), 3, 'sid-1', null, expect.any(Date), '1.2.3.4', 'agent', 'iv:tag:ct', null]);
   });
 
   it('leaves the column NULL when an oidc session has no sealed token to keep', async () => {
@@ -581,5 +583,50 @@ describe('validateAndAutoLogin, the session digest (W6-CDX-6)', () => {
     expect(user.sessionId).toBe(hashSessionToken('tok'));
     expect(Object.keys(user)).toEqual(['id', 'name']);
     expect({ ...user }).toEqual({ id: 1, name: 'Alice' });
+  });
+});
+
+// Rotation keeps the original sign-in time and names the session it replaces (W6-CDX-6 review).
+describe('generateSessionToken, a rotated session (W6-CDX-6 review)', () => {
+  it('carries the original sign-in time and the replaced digest into an oidc replacement', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 1 }, []]);
+    const signedInAt = new Date('2026-10-10T10:00:00Z');
+    const queryMock = vi.fn(async () => []);
+
+    const token = await generateSessionToken({ id: 7 }, null, null, {
+      provider: 'oidc', identityId: 3, providerSid: 'sid-r', ttlHours: 1, signedInAt,
+    }, { query: queryMock, rotatedFrom: 'a'.repeat(64) });
+
+    expect(executeMock).not.toHaveBeenCalled();
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).toMatch(/signed_in_at/);
+    expect(sql).toMatch(/rotated_from/);
+    expect(params).toContain(signedInAt);
+    expect(params).toContain('a'.repeat(64));
+    expect(params[1]).toBe(hashSessionToken(token));
+  });
+
+  it('keeps the local insert byte-identical when nothing is rotated', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 1 }, []]);
+    await generateSessionToken({ id: 7 });
+    expect(executeMock.mock.calls[0][0]).not.toMatch(/rotated_from/);
+  });
+
+  it('records the replaced digest on a local or Google replacement', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 1 }, []]);
+    const token = await generateSessionToken({ id: 7 }, null, null, { provider: 'google' }, { rotatedFrom: 'b'.repeat(64) });
+    expect(executeMock.mock.calls[0][0]).toMatch(/rotated_from/);
+    expect(executeMock.mock.calls[0][1]).toEqual([7, hashSessionToken(token), 'google', null, null, 'b'.repeat(64)]);
+  });
+});
+
+describe('getSessionSignedInAt (W6-CDX-6 review)', () => {
+  it('reads the original sign-in time of a session, or null when it has none', async () => {
+    const when = new Date('2026-10-10T10:00:00Z');
+    executeMock.mockResolvedValueOnce([[{ signed_in_at: when }], []]);
+    expect(await getSessionSignedInAt('raw')).toEqual(when);
+    executeMock.mockResolvedValueOnce([[], []]);
+    expect(await getSessionSignedInAt('gone')).toBeNull();
+    expect(await getSessionSignedInAt(undefined)).toBeNull();
   });
 });

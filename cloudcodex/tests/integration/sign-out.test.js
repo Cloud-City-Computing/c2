@@ -39,7 +39,8 @@ async function oidcSession({ userId, identityId }, { sid, createdAt, sealed = nu
     ttlHours: 24,
     ...(sealed === null ? {} : { oidcIdToken: sealed }),
   });
-  await c2_query('UPDATE sessions SET created_at = FROM_UNIXTIME(?) WHERE id = ?', [createdAt, hashSessionToken(token)]);
+  // The sign-in time is the creation time here; the rotation test below sets a later created_at on purpose.
+  await c2_query('UPDATE sessions SET created_at = FROM_UNIXTIME(?), signed_in_at = FROM_UNIXTIME(?) WHERE id = ?', [createdAt, createdAt, hashSessionToken(token)]);
   return { token, digest: hashSessionToken(token) };
 }
 
@@ -148,5 +149,56 @@ describe('back-channel deletes, on a real server (W6-CDX-6)', () => {
     await revokeForLogoutToken(claims({ sid: 'sid-revoked', iat }));
 
     expect(await validateAndAutoLogin(session.token)).toBeNull();
+  });
+});
+
+describe('the back-channel bound measures the sign-in, not a rotation (W6-CDX-6 review)', () => {
+  it('ends a session rotated after the logout when its original sign-in was before it', async () => {
+    const iat = NOW() - 300;
+    const person = await newPerson('subject-rotated');
+    // The original sign-in, before the logout; a password change then re-mints it at iat + 90 s.
+    const original = await oidcSession(person, { sid: 'sid-rotated', createdAt: iat - 3600 });
+    const rotated = await generateSessionToken({ id: person.userId }, null, null, {
+      provider: 'oidc', identityId: person.identityId, providerSid: 'sid-rotated', ttlHours: 24,
+      signedInAt: new Date((iat - 3600) * 1000),
+    }, { rotatedFrom: original.digest });
+    await c2_query('UPDATE sessions SET created_at = FROM_UNIXTIME(?) WHERE id = ?', [iat + 90, hashSessionToken(rotated)]);
+
+    const deleted = await revokeForLogoutToken(claims({ sid: 'sid-rotated', iat }));
+
+    expect(deleted.sort()).toEqual([original.digest, hashSessionToken(rotated)].sort());
+    expect(await exists(hashSessionToken(rotated))).toBe(false);
+  });
+
+  it('still never ends a session whose sign-in is after the logout', async () => {
+    const iat = NOW() - 300;
+    const person = await newPerson('subject-after');
+    const later = await oidcSession(person, { sid: 'sid-after', createdAt: iat + 200 });
+
+    await revokeForLogoutToken(claims({ sid: 'sid-after', iat }));
+
+    expect(await exists(later.digest)).toBe(true);
+  });
+
+  it('pins the sid branch to the configured issuer: another issuer\'s identity with the same sid survives', async () => {
+    const iat = NOW() - 30;
+    const person = await newPerson('subject-pin');
+    const mine = await oidcSession(person, { sid: 'sid-shared', createdAt: iat - 600 });
+    seq += 1;
+    const otherName = `otherissuer${seq}_${Date.now() % 100000}`;
+    const other = await c2_query('INSERT INTO users (name, email) VALUES (?, ?)', [otherName, `${otherName}@example.com`]);
+    const otherIdentity = await c2_query(
+      'INSERT INTO user_identities (user_id, issuer, subject, email_at_link) VALUES (?, ?, ?, ?)',
+      [other.insertId, 'https://other.example.test', 'subject-pin', `${otherName}@example.com`]
+    );
+    const theirs = await oidcSession(
+      { userId: other.insertId, identityId: otherIdentity.insertId },
+      { sid: 'sid-shared', createdAt: iat - 600 }
+    );
+
+    const deleted = await revokeForLogoutToken(claims({ sid: 'sid-shared', iat }));
+
+    expect(deleted).toEqual([mine.digest]);
+    expect(await exists(theirs.digest)).toBe(true);
   });
 });

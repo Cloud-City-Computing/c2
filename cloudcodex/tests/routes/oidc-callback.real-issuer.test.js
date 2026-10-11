@@ -14,7 +14,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import http from 'node:http';
@@ -50,6 +50,8 @@ let signingKey;
 let jwk;
 /** The last ID token the issuer minted, so a sign-out test can check what was hinted. */
 let lastIdToken;
+/** How many times the relying party fetched the issuer's key set in this test. */
+let jwksFetches = 0;
 /** Per-test behaviour: the claims the issuer will vouch for, and the faults to inject. */
 let person;
 let faults;
@@ -87,7 +89,9 @@ async function handleIssuer(req, res) {
   }
 
   if (url.pathname === '/jwks') {
+    jwksFetches += 1;
     if (faults.jwksDown) return send(500, { error: 'server_error' });
+    if (faults.jwksGarbage) return send(200, 'this is not a key set');
     return send(200, { keys: [jwk] });
   }
 
@@ -252,6 +256,7 @@ beforeEach(() => {
   c2_query.mockResolvedValue([]);
   generateSessionToken.mockClear();
   resetLogoutTokenState();
+  jwksFetches = 0;
 });
 
 afterEach(() => {
@@ -544,6 +549,20 @@ describe('POST /api/logout, the end-session URL (W6-CDX-6)', () => {
     expect(res.body).toEqual({ success: true, endSessionUrl: null });
   });
 
+  it('ends the session a rotation replaced with this token, when the rotation committed first (W6-CDX-6 review)', async () => {
+    // The token presented is already gone (a password change rotated it away and minted a successor).
+    c2_query.mockResolvedValueOnce([]); // the row this token named: none
+    c2_query.mockResolvedValueOnce([{ id: 'digest-successor' }]); // the replacement it was rotated into
+    const digest = hashSessionToken('rotated-away-token');
+
+    const res = await request(app).post('/api/logout').set('Authorization', 'Bearer rotated-away-token').send({});
+
+    expect(res.status).toBe(200);
+    const successorDelete = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions WHERE rotated_from = \?/.test(sql));
+    expect(successorDelete).toBeDefined();
+    expect(successorDelete[1]).toEqual([digest]);
+  });
+
   it('does not keep a discovery that failed: once the issuer answers, the next sign-out gets its URL', async () => {
     const { sealed, idToken } = await signInForSealedToken();
     c2_query.mockReset();
@@ -603,8 +622,8 @@ describe('POST /api/auth/oidc/backchannel-logout (W6-CDX-6)', () => {
     const [selectSql, selectParams] = c2_query.mock.calls[0];
     expect(selectSql).toMatch(/provider_sid = \?/);
     expect(selectSql).toMatch(/auth_provider = 'oidc'/);
-    expect(selectSql).toMatch(/UNIX_TIMESTAMP\(created_at\) <= \?/);
-    expect(selectParams).toEqual(['zitadel-session-7', iat + 60]);
+    expect(selectSql).toMatch(/UNIX_TIMESTAMP\(COALESCE\(s\.signed_in_at, s\.created_at\)\) <= \?/);
+    expect(selectParams).toEqual(['zitadel-session-7', issuerOrigin, iat + 60]);
     const [delSql, delParams] = c2_query.mock.calls[1];
     expect(delSql).toMatch(/DELETE FROM sessions/);
     expect(delSql).toMatch(/auth_provider = 'oidc'/);
@@ -684,6 +703,52 @@ describe('POST /api/auth/oidc/backchannel-logout (W6-CDX-6)', () => {
     faults.jwksDown = false;
     c2_query.mockResolvedValueOnce([{ id: 'digest-c' }]);
     expect((await deliver(token)).status).toBe(200);
+  });
+
+  it('answers 400 for a kid the issuer does not publish, once the keys were fetched fresh for it', async () => {
+    const other = await generateKeyPair('RS256', { extractable: true });
+    const res = await deliver(await logoutToken({}, { key: other.privateKey, kid: 'forged-kid' }));
+    expect(res.status).toBe(400);
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 for an unknown kid inside the key refresh cooldown, since a rotation may be in flight', async () => {
+    const other = await generateKeyPair('RS256', { extractable: true });
+    expect((await deliver(await logoutToken({}, { key: other.privateKey, kid: 'forged-a' }))).status).toBe(400);
+    const again = await deliver(await logoutToken({}, { key: other.privateKey, kid: 'forged-b' }));
+    expect(again.status).toBe(503);
+    expect(again.headers['cache-control']).toBe('no-store');
+  });
+
+  it('fetches the key set once, and verifies every later token of a known kid from the cache', async () => {
+    c2_query.mockResolvedValue([{ id: 'digest-cache' }]);
+    expect((await deliver(await logoutToken())).status).toBe(200);
+    expect((await deliver(await logoutToken())).status).toBe(200);
+    expect(jwksFetches).toBe(1);
+  });
+
+  it('refetches an unknown kid once the cached keys are older than the cooldown, and refuses it if still unknown', async () => {
+    c2_query.mockResolvedValue([]);
+    expect((await deliver(await logoutToken())).status).toBe(200);
+    expect(jwksFetches).toBe(1);
+
+    const other = await generateKeyPair('RS256', { extractable: true });
+    const realNow = Date.now();
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 31 * 1000);
+    try {
+      const res = await deliver(await logoutToken({}, { key: other.privateKey, kid: 'after-cooldown' }));
+      expect(res.status).toBe(400);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(jwksFetches).toBe(2);
+  });
+
+  it('answers 503 when the issuer answers a key set that is not a JWKS', async () => {
+    faults.jwksGarbage = true;
+    const res = await deliver(await logoutToken());
+    expect(res.status).toBe(503);
+    expect(c2_query).not.toHaveBeenCalled();
   });
 
   it('records no jti when the delete fails, so the issuer\'s retry with the same token ends the session', async () => {

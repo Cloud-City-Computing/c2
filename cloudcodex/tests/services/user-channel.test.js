@@ -10,6 +10,7 @@ vi.mock('../../mysql_connect.js', () => ({
 }));
 
 import { validateAndAutoLogin } from '../../mysql_connect.js';
+import { hashSessionToken } from '../../services/session-token.js';
 import {
   broadcastToUser,
   isUserConnected,
@@ -181,7 +182,7 @@ describe('services/user-channel: closeSocketsForSessions (W6-CDX-6)', () => {
     await authenticate(laptop, 9301, 'digest-laptop');
 
     const phoneClosed = closed(phone);
-    const closedCount = closeSocketsForSessions(['digest-phone']);
+    const closedCount = closeSocketsForSessions([hashSessionToken('t-digest-phone')]);
     expect(closedCount).toBe(1);
     expect(await phoneClosed).toEqual({ code: 4004, reason: 'Signed out' });
 
@@ -196,8 +197,27 @@ describe('services/user-channel: closeSocketsForSessions (W6-CDX-6)', () => {
     await authenticate(ws, 9302, 'digest-live');
 
     expect(closeSocketsForSessions([])).toBe(0);
-    expect(closeSocketsForSessions(['digest-nobody'])).toBe(0);
+    expect(closeSocketsForSessions([hashSessionToken('t-nobody')])).toBe(0);
     expect(ws.readyState).toBe(WebSocket.OPEN);
     ws.terminate();
+  });
+
+  // W6-CDX-6 review: a sign-out that lands while the socket is still authenticating must not leave it live.
+  it('closes a socket whose sign-out lands while it is still authenticating, and registers it nowhere', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    validateAndAutoLogin.mockImplementationOnce(() => gate.then(() => ({ id: 9401, name: 'racer' })));
+
+    const ws = await open();
+    const closedSocket = closed(ws);
+    ws.send(JSON.stringify({ type: 'auth', token: 't-race' }));
+    await vi.waitFor(() => expect(validateAndAutoLogin).toHaveBeenCalledWith('t-race'));
+
+    // The session is ended while the auth read is still pending.
+    expect(closeSocketsForSessions([hashSessionToken('t-race')])).toBe(1);
+    release();
+
+    expect(await closedSocket).toEqual({ code: 4004, reason: 'Signed out' });
+    expect(isUserConnected(9401)).toBe(false);
   });
 });

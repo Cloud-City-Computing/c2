@@ -21,6 +21,7 @@ vi.mock('../mysql_connect.js', () => {
     getSessionProvider: vi.fn(async () => 'local'),
     getSessionProvenance: vi.fn(async () => ({ provider: 'local', identityId: null, providerSid: null, expiresAt: null })),
     getSessionOidcIdToken: vi.fn(async () => null),
+    getSessionSignedInAt: vi.fn(async () => null),
     touchSession: vi.fn(async () => {}),
     withTransaction: vi.fn(async fn => fn(c2_query)),
     // The shutdown path and the instance lock. No backend test opens a real
