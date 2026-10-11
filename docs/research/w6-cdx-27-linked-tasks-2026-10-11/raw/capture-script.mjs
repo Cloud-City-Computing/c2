@@ -1,0 +1,41 @@
+// Capture the editor page in suite mode, signed in, and report the Linked tasks link.
+import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+const BIN = '/home/kadams/.cache/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell';
+const BASE = 'http://127.0.0.1:33086';
+const OUT = process.argv[2];
+const DOC = process.argv[3];
+const login = await (await fetch(BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'alice', password: 'password' }) })).json();
+const token = login.token;
+if (!token) { console.log('login failed', JSON.stringify(login)); process.exit(1); }
+const port = 9344;
+const chrome = spawn(BIN, ['--headless', '--no-sandbox', '--disable-gpu', `--remote-debugging-port=${port}`, '--window-size=1280,800', '--user-data-dir=/tmp/cdx27/profile', 'about:blank'], { stdio: 'ignore' });
+let targets;
+for (let i = 0; i < 50; i++) { try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); if (targets.find(t => t.type === 'page')) break; } catch {} await new Promise(r => setTimeout(r, 200)); }
+const page = targets.find(t => t.type === 'page');
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise(r => ws.addEventListener('open', r));
+let id = 0; const pending = new Map();
+ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
+const send = (method, params = {}) => new Promise(r => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const evalJs = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
+await send('Network.enable');
+await send('Network.setCookie', { name: 'sessionToken', value: token, url: BASE + '/' });
+await send('Page.enable');
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+await send('Page.navigate', { url: BASE + DOC });
+await sleep(4000);
+await evalJs("(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Get Started'); if (b) b.click(); return !!b; })()");
+await sleep(800);
+console.log('url:', await evalJs('location.pathname'));
+console.log('link:', await evalJs("JSON.stringify([...document.querySelectorAll('.suite-doc-link')].map(a => ({ text: a.textContent, href: a.getAttribute('href') })))"));
+console.log('title:', await evalJs("document.querySelector('.editor-title')?.textContent"));
+await sleep(400);
+console.log('focusable link tabIndex:', await evalJs("document.querySelector('.suite-doc-link').tabIndex"), 'box:', await evalJs("JSON.stringify(document.querySelector('.suite-doc-link').getBoundingClientRect())"));
+await send('Emulation.setDeviceMetricsOverride', { width: Number(process.argv[4] || 1280), height: 800, deviceScaleFactor: 1, mobile: Number(process.argv[4] || 1280) < 600 });
+await sleep(600);
+console.log('after resize link:', await evalJs("document.querySelector('.suite-doc-link')?.textContent"));
+const r = await send('Page.captureScreenshot', { format: 'png' });
+writeFileSync(OUT, Buffer.from(r.result.data, 'base64'));
+ws.close(); chrome.kill('SIGTERM');
