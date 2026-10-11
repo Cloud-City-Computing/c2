@@ -67,7 +67,7 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
 
     const sql = sqlCalls();
     const invitationLookup = sql.find(([s]) => /FROM user_invitations/.test(s));
-    expect(invitationLookup[0]).toMatch(/LOWER\(email\) = LOWER\(\?\) AND accepted = FALSE AND expires_at > NOW\(\)/);
+    expect(invitationLookup[0]).toMatch(/LOWER\(email\) COLLATE utf8mb4_bin = LOWER\(\?\) COLLATE utf8mb4_bin AND accepted = FALSE AND expires_at > NOW\(\)/);
     expect(invitationLookup[1]).toEqual([EMAIL]);
 
     const insertUser = sql.find(([s]) => /^INSERT INTO users/.test(s));
@@ -116,6 +116,21 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
   it('answers no_account without looking for an invitation when the address is unverified', async () => {
     expect(await resolveIdentity(oidcClaims({ emailVerified: false }), POLICY)).toEqual({ ok: false, reason: 'email_not_verified' });
     expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('does not let an invitation for an accented address admit its unaccented twin', async () => {
+    // users.email and user_invitations.email use the default, accent-insensitive collation, so a plain
+    // LOWER(email) = LOWER(?) would match josé@ against jose@. The binary comparison sees two mailboxes,
+    // and the verified jose@ finds no invitation: no_account, with nothing written.
+    c2_query
+      .mockResolvedValueOnce([])   // identity lookup: none
+      .mockResolvedValueOnce([])   // email lookup: none
+      .mockResolvedValueOnce([]);  // invitation lookup: the josé@ invitation does not match jose@
+
+    expect(await resolveIdentity(oidcClaims({ email: 'jose@example.com' }), POLICY)).toEqual({ ok: false, reason: 'no_account' });
+    const invitationLookup = sqlCalls().find(([s]) => /FROM user_invitations/.test(s));
+    expect(invitationLookup[1]).toEqual(['jose@example.com']);
+    expect(writes()).toEqual([]);
   });
 
   it('refuses email_conflict before looking for an invitation, when linking by email is off', async () => {

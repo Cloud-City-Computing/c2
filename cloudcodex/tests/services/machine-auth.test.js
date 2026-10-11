@@ -123,6 +123,17 @@ describe('verifyMachineCredential', () => {
   });
 
   describe('principal resolution', () => {
+    it('refuses a deactivated SERVICE_TOKEN_USER, with a log line, and issues no principal', async () => {
+      const token = 'valid-service-token-gggggggggggggggggggg';
+      configure(token);
+      c2_query.mockResolvedValueOnce([{ ...SERVICE_ROW, deactivated_at: new Date('2026-10-01T00:00:00Z') }]);
+
+      expect(await verifyMachineCredential(token)).toBeNull();
+      const [sql] = c2_query.mock.calls[0];
+      expect(sql).toMatch(/deactivated_at IS NULL/);
+      expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/deactivated/);
+    });
+
     it('returns a principal whose is_admin is false', async () => {
       const token = 'valid-service-token-eeeeeeeeeeeeeeeeee';
       configure(token);

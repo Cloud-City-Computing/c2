@@ -63,4 +63,20 @@ describe('POST /api/login for a deactivated user', () => {
     expect(res.body.user).not.toHaveProperty('deactivated_at');
     expect(res.body.user).not.toHaveProperty('password_hash');
   });
+
+  it('refuses a verified second factor for a user deactivated since the challenge, minting no session', async () => {
+    const future = new Date(Date.now() + 60_000);
+    c2_query
+      .mockResolvedValueOnce([{ id: 1, user_id: 4, expires_at: future, used: false }]) // the challenge token
+      .mockResolvedValueOnce([{ two_factor_method: 'email', totp_secret: null, deactivated_at: new Date('2026-10-01T00:00:00Z') }])
+      .mockResolvedValueOnce([{ id: 9, expires_at: future }]);                            // a code that would verify
+
+    const res = await request(app).post('/api/2fa/verify').send({ twoFactorToken: 'challenge', code: '123456' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toMatch(/deactivated/);
+    expect(res.body.token).toBeUndefined();
+    expect(generateSessionToken).not.toHaveBeenCalled();
+    expect(c2_query.mock.calls.some(([sql]) => /UPDATE password_reset_tokens SET used/.test(sql))).toBe(false);
+  });
 });
