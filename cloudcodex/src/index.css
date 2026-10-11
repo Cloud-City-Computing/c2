@@ -9000,28 +9000,28 @@ textarea:focus-visible {
   justify-content: center;
   min-height: 100vh;
   padding: 2rem;
-  background: var(--bg, #1b1b1d);
+  background: var(--cx-surface-0);
 }
 
 .error-boundary__panel {
   max-width: 34rem;
   width: 100%;
   padding: 2rem;
-  border: 1px solid var(--border, #3a3a3f);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--panel, #232326);
+  background: var(--cx-surface-2);
   text-align: center;
 }
 
 .error-boundary__title {
   margin: 0 0 0.75rem;
   font-size: 1.35rem;
-  color: var(--text, #e6edf3);
+  color: var(--cx-text-primary);
 }
 
 .error-boundary__body {
   margin: 0 0 1rem;
-  color: var(--text-muted, #9aa0a6);
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
@@ -9030,8 +9030,8 @@ textarea:focus-visible {
   padding: 0.75rem;
   overflow-x: auto;
   border-radius: 6px;
-  background: var(--bg, #1b1b1d);
-  color: var(--text-muted, #9aa0a6);
+  background: var(--cx-surface-0);
+  color: var(--text-muted);
   font-size: 0.85rem;
   text-align: left;
   white-space: pre-wrap;
