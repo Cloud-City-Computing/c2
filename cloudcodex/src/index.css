@@ -8301,8 +8301,8 @@ textarea:focus-visible {
   transition: var(--transition);
 }
 .page-tree-back-btn:hover {
-  color: var(--brand-blue);
-  background: rgba(44, 167, 219, 0.12);
+  color: var(--cx-accent);
+  background: var(--cx-tint-accent);
 }
 
 .page-tree-header h3 {
@@ -8329,7 +8329,7 @@ textarea:focus-visible {
 .page-tree-add-btn {
   background: none;
   border: none;
-  color: var(--brand-blue);
+  color: var(--cx-accent);
   cursor: pointer;
   font-size: 18px;
   padding: 2px 6px;
@@ -8338,7 +8338,7 @@ textarea:focus-visible {
   transition: var(--transition);
 }
 .page-tree-add-btn:hover {
-  background: rgba(44, 167, 219, 0.12);
+  background: var(--cx-tint-accent);
 }
 
 .page-tree-collapse-btn {
@@ -8391,12 +8391,12 @@ textarea:focus-visible {
   opacity: 1;
 }
 .page-tree-row--active {
-  background: rgba(44, 167, 219, 0.15);
-  color: var(--brand-blue);
+  background: var(--cx-tint-accent-mid);
+  color: var(--cx-accent);
   font-weight: 500;
 }
 .page-tree-row--active:hover {
-  background: rgba(44, 167, 219, 0.2);
+  background: var(--cx-tint-accent-strong);
 }
 
 .page-tree-toggle {
@@ -8439,7 +8439,7 @@ textarea:focus-visible {
 .page-tree-row-add {
   background: none;
   border: none;
-  color: var(--brand-blue);
+  color: var(--cx-accent);
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
@@ -8450,7 +8450,7 @@ textarea:focus-visible {
   transition: opacity 0.15s, background 0.15s;
 }
 .page-tree-row-add:hover {
-  background: rgba(44, 167, 219, 0.12);
+  background: var(--cx-tint-accent);
 }
 
 .page-tree-loading,
@@ -8466,7 +8466,7 @@ textarea:focus-visible {
   transition: color 0.15s;
 }
 .breadcrumb-item--link:hover {
-  color: var(--brand-blue);
+  color: var(--cx-accent);
 }
 
 /* =========================
