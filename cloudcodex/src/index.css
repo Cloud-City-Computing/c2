@@ -3991,7 +3991,7 @@ body {
   border-left: 3px solid var(--text-muted);
 }
 .gh-sync-banner--ok      { border-left-color: var(--cx-success); }
-.gh-sync-banner--info    { border-left-color: var(--cx-accent); }
+.gh-sync-banner--info    { border-left-color: var(--cx-info); }
 .gh-sync-banner--warn    { border-left-color: var(--cx-warning); }
 .gh-sync-banner--danger  { border-left-color: var(--cx-danger); }
 .gh-sync-banner__icon {
@@ -8666,10 +8666,10 @@ textarea:focus-visible {
 ========================= */
 
 .hljs-comment,
-.hljs-quote { color: #78a763; font-style: italic; }
+.hljs-quote { color: #7cab67; font-style: italic; }
 .hljs-keyword,
 .hljs-selector-tag,
-.hljs-addition { color: #5aa0db; }
+.hljs-addition { color: #5fa5e0; }
 .hljs-number,
 .hljs-string,
 .hljs-meta .hljs-meta-string,
@@ -8696,7 +8696,7 @@ textarea:focus-visible {
 .hljs-selector-pseudo,
 .hljs-link { color: #d4d4d4; }
 .hljs-built_in,
-.hljs-deletion { color: #c586c0; }
+.hljs-deletion { color: #ca8ac4; }
 .hljs-formula { color: #d7ba7d; }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: bold; }
