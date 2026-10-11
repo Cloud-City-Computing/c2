@@ -23,6 +23,9 @@
   ],
   "decorative": {
     "--cx-border": "A divider between surfaces; it carries no information, so it has no contrast minimum.",
-    "--cx-scrim": "A translucent wash behind a dialog; the dialog's own pairs are measured on its surface."
+    "--cx-scrim": "A translucent wash behind a dialog; the dialog's own pairs are measured on its surface.",
+    "--cx-shadow-sm": "A drop shadow's ink; a shadow falls on a surface and carries no text.",
+    "--cx-shadow-md": "A drop shadow's ink; a shadow falls on a surface and carries no text.",
+    "--cx-shadow-lg": "A drop shadow's ink; a shadow falls on a surface and carries no text."
   }
 }

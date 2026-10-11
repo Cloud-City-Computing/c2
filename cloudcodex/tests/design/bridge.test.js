@@ -39,7 +39,10 @@ const LEGACY_27 = [
 ];
 // The undeclared names that carry the heaviest fallbacks, bridged so the fallback can go (PR 8).
 const FALLBACK_NAMES = ['--bg-secondary', '--color-accent', '--border', '--bg-tertiary', '--accent-color'];
-const COLOUR_NAMES = LEGACY_27.filter((name) => !/radius|shadow|height|width|transition/.test(name));
+// The names whose target is a length, a shadow or a transition, not a colour.
+const NON_COLOUR = ['--radius-sm', '--radius-md', '--radius-lg', '--shadow-sm', '--shadow-md', '--shadow-lg',
+  '--topbar-height', '--sidebar-width', '--sidebar-collapsed', '--footer-height', '--transition'];
+const COLOUR_NAMES = LEGACY_27.filter((name) => !NON_COLOUR.includes(name));
 
 describe('the bridge in index.css :root', () => {
   it('declares all 27 legacy names and the five fallback names', () => {

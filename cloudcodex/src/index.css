@@ -14,48 +14,64 @@
   line-height: 1.5;
   font-weight: 400;
 
-  /* Colors */
-  --bg-main: #242424;
-  --bg-elevated: #1e1e1e;
-  --bg-panel: #2e2e2e;
-  --bg-hover: #3a3a3a;
-  --bg-hover-strong: #444;
+  /* Legacy-alias bridge (W6-CDX-22). Every name below keeps its name, so
+     rules and tests that use them are unchanged; each one now points at a
+     token from src/codex.css or the vendored core.css, and holds no literal.
+     tests/design/bridge.test.js pins the 27 declared names, the five
+     fallback names bridged here, and their targets. */
 
-  --border-color: #444;
+  /* Surfaces */
+  --bg-main: var(--cx-surface-0);
+  --bg-elevated: var(--cx-surface-1);
+  --bg-panel: var(--cx-surface-2);
+  --bg-hover: var(--cx-surface-3);
+  --bg-hover-strong: var(--cx-surface-4);
+  --border-color: var(--cx-border);
 
-  --text-primary: rgba(255, 255, 255, 0.87);
-  --text-secondary: #ccc;
-  --text-muted: #888;
+  /* Text */
+  --text-primary: var(--cx-text-primary);
+  --text-secondary: var(--cx-text-secondary);
+  --text-muted: var(--cx-text-faint);
 
-  /* Cloud City Brand Colors */
-  --brand-blue: #2ca7db;
-  --brand-blue-light: #5ac0e8;
-  --brand-blue-dark: #1e7a9c;
-  --brand-blue-hover: #21779c;
+  /* Brand. --brand-blue is the picked accent; the dark step is the
+     package's accent-600, the one that carries a white label. */
+  --brand-blue: var(--cx-accent);
+  --brand-blue-light: var(--cx-accent-hover);
+  --brand-blue-dark: var(--accent-600);
+  --brand-blue-hover: var(--cx-accent-fill);
 
   /* Semantic */
-  --color-danger: #e54545;
-  --color-danger-hover: #c93636;
-  --color-success: #4caf50;
+  --color-danger: var(--cx-danger);
+  --color-danger-hover: var(--danger-bright);
+  --color-success: var(--cx-success);
 
   /* Radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: var(--cx-radius-sm);
+  --radius-md: var(--cx-radius-md);
+  --radius-lg: var(--cx-radius-lg);
 
   /* Shadows */
-  --shadow-sm: 0 2px 4px rgba(0,0,0,0.5);
-  --shadow-md: 0 4px 8px rgba(0,0,0,0.7);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
+  --shadow-sm: var(--cx-shadow-sm);
+  --shadow-md: var(--cx-shadow-md);
+  --shadow-lg: var(--cx-shadow-lg);
 
   /* Layout */
-  --topbar-height: 56px;
-  --sidebar-width: 220px;
-  --sidebar-collapsed: 56px;
-  --footer-height: 44px;
+  --topbar-height: var(--cx-topbar-height);
+  --sidebar-width: var(--cx-sidebar-width);
+  --sidebar-collapsed: var(--cx-sidebar-collapsed);
+  --footer-height: var(--cx-footer-height);
 
   /* Shared transition */
-  --transition: all 0.2s ease;
+  --transition: var(--cx-transition);
+
+  /* Undeclared names that carried the heaviest literal fallbacks. Declared
+     here so the fallback is no longer the value that paints; the fallback
+     literals come out with the burndown in PR 8. */
+  --bg-secondary: var(--cx-surface-1);
+  --bg-tertiary: var(--cx-surface-2);
+  --border: var(--cx-border);
+  --color-accent: var(--cx-accent);
+  --accent-color: var(--cx-accent);
 
   background-color: var(--bg-main);
   color: var(--text-primary);
@@ -377,7 +393,7 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-hover));
+  background: var(--brand-blue-hover);
   color: #fff;
 }
 .btn-primary:hover {
@@ -401,7 +417,7 @@ body {
 }
 
 .btn-danger {
-  background: var(--color-danger);
+  background: var(--color-danger-hover);
   color: #fff;
 }
 .btn-danger:hover {
@@ -425,7 +441,7 @@ body {
   font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-hover));
+  background: var(--brand-blue-hover);
   color: #fff;
   cursor: pointer;
   transition: var(--transition);
@@ -573,7 +589,7 @@ body {
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  background: var(--color-danger);
+  background: var(--color-danger-hover);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -5586,7 +5602,7 @@ body {
 }
 .btn-ghost.btn-danger:hover {
   color: #fff;
-  background: var(--color-danger);
+  background: var(--color-danger-hover);
 }
 
 /* =========================
@@ -6284,7 +6300,7 @@ body {
 }
 
 .pref-toggle-btn.active {
-  background: var(--brand-blue);
+  background: var(--brand-blue-hover);
   color: #fff;
 }
 
@@ -6922,14 +6938,14 @@ body {
 }
 
 .explore-pagination__num--active {
-  background: var(--brand-blue);
+  background: var(--brand-blue-hover);
   color: #fff;
   border-color: var(--brand-blue);
   font-weight: 600;
 }
 
 .explore-pagination__num--active:hover {
-  background: var(--brand-blue);
+  background: var(--brand-blue-hover);
   color: #fff;
 }
 
@@ -9040,7 +9056,7 @@ body {
 }
 
 .drawio-block__edit-btn:hover:not(:disabled) {
-  background: var(--brand-blue);
+  background: var(--brand-blue-hover);
   color: #fff;
   border-color: var(--brand-blue);
 }
@@ -9063,7 +9079,7 @@ body {
 }
 
 .drawio-block__delete-btn:hover {
-  background: var(--color-danger);
+  background: var(--color-danger-hover);
   color: #fff;
   border-color: var(--color-danger);
 }

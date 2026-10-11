@@ -1,6 +1,6 @@
 {
   "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
-  "_measured": "745 at W6-CDX-21 (646 literal colours, 77 accent fill shades in text or edge positions, 22 suppressed outlines), the same total the Wave 6 research measured at 91493a6. Regenerate a bucket with node tests/design/report.mjs.",
+  "_measured": "726 after W6-CDX-22 (the :root bridge's 19 literal colours left; 646 literal colours before it, 77 accent fill shades in text or edge positions, 22 suppressed outlines), from 745 at W6-CDX-21. Regenerate a bucket with node tests/design/report.mjs.",
   "src/components/AccountMenu.jsx": {
     "(file)": 5
   },
@@ -23,7 +23,6 @@
     "(file)": 1
   },
   "src/index.css": {
-    "Design System Tokens": 19,
     "Top Bar": 2,
     "Sidebar": 3,
     "Buttons": 8,

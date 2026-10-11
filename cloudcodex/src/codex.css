@@ -66,4 +66,21 @@
 
   /* The focus ring follows the accent. */
   --cx-focus-ring: var(--cx-accent);
+
+  /* Radii, kept at Codex's own 4, 8 and 12px (core's steps are 6, 10, 14px). */
+  --cx-radius-sm: 4px;
+  --cx-radius-md: 8px;
+  --cx-radius-lg: 12px;
+
+  /* Drop shadows: the ink is black at Codex's three strengths. */
+  --cx-shadow-sm: 0 2px 4px oklch(0 0 0 / 0.5);
+  --cx-shadow-md: 0 4px 8px oklch(0 0 0 / 0.7);
+  --cx-shadow-lg: 0 8px 24px oklch(0 0 0 / 0.6);
+
+  /* Layout and motion, kept at Codex's values. */
+  --cx-topbar-height: 56px;
+  --cx-sidebar-width: 220px;
+  --cx-sidebar-collapsed: 56px;
+  --cx-footer-height: 44px;
+  --cx-transition: all 0.2s ease;
 }
