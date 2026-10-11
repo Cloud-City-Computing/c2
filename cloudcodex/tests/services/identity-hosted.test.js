@@ -84,6 +84,58 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
     expect(identity[1]).toEqual([77, ISSUER, SUBJECT, EMAIL, EMAIL]);
   });
 
+  it('maps a racing identity insert to the identity that won, not a 500', async () => {
+    // A second callback for the same subject created its user and identity between this one's lookup and its
+    // INSERT. The key refuses this insert, the transaction rolls back, and the winner's identity answers.
+    const dup = Object.assign(new Error('dup'), {
+      code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'x' for key 'user_identities.uq_user_identities_issuer_subject'",
+    });
+    c2_query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([INVITATION])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ insertId: 77 })
+      .mockResolvedValueOnce({ insertId: 1 })
+      .mockResolvedValueOnce({ affectedRows: 1 })
+      .mockResolvedValueOnce({ insertId: 5 })
+      .mockRejectedValueOnce(dup)
+      .mockResolvedValueOnce([{ id: 6, user_id: 99 }]); // the re-read: the winner's identity
+
+    expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: true, userId: 99, created: false, identityId: 6 });
+  });
+
+  it('answers identity_conflict when a racing identity insert is refused and no identity can be read back', async () => {
+    const dup = Object.assign(new Error('dup'), {
+      code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'x' for key 'user_identities.uq_user_identities_user_issuer'",
+    });
+    c2_query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([INVITATION])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ insertId: 77 })
+      .mockResolvedValueOnce({ insertId: 1 })
+      .mockResolvedValueOnce({ affectedRows: 1 })
+      .mockResolvedValueOnce({ insertId: 5 })
+      .mockRejectedValueOnce(dup)
+      .mockResolvedValueOnce([]);
+
+    expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: false, reason: 'identity_conflict' });
+  });
+
+  it('rethrows a duplicate on any key other than the identity pair, since that is a different failure', async () => {
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', errno: 1062, sqlMessage: "Duplicate entry 'x' for key 'users.email'" });
+    c2_query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([INVITATION])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(dup);
+
+    await expect(resolveIdentity(oidcClaims(), POLICY)).rejects.toThrow('dup');
+  });
+
   it('answers no_account, linking nothing, when the invitation was revoked before its conditional UPDATE', async () => {
     c2_query
       .mockResolvedValueOnce([])

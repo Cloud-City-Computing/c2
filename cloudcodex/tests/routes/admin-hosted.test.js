@@ -90,6 +90,37 @@ describe('ensureAdminUser on a hosted instance', () => {
     expect(insert[1][1]).toBe(EMAIL);
   });
 
+  it('re-reads and adopts the admin another boot created, when the INSERT loses the race on the unique key', async () => {
+    process.env.ADMIN_USERNAME = 'opsadmin';
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', sqlMessage: "Duplicate entry 'x' for key 'users.email'" });
+    c2_query.mockResolvedValueOnce([]);                   // first look: no admin yet
+    c2_query.mockResolvedValueOnce([]);                   // no account holds the name
+    c2_query.mockRejectedValueOnce(dup);                  // the other boot inserted the same address first
+    c2_query.mockResolvedValueOnce([{ id: 42, is_admin: 1 }]); // the re-read finds that admin
+
+    expect(await ensureAdminUser()).toBe(42);
+    expect(writes().filter(([sql]) => /^INSERT/i.test(sql))).toHaveLength(1);
+    expect(writes().some(([sql]) => /permissions/i.test(sql))).toBe(false);
+  });
+
+  it('refuses after a lost race when the re-read finds a non-admin holding the address', async () => {
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', sqlMessage: "Duplicate entry 'x' for key 'users.email'" });
+    c2_query.mockResolvedValueOnce([]);   // first look: no admin yet
+    c2_query.mockResolvedValueOnce([]);   // deriveUniqueUsername: the derived name is free
+    c2_query.mockRejectedValueOnce(dup);  // the other boot inserted the address first
+    c2_query.mockResolvedValueOnce([{ id: 9, is_admin: 0 }]); // the re-read finds a non-admin
+
+    expect(await ensureAdminUser()).toBeNull();
+  });
+
+  it('rethrows an INSERT failure that is not a duplicate key', async () => {
+    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockRejectedValueOnce(new Error('connection lost'));
+
+    await expect(ensureAdminUser()).rejects.toThrow('connection lost');
+  });
+
   it('syncs an existing admin by email without writing a password', async () => {
     c2_query.mockResolvedValueOnce([{ id: 7, is_admin: 1 }]);
     c2_query.mockResolvedValueOnce({ affectedRows: 1 });
