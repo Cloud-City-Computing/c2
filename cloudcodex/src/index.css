@@ -8301,7 +8301,7 @@ textarea:focus-visible {
   transition: var(--transition);
 }
 .page-tree-back-btn:hover {
-  color: var(--cx-accent);
+  color: var(--cx-accent-hover);
   background: var(--cx-tint-accent);
 }
 
@@ -8329,7 +8329,7 @@ textarea:focus-visible {
 .page-tree-add-btn {
   background: none;
   border: none;
-  color: var(--cx-accent);
+  color: var(--cx-accent-hover);
   cursor: pointer;
   font-size: 18px;
   padding: 2px 6px;
@@ -8392,7 +8392,7 @@ textarea:focus-visible {
 }
 .page-tree-row--active {
   background: var(--cx-tint-accent-mid);
-  color: var(--cx-accent);
+  color: var(--cx-accent-hover);
   font-weight: 500;
 }
 .page-tree-row--active:hover {
@@ -8439,7 +8439,7 @@ textarea:focus-visible {
 .page-tree-row-add {
   background: none;
   border: none;
-  color: var(--cx-accent);
+  color: var(--cx-accent-hover);
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
