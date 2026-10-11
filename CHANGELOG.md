@@ -32,6 +32,14 @@ initialises an empty data directory.
   it has no second factor, and OIDC never creates an account. Sessions record their
   identity and the issuer's sid. The reader check accepts an optional `subject`.
   See `docs/security.md` ("OIDC Sign-in") for what the issuer is trusted for.
+- **Webhooks in the admin console.** Admin, then Webhooks, lists each subscription as Delivering,
+  Stalled or Off. A stalled one says how many attempts failed in a row, the receiver's last answer
+  (a `401` means the signature was rejected) and when the next try is. It creates a subscription,
+  whose secret is shown once with a copy button, turns one on or off, rotates a secret, deletes one,
+  and lists its recent deliveries with Redeliver on a dead one. Every change asks first. The Cancel
+  button of a confirmation now takes focus when it opens. The admin console stacks its sidebar above
+  the content on a narrow screen. Its times are UTC whatever the server's zone. A failed action is toasted, not
+  dropped, and a 404 reloads the list; create and rotate pause while a secret is on screen.
 - **The shared Cloud City design package, vendored, and a design gate.**
   `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
   Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)

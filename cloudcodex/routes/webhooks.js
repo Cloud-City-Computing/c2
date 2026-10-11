@@ -28,8 +28,25 @@ const router = express.Router();
 
 const INT_MAX = 2_147_483_647;
 
-const SUBSCRIPTION_COLUMNS = `id, url, source, secret, enabled, event_types, workspace_id, disabled_reason,
-       consecutive_failures, paused_until, created_by, created_at`;
+/**
+ * A DATETIME(3) column that holds UTC (the worker writes UTC_TIMESTAMP(3)), as
+ * an ISO string with milliseconds. The pool parses DATETIME as Node local time,
+ * so the value is formatted in SQL and never parsed by the driver.
+ */
+const utcText = (column) =>
+  `CONCAT(DATE_FORMAT(${column}, '%Y-%m-%dT%H:%i:%s.'), LEFT(DATE_FORMAT(${column}, '%f'), 3), 'Z')`;
+
+/** A TIMESTAMP column read as epoch seconds: the same instant in any session zone. */
+const EPOCH_SECONDS = (column) => `UNIX_TIMESTAMP(${column})`;
+
+/** An epoch-seconds value (or null) as an ISO string, or null. */
+const isoFromSeconds = (seconds) => (seconds === null || seconds === undefined
+  ? null
+  : new Date(Number(seconds) * 1000).toISOString());
+
+export const SUBSCRIPTION_COLUMNS = `id, url, source, secret, enabled, event_types, workspace_id, disabled_reason,
+       consecutive_failures, ${utcText('paused_until')} AS paused_until, created_by,
+       ${EPOCH_SECONDS('created_at')} AS created_at_seconds`;
 
 /** A new signing secret: 32 random bytes as 64 hex characters. */
 const newSecret = () => randomBytes(32).toString('hex');
@@ -57,7 +74,7 @@ function toView(row) {
     consecutive_failures: row.consecutive_failures,
     paused_until: row.paused_until ?? null,
     created_by: row.created_by ?? null,
-    created_at: row.created_at,
+    created_at: isoFromSeconds(row.created_at_seconds),
     secret_fingerprint: row.source === 'admin' && row.secret ? fingerprint(row.secret) : null,
   };
 }
@@ -219,6 +236,38 @@ router.delete('/admin/webhooks/:id', requireAuth, requireAdmin, asyncHandler(asy
   res.json({ success: true });
 }));
 
+/** The last 50 deliveries of one subscription, newest first. Never the event body. */
+export const DELIVERY_LIST_SQL = `SELECT d.id, d.event_id, e.type, d.status, d.attempts, d.last_status, d.last_error,
+       ${utcText('d.delivered_at')} AS delivered_at, ${EPOCH_SECONDS('d.created_at')} AS created_at_seconds,
+       ${utcText('e.occurred_at')} AS occurred_at,
+       (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
+  FROM webhook_deliveries d
+  JOIN webhook_events e ON e.id = d.event_id
+ WHERE d.subscription_id = ?
+ ORDER BY d.id DESC
+ LIMIT 50`;
+
+/**
+ * A delivery as the console shows it. `expired` is the server's own test of the
+ * 72-hour window, the same one the redeliver route answers 409 by.
+ * @param { object } row
+ */
+export function toDelivery(row) {
+  return {
+    id: row.id,
+    event_id: row.event_id,
+    type: row.type,
+    status: row.status,
+    attempts: row.attempts,
+    last_status: row.last_status,
+    last_error: row.last_error,
+    delivered_at: row.delivered_at ?? null,
+    created_at: isoFromSeconds(row.created_at_seconds),
+    occurred_at: row.occurred_at ?? null,
+    expired: Boolean(row.expired),
+  };
+}
+
 /**
  * GET /api/admin/webhooks/:id/deliveries
  * The last 50 deliveries of one subscription, newest first, with their
@@ -231,16 +280,8 @@ router.get('/admin/webhooks/:id/deliveries', requireAuth, requireAdmin, asyncHan
   const [subscription] = await c2_query('SELECT id FROM webhook_subscriptions WHERE id = ?', [Number(req.params.id)]);
   if (!subscription) return res.status(404).json({ success: false, message: 'Webhook not found' });
 
-  const deliveries = await c2_query(
-    `SELECT d.id, d.event_id, e.type, d.status, d.attempts, d.last_status, d.last_error, d.delivered_at, d.created_at
-       FROM webhook_deliveries d
-       JOIN webhook_events e ON e.id = d.event_id
-      WHERE d.subscription_id = ?
-      ORDER BY d.id DESC
-      LIMIT 50`,
-    [subscription.id]
-  );
-  res.json({ success: true, deliveries });
+  const deliveries = await c2_query(DELIVERY_LIST_SQL, [subscription.id]);
+  res.json({ success: true, deliveries: deliveries.map(toDelivery) });
 }));
 
 /**
@@ -253,13 +294,22 @@ router.post('/admin/webhooks/deliveries/:id/redeliver', requireAuth, requireAdmi
     return res.status(400).json({ success: false, message: 'Invalid delivery id' });
   }
   const [delivery] = await c2_query(
-    `SELECT d.id, d.status, (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
+    `SELECT d.id, d.status, s.source, (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
        FROM webhook_deliveries d
        JOIN webhook_events e ON e.id = d.event_id
+       JOIN webhook_subscriptions s ON s.id = d.subscription_id
       WHERE d.id = ?`,
     [Number(req.params.id)]
   );
   if (!delivery) return res.status(404).json({ success: false, message: 'Delivery not found' });
+  // The env subscription is changed in the environment, so its deliveries are not
+  // redelivered from here; the console hides the button, and this refuses the call.
+  if (delivery.source === 'env') {
+    return res.status(409).json({
+      success: false,
+      message: 'This delivery belongs to a webhook configured in the server environment; it cannot be redelivered here',
+    });
+  }
   if (delivery.status !== 'dead') {
     return res.status(409).json({ success: false, message: 'Only a dead-lettered delivery can be redelivered' });
   }

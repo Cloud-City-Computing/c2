@@ -287,6 +287,15 @@ failure pauses 10 s, then 20, 40, and so on, capped at one hour.
 `attempts = 0`; 409 for any other status, and for an event older than 72 hours) are in `routes/webhooks.js`, documented in
 `docs/api/admin.md`.
 
+**Console (W6-CDX-15).** The Webhooks panel is `WebhooksPanel` in `src/components/WebhooksPanel.jsx`,
+mounted from `AdminPage` as its `webhooks` nav entry. It reads `GET /api/admin/webhooks` and loads
+the deliveries of every stalled subscription (`consecutive_failures > 0`) up front, because a
+stalled card states the last failure. A subscription is Stalled while it is enabled and
+`consecutive_failures > 0`, Off when disabled (the reason is shown), otherwise Delivering. The
+secret appears only in the reveal box returned by create or rotate; the panel never fetches it.
+Enable, disable, rotate, delete and redeliver all go through `ConfirmDialog`. A dead delivery whose event
+is `expired` (the server's own 72-hour test, the one the redeliver route answers 409 by) offers no Redeliver, and the env subscription's deliveries never do, because the route refuses them too. The console reads the UTC columns as text and the TIMESTAMP columns as epoch seconds, so the driver's local-time parse never touches them (see `docs/maps/open-questions.md` C9).
+
 Tests: `tests/services/webhook-worker.test.js` (the three signature vectors, and each
 outcome, the backoff SQL, the 72-hour expiry, the budgets, the lapsed-lease write count, the
 send-time guard and the timer) and `tests/integration/webhooks-worker.test.js` against a real

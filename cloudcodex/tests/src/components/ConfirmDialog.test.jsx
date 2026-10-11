@@ -25,6 +25,11 @@ describe('ConfirmDialog', () => {
     expect(confirm.className).toMatch(/btn-danger/);
   });
 
+  it('moves focus to Cancel when it opens, so a keyboard user cannot confirm by accident', () => {
+    render(<ConfirmDialog title="t" message="m" onConfirm={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /cancel/i })).toHaveFocus();
+  });
+
   it('renders Cancel and confirm buttons; Cancel calls onCancel', async () => {
     const user = userEvent.setup();
     const onCancel = vi.fn();

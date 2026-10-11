@@ -42,7 +42,7 @@ export default function ConfirmDialog({ title, message, onConfirm, onCancel, con
       <p>{message}</p>
       {error && <p className="form-error">{error}</p>}
       <div className="confirm-dialog__actions">
-        <button className="btn btn-ghost" onClick={handleCancel} disabled={loading}>Cancel</button>
+        <button className="btn btn-ghost" onClick={handleCancel} disabled={loading} autoFocus>Cancel</button>
         <button
           className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`}
           onClick={handleConfirm}

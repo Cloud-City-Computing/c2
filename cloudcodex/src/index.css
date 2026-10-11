@@ -7861,6 +7861,79 @@ body {
   min-width: 0;
 }
 
+/* Narrow screens: a delivery keeps its event, status, answer and action; attempts and time are on the wide view */
+@media (max-width: 768px) {
+  .webhook-deliveries th:nth-child(3),
+  .webhook-deliveries td:nth-child(3),
+  .webhook-deliveries th:nth-child(5),
+  .webhook-deliveries td:nth-child(5) {
+    display: none;
+  }
+
+  /* Each delivery is a stacked block, so its action sits on its own line and never
+     needs a sideways scroll. Each cell names its column. */
+  .webhook-deliveries thead {
+    display: none;
+  }
+
+  .webhook-deliveries,
+  .webhook-deliveries tbody,
+  .webhook-deliveries tr,
+  .webhook-deliveries td {
+    display: block;
+    width: 100%;
+  }
+
+  .webhook-deliveries tr {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .webhook-deliveries td {
+    padding: 2px 0;
+    border: none;
+  }
+
+  .webhook-deliveries td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--text-muted);
+  }
+
+  .webhook-deliveries td:empty {
+    display: none;
+  }
+}
+
+/* Narrow screens: the sidebar becomes a row above the content, not a column beside it */
+@media (max-width: 768px) {
+  .admin-dashboard {
+    flex-direction: column;
+  }
+
+  .admin-sidebar {
+    width: 100%;
+    padding: 8px 0;
+  }
+
+  .admin-sidebar__title {
+    display: none;
+  }
+
+  .admin-sidebar__nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 8px;
+  }
+
+  .admin-sidebar__item {
+    flex-shrink: 0;
+  }
+
+  .admin-main {
+    padding: 16px;
+  }
+}
+
 /* Stats grid */
 
 .admin-stats {
@@ -8221,6 +8294,203 @@ body {
 .status-badge--expired {
   background: rgba(136, 136, 136, 0.15);
   color: var(--text-muted);
+}
+
+/* Outbound webhooks (admin console, WebhooksPanel) */
+
+.webhooks-panel__intro {
+  margin: -8px 0 16px;
+  font-size: 13px;
+}
+
+.webhook-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.webhook-card {
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.webhook-card--stalled {
+  border-color: var(--color-danger);
+}
+
+.webhook-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.webhook-card__url {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.webhook-card__source,
+.webhook-card__note,
+.webhook-card__reason {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.webhook-state--delivering {
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  color: var(--color-success);
+}
+
+.webhook-state--stalled {
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  color: var(--color-danger);
+}
+
+.webhook-state--off {
+  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+  color: var(--text-muted);
+}
+
+.webhook-card__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 16px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.webhook-card__facts dt {
+  color: var(--text-muted);
+}
+
+.webhook-card__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.webhook-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.webhook-card__deliveries {
+  margin-top: 12px;
+}
+
+.webhook-deliveries__caption {
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding-bottom: 6px;
+}
+
+.webhooks-stalled {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.webhooks-stalled p {
+  margin: 4px 0 0;
+}
+
+.webhooks-stalled__title {
+  font-weight: 600;
+}
+
+.webhook-form {
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.webhook-form h4 {
+  margin: 0 0 10px;
+}
+
+.webhook-form__label {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 13px;
+}
+
+.webhook-form__input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.webhook-form__help {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.webhook-form__events {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  margin: 10px 0 0;
+  padding: 8px 12px 10px;
+  font-size: 13px;
+}
+
+.webhook-form__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.webhook-form__error {
+  margin: 10px 0 0;
+}
+
+.webhook-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.webhook-reveal {
+  background: var(--bg-main);
+  border: 1px solid var(--brand-blue);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.webhook-reveal h4 {
+  margin: 0 0 8px;
+}
+
+.webhook-reveal__warning {
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.webhook-reveal__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.webhook-reveal__secret {
+  overflow-wrap: anywhere;
+  user-select: all;
+  font-size: 12px;
 }
 
 /* Danger ghost button */

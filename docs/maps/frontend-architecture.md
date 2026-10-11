@@ -178,7 +178,7 @@ of the application.
 
 ## 4. Components
 
-`src/components/` holds 32 reusable components plus a `github/` subfolder for
+`src/components/` holds 34 reusable components plus a `github/` subfolder for
 the picker modals. The reusable primitives worth knowing before you build a new
 one:
 
@@ -188,6 +188,8 @@ one:
   `GitHubPage.jsx` and no more should be added.
 - `<PresenceAvatars>` pairs with `usePresence`.
 - `<PageTree>` renders the `logs.parent_id` tree.
+- `<WebhooksPanel>` is the admin console's Webhooks panel (W6-CDX-15). Its confirmations go through
+  `<ConfirmDialog>`, and it renders a subscription's secret only in its one-time reveal box.
 - `<SearchBox>` / `<SearchResultItem>`, `<NotificationBell>` /
   `<NotificationItem>`, `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`
   has no callers**: search results reach the user through `ExploreCard`, so it
