@@ -336,9 +336,11 @@ fourth, `integration`, is opt-in because it needs a MySQL server:
 | `design` | node | none | `tests/design/**/*.test.js` |
 | `integration` | node | `tests/setup.integration.js`, plus `globalSetup` `tests/integration/global-setup.js` | `tests/integration/**/*.test.js` |
 
-Current state: the default run is **109 files, 2533 tests, all passing** (5
-files and 80 tests of it are `design`); the integration project is **18 files,
-217 tests** (measured 2026-09-29 on `chore/deps-audit`, the upgraded
+Current state: the default run is **153 files, 3575 tests, all passing** (14
+files and 283 tests of it are `design`, measured 2026-10-11 on
+`track/w6-cdx-29-admin-surfaces`); the integration project is **27 files, 297
+tests, all passing** (measured the same day in a `mysql:8.4.11` container with Node 22
+copied in, the CI root password, and `npm ci` run inside). The older figures were (measured 2026-09-29 on `chore/deps-audit`, the upgraded
 dependencies, with main merged in after W6-CDX-13, against a stock MySQL 8.4.11
 at the server's default isolation and at `READ-COMMITTED`, with MySQL's 8.4.11
 clients on `PATH`).
