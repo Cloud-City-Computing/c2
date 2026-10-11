@@ -70,19 +70,29 @@ function ruleZ(selector) {
 const rank = (token) => SCALE.indexOf(token);
 
 describe('the shell layers that the editor overlays depend on', () => {
-  it('the top bar sits above the sidebar and the mobile bottom nav, and its dropdowns stay above both', () => {
+  // The suite switcher's panel (.cc-suite__panel) lives inside .topbar and paints in the top bar's
+  // stacking context. The sidebar is a sibling in the app grid, so it wins any tie of the same token
+  // and covers a panel that hangs down over it. The top bar must be STRICTLY above the sidebar.
+  it('the top bar sits strictly above the sidebar and the mobile bottom nav, so its dropdowns (the suite switcher) paint over both', () => {
     expect(rank(ruleZ('.topbar'))).toBeGreaterThan(rank(ruleZ('.mobile-nav')));
-    expect(rank(ruleZ('.topbar'))).toBeGreaterThanOrEqual(rank(ruleZ('.sidebar')));
+    expect(rank(ruleZ('.topbar'))).toBeGreaterThan(rank(ruleZ('.sidebar')));
+  });
+
+  it('the sidebar sits at base, so no sibling of the top bar can tie it and paint over the top bar\'s dropdowns', () => {
+    expect(ruleZ('.sidebar')).toBe('--z-base');
   });
 
   it('the mobile bottom nav sits below the top bar, so a dropdown that reaches it stays on top', () => {
     expect(ruleZ('.mobile-nav')).toBe('--z-base');
   });
 
-  it('the sidebar is above the editor overlays (comment highlights and remote cursors), so its hover panel is not painted under them', () => {
-    expect(ruleZ('.sidebar')).toBe('--z-sticky');
-    expect(rank(ruleZ('.sidebar'))).toBeGreaterThan(rank(ruleZ('.comment-highlights')));
-    expect(rank(ruleZ('.sidebar'))).toBeGreaterThan(rank(ruleZ('.remote-cursors')));
+  // The collapsed sidebar's hover panel overlays the editor, so it alone is raised above the editor
+  // overlays (comment highlights and remote cursors). The docked sidebar is in its own grid column.
+  it('the hover-expanded sidebar is above the editor overlays (comment highlights and remote cursors), so its panel is not painted under them', () => {
+    const hover = ruleZ('.sidebar-collapsed .sidebar:hover');
+    expect(hover).toBe('--z-sticky');
+    expect(rank(hover)).toBeGreaterThan(rank(ruleZ('.comment-highlights')));
+    expect(rank(hover)).toBeGreaterThan(rank(ruleZ('.remote-cursors')));
   });
 });
 

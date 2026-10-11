@@ -787,3 +787,43 @@ describe('outbound webhook admin wrappers', () => {
     expect(opts.method).toBe('POST');
   });
 });
+
+// ── a dead session announces itself (the front door's trigger) ──────
+
+describe('apiFetch, a dead session', () => {
+  const DEAD = { ok: false, status: 401, json: async () => ({ success: false, message: 'Invalid or expired session' }) };
+
+  function listen() {
+    const seen = vi.fn();
+    window.addEventListener('c2:session-ended', seen);
+    return { seen, stop: () => window.removeEventListener('c2:session-ended', seen) };
+  }
+
+  it('announces the end of the session and forgets the cached user when a signed-in request is refused as expired', async () => {
+    document.cookie = 'sessionToken=stale';
+    setSessStorage('currentUser', { id: 7 });
+    fetchMock.mockResolvedValueOnce(DEAD);
+    const { seen, stop } = listen();
+    await expect(apiFetch('GET', '/api/document?doc_id=1')).rejects.toMatchObject({ status: 401 });
+    stop();
+    expect(seen).toHaveBeenCalledOnce();
+    expect(getSessStorage('currentUser')).toBeNull();
+  });
+
+  it('does not announce a 401 that is not a dead session (a wrong current password)', async () => {
+    document.cookie = 'sessionToken=live';
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Current password is incorrect' }) });
+    const { seen, stop } = listen();
+    await expect(apiFetch('POST', '/api/change-password', {})).rejects.toMatchObject({ status: 401 });
+    stop();
+    expect(seen).not.toHaveBeenCalled();
+  });
+
+  it('does not announce anything for a signed-out request, which has no session to end', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Authentication required' }) });
+    const { seen, stop } = listen();
+    await expect(apiFetch('GET', '/api/document?doc_id=1')).rejects.toMatchObject({ status: 401 });
+    stop();
+    expect(seen).not.toHaveBeenCalled();
+  });
+});
