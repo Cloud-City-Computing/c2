@@ -723,6 +723,20 @@ emit throw out of `doLogActivity` turns the trigger test red (no watcher
 notification); the unit suites catch dropping the title bound, the workspace
 match, the no-subscription early return, the SQL re-check, the queue drop on a
 retarget, the IPv4-in-IPv6 check, the every-address check and the admin gate.
+`tests/integration/webhooks-worker.test.js` (W6-CDX-14) runs the delivery worker
+against a real receiver on 127.0.0.1 and reads the outbox back: the body is
+byte-identical to the stored row and its signature verifies; event 3 is not
+received before event 2; two workers on one database send each of 50 deliveries
+exactly once; a lapsed lease writes nothing after another worker delivers; 410,
+422, a 302 (not followed) and a receiver that never answers (`ETIMEDOUT` after
+ten seconds) each land their outcome; the backoff gaps read back from
+`paused_until` are 10, 20, 40, 2560 and 3600 seconds; a 73-hour event is
+dead-lettered and never sent; a name that now resolves to a private address is
+not sent to; the connect goes to the approved address; the prune keeps what
+the rules keep; and 20 saves with a hanging subscriber and a worker ticking
+beside them are measured against 20 without one. The in-process jobs are now
+three: the activity prune, the session prune, and the delivery worker with its
+prune.
 
 `tests/integration/admin-sync.test.js` proves the boot admin sync never
 promotes (GHSA-w8q3-r34w-3pjh), which only a real server can: which row the
@@ -805,7 +819,9 @@ contract; the 37th, `services/session-cookie.js` (95 on all four), with the
 `__Host-` session cookie (W6-CDX-3); and the 38th to 40th, `routes/webhooks.js`
 (97 lines), `services/webhooks.js` (95 lines, 90 branches) and
 `services/webhook-target.js` (95 lines, 88 branches), with the outbound-events
-outbox (W6-CDX-13). The security-critical and
+outbox (W6-CDX-13). The 41st, `services/webhook-worker.js`, with the delivery
+worker (W6-CDX-14), is measured in the backend project alone, where the
+timeout branch and the live-MySQL paths are not counted. The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |

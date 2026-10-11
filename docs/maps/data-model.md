@@ -414,7 +414,7 @@ subscription matches an event (`notifications-and-activity.md` section 2a):
   (`chk_webhook_deliveries_status`), with `attempts`, the lease columns
   `leased_by` and `lease_expires_at`, and `last_status`, `last_error`,
   `delivered_at`. `idx_webhook_deliveries_head (subscription_id, status,
-  event_id)` is the head-of-queue read the delivery worker (W6-CDX-14) makes.
+  event_id)` is the head-of-queue read the delivery worker (`services/webhook-worker.js`) makes.
   Both FKs cascade, so deleting a subscription or pruning an event removes its
   deliveries.
 

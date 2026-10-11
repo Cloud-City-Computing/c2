@@ -271,8 +271,10 @@ receiver. The suite's subscription avoids it because its secret lives only in en
   Each tick leases due deliveries with a guarded `UPDATE` (lease expiry plus owner token), keeps one
   request in flight per subscription in sequence order, and has a bounded batch and time budget so
   it catches up after an outage without starving the event loop.
-- A `POST` of the stored bytes with the three headers, a 10-second timeout, `redirect: 'manual'`
-  (any `3xx` is a failure), and the SSRF guard re-checked at send time.
+- A `POST` of the stored bytes with the three headers, a 10-second timeout, and the SSRF guard
+  re-checked at send time. Redirects are never followed: the send uses `node:https`, which does
+  not follow them, so a `3xx` is a failure (recorded in W6-CDX-14, not `fetch` with
+  `redirect: 'manual'`).
 - Outcomes as in the contract; a 72-hour-old event is dead-lettered; an admin redeliver endpoint
   re-queues a dead-lettered delivery. Delivered and dead rows are pruned after 30 days on the daily
   prune.

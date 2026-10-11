@@ -585,7 +585,7 @@ matches it. `body` is the exact bytes every delivery of it sends.
 ### `webhook_deliveries`
 
 One row per (subscription, event), worked in event order per subscription by
-the delivery worker.
+the delivery worker (`services/webhook-worker.js`). `attempts` counts failed sends.
 
 | Column             | Type                     | Notes                                    |
 |--------------------|--------------------------|------------------------------------------|

@@ -8,7 +8,7 @@
 
 Cloud Codex can tell a receiver you run when a document or an archive is renamed, moved, edited, published, restored or deleted. It is off by default: an instance with no subscription writes nothing and sends nothing. Subscriptions are declared in the server environment (one, see [Configuration](#configuration)) or made by an instance admin ([admin.md, Webhooks](admin.md#webhooks)).
 
-> **Status.** Events are recorded in an outbox (`webhook_events`, `webhook_deliveries`) as they happen. The delivery worker that POSTs them to receivers ships in a later release; the envelope, headers and answers below are the contract it will follow.
+> **Status.** Events are recorded in an outbox (`webhook_events`, `webhook_deliveries`) as they happen. An in-process delivery worker POSTs them to receivers, in order per subscription, every two seconds. The envelope, headers and answers below are the contract it follows.
 
 ---
 

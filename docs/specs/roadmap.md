@@ -413,7 +413,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-9 | Machine membership endpoints for the automatic sync | W6-CDX-7, W6-CDX-8 | yes |
 | W6-CDX-12 | Three activity gaps fixed at the source (**shipped 2026-09-27** in #62; `archive.delete` reaches the table, the tree route logs `log.rename` and `log.move` and caps titles at 255, and every route that sets a parent keeps it in the archive) | W6-CDX-10 | yes |
 | W6-CDX-13 | The outbox, subscriptions and the emit hook (**shipped 2026-09-28** in #74; three webhook tables, `emitEvent` in `logActivity`, the env subscription, the SSRF guard and `/api/admin/webhooks`; nothing is sent until W6-CDX-14) | W6-CDX-12 | yes |
-| W6-CDX-14 | The delivery worker | W6-CDX-13 | yes |
+| W6-CDX-14 | The delivery worker (**built 2026-10-10** on `track/w6-cdx-14-delivery-worker`, PR not yet opened: the in-process worker with the send-time guard and pinned connect, the 72-hour dead-letter, the 30-day prune, and `GET /api/admin/webhooks/:id/deliveries` and redeliver) | W6-CDX-13 | yes |
 | W6-CDX-15 | Webhooks in the admin console | W6-CDX-14 | no |
 | W6-CDX-16 | A machine read for reconciliation (**shipped 2026-09-27** in #63; `GET /api/documents/state`, the third `machineOrAuth` route) | W6-CDX-10 | no |
 | W6-CDX-21 | Vendor the tokens, fonts and gates (**shipped 2026-09-28** in #71; `cloud-city-design` 0.2.0 at `2d52baa` in `cloudcodex/vendor/`, the `design` Vitest project with a 745-finding ledger, `src/codex.css`, and ten dangling references fixed) | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
