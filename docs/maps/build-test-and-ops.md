@@ -439,7 +439,7 @@ manifest lists.
 | `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
 | `contrast.test.js` | every pair in `pairs.json` clears its minimum in the dark theme, and every colour binding in `src/codex.css` is in a pair or named decorative |
 | `bridge.test.js` | the 27 legacy names and the five fallback names in `index.css`'s `:root` are each one `var()` into `codex.css` or `core.css`, resolve through the vendored resolver, and hold no literal (the colour ones resolve to a colour) |
-| `painted.test.js` | the labels the page actually paints, read from the real `src/index.css` declarations and resolved through the bridge: ink (`--cx-on-accent`) on the accent fill for the default and all eight hues at 4.5:1 or more; white on the accent dark (avatars) at 4.5:1 or more; white on the danger rest and hover steps at 4.5:1 or more, the hover darker than the rest |
+| `painted.test.js` | the labels the page actually paints, read from the real `src/index.css` declarations and resolved through the bridge: ink (`--cx-on-accent`) on the accent fill for the default and all eight hues at 4.5:1 or more; white on the accent dark (avatars) at 4.5:1 or more; white on the danger rest and hover steps at 4.5:1 or more, the hover darker than the rest; the danger label is `--cx-on-danger`; the primary hover at 4.5:1 on every hue; the focus ring (`:focus-visible`) at 3:1 on all five surfaces for the default and eight hues, and no rule in `index.css` removes an outline; each toast label at 4.5:1 on the toast surface |
 | `accents.test.js` | the eight picker hues in `src/tokens/accents.js`: 40 of 40 hue-by-surface pairs at 4.5:1 (non-vacuity counted), on-accent at 4.5:1 on each fill, at least 15 degrees from the danger, warning, success and violet arcs read from `core.css`, no two closer than 25 degrees, `LEGACY_ACCENT` targets unique keys |
 | `codex-css.test.js` | `codex.css` declares only `--cx-` custom properties, nothing else, under `[data-theme='dark']`, never a core name; `index.html` sets the attribute; `src/main.jsx` imports core, fonts, codex, index in that order; no font under `public/`; Vite keeps legal comments |
 
@@ -449,9 +449,11 @@ and per section banner inside `index.css` (`tests/design/buckets.js`,
 above its number fails as a regression and one below it fails as an unrecorded
 fix, so a burndown PR lowers the ledger by exactly what it burned, in the same
 PR. It started at 745 (646 literal colours, 77 accent positions, 22 outline
-suppressions) and stands at 679 after W6-CDX-22: the `:root` bridge took its 19
+suppressions) and stood at 679 after W6-CDX-22: the `:root` bridge took its 19
 literal colours out, and the dead-CSS burndown and the picker's data file took
-the rest. `node tests/design/report.mjs [file]` prints the live buckets.
+the rest. It stands at 642 after W6-CDX-23: the focus rings took all 21 outline
+suppressions, the button family's literals and label went, and the Toast's six
+literals went; the Buttons and Focus and Accessibility buckets are deleted. `node tests/design/report.mjs [file]` prints the live buckets.
 In `src/codex.css` (`TOKEN_DEFINITIONS`) the literal rule skips the
 custom-property declarations (`maskCustomProperties` blanks them first),
 because those literals are the definitions the contrast gate measures; a

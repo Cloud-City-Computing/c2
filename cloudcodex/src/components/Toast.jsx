@@ -80,13 +80,16 @@ function ToastItem({ toast, onDismiss }) {
   return (
     <div
       className={`toast toast--${toast.type}${exiting ? ' toast--exit' : ''}`}
-      onClick={() => onDismiss(toast.id)}
       role="alert"
     >
       <span className="toast__icon">
         {toast.type === 'error' ? '✕' : toast.type === 'success' ? '✓' : 'ℹ'}
       </span>
       <span className="toast__message">{toast.message}</span>
+      <button type="button" className="toast__dismiss" aria-label="Dismiss notification"
+              onClick={() => onDismiss(toast.id)}>
+        ×
+      </button>
     </div>
   );
 }

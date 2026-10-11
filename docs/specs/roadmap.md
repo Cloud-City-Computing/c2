@@ -418,7 +418,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-16 | A machine read for reconciliation (**shipped 2026-09-27** in #63; `GET /api/documents/state`, the third `machineOrAuth` route) | W6-CDX-10 | no |
 | W6-CDX-21 | Vendor the tokens, fonts and gates (**shipped 2026-09-28** in #71; `cloud-city-design` 0.2.0 at `2d52baa` in `cloudcodex/vendor/`, the `design` Vitest project with a 745-finding ledger, `src/codex.css`, and ten dangling references fixed) | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
 | W6-CDX-22 | The palette bridge and the accent picker (**done 2026-10-10** on `track/w6-cdx-22-palette-bridge`, PR 2 of the suite UI plan; the four renamed hues await Kyle's name review) | W6-CDX-21 | yes |
-| W6-CDX-23 | Focus, buttons and the Toast | W6-CDX-22 | yes |
+| W6-CDX-23 | Focus, buttons and the Toast (**done 2026-10-11** on `track/w6-cdx-23-focus-buttons-toast`, PR 3 of the suite UI plan; the Toast is the suite's shared primitive, D-V; Kyle's review pending) | W6-CDX-22 | yes |
 | W6-CDX-24 | Dialogs with real semantics | W6-CDX-23 | yes |
 | W6-CDX-25 | Shell chrome and the suite identity cluster | W6-CDX-23, W6-CMD-23 | yes |
 | W6-CDX-26 | The suite front door, deep links in | W6-CDX-24, W6-CDX-25, W6-CDX-8, W6-CMD-24 | yes |
