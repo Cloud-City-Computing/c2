@@ -33,6 +33,7 @@ DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS user_invitations;
 DROP TABLE IF EXISTS oauth_accounts;
 DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS user_identities;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS workspaces;
 
@@ -88,6 +89,23 @@ CREATE TABLE oauth_accounts (
   INDEX (user_id)
 ) ENGINE=InnoDB;
 
+-- One identity per (issuer, sub), linking a local user to an OIDC issuer's
+-- subject (W6-CDX-5; migrations/2026-10-11-user-identities.sql). utf8mb4_bin
+-- because a sub is case-sensitive. UNIQUE (user_id, issuer) makes "one identity
+-- per issuer per user" a database fact.
+CREATE TABLE user_identities (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  issuer VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  subject VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  email_at_link VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_login_at TIMESTAMP NULL DEFAULT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_user_identities_issuer_subject (issuer, subject),
+  UNIQUE KEY uq_user_identities_user_issuer (user_id, issuer)
+) ENGINE=InnoDB;
+
 CREATE TABLE sessions (
   -- The SHA-256 digest of the session token, lowercase hex, never the token
   -- itself (hashSessionToken in cloudcodex/services/session-token.js): a dump
@@ -98,17 +116,26 @@ CREATE TABLE sessions (
   -- forgets to name itself fails at insert (error 1364); VARCHAR + CHECK, not
   -- ENUM, for password_reset_tokens.purpose's reason below. Keep the CHECK in
   -- sync with the newest migration that sets it
-  -- (migrations/2026-09-27-session-per-sign-in.sql).
+  -- (migrations/2026-10-11-user-identities.sql).
   auth_provider VARCHAR(16) NOT NULL,
+  -- The identity an OIDC sign-in used, and the issuer's sid for back-channel
+  -- logout (migrations/2026-10-11-user-identities.sql). Both NULL for local and
+  -- Google sessions. chk_sessions_identity_pairing keeps 'oidc' and identity_id
+  -- together.
+  identity_id INT NULL,
+  provider_sid VARCHAR(255) NULL,
   ip_address VARCHAR(45),
   user_agent TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   expires_at TIMESTAMP NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google')),
+  CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google', 'oidc')),
+  CONSTRAINT chk_sessions_identity_pairing CHECK ((auth_provider = 'oidc') = (identity_id IS NOT NULL)),
+  CONSTRAINT fk_sessions_identity FOREIGN KEY (identity_id) REFERENCES user_identities(id) ON DELETE CASCADE,
   INDEX (user_id),
-  INDEX (expires_at)
+  INDEX (expires_at),
+  INDEX idx_sessions_provider_sid (provider_sid)
 ) ENGINE=InnoDB;
 
 CREATE TABLE password_reset_tokens (

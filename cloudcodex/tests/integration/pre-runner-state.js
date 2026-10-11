@@ -32,4 +32,10 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
   '2026-09-27-who-may-see-doc-images.sql': 'DROP TABLE doc_images',
   '2026-09-28-webhooks.sql': 'DROP TABLE webhook_deliveries, webhook_events, webhook_subscriptions',
   '2026-10-10-webhook-sequence-lock.sql': 'DROP TABLE webhook_sequence_lock',
+  '2026-10-11-user-identities.sql':
+    'ALTER TABLE sessions DROP FOREIGN KEY fk_sessions_identity, DROP INDEX idx_sessions_provider_sid, ' +
+    'DROP COLUMN provider_sid, DROP COLUMN identity_id, DROP CHECK chk_sessions_identity_pairing, ' +
+    'DROP CHECK chk_sessions_auth_provider, ' +
+    "ADD CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google')); " +
+    'DROP TABLE user_identities',
 });
