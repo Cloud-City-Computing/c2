@@ -392,8 +392,15 @@ body {
   color: var(--cx-on-accent);
   border-color: var(--cx-border);
 }
-.btn-primary:hover {
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary:hover:not(:disabled) {
   background: var(--brand-blue);
+}
+.btn-primary:active:not(:disabled) {
+  background: var(--cx-accent-hover);
 }
 
 .btn-ghost {
@@ -401,17 +408,23 @@ body {
   color: var(--text-secondary);
   border-color: var(--border-color);
 }
-.btn-ghost:hover {
+.btn-ghost:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+.btn-ghost:active:not(:disabled) {
+  background: var(--bg-hover-strong);
 }
 
 .btn-danger {
   background: var(--cx-danger-fill);
   color: var(--cx-on-danger);
 }
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   background: var(--color-danger-hover);
+}
+.btn-danger:active:not(:disabled) {
+  background: var(--cx-danger-fill-press);
 }
 
 .btn-sm { padding: 5px 12px; font-size: 12px; }
@@ -1048,7 +1061,6 @@ body {
 .search-inline .search-input::placeholder { color: var(--text-muted); }
 .search-inline .search-input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .search-inline .search-icon-btn {
@@ -1131,7 +1143,6 @@ body {
 }
 .search-box .search-input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 /* =========================
@@ -1268,7 +1279,6 @@ body {
 }
 .modal-form input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .modal-form__textarea {
@@ -1286,7 +1296,6 @@ body {
 }
 .modal-form__textarea:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .preview-content {
@@ -1951,7 +1960,6 @@ body {
   resize: none;
   tab-size: 2;
 }
-
 
 .gh-editor-textarea--plain {
   flex: 1 1 0;
@@ -3402,16 +3410,9 @@ body {
 .modal-form input.input--available {
   border-color: #4caf50;
 }
-.modal-form input.input--available:focus {
-  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
-}
 .modal-form input.input--taken,
 .modal-form input.input--invalid {
   border-color: var(--color-danger);
-}
-.modal-form input.input--taken:focus,
-.modal-form input.input--invalid:focus {
-  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
 }
 
 /* Password strength bar */
@@ -3588,7 +3589,6 @@ body {
 }
 .inline-form input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .form-select {
@@ -3629,7 +3629,6 @@ body {
 }
 .user-search__input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .user-search__results {
@@ -3730,7 +3729,6 @@ body {
 }
 .form-group input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 /* 2FA Method Selection */
@@ -3801,7 +3799,6 @@ body {
 }
 .totp-code-input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .totp-setup-inline {
@@ -5373,6 +5370,36 @@ body {
    Focus & Accessibility
 ========================= */
 
+/* A text field's ring sits against its own border, so the border and the ring read as one edge. */
+input:focus-visible {
+  outline-offset: 0;
+}
+textarea:focus-visible {
+  outline-offset: 0;
+}
+
+/* A ring is drawn outside its control, so a container that clips (overflow: hidden) cuts it off
+   on a flush control. A control inside one of these draws its ring inside its own edge, where
+   the container's clip cannot reach. Each container is measured as clipping in painted.test.js. */
+.editor-container :focus-visible {
+  outline-offset: -2px;
+}
+.markdown-editor__textarea-wrapper :focus-visible {
+  outline-offset: -2px;
+}
+.sidebar :focus-visible {
+  outline-offset: -2px;
+}
+.gh-browser__sidebar :focus-visible {
+  outline-offset: -2px;
+}
+.gh-modal :focus-visible {
+  outline-offset: -2px;
+}
+.gh-sync-menu :focus-visible {
+  outline-offset: -2px;
+}
+
 :focus-visible {
   outline: 2px solid var(--cx-focus-ring);
   outline-offset: 2px;
@@ -6262,7 +6289,6 @@ body {
 
 .explore-search-input:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 2px rgba(44, 167, 219, 0.2);
 }
 
 .explore-clear-btn {
@@ -6666,7 +6692,12 @@ body {
 
 .toast__dismiss {
   flex-shrink: 0;
-  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
   border: none;
   border-radius: var(--radius-sm);
   background: none;

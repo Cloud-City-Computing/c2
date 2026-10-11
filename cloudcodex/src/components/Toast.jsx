@@ -14,7 +14,7 @@
  */
 
 import { createRoot } from 'react-dom/client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 let addToastFn = null;
 let toastRoot = null;
@@ -59,8 +59,11 @@ function ToastContainer() {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  // No aria-live here: each toast is its own live region (role="alert" or "status"), so an
+  // announcement is made once, not once by the container and again by the toast inside it.
+  // tabIndex -1 lets a dismissed toast's focus land here, rather than on the body.
   return (
-    <div className="toast-container" aria-live="polite">
+    <div className="toast-container" tabIndex={-1}>
       {toasts.map(toast => (
         <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />
       ))}
@@ -70,24 +73,61 @@ function ToastContainer() {
 
 function ToastItem({ toast, onDismiss }) {
   const [exiting, setExiting] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const rootRef = useRef(null);
+  // Where focus came from when it entered this toast, so a dismiss can send it back there.
+  const returnTo = useRef(null);
+  // The time left on the toast, kept across pauses; `since` is when the current run began.
+  const left = useRef(toast.duration);
+  const since = useRef(0);
+  const held = hovered || focused;
 
+  // A toast is held while the pointer or the keyboard is on it, and its timers run only otherwise.
   useEffect(() => {
-    const timer = setTimeout(() => setExiting(true), toast.duration - 300);
-    const remove = setTimeout(() => onDismiss(toast.id), toast.duration);
-    return () => { clearTimeout(timer); clearTimeout(remove); };
-  }, [toast, onDismiss]);
+    if (held) return undefined;
+    since.current = Date.now();
+    const timer = setTimeout(() => setExiting(true), Math.max(0, left.current - 300));
+    const remove = setTimeout(() => onDismiss(toast.id), left.current);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(remove);
+      left.current = Math.max(0, left.current - (Date.now() - since.current));
+    };
+  }, [held, toast, onDismiss]);
+
+  const dismissFromHere = () => {
+    const root = rootRef.current;
+    const holdsFocus = Boolean(root && root.contains(document.activeElement));
+    const back = returnTo.current;
+    onDismiss(toast.id);
+    if (holdsFocus) {
+      const target = back && back.isConnected ? back : root?.parentElement;
+      target?.focus?.();
+    }
+  };
 
   return (
     <div
+      ref={rootRef}
       className={`toast toast--${toast.type}${exiting ? ' toast--exit' : ''}`}
-      role="alert"
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) returnTo.current = e.relatedTarget;
+        setFocused(true);
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
+      }}
     >
       <span className="toast__icon">
         {toast.type === 'error' ? '✕' : toast.type === 'success' ? '✓' : 'ℹ'}
       </span>
       <span className="toast__message">{toast.message}</span>
       <button type="button" className="toast__dismiss" aria-label="Dismiss notification"
-              onClick={() => onDismiss(toast.id)}>
+              onClick={dismissFromHere}>
         ×
       </button>
     </div>

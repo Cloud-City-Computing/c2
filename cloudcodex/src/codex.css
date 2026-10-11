@@ -58,6 +58,7 @@
   --cx-accent-dark: oklch(0.45 0.13 240);
   --cx-danger-fill: oklch(0.5 0.19 25);
   --cx-danger-fill-hover: oklch(0.44 0.19 25);
+  --cx-danger-fill-press: oklch(0.38 0.19 25);
   --cx-on-danger: #fff;
 
   /* Lines and the overlay wash: flat and tinted. */

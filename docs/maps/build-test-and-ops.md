@@ -451,7 +451,7 @@ fix, so a burndown PR lowers the ledger by exactly what it burned, in the same
 PR. It started at 745 (646 literal colours, 77 accent positions, 22 outline
 suppressions) and stood at 679 after W6-CDX-22: the `:root` bridge took its 19
 literal colours out, and the dead-CSS burndown and the picker's data file took
-the rest. It stands at 642 after W6-CDX-23: the focus rings took all 21 outline
+the rest. It stands at 631 after W6-CDX-23's review (642 after its first pass): the focus rings took all 21 outline
 suppressions, the button family's literals and label went, and the Toast's six
 literals went; the Buttons and Focus and Accessibility buckets are deleted. `node tests/design/report.mjs [file]` prints the live buckets.
 In `src/codex.css` (`TOKEN_DEFINITIONS`) the literal rule skips the

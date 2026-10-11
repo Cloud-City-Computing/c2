@@ -169,9 +169,11 @@ initialises an empty data directory.
   from the keyboard.** Every focus ring is the global `:focus-visible` outline
   on the shared focus token, and no rule removes an outline any more. The
   primary button lost its brightness filter, lift and glow, and the danger
-  label reads a token. The Toast's dismiss is a real button, reachable by Tab
-  and operable with Enter or Space, and the whole toast is no longer a click
-  target. The Toast is the suite's shared toast primitive.
+  label reads a token, and a pressed step follows the disabled and hover states.
+  The Toast's dismiss is a real button, reachable by Tab and operable with Enter
+  or Space, at least 24 by 24 pixels, and the whole toast is no longer a click
+  target. A toast holds while it is hovered or focused, and an error is announced
+  as an alert. The Toast is the suite's shared toast primitive.
 
 - **The palette now resolves from the shared tokens, and the accent picker has
   eight hues.** The legacy colour names keep their names but point at Codex's
