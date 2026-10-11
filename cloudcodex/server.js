@@ -13,6 +13,7 @@ import { sweepSocketSessions, startSocketSweep } from './services/socket-sweep.j
 import { endSessionsOutsideOidc } from './services/sessions-hosted.js';
 import { c2_query, openConnection, endPool } from './mysql_connect.js';
 import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
+import { missingReleaseColumns } from './services/release-schema.js';
 import { parseAuthProviders } from './services/identity.js';
 import { localSignInEnabled } from './services/auth-providers.js';
 import { acquireInstanceLock } from './services/instance-lock.js';
@@ -179,6 +180,22 @@ if (mail.enabled) {
 // here would otherwise mean the app never listens at all. A failed seed
 // leaves the instance empty but usable, and because the guard is on an
 // empty database the next restart retries.
+// The migration runner is a separate step, so an app started before `npm run migrate` would read columns that
+// are not there yet. Refuse to listen, and name the migration; an unreadable schema is not refused (W6-CDX-9).
+try {
+  const missing = await missingReleaseColumns();
+  if (missing && missing.length > 0) {
+    const names = missing.map(([table, column, file]) => `${table}.${column} (${file})`).join(', ');
+    console.error(
+      `✖ The database is behind this release: ${names} is missing. Run \`npm run migrate\` from cloudcodex/ (or the ` +
+      'compose `run --rm app npm run migrate`), then start the app again.'
+    );
+    process.exit(1);
+  }
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] release schema check failed, continuing:`, err);
+}
+
 let adminId = null;
 try {
   adminId = await ensureAdminUser();

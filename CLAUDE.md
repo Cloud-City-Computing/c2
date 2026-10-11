@@ -142,7 +142,13 @@ key set, only when `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE` and
 `MACHINE_OIDC_SUBJECTS` are all set; it authorizes by a subject allowlist, never
 by `aud` alone, and an issuer outage is a 503, never a 401. `machineOrAuth` in `middleware/auth.js` is
 mounted on `GET /api/search`, `GET /api/browse` and `GET /api/documents/state`
-(the reconciliation read, W6-CDX-16) and **nothing else**. The third is safe
+(the reconciliation read, W6-CDX-16) and **nothing else**. `requireMachine` (never
+`machineOrAuth`) guards the reader check and the membership sync (W6-CDX-9,
+`routes/machine-members.js`: `PUT /api/machine/members`, `DELETE /api/machine/members/:email`).
+The sync is the one machine path that writes, and the only one that can set `is_admin`: it does so
+only on a user the address resolves to, never on the boot admin's row or the principal's own, and it
+never promotes through `ensureAdminUser`'s name or address match. Its routes have their own limiter,
+never `authLimiter`. The third is safe
 for the same reason as the first two: the same `readAccessWhere` fragment with
 the principal's own params, narrowed by workspace, and an unreadable id is
 absent exactly as a deleted one is, so it is never an oracle. The

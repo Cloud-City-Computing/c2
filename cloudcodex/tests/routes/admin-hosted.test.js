@@ -54,7 +54,8 @@ describe('ensureAdminUser on a hosted instance', () => {
     await ensureAdminUser();
 
     const [sql, params] = c2_query.mock.calls[0];
-    expect(sql).toMatch(/LOWER\(email\) = LOWER\(\?\)/);
+    // Binary, as the sign-in ladder compares: an accent-variant address is not this admin's (W6-CDX-9).
+    expect(sql).toMatch(/LOWER\(email\) COLLATE utf8mb4_bin = LOWER\(\?\) COLLATE utf8mb4_bin/);
     expect(sql).not.toMatch(/name/i);
     expect(params).toEqual([EMAIL]);
   });
@@ -131,6 +132,26 @@ describe('ensureAdminUser on a hosted instance', () => {
     expect(writes()[0][0]).toMatch(/^UPDATE users SET email = \? WHERE id = \?$/);
     expect(writes()[0][0]).not.toMatch(/password/i);
     expect(writes()[0][1]).toEqual([EMAIL, 7]);
+  });
+
+  it('an accent-variant holder of ADMIN_EMAIL is never renamed; the boot logs which account to change and returns null', async () => {
+    // The owner's address is josé@, ADMIN_EMAIL is jose@. The binary match finds no row, and the INSERT meets the
+    // accent-insensitive unique key. The boot must not rename the owner's row, and must say what to change.
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', sqlMessage: "Duplicate entry 'jose@example.com' for key 'users.email'" });
+    c2_query.mockImplementation(async (sql) => {
+      if (/LOWER\(email\) COLLATE utf8mb4_bin/.test(sql)) return [];
+      if (/^INSERT INTO users/.test(sql)) throw dup;
+      if (/LOWER\(email\) = LOWER\(\?\)/.test(sql)) return [{ id: 7, email: 'josé@example.com', is_admin: 1 }];
+      return [];
+    });
+
+    expect(await ensureAdminUser()).toBeNull();
+
+    expect(writes().filter(([sql]) => /^UPDATE users SET email/.test(sql))).toEqual([]);
+    const message = logLines().find((line) => /accent variant/.test(line));
+    expect(message).toMatch(/user 7/);
+    expect(message).toMatch(/ADMIN_EMAIL/);
+    expect(message).toMatch(/change|rename/i);
   });
 
   it('refuses a non-admin holding the address, writes nothing, and returns null', async () => {

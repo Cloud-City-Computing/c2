@@ -53,6 +53,21 @@ const SQUAD_ROLES = ['member', 'admin', 'owner'];
  *
  * @returns {Promise<number|null>} the admin's id, or null when refused
  */
+async function refuseAccentVariantHolder(email) {
+  const [holder] = await c2_query(
+    'SELECT id, email FROM users WHERE LOWER(email) = LOWER(?) ORDER BY id LIMIT 1',
+    [email]
+  );
+  console.error(
+    `[${new Date().toISOString()}] admin sync: ADMIN_EMAIL ${email} cannot be created. ` +
+    `user ${holder?.id ?? 'unknown'} holds ${holder ? `${holder.email}, an accent variant of it` : 'an accent variant of it'}. ` +
+    'The boot admin is not adopted or renamed. Either set ADMIN_EMAIL to the address that account really holds, ' +
+    `or change user ${holder?.id ?? 'N'}'s address to ADMIN_EMAIL in the admin console; then restart. ` +
+    'The machine membership sync is refused until a boot admin exists.'
+  );
+  return null;
+}
+
 export async function ensureAdminUser({ retried = false } = {}) {
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;
@@ -63,7 +78,9 @@ export async function ensureAdminUser({ retried = false } = {}) {
   // OIDC-only instance has no password for the admin to need, so the name is never consulted there.
   const hosted = !localSignInEnabled();
   const matches = hosted
-    ? await c2_query(`SELECT id, is_admin FROM users WHERE LOWER(email) = LOWER(?) ORDER BY id`, [email])
+    // Binary, as every other address comparison here: users.email's default collation would read an accent variant
+    // (josé@ for jose@) as this admin, and the sync would rename that account's address to the operator's (W6-CDX-9).
+    ? await c2_query(`SELECT id, is_admin FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin ORDER BY id`, [email])
     : await c2_query(
       `SELECT id, is_admin FROM users WHERE LOWER(name) = LOWER(?) OR email = ? ORDER BY id`,
       [username, email]
@@ -119,6 +136,12 @@ export async function ensureAdminUser({ retried = false } = {}) {
       // Another boot created the admin between the look above and this INSERT: the unique key refuses this
       // one. Read again once and decide on what is there, so two boots at once make one admin.
       if (err.code === 'ER_DUP_ENTRY' && !retried) return ensureAdminUser({ retried: true });
+      // Still a duplicate on the address after the re-read: an account whose address is an accent variant of
+      // ADMIN_EMAIL holds the unique key (users.email's default collation is accent-insensitive). The binary
+      // match above cannot see it, so it is named here and never renamed (W6-CDX-9).
+      if (err.code === 'ER_DUP_ENTRY' && String(err.sqlMessage).includes('users.email')) {
+        return await refuseAccentVariantHolder(email);
+      }
       throw err;
     }
     await createDefaultPermissions(result.insertId);

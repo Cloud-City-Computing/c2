@@ -72,7 +72,8 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
 
     const insertUser = sql.find(([s]) => /^INSERT INTO users/.test(s));
     expect(insertUser[0]).not.toMatch(/password_hash\s*,/);
-    expect(insertUser[1]).toEqual(['ada', EMAIL]);
+    // A plain member's invitation (no grants_admin) creates a non-admin.
+    expect(insertUser[1]).toEqual(['ada', EMAIL, false]);
 
     expect(sql.some(([s, p]) => /INSERT INTO permissions/.test(s) && p[0] === 77)).toBe(true);
     const accepted = sql.find(([s]) => /UPDATE user_invitations/.test(s));
@@ -195,6 +196,27 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
 
     expect(await resolveIdentity(oidcClaims(), POLICY)).toEqual({ ok: false, reason: 'no_account' });
     expect(writes().some(([s]) => /INSERT INTO squad_members|INSERT INTO user_identities/.test(s))).toBe(false);
+  });
+
+  it('creates an ADMIN when the invitation grants admin (the membership sync\'s owner), and nothing else differs', async () => {
+    c2_query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ ...INVITATION, grants_admin: 1 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ insertId: 77 })
+      .mockResolvedValueOnce({ insertId: 1 })
+      .mockResolvedValueOnce({ affectedRows: 1 })
+      .mockResolvedValueOnce({ insertId: 5 })
+      .mockResolvedValueOnce({ insertId: 88 });
+
+    expect(await resolveIdentity(oidcClaims(), POLICY)).toMatchObject({ ok: true, userId: 77, created: true });
+    const sql = sqlCalls();
+    const insertUser = sql.find(([s]) => /^INSERT INTO users/.test(s));
+    expect(insertUser[1]).toEqual(['ada', EMAIL, true]);
+    expect(insertUser[0]).not.toMatch(/password_hash\s*,/);
+    const invitationLookup = sql.find(([s]) => /FROM user_invitations/.test(s));
+    expect(invitationLookup[0]).toMatch(/grants_admin/);
   });
 
   it('adds no squad membership for an invitation that carries no squad', async () => {
