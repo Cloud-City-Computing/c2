@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Login from '../components/Login';
 import SuiteCluster from '../components/SuiteCluster';
@@ -24,6 +24,7 @@ import {
 } from '../util';
 import useGitHubStatus, { GitHubStatusProvider } from '../hooks/useGitHubStatus';
 import { useSignedOutTarget, clearOidcBounce } from '../hooks/useSignedOutTarget';
+import { onSessionEnded } from '../lib/session-ended.js';
 // The one sentence after a sign-out, the same as Cloud Command's (W6-CMD-22). Suite mode only.
 const signedOutSentence = (suiteName) => `You're signed out of ${suiteName}.`;
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
@@ -274,6 +275,15 @@ function StdLayout({ children }) {
   });
 
   const bounceToSignIn = useSignedOutTarget();
+  // Whether this page last found someone signed in, read by the session-ended listener below.
+  const signedInRef = useRef(false);
+
+  // The signed-out front door (hooks/useSignedOutTarget.js): a deep link goes to the sign-in once per tab where OIDC
+  // is the sign-in, and where local sign-in is offered the link is kept and the Login modal opens.
+  const frontDoor = useCallback(async () => {
+    const outcome = await bounceToSignIn();
+    if (outcome === 'login') showModal(<Login />, 'modal-md');
+  }, [bounceToSignIn]);
 
   const checkAuth = useCallback(async () => {
     const token = getSessionTokenFromCookie();
@@ -281,6 +291,7 @@ function StdLayout({ children }) {
 
     if (token) {
       loggedInUser = await attemptAutoLogin(token);
+      signedInRef.current = Boolean(loggedInUser);
       setUser(loggedInUser ?? false);
 
       // Check admin status if logged in
@@ -299,17 +310,24 @@ function StdLayout({ children }) {
     // Signed out, with no cookie or with one the server no longer accepts. A deep link goes to the sign-in
     // once per tab where OIDC is the sign-in (hooks/useSignedOutTarget.js). Where no OIDC is offered, the
     // link is kept and the Login modal opens; a successful sign-in then returns to it.
-    if (!loggedInUser) {
-      const outcome = await bounceToSignIn();
-      if (outcome === 'login') showModal(<Login />, 'modal-md');
-    }
+    if (!loggedInUser) await frontDoor();
 
     setAuthChecked(true);
-  }, [bounceToSignIn]);
+  }, [frontDoor]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // A request on this page was refused because the server ended the session (lib/session-ended.js). That is the
+  // cookie-less case reached late, so it takes the same front door. The first announcement wins: a page's parallel
+  // requests fail together, and one front door is enough.
+  useEffect(() => onSessionEnded(() => {
+    if (!signedInRef.current) return;
+    signedInRef.current = false;
+    setUser(false);
+    frontDoor();
+  }), [frontDoor]);
 
   // Handle invitation tokens from URL
   useEffect(() => {

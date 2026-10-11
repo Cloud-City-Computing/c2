@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client';
 import DOMPurify from 'dompurify';
 import { openDialog, closeDialog } from './lib/dialog.js';
 import { clearSignInTarget } from './lib/sign-in-target.js';
+import { DEAD_SESSION_MESSAGE, announceSessionEnded } from './lib/session-ended.js';
 
 // --- Constants ---
 
@@ -44,6 +45,12 @@ export async function apiFetch(method, url, data) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
+    // The session this tab carried has ended on the server: forget the cached user it still holds, and let the
+    // layout run the signed-out front door (see lib/session-ended.js). Other 401s are the caller's to show.
+    if (token && response.status === 401 && body.message === DEAD_SESSION_MESSAGE) {
+      removeSessStorage('currentUser');
+      announceSessionEnded();
+    }
     const err = new Error(body.message || `${method} ${url} responded with ${response.status}`);
     err.status = response.status;
     err.body = body;
