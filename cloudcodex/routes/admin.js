@@ -15,6 +15,8 @@ import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidE
 import { getAllPresence, getActiveDocCount } from '../services/collab.js';
 import { createNotification } from '../services/notifications.js';
 import webhooksRouter from './webhooks.js';
+import { localSignInEnabled } from '../services/auth-providers.js';
+import { deriveUniqueUsername } from '../services/identity.js';
 
 const router = express.Router();
 
@@ -56,15 +58,21 @@ export async function ensureAdminUser() {
   const password = process.env.ADMIN_PASSWORD;
   const email = process.env.ADMIN_EMAIL;
 
-  const matches = await c2_query(
-    `SELECT id, is_admin FROM users WHERE LOWER(name) = LOWER(?) OR email = ? ORDER BY id`,
-    [username, email]
-  );
+  // Hosted (no local sign-in): the operator's address is the only key, and no password is read or written.
+  // A name match is what let a member who took the admin's old name be promoted (GHSA-w8q3-r34w-3pjh), and an
+  // OIDC-only instance has no password for the admin to need, so the name is never consulted there.
+  const hosted = !localSignInEnabled();
+  const matches = hosted
+    ? await c2_query(`SELECT id, is_admin FROM users WHERE LOWER(email) = LOWER(?) ORDER BY id`, [email])
+    : await c2_query(
+      `SELECT id, is_admin FROM users WHERE LOWER(name) = LOWER(?) OR email = ? ORDER BY id`,
+      [username, email]
+    );
 
   const nonAdmin = matches.find((row) => !row.is_admin);
   if (nonAdmin) {
     console.error(
-      `[${new Date().toISOString()}] admin sync: ${username} / ${email} matches an existing ` +
+      `[${new Date().toISOString()}] admin sync: ${hosted ? email : `${username} / ${email}`} matches an existing ` +
       `non-admin account (user ${nonAdmin.id}), refusing to promote it. ` +
       'Promote it in the admin console if that is intended.'
     );
@@ -74,6 +82,13 @@ export async function ensureAdminUser() {
   const [existing] = matches;
   if (existing) {
     // Already an admin, so the flag is not written: this UPDATE cannot promote.
+    if (hosted) {
+      await c2_query(`UPDATE users SET email = ? WHERE id = ?`, [email, existing.id]);
+      console.error(
+        `[${new Date().toISOString()}] admin sync: synced ${email} (user ${existing.id}), its email reset from ADMIN_EMAIL.`
+      );
+      return existing.id;
+    }
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     await c2_query(
       `UPDATE users SET password_hash = ?, email = ? WHERE id = ?`,
@@ -86,7 +101,20 @@ export async function ensureAdminUser() {
     return existing.id;
   }
 
-  // Create the admin user
+  // Create the admin user. Hosted: no password, and a name derived from the address when ADMIN_USERNAME is unset.
+  if (hosted) {
+    const name = username || await deriveUniqueUsername(email);
+    const result = await c2_query(
+      `INSERT INTO users (name, email, is_admin, created_at) VALUES (?, ?, TRUE, NOW())`,
+      [name, email]
+    );
+    await createDefaultPermissions(result.insertId);
+    console.error(
+      `[${new Date().toISOString()}] admin sync: created ${name} / ${email} as the admin (user ${result.insertId}).`
+    );
+    return result.insertId;
+  }
+
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const result = await c2_query(
     `INSERT INTO users (name, password_hash, email, is_admin, created_at)
@@ -137,17 +165,20 @@ const WELCOME_HTML = `
 export async function bootstrapInstance(adminId) {
   if (!adminId) return false;
 
+  // The admin's own name, read from its row: ADMIN_USERNAME may be unset on a hosted instance, and the row
+  // is what the admin is called. It rides on the content guard so the seed costs no extra query.
   const [row] = await c2_query(
     `SELECT (SELECT COUNT(*) FROM workspaces) AS workspaces,
             (SELECT COUNT(*) FROM archives)   AS archives,
-            (SELECT COUNT(*) FROM logs)       AS logs`,
-    []
+            (SELECT COUNT(*) FROM logs)       AS logs,
+            (SELECT name FROM users WHERE id = ?) AS admin_name`,
+    [adminId]
   );
   const existing = Number(row?.workspaces ?? 0) + Number(row?.archives ?? 0) + Number(row?.logs ?? 0);
   if (existing > 0) return false;
 
   const adminEmail = process.env.ADMIN_EMAIL;
-  const adminName = process.env.ADMIN_USERNAME;
+  const adminName = row?.admin_name ?? process.env.ADMIN_USERNAME;
 
   // All five writes share one transaction: a failure partway through must
   // leave zero rows, or the workspace-count guard above sees a half-seeded
