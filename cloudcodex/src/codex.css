@@ -65,6 +65,29 @@
   --cx-border: oklch(0.386 0.014 240);
   --cx-scrim: oklch(0.12 0.02 240 / 0.6);
 
+  /* Tints: translucent washes behind a label, each the hue and chroma of the
+     bare rgba() it replaces (W6-CDX-28). Every tint is measured with its label
+     over all five surfaces in tests/design/tints.test.js. The accent tints keep
+     the old fixed blue, as the rgba() did, and do not follow the picker. */
+  --cx-tint-accent-soft: oklch(0.686 0.128 231.9 / 0.08);
+  --cx-tint-accent: oklch(0.686 0.128 231.9 / 0.12);
+  --cx-tint-accent-mid: oklch(0.686 0.128 231.9 / 0.15);
+  --cx-tint-accent-strong: oklch(0.686 0.128 231.9 / 0.2);
+  --cx-tint-accent-strongest: oklch(0.686 0.128 231.9 / 0.25);
+  --cx-tint-warning-soft: oklch(0.793 0.171 70.7 / 0.08);
+  --cx-tint-warning: oklch(0.793 0.171 70.7 / 0.12);
+  --cx-tint-warning-mid: oklch(0.793 0.171 70.7 / 0.15);
+  --cx-tint-danger-soft: oklch(0.639 0.181 25.9 / 0.08);
+  --cx-tint-danger: oklch(0.639 0.181 25.9 / 0.12);
+  --cx-tint-danger-strong: oklch(0.639 0.181 25.9 / 0.22);
+  --cx-tint-success: oklch(0.745 0.158 151.5 / 0.12);
+  --cx-tint-violet: oklch(0.697 0.17 288.9 / 0.15);
+
+  /* The violet of a content-match badge's label, and the shadow under a
+     popover. The label is measured on the surfaces in tests/design/pairs.json. */
+  --cx-violet: oklch(0.79 0.12 291.1);
+  --cx-shadow-popover: 0 4px 12px oklch(0 0 0 / 0.3);
+
   /* Status, on the package's pale step, the one that reads as text on
      surfaces from #1e1e1e to #444444. The package has no info ramp, so info
      reads as the accent. */
