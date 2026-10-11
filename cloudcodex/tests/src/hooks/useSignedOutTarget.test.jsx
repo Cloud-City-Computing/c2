@@ -92,10 +92,28 @@ describe('decideSignedOut', () => {
     });
   });
 
-  it('renders the landing on the root and the 404 page, which never bounce or open the modal', () => {
-    expect(decideSignedOut({ ...deepLink, pathname: '/' })).toEqual({ action: 'landing' });
+  it('renders the landing on the 404 page, which never bounces or opens the modal', () => {
     expect(decideSignedOut({ ...deepLink, pathname: '/404' })).toEqual({ action: 'landing' });
-    expect(decideSignedOut({ ...deepLink, oidcOffered: false, pathname: '/' })).toEqual({ action: 'landing' });
+    expect(decideSignedOut({ ...deepLink, oidcOffered: false, pathname: '/404' })).toEqual({ action: 'landing' });
+  });
+
+  it('bounces a hosted bare root (OIDC is the only sign-in) once, with / as returnTo', () => {
+    expect(decideSignedOut({ ...deepLink, pathname: '/' })).toEqual({
+      action: 'bounce',
+      url: '/api/auth/oidc/start?returnTo=%2F',
+    });
+  });
+
+  it('keeps the sign-in screen on a bare root where local sign-in is offered, or OIDC is not', () => {
+    expect(decideSignedOut({ ...deepLink, pathname: '/', oidcOnly: false })).toEqual({ action: 'landing' });
+    expect(decideSignedOut({ ...deepLink, pathname: '/', oidcOnly: false, suiteOn: true })).toEqual({ action: 'landing' });
+    expect(decideSignedOut({ ...deepLink, pathname: '/', oidcOffered: false, oidcOnly: false })).toEqual({ action: 'landing' });
+  });
+
+  it('does not bounce a bare root that already bounced, returned with an error, or came from a sign-out', () => {
+    expect(decideSignedOut({ ...deepLink, pathname: '/', bounced: true })).toEqual({ action: 'landing' });
+    expect(decideSignedOut({ ...deepLink, pathname: '/', oauthError: true })).toEqual({ action: 'landing' });
+    expect(decideSignedOut({ ...deepLink, pathname: '/', search: '?signedOut=1' })).toEqual({ action: 'landing' });
   });
 
   it('renders the landing once the marker is set (the loop guard)', () => {
@@ -162,9 +180,10 @@ describe('decideSignedOut', () => {
     const { parts, expected } = productionTarget(input);
     const decision = decideSignedOut({ ...deepLink, ...parts });
     // The browser can resolve the input to the root (for example "/\\evil.example" becomes "//evil.example", a host,
-    // so the pathname is "/"). The root is the landing, never a bounce, exactly as the browser sees it.
+    // so the pathname is "/"). The bare root follows its own rule: hosted bounces with "/" as returnTo, so the hostile
+    // input never reaches the URL, and a local-sign-in instance lands (the root tests above pin both sides).
     if (parts.pathname === '/') {
-      expect(decision, JSON.stringify(input)).toEqual({ action: 'landing' });
+      expect(decision, JSON.stringify(input)).toEqual({ action: 'bounce', url: '/api/auth/oidc/start?returnTo=%2F' });
       return;
     }
     expect(decision.action, JSON.stringify(input)).toBe('bounce');
@@ -179,6 +198,23 @@ describe('resolveSignedOut and startOidcBounce', () => {
 
   beforeEach(() => {
     assign = vi.fn();
+  });
+
+  it('a hosted bare root bounces once, and a local-sign-in bare root keeps its screen and no marker', async () => {
+    const hosted = fakeStorage();
+    expect(await resolveSignedOut({ pathname: '/', search: '', providers: ONLY_OIDC, suiteOn: false, storage: hosted, assign }))
+      .toBe('bounced');
+    expect(assign).toHaveBeenLastCalledWith('/api/auth/oidc/start?returnTo=%2F');
+    expect(hosted.data[OIDC_BOUNCE_MARKER]).toBe('1');
+
+    const local = fakeStorage();
+    expect(await resolveSignedOut({ pathname: '/', search: '', providers: OIDC_AND_LOCAL, suiteOn: false, storage: local, assign }))
+      .toBe('landing');
+    expect(await resolveSignedOut({ pathname: '/', search: '', providers: LOCAL_ONLY, suiteOn: false, storage: local, assign }))
+      .toBe('landing');
+    expect(local.data[OIDC_BOUNCE_MARKER]).toBeUndefined();
+    expect(local.data[SIGN_IN_TARGET_KEY]).toBeUndefined();
+    expect(assign).toHaveBeenCalledTimes(1);
   });
 
   it('sets the marker and assigns the start URL on the first signed-out deep link', async () => {
@@ -314,11 +350,22 @@ describe('useSignedOutTarget', () => {
     }
   });
 
-  it('answers landing on the root without asking the server, so the landing is untouched', async () => {
+  it('bounces a hosted bare root to the sign-in, asking the providers route first', async () => {
+    window.history.replaceState({}, '', '/');
+    const { result } = renderHook(() => useSignedOutTarget());
+    expect(await result.current()).toBe('bounced');
+    expect(fetchMock).toHaveBeenCalledWith('/api/oauth/providers');
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('keeps the sign-in screen on a bare root of an instance with local sign-in', async () => {
+    fetchMock.mockImplementation((url) => Promise.resolve({ json: () => Promise.resolve(
+      url === '/api/oauth/providers' ? { success: true, providers: OIDC_AND_LOCAL } : { enabled: false, name: null },
+    ) }));
     window.history.replaceState({}, '', '/');
     const { result } = renderHook(() => useSignedOutTarget());
     expect(await result.current()).toBe('landing');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(OIDC_BOUNCE_MARKER)).toBeNull();
   });
 
   it('asks the providers route and the suite route, then bounces a deep link', async () => {

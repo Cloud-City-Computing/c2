@@ -5,7 +5,9 @@
  * sign-in, or suite mode is on, the link sends them, once per tab, to /api/auth/oidc/start with the link as
  * returnTo; the marker in sessionStorage is the loop guard, and an oauth_error return renders the landing instead
  * of bouncing again. Where no OIDC is offered at all, the link is kept (validated) and the Login modal opens; a
- * successful local sign-in then goes to the kept target. Everything else renders the landing. The target is
+ * successful local sign-in then goes to the kept target. Everything else renders the landing. The bare root bounces
+ * only where OIDC is the only sign-in (hosted), by the same loop guard, and never after a sign-out (?signedOut=1
+ * shows the message) or an error return. The target is
  * always validated by services/return-to.js, the one validator the server also uses, so there is no second
  * returnTo path on the client. The marker is cleared on a successful sign-in.
  *
@@ -45,11 +47,17 @@ function targetOf(pathname, search, hash = '') {
 }
 
 /**
- * What a signed-out visit does. The root and the 404 page never bounce and never open the modal.
+ * What a signed-out visit does. The 404 page never bounces and never opens the modal. The bare root bounces only
+ * where OIDC is the only sign-in (hosted), so a local-sign-in instance keeps its sign-in screen.
  * @returns {{ action: 'bounce', url: string } | { action: 'login', target: string } | { action: 'landing' }}
  */
 export function decideSignedOut({ pathname, search, hash = '', oidcOffered, oidcOnly, suiteOn, bounced, oauthError }) {
-  if (pathname === '/' || pathname === '/404') return { action: 'landing' };
+  if (pathname === '/404') return { action: 'landing' };
+  if (pathname === '/') {
+    const afterSignOut = new URLSearchParams(search).get('signedOut') === '1';
+    if (!oidcOffered || !oidcOnly || bounced || oauthError || afterSignOut) return { action: 'landing' };
+    return { action: 'bounce', url: `/api/auth/oidc/start?returnTo=${encodeURIComponent('/')}` };
+  }
   const target = targetOf(pathname, search, hash);
   // No OIDC, or OIDC beside local login outside suite mode: the modal offers the sign-ins and keeps the link.
   if (!oidcOffered || (!oidcOnly && !suiteOn && !bounced && !oauthError)) return { action: 'login', target };
@@ -151,12 +159,12 @@ async function fetchProviders() {
 
 /**
  * A stable callback that resolves 'bounced', 'login' or 'landing' for the page it runs on. Std_Layout calls it
- * on the signed-out path; the root answers 'landing' without asking the server.
+ * on the signed-out path. The 404 page answers 'landing' without asking the server.
  */
 export function useSignedOutTarget() {
   return useCallback(async () => {
     const { pathname, search, hash } = window.location;
-    if (pathname === '/' || pathname === '/404') return 'landing';
+    if (pathname === '/404') return 'landing';
     const [providers, suiteOn] = await Promise.all([fetchProviders(), suiteEnabled()]);
     return resolveSignedOut({
       pathname,
