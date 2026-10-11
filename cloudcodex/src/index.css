@@ -8666,10 +8666,10 @@ textarea:focus-visible {
 ========================= */
 
 .hljs-comment,
-.hljs-quote { color: #6a9955; font-style: italic; }
+.hljs-quote { color: #78a763; font-style: italic; }
 .hljs-keyword,
 .hljs-selector-tag,
-.hljs-addition { color: #569cd6; }
+.hljs-addition { color: #5aa0db; }
 .hljs-number,
 .hljs-string,
 .hljs-meta .hljs-meta-string,
