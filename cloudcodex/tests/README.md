@@ -62,7 +62,9 @@ tests/
 │   ├── webhooks-emit.test.js ← the outbound-event emit hook, driven through the HTTP routes, read from the outbox tables
 │   ├── webhooks-env.test.js ← the env-declared webhook subscription across boots
 │   ├── webhooks-schema.test.js ← the webhook tables' CHECKs, unique keys and cascade, written directly
-│   └── webhooks-worker.test.js ← the delivery worker against a real receiver: order, leases, outcomes, the send-time guard
+│   ├── webhooks-worker.test.js ← the delivery worker against a real receiver: order, leases, outcomes, the send-time guard
+│   ├── webhooks-order.test.js ← outbox ids allocated in commit order: an emit waits for the order lock
+│   └── webhooks-cap.test.js ← the 50-subscription cap, at the limit, through the admin API
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests
 ├── services/               ← service-layer tests (email, notifications, collab)

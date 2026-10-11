@@ -648,6 +648,14 @@ conversation back to any documents tied to the changed files.
 
 ---
 
+
+### `webhook_sequence_lock`
+
+One row, `id = 1` (`CHECK (id = 1)`), that holds no data. `emitEvent` takes it
+`FOR UPDATE` as the first statement of its transaction, so the outbox ids it
+allocates after that point are allocated in commit order. Created by
+`migrations/2026-10-10-webhook-sequence-lock.sql` and by `init.sql`.
+
 ## Entity Relationship Diagram
 
 ```
@@ -711,6 +719,7 @@ each compose file. The current set:
 | `2026-09-27-session-per-sign-in.sql` | `sessions.auth_provider` + its `CHECK`, and hashes the stored session ids |
 | `2026-09-27-who-may-see-doc-images.sql` | `doc_images` table (then run `npm run backfill:doc-images` once) |
 | `2026-09-28-webhooks.sql` | `webhook_subscriptions`, `webhook_events` and `webhook_deliveries` tables |
+| `2026-10-10-webhook-sequence-lock.sql` | `webhook_sequence_lock`, the one-row table an emit locks so outbox ids are allocated in commit order |
 
 > **Rule:** any column or table added as a migration must also be present
 > in `init.sql`. Both must stay in sync — fresh installs and existing

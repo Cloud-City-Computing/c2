@@ -821,7 +821,20 @@ contract; the 37th, `services/session-cookie.js` (95 on all four), with the
 `services/webhook-target.js` (95 lines, 88 branches), with the outbound-events
 outbox (W6-CDX-13). The 41st, `services/webhook-worker.js`, with the delivery
 worker (W6-CDX-14), is measured in the backend project alone, where the
-timeout branch and the live-MySQL paths are not counted. The security-critical and
+timeout branch and the live-MySQL paths are not counted. Review follow-ups (2026-10-11), each with a test: `tests/integration/webhooks-order.test.js`
+holds the order lock from a second connection and shows an emit waits and takes an id above
+the one committed under it (mutation-checked: removing the lock turns both emit tests red),
+and checks that overlapping emits never leave a gap in the visible ids;
+`tests/integration/webhooks-cap.test.js` runs the 50-subscription cap through the admin API
+at the limit; `tests/integration/webhooks-worker.test.js` gained a late success that cannot
+clear another worker's live backoff, a lease renewed after a four-second DNS check, and a
+subscription beyond the twentieth being served. The unit suite gained the round-robin
+starvation test, the expired-then-next continuation, the query deadline, the skipped-tick log,
+the renewal before the send, and the UTC-only SQL assertion; `tests/services/webhook-target.test.js`
+gained the AWS IPv6 metadata refusal under `WEBHOOK_ALLOW_PRIVATE_TARGETS=1` and the bounded DNS
+lookup; `tests/services/shutdown.test.js` gained the worker stop running first.
+
+The security-critical and
 well-covered modules are ratcheted high:
 
 | Glob | lines |

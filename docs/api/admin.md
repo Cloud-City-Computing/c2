@@ -272,6 +272,8 @@ One subscription may be declared by the server environment (`WEBHOOK_URL`, `WEBH
 
 ### `POST /api/admin/webhooks`
 
+An instance holds at most **50** webhook subscriptions, the environment one included. A create past that answers `409`, and the count check is part of the insert, so two creates cannot both pass it.
+
 **Body**
 
 ```json
@@ -320,7 +322,7 @@ The last 50 deliveries of one subscription, newest first. Each has `id`, `event_
 
 Returns a dead-lettered delivery to `pending` with its attempts reset to 0. The delivery is then sent in order, so a redelivered older event goes ahead of newer ones for its subscription.
 
-**Response:** `{ success: true, id }`. `409` if the delivery is not dead, `404` for no such delivery, `400` for a bad id.
+**Response:** `{ success: true, id }`. `409` if the delivery is not dead, `409` with a reason if its event is older than 72 hours (redelivering it would expire it again at once), `404` for no such delivery, `400` for a bad id.
 
 ---
 

@@ -98,7 +98,10 @@ activity prune (`server.js:132-150`).
    process. The worker takes a database lease with an owner token, because Codex has no instance
    lock yet (the hosting track adds one).
 4. **At-least-once, in order, per subscription.** One request in flight per subscription, in
-   sequence order. A failing head event pauses that subscriber only, on a 10-second doubling
+   sequence order. `sequence` is allocated in commit order: an emit takes the outbox's order lock
+   (`webhook_sequence_lock`) before its insert, so an event never commits with a lower id than one
+   already visible. A duplicate is possible only when a delivery's lease lapses during its send
+   (a worker stalled past the 30-second lease), so a receiver must tolerate a repeated `id`. A failing head event pauses that subscriber only, on a 10-second doubling
    backoff capped at one hour. An event is dead-lettered only on a `422` or at 72 hours of age; a
    `410` disables the subscription.
 5. **The signature is Cloud Command's GitHub scheme, byte for byte**:
@@ -286,8 +289,10 @@ receiver. The suite's subscription avoids it because its secret lives only in en
 - A subscriber that hangs or answers 500 cannot slow or fail a document save: save latency with a
   hanging subscriber is within noise of having none, measured and recorded.
 - While event 2 fails, event 3 is not sent until 2 is delivered or dead-lettered.
-- Two workers on one live-MySQL database never both send the same delivery, and a lapsed lease
-  cannot overwrite its successor's state.
+- Two workers on one live-MySQL database never both send the same delivery while both hold a live
+  lease, and a lapsed lease cannot overwrite its successor's state. The lease is renewed after the
+  DNS check and before the send, so a stall in the check cannot lapse it mid-send; a lease that does
+  lapse during a send can still cause one duplicate, which is the at-least-once guarantee of item 4.
 - Backoff, the 72-hour dead-letter, `422`, `410` and the no-redirect rule are each tested.
 
 ---

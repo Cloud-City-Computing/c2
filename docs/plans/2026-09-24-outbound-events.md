@@ -495,6 +495,16 @@ DNS cannot be rebound between the check and the connect. Redirects are never fol
 - **A missing signing secret at send time** (an env row whose `WEBHOOK_SECRET` vanished after
   boot) is a retried failure; nothing is sent unsigned.
 - **Pruning** keys on `created_at` for both tables, since a dead row has no death time.
+- **Review follow-ups (2026-10-11).** The subscription read has no `LIMIT`; the instance is capped
+  at 50 subscriptions instead (409 at create). The tick is round-robin across subscriptions, not one
+  subscription's run after another. `expired` continues the run like `delivered` and `dead`. An
+  emit takes `webhook_sequence_lock FOR UPDATE` so outbox ids are allocated in commit order (a new
+  migration, `2026-10-10-webhook-sequence-lock.sql`). The lease is renewed after the DNS check and
+  before the send, and the DNS lookup is bounded at 5 seconds. Every query has a 10-second deadline.
+  Redelivering an event older than 72 hours answers 409. AWS's IPv6 metadata address
+  `fd00:ec2::254` is refused always. The shutdown stops the worker first. The delivered write clears
+  a backoff only when no pause is live. All worker time is `UTC_TIMESTAMP(3)`; the prune keeps
+  `NOW()` for its `TIMESTAMP` column, where it is the correct clock.
 
 ---
 
