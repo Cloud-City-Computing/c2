@@ -17,7 +17,8 @@ vi.mock('../../../src/util.jsx', () => ({ apiFetch: vi.fn() }));
 
 import { apiFetch } from '../../../src/util.jsx';
 import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
-import SuiteDocLink, { suiteDocHref } from '../../../src/components/SuiteDocLink.jsx';
+import SuiteDocLink from '../../../src/components/SuiteDocLink.jsx';
+import { suiteDocHref } from '../../../src/lib/suite-doc-href.js';
 
 const COMMAND = 'https://command.example.test/w/1';
 

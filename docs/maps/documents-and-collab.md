@@ -237,19 +237,19 @@ The publish route also accepts `create_github_release`, `target_repo`, and
 
 ## 4. The editor
 
-`src/pages/Editor.jsx` (1354 lines) is the client. The Tiptap extension stack
-is assembled at `Editor.jsx:340-360`:
+`src/pages/Editor.jsx` (1356 lines) is the client. The Tiptap extension stack
+is assembled at `Editor.jsx:341-361`:
 
 `StarterKit` with `codeBlock`, `underline` and `undoRedo` disabled
-(`Editor.jsx:341`, undo/redo because the `Collaboration` extension supplies its
+(`Editor.jsx:342`, undo/redo because the `Collaboration` extension supplies its
 own CRDT-aware history), plus `ResizableImage`, `Placeholder`, `Underline`,
 `TextAlign`, `Link`, the four table extensions, `CodeBlockWithLanguage`
 (lowlight), `DrawioBlock`, `GitHubCodeEmbed`, `GitHubIssueEmbed`, `Mention`,
 and `Collaboration.configure({ document: ydoc })`.
 
-Initial content is deliberately empty (`Editor.jsx:361-364`); the
+Initial content is deliberately empty (`Editor.jsx:362-365`); the
 `Collaboration` extension populates the editor from the shared Y.Doc. Its
-`onUpdate` fires for **both** local and remote changes (`Editor.jsx:392-406`),
+`onUpdate` fires for **both** local and remote changes (`Editor.jsx:393-407`),
 which is why state updates there are deferred rather than applied inline.
 
 `useCollab(logId, onRemoteUpdate, onRemoteComment, onPublished, onRemoteTitle)`

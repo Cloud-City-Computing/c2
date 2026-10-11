@@ -422,7 +422,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-24 | Dialogs with real semantics (**done 2026-10-11** on `track/w6-cdx-24-dialogs`, PR 4 of the suite UI plan; every dialog is a role dialog, the close controls are buttons, the page is inert behind one) | W6-CDX-23 | yes |
 | W6-CDX-25 | Shell chrome and the suite identity cluster (**done 2026-10-11** on `track/w6-cdx-25-shell-chrome`, PR 5 of the suite UI plan; the switcher mirrors Cloud Command's W6-CMD-23 disclosure, the chrome sections are on the tokens, every z-index is on the shared scale) | W6-CDX-23, W6-CMD-23 | yes |
 | W6-CDX-26 | The suite front door, deep links in | W6-CDX-24, W6-CDX-25, W6-CDX-8, W6-CMD-24 | yes |
-| W6-CDX-27 | Deep links out: Linked tasks | W6-CDX-25, W6-CMD-25 | yes |
+| W6-CDX-27 | Deep links out: Linked tasks (**done 2026-10-11** on `track/w6-cdx-27-linked-tasks`, PR 7 of the suite UI plan; a same-tab "Linked tasks" link in the document meta line goes to Cloud Command's page for the document, and renders nothing outside suite mode) | W6-CDX-25, W6-CMD-25 | yes |
 | W6-CDX-28 | Content surfaces on the tokens (**done 2026-10-11** on `track/w6-cdx-28-content-surfaces`, PR 8 of the suite UI plan; the eight content banners are on the tokens, ledger 631 to 510, and every label on a tint is measured over every surface) | W6-CDX-22 | yes |
 | W6-CDX-29 | Admin and settings surfaces, and the UI track retires | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
 | W6-CDX-31 | Signals, health, readiness, the single-writer lock (**shipped 2026-09-27** in #65; `node server.js` as the process, a bounded SIGTERM flush, `/healthz` and `/readyz`, and a per-schema `GET_LOCK`) | W6-CDX-10 | yes |
