@@ -1273,8 +1273,12 @@ refused; with the three variables unset the static path is byte-identical. The e
 - Discovery is a small cached fetch inside `machine-auth.js`, not a call into `services/oidc.js`, so
   this PR touches no line of that file (W6-CDX-6 edits it in parallel).
 - A key set that cannot be read throws `MachineAuthUnavailable`, answered 503 by `machineFailure` in
-  `middleware/auth.js`. A token is refused only for an allowlist of jose's token-level codes;
-  everything else is an outage, never a null.
+  `middleware/auth.js`. An outage is marked where it happens (discovery, the key-set fetch) and opens
+  a 30-second window answered 503 from memory; every other jose error about the token is a refusal,
+  whatever its code, so an unknown `crit` header is a 401, never a 503.
+- The static digest is compared first, so a dotted `SERVICE_TOKEN` is matched as the secret it is.
+  The plan's "never falls through" wording is about the other direction: a JWS that misses the
+  digest goes to jose, and jose's refusal is never re-checked against the static secret.
 - The subject allowlist is the control beyond the audience (P7 measured a service user minting any
   project's audience). The `client_id` claim is not checked separately: each instance's service user
   is one client, so `sub` already pins it.

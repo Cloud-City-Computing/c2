@@ -599,8 +599,8 @@ which one ran:
 - **The JWT path** (W6-CDX-7), for a client-credentials access token from the
   issuer (`verifyMachineJwt`, `machine-auth.js:242`, further down). It is taken only for a
   JWS-shaped token, and only when `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE`
-  and `MACHINE_OIDC_SUBJECTS` are all set. It never falls through to the
-  static comparison.
+  and `MACHINE_OIDC_SUBJECTS` are all set. It is reached only after the static
+  digest has missed, so a dotted `SERVICE_TOKEN` is matched as the secret it is.
 
 A **key set that cannot be read** is not a `null`. It throws
 `MachineAuthUnavailable`, which `machineOrAuth` and `requireMachine` answer as
@@ -647,19 +647,23 @@ any project's audience (W6-CCID-3's P7 minted instance B's `aud` for instance A'
 service user), so the subject allowlist is the control. Each instance's service
 user is one client, so the allowlist also pins the client.
 
-**Refusal and outage are separate.** A token is refused (`null`, a 401 from
-`requireMachine`) only for a code in `TOKEN_REFUSAL_CODES`: a claim, expiry,
-signature, algorithm or `kid` failure. Any other failure is an outage: the
-discovery document or key set cannot be fetched, a timeout, a non-200, or a
-document that names another issuer. That throws `MachineAuthUnavailable`, which
-is a 503 and is never cached. A failed discovery is not kept, and concurrent
-first calls share one fetch (`remoteKeySet` at `machine-auth.js:301`, `discoverJwksUri` at `:329`). The key set
-itself is jose's `createRemoteJWKSet`, cached for 10 minutes, with a 30-second
-cooldown before an unknown `kid` refetches.
+**Refusal and outage are separate, and an outage is marked where it happens.**
+An outage is a discovery or key-set fetch that fails: a connection error, a
+timeout, a non-200, a document naming another issuer, or an unusable key set
+URL. `discoverJwksUri` and `guardedKeys` throw it as `MachineAuthUnavailable`
+through `markOutage`, which opens a 30-second window (`OUTAGE_COOLDOWN_MS`).
+Inside the window `verifyMachineJwt` answers 503 from memory, with no fetch and
+no log line. Every other error jose reports about the token is a refusal (a
+`null`, a 401 from `requireMachine`), whatever its code: an unknown `crit`
+header, a bad signature, a claim, a key miss. A key miss (`KEY_MISS_CODES`)
+passes through `guardedKeys` untouched. The key set itself is jose's
+`createRemoteJWKSet`, cached for 10 minutes with no stale fallback (a deliberate
+choice, see `docs/security.md`), and refetched for an unknown `kid` after a
+30-second cooldown.
 
-A 64-character session token has no dots, so it never matches the JWS shape
-and never reaches jose. A JWS-shaped token presented while the branch is
-configured is never compared to `SERVICE_TOKEN`.
+Routing: `verifyMachineCredential` compares the static digest first. A JWS-shaped
+token that misses it goes to jose, if the branch is configured. A 64-character
+session token has no dots, so it never reaches jose.
 
 ### The never-admin rule
 

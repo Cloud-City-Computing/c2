@@ -391,8 +391,8 @@ and it wraps it rather than replacing it:
 1. Token from the same `extractSessionToken(req)`. No token at all, straight to
    `requireAuth`, which 401s.
 2. `verifyMachineCredential(token)` (`services/machine-auth.js`). A JWS-shaped
-   token takes the JWT path when it is configured (W6-CDX-7, access-control
-   section 7). A match sets
+   token that misses the static digest takes the JWT path when it is configured
+   (W6-CDX-7, access-control section 7). A match sets
    `req.user` to a machine principal and calls `next()`, so
    `validateAndAutoLogin` is never reached and a service token cannot be
    mistaken for a session row.
