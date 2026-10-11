@@ -16,9 +16,10 @@
  * tests queue c2_query mocks in call order, so moving or adding a query is a
  * behaviour change even when the result looks the same.
  *
- * parseAuthProviders() is the boot-time answer to "which sign-in methods does
- * this instance offer", validated so a typo stops the process instead of
- * quietly offering something the operator did not ask for.
+ * parseAuthProviders() (services/auth-providers.js, re-exported here) is the
+ * boot-time answer to "which sign-in methods does this instance offer",
+ * validated so a typo stops the process instead of quietly offering something
+ * the operator did not ask for.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -349,100 +350,8 @@ export async function deriveUniqueUsername(email) {
   return `user_${crypto.randomBytes(4).toString('hex')}`;
 }
 
-/** Sign-in providers this version knows. */
-const KNOWN_AUTH_PROVIDERS = ['local', 'google', 'oidc'];
-
 /**
- * Google counts as configured on the same rule routes/oauth.js applies: both
- * the client id and the secret set. Read here at call time, by literal name.
+ * parseAuthProviders() now lives in services/auth-providers.js, which the database layer can import
+ * without a cycle. The re-export keeps the existing import path.
  */
-function isGoogleConfigured() {
-  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-}
-
-/**
- * The OIDC relying party counts as configured when an issuer is set. The full
- * settings are checked by getOidcConfig() when the app mounts its routes.
- */
-function isOidcConfigured() {
-  const issuer = process.env.OIDC_ISSUER_URL;
-  return issuer !== undefined && issuer.trim() !== '';
-}
-
-/**
- * The sign-in providers this instance offers, from AUTH_PROVIDERS.
- *
- * Unset (or blank): today's derived set, `local` always plus `google` when
- * Google is configured. Set: a comma list of `local` and `google`, compared
- * case-insensitively. Throws, with a sentence naming the variable, on an
- * unknown name, on a list without `local` (an instance without local sign-in
- * is not supported yet), on a listed provider that is not configured, and on
- * a configured Google the list leaves out, because the Google routes would
- * still offer it and the variable would then say something untrue.
- *
- * @returns {Set<string>}
- */
-export function parseAuthProviders() {
-  const googleConfigured = isGoogleConfigured();
-  const oidcConfigured = isOidcConfigured();
-  const raw = process.env.AUTH_PROVIDERS;
-
-  if (raw === undefined || raw.trim() === '') {
-    return new Set([
-      'local',
-      ...(googleConfigured ? ['google'] : []),
-      ...(oidcConfigured ? ['oidc'] : []),
-    ]);
-  }
-
-  const names = raw.split(',').map(name => name.trim().toLowerCase()).filter(name => name !== '');
-
-  for (const name of names) {
-    if (!KNOWN_AUTH_PROVIDERS.includes(name)) {
-      throw new Error(
-        `AUTH_PROVIDERS lists "${name}", which is not a sign-in provider this version knows; ` +
-        `use a comma list of ${KNOWN_AUTH_PROVIDERS.join(' and ')}, or leave AUTH_PROVIDERS unset.`
-      );
-    }
-  }
-
-  const providers = new Set(names);
-
-  if (!providers.has('local')) {
-    throw new Error(
-      'AUTH_PROVIDERS must include local, because an instance without local sign-in is not ' +
-      'supported yet; add local, or leave AUTH_PROVIDERS unset.'
-    );
-  }
-
-  if (providers.has('google') && !googleConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS lists google, but GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not both ' +
-      'set; set them, or remove google from AUTH_PROVIDERS.'
-    );
-  }
-
-  if (!providers.has('google') && googleConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS does not list google, but GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are ' +
-      'set, so Google sign-in would still be offered; add google to AUTH_PROVIDERS, or unset ' +
-      'the Google variables.'
-    );
-  }
-
-  if (providers.has('oidc') && !oidcConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS lists oidc, but OIDC_ISSUER_URL is not set; set the OIDC_ variables, or ' +
-      'remove oidc from AUTH_PROVIDERS.'
-    );
-  }
-
-  if (!providers.has('oidc') && oidcConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS does not list oidc, but OIDC_ISSUER_URL is set, so OIDC sign-in would still ' +
-      'be offered; add oidc to AUTH_PROVIDERS, or unset OIDC_ISSUER_URL.'
-    );
-  }
-
-  return providers;
-}
+export { parseAuthProviders } from './auth-providers.js';
