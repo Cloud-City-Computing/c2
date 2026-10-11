@@ -17,7 +17,7 @@ import path from 'node:path';
 import {
   contrastRatio, parseColor, parseThemeTokens, relativeLuminance, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
-import { ACCENTS, accentFill, accentDark } from '../../src/tokens/accents.js';
+import { ACCENTS, accentValue, accentFill, accentDark } from '../../src/tokens/accents.js';
 import { ROOT } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
@@ -60,6 +60,7 @@ function labelOf(site) {
 }
 const onAccent = (hue) => ({
   ...base,
+  '--cx-accent': accentValue(hue),
   '--cx-accent-fill': accentFill(hue),
   '--cx-accent-dark': accentDark(hue),
 });
@@ -151,5 +152,58 @@ describe('a white label on a danger background', () => {
     const rest = paint(declared('.btn-danger', 'background'), base);
     const hover = paint(declared('.btn-danger:hover', 'background'), base);
     expect(luminance(hover)).toBeLessThan(luminance(rest));
+  });
+});
+
+describe('the focus ring: one non-text component, measured at 3:1 against every surface it can sit on', () => {
+  const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-surface-3', '--cx-surface-4'];
+  // The one :focus-visible outline; the ring sits on the page around the control, so the surfaces are the measure.
+  const ringToken = /var\((--[\w-]+)\)/.exec(declared(':focus-visible', 'outline'))?.[1];
+
+  it('reads the ring from the real :focus-visible declaration, and no rule in index.css removes an outline', () => {
+    expect(declared(':focus-visible', 'outline')).toBe('2px solid var(--cx-focus-ring)');
+    expect(ringToken).toBe('--cx-focus-ring');
+    const suppressed = [...index.matchAll(/outline\s*:\s*(none|0)\s*(?=[;}])/g)].map((m) => m[0]);
+    expect(suppressed, 'a focus ring is restyled, never removed').toEqual([]);
+  });
+
+  it('measures at least 3:1 on every surface, on the default accent and all eight picker hues', () => {
+    const measured = [];
+    for (const [name, tokens] of ACCENT_TOKENS) {
+      const ring = paint(`var(${ringToken})`, tokens);
+      for (const surface of SURFACES) {
+        const ratio = contrastRatio(ring, paint(`var(${surface})`, tokens));
+        measured.push(ratio);
+        expect(ratio, `the ring on ${surface} (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(3);
+      }
+    }
+    expect(measured.length).toBe(SURFACES.length * 9);
+  });
+});
+
+describe('the label and fill on the buttons and the toast are read from their own declarations', () => {
+  it('paints the label of a danger control with --cx-on-danger, not a literal', () => {
+    expect(declared('.btn-danger', 'color')).toBe('var(--cx-on-danger)');
+  });
+
+  it('keeps the primary hover on the accent text step, with the on-accent label at 4.5:1 or more on every hue', () => {
+    expect(declared('.btn-primary:hover', 'background')).toBe('var(--brand-blue)');
+    expect(declared('.btn-primary', 'color')).toBe('var(--cx-on-accent)');
+    for (const [name, tokens] of ACCENT_TOKENS) {
+      const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
+        paint(declared('.btn-primary:hover', 'background'), tokens));
+      expect(ratio, `primary hover (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('measures each toast label on the toast surface at 4.5:1 or more, at rest and on the dismiss hover', () => {
+    const surface = paint(declared('.toast', 'background'), base);
+    for (const site of ['.toast', '.toast--success', '.toast--error', '.toast__dismiss']) {
+      const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
+      expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    const hover = contrastRatio(paint(declared('.toast__dismiss:hover', 'color'), base),
+      paint(declared('.toast__dismiss:hover', 'background'), base));
+    expect(hover, `dismiss hover measures ${round(hover)}:1`).toBeGreaterThanOrEqual(4.5);
   });
 });

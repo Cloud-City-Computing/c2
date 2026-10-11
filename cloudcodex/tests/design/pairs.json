@@ -71,6 +71,15 @@
       "reason": "A label on a filled accent control."
     },
     {
+      "text": "--cx-on-danger",
+      "on": [
+        "--cx-danger-fill",
+        "--cx-danger-fill-hover"
+      ],
+      "min": 4.5,
+      "reason": "A label on a filled danger control, at rest and on hover."
+    },
+    {
       "text": "--cx-focus-ring",
       "on": "surfaces",
       "min": 3,

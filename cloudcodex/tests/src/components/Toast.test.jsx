@@ -15,7 +15,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { act } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 let showToast, toastError;
 
@@ -103,5 +104,57 @@ describe('Toast — toastError formatting', () => {
     await act(async () => { showToast('priming-call'); });
     await act(async () => { toastError(new Error('Plain error')); });
     expect(document.body.textContent).toContain('Plain error');
+  });
+});
+
+describe('Toast — the dismiss is a real, keyboard-operable button', () => {
+  const toastWith = (text) => Array.from(document.querySelectorAll('.toast'))
+    .find((t) => t.textContent.includes(text));
+
+  it('renders a button of type "button", named for screen readers, in every toast', async () => {
+    await primeAndShow('Named dismiss');
+    const button = toastWith('Named dismiss').querySelector('button.toast__dismiss');
+    expect(button).not.toBeNull();
+    expect(button.tagName).toBe('BUTTON');
+    expect(button.getAttribute('type')).toBe('button');
+    expect(button.getAttribute('aria-label')).toBe('Dismiss notification');
+    expect(screen.getAllByRole('button', { name: 'Dismiss notification' }).length)
+      .toBe(document.querySelectorAll('.toast').length);
+  });
+
+  it('is reached by Tab, and Enter dismisses the toast', async () => {
+    const user = userEvent.setup();
+    await primeAndShow('Keyboard dismiss');
+    const button = toastWith('Keyboard dismiss').querySelector('button.toast__dismiss');
+    let reached = false;
+    for (let i = 0; i < 4 && !reached; i += 1) {
+      await user.tab();
+      reached = document.activeElement === button;
+    }
+    expect(reached, 'Tab never reached the dismiss button').toBe(true);
+    await user.keyboard('{Enter}');
+    expect(toastWith('Keyboard dismiss')).toBeUndefined();
+  });
+
+  it('dismisses with Space too, as a native button does', async () => {
+    const user = userEvent.setup();
+    await primeAndShow('Space dismiss');
+    const button = toastWith('Space dismiss').querySelector('button.toast__dismiss');
+    await act(async () => { button.focus(); });
+    await user.keyboard(' ');
+    expect(toastWith('Space dismiss')).toBeUndefined();
+  });
+
+  it('no longer dismisses on a click on the body of the toast, only on its button', async () => {
+    const user = userEvent.setup();
+    await primeAndShow('Stays put');
+    await user.click(toastWith('Stays put').querySelector('.toast__message'));
+    expect(toastWith('Stays put')).toBeDefined();
+  });
+
+  it('keeps role="alert" on each toast and aria-live="polite" on the container', async () => {
+    await primeAndShow('Announced');
+    expect(document.querySelector('.toast-container').getAttribute('aria-live')).toBe('polite');
+    expect(toastWith('Announced').getAttribute('role')).toBe('alert');
   });
 });
