@@ -54,7 +54,8 @@ describe('ensureAdminUser on a hosted instance', () => {
     await ensureAdminUser();
 
     const [sql, params] = c2_query.mock.calls[0];
-    expect(sql).toMatch(/LOWER\(email\) = LOWER\(\?\)/);
+    // Binary, as the sign-in ladder compares: an accent-variant address is not this admin's (W6-CDX-9).
+    expect(sql).toMatch(/LOWER\(email\) COLLATE utf8mb4_bin = LOWER\(\?\) COLLATE utf8mb4_bin/);
     expect(sql).not.toMatch(/name/i);
     expect(params).toEqual([EMAIL]);
   });
@@ -131,6 +132,20 @@ describe('ensureAdminUser on a hosted instance', () => {
     expect(writes()[0][0]).toMatch(/^UPDATE users SET email = \? WHERE id = \?$/);
     expect(writes()[0][0]).not.toMatch(/password/i);
     expect(writes()[0][1]).toEqual([EMAIL, 7]);
+  });
+
+  it('never adopts an accent-variant admin by renaming its address to ADMIN_EMAIL', async () => {
+    // The owner's address is josé@, ADMIN_EMAIL is jose@. The binary match finds no row, so no UPDATE
+    // of the owner's row can happen; the INSERT then meets the accent-insensitive unique key and the boot
+    // fails with the duplicate, rather than moving the owner's address to the operator's.
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', sqlMessage: "Duplicate entry 'jose@example.com' for key 'users.email'" });
+    c2_query.mockResolvedValueOnce([]);       // binary match: no row
+    c2_query.mockRejectedValueOnce(dup);      // INSERT meets the accent-insensitive key
+    c2_query.mockResolvedValueOnce([]);       // the one retry finds nothing again
+    c2_query.mockRejectedValueOnce(dup);
+
+    await expect(ensureAdminUser()).rejects.toMatchObject({ code: 'ER_DUP_ENTRY' });
+    expect(writes().filter(([sql]) => /^UPDATE users SET email/.test(sql))).toEqual([]);
   });
 
   it('refuses a non-admin holding the address, writes nothing, and returns null', async () => {

@@ -190,4 +190,55 @@ describe('the membership sync, on a real server', () => {
     expect(Boolean(boot.is_admin)).toBe(true);
     expect(boot.deactivated_at).toBeNull();
   });
+  it('places an existing account in General with read and write, once, and a repeat changes nothing (D-S)', async () => {
+    const preEmail = `pre${tag}@example.com`;
+    const created = await c2_query('INSERT INTO users (name, email) VALUES (?, ?)', [`pre${tag}`, preEmail]);
+    const general = await generalSquad();
+
+    expect((await put(preEmail, 'member')).status).toBe(200);
+    expect((await put(preEmail, 'member')).status).toBe(200);
+
+    const rows = await c2_query(
+      'SELECT can_read, can_write FROM squad_members WHERE squad_id = ? AND user_id = ?',
+      [general.id, created.insertId]
+    );
+    expect(rows).toHaveLength(1);
+    expect(Boolean(rows[0].can_read)).toBe(true);
+    expect(Boolean(rows[0].can_write)).toBe(true);
+  });
+
+  it('acts on the identity a subject names, whatever address is sent, and refuses an address that holds another identity', async () => {
+    const subject = `subj-${tag}`;
+    const personEmail = `subject${tag}@example.com`;
+    expect((await put(personEmail, 'member')).status).toBe(200);
+    const signedIn = await resolveIdentity(claims(subject, personEmail), POLICY);
+    expect(signedIn).toMatchObject({ ok: true });
+
+    // The subject is the identity: the address sent is ignored for the match.
+    const promoted = await request(app)
+      .put('/api/machine/members')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ email: `elsewhere${tag}@example.com`, role: 'admin', issuer: ISSUER, subject });
+    expect(promoted.status).toBe(200);
+    expect(Boolean((await userByEmail(personEmail)).is_admin)).toBe(true);
+    expect(await userByEmail(`elsewhere${tag}@example.com`)).toBeUndefined();
+
+    // Another person's subject, sent with the address of a holder whose identity is a different one: refused.
+    const stranger = await request(app)
+      .put('/api/machine/members')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ email: personEmail, role: 'member', issuer: ISSUER, subject: `stranger-${tag}` });
+    expect(stranger.status).toBe(409);
+    expect(stranger.body.reason).toBe('identity_conflict');
+    expect(Boolean((await userByEmail(personEmail)).is_admin)).toBe(true);
+
+    // Removal by subject alone ends the person here.
+    const removed = await request(app)
+      .delete('/api/machine/members')
+      .query({ issuer: ISSUER, subject })
+      .set('Authorization', `Bearer ${token}`);
+    expect(removed.status).toBe(200);
+    expect((await userByEmail(personEmail)).deactivated_at).not.toBeNull();
+    expect(await resolveIdentity(claims(subject, personEmail), POLICY)).toEqual({ ok: false, reason: 'account_deactivated' });
+  });
 });

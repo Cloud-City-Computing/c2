@@ -63,7 +63,9 @@ export async function ensureAdminUser({ retried = false } = {}) {
   // OIDC-only instance has no password for the admin to need, so the name is never consulted there.
   const hosted = !localSignInEnabled();
   const matches = hosted
-    ? await c2_query(`SELECT id, is_admin FROM users WHERE LOWER(email) = LOWER(?) ORDER BY id`, [email])
+    // Binary, as every other address comparison here: users.email's default collation would read an accent variant
+    // (josé@ for jose@) as this admin, and the sync would rename that account's address to the operator's (W6-CDX-9).
+    ? await c2_query(`SELECT id, is_admin FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin ORDER BY id`, [email])
     : await c2_query(
       `SELECT id, is_admin FROM users WHERE LOWER(name) = LOWER(?) OR email = ? ORDER BY id`,
       [username, email]

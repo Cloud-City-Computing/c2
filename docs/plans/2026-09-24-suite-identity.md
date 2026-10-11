@@ -1434,8 +1434,8 @@ The code proved these points open or wrong in this section, or the hosted-mode b
   works), and `POST /api/update-account/confirm-email` answers 404 with local sign-in off.
 - **Static `SERVICE_TOKEN` is not refused** on hosted instances. The spec's "static path unchanged"
   stands; machine callers may use either credential.
-- **Email lookup in `ensureAdminUser`** is `LOWER(email) = LOWER(?)` on a hosted instance, the default
-  collation, so an accent variant the unique key would refuse is found, not inserted past.
+- **Email lookup in `ensureAdminUser`** was `LOWER(email) = LOWER(?)` (the default collation) on a hosted
+  instance. **Superseded by W6-CDX-9:** it is binary, so an accent variant is never renamed to `ADMIN_EMAIL`.
 - **Seeded workspace name.** `bootstrapInstance` reads the admin's name from its row inside the existing
   content-guard query (`admin_name`), so the seed adds no query. The row wins; the variable is the fallback.
 - **A held admin name.** A hosted create with an `ADMIN_USERNAME` some account already holds derives the
@@ -1701,16 +1701,23 @@ The code and the contracts from this wave's reviews settled these points open or
   admission sent before a removal would then undo the removal, so `PUT` answers 409 `account_deactivated` unless the
   body says `reactivate: true`. Cloud Command's add-by-email is an explicit act and may send it; a re-role or a retry
   must not.
-- **Keying.** The wire carries an address (Cloud Command sends `{ email, role }`), so an address finds the account. It
-  is never the identity. An address resolves through `users.email` and `user_identities.email_at_last_signin`, binary
-  collated, because an issuer's address can move while the local one stays (W6-CDX-5). Two accounts matching one
-  address is 409 `ambiguous_address`, never a guess. Sign-in still keys on `(issuer, subject)`.
+- **Keying (the coordinator's decision).** The wire accepts optional `issuer` and `subject` on `PUT` and on `DELETE`
+  (`DELETE /api/machine/members?issuer=&subject=`, alongside the address route). When both are present they are the
+  only match: the account their identity row links to. The address is used only when no identity exists yet, and
+  then never for an account that holds a different identity at that issuer (409 `identity_conflict`). Without a
+  subject, an address resolves through `users.email` and `user_identities.email_at_last_signin`, binary collated,
+  because an issuer's address can move while the local one stays (W6-CDX-5). Two accounts matching one address is
+  409 `ambiguous_address`. Cloud Command sends the subject whenever it has one.
+- **Existing accounts are placed in General (the coordinator's decision, D-S).** An admission of an existing account
+  sets its admin flag and adds it to `General` with read and write if it is not a member there (idempotent).
+- **`ensureAdminUser` matches `ADMIN_EMAIL` in binary (the coordinator's decision).** Its hosted lookup is
+  `LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin`, so an accent-variant owner address is never the
+  operator's row and is never renamed to it. The unique key still refuses an INSERT of the operator address over
+  that variant, so the boot fails with the duplicate, by design, until an operator resolves it.
 - **Refusals.** 409 `managed_by_configuration` for `ADMIN_EMAIL` or any row that is the boot admin's, and 409
   `machine_account` for the machine principal's own row, so the sync cannot remove the credential it runs on.
 - **Migration date** is `2026-10-15-invitation-grants-admin.sql`, after `2026-10-14-session-rotation.sql`, the newest
   file on `origin/main`.
-- **Existing accounts are not placed in General.** As written: an admission of a person who already has an account sets
-  the admin flag only. D-S places a person through their invitation, so a pre-existing account keeps its squads.
 - **A `member` role clears admin on any account it resolves to**, including one an admin promoted by hand. That is the
   ownership transfer working as written; it is also why Cloud Command must send `member` only for people it owns.
 
@@ -1720,3 +1727,7 @@ The last PR of this track to merge (normally PR 9) also deletes
 `docs/specs/2026-09-24-suite-identity.md` and this plan, marks the identity row in
 `docs/specs/roadmap.md` shipped with its PR numbers, and removes the spec's rows from
 `docs/specs/README.md` and `docs/README.md`. The maps are the record.
+
+**Deferred (the coordinator's decision, W6-CDX-9).** Retirement is not done in PR 9. Other tracks still link to
+this spec and plan. It is the last step of W6-CDX-36 (hosting readiness), which deletes both and removes their links
+in the same PR, and marks the identity row in the roadmap shipped with its PR numbers.

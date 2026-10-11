@@ -5,13 +5,13 @@
  * with (its W6-CMD-7). The workspace owner arrives as `admin`, everyone else as `member`. Machine-only
  * (requireMachine): a logged-in session never reaches them, whatever its role.
  *
- * WHAT IS KEYED ON WHAT. The wire carries an address, so an address is how a member is found. It is
- * never the identity: the effects land on the user row the address resolves to, and sign-in keys on
- * (issuer, subject) through user_identities and refuses a deactivated row (services/identity.js). An
- * address resolves to a user through two columns: users.email, and the address an identity last signed
- * in with (user_identities.email_at_last_signin, which follows the issuer). Cloud Command follows the
- * issuer's address and this instance does not, so the second is what keeps a removal from missing a
- * member whose address has moved. Two accounts matching one address is refused, never guessed at.
+ * WHAT IS KEYED ON WHAT. When the sync sends an issuer and a subject, that pair is the ONLY match: the
+ * account its identity row links to (user_identities, binary). The address is used only when no identity
+ * exists yet (a person who has never signed in), and then never selects an account that already holds a
+ * different identity at that issuer (identity_conflict). Without a subject the address alone decides: it
+ * resolves through users.email and through the address an identity last signed in with
+ * (user_identities.email_at_last_signin). Two accounts matching one address is refused, never guessed at.
+ * Sign-in itself keys on (issuer, subject) and refuses a deactivated row (services/identity.js).
  *
  * THE BOOT ADMIN IS NEVER THE SYNC'S. ADMIN_EMAIL is the instance admin, owned by ensureAdminUser at
  * boot. A row that is the boot admin, by its address or by an identity's, answers 409 and is not written,
@@ -30,7 +30,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { withTransaction } from '../mysql_connect.js';
 import { requireMachine } from '../middleware/auth.js';
-import { asyncHandler, errorHandler, isValidEmail } from './helpers/shared.js';
+import { addSquadMember, asyncHandler, errorHandler, isValidEmail } from './helpers/shared.js';
 import { closeSocketsForSessions as closeCollab } from '../services/collab.js';
 import { closeSocketsForSessions as closeInbox } from '../services/user-channel.js';
 
@@ -43,6 +43,7 @@ const MESSAGES = {
   machine_account: 'The machine account cannot be changed by the membership sync',
   ambiguous_address: 'This address matches more than one account; it needs a person to resolve it',
   account_deactivated: 'This account was removed; send reactivate to admit it again',
+  identity_conflict: 'This address belongs to an account linked to a different identity at this issuer; it is not moved',
 };
 
 function readEmail(raw) {
@@ -58,11 +59,7 @@ const isBootAddress = (email) =>
 const isBootRow = (row) =>
   Boolean(process.env.ADMIN_EMAIL) && String(row.email).toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase();
 
-/**
- * The accounts an address resolves to: the user holding it, and any user whose identity last signed in
- * with it. Binary comparison, as the sign-in ladder compares (services/identity.js), so an accented
- * address never resolves to its unaccented twin. The rows are locked for the write that follows.
- */
+/** The accounts an address resolves to, locked for the write that follows. Binary, as the sign-in ladder compares. */
 const HOLDERS_SQL = `
   SELECT id, email, is_admin, deactivated_at FROM users
    WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin
@@ -72,10 +69,54 @@ const HOLDERS_SQL = `
    WHERE LOWER(ui.email_at_last_signin) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin
   FOR UPDATE`;
 
+/** The account a verified (issuer, subject) is linked to, locked. The subject is the identity; nothing else is. */
+const IDENTITY_SQL = `
+  SELECT u.id, u.email, u.is_admin, u.deactivated_at FROM user_identities ui
+    JOIN users u ON u.id = ui.user_id
+   WHERE ui.issuer = ? AND ui.subject = ?
+   LIMIT 1 FOR UPDATE`;
+
+/** Whether an account already holds an identity at this issuer (under any subject). */
+const ISSUER_LINK_SQL = 'SELECT subject FROM user_identities WHERE user_id = ? AND issuer = ? LIMIT 1';
+
 /**
- * Where an admitted member lands: the General squad bootstrapInstance seeded in the boot admin's starter
- * workspace. null when an admin has renamed or deleted it; the invitation then names no squad and the
- * instance admin places them (D-S).
+ * The account(s) a request names. A subject, when sent, is the ONLY match: the identity it names, or, when
+ * no identity exists yet, the address (a person who has not signed in). The address never selects an
+ * account that already holds a different identity at that issuer (identity_conflict). Without a subject,
+ * the address alone decides, as the wire has always done.
+ */
+async function holdersOf(query, { email, identity }) {
+  if (identity) {
+    const [hit] = await query(IDENTITY_SQL, [identity.issuer, identity.subject]);
+    if (hit) return { holders: [hit] };
+    if (!email) return { holders: [] };
+    const byAddress = await query(HOLDERS_SQL, [email, email]);
+    for (const holder of byAddress) {
+      const [linked] = await query(ISSUER_LINK_SQL, [holder.id, identity.issuer]);
+      if (linked) return { refused: 'identity_conflict' };
+    }
+    return { holders: byAddress };
+  }
+  return { holders: await query(HOLDERS_SQL, [email, email]) };
+}
+
+/**
+ * The subject a request names, read from the body or the query. Both or neither: an issuer without its
+ * subject (or the reverse) is a 400, never a guess.
+ */
+function readIdentity(source) {
+  const issuer = typeof source.issuer === 'string' ? source.issuer.trim() : '';
+  const subject = typeof source.subject === 'string' ? source.subject.trim() : '';
+  if (!issuer && !subject) return { identity: null };
+  if (!issuer || !subject || issuer.length > 255 || subject.length > 255) {
+    return { error: 'An issuer and a subject go together, each at most 255 characters' };
+  }
+  return { identity: { issuer, subject } };
+}
+
+/**
+ * The instance's General squad, in the boot admin's starter workspace (bootstrapInstance). null when an admin
+ * has renamed or deleted it; then nothing is placed and the instance admin places the person (D-S).
  */
 async function generalSquadId(query) {
   const rows = await query(
@@ -89,6 +130,18 @@ async function generalSquadId(query) {
   return rows.length > 0 ? rows[0].id : null;
 }
 
+/**
+ * Place an existing account in General with read and write, unless it is already a member there (D-S, for
+ * accounts that were not admitted through an invitation). Idempotent: an existing membership is left as it is.
+ */
+async function ensureGeneralMember(query, userId) {
+  const squadId = await generalSquadId(query);
+  if (squadId === null) return;
+  const [member] = await query('SELECT id FROM squad_members WHERE squad_id = ? AND user_id = ? LIMIT 1', [squadId, userId]);
+  if (member) return;
+  await addSquadMember(squadId, userId, { role: 'member', can_read: true, can_write: true }, query);
+}
+
 /** The 409 for a refusal decided inside the transaction, with nothing written. */
 function refuse(res, reason) {
   return res.status(409).json({ success: false, reason, message: MESSAGES[reason] });
@@ -100,12 +153,16 @@ router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => 
   if (!email || !ROLES.has(role)) {
     return res.status(400).json({ success: false, message: 'An email and a role of admin or member are required' });
   }
+  const { identity, error } = readIdentity(req.body ?? {});
+  if (error) return res.status(400).json({ success: false, message: error });
   if (isBootAddress(email)) return refuse(res, 'managed_by_configuration');
 
   const reactivate = req.body?.reactivate === true;
   const admin = role === 'admin';
   const outcome = await withTransaction(async (query) => {
-    const holders = await query(HOLDERS_SQL, [email, email]);
+    const found = await holdersOf(query, { email, identity });
+    if (found.refused) return found;
+    const { holders } = found;
     if (holders.some(isBootRow)) return { refused: 'managed_by_configuration' };
     if (holders.length > 1) return { refused: 'ambiguous_address' };
 
@@ -113,12 +170,13 @@ router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => 
     if (holder) {
       if (holder.id === req.user.id) return { refused: 'machine_account' };
       if (holder.deactivated_at && !reactivate) return { refused: 'account_deactivated' };
-      // Squads are left alone: after admission, placement is the instance admin's.
       if (reactivate) {
         await query('UPDATE users SET is_admin = ?, deactivated_at = NULL WHERE id = ?', [admin, holder.id]);
       } else {
         await query('UPDATE users SET is_admin = ? WHERE id = ?', [admin, holder.id]);
       }
+      // An existing account is placed in General too, when it is not there already (D-S).
+      await ensureGeneralMember(query, holder.id);
       return {};
     }
 
@@ -155,23 +213,34 @@ router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => 
   res.json(OK);
 }));
 
-router.delete('/machine/members/:email', requireMachine, asyncHandler(async (req, res) => {
-  const email = readEmail(req.params.email);
-  if (!email) return res.status(400).json({ success: false, message: 'A valid email is required' });
-  if (isBootAddress(email)) return refuse(res, 'managed_by_configuration');
+/**
+ * DELETE /machine/members (the subject form: issuer and subject in the query, the address optional) and
+ * DELETE /machine/members/:email (the address form, with issuer and subject in the query when the sync has them).
+ */
+async function removeMember(req, res, email) {
+  const { identity, error } = readIdentity(req.query ?? {});
+  if (error) return res.status(400).json({ success: false, message: error });
+  if (!email && !identity) {
+    return res.status(400).json({ success: false, message: 'A subject (issuer and subject) or an email is required' });
+  }
+  if (email && isBootAddress(email)) return refuse(res, 'managed_by_configuration');
 
   const outcome = await withTransaction(async (query) => {
-    const holders = await query(HOLDERS_SQL, [email, email]);
+    const found = await holdersOf(query, { email, identity });
+    if (found.refused) return found;
+    const { holders } = found;
     if (holders.some(isBootRow)) return { refused: 'managed_by_configuration' };
     if (holders.length > 1) return { refused: 'ambiguous_address' };
 
     const [holder] = holders;
     if (holder && holder.id === req.user.id) return { refused: 'machine_account' };
 
-    await query(
-      'UPDATE user_invitations SET expires_at = NOW() WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE',
-      [email]
-    );
+    if (email) {
+      await query(
+        'UPDATE user_invitations SET expires_at = NOW() WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE',
+        [email]
+      );
+    }
     if (!holder) return { digests: [] };
 
     // COALESCE keeps the first removal's time, so a repeated removal changes nothing.
@@ -186,6 +255,17 @@ router.delete('/machine/members/:email', requireMachine, asyncHandler(async (req
   closeCollab(outcome.digests);
   closeInbox(outcome.digests);
   res.json(OK);
+}
+
+router.delete('/machine/members', requireMachine, asyncHandler(async (req, res) => {
+  const email = typeof req.query?.email === 'string' ? readEmail(req.query.email) : null;
+  await removeMember(req, res, email);
+}));
+
+router.delete('/machine/members/:email', requireMachine, asyncHandler(async (req, res) => {
+  const email = readEmail(req.params.email);
+  if (!email) return res.status(400).json({ success: false, message: 'A valid email is required' });
+  await removeMember(req, res, email);
 }));
 
 router.use(errorHandler);

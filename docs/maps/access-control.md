@@ -718,7 +718,7 @@ through to `requireAuth` unchanged. It is applied to exactly three routes:
 | `GET /api/browse` | `machineOrAuth` |
 | `GET /api/documents/state` | `machineOrAuth` (`routes/documents.js`), W6-CDX-16 |
 | `GET /api/workspaces/:workspaceId/reader-check` | **`requireMachine`** |
-| `PUT /api/machine/members`, `DELETE /api/machine/members/:email` | **`requireMachine`**, the membership sync (`routes/machine-members.js`, W6-CDX-9). The only machine routes that write, and the only ones that can set `is_admin` |
+| `PUT /api/machine/members`, `DELETE /api/machine/members`, `DELETE /api/machine/members/:email` | **`requireMachine`**, the membership sync (`routes/machine-members.js`, W6-CDX-9). The only machine routes that write, and the only ones that can set `is_admin` |
 | `GET /api/search/filters` | `requireAuth` |
 | `GET /api/presence` | `requireAuth` |
 | everything else in the app | `requireAuth` |
