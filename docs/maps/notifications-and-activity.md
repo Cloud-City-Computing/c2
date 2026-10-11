@@ -118,7 +118,7 @@ after the `activity_log` insert and before auto-watch, in a `try` of its own
 returns before the insert) is never emitted, an event is emitted only for an
 activity row that was written, and the outbox and the watchers cannot fail
 each other. `emitEvent` also never throws: it catches, logs
-`webhook emit failed` and resolves `null` (`services/webhooks.js:365`).
+`webhook emit failed` and resolves `null` (`services/webhooks.js:374`).
 
 What it does, in order (`services/webhooks.js:315`):
 
@@ -129,19 +129,20 @@ What it does, in order (`services/webhooks.js:315`):
    with no `workspace_id` matches every workspace) and by `event_types`, and
    return if nothing matches. **No query runs up to here**, so an install with
    no subscription, and every unit test that never calls `loadSubscriptions`,
-   issues nothing new (`services/webhooks.js:317`).
+   issues nothing new (`services/webhooks.js:324`).
 3. Build `data` per type. Document types read `SELECT archive_id, title,
    parent_id FROM logs WHERE id = ?` once (`services/webhooks.js:285`) and emit
    nothing if the row is gone. `title` is the document's: from
    `metadata.title` where the caller logged the document's title, and from the
    row for `log.publish`, whose `metadata.title` is the name given to the
-   version (`services/webhooks.js:300`). `log.delete`'s activity row names the
+   version (`services/webhooks.js:298`). `log.delete`'s activity row names the
    archive with `metadata.log_id`, so its data needs no read; the archive
    types need none either. The route records `log.delete` only when its
    `DELETE ... WHERE id = ? AND archive_id = ?` removed a row
    (`routes/archives.js:690`), so an id from another archive can never be
    announced as deleted. Every id field is an integer or `null`.
-4. In one `withTransaction` (`services/webhooks.js:334`), after taking the order lock (`webhook_sequence_lock FOR UPDATE`): insert the
+4. In one `withTransaction` (`services/webhooks.js:339`), after taking the order lock (`webhook_sequence_lock FOR UPDATE`,
+   `:343`): read the instant (`occurred_at`, `:347`), insert the
    `webhook_events` row with an empty body to get its id (the envelope's
    `sequence`), serialize the envelope with a fresh UUID v4 as `id`, store its
    UTF-8 bytes, and insert the deliveries with `INSERT ... SELECT` over the
@@ -149,7 +150,7 @@ What it does, in order (`services/webhooks.js:315`):
    so a subscription deleted, disabled or narrowed since the cache last loaded
    gets nothing. When that leaves no delivery at all, the transaction throws a
    private sentinel and rolls the event row back, and `emitEvent` resolves
-   `null` without logging (`services/webhooks.js:360`). Otherwise it resolves
+   `null` without logging (`services/webhooks.js:369`). Otherwise it resolves
    `{ eventId, deliveries }`, the count the database wrote.
 
 `serializeEnvelope` bounds `data.title` and `data.name` to 255 code points

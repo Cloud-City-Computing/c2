@@ -444,7 +444,8 @@ subscription matches an event (`notifications-and-activity.md` section 2a):
   `UTC_TIMESTAMP(3)`, not `NOW(3)`. Indexed on `created_at` for the prune.
 - **`webhook_sequence_lock`**: one row (`id = 1`), created by
   `2026-10-10-webhook-sequence-lock.sql`. `emitEvent` takes it `FOR UPDATE` before its insert, so
-  outbox ids are allocated in commit order. It holds no data.
+  outbox ids are allocated in commit order, and it reads `occurred_at` only after that lock is held, so
+  `occurred_at` is non-decreasing in `id` per instance. It holds no data.
 - **`webhook_deliveries`**: one row per (subscription, event), unique on the
   pair; `status` is `pending`, `delivered` or `dead`
   (`chk_webhook_deliveries_status`), with `attempts`, the lease columns

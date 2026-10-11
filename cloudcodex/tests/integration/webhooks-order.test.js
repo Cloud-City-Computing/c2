@@ -12,7 +12,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import mysql from 'mysql2/promise';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -35,6 +35,25 @@ const openSecond = () =>
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
   });
+
+/**
+ * Resolve once `n` lock requests are parked on the order lock row: the emits
+ * waiting behind the holder. Polls the server's own record of waiting requests,
+ * so the test waits on the server's state, not on a guessed delay.
+ * (information_schema.innodb_trx does not list an autocommit statement that is
+ * waiting, so it cannot be used for this.)
+ */
+async function waitForLockWaits(n) {
+  for (let i = 0; i < 1000; i++) {
+    const [row] = await c2_query(
+      "SELECT COUNT(*) AS n FROM performance_schema.data_locks WHERE OBJECT_NAME = 'webhook_sequence_lock' AND LOCK_STATUS = 'WAITING'",
+      []
+    );
+    if (Number(row.n) >= n) return;
+    await sleep(10);
+  }
+  throw new Error(`no ${n} lock request(s) parked on webhook_sequence_lock`);
+}
 
 let holder;
 
@@ -144,6 +163,53 @@ describe('emit order', () => {
     expect(a.eventId).toBeLessThan(b.eventId);
     const visible = (await c2_query('SELECT id FROM webhook_events ORDER BY id', [])).map((r) => Number(r.id));
     expect(visible).toEqual([a.eventId, b.eventId]);
+  });
+
+  it('occurred_at is the instant the order lock is granted, so two parked emits carry that instant', async () => {
+    // Where each emit waits: emitEvent's INSERT IGNORE of the lock row is its own
+    // autocommit statement, before the transaction, and the holder's FOR UPDATE
+    // blocks it. So each emit parks at the INSERT IGNORE, not at the FOR UPDATE.
+    // The clock is moved while each one is parked, and then the lock is released.
+    // An emit that read its instant on entry carries the instant of its start;
+    // one that reads it under the lock carries the grant instant, for both.
+    holder = await openSecond();
+    await holder.query('INSERT IGNORE INTO webhook_sequence_lock (id) VALUES (1)');
+    await holder.beginTransaction();
+    await holder.query('SELECT id FROM webhook_sequence_lock WHERE id = 1 FOR UPDATE');
+
+    const T1 = Date.parse('2026-10-10T10:00:01.000Z');
+    const T2 = Date.parse('2026-10-10T10:00:02.000Z');
+    const T3 = Date.parse('2026-10-10T10:00:03.000Z');
+    let emitA;
+    let emitB;
+    let a;
+    let b;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(T1);
+      emitA = emitEvent(ACTION, SCOPE);
+      await waitForLockWaits(1);
+      vi.setSystemTime(T2);
+      emitB = emitEvent(ACTION, SCOPE);
+      await waitForLockWaits(2);
+      vi.setSystemTime(T3);
+      await holder.commit();
+      // The granted emits run on after the commit; the clock must stay fake until they have read it.
+      [a, b] = await Promise.all([emitA, emitB]);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    const rows = await c2_query(
+      "SELECT id, DATE_FORMAT(occurred_at, '%Y-%m-%d %H:%i:%s.%f') AS at FROM webhook_events ORDER BY id",
+      []
+    );
+    expect(rows.map((r) => Number(r.id))).toEqual([a.eventId, b.eventId].sort((x, y) => x - y));
+    // Both grants happened after the clock reached T3, so both rows carry T3. An
+    // emit that read its instant on entry would carry T1 and T2 instead.
+    expect(rows.map((r) => r.at)).toEqual(['2026-10-10 10:00:03.000000', '2026-10-10 10:00:03.000000']);
   });
 
   it('the migration claims the lock table, so --adopt-fresh-install checks it', () => {

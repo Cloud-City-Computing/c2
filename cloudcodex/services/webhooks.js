@@ -327,7 +327,6 @@ export async function emitEvent(ctx, scope) {
     if (!data) return null;
 
     const uuid = randomUUID();
-    const occurredAt = new Date().toISOString();
     const actor = { id: ctx.user.id, name: typeof ctx.user.name === 'string' ? ctx.user.name : null };
     const ids = matching.map((s) => s.id);
 
@@ -342,6 +341,10 @@ export async function emitEvent(ctx, scope) {
       // an emit that starts while another is uncommitted waits for it, and
       // takes an id above it (migrations/2026-10-10-webhook-sequence-lock.sql).
       await query('SELECT id FROM webhook_sequence_lock WHERE id = 1 FOR UPDATE', []);
+      // Read under the lock, never before it: an emit that waits behind another
+      // would otherwise carry an earlier instant than the one it commits after,
+      // and occurred_at would fall against sequence (the lock is held to commit).
+      const occurredAt = new Date().toISOString();
       const inserted = await query(
         `INSERT INTO webhook_events (event_uuid, type, workspace_id, occurred_at, body)
          VALUES (?, ?, ?, ?, ?)`,
