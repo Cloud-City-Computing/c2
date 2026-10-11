@@ -7861,6 +7861,36 @@ body {
   min-width: 0;
 }
 
+/* Narrow screens: the sidebar becomes a row above the content, not a column beside it */
+@media (max-width: 768px) {
+  .admin-dashboard {
+    flex-direction: column;
+  }
+
+  .admin-sidebar {
+    width: 100%;
+    padding: 8px 0;
+  }
+
+  .admin-sidebar__title {
+    display: none;
+  }
+
+  .admin-sidebar__nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 8px;
+  }
+
+  .admin-sidebar__item {
+    flex-shrink: 0;
+  }
+
+  .admin-main {
+    padding: 16px;
+  }
+}
+
 /* Stats grid */
 
 .admin-stats {

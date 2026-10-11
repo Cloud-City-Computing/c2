@@ -525,8 +525,9 @@ dead ones.
 
 - [x] `tests/src/components/WebhooksPanel.test.jsx`: rendering, create, a validation error, rotate
       (the secret appears once and not after a re-render), redeliver.
-- [ ] By hand, against a running app, at desktop and mobile widths: `iris shoot` the admin page with
-      two subscriptions and a dead delivery, and read the images. `docs/features.md` and
+- [x] By hand, against a running app, at desktop and mobile widths: `iris shoot` the admin page with
+      two subscriptions and a dead delivery, and read the images (`iris shoot` cannot carry a login, so the admin view was captured from a
+      headless Chrome with the admin session cookie; see `docs/research/w6-cdx-15-webhooks-console-2026-10-11/`). `docs/features.md` and
       `docs/api/admin.md`. Lint, test, coverage, build.
 
 **Deviations taken in W6-CDX-15** (recorded here and in the PR report):
@@ -538,6 +539,9 @@ dead ones.
   smallest part of the dialog contract the UI stack holds back for W6-CDX-23.
 - The panel's tints use `color-mix()` over the existing colour variables, not `rgba()`, so the
   design gate's ledger does not grow. The ledger is unchanged.
+- The admin dashboard had no narrow-screen rules, so at 390 px its sidebar took most of the width and
+  the panel was unreadable. W6-CDX-15 adds one `max-width: 768px` block to the admin layout (the
+  sidebar becomes a row above the content). It changes every admin panel's phone layout, for the better.
 - The panel reads the deliveries of every stalled subscription when it loads, so a stalled card can
   state the receiver's last answer. No route changed: `GET /api/admin/webhooks` already carries the
   failure count and the pause, and the deliveries route already carries the last answer.
