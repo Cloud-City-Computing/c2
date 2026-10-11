@@ -134,18 +134,24 @@ describe('ensureAdminUser on a hosted instance', () => {
     expect(writes()[0][1]).toEqual([EMAIL, 7]);
   });
 
-  it('never adopts an accent-variant admin by renaming its address to ADMIN_EMAIL', async () => {
-    // The owner's address is josé@, ADMIN_EMAIL is jose@. The binary match finds no row, so no UPDATE
-    // of the owner's row can happen; the INSERT then meets the accent-insensitive unique key and the boot
-    // fails with the duplicate, rather than moving the owner's address to the operator's.
+  it('an accent-variant holder of ADMIN_EMAIL is never renamed; the boot logs which account to change and returns null', async () => {
+    // The owner's address is josé@, ADMIN_EMAIL is jose@. The binary match finds no row, and the INSERT meets the
+    // accent-insensitive unique key. The boot must not rename the owner's row, and must say what to change.
     const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY', sqlMessage: "Duplicate entry 'jose@example.com' for key 'users.email'" });
-    c2_query.mockResolvedValueOnce([]);       // binary match: no row
-    c2_query.mockRejectedValueOnce(dup);      // INSERT meets the accent-insensitive key
-    c2_query.mockResolvedValueOnce([]);       // the one retry finds nothing again
-    c2_query.mockRejectedValueOnce(dup);
+    c2_query.mockImplementation(async (sql) => {
+      if (/LOWER\(email\) COLLATE utf8mb4_bin/.test(sql)) return [];
+      if (/^INSERT INTO users/.test(sql)) throw dup;
+      if (/LOWER\(email\) = LOWER\(\?\)/.test(sql)) return [{ id: 7, email: 'josé@example.com', is_admin: 1 }];
+      return [];
+    });
 
-    await expect(ensureAdminUser()).rejects.toMatchObject({ code: 'ER_DUP_ENTRY' });
+    expect(await ensureAdminUser()).toBeNull();
+
     expect(writes().filter(([sql]) => /^UPDATE users SET email/.test(sql))).toEqual([]);
+    const message = logLines().find((line) => /accent variant/.test(line));
+    expect(message).toMatch(/user 7/);
+    expect(message).toMatch(/ADMIN_EMAIL/);
+    expect(message).toMatch(/change|rename/i);
   });
 
   it('refuses a non-admin holding the address, writes nothing, and returns null', async () => {

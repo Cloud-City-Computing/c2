@@ -32,6 +32,7 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
   '2026-09-27-who-may-see-doc-images.sql': 'DROP TABLE doc_images',
   '2026-09-28-webhooks.sql': 'DROP TABLE webhook_deliveries, webhook_events, webhook_subscriptions',
   '2026-10-10-webhook-sequence-lock.sql': 'DROP TABLE webhook_sequence_lock',
+  '2026-10-16-invitation-revoked.sql': 'ALTER TABLE user_invitations DROP COLUMN revoked_at',
   '2026-10-15-invitation-grants-admin.sql': 'ALTER TABLE user_invitations DROP COLUMN grants_admin',
   '2026-10-14-session-rotation.sql':
     'ALTER TABLE sessions DROP INDEX idx_sessions_rotated_from, DROP COLUMN rotated_from, DROP COLUMN signed_in_at',

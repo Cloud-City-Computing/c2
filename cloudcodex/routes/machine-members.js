@@ -28,7 +28,7 @@
 
 import crypto from 'node:crypto';
 import express from 'express';
-import { withTransaction } from '../mysql_connect.js';
+import { c2_query, withTransaction } from '../mysql_connect.js';
 import { requireMachine } from '../middleware/auth.js';
 import { addSquadMember, asyncHandler, errorHandler, isValidEmail } from './helpers/shared.js';
 import { closeSocketsForSessions as closeCollab } from '../services/collab.js';
@@ -45,6 +45,29 @@ const MESSAGES = {
   account_deactivated: 'This account was removed; send reactivate to admit it again',
   identity_conflict: 'This address belongs to an account linked to a different identity at this issuer; it is not moved',
 };
+
+/**
+ * The sync needs the boot admin row to exist: it is the row the sync must never touch, and a boot that could not
+ * create it (see ensureAdminUser) has nothing to protect. Refused with 503 until one exists, so a sync cannot run
+ * against an instance whose admin is unresolved.
+ */
+const BOOT_ROW_SQL = 'SELECT id FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND is_admin = TRUE LIMIT 1';
+
+async function requireBootAdmin(req, res, next) {
+  try {
+    const rows = await c2_query(BOOT_ROW_SQL, [process.env.ADMIN_EMAIL]);
+    if (rows.length === 0) {
+      return res.status(503).json({
+        success: false,
+        reason: 'no_boot_admin',
+        message: 'This instance has no boot admin row; see the boot log, and the membership sync waits for one',
+      });
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
 
 function readEmail(raw) {
   const email = typeof raw === 'string' ? raw.trim() : '';
@@ -76,8 +99,12 @@ const IDENTITY_SQL = `
    WHERE ui.issuer = ? AND ui.subject = ?
    LIMIT 1 FOR UPDATE`;
 
-/** Whether an account already holds an identity at this issuer (under any subject). */
-const ISSUER_LINK_SQL = 'SELECT subject FROM user_identities WHERE user_id = ? AND issuer = ? LIMIT 1';
+/**
+ * Whether an account holds any identity at all. Reached only when the subject's own identity is absent, so any
+ * identity an address-matched account holds (at this issuer under another subject, or at another issuer) is a
+ * different identity, and the address is not allowed to move the sync onto it.
+ */
+const ANY_LINK_SQL = 'SELECT issuer, subject FROM user_identities WHERE user_id = ? LIMIT 1';
 
 /**
  * The account(s) a request names. A subject, when sent, is the ONLY match: the identity it names, or, when
@@ -92,7 +119,7 @@ async function holdersOf(query, { email, identity }) {
     if (!email) return { holders: [] };
     const byAddress = await query(HOLDERS_SQL, [email, email]);
     for (const holder of byAddress) {
-      const [linked] = await query(ISSUER_LINK_SQL, [holder.id, identity.issuer]);
+      const [linked] = await query(ANY_LINK_SQL, [holder.id]);
       if (linked) return { refused: 'identity_conflict' };
     }
     return { holders: byAddress };
@@ -147,7 +174,7 @@ function refuse(res, reason) {
   return res.status(409).json({ success: false, reason, message: MESSAGES[reason] });
 }
 
-router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => {
+router.put('/machine/members', requireMachine, requireBootAdmin, asyncHandler(async (req, res) => {
   const email = readEmail(req.body?.email);
   const role = req.body?.role;
   if (!email || !ROLES.has(role)) {
@@ -181,11 +208,13 @@ router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => 
     }
 
     const open = await query(
-      `SELECT id, squad_id FROM user_invitations
+      `SELECT id, squad_id, revoked_at FROM user_invitations
         WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE
         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [email]
     );
+    // A removed invitation is not re-opened by a stale admission; only an explicit reactivate does it.
+    if (open.length > 0 && open[0].revoked_at && !reactivate) return { refused: 'account_deactivated' };
     // An invitation that already names a squad (an admin's, made by hand) keeps it.
     const keepsSquad = open.length > 0 && open[0].squad_id !== null;
     const squadId = keepsSquad ? null : await generalSquadId(query);
@@ -193,7 +222,7 @@ router.put('/machine/members', requireMachine, asyncHandler(async (req, res) => 
       await query(
         `UPDATE user_invitations
             SET grants_admin = ?, expires_at = NOW() + INTERVAL 1 YEAR, invited_by = ?,
-                squad_id = COALESCE(squad_id, ?), can_write = can_write OR ?
+                squad_id = COALESCE(squad_id, ?), can_write = can_write OR ?, revoked_at = NULL
           WHERE id = ?`,
         [admin, req.user.id, squadId, squadId !== null, open[0].id]
       );
@@ -237,7 +266,7 @@ async function removeMember(req, res, email) {
 
     if (email) {
       await query(
-        'UPDATE user_invitations SET expires_at = NOW() WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE',
+        'UPDATE user_invitations SET expires_at = NOW(), revoked_at = COALESCE(revoked_at, NOW()) WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE',
         [email]
       );
     }
@@ -257,12 +286,12 @@ async function removeMember(req, res, email) {
   res.json(OK);
 }
 
-router.delete('/machine/members', requireMachine, asyncHandler(async (req, res) => {
+router.delete('/machine/members', requireMachine, requireBootAdmin, asyncHandler(async (req, res) => {
   const email = typeof req.query?.email === 'string' ? readEmail(req.query.email) : null;
   await removeMember(req, res, email);
 }));
 
-router.delete('/machine/members/:email', requireMachine, asyncHandler(async (req, res) => {
+router.delete('/machine/members/:email', requireMachine, requireBootAdmin, asyncHandler(async (req, res) => {
   const email = readEmail(req.params.email);
   if (!email) return res.status(400).json({ success: false, message: 'A valid email is required' });
   await removeMember(req, res, email);

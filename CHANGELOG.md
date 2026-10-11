@@ -22,7 +22,9 @@ initialises an empty data directory.
   principal's own are refused (409). An address that matches two accounts is refused. A sync that sends the
   person's issuer and subject matches on the identity alone, and removal by subject is supported. An existing
   account is placed in `General` with write access, once. A removed member is re-admitted only with
-  `reactivate: true`. See [api/machine-members.md](docs/api/machine-members.md).
+  `reactivate: true`. A removed invitation stays removed (`user_invitations.revoked_at`, migration
+  `2026-10-16-invitation-revoked.sql`). The app refuses to start while this release's columns are missing, and
+  the sync answers 503 while the boot admin row does not exist. See [api/machine-members.md](docs/api/machine-members.md).
 - **Hosted mode: OIDC is the only human sign-in (W6-CDX-8).** `AUTH_PROVIDERS=oidc` (a list without
   `local`) refuses sign-up, password login, password reset, two-factor, the username check and the
   local email change on the server, with 404 (and 403 for an email or password change through the account

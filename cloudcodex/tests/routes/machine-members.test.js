@@ -40,10 +40,12 @@ const reads = (re) => c2_query.mock.calls.map(([sql]) => sql.replace(/\s+/g, ' '
  * Answer each query by its text. Rules are [pattern, value-or-function]; the first match wins, and a query no
  * rule matches answers []. Writes answer { affectedRows: 1 } so a conditional write reads as applied.
  */
-function answer(rules) {
+function answer(rules, bootRow = true) {
+  // The boot admin row, which every request needs to exist (requireBootAdmin). Absent when a test says so.
+  const all = [...rules, [/is_admin = TRUE LIMIT 1/, bootRow ? [{ id: 1 }] : []]];
   c2_query.mockImplementation(async (sql, params) => {
     const flat = sql.replace(/\s+/g, ' ').trim();
-    for (const [pattern, value] of rules) {
+    for (const [pattern, value] of all) {
       if (pattern.test(flat)) return typeof value === 'function' ? value(params, flat) : value;
     }
     if (/^(INSERT|UPDATE|DELETE)\b/i.test(flat)) return { affectedRows: 1, insertId: 500 };
@@ -55,8 +57,8 @@ const PRINCIPAL = [/FROM users WHERE email = \? AND deactivated_at IS NULL/, [SE
 /** A holder answer for the address lookup (users.email, or an identity's last sign-in address). */
 const holders = (...rows) => [/UNION SELECT u\.id/, rows];
 const identityHit = (row) => [/JOIN users u ON u\.id = ui\.user_id WHERE ui\.issuer/, row ? [row] : []];
-const issuerLink = (subject) => [/SELECT subject FROM user_identities WHERE user_id/, subject ? [{ subject }] : []];
-const openInvitation = (row) => [/SELECT id, squad_id FROM user_invitations/, row ? [row] : []];
+const issuerLink = (subject, issuer = ISSUER) => [/SELECT issuer, subject FROM user_identities WHERE user_id/, subject ? [{ issuer, subject }] : []];
+const openInvitation = (row) => [/SELECT id, squad_id, revoked_at FROM user_invitations/, row ? [row] : []];
 const general = (id) => [/SELECT s\.id FROM squads s/, id === null ? [] : [{ id }]];
 const memberOfGeneral = (yes) => [/SELECT id FROM squad_members WHERE squad_id/, yes ? [{ id: 1 }] : []];
 const digests = (...ids) => [/SELECT id FROM sessions WHERE user_id/, ids.map((id) => ({ id }))];
@@ -206,6 +208,34 @@ describe('the machine membership routes (W6-CDX-9)', () => {
     });
   });
 
+  describe('a removed invitation stays removed (a stale admission cannot re-open it)', () => {
+    for (const role of ['admin', 'member']) {
+      it(`a ${role} admission of a removed, never-signed-in address is 409 account_deactivated, and the invitation is untouched`, async () => {
+        answer([PRINCIPAL, holders(), openInvitation({ id: 3, squad_id: 4, revoked_at: new Date() })]);
+        const res = await put({ email: 'removed@example.com', role });
+        expect(res.status).toBe(409);
+        expect(res.body.reason).toBe('account_deactivated');
+        expect(writes()).toEqual([]);
+      });
+
+      it(`with reactivate: true a removed ${role} invitation is re-admitted, and its revocation is cleared`, async () => {
+        answer([PRINCIPAL, holders(), openInvitation({ id: 3, squad_id: 4, revoked_at: new Date() }), general(4)]);
+        const res = await put({ email: 'removed@example.com', role, reactivate: true });
+        expect(res.status).toBe(200);
+        const [sql, params] = writes().at(-1);
+        expect(sql).toMatch(/^UPDATE user_invitations/);
+        expect(sql).toMatch(/revoked_at = NULL/);
+        expect(params[0]).toBe(role === 'admin');
+      });
+    }
+
+    it('DELETE records the removal on the open invitation, not only its expiry', async () => {
+      answer([PRINCIPAL, holders()]);
+      expect((await del('gone@example.com')).status).toBe(200);
+      expect(writes()[0][0]).toMatch(/revoked_at = COALESCE\(revoked_at, NOW\(\)\)/);
+    });
+  });
+
   describe('a subject (issuer and subject) is the identity when the sync has one', () => {
     const ada = { id: 21, email: 'ada@example.com', is_admin: 0, deactivated_at: null };
 
@@ -229,6 +259,15 @@ describe('the machine membership routes (W6-CDX-9)', () => {
     it('PUT by subject refuses an address held by an account with a DIFFERENT identity at this issuer, as 409', async () => {
       answer([PRINCIPAL, identityHit(null), holders(ada), issuerLink('sub-someone-else')]);
       const res = await put({ email: 'ada@example.com', role: 'admin', issuer: ISSUER, subject: 'sub-new' });
+      expect(res.status).toBe(409);
+      expect(res.body.reason).toBe('identity_conflict');
+      expect(writes()).toEqual([]);
+    });
+
+    it('PUT by subject refuses an address whose account is linked at ANOTHER issuer, as 409, and writes nothing', async () => {
+      // The address matched through an identity's last sign-in address, at an issuer this instance does not use.
+      answer([PRINCIPAL, identityHit(null), holders(ada), issuerLink('sub-other-issuer', 'https://other.example.test'), general(4)]);
+      const res = await put({ email: 'ada@example.com', role: 'admin', issuer: ISSUER, subject: 'sub-ada' });
       expect(res.status).toBe(409);
       expect(res.body.reason).toBe('identity_conflict');
       expect(writes()).toEqual([]);
@@ -318,6 +357,18 @@ describe('the machine membership routes (W6-CDX-9)', () => {
       answer([PRINCIPAL, holders({ id: 1, email: BOOT_EMAIL, is_admin: 1, deactivated_at: null })]);
       const res = await put({ email: 'alias@example.com', role: 'member' });
       expect(res.status).toBe(409);
+      expect(writes()).toEqual([]);
+    });
+  });
+
+  describe('no boot admin row, no membership sync', () => {
+    it('answers 503 to PUT and DELETE while the boot admin row is absent, and writes nothing', async () => {
+      answer([PRINCIPAL], false);
+      const put503 = await put({ email: 'x@example.com', role: 'member' });
+      const del503 = await del('x@example.com');
+      expect(put503.status).toBe(503);
+      expect(put503.body.reason).toBe('no_boot_admin');
+      expect(del503.status).toBe(503);
       expect(writes()).toEqual([]);
     });
   });

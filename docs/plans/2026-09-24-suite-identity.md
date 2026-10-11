@@ -1728,6 +1728,14 @@ The last PR of this track to merge (normally PR 9) also deletes
 `docs/specs/roadmap.md` shipped with its PR numbers, and removes the spec's rows from
 `docs/specs/README.md` and `docs/README.md`. The maps are the record.
 
+- **Review fixes (W6-CDX-9, second round).** A removed invitation is recorded (`user_invitations.revoked_at`); `PUT`
+  refuses it as 409 `account_deactivated` unless `reactivate: true`, which clears it. An address held by an account
+  that has any identity, at this issuer or another, is 409 `identity_conflict` on the subject path. A hosted
+  `ensureAdminUser` that meets an accent-variant holder of `ADMIN_EMAIL` logs which account holds it and returns
+  null, and the sync answers 503 `no_boot_admin` while no boot admin row exists. The boot refuses to listen while
+  this release's columns are missing (`services/release-schema.js`), because `npm run migrate` is a separate step
+  and nothing applies a migration at start.
+
 **Deferred (the coordinator's decision, W6-CDX-9).** Retirement is not done in PR 9. Other tracks still link to
 this spec and plan. It is the last step of W6-CDX-36 (hosting readiness), which deletes both and removes their links
 in the same PR, and marks the identity row in the roadmap shipped with its PR numbers.

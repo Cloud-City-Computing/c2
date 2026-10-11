@@ -24,9 +24,11 @@ Body: `{ "email": "person@example.com", "role": "admin" | "member", "issuer": ".
 | `401` | No machine credential, or a session token. |
 | `409` | See the refusals below. The body carries `reason` and a message. |
 | `429` | The machine bucket is spent. Retry. |
+| `503` | `no_boot_admin`: the instance has no boot admin row (see the boot log). Nothing is written until one exists. |
 
 What it does, by what the address resolves to:
 
+- **No account holds the address, and the invitation was removed.** Refused as `409 account_deactivated`, and the invitation is left as it is. Only `reactivate: true` re-admits it. A stale admission sent before a removal therefore cannot undo the removal.
 - **No account holds the address.** An open invitation is created, or refreshed, for it. It grants instance admin when `role` is `admin` (`user_invitations.grants_admin`). It names the instance's seeded `General` squad with write access, so the person lands there on their first sign-in. If an admin has renamed or deleted `General`, the invitation names no squad, and an instance admin places the person. An invitation that already names a squad keeps it. No email is sent.
 - **An account holds the address (or the subject's identity).** Its `is_admin` is set to match `role`. A `member` role clears admin, which is how an ownership transfer moves the admin flag. The account is also placed in the instance's `General` squad with read and write, if it is not a member there already (D-S). A second request changes nothing.
 
@@ -40,7 +42,7 @@ What it does, by what the address resolves to:
 | `machine_account` | The address resolves to the machine principal's own account. |
 | `account_deactivated` | The account was removed and `reactivate` is not `true`. Re-admission is explicit. |
 | `ambiguous_address` | The address matches more than one account. Nothing is guessed; a person resolves it. |
-| `identity_conflict` | With a subject: the address belongs to an account that is linked to a different identity at this issuer. It is not moved. |
+| `identity_conflict` | With a subject: the address belongs to an account that already holds a different identity, at this issuer or another. It is not moved, and the answer is never a `200` without the link. |
 
 A refusal writes nothing.
 

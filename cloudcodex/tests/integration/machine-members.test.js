@@ -241,4 +241,28 @@ describe('the membership sync, on a real server', () => {
     expect((await userByEmail(personEmail)).deactivated_at).not.toBeNull();
     expect(await resolveIdentity(claims(subject, personEmail), POLICY)).toEqual({ ok: false, reason: 'account_deactivated' });
   });
+  it('keeps a removed, never-signed-in invitation removed: a stale admission is 409 until reactivate, then re-admits', async () => {
+    const stale = `stale${tag}@example.com`;
+    expect((await put(stale, 'admin')).status).toBe(200);
+    expect(await del(stale)).toMatchObject({ status: 200 });
+    const [removed] = await c2_query('SELECT grants_admin, revoked_at, expires_at FROM user_invitations WHERE email = ?', [stale]);
+    expect(removed.revoked_at).not.toBeNull();
+
+    const refused = await put(stale, 'admin');
+    expect(refused.status).toBe(409);
+    expect(refused.body.reason).toBe('account_deactivated');
+    const [after] = await c2_query('SELECT grants_admin, revoked_at, expires_at FROM user_invitations WHERE email = ?', [stale]);
+    expect(after.revoked_at).not.toBeNull();
+    expect(after.expires_at.getTime()).toBe(removed.expires_at.getTime());
+    expect(Boolean(after.grants_admin)).toBe(Boolean(removed.grants_admin));
+
+    expect((await put(stale, 'admin', { reactivate: true })).status).toBe(200);
+    const [readmitted] = await c2_query('SELECT revoked_at FROM user_invitations WHERE email = ?', [stale]);
+    expect(readmitted.revoked_at).toBeNull();
+  });
+
+  it('the schema this release reads is the one init.sql builds', async () => {
+    const { missingReleaseColumns } = await import('../../services/release-schema.js');
+    expect(await missingReleaseColumns()).toEqual([]);
+  });
 });
