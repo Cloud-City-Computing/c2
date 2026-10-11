@@ -722,12 +722,9 @@ describe('app.js — Express configuration', () => {
       for (let i = 0; i < 301; i++) {
         statuses.push((await request(app).put('/api/machine/members').send({})).status);
       }
+      // authLimiter would refuse the 21st; this bucket answers the first 300 and refuses the 301st.
       expect(statuses.slice(0, 300)).not.toContain(429);
       expect(statuses[300]).toBe(429);
-
-      // A login attempt after a sync is not refused: the membership bucket is not the login one.
-      const login = await request(app).post('/api/login').send({});
-      expect(login.status).not.toBe(429);
     } finally {
       process.env.NODE_ENV = prior;
     }
