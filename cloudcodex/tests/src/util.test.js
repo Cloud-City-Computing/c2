@@ -44,6 +44,13 @@ import {
   fetchLogActivity,
   fetchNotifications,
   exportDocument,
+  fetchWebhooks,
+  createWebhook,
+  rotateWebhook,
+  setWebhookEnabled,
+  deleteWebhook,
+  fetchWebhookDeliveries,
+  redeliverWebhook,
 } from '../../src/util.jsx';
 
 const STORAGE_PREFIX = 'c2-';
@@ -725,5 +732,58 @@ describe('exportDocument: pdf', () => {
   it('throws when the pop-up is blocked', async () => {
     window.open.mockReturnValue(null);
     await expect(exportDocument(1, 'pdf', 'Title', '<p>Body</p>')).rejects.toThrow(/Pop-up blocked/);
+  });
+});
+
+describe('outbound webhook admin wrappers', () => {
+  it('fetchWebhooks → GET /api/admin/webhooks', async () => {
+    await fetchWebhooks();
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/admin/webhooks');
+    expect(opts.method).toBe('GET');
+  });
+
+  it('createWebhook → POST /api/admin/webhooks with the body as sent', async () => {
+    await createWebhook({ url: 'https://hooks.example/a', event_types: ['log.rename'], workspace_id: 3 });
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/admin/webhooks');
+    expect(opts.method).toBe('POST');
+    expect(JSON.parse(opts.body)).toEqual({ url: 'https://hooks.example/a', event_types: ['log.rename'], workspace_id: 3 });
+  });
+
+  it('rotateWebhook → POST /api/admin/webhooks/:id/rotate', async () => {
+    await rotateWebhook(7);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/admin/webhooks/7/rotate');
+    expect(opts.method).toBe('POST');
+  });
+
+  it('setWebhookEnabled → PATCH /api/admin/webhooks/:id with { enabled }', async () => {
+    await setWebhookEnabled(7, false);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/admin/webhooks/7');
+    expect(opts.method).toBe('PATCH');
+    expect(JSON.parse(opts.body)).toEqual({ enabled: false });
+  });
+
+  it('deleteWebhook → DELETE /api/admin/webhooks/:id', async () => {
+    await deleteWebhook(7);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/admin/webhooks/7');
+    expect(opts.method).toBe('DELETE');
+  });
+
+  it('fetchWebhookDeliveries → GET /api/admin/webhooks/:id/deliveries', async () => {
+    await fetchWebhookDeliveries(7);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/admin/webhooks/7/deliveries');
+    expect(opts.method).toBe('GET');
+  });
+
+  it('redeliverWebhook → POST /api/admin/webhooks/deliveries/:id/redeliver', async () => {
+    await redeliverWebhook(29);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/admin/webhooks/deliveries/29/redeliver');
+    expect(opts.method).toBe('POST');
   });
 });
