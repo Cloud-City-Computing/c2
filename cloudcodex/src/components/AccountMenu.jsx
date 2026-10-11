@@ -530,9 +530,10 @@ export function AccountPreferencesPanel() {
 //  User Preferences Panel
 // ===========================
 
+// Placeholder names for the four renamed hues; Kyle confirms all eight (src/tokens/accents.js).
 const COLOR_LABELS = {
-  blue: 'Ocean Blue', violet: 'Soft Violet', emerald: 'Emerald', rose: 'Rose',
-  amber: 'Amber', cyan: 'Cyan', pink: 'Fuchsia', lime: 'Lime',
+  blue: 'Ocean Blue', cyan: 'Cyan', pink: 'Fuchsia', lime: 'Lime',
+  coral: 'Coral', apricot: 'Apricot', jade: 'Jade', iris: 'Iris',
 };
 const ACCENT_COLOR_LIST = Object.entries(ACCENT_COLORS).map(([id, c]) => ({ id, label: COLOR_LABELS[id], ...c }));
 
