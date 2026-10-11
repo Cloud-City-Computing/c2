@@ -22,7 +22,7 @@ literals (the Google mark's four fills and the swatch check's white stroke). Bef
 | Export Dropdown | 1 | 0 |
 | `AccountMenu.jsx` (file) | 5 | 0 |
 
-The ledger went from 492 (by its own sum; the earlier "500" note was stale) to 419. The live
+The first pass took the ledger from 492 (by its own sum; the earlier "500" note was stale) to 419; the second pass took it to 399 (see below). The live
 `index.css` total is 398 and the file-level total 21. `raw/report-after.txt` has the full list.
 
 ## What the plan said against what was measured
@@ -81,6 +81,62 @@ banners. The Avatar Upload, Archives Management and Account Log banners were alr
   it as retired with `docs/maps/` as the record. The maps `frontend-architecture.md` and
   `build-test-and-ops.md` describe the tokens, the four projects and the ledger. The roadmap's UI row
   is marked shipped without PR numbers, because the PR numbers were not known at execution.
+
+## Second pass: the leftovers, burned here (2026-10-11, same branch)
+
+The coordinator ruled that every `index.css` bucket outside the editor canvas, the comments and the
+GitHub surface burns in this PR. Tests went first (`tests/design/leftover-burndown.test.js` pins each of
+the 20 declarations to its token, and the ledger was lowered by 20 in the red commit), then the values.
+
+| Bucket | Found | Classification and why |
+|---|---|---|
+| Modal + Overlay | 5 | Burned. The `#dropdown-backshadow` scrim, the close control's hover, and the modal and textarea focus rings. Not on the editor canvas. |
+| Login Tabs | 1 | Burned. The active login tab. |
+| Signup Validation Styles | 3 | Burned. The availability hint and its input border, and the password rule check. |
+| Toast Notifications | 11 | Burned. Two groups, neither on the canvas: the Welcome subtitle and checkbox, and the presence avatars, dot and tooltip. `PresenceAvatars` renders on the archive and Explore pages (`ArchiveBrowser.jsx`, `ExploreBrowser.jsx`), not inside `.editor-container`. |
+| Version History | 5 | Kept, editor-adjacent. It renders on the document page beside the canvas and its restore writes into the canvas, so it moves with the canvas. |
+| Read-only Document View | 10 | Kept, editor-adjacent. It shares the canvas's `.tiptap` markup, so a value change in it is a change to the canvas's rendering. |
+| Markdown Editor | 2 | Kept, editor. The markdown source pane of the editor. |
+| Mentions (inline @user chips) | 2 | Kept, editor canvas. The chip sits inside `.tiptap`. |
+| Editor Log | 40 | Kept, editor canvas. |
+| Collaborative Editing - Presence UI | 12 | Kept, editor canvas. The live-editing presence inside the document. |
+| Remote Cursors - Collaborative Editing | 2 | Kept, editor canvas. Positioned against `.tiptap`; a layout risk the spec defers. |
+| Code Block with Language Selector | 3 | Kept, editor canvas. |
+| Syntax Highlighting | 8 | Kept, editor canvas. |
+| Draw.io Diagram Block | 8 | Kept, editor canvas. |
+| Comments & Annotations | 100 | Kept, comments (the spec's deferred annotation family). |
+| GitHub Integration | 186 | Kept, GitHub surface (deferred until track E2). |
+
+Left in the ledger as well, outside `index.css`: `util.jsx` (6, the print stylesheet, not a surface
+on the page and not in this PR's scope), `Editor.jsx` (4), `CommentForm.jsx` (2),
+`CommentHighlights.jsx` (1), `CommentManager.jsx` (2), `CommentSidebar.jsx` (1), `GitHubPage.jsx` (4)
+and `CodeEmbedPickerModal.jsx` (1).
+
+The ledger went from 419 to 399 (`raw/report-after-leftovers.txt`). Index.css keeps 378 of them: 192 on
+the editor canvas and comments, and 186 on the GitHub surface.
+
+**The PR 6 contradiction.** PR 6's plan recorded "the Login modal's ledger bucket is burned to zero".
+The ledger still held Login Tabs (1) and Signup Validation Styles (3) after that PR. Found in this pass
+and fixed here.
+
+**Themes.** Codex is dark only through Wave 6 (decision D-V, light mode deferred), so there is no light
+capture to take: the captures are the dark theme only. The "both themes" request cannot be met for
+these surfaces without building a light theme, which the spec defers.
+
+**Harness artefact, disclosed.** In the modal section the scrim is laid over the whole stage and the
+modal panel reads dimmer than it would in the app, in both the before and the after picture. The
+dimming is the same in both, so the difference between them is only the scrim, the greens and the
+tooltip shadow.
+
+## Second-pass captures
+
+- `cdx29-leftovers-before-1280.png` and `cdx29-leftovers-after-1280.png`: the modal stage, the login
+  tabs and signup hints, and the Welcome block, presence avatars and tooltip. Read by eye. Visible:
+  the scrim is a blue-grey dark, not black; the "Available" and "At least 12 characters" hints and the
+  "Saved." line are a paler green; the presence tooltip's shadow is a little tighter. Everything else
+  reads the same.
+- `cdx29-leftovers-before-390.png` and `cdx29-leftovers-after-390.png`: the same stack at 390 pixels, after
+  read for wrap and clipping. No wrap or clipping difference.
 
 ## Captures
 

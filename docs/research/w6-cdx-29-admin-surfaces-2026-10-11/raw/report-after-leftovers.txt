@@ -1,0 +1,21 @@
+   2  src/index.css :: Mentions (inline @user chips)
+ 186  src/index.css :: GitHub Integration
+  40  src/index.css :: Editor Log
+   2  src/index.css :: Markdown Editor
+   5  src/index.css :: Version History
+  12  src/index.css :: Collaborative Editing - Presence UI
+   2  src/index.css :: Remote Cursors - Collaborative Editing
+ 100  src/index.css :: Comments & Annotations
+  10  src/index.css :: Read-only Document View
+   3  src/index.css :: Code Block with Language Selector
+   8  src/index.css :: Syntax Highlighting (highlight.js compatible - dark theme)
+   8  src/index.css :: Draw.io Diagram Block
+   6  src/util.jsx :: (file)
+   2  src/components/CommentForm.jsx :: (file)
+   1  src/components/CommentHighlights.jsx :: (file)
+   2  src/components/CommentManager.jsx :: (file)
+   1  src/components/CommentSidebar.jsx :: (file)
+   4  src/pages/Editor.jsx :: (file)
+   4  src/pages/GitHubPage.jsx :: (file)
+   1  src/components/github/CodeEmbedPickerModal.jsx :: (file)
+ 399  total
