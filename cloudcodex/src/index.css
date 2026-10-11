@@ -7861,6 +7861,16 @@ body {
   min-width: 0;
 }
 
+/* Narrow screens: a delivery keeps its event, status, answer and action; attempts and time are on the wide view */
+@media (max-width: 768px) {
+  .webhook-deliveries th:nth-child(3),
+  .webhook-deliveries td:nth-child(3),
+  .webhook-deliveries th:nth-child(5),
+  .webhook-deliveries td:nth-child(5) {
+    display: none;
+  }
+}
+
 /* Narrow screens: the sidebar becomes a row above the content, not a column beside it */
 @media (max-width: 768px) {
   .admin-dashboard {
