@@ -187,7 +187,15 @@ which the tests pin. The user channel has the same closer (`services/user-channe
 recorded at `user-channel.js:183`). Rotations (password and email changes) close the sockets of
 every session they end, through the same closers (`routes/auth.js:57`).
 
-**All of this is per-process, in-memory.** Restarting the server drops every
+**The open sockets are re-checked every minute (W6-CDX-8).** Auth is read once, on a socket's first
+message, so a session ended later (a deactivation, a row deleted by hand) would keep its socket. The sweep
+(`services/socket-sweep.js`, started at `server.js:293`) runs every 60 s, collects the digests of the
+authenticated sockets on both servers (`openSessionDigests`, `collab.js:196`, `user-channel.js:87`),
+asks `liveSessionDigests` (`socket-sweep.js:30`) which of them still hold a live session for an active user
+(OIDC only on a hosted instance, batched 500 at a time), and closes the rest with 4004 through
+`closeSocketsForSessions` (`collab.js:212`). A failed pass is logged and the timer keeps running.
+
+**All of this is per-process, in-memory. Restarting the server drops every
 in-memory doc; state survives only through `ydoc_state`. A graceful stop
 (SIGTERM or SIGINT) writes every pending debounced save first
 (`flushPendingSaves`, `request-lifecycle.md` section 7), so `ydoc_state` is

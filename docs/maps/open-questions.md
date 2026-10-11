@@ -984,3 +984,23 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
   experience work) did run the app against a real database and a real browser
   and produced B8 through B10 above; the rest of this document is still
   static-read-only.
+
+## F. Open questions from W6-CDX-8 (hosted mode), not defects yet
+
+- **F1. `SERVICE_TOKEN` is not refused on a hosted instance.** The plan and spec say "unchanged". A hosted
+  deployment that wants JWT-only machine callers must unset the static pair by hand. Decision for Kyle.
+- **F2. A local admin's old password hash survives the switch.** Hosted `ensureAdminUser` syncs by email and
+  never writes `password_hash`, so an admin created under local sign-in keeps the hash in the row. Nothing reads
+  it on a hosted instance (local login is 404), but it is not cleared.
+- **F3. Concurrent admin creation on a hosted instance.** `ensureAdminUser` checks the email, then inserts. A
+  concurrent user row with the same address makes the insert fail on the unique key, which boot logs as
+  `admin user sync failed` and boots without an admin.
+- **F4. An identical sign-in racing itself at `user_identities`.** `createFromInvitation` does not map
+  `ER_DUP_ENTRY` on the identity insert to a named refusal, so the second racing callback gets a 500 instead of the
+  signed-in identity. The transaction rolls back, so no half-created user remains.
+- **F5. GitHub linking is open on a hosted instance.** It links an account already signed in, so it is not a
+  sign-in, but a hosted operator may expect it off. Not changed.
+- **F6. Migration order on instances that already ran `2026-10-14-session-rotation.sql`.** `2026-10-12-user-deactivation.sql`
+  sorts before it. The runner's handling of an out-of-order pending file on such an instance is not verified here.
+- **F7. The socket sweep's latency is one minute, by design.** A socket authenticated before a deactivation stays
+  open for up to 60 s. Closing sooner would need a push from the deactivation path, which does not exist yet.
