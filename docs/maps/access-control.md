@@ -718,6 +718,7 @@ through to `requireAuth` unchanged. It is applied to exactly three routes:
 | `GET /api/browse` | `machineOrAuth` |
 | `GET /api/documents/state` | `machineOrAuth` (`routes/documents.js`), W6-CDX-16 |
 | `GET /api/workspaces/:workspaceId/reader-check` | **`requireMachine`** |
+| `PUT /api/machine/members`, `DELETE /api/machine/members/:email` | **`requireMachine`**, the membership sync (`routes/machine-members.js`, W6-CDX-9). The only machine routes that write, and the only ones that can set `is_admin` |
 | `GET /api/search/filters` | `requireAuth` |
 | `GET /api/presence` | `requireAuth` |
 | everything else in the app | `requireAuth` |
@@ -764,7 +765,9 @@ the machine credential, so the subject path is an oracle about a third party exa
 is, and it is no wider.
 
 **The test that proves the machine-only property only proves it because it queues a principal row it
-does not use** (`tests/routes/reader-check.test.js`). Without that row the credential lookup finds
+does not use** (`tests/routes/reader-check.test.js`).
+
+**The membership sync (W6-CDX-9) is the one machine path that writes `is_admin`.** `routes/machine-members.js:97` (`PUT`) sets `users.is_admin` on the user an address resolves to, or grants it through `user_invitations.grants_admin` to an invitation that creates a new user (`services/identity.js`, the invitation rung, `INSERT INTO users ... is_admin`). It never writes the boot admin's row (`ADMIN_EMAIL`, 409 `managed_by_configuration`) or the machine principal's own (409 `machine_account`), and it never promotes through `ensureAdminUser`'s name or address match, so the GHSA-w8q3-r34w-3pjh refusal stands. An address resolves through `users.email` and `user_identities.email_at_last_signin`, binary-collated, and two accounts matching one address are refused (`ambiguous_address`). Removal (`DELETE`, `:158`) deactivates, clears admin, deletes sessions and closes sockets with exactly those session digests. Tests: `tests/routes/machine-members.test.js`, `tests/integration/machine-members.test.js`, `tests/integration/invitation-grants-admin.test.js`. Without that row the credential lookup finds
 nothing and the request is refused anyway, so the 401 would pass even if the route had been written
 with `machineOrAuth` — the same false-green shape the `search.test.js` 401s were written to avoid.
 

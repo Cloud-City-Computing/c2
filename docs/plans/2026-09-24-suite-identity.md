@@ -1693,6 +1693,27 @@ Tests, `tests/routes/machine-members.test.js`, with the mock queue in the order 
 
 ---
 
+### Decisions recorded by W6-CDX-9 (shipped with the PR)
+
+The code and the contracts from this wave's reviews settled these points open or wrong in this section:
+
+- **Re-admission is explicit.** Spec W6-CDX-9 says a `PUT` reactivates a deactivated user. A stale retry of an
+  admission sent before a removal would then undo the removal, so `PUT` answers 409 `account_deactivated` unless the
+  body says `reactivate: true`. Cloud Command's add-by-email is an explicit act and may send it; a re-role or a retry
+  must not.
+- **Keying.** The wire carries an address (Cloud Command sends `{ email, role }`), so an address finds the account. It
+  is never the identity. An address resolves through `users.email` and `user_identities.email_at_last_signin`, binary
+  collated, because an issuer's address can move while the local one stays (W6-CDX-5). Two accounts matching one
+  address is 409 `ambiguous_address`, never a guess. Sign-in still keys on `(issuer, subject)`.
+- **Refusals.** 409 `managed_by_configuration` for `ADMIN_EMAIL` or any row that is the boot admin's, and 409
+  `machine_account` for the machine principal's own row, so the sync cannot remove the credential it runs on.
+- **Migration date** is `2026-10-15-invitation-grants-admin.sql`, after `2026-10-14-session-rotation.sql`, the newest
+  file on `origin/main`.
+- **Existing accounts are not placed in General.** As written: an admission of a person who already has an account sets
+  the admin flag only. D-S places a person through their invitation, so a pre-existing account keeps its squads.
+- **A `member` role clears admin on any account it resolves to**, including one an admin promoted by hand. That is the
+  ownership transfer working as written; it is also why Cloud Command must send `member` only for people it owns.
+
 ## Retirement
 
 The last PR of this track to merge (normally PR 9) also deletes

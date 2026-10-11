@@ -97,18 +97,19 @@ app.set('trust proxy', TRUST_PROXY ??        app.js:190
   │
   ├─ warnUntrustedForwarders()               app.js:203
   │  (middleware/forwarded-for.js)
-  ├─ health router: /healthz, /readyz        app.js:207
+  ├─ health router: /healthz, /readyz        app.js:210
   ├─ CORS, scoped to /api: isAllowedOrigin,  app.js:229-292
   │  then the delegate
   ├─ helmet + CSP: whole app in production,  app.js:302-330
   │  /api only otherwise
-  ├─ requireOriginForCookieWrites on /api    app.js:332-352
-  ├─ express.json({ limit: '2mb' })          app.js:364
-  ├─ requireLocalSignIn + authLimiter on the local paths, authLimiter on the rest, reader-check   app.js:369-390
-  ├─ searchLimiter on /api/users/search      app.js:401
-  ├─ stateLimiter on /api/documents/state    app.js:415
-  ├─ static /avatars      (7d immutable)     app.js:418-421
-  ├─ /doc-images, authorized (private, 1d)   app.js:425
+  ├─ requireOriginForCookieWrites on /api    app.js:355
+  ├─ express.json({ limit: '2mb' })          app.js:367
+  ├─ requireLocalSignIn + authLimiter on the local paths, authLimiter on the rest, reader-check   app.js:370-394
+  ├─ searchLimiter on /api/users/search      app.js:405
+  ├─ stateLimiter on /api/documents/state    app.js:419
+  ├─ machineMembersLimiter on /api/machine/members   app.js:433
+  ├─ static /avatars      (7d immutable)     app.js:436
+  ├─ /doc-images, authorized (private, 1d)   app.js:443
   ├─ 18 routers, all mounted at /api
   └─ (production, at listen time) vite-express's static dist/ and index.html
      handlers, appended after all of the above
@@ -266,9 +267,10 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:357-364`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm` (each behind `requireLocalSignIn`, so a hosted instance answers 404 before the bucket is spent, `app.js:369-375`); `/api/oauth/google/callback` and `/api/auth/oidc/callback` (`app.js:376-377`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:383`); and the `/api/workspaces/:id/reader-check` pattern |
-| `searchLimiter` (`app.js:393-400`) | 15 min / 60 | `/api/users/search` only (`app.js:401`), to blunt user enumeration |
-| `stateLimiter` (`app.js:407-414`) | 15 min / 120 | `/api/documents/state` only (`app.js:415`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
+| `authLimiter` (`app.js:358-365`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm` (each behind `requireLocalSignIn`, so a hosted instance answers 404 before the bucket is spent, `app.js:369-375`); `/api/oauth/google/callback` and `/api/auth/oidc/callback` (`app.js:376-377`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:383`); and the `/api/workspaces/:id/reader-check` pattern |
+| `searchLimiter` (`app.js:397-404`) | 15 min / 60 | `/api/users/search` only (`app.js:405`), to blunt user enumeration |
+| `stateLimiter` (`app.js:411-418`) | 15 min / 120 | `/api/documents/state` only (`app.js:419`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
+| `machineMembersLimiter` (`app.js:425-432`) | 1 min / 300 | `/api/machine/members` only (`app.js:433`), the membership sync (W6-CDX-9). Its own bucket, never `authLimiter`: a sync of more than twenty members must not spend the login budget, and a `429` is retryable for Cloud Command |
 | `backchannelLimiter` (`routes/oidc.js:50`) | 1 min / 300 **refused deliveries** | `POST /api/auth/oidc/backchannel-logout` only, mounted only with OIDC. Its own bucket, never `authLimiter`: every logout token comes from the issuer's one address. `skipSuccessfulRequests` with `requestWasSuccessful` true for anything but a 400, so a verified delivery, a 503 the issuer retries and a 429 never spend it. Keyed on `req.ip`, which is trust-proxy-aware |
 
 All four carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
