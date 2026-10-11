@@ -30,13 +30,25 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
-import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, getSessionProvenance, withTransaction } from '../../mysql_connect.js';
+import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, getSessionProvenance, getSessionOidcIdToken, getSessionSignedInAt, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
+import { hashSessionToken } from '../../services/session-token.js';
+import { closeSocketsForSessions as closeCollab } from '../../services/collab.js';
+import { closeSocketsForSessions as closeUserChannel } from '../../services/user-channel.js';
+
+vi.mock('../../services/collab.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  closeSocketsForSessions: vi.fn(() => 0),
+}));
+vi.mock('../../services/user-channel.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  closeSocketsForSessions: vi.fn(() => 0),
+}));
 
 const CURRENT_PASSWORD = 'password123';
 const CURRENT_HASH = bcrypt.hashSync(CURRENT_PASSWORD, 1);
@@ -98,6 +110,13 @@ function fakeAccount({ passwordHash = CURRENT_HASH, takenEmails = [], takenNames
       expect(params[params.length - 1]).toBe(state.user.id);
       columns.forEach((column, i) => { state.user[column] = params[i]; });
       return { affectedRows: 1 };
+    }
+    // The caller's own row, locked by the rotation (W6-CDX-6 review): present only while it is in the set.
+    if (/^SELECT id FROM sessions WHERE id = \? FOR UPDATE$/.test(sql)) {
+      return [...state.sessions].filter(t => hashSessionToken(t) === params[0]).map(() => ({ id: params[0] }));
+    }
+    if (/^SELECT id FROM sessions WHERE user_id = \?$/.test(sql)) {
+      return params[0] === state.user.id ? [...state.sessions].map(t => ({ id: hashSessionToken(t) })) : [];
     }
     if ((m = /^DELETE FROM sessions WHERE user_id = \?( AND id != \?)?$/.exec(sql))) {
       if (params[0] === state.user.id) {
@@ -341,7 +360,12 @@ describe('POST /api/update-account', () => {
 
       await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
 
-      expect(inTransaction).toEqual(['UPDATE users SET password_hash = ? WHERE id = ?', 'DELETE FROM sessions WHERE user_id = ?']);
+      expect(inTransaction).toEqual([
+        'SELECT id FROM sessions WHERE id = ? FOR UPDATE',
+        'UPDATE users SET password_hash = ? WHERE id = ?',
+        'SELECT id FROM sessions WHERE user_id = ?',
+        'DELETE FROM sessions WHERE user_id = ?',
+      ]);
       expect(state.sessions).toEqual(new Set(['fresh-token-1']));
     });
 
@@ -385,6 +409,74 @@ describe('POST /api/update-account', () => {
       const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
       const deleteOrder = c2_query.mock.invocationCallOrder[c2_query.mock.calls.indexOf(del)];
       expect(getSessionProvenance.mock.invocationCallOrder[0]).toBeLessThan(deleteOrder);
+    });
+
+    it('keeps the sealed ID token of an OIDC session on its replacement, read before the delete (W6-CDX-6)', async () => {
+      fakeAccount({ providers: { [CALLER]: 'oidc' } });
+      getSessionProvenance.mockResolvedValueOnce({ provider: 'oidc', identityId: 55, providerSid: 'sid-9', expiresAt: new Date('2031-01-02T03:04:05Z') });
+      getSessionOidcIdToken.mockResolvedValueOnce('iv:tag:sealed');
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(getSessionOidcIdToken).toHaveBeenCalledWith(CALLER);
+      expect(generateSessionToken.mock.calls[0][3]).toMatchObject({ provider: 'oidc', oidcIdToken: 'iv:tag:sealed' });
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
+      const deleteOrder = c2_query.mock.invocationCallOrder[c2_query.mock.calls.indexOf(del)];
+      expect(getSessionOidcIdToken.mock.invocationCallOrder[0]).toBeLessThan(deleteOrder);
+    });
+
+    it('omits the sealed token key for an OIDC session that has none (a row from before W6-CDX-6)', async () => {
+      fakeAccount({ providers: { [CALLER]: 'oidc' } });
+      getSessionProvenance.mockResolvedValueOnce({ provider: 'oidc', identityId: 55, providerSid: 'sid-9', expiresAt: null });
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(generateSessionToken.mock.calls[0][3]).not.toHaveProperty('oidcIdToken');
+    });
+
+    it('refuses the change and mints nothing when the caller\'s session ended before the rotation locked it (a logout won)', async () => {
+      const state = fakeAccount();
+      // requireAuth sees the session; the session ends before the rotation's locked read.
+      validateAndAutoLogin.mockImplementationOnce(async () => {
+        state.sessions.delete(CALLER);
+        return { id: state.user.id, name: state.user.name, email: state.user.email, avatar_url: null, is_admin: 0 };
+      });
+
+      const res = await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(res.status).toBe(401);
+      expect(generateSessionToken).not.toHaveBeenCalled();
+      expect(state.sql.some(sql => /UPDATE users SET password_hash/.test(sql))).toBe(false);
+      expect(closeCollab).not.toHaveBeenCalled();
+    });
+
+    it('mints the replacement inside the rotation transaction, recording the digest it replaces', async () => {
+      fakeAccount();
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(generateSessionToken.mock.calls[0][4]).toEqual({ query: expect.any(Function), rotatedFrom: hashSessionToken(CALLER) });
+    });
+
+    it('closes the sockets of every session the change ended, and no others', async () => {
+      fakeAccount();
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      const ended = closeCollab.mock.calls[0][0];
+      expect(ended).toEqual(expect.arrayContaining([hashSessionToken(CALLER), hashSessionToken(OTHER_HOLDER)]));
+      expect(closeUserChannel.mock.calls[0][0]).toEqual(ended);
+    });
+
+    it('carries the original sign-in time of an OIDC session onto its replacement (W6-CDX-6 review)', async () => {
+      const SIGNED_IN = new Date('2026-10-10T10:00:00Z');
+      fakeAccount({ providers: { [CALLER]: 'oidc' } });
+      getSessionProvenance.mockResolvedValueOnce({ provider: 'oidc', identityId: 55, providerSid: 'sid-9', expiresAt: null });
+      getSessionSignedInAt.mockResolvedValueOnce(SIGNED_IN);
+
+      await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(generateSessionToken.mock.calls[0][3]).toMatchObject({ provider: 'oidc', signedInAt: SIGNED_IN });
     });
 
     it('mints no token when the transaction fails, so the caller is not handed a session for a change that did not land', async () => {

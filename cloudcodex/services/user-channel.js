@@ -18,6 +18,8 @@
 
 import { WebSocketServer } from 'ws';
 import { validateAndAutoLogin } from '../mysql_connect.js';
+import { hashSessionToken } from './session-token.js';
+import { markSessionsClosed, sessionClosedRecently } from './closed-sessions.js';
 
 const AUTH_TIMEOUT_MS = 5000;
 const MAX_CONNECTIONS_PER_USER = 10;
@@ -75,6 +77,28 @@ export function getConnectedUserCount() {
 export function isUserConnected(userId) {
   const set = channels.get(userId);
   return Boolean(set && set.size > 0);
+}
+
+/**
+ * Close every user-channel socket that authenticated with one of these sessions, with 4004
+ * "Signed out" (W6-CDX-6). Only those sockets; the same user's other sessions stay connected.
+ * @param {Iterable<string>} digests - sessions.id values, the digests a sign-out deleted
+ * @returns {number} how many sockets were closed
+ */
+export function closeSocketsForSessions(digests) {
+  const wanted = new Set(digests);
+  let closed = 0;
+  if (wanted.size === 0) return closed;
+  markSessionsClosed(wanted);
+  for (const wss of servers) {
+    for (const ws of wss.clients) {
+      if (ws.sessionId !== undefined && wanted.has(ws.sessionId)) {
+        ws.close(4004, 'Signed out');
+        closed += 1;
+      }
+    }
+  }
+  return closed;
 }
 
 /**
@@ -152,6 +176,12 @@ export function setupUserChannelServer(server) {
         return;
       }
 
+      // The session digest is recorded before the auth read's first await, so a sign-out that runs at any
+      // point finds this socket (W6-CDX-6 review). After the read, a socket whose sign-out already closed
+      // it is refused before it registers anywhere.
+      const digest = hashSessionToken(msg.token);
+      ws.sessionId = digest;
+
       let user;
       try {
         user = await validateAndAutoLogin(msg.token);
@@ -161,6 +191,11 @@ export function setupUserChannelServer(server) {
 
       if (!user) {
         ws.close(4003, 'Unauthorized');
+        return;
+      }
+
+      if (ws.readyState !== 1 || sessionClosedRecently(digest)) {
+        ws.close(4004, 'Signed out');
         return;
       }
 

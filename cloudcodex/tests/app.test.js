@@ -781,7 +781,8 @@ describe('app.js — Express configuration', () => {
 describe('app.js: Origin-required cookie writes', () => {
   beforeEach(() => resetMocks());
 
-  const logoutDeletes = () => c2_query.mock.calls.filter(([sql]) => /DELETE FROM sessions/i.test(sql));
+  // The row the presented token names: logout also deletes the sessions a rotation named it in (rotated_from).
+  const logoutDeletes = () => c2_query.mock.calls.filter(([sql]) => /DELETE FROM sessions WHERE id = \?/i.test(sql));
   const REFUSED = { success: false, message: 'Cross-origin request refused' };
 
   it.each(['sessionToken=cookie-token', '__Host-sessionToken=cookie-token'])(

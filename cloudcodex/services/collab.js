@@ -18,6 +18,8 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { validateAndAutoLogin } from '../mysql_connect.js';
+import { hashSessionToken } from './session-token.js';
+import { markSessionsClosed, sessionClosedRecently } from './closed-sessions.js';
 import { c2_query } from '../mysql_connect.js';
 import { sanitizeHtml, canPublish, checkLogReadAccess, checkLogWriteAccess } from '../routes/helpers/shared.js';
 import {
@@ -184,6 +186,28 @@ export async function flushPendingSaves() {
     }
   }
   return { saved, failed };
+}
+
+/**
+ * Close every collab socket that authenticated with one of these sessions, with 4004 "Signed out"
+ * (W6-CDX-6). Only those sockets: a second device's socket, from another session, stays open.
+ * @param {Iterable<string>} digests - sessions.id values, the digests a sign-out deleted
+ * @returns {number} how many sockets were closed
+ */
+export function closeSocketsForSessions(digests) {
+  const wanted = new Set(digests);
+  let closed = 0;
+  if (wanted.size === 0) return closed;
+  markSessionsClosed(wanted);
+  for (const wss of servers) {
+    for (const ws of wss.clients) {
+      if (ws.sessionId !== undefined && wanted.has(ws.sessionId)) {
+        ws.close(4004, 'Signed out');
+        closed += 1;
+      }
+    }
+  }
+  return closed;
 }
 
 /**
@@ -400,7 +424,12 @@ export function setupCollabServer(server) {
         return;
       }
 
-      // Authenticate
+      // The session digest is recorded before the auth read's first await, so a sign-out that runs at any
+      // point finds this socket (W6-CDX-6 review). After the read, a socket whose sign-out already closed
+      // it is refused before it registers anywhere.
+      const digest = hashSessionToken(msg.token);
+      ws.sessionId = digest;
+
       let user;
       try {
         user = await validateAndAutoLogin(msg.token);
@@ -410,6 +439,11 @@ export function setupCollabServer(server) {
 
       if (!user) {
         ws.close(4003, 'Unauthorized');
+        return;
+      }
+
+      if (ws.readyState !== 1 || sessionClosedRecently(digest)) {
+        ws.close(4004, 'Signed out');
         return;
       }
 

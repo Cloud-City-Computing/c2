@@ -267,8 +267,9 @@ saves fine over WS can 413 over REST.
 | `authLimiter` (`app.js:355-362`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` and `/api/auth/oidc/callback` (`app.js:367-377`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:380`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:390`) |
 | `searchLimiter` (`app.js:393-400`) | 15 min / 60 | `/api/users/search` only (`app.js:401`), to blunt user enumeration |
 | `stateLimiter` (`app.js:407-414`) | 15 min / 120 | `/api/documents/state` only (`app.js:415`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
+| `backchannelLimiter` (`routes/oidc.js:50`) | 1 min / 300 **refused deliveries** | `POST /api/auth/oidc/backchannel-logout` only, mounted only with OIDC. Its own bucket, never `authLimiter`: every logout token comes from the issuer's one address. `skipSuccessfulRequests` with `requestWasSuccessful` true for anything but a 400, so a verified delivery, a 503 the issuer retries and a 429 never spend it. Keyed on `req.ip`, which is trust-proxy-aware |
 
-All three carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
+All four carry `skip: () => process.env.NODE_ENV === 'test'`, which is why the test
 suite can hammer `/api/login` without tripping them. Three tests in
 `tests/app.test.js` exercise the limiters themselves, each setting
 `NODE_ENV=production` for its duration. One requires the 21st
@@ -322,6 +323,97 @@ so does every client, which is why a widened bind with nothing in front sets
 Docker network also presents every IPv6 client of an all-interfaces or IPv6
 publish as its gateway, which is why `APP_BIND` must be an IPv4 address and why
 the default leaves out `172.17.0.1`.
+
+### Sign-out propagates (W6-CDX-6)
+
+Signing out of Codex ends the Codex session, and for an OIDC session also the issuer's
+session, which sends back-channel logout to the other relying parties it reached. Four
+parts, each keyed on a named function.
+
+**`POST /api/logout` (`routes/auth.js:657`).** It reads the digest of the presented
+token, then `SELECT auth_provider, oidc_id_token`, then the sessions a rotation named it
+in (`rotated_from = digest`), then `DELETE` by the digest and `DELETE ... WHERE rotated_from
+= digest`, then closes the sockets of every ended digest (`closeCollabSockets`,
+`closeUserChannelSockets`, section 5 and `documents-and-collab.md`). The second delete is
+what makes a logout reach the replacement a password change minted when the change committed
+first. The response is `Cache-Control: no-store`
+on every outcome, because an OIDC answer carries the ID token in its URL. A local
+or Google session answers `{ success: true }`. An OIDC session answers
+`{ success: true, endSessionUrl }`, where the URL comes from `endSessionUrlFor`
+(`services/sign-out.js:26`): `openIdToken` opens the stored seal, `loadConfiguration`
+discovers the issuer (bounded by `END_SESSION_LOOKUP_MS`, 3 s), and
+`client.buildEndSessionUrl` adds `client_id` to `id_token_hint`, `post_logout_redirect_uri`
+(`/?signedOut=1` on `APP_URL`) and a fresh `state`. Every failure answers `endSessionUrl: null`
+with a named reason in the log (`no_hint`, `timeout`, `discovery`, `no_end_session`), and the
+local sign-out has already happened. A rejected discovery is not kept: `loadConfiguration`
+clears its cache on rejection, so the next sign-out retries.
+
+**The seal (`services/id-token-seal.js`).** AES-256-GCM, a fresh 12-byte iv per seal,
+stored as `iv:tag:ciphertext` hex. The key is `scrypt(OIDC_CLIENT_SECRET,
+'cloudcodex-oidc-id-token', 32)`, derived once per process, the same construction
+`routes/oauth.js` uses for GitHub tokens, so no new variable exists. Rotating the client
+secret makes every stored token unopenable, and the effect is a local-only sign-out, never
+a lockout. The callback seals the token (`routes/oidc.js`, the `oidcIdToken` option) and
+`completeLogin` returns it as `idToken` (`services/oidc.js`). `sessions.oidc_id_token` is
+`TEXT NULL` with `chk_sessions_id_token_oidc_only` (the value belongs to an oidc session;
+it is not required, so older rows keep NULL). `migrations/2026-10-13-session-id-token.sql`.
+
+**Rotation (`routes/auth.js:57`, `rotateSessionsInTransaction`).** A password or email change
+(`update-account`, `confirm-email`) locks the caller's own row (`SELECT ... FOR UPDATE`) and
+refuses with 401, minting nothing, when it is gone (a logout won the race). Otherwise, in the same
+transaction, it applies the change, reads and deletes every session of the user, and mints the
+replacement with `generateSessionToken(..., rotation, { query, rotatedFrom })`, so the replacement
+commits or rolls back with the delete. The replacement keeps the original `signed_in_at`
+(`getSessionSignedInAt`, `mysql_connect.js:321`) and names the digest it replaced
+(`rotated_from`, migration `2026-10-14-session-rotation.sql`). After the commit the ended digests
+close their sockets. Nothing else changes for a local or Google session.
+
+**`POST /api/auth/oidc/backchannel-logout` (`routes/oidc.js:172`).** Mounted only with OIDC
+(`app.js:444`). Order: `noStore`, `backchannelLimiter`, `parseOrRefuse` (a
+`urlencoded` parser at 16 KB, where a body it cannot read is a 400), then the handler.
+The handler answers:
+
+- **200** (empty body) after `revokeForLogoutToken` has committed, `rememberJti`, and both
+  socket closers have run.
+- **400** for a token that is not valid, or whose jti was already applied (a replay).
+  The issuer treats a 400 as final, so this is the only answer for a bad token.
+- **503** when the key side is unavailable: discovery failed, or jose could not fetch or
+  match the keys. The issuer retries a 503, so a fetch outage does not silently drop a
+  logout.
+- **500** when the delete fails. No jti is recorded, so the issuer's retry runs.
+
+`verifyLogoutToken` (`services/backchannel-logout.js:181`) runs `jose.jwtVerify` with the
+key resolver `keyResolver` (`:111`) against the discovered `jwks_uri`, with `issuer`,
+`audience: clientId`, `clockTolerance: 60`, `maxTokenAge: '5m'`, the asymmetric algorithms
+only, and `requiredClaims: ['iat', 'exp', 'jti']`. The key sets are fetched by `fetchKeySet`
+(5 s timeout) and kept per `jwks_uri`. A kid already cached verifies. An unknown kid is
+refused (400, `UnknownKeyId`) when the set was fetched for this very request, and refetched
+once when the cache is older than the 30 s cooldown; an unknown kid inside the cooldown is a 503,
+because a key rotation may be in flight. A fetch failure is `LogoutTokenUnavailable` (503). Token-
+level classes (`JWTClaimValidationFailed`, `JWTExpired`, `JWTInvalid`, `JWSInvalid`,
+`JWSSignatureVerificationFailed`, `JOSEAlgNotAllowed`) are refusals, and any other error is
+`LogoutTokenUnavailable` (503). Then the back-channel rules: the `events` object has the
+logout member, no `nonce`, a string `sid` or a `sub` that matches the callback's subject shape
+(and a present `sub` must match it), and a jti not in `seenJtis`.
+
+`revokeForLogoutToken` (`services/backchannel-logout.js:237`) runs in one `withTransaction`:
+a token with a sid selects `sessions` joined to `user_identities` with `auth_provider = 'oidc'
+AND provider_sid = ? AND ui.issuer = <the configured issuer>`; one with only a sub joins on
+`(issuer, subject)`. Both are bounded by `UNIX_TIMESTAMP(COALESCE(signed_in_at, created_at)) <=
+iat + 60`. The bound measures the sign-in, not the replacement a password change minted, so a
+rotated session is still ended by the logout that preceded the rotation, while a session signed
+in after the logout never is, even when the jti map is empty after a restart. It then deletes
+by the selected ids and returns their digests. `rememberJti` records a jti only after the
+commit, and `seenJtis` holds 10,000 entries for 10 minutes. The map is per process, which is
+correct only while the instance runs one process (CLAUDE.md decision 1).
+
+Tests: `tests/routes/oidc-callback.real-issuer.test.js` (an in-process issuer, jose-signed
+tokens, every validation rule refused, the forged kid at 400 and inside the cooldown at 503, the
+replay, and the logout that reaches a rotated-from replacement), `tests/integration/sign-out.test.js`
+(the real SQL, the signed-in-at bound against a rotated replacement, the issuer pin on a sid, the
+case-sensitive subject, `validateAndAutoLogin` null after a revocation, and the CHECK in the
+schema), `tests/routes/auth-update-account.test.js` (the locked caller, the refusal after a logout
+won, the in-transaction mint, the closed sockets).
 
 ### Router mounting
 
@@ -514,17 +606,22 @@ client value or `APP_URL`, a non-numeric lifetime). The callback is on
   account holding the address is `email_conflict`. Nothing matches, `no_account`:
   OIDC never creates a user. A unique-key refusal on the link is `identity_conflict`.
 - The session is `generateSessionToken(user, ip, ua, { provider: 'oidc',
-  identityId, providerSid, ttlHours })` (`mysql_connect.js:188`), with
-  `OIDC_SESSION_TTL_HOURS` (default 24) as its absolute expiry and the session
+  identityId, providerSid, ttlHours, oidcIdToken })` (`mysql_connect.js:188`),
+  with `OIDC_SESSION_TTL_HOURS` (default 24) as its absolute expiry and the session
   cookie set exactly as the Google callback sets it. Local two-factor is never
-  asked: the issuer's MFA governs a linked identity. The ID token is not stored
-  (sign-out, W6-CDX-6, decides that).
+  asked: the issuer's MFA governs a linked identity. The ID token reaches the
+  session only sealed: `sealIdToken` (`services/id-token-seal.js:43`) under a key
+  scrypt-derived from `OIDC_CLIENT_SECRET`, stored in `sessions.oidc_id_token`
+  (W6-CDX-6, see "Sign-out propagates" below). The raw token is never written.
 
 A session's provenance is read back by `getSessionProvenance` (`mysql_connect.js:264`)
 where it must survive a rotation: update-account and confirm-email re-mint an
 OIDC session with its identity, sid and expiry (`rotationOptionsFor` in
 `routes/auth.js`), and a local or Google session is re-minted with its flow tag
-only, as before. `GET /api/2fa/status` answers `managed_by: 'oidc'` for an OIDC
+only, as before. The sealed ID token travels with the rotation too
+(`getSessionOidcIdToken`, `mysql_connect.js:302`, read before the delete); a session
+that has none, one signed in before W6-CDX-6, gets the options it always got, with
+no `oidcIdToken` key. `GET /api/2fa/status` answers `managed_by: 'oidc'` for an OIDC
 session.
 
 The query order is load-bearing for tests, not only for behaviour: route tests

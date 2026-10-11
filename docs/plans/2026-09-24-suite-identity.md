@@ -1219,11 +1219,66 @@ Tests: two sockets for one user from two sessions; revoking one closes only its 
 
 ### Task 6.4 Verify, against a real issuer
 
-- [ ] Maps: request-lifecycle (logout, the receiver, its limiter), documents-and-collab (socket
+- [x] Maps: request-lifecycle (logout, the receiver, its limiter), documents-and-collab (socket
       teardown). CHANGELOG.
-- [ ] Lint, test, coverage, integration, build.
+- [ ] Lint, test, coverage, integration, build. (Host: lint 0 errors, npm test 2850 green, coverage
+      green, build and audit green. Integration runs in a Node 22 container on the MySQL netns.)
 - [ ] Against the local Cloud City ID stack with Cloud Command also signed in: signing out of Cloud
       Command makes Codex answer 401 and closes both of that browser's sockets. Record it.
+
+### Deviations and findings, recorded in W6-CDX-6 (`track/w6-cdx-6-signout`)
+
+- **The sealing key is derived from `OIDC_CLIENT_SECRET`** (scrypt, `services/id-token-seal.js`), the
+  construction `routes/oauth.js` uses for GitHub tokens, not a new variable. The plan allowed "seal it".
+  Rotating the client secret makes stored tokens unopenable, and the effect is a local-only sign-out.
+- **`sessions.oidc_id_token` is `TEXT NULL` with `chk_sessions_id_token_oidc_only`.** The check does
+  not require a token, so rows signed in before this PR sign out locally.
+- **The logout route reads the row before it deletes it** (`SELECT auth_provider, oidc_id_token`, then
+  `DELETE`), because MySQL has no `RETURNING`. A local session answers `{ success: true }` with no
+  `endSessionUrl` key. An OIDC session answers the key, `null` when the URL could not be built.
+- **An end-session discovery is bounded at 3 s** (`END_SESSION_LOOKUP_MS`), and the browser waits at most
+  5 s for the logout answer (`SIGN_OUT_WAIT_MS`) before it goes to `/`. Both bounds come from Command's
+  review of the same flow; a stalled issuer never holds up the local sign-out.
+- **`exp` is required on a logout token**, as the Back-Channel Logout spec requires. A token without one
+  is refused.
+- **The receiver's limiter is 300 per minute and counts only refused deliveries (400s).** Keyed on
+  `req.ip`, which honours `X-Forwarded-For` only from a `TRUST_PROXY` peer. Task 6.2's "300 requests per
+  minute" is kept, but a verified delivery, a 503 and a 429 do not spend it.
+- **A key the relying party cannot fetch answers 503**, not 400, so the issuer retries it. A 400 is final.
+- **A second oidc-callback expectation changed.** `tests/routes/oidc-callback.real-issuer.test.js` pins the
+  exact options the callback passes to `generateSessionToken`. Those two `toEqual` assertions gain
+  `oidcIdToken: expect.any(String)`, and the sealed value is checked to open to a JWT. The rotation
+  (`rotationOptionsFor`) adds the key only when the session has a token, so its existing exact-match
+  tests pass unedited.
+- **`services/oidc.js` was touched minimally** (for W6-CDX-7, which edits the same file): the header
+  comment now says the ID token goes back to the callback; `completeLogin` returns `idToken`;
+  `loadConfiguration` is exported for the logout and receiver modules. No behaviour of the sign-in changed.
+- **`tests/setup.js` gained one default**, `getSessionOidcIdToken: vi.fn(async () => null)`, because a
+  mocked module with a missing export throws when a route imports it.
+- **Review round (W6-CDX-6, momus on 691106b), three medium findings and three hardening items:**
+  - *The back-channel bound measures the sign-in.* `sessions.signed_in_at` is copied by every rotation
+    and the bound reads `COALESCE(signed_in_at, created_at)`. `sessions.rotated_from` names the digest a
+    replacement replaced (`migrations/2026-10-14-session-rotation.sql`, `init.sql`, undo registered).
+  - *A rotation mints in its own transaction.* `rotateSessionsInTransaction` (`routes/auth.js`) locks the
+    caller's row with `FOR UPDATE`, answers 401 and mints nothing when it is gone, and inserts the
+    replacement with the delete. The sessions it ended close their sockets after the commit.
+  - *Logout reaches a replacement that rotation committed first.* It also deletes `rotated_from = digest`
+    and closes those sockets. One level only: a token rotated away twice ago is not reached.
+  - *The socket digest is set before the first await,* and a socket whose sign-out closed it during auth
+    is refused before it registers (`services/closed-sessions.js`, five-minute set).
+  - *The sid branch is pinned to the configured issuer* in addition to `auth_provider = 'oidc'`.
+  - *Unknown kids:* 400 after a fresh key fetch for the request, 503 inside the 30 s refresh cooldown.
+    The key sets are our own (`fetchKeySet`, `keyResolver`), not jose's remote set, to state that rule.
+  - *Existing expectations changed, each for the new behaviour:* the update-account transaction now
+    starts with the locked read and reads the user's sessions before the delete (its exact-match test
+    lists them); the real-issuer sid query binds the issuer and names the sign-in-time bound; the
+    sealed-token insert in `mysql_connect.test.js` binds the two new columns; `app.test.js` counts the
+    by-id delete only; `tests/setup.js` gained `getSessionSignedInAt`.
+  - *Not run:* the containerised integration project is the gate for the rotation and back-channel SQL
+    against MySQL; see the commit message for its result.
+- **Not verified here:** Task 6.4's live check against a local Cloud City ID stack (sign out of Cloud
+  Command, then Codex answers 401 and both sockets close). It needs that stack and was not run in this
+  session. It is the open item in the roadmap row.
 
 ---
 

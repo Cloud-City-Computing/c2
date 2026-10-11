@@ -128,6 +128,12 @@ Google and OIDC are its callers (the `oidc` branch is `resolveOidcIdentity`). Do
 write a second account ladder in a route. OIDC never creates an account. `parseAuthProviders()` in the same file validates `AUTH_PROVIDERS` at
 boot (unset means today's set).
 
+**Sign-out** (W6-CDX-6): `POST /api/logout` returns an `endSessionUrl` for an OIDC session, carrying the
+ID token sealed by `services/id-token-seal.js` as `id_token_hint`. `POST /api/auth/oidc/backchannel-logout`
+(`routes/oidc.js`, OIDC only) ends sessions by sid or subject, bounded by the token's `iat`, and closes their
+sockets with 4004 (`closeSocketsForSessions` in `services/collab.js` and `services/user-channel.js`). Maps:
+`docs/maps/request-lifecycle.md`, section 3.
+
 **Machine callers**: `services/machine-auth.js` exports the one seam,
 `verifyMachineCredential`, with two paths. The static one is gated on
 `SERVICE_TOKEN` + `SERVICE_TOKEN_USER` (both required, off by default). The JWT
