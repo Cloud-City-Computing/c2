@@ -669,6 +669,11 @@ signed-out path other than `/` and `/404` to `/` and drops the target
 Self-service account deletion, and an admin UI for deactivation (the column is set by W6-CDX-9 or
 by hand).
 
+**Recorded by the implementation (W6-CDX-8).** A pre-switch local or Google session ends at the switch
+on a hosted instance (`validateAndAutoLogin`). The local email change is refused with the password change
+(403), and the confirm route answers 404. The static `SERVICE_TOKEN` is not refused on a hosted instance.
+The plan's "Decisions recorded by W6-CDX-8" section lists the rest.
+
 ---
 
 ## W6-CDX-9. Machine membership endpoints for Cloud Command's membership sync

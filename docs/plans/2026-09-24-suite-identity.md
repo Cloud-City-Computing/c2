@@ -1420,6 +1420,34 @@ builds suite mode and the mixed-provider case on this hook.
 
 ---
 
+### Decisions recorded by W6-CDX-8 (shipped with the PR)
+
+The code proved these points open or wrong in this section, or the hosted-mode brief settled them:
+
+- **Sessions at the switch.** Plan silent. `validateAndAutoLogin` takes only `auth_provider = 'oidc'`
+  sessions on a hosted instance, so a pre-switch local or Google session ends at the switch and the
+  user signs in through OIDC. OIDC sessions keep their own expiry.
+- **Account update.** Task 8.1 unmounted the password branch. The local email change is refused too
+  (403 for an email or password change through `POST /api/update-account`; a display-name change still
+  works), and `POST /api/update-account/confirm-email` answers 404 with local sign-in off.
+- **Static `SERVICE_TOKEN` is not refused** on hosted instances. The spec's "static path unchanged"
+  stands; machine callers may use either credential.
+- **Email lookup in `ensureAdminUser`** is `LOWER(email) = LOWER(?)` on a hosted instance, the default
+  collation, so an accent variant the unique key would refuse is found, not inserted past.
+- **Seeded workspace name.** `bootstrapInstance` reads the admin's name from its row inside the existing
+  content-guard query (`admin_name`), so the seed adds no query. The row wins; the variable is the fallback.
+- **A held admin name.** A hosted create with an `ADMIN_USERNAME` some account already holds derives the
+  name from `ADMIN_EMAIL` instead of failing on the unique key.
+- **Invitations** bind in ladder step 3 on every OIDC instance, not only hosted ones: the step is reached
+  only when no identity or email match exists, so a self-hosted install with no invitation still gets
+  `no_account`.
+- **GitHub is not a sign-in** (it links an account that is already signed in), so its routes are not
+  refused on hosted instances.
+- **Migration date** is `2026-10-12-user-deactivation.sql`: `2026-10-12-identity-last-signin-email.sql`
+  already exists, and the runner applies migrations in filename order.
+- **Env contract** gains the kind `required-with-local` for `ADMIN_USERNAME` and `ADMIN_PASSWORD`,
+  and `tests/env-contract.test.js` names it.
+
 ## PR 9: W6-CDX-9, machine membership endpoints for the sync
 
 On the test-deploy path (Kyle's decision D-M). Cloud Command's W6-CMD-7 calls these routes when a
