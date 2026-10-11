@@ -165,6 +165,12 @@ initialises an empty data directory.
 
 ### Fixed
 
+- **Outbound events: `occurred_at` follows the order of `sequence`.** `emitEvent` read the event's
+  instant before it waited for the order lock, so two concurrent emits could commit with `occurred_at`
+  running backwards against `sequence`. The instant is now read once the lock is held, inside the
+  transaction, so for one instance a higher `sequence` never carries an earlier `occurred_at`. The
+  API reference states both guarantees: `sequence` is the authoritative order, and `occurred_at` is
+  non-decreasing in it while the host clock does not step back.
 - **Five rules that named a colour nothing defines now render, and a sixth
   that never applied is removed.** A `var()` that names an undeclared property
   makes its declaration invalid at computed-value time, so the property

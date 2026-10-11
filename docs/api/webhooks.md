@@ -50,9 +50,9 @@ An event is emitted when the matching activity is recorded, for these eight type
 |---|---|
 | `schema` | exactly `codex.event.v1` |
 | `id` | a UUID v4 minted by Cloud Codex: **the idempotency key**. A retry carries the same `id` |
-| `sequence` | strictly increasing per instance; events for one subscription are delivered in this order |
+| `sequence` | the authoritative order. Strictly increasing per instance: a higher `sequence` committed after a lower one. Events for one subscription are delivered in this order |
 | `type` | one of the eight types above |
-| `occurred_at` | ISO 8601 UTC with milliseconds, the Cloud Codex clock |
+| `occurred_at` | ISO 8601 UTC with milliseconds, the Cloud Codex clock. Per instance it is non-decreasing in `sequence`: an event with a higher `sequence` never carries an earlier `occurred_at`, because the instant is read once the event's place in the order is held. This holds while the Cloud Codex host clock does not step backwards; across instances, or after a clock correction, order by `sequence`, which is the authority |
 | `workspace_id` | the Cloud Codex workspace the event belongs to. Store it; never let it decide a tenant on your side |
 | `actor` | the Cloud Codex user who caused it: `id` and `name` only (at most 32 characters), never an email |
 | `data` | per type, above. Every id is an integer or `null`. `title` and `name` are cut to their first **255 Unicode code points** when the event is built, never splitting a character |
@@ -85,7 +85,7 @@ What your answer means:
 
 A receiver that rejects the signature (`401`) is a retried failure like any other answer: its subscription stalls, with later events waiting behind the head, until the secret is fixed or the head expires at 72 hours. The admin console (W6-CDX-15) surfaces a stalled subscription.
 
-Delivery is at least once and in order per subscription. `sequence` (the envelope's, and the outbox id) increases in commit order. A repeated `id` is possible only when a delivery's lease lapses during its send, so receivers must treat `id` as the idempotency key.
+Delivery is at least once and in order per subscription. `sequence` (the envelope's, and the outbox id) increases in commit order, and it is the authoritative order: where `occurred_at` and `sequence` appear to disagree, `sequence` wins. Per instance, `occurred_at` does not decrease in `sequence` order (see the table above). A repeated `id` is possible only when a delivery's lease lapses during its send, so receivers must treat `id` as the idempotency key.
 
 ---
 
