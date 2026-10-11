@@ -32,15 +32,14 @@ describe('userPrefs', () => {
   // ── Constants ──────────────────────────────────────────
 
   describe('exported constants', () => {
-    it('ACCENT_COLORS has every entry with value/light/dark/hover hex strings', () => {
-      const keys = Object.keys(ACCENT_COLORS);
-      expect(keys.length).toBeGreaterThanOrEqual(8);
-      for (const key of keys) {
+    it('ACCENT_COLORS has exactly the eight picker hues, each with value, hover and fill oklch strings', () => {
+      expect(Object.keys(ACCENT_COLORS).sort())
+        .toEqual(['apricot', 'blue', 'coral', 'cyan', 'iris', 'jade', 'lime', 'pink']);
+      for (const key of Object.keys(ACCENT_COLORS)) {
         const c = ACCENT_COLORS[key];
-        expect(c.value).toMatch(/^#[0-9a-f]{6}$/i);
-        expect(c.light).toMatch(/^#[0-9a-f]{6}$/i);
-        expect(c.dark).toMatch(/^#[0-9a-f]{6}$/i);
-        expect(c.hover).toMatch(/^#[0-9a-f]{6}$/i);
+        expect(c.value).toMatch(/^oklch\(0\.78 0\.12 [\d.]+\)$/);
+        expect(c.hover).toMatch(/^oklch\(0\.88 0\.06 [\d.]+\)$/);
+        expect(c.fill).toMatch(/^oklch\(0\.68 0\.13 [\d.]+\)$/);
       }
     });
 
@@ -67,8 +66,22 @@ describe('userPrefs', () => {
     });
 
     it('returns the stored object when valid JSON is present', () => {
-      localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'rose', fontSize: 'md' }));
-      expect(loadUserPrefs()).toEqual({ accentColor: 'rose', fontSize: 'md' });
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'coral', fontSize: 'md' }));
+      expect(loadUserPrefs()).toEqual({ accentColor: 'coral', fontSize: 'md' });
+    });
+
+    it('maps each renamed accent key to its one successor, and keeps the four kept names', () => {
+      const pairs = [['rose', 'coral'], ['amber', 'apricot'], ['emerald', 'jade'], ['violet', 'iris'],
+        ['blue', 'blue'], ['cyan', 'cyan'], ['pink', 'pink'], ['lime', 'lime']];
+      for (const [stored, loaded] of pairs) {
+        localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: stored, fontSize: 'md' }));
+        expect(loadUserPrefs(), stored).toEqual({ accentColor: loaded, fontSize: 'md' });
+      }
+    });
+
+    it('drops an unknown accent key, so the default palette applies', () => {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'no-such-color', density: 'compact' }));
+      expect(loadUserPrefs()).toEqual({ density: 'compact' });
     });
 
     it('falls back to {} when stored JSON is corrupt', () => {
@@ -94,7 +107,7 @@ describe('userPrefs', () => {
     });
 
     it('round-trips with loadUserPrefs', () => {
-      const prefs = { accentColor: 'amber', fontSize: 'lg', density: 'spacious', sidebarDefault: 'collapsed' };
+      const prefs = { accentColor: 'apricot', fontSize: 'lg', density: 'spacious', sidebarDefault: 'collapsed' };
       saveUserPrefs(prefs);
       expect(loadUserPrefs()).toEqual(prefs);
     });
@@ -109,20 +122,25 @@ describe('userPrefs', () => {
   // ── applyPrefsToDOM ────────────────────────────────────
 
   describe('applyPrefsToDOM', () => {
-    it('sets all four --brand-blue* CSS custom properties for a known accent', () => {
-      applyPrefsToDOM({ accentColor: 'rose' });
+    it('sets the three --cx-accent custom properties for a known accent, never --brand-blue*', () => {
+      applyPrefsToDOM({ accentColor: 'coral' });
       const style = document.documentElement.style;
-      expect(style.getPropertyValue('--brand-blue')).toBe(ACCENT_COLORS.rose.value);
-      expect(style.getPropertyValue('--brand-blue-light')).toBe(ACCENT_COLORS.rose.light);
-      expect(style.getPropertyValue('--brand-blue-dark')).toBe(ACCENT_COLORS.rose.dark);
-      expect(style.getPropertyValue('--brand-blue-hover')).toBe(ACCENT_COLORS.rose.hover);
+      expect(style.getPropertyValue('--cx-accent')).toBe(ACCENT_COLORS.coral.value);
+      expect(style.getPropertyValue('--cx-accent-hover')).toBe(ACCENT_COLORS.coral.hover);
+      expect(style.getPropertyValue('--cx-accent-fill')).toBe(ACCENT_COLORS.coral.fill);
+      for (const name of ['--brand-blue', '--brand-blue-light', '--brand-blue-dark', '--brand-blue-hover']) {
+        expect(style.getPropertyValue(name)).toBe('');
+      }
     });
 
-    it('removes --brand-blue properties when accent is unknown', () => {
+    it('removes the --cx-accent properties when accent is unknown or the default', () => {
       // First set, then clear by passing an unknown accent
       applyPrefsToDOM({ accentColor: 'cyan' });
       applyPrefsToDOM({ accentColor: 'no-such-color' });
-      expect(document.documentElement.style.getPropertyValue('--brand-blue')).toBe('');
+      const style = document.documentElement.style;
+      expect(style.getPropertyValue('--cx-accent')).toBe('');
+      expect(style.getPropertyValue('--cx-accent-hover')).toBe('');
+      expect(style.getPropertyValue('--cx-accent-fill')).toBe('');
     });
 
     it('sets --editor-font-size for a known fontSize key', () => {
