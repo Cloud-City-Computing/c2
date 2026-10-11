@@ -13,6 +13,22 @@ initialises an empty data directory.
 ## [Unreleased]
 
 ### Added
+- **Hosted mode: OIDC is the only human sign-in (W6-CDX-8).** `AUTH_PROVIDERS=oidc` (a list without
+  `local`) refuses sign-up, password login, password reset, two-factor, the username check and the
+  local email change on the server, with 404 (and 403 for an email or password change through the account
+  update). Google sign-in is 404 when the list leaves it out. The boot admin is matched by `ADMIN_EMAIL`
+  alone and created with no password; `ADMIN_USERNAME` and `ADMIN_PASSWORD` are optional there, and the
+  seeded workspace is named from the admin's row. A boot that sets `AUTH_PROVIDERS` without `oidc`, or sets
+  the Google variables, exits with a sentence naming the variable.
+- **Invitations bind on a verified email (W6-CDX-8).** An OIDC sign-in whose verified email matches an open
+  invitation creates the account with that invitation's squad and flags, in one transaction. With no
+  invitation it is `no_account`: the issuer's own account never admits anyone.
+- **Deactivated users (W6-CDX-8).** `users.deactivated_at` (migration `2026-10-12-user-deactivation.sql`)
+  ends a user's sessions and refuses every sign-in path as `account_deactivated`, and password login as a
+  403, before any write. Nothing sets it yet: an operator sets it by hand.
+- **The signed-out deep link bounces to sign-in once on an OIDC-only instance (W6-CDX-8).** It goes to
+  `/api/auth/oidc/start` with the link as `returnTo`, once per tab, and an error return renders the landing.
+  `GET /api/oauth/providers` reports `local`.
 
 - **Machine JWTs from Cloud City ID (W6-CDX-7).** A client-credentials access token from the
   issuer now authenticates the machine routes (`GET /api/search`, `GET /api/browse`,

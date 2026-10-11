@@ -332,6 +332,13 @@ completed the first-run welcome. It is `NULL` for every user that predates
 it, so each sees the welcome once, including the admin, who previously never
 saw an onboarding flow at all. `routes/first-run.js` is the only writer.
 
+`users.deactivated_at` (`TIMESTAMP NULL`, default `NULL`, `migrations/2026-10-12-user-deactivation.sql`,
+W6-CDX-8) is set by hand until the sync and an admin control arrive. `NULL` is an active user. A set value
+is refused by every sign-in: `validateAndAutoLogin` reads the user `AND deactivated_at IS NULL`,
+`resolveIdentity` answers `account_deactivated` on each oidc and Google rung before any write, and
+`POST /api/login` refuses after the password is proven. The user keeps their authorship; `DELETE` is not
+involved.
+
 ## 5. Squads and membership
 
 `squad_members` (`init.sql:211-227`) is unique on `(squad_id, user_id)` and
@@ -356,7 +363,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 
 | Table | Key | Written by | Read by |
 |---|---|---|---|
-| `user_identities` | unique `(issuer, subject)` and unique `(user_id, issuer)` | `services/identity.js` (the OIDC ladder; never links a user with two-factor on by email, never creates a user), `routes/oidc.js` (`last_login_at` by the ladder) | `resolveIdentity` (the `(issuer, subject)` lookup), the reader check by subject (`routes/workspaces.js`), `sessions.identity_id` |
+| `user_identities` | unique `(issuer, subject)` and unique `(user_id, issuer)` | `services/identity.js` (the OIDC ladder; never links a user with two-factor on by email, creates a user only from an open invitation), `routes/oidc.js` (`last_login_at` by the ladder) | `resolveIdentity` (the `(issuer, subject)` lookup), the reader check by subject (`routes/workspaces.js`), `sessions.identity_id` |
 | `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google; never links a user with two-factor on by email), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
 | `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:764` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |

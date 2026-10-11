@@ -103,7 +103,12 @@ export async function ensureAdminUser() {
 
   // Create the admin user. Hosted: no password, and a name derived from the address when ADMIN_USERNAME is unset.
   if (hosted) {
-    const name = username || await deriveUniqueUsername(email);
+    // ADMIN_USERNAME when no account holds it, else the derived name: a member who already holds the name
+    // must not turn the admin's create into a UNIQUE failure, and must never be the one promoted by it.
+    const taken = username
+      ? await c2_query(`SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`, [username])
+      : [];
+    const name = username && taken.length === 0 ? username : await deriveUniqueUsername(email);
     const result = await c2_query(
       `INSERT INTO users (name, email, is_admin, created_at) VALUES (?, ?, TRUE, NOW())`,
       [name, email]

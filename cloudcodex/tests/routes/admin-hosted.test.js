@@ -46,7 +46,8 @@ describe('ensureAdminUser on a hosted instance', () => {
 
   it('matches the admin by ADMIN_EMAIL alone, never by name', async () => {
     process.env.ADMIN_USERNAME = 'opsadmin';
-    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockResolvedValueOnce([]);   // match by email
+    c2_query.mockResolvedValueOnce([]);   // no account holds the name
     c2_query.mockResolvedValueOnce({ insertId: 42 });
     c2_query.mockResolvedValueOnce({ insertId: 1 });
 
@@ -58,9 +59,10 @@ describe('ensureAdminUser on a hosted instance', () => {
     expect(params).toEqual([EMAIL]);
   });
 
-  it('creates the admin with no password_hash, and under ADMIN_USERNAME when it is set', async () => {
+  it('creates the admin with no password_hash, and under ADMIN_USERNAME when no account holds it', async () => {
     process.env.ADMIN_USERNAME = 'opsadmin';
-    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockResolvedValueOnce([]);   // no account matches the email
+    c2_query.mockResolvedValueOnce([]);   // no account holds the name
     c2_query.mockResolvedValueOnce({ insertId: 42 });
     c2_query.mockResolvedValueOnce({ insertId: 1 });
 
@@ -109,16 +111,20 @@ describe('ensureAdminUser on a hosted instance', () => {
     expect(logLines().join('\n')).toMatch(/refusing to promote/);
   });
 
-  it('does not promote a member who holds ADMIN_USERNAME under another address', async () => {
+  it('does not promote a member who holds ADMIN_USERNAME under another address, and derives the admin a free name', async () => {
     process.env.ADMIN_USERNAME = 'opsadmin';
-    // The name clause is gone on a hosted instance, so the query finds no row for this member.
-    c2_query.mockResolvedValueOnce([]);
+    // The name clause is gone on a hosted instance, so the match finds no row for this member.
+    c2_query.mockResolvedValueOnce([]);                  // no account matches the email
+    c2_query.mockResolvedValueOnce([{ id: 9 }]);         // ADMIN_USERNAME is held by a member
+    c2_query.mockResolvedValueOnce([]);                  // deriveUniqueUsername: the derived name is free
     c2_query.mockResolvedValueOnce({ insertId: 42 });
     c2_query.mockResolvedValueOnce({ insertId: 1 });
 
     expect(await ensureAdminUser()).toBe(42);
 
     expect(writes().some(([sql]) => /UPDATE users/i.test(sql))).toBe(false);
+    const insert = c2_query.mock.calls.find(([sql]) => sql.includes('INSERT INTO users'));
+    expect(insert[1][0]).toBe('operator');
   });
 
   it('never logs a password, even the hashed one', async () => {

@@ -553,9 +553,21 @@ step 1 of `requirePermission`, the first bypass in `canPublish` and
 
 The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 (`server.js`, a top-level `await` before the port opens; defined in
-`routes/admin.js`), which
-is why `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` are boot-fatal if unset
-(`server.js:51-56`).
+`routes/admin.js`), which is why `ADMIN_EMAIL` is boot-fatal if unset, and
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` are boot-fatal only while local sign-in is on
+(`server.js`, the "Require Admin credentials" block; the rule is `localSignInEnabled()`
+in `services/auth-providers.js`, and the contract kind is `required-with-local`).
+
+**On a hosted instance (no `local` in `AUTH_PROVIDERS`, W6-CDX-8) the match is
+`LOWER(email) = LOWER(ADMIN_EMAIL)` alone**, never the name. A new admin is created with
+no `password_hash`, under `ADMIN_USERNAME` when no account holds that name and under
+`deriveUniqueUsername(ADMIN_EMAIL)` otherwise. An existing admin is synced by email only
+(`UPDATE users SET email = ?`), and no password is written or read. A non-admin holding
+the address is refused as below. The starter workspace is named from the admin's row
+(`bootstrapInstance`, `admin_name`), so a hosted instance with no `ADMIN_USERNAME` still
+seeds its `General` squad. The OIDC rungs can create users, but only through an
+invitation (`resolveIdentity`, `createFromInvitation`), never through the admin sync, and
+no path promotes a user by email or name collision.
 
 **The boot sync creates or syncs, and never promotes** (GHSA-w8q3-r34w-3pjh).
 It reads every row matching `LOWER(name) = LOWER(ADMIN_USERNAME)` or
