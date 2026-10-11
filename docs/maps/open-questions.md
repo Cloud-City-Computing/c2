@@ -1009,5 +1009,7 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
   Cloud Command instance on the same domain. Checked here only by the unit and route tests and the captures.
 - **G2. The silent-return path is not exercised end to end.** On a live issuer session, the bounce should return
   the person silently to the document. The tests pin the URL and the loop guard, not the issuer's answer.
-- **G3. Command's D4 decides the bare root for both products.** `BOUNCE_BARE_ROOT` is `false` on Command and the
-  same rule holds here. If Kyle flips it, Codex's `decideSignedOut` needs the same one-line change on `/`.
+- **G3. The bare root (resolved 2026-10-11).** Kyle chose that a signed-out bare `/` goes straight to Cloud City
+  ID. Codex now does this where OIDC is the only sign-in (`decideSignedOut`, `src/hooks/useSignedOutTarget.js`),
+  and keeps the screen for a local-sign-in instance. Command's `BOUNCE_BARE_ROOT` is in the Command repo and is
+  not changed by this branch; whether Command follows is for its own session.

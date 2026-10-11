@@ -61,6 +61,15 @@
   --cx-danger-fill-hover: oklch(0.44 0.19 25);
   --cx-danger-fill-press: oklch(0.38 0.19 25);
   --cx-on-danger: #fff;
+  /* A solid white: the label on a dark accent step, the danger fill, and a presence avatar on a light cursor colour
+     (src/lib/avatar-label.js); a solid black, the last label a presence avatar falls back to on the two
+     cursor colours that clear 4.5:1 with neither white nor the ink. The labels they set are measured where they
+     sit: painted.test.js for the accent dark and danger fill, presence-palette.test.js for every cursor colour.
+     The swatch check and the QR sheet carry no text. */
+  --cx-white: #fff;
+  --cx-ink-deep: #000;
+  /* The info step, bound to the package's fixed accent step (not the picked accent), for an info badge's label. */
+  --cx-info-bright: var(--accent-200);
 
   /* Lines and the overlay wash: flat and tinted. */
   --cx-border: oklch(0.386 0.014 240);
@@ -83,6 +92,23 @@
   --cx-tint-danger-strong: oklch(0.639 0.181 25.9 / 0.22);
   --cx-tint-success: oklch(0.745 0.158 151.5 / 0.12);
   --cx-tint-violet: oklch(0.697 0.17 288.9 / 0.15);
+  /* W6-CDX-29: the admin, settings and notification washes, each the hue and
+     chroma of the bare rgba() it replaces, at its exact alpha. The accent
+     washes keep the fixed blue, as the others do. The edge and the light ring
+     carry no label, so they are decorative in pairs.json. */
+  --cx-tint-accent-faint: oklch(0.686 0.128 231.9 / 0.06);
+  --cx-tint-accent-quiet: oklch(0.686 0.128 231.9 / 0.1);
+  --cx-tint-accent-lift: oklch(0.686 0.128 231.9 / 0.14);
+  --cx-tint-accent-edge: oklch(0.686 0.128 231.9 / 0.3);
+  --cx-tint-success-quiet: oklch(0.673 0.162 144.2 / 0.1);
+  --cx-tint-success-mid: oklch(0.673 0.162 144.2 / 0.15);
+  --cx-tint-danger-quiet: oklch(0.621 0.197 25 / 0.1);
+  --cx-tint-slate: oklch(0.711 0.035 256.8 / 0.1);
+  --cx-tint-neutral: oklch(0.627 0 0 / 0.15);
+  --cx-ring-light: oklch(1 0 0 / 0.15);
+  /* The presence dot and its glow (the online green, on the archive and explore pages). Decorative: a dot and a glow carry no text. */
+  --cx-presence: oklch(0.745 0.158 151.5);
+  --cx-presence-glow: oklch(0.745 0.158 151.5 / 0.5);
 
   /* Labels on a tint, one step lighter than the status text they replace: the
      tint lightens the surface under a label, and these clear 4.5:1 on the

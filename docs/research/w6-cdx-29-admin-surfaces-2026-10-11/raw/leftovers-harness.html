@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>cdx29 leftovers</title>
+<link rel="stylesheet" href="vendor/core.css"><link rel="stylesheet" href="vendor/fonts.css">
+<link rel="stylesheet" href="codex.css"><link rel="stylesheet" href="index.css">
+<style>body{margin:0;padding:16px;background:var(--bg-main);width:auto;box-sizing:border-box} h4{color:var(--text-muted);font:12px system-ui;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em} .sec{max-width:760px;margin:0 0 28px 0} #modal-stage{position:relative;padding:24px;min-height:340px}#dropdown-backshadow{position:absolute;inset:0;backdrop-filter:none;animation:none}.modal-content{position:relative;z-index:1}</style>
+</head><body>
+<div class="sec"><h4>Modal: scrim, close control, focus</h4>
+ <div id="modal-stage"><div id="dropdown-backshadow"></div>
+  <div class="modal-content" style="max-width:420px;margin:0 auto;background:var(--bg-panel);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:24px">
+   <button class="close-button" type="button" aria-label="Close" style="position:absolute;top:14px;right:16px;background:none;border:0;color:var(--text-muted);font-size:20px;cursor:pointer">&times;</button>
+   <h2>Share this document</h2>
+   <form class="modal-form">
+    <label>Name</label><input value="Ada" style="border-color:var(--brand-blue)" />
+    <label>Note</label><textarea class="modal-form__textarea" style="border-color:var(--brand-blue)">Please review.</textarea>
+   </form>
+   <p class="form-success">Saved.</p>
+   <p class="form-error">Could not save.</p>
+  </div>
+ </div>
+</div>
+<div class="sec"><h4>Login tabs and signup validation</h4>
+ <div class="modal-content" style="max-width:420px;background:var(--bg-panel);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:20px">
+  <div class="login-tabs" style="display:flex;gap:16px;border-bottom:1px solid var(--border-color)">
+   <button class="login-tab active">Sign in</button><button class="login-tab">Create account</button>
+  </div>
+  <form class="modal-form" style="margin-top:12px">
+   <div class="input-with-status"><label>Username</label><input class="input--available" value="ada" /><span class="input-hint input-hint--available">Available</span></div>
+   <div class="input-with-status" style="margin-top:8px"><label>Email</label><input class="input--taken" value="grace@example.com" /><span class="input-hint input-hint--taken">Already registered</span></div>
+   <ul class="password-rules" style="margin-top:8px"><li><span class="rule-icon rule--pass">&#10003;</span><span class="rule--pass">At least 12 characters</span></li><li><span class="rule-icon rule--fail">&#9675;</span><span class="rule--fail">A number</span></li></ul>
+  </form>
+ </div>
+</div>
+<div class="sec"><h4>Welcome setup, presence avatars, dot and tooltip</h4>
+ <div class="welcome-setup" style="max-width:420px;background:var(--bg-main);padding:12px 0">
+  <h2>Welcome</h2><p class="welcome-subtitle">Pick a squad to start with.</p>
+  <label class="setup-checkbox"><input type="checkbox" checked /> Create a sample archive</label>
+ </div>
+ <div style="display:flex;gap:24px;align-items:flex-start;margin-top:16px">
+  <div class="presence-avatars">
+   <span class="presence-avatar" style="background:oklch(0.55 0.13 240)">AL</span>
+   <span class="presence-avatar" style="background:oklch(0.55 0.13 25)">GH</span>
+   <span class="presence-avatar" style="background:oklch(0.55 0.13 150)">AT</span>
+   <span class="presence-dot" style="display:inline-block;margin-left:8px"></span>
+   <span class="presence-overflow">+3</span>
+  </div>
+  <div class="presence-tooltip" style="position:static;display:inline-block;pointer-events:auto">
+   <div class="presence-tooltip__user">Ada Lovelace</div>
+   <div class="presence-tooltip__user">Grace Hopper</div>
+  </div>
+ </div>
+</div>
+</body></html>

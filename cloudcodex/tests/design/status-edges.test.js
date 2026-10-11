@@ -1,7 +1,7 @@
 /**
  * A status edge names its status, not the picked accent, so it cannot be mistaken for the danger edge
  *
- * The GitHub sync banner's info tone once borrowed the picked accent. Under a red-adjacent pick (coral,
+ * The GitHub sync banner's info tone once borrowed the picked accent. Under a red-adjacent pick (nova,
  * hue 355) it read as the danger tone beside it. The info edge is --cx-info, a fixed step that does not
  * follow the picker, and it sits well away from the danger hue on every accent. Read from the real
  * declarations in src/index.css and src/codex.css. A revert to --cx-accent turns the named test red.

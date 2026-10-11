@@ -818,8 +818,8 @@ address that belongs to no partner (D-R). The second round made admission sync a
 before the test deploy, with the owner as instance admin (D-M), and approved the 24-hour ceiling
 renewed by a silent redirect (D-P).
 
-The only open question left in Wave 6 is the eight accent names, which Kyle confirms in
-W6-CDX-22's review.
+The eight accent names were confirmed by Kyle on 2026-10-11: rose is Nova, amber is Solar, emerald is Aurora
+and violet is Nebula (blue, cyan, fuchsia and lime keep their names). No Wave 6 open question remains on them.
 
 ## Retirement
 

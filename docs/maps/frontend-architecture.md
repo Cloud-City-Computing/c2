@@ -170,7 +170,7 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 | `useSuite.js` | suite mode: `GET /api/suite` once per page load, and `GET /api/suite/links` only for a signed-in user while suite mode is on. Any failure reads as off. `__resetSuiteCache` is the test seam |
 | `useSuiteLinks(signedIn)` (`src/hooks/useSuite.js:80`) | the same two requests for a page outside the layout's user state (the editor), made only when `signedIn` (a signed-out viewer makes no request): `{ commandWorkspaceUrl }` in suite mode, `null` otherwise or on any failure |
 | `src/lib/sign-in-target.js` | the kept deep link under `c2-sign-in-target`; `getStorage()` returns null when sessionStorage throws, which every caller treats as refused (fail closed) |
-| `useSignedOutTarget.js` | the signed-out deep-link decision (W6-CDX-8, W6-CDX-26). `useSignedOutTarget()` (`:170`) asks `/api/oauth/providers` and `suiteEnabled()`, then `resolveSignedOut` (`:94`) returns `bounced`, `login` or `landing`. The pure rule is `decideSignedOut` (`:48`); every target goes through `safeReturnTo` (`services/return-to.js`), the one validator the server uses |
+| `useSignedOutTarget.js` | the signed-out deep-link decision (W6-CDX-8, W6-CDX-26). `useSignedOutTarget()` (`:164`) asks `/api/oauth/providers` and `suiteEnabled()`, then `resolveSignedOut` (`:107`) returns `bounced`, `login` or `landing`. The pure rule is `decideSignedOut` (`:54`); every target goes through `safeReturnTo` (`services/return-to.js`), the one validator the server uses |
 | `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
 | `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
@@ -237,8 +237,8 @@ in `src/index.css`, and its colour is measured in `tests/design/painted.test.js`
 ## 3c. The signed-out front door (W6-CDX-26)
 
 A signed-out visitor's deep link has three outcomes, decided by `decideSignedOut`
-(`src/hooks/useSignedOutTarget.js:48`). The root and `/404` always answer `landing`, and never ask
-the server. Where OIDC is offered and is the only sign-in (`isOidcOnly`, `:35`), or suite mode is on,
+(`src/hooks/useSignedOutTarget.js:54`). The `/404` page always answers `landing`, and never asks
+the server. Where OIDC is offered and is the only sign-in (`isOidcOnly`, `:37`), or suite mode is on,
 the link bounces once per tab to `/api/auth/oidc/start?returnTo=`. The marker is
 `sessionStorage["c2-oidc-bounce"]`, cleared on a successful sign-in (`clearOidcBounce`, called from
 `Std_Layout.jsx` `checkAuth`). An `oauth_error` return renders the landing. Where no OIDC is offered,
@@ -247,9 +247,14 @@ opens the Login modal. That also covers OIDC offered beside local login outside 
 never redirects to `/`. Dismissing the modal (`destroyModal`, `util.jsx`) forgets the kept target; `Login.jsx` `finishSignIn` sends a successful sign-in to the kept target, or reloads. A `bounced` result needs no other work.
 
 The target is `safeReturnTo(pathname + search + hash)` on the client too (the fragment is carried because a browser never sends it), so an encoded path (a `%`
-anywhere in the path) falls back to `/` and the bounce still happens, as Cloud Command does. The bare
-`/` is never bounced. That matches Cloud Command's current default (`BOUNCE_BARE_ROOT = false`,
-`src/lib/silent-sign-in.ts`, pending Kyle's D4); flipping D4 is a separate, deliberate change.
+anywhere in the path) falls back to `/` and the bounce still happens, as Cloud Command does.
+
+The bare `/` (decided by Kyle, 2026-10-11) bounces to the sign-in only where OIDC is the only sign-in
+(hosted: `isOidcOnly`). It goes to `/api/auth/oidc/start?returnTo=%2F`, under the same once-per-tab marker.
+It does not bounce when the marker is set, when an `oauth_error` came back, or when the query carries
+`?signedOut=1` (the sign-out landing must show its message). A local-sign-in instance, or one with no
+OIDC, keeps its sign-in screen on `/`, so self-hosters are not stranded. Command's `BOUNCE_BARE_ROOT`
+is a separate flag in the Command repo, and this change does not touch it.
 
 - **The landing after a sign-out.** `?signedOut=1` on `/` shows "You're signed out of <name>." in
   suite mode only (`NoLoginMessage`, `Std_Layout.jsx:247`; the name is `useSuite`'s, never a literal).
@@ -368,8 +373,8 @@ truth: `ACCENT_COLORS` (8 colours, each with value/hover/fill, a view over
 `FONT_SIZES` (sm/md/lg), `DENSITIES` (compact/comfortable/spacious).
 
 `loadUserPrefs()` (`userPrefs.js:23`) maps a renamed accent key through
-`LEGACY_ACCENT` (rose to coral, amber to apricot, emerald to jade, violet to
-iris) and drops an accent key this build does not offer, so the default
+`LEGACY_ACCENT` (rose to Nova, amber to Solar, emerald to Aurora, violet to
+Nebula; the placeholder keys coral, apricot, jade and iris map to the same names) and drops an accent key this build does not offer, so the default
 palette applies.
 
 `applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes `--cx-accent`,
@@ -412,8 +417,12 @@ load-bearing:
    drop-shadow inks, and its layout sizes and transition. Since W6-CDX-28 it also
    holds the translucent tints (`--cx-tint-*`, measured over every surface by
    `tints.test.js`), the bright text steps a label on a tint steps up to, and the
-   popover shadow.
-4. `src/index.css`, about 8,700 lines, the whole app. No CSS modules, no
+   popover shadow. W6-CDX-29 adds the admin, settings and notification washes at
+   their exact alphas (`--cx-tint-accent-faint` to `-edge`, `-success-quiet`, `-danger-quiet`,
+   `-slate`, `-neutral`), a solid `--cx-white` for labels and marks on dark fills, and
+   `--cx-ring-light` for a swatch's hover ring. A label on a tint that sank below 4.5:1 steps to
+   `--cx-accent-hover` or a bright step, as W6-CDX-28 did.
+4. `src/index.css`, about 9,200 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
    `:focus-visible` rule (`index.css:5422`), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips

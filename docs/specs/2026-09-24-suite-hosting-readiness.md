@@ -381,8 +381,8 @@ None remain in this spec. Kyle's second round, 2026-09-24, answered all three: t
 (D-O), and linking an instance as an operator action only (D-P). The third round set the box's
 `ADMIN_EMAIL` to a Cloud City operator address (D-R, above).
 
-The only open question left in Wave 6 is the eight accent names, which Kyle confirms in
-W6-CDX-22's review.
+The eight accent names were confirmed by Kyle on 2026-10-11: rose is Nova, amber is Solar, emerald is Aurora
+and violet is Nebula (blue, cyan, fuchsia and lime keep their names). No Wave 6 open question remains on them.
 
 ## Retirement
 

@@ -49,14 +49,18 @@ describe('the accent picker', () => {
     expect(ACCENTS).toMatchObject({ blue: 232, cyan: 200, pink: 325, lime: 131 });
   });
 
-  it('keeps the four renamed hues on their new names', () => {
-    expect(LEGACY_ACCENT).toEqual({ rose: 'coral', amber: 'apricot', emerald: 'jade', violet: 'iris' });
+  it('maps the four shipped renamed keys to the four new names, one to one', () => {
+    expect(LEGACY_ACCENT).toMatchObject({ rose: 'nova', amber: 'solar', emerald: 'aurora', violet: 'nebula' });
+    const shipped = ['rose', 'amber', 'emerald', 'violet'].map((k) => LEGACY_ACCENT[k]);
+    expect(new Set(shipped).size).toBe(4);
   });
 
-  it('maps every legacy key to one successor, and no two legacy keys share one', () => {
-    const targets = Object.values(LEGACY_ACCENT);
-    for (const target of targets) expect(Object.keys(ACCENTS)).toContain(target);
-    expect(new Set(targets).size).toBe(targets.length);
+  it('maps every legacy key to an offered hue, and each placeholder to its shipped key\'s successor', () => {
+    for (const target of Object.values(LEGACY_ACCENT)) expect(Object.keys(ACCENTS)).toContain(target);
+    expect(LEGACY_ACCENT).toEqual({
+      rose: 'nova', amber: 'solar', emerald: 'aurora', violet: 'nebula',
+      coral: 'nova', apricot: 'solar', jade: 'aurora', iris: 'nebula',
+    });
   });
 
   it('keeps each hue at least 15 degrees from every reserved arc', () => {

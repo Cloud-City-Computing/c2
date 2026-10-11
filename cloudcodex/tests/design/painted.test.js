@@ -111,9 +111,12 @@ describe('a label on the accent fill is measured in the colour the page paints',
 
 describe('a white label on the accent dark is measured on the avatar that paints it', () => {
   it('reads each avatar site from the real declarations', () => {
+    // W6-CDX-29 moved the notification and activity avatars onto the --cx-white token; the mention
+    // avatar (editor-adjacent, deferred) still carries the literal, and both measure the same white.
     for (const site of ACCENT_DARK_SITES) {
       expect(declared(site, 'background'), site).toBe('var(--brand-blue-dark)');
-      expect(declared(site, 'color'), site).toBe('#fff');
+      const white = site === '.mention-picker__avatar--placeholder' ? '#fff' : 'var(--cx-white)';
+      expect(declared(site, 'color'), site).toBe(white);
     }
   });
 
@@ -131,8 +134,8 @@ describe('a white label on the accent dark is measured on the avatar that paints
 
   it('moves with the picked accent: the dark step differs from the default and follows the hue', () => {
     const def = paint(declared(ACCENT_DARK_SITES[0], 'background'), base);
-    const coral = paint(declared(ACCENT_DARK_SITES[0], 'background'), onAccent(ACCENTS.coral));
-    expect(coral).not.toEqual(def);
+    const nova = paint(declared(ACCENT_DARK_SITES[0], 'background'), onAccent(ACCENTS.nova));
+    expect(nova).not.toEqual(def);
   });
 });
 
@@ -308,7 +311,7 @@ describe('a dialog close control is measured on the panel it sits on', () => {
   it('reads the control and the panel from the real declarations', () => {
     expect(declared('.close-button', 'color'), 'the rest colour').toBe('var(--text-muted)');
     expect(declared(PANEL, 'background'), 'the panel').toBe('var(--bg-panel)');
-    expect(declared('.close-button:hover', 'color'), 'the hover colour').toBe('var(--brand-blue)');
+    expect(declared('.close-button:hover', 'color'), 'the hover colour').toBe('var(--cx-accent)');
   });
 
   it('measures at least 4.5:1 at rest and on hover, on the default accent and all eight picker hues', () => {
@@ -343,7 +346,7 @@ describe('the suite cluster labels (W6-CDX-25) are measured on the surface that 
     expect(declared(PANEL, 'background')).toBe('var(--bg-secondary)');
     expect(declared('.cc-suite__link', 'color')).toBe('var(--text-primary)');
     expect(declared('.cc-suite__link[aria-current="true"]', 'color')).toBe('var(--cx-accent)');
-    expect(declared('.cc-suite__link:hover', 'color')).toBe('var(--cx-accent)');
+    expect(declared('.cc-suite__link:hover', 'color')).toBe('var(--cx-accent-hover)');
     expect(declared('.cc-suite__link:hover', 'background')).toBe('var(--cx-tint-accent-soft)');
   });
 

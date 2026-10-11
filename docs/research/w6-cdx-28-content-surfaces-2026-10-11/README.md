@@ -15,7 +15,7 @@ under them and stepped one shade lighter (`--cx-warning-bright`, `--cx-danger-br
 `--cx-success-bright`, `--cx-violet` lifted, and `--cx-accent-hover` on the Page Tree and Log Tree
 rows). The highlight.js comment and keyword hues lifted one step, measured on the code wash
 (`tests/design/code-blocks.test.js`). Plan deviations are recorded in the PR 8 section of
-`docs/plans/2026-09-24-suite-ui.md`.
+the suite UI plan (retired in W6-CDX-29; the record is `docs/maps/`).
 
 ## Captures
 
@@ -62,7 +62,7 @@ are static markup, and the reading below is the check.
 The Log Tree banner contains the GitHub `.gh-*` block, so the GitHub components repaint too. The
 states harness (`raw/repainted-states-harness.html`) renders them with the real CSS, three ways:
 the base CSS (`cdx28-states-before-default.png`), this branch on the default accent
-(`cdx28-states-after-default-fixed.png`), and this branch with the coral pick (hue 355, the one
+(`cdx28-states-after-default-fixed.png`), and this branch with the Nova pick (placeholder coral; hue 355, the one
 closest to the danger red) (`cdx28-states-after-coral-fixed.png`).
 
 What reads, read by eye:
@@ -74,7 +74,7 @@ What reads, read by eye:
   surface, so the boundary's own panel and border carry it. It still reads as a boundary.
 - The releases tag and the closed issue state follow the picked accent, as the token system intends.
 
-What did not read, and was fixed: under coral, the sync **info** edge followed the accent and sat
+What did not read, and was fixed: under Nova (placeholder coral), the sync **info** edge followed the accent and sat
 beside the danger edge as a near-identical pink (`cdx28-states-after-coral-before-info-fix.png`).
 The info edge now takes `--cx-info`, the palette's fixed info blue, which is the same as the
 default accent, so the default view does not move. `cdx28-states-after-coral-fixed.png` shows

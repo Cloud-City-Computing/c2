@@ -369,7 +369,7 @@ held open. The decisions that bind this repository:
   is no new suite bar (W6-CDX-25).
 - **The Toast and the theme (D-V).** Codex's Toast is the suite's shared toast
   primitive, and light mode stays deferred for Codex through Wave 6; Cloud Command
-  keeps its existing light theme and toggle (W6-CDX-23, and the UI spec's Decision 6).
+  keeps its existing light theme and toggle (W6-CDX-23, and decision D-V of the suite UI spec, retired with W6-CDX-29).
 
 The other two decisions in that round change nothing in this repository.
 
@@ -389,7 +389,7 @@ C2-AUTH, F and CC numbers are retired.
 |---|---|---|---|
 | Identity | [suite identity](2026-09-24-suite-identity.md) | [plan](../plans/2026-09-24-suite-identity.md) | W6-CDX-10 (shared), W6-CDX-2 to W6-CDX-9 |
 | Outbound events | [outbound events](2026-09-24-outbound-events.md) | [plan](../plans/2026-09-24-outbound-events.md) | W6-CDX-12 to W6-CDX-16 |
-| UI and tokens | [suite UI](2026-09-24-suite-ui.md) | [plan](../plans/2026-09-24-suite-ui.md) | W6-CDX-21 to W6-CDX-29 |
+| UI and tokens (**shipped 2026-10-11**, PRs 1 to 9 of the suite UI plan, this PR is 9 and the last; the deferred editor, comments and GitHub surface is the row UI-later) | retired with W6-CDX-29; the record is [`docs/maps/`](../maps/) | retired with W6-CDX-29 | W6-CDX-21 to W6-CDX-29 |
 | Hosting readiness | [suite hosting readiness](2026-09-24-suite-hosting-readiness.md) | [plan](../plans/2026-09-24-suite-hosting-readiness.md) | W6-CDX-31 to W6-CDX-36 |
 
 W6-CDX-1, W6-CDX-11 and W6-CDX-20 (the three "write the spec" sessions) and the
@@ -417,14 +417,15 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-15 | Webhooks in the admin console (**built 2026-10-11** on `track/w6-cdx-15-webhooks-console`, PR not yet opened: `WebhooksPanel` under Admin, Webhooks; create, enable, disable, rotate, delete and the deliveries with Redeliver, every change confirmed) | W6-CDX-14 | no |
 | W6-CDX-16 | A machine read for reconciliation (**shipped 2026-09-27** in #63; `GET /api/documents/state`, the third `machineOrAuth` route) | W6-CDX-10 | no |
 | W6-CDX-21 | Vendor the tokens, fonts and gates (**shipped 2026-09-28** in #71; `cloud-city-design` 0.2.0 at `2d52baa` in `cloudcodex/vendor/`, the `design` Vitest project with a 745-finding ledger, `src/codex.css`, and ten dangling references fixed) | W6-CMD-20, W6-CMD-21 (the package, published in `cloud-city-design`) | yes |
-| W6-CDX-22 | The palette bridge and the accent picker (**done 2026-10-10** on `track/w6-cdx-22-palette-bridge`, PR 2 of the suite UI plan; the four renamed hues await Kyle's name review) | W6-CDX-21 | yes |
-| W6-CDX-23 | Focus, buttons and the Toast (**done 2026-10-11** on `track/w6-cdx-23-focus-buttons-toast`, PR 3 of the suite UI plan; the Toast is the suite's shared primitive, D-V; Kyle's review pending) | W6-CDX-22 | yes |
-| W6-CDX-24 | Dialogs with real semantics (**done 2026-10-11** on `track/w6-cdx-24-dialogs`, PR 4 of the suite UI plan; every dialog is a role dialog, the close controls are buttons, the page is inert behind one) | W6-CDX-23 | yes |
-| W6-CDX-25 | Shell chrome and the suite identity cluster (**done 2026-10-11** on `track/w6-cdx-25-shell-chrome`, PR 5 of the suite UI plan; the switcher mirrors Cloud Command's W6-CMD-23 disclosure, the chrome sections are on the tokens, every z-index is on the shared scale) | W6-CDX-23, W6-CMD-23 | yes |
-| W6-CDX-26 | The suite front door, deep links in (**done 2026-10-11** on `track/w6-cdx-26-front-door`, PR 6 of the suite UI plan; in suite mode a signed-out deep link bounces to the sign-in once per tab even with local login on, without OIDC the Login modal opens and a sign-in returns to the kept target, the sign-in modal leads with the suite's name, and `?signedOut=1` says "You're signed out of <name>." in suite mode; the live run against the Cloud City ID stack is not recorded) | W6-CDX-24, W6-CDX-25, W6-CDX-8, W6-CMD-24 | yes |
-| W6-CDX-27 | Deep links out: Linked tasks (**done 2026-10-11** on `track/w6-cdx-27-linked-tasks`, PR 7 of the suite UI plan; a same-tab "Linked tasks" link in the document meta line goes to Cloud Command's page for the document, and renders nothing outside suite mode) | W6-CDX-25, W6-CMD-25 | yes |
-| W6-CDX-28 | Content surfaces on the tokens (**done 2026-10-11** on `track/w6-cdx-28-content-surfaces`, PR 8 of the suite UI plan; the eight content banners are on the tokens, ledger 631 to 510, and every label on a tint is measured over every surface) | W6-CDX-22 | yes |
-| W6-CDX-29 | Admin and settings surfaces, and the UI track retires | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
+| W6-CDX-22 | The palette bridge and the accent picker (**done 2026-10-10** on `track/w6-cdx-22-palette-bridge`, PR #78, PR 2 of the suite UI plan; the four renamed hues await Kyle's name review) | W6-CDX-21 | yes |
+| W6-CDX-23 | Focus, buttons and the Toast (**done 2026-10-11** on `track/w6-cdx-23-focus-buttons-toast`, PR #79, PR 3 of the suite UI plan; the Toast is the suite's shared primitive, D-V; Kyle's review pending) | W6-CDX-22 | yes |
+| W6-CDX-24 | Dialogs with real semantics (**done 2026-10-11** on `track/w6-cdx-24-dialogs`, PR #81, PR 4 of the suite UI plan; every dialog is a role dialog, the close controls are buttons, the page is inert behind one) | W6-CDX-23 | yes |
+| W6-CDX-25 | Shell chrome and the suite identity cluster (**done 2026-10-11** on `track/w6-cdx-25-shell-chrome`, PR #85, PR 5 of the suite UI plan; the switcher mirrors Cloud Command's W6-CMD-23 disclosure, the chrome sections are on the tokens, every z-index is on the shared scale) | W6-CDX-23, W6-CMD-23 | yes |
+| W6-CDX-26 | The suite front door, deep links in (**done 2026-10-11** on `track/w6-cdx-26-front-door`, PR #91, PR 6 of the suite UI plan; in suite mode a signed-out deep link bounces to the sign-in once per tab even with local login on, without OIDC the Login modal opens and a sign-in returns to the kept target, the sign-in modal leads with the suite's name, and `?signedOut=1` says "You're signed out of <name>." in suite mode; from 2026-10-11 the bare root bounces straight to Cloud City ID where OIDC is the only sign-in, and keeps its screen elsewhere; the live run against the Cloud City ID stack is not recorded) | W6-CDX-24, W6-CDX-25, W6-CDX-8, W6-CMD-24 | yes |
+| W6-CDX-27 | Deep links out: Linked tasks (**done 2026-10-11** on `track/w6-cdx-27-linked-tasks`, PR #88, PR 7 of the suite UI plan; a same-tab "Linked tasks" link in the document meta line goes to Cloud Command's page for the document, and renders nothing outside suite mode) | W6-CDX-25, W6-CMD-25 | yes |
+| W6-CDX-28 | Content surfaces on the tokens (**done 2026-10-11** on `track/w6-cdx-28-content-surfaces`, PR #82, PR 8 of the suite UI plan; the eight content banners are on the tokens, ledger 631 to 510, and every label on a tint is measured over every surface) | W6-CDX-22 | yes |
+| W6-CDX-29 | Admin, settings, social and leftover surfaces on the tokens, and the UI track retires (**done 2026-10-11** on `track/w6-cdx-29-admin-surfaces`, this PR, PR 9 of the suite UI plan, the last of the track; every index.css banner outside the editor canvas, the comments and GitHub is on the tokens, the ledger is 399 and holds only the deferred families below, and the spec and plan are deleted) | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
+| UI-later | Editor canvas, comments and the GitHub surface on the tokens (**deferred 2026-10-11** by the suite UI plan's Task 9.1, which leaves them in place, and by the spec's deferred list; the orchestrator confirmed the deferral per that plan; changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage; the ledger holds them with `_later` notes that point here) | W6-CDX-29 (the track's last PR); no session yet, to be specced when the editor work is scheduled | no |
 | W6-CDX-31 | Signals, health, readiness, the single-writer lock (**shipped 2026-09-27** in #65; `node server.js` as the process, a bounded SIGTERM flush, `/healthz` and `/readyz`, and a per-schema `GET_LOCK`) | W6-CDX-10 | yes |
 | W6-CDX-32 | Production configuration and the per-instance contract (**shipped 2026-09-27** in #66: `cloudcodex/env-contract.js` and its test, `APP_URL` required in production, `TRUST_PROXY` and `DB_POOL_SIZE`, `mysql:8.4.11` everywhere, and in production the security headers on the whole app. Task 2.4, the admin sync never promotes, landed early 2026-09-25 in #58 and was released in 0.11.0 with GHSA-w8q3-r34w-3pjh) | W6-CDX-10 | yes |
 | W6-CDX-33 | The grant recipe and the isolation proof (**shipped 2026-09-28** in #73: the "Several instances on one MySQL server" recipe in `docs/deployment.md`, with opaque letters-and-digits schema names, per-account connection caps and a `shared-mysql.yml` compose override that points the app at the shared server; `tenancy.test.js` runs it as written and 54 statements reaching for the other instance, the server or DDL all fail with MySQL's privilege errors, and the one system view that still lists other schemas' names is pinned and documented; `grants-sufficient.test.js` runs the app on the DML-only account; the comments router gets its error handler) | W6-CDX-32 | no: before a fourth instance |
@@ -443,8 +444,8 @@ reach a test-box instance as its boot admin, D-R). Each spec lists the narrower
 items it defers and why.
 
 **Open questions for Kyle** live in each spec, and the second and third rounds
-answered all but one. The only open question left in Wave 6 is the eight accent
-names, which Kyle confirms in W6-CDX-22's review.
+answered all but one. The eight accent names were confirmed by Kyle on 2026-10-11 (rose is
+Nova, amber is Solar, emerald is Aurora, violet is Nebula); no Wave 6 open question remains on them.
 
 ## Sequencing
 

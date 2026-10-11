@@ -9,6 +9,14 @@
  */
 
 import { useState } from 'react';
+import { avatarLabel } from '../lib/avatar-label.js';
+
+/** The avatar's paint: its cursor colour, with the initial in whichever label clears 4.5:1 on it. */
+function avatarStyle(u) {
+  if (u.avatar_url) return { backgroundColor: 'transparent' };
+  const { color } = avatarLabel(u.color);
+  return { backgroundColor: u.color, color };
+}
 
 export default function PresenceAvatars({ users }) {
   const [showTooltip, setShowTooltip] = useState(false);
@@ -26,7 +34,7 @@ export default function PresenceAvatars({ users }) {
         <span
           key={u.id}
           className="presence-avatar"
-          style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}
+          style={avatarStyle(u)}
           title={u.name}
         >
           {u.avatar_url
@@ -41,7 +49,7 @@ export default function PresenceAvatars({ users }) {
         <div className="presence-tooltip">
           {users.map((u) => (
             <div key={u.id} className="presence-tooltip__user">
-              <span className="presence-avatar presence-avatar--sm" style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}>
+              <span className="presence-avatar presence-avatar--sm" style={avatarStyle(u)}>
                 {u.avatar_url
                   ? <img src={u.avatar_url} alt={u.name} />
                   : (u.name?.charAt(0)?.toUpperCase() || '?')}

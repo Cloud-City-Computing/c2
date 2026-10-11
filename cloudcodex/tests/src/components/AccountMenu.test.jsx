@@ -31,7 +31,8 @@ vi.mock('../../../src/util.jsx', () => utilMock);
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { apiFetch, getSessStorage, getSessionTokenFromCookie, setSessionCookie } from '../../../src/util.jsx';
-import { AccountPreferencesPanel, AccountInfoUpdatePanel } from '../../../src/components/AccountMenu.jsx';
+import { AccountPreferencesPanel, AccountInfoUpdatePanel, UserPreferencesPanel } from '../../../src/components/AccountMenu.jsx';
+import { ACCENTS, accentValue } from '../../../src/tokens/accents.js';
 
 beforeEach(() => {
   apiFetch.mockReset();
@@ -277,5 +278,24 @@ describe('AccountInfoUpdatePanel', () => {
     await user.type(screen.getByLabelText('Email'), 'new@example.com');
 
     expect(screen.getByLabelText(/current password/i)).toBeInTheDocument();
+  });
+});
+
+describe('UserPreferencesPanel: the accent swatches render from src/tokens/accents.js', () => {
+  it('offers the eight named accents the tokens define, each with a name', () => {
+    const { container } = render(<UserPreferencesPanel />);
+    const swatches = [...container.querySelectorAll('.color-swatch')];
+    expect(swatches).toHaveLength(Object.keys(ACCENTS).length);
+    expect(swatches).toHaveLength(8);
+    for (const swatch of swatches) {
+      expect(swatch.getAttribute('aria-label')).toMatch(/\S/);
+    }
+  });
+
+  it('paints each swatch from accentValue(hue) of its own key', () => {
+    const { container } = render(<UserPreferencesPanel />);
+    const swatches = [...container.querySelectorAll('.color-swatch')];
+    const painted = swatches.map((s) => s.style.getPropertyValue('--swatch-color'));
+    expect(painted).toEqual(Object.values(ACCENTS).map((hue) => accentValue(hue)));
   });
 });
