@@ -51,6 +51,13 @@
   --cx-accent-hover: var(--accent-200);
   --cx-accent-fill: var(--accent-400);
   --cx-on-accent: oklch(0.16 0.03 240);
+  /* The dark step behind a white avatar label, and the danger fills behind a
+     white label: rest and hover. Each measures in tests/design/painted.test.js
+     (white at 4.5:1 or more on every accent dark; white at 4.5:1 or more on
+     each danger step, the hover darker than the rest). */
+  --cx-accent-dark: oklch(0.45 0.13 240);
+  --cx-danger-fill: oklch(0.5 0.19 25);
+  --cx-danger-fill-hover: oklch(0.44 0.19 25);
 
   /* Lines and the overlay wash: flat and tinted. */
   --cx-border: oklch(0.386 0.014 240);

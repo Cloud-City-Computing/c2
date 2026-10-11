@@ -274,9 +274,9 @@ iris) and drops an accent key this build does not offer, so the default
 palette applies.
 
 `applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes `--cx-accent`,
-`--cx-accent-hover` and `--cx-accent-fill` on `document.documentElement` (the
-index.css bridge points `--brand-blue*` at them, and `--cx-accent-fill` never
-reaches a `--brand-blue` name), `--editor-font-size`, `--density-scale`, and a
+`--cx-accent-hover`, `--cx-accent-fill` and `--cx-accent-dark` on
+`document.documentElement` (the index.css bridge points `--brand-blue*` at
+them), `--editor-font-size`, `--density-scale`, and a
 `data-sidebar-default` attribute on `body`. Crucially it **removes** each
 property when the preference is unset rather than writing a default, so the
 stylesheet's own defaults win.
@@ -320,6 +320,10 @@ load-bearing:
    and holds no literal, pinned by `tests/design/bridge.test.js`. Rules that
    paint white labels on an accent or danger background read the dark step
    (`--brand-blue-hover`, `--color-danger-hover`), not the pale text step.
+   The accent-fill labels paint `--cx-on-accent` (a dark ink), since white on
+   the pale fill measures 2.7 to 3.1:1; the danger labels sit on
+   `--cx-danger-fill` (rest) and `--cx-danger-fill-hover`. Avatar initials sit
+   on `--brand-blue-dark`, which is `--cx-accent-dark` and follows the picker.
 
 **Four names overlap.** `index.css` redeclares `--brand-blue` and
 `--radius-sm`, `-md`, `-lg`, which `core.css` also declares; loaded later on

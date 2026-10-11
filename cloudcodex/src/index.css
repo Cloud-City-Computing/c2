@@ -37,12 +37,12 @@
      package's accent-600, the one that carries a white label. */
   --brand-blue: var(--cx-accent);
   --brand-blue-light: var(--cx-accent-hover);
-  --brand-blue-dark: var(--accent-600);
+  --brand-blue-dark: var(--cx-accent-dark);
   --brand-blue-hover: var(--cx-accent-fill);
 
   /* Semantic */
   --color-danger: var(--cx-danger);
-  --color-danger-hover: var(--danger-bright);
+  --color-danger-hover: var(--cx-danger-fill-hover);
   --color-success: var(--cx-success);
 
   /* Radius */
@@ -394,7 +394,7 @@ body {
 
 .btn-primary {
   background: var(--brand-blue-hover);
-  color: #fff;
+  color: var(--cx-on-accent);
 }
 .btn-primary:hover {
   filter: brightness(1.1);
@@ -417,7 +417,7 @@ body {
 }
 
 .btn-danger {
-  background: var(--color-danger-hover);
+  background: var(--cx-danger-fill);
   color: #fff;
 }
 .btn-danger:hover {
@@ -572,7 +572,7 @@ body {
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  background: var(--color-danger-hover);
+  background: var(--cx-danger-fill);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -5273,7 +5273,7 @@ body {
 }
 .btn-ghost.btn-danger:hover {
   color: #fff;
-  background: var(--color-danger-hover);
+  background: var(--cx-danger-fill);
 }
 
 /* =========================
@@ -5964,7 +5964,7 @@ body {
 
 .pref-toggle-btn.active {
   background: var(--brand-blue-hover);
-  color: #fff;
+  color: var(--cx-on-accent);
 }
 
 /* =========================
@@ -6602,14 +6602,14 @@ body {
 
 .explore-pagination__num--active {
   background: var(--brand-blue-hover);
-  color: #fff;
+  color: var(--cx-on-accent);
   border-color: var(--brand-blue);
   font-weight: 600;
 }
 
 .explore-pagination__num--active:hover {
   background: var(--brand-blue-hover);
-  color: #fff;
+  color: var(--cx-on-accent);
 }
 
 .explore-pagination__dots {
@@ -8720,7 +8720,7 @@ body {
 
 .drawio-block__edit-btn:hover:not(:disabled) {
   background: var(--brand-blue-hover);
-  color: #fff;
+  color: var(--cx-on-accent);
   border-color: var(--brand-blue);
 }
 

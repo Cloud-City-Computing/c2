@@ -12,7 +12,7 @@ import {
   contrastRatio, parseColor, parseThemeTokens, resolveToken, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import {
-  ACCENTS, LEGACY_ACCENT, accentValue, accentHover, accentFill,
+  ACCENTS, LEGACY_ACCENT, accentValue, accentHover, accentFill, accentDark,
 } from '../../src/tokens/accents.js';
 import { ROOT } from './buckets.js';
 
@@ -20,6 +20,7 @@ const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
 const dark = parseThemeTokens(`${core}\n${codex}`).dark;
+const WHITE = parseColor('#fff');
 const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-surface-3', '--cx-surface-4'];
 
 // The hue of a `--name: oklch(L C H)` declaration in the vendored core.css.
@@ -90,6 +91,13 @@ describe('the accent picker', () => {
     expect(measured.length).toBe(40);
   });
 
+  it('keeps a white label at 4.5:1 or more on every hue dark step (the avatar initials)', () => {
+    for (const [name, hue] of entries) {
+      const ratio = contrastRatio(WHITE, parseColor(accentDark(hue)));
+      expect(ratio, `white on ${name} dark measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it('keeps the on-accent label at 4.5:1 or more on every hue fill', () => {
     const label = resolveToken(dark, '--cx-on-accent');
     for (const [name, hue] of entries) {
@@ -103,6 +111,7 @@ describe('the accent picker', () => {
       expect(accentHover(hue)).toBe(`oklch(0.88 0.06 ${hue})`);
       expect(accentFill(hue)).toBe(`oklch(0.68 0.13 ${hue})`);
       expect(accentValue(hue)).toBe(`oklch(0.78 0.12 ${hue})`);
+      expect(accentDark(hue)).toBe(`oklch(0.45 0.13 ${hue})`);
     }
   });
 });

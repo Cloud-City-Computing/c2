@@ -25,3 +25,10 @@ export const accentValue = (hue) => `oklch(0.78 0.12 ${hue})`;
 export const accentHover = (hue) => `oklch(0.88 0.06 ${hue})`;
 // invariant-exempt: the fill step, a background only (the package's accent-400 shape)
 export const accentFill = (hue) => `oklch(0.68 0.13 ${hue})`;
+// invariant-exempt: the dark step, behind a white avatar label (white on it measures >= 4.5:1, tests/design/painted.test.js)
+export const accentDark = (hue) => `oklch(0.45 0.13 ${hue})`;
+
+// Keys are looked up as OWN properties only: a name such as "constructor" or
+// "__proto__" is a property of every object, and must never read as a hue.
+export const isAccent = (key) => Object.hasOwn(ACCENTS, key);
+export const successorOf = (key) => (Object.hasOwn(LEGACY_ACCENT, key) ? LEGACY_ACCENT[key] : key);

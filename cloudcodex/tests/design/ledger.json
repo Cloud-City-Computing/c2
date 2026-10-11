@@ -1,6 +1,6 @@
 {
   "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
-  "_measured": "679 after W6-CDX-22 (the bridge, the dead-CSS burndown and the picker's literal hues), from 745 at W6-CDX-21. Regenerate a bucket with node tests/design/report.mjs.",
+  "_measured": "674 after W6-CDX-22 (the bridge, the dead-CSS burndown and the accent set), from 745 at W6-CDX-21. Regenerate a bucket with node tests/design/report.mjs.",
   "src/components/AccountMenu.jsx": {
     "(file)": 5
   },
@@ -25,7 +25,7 @@
   "src/index.css": {
     "Top Bar": 2,
     "Sidebar": 3,
-    "Buttons": 6,
+    "Buttons": 5,
     "Account Button (Top Bar)": 2,
     "Mentions (inline @user chips)": 2,
     "Notification bell": 10,
@@ -43,11 +43,11 @@
     "Version History": 5,
     "Squad Members Panel": 2,
     "Archive Access Panel": 8,
-    "User Preferences Panel": 3,
+    "User Preferences Panel": 2,
     "Collaborative Editing - Presence UI": 12,
     "Remote Cursors - Collaborative Editing": 2,
     "Export Dropdown": 1,
-    "Explore / Browse": 26,
+    "Explore / Browse": 24,
     "Toast Notifications": 17,
     "Comments & Annotations": 101,
     "Admin Dashboard": 24,
@@ -55,7 +55,7 @@
     "Read-only Document View": 10,
     "Code Block with Language Selector": 3,
     "Syntax Highlighting (highlight.js compatible - dark theme)": 8,
-    "Draw.io Diagram Block": 9,
+    "Draw.io Diagram Block": 8,
     "Mobile Layout Overrides": 1,
     "Error Boundary": 7,
     "Footer": 1,

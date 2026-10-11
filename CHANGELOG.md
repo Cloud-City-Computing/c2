@@ -178,6 +178,8 @@ initialises an empty data directory.
   eight choices, and a saved rose, amber, emerald or violet loads as its
   successor. The default accent is now the package's blue step, a little
   lighter than before, and the surfaces take the package's blue-grey tint.
+  Labels on the accent fill are now a dark ink (white on the pale fill failed
+  4.5:1), and the danger button is a deeper red so its white label passes.
 - The GitHub page's linked file path and its file picker, which asked for a
   `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now
   get the design package's monospace stack (`ui-monospace, SFMono-Regular,

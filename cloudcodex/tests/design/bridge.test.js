@@ -88,5 +88,6 @@ describe('the bridge in index.css :root', () => {
   it('points the brand names at the accent tokens the picker writes', () => {
     expect(bridge.get('--brand-blue')).toBe('var(--cx-accent)');
     expect(bridge.get('--brand-blue-hover')).toBe('var(--cx-accent-fill)');
+    expect(bridge.get('--brand-blue-dark')).toBe('var(--cx-accent-dark)');
   });
 });

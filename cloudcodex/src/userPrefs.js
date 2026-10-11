@@ -10,7 +10,7 @@
  */
 
 import {
-  ACCENTS, LEGACY_ACCENT, accentValue, accentHover, accentFill,
+  ACCENTS, accentValue, accentHover, accentFill, accentDark, isAccent, successorOf,
 } from './tokens/accents.js';
 
 const PREFS_KEY = 'c2-user-prefs';
@@ -28,9 +28,9 @@ export function loadUserPrefs() {
     return {};
   }
   if (prefs.accentColor !== undefined) {
-    const accent = LEGACY_ACCENT[prefs.accentColor] ?? prefs.accentColor;
-    if (ACCENTS[accent] === undefined) delete prefs.accentColor;
-    else prefs.accentColor = accent;
+    const accent = successorOf(prefs.accentColor);
+    if (isAccent(accent)) prefs.accentColor = accent;
+    else delete prefs.accentColor;
   }
   return prefs;
 }
@@ -44,7 +44,7 @@ export function saveUserPrefs(prefs) {
 
 // A view over ACCENTS (src/tokens/accents.js): the three steps Codex's picker writes.
 export const ACCENT_COLORS = Object.fromEntries(Object.entries(ACCENTS).map(([id, hue]) => [id, {
-  value: accentValue(hue), hover: accentHover(hue), fill: accentFill(hue),
+  value: accentValue(hue), hover: accentHover(hue), fill: accentFill(hue), dark: accentDark(hue),
 }]));
 
 export const FONT_SIZES = {
@@ -69,15 +69,17 @@ export function applyPrefsToDOM(prefs) {
 
   // Codex's own alias tokens, never a shared primitive: the bridge in index.css
   // points --brand-blue* at these, so the focus ring follows the picked accent.
-  const color = ACCENT_COLORS[prefs.accentColor];
+  const color = isAccent(prefs.accentColor) ? ACCENT_COLORS[prefs.accentColor] : undefined;
   if (color) {
     root.style.setProperty('--cx-accent', color.value);
     root.style.setProperty('--cx-accent-hover', color.hover);
     root.style.setProperty('--cx-accent-fill', color.fill);
+    root.style.setProperty('--cx-accent-dark', color.dark);
   } else {
     root.style.removeProperty('--cx-accent');
     root.style.removeProperty('--cx-accent-hover');
     root.style.removeProperty('--cx-accent-fill');
+    root.style.removeProperty('--cx-accent-dark');
   }
 
   const fontSize = FONT_SIZES[prefs.fontSize];
