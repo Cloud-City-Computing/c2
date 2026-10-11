@@ -5332,7 +5332,7 @@ body {
   font-size: 72px;
   font-weight: 800;
   margin: 0;
-  color: var(--brand-blue);
+  color: var(--cx-accent);
 }
 
 .not-found-page p {
