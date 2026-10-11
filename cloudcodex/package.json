@@ -84,6 +84,9 @@
   "overrides": {
     "html-to-docx": {
       "image-size": "^2.0.4"
+    },
+    "mammoth": {
+      "argparse": "^2.0.1"
     }
   }
 }
