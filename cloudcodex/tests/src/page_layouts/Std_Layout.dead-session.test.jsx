@@ -26,12 +26,13 @@ vi.mock('../../../src/util.jsx', async (importOriginal) => ({
 }));
 
 import { useEffect, useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { fetchDocument, setSessStorage, showModal } from '../../../src/util.jsx';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
 import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { SIGN_IN_TARGET_KEY } from '../../../src/hooks/useSignedOutTarget.js';
+import { setUnsaved, __resetUnsaved } from '../../../src/lib/unsaved-changes.js';
 
 const USER = { id: 1, name: 'Alice', email: 'alice@example.com' };
 const DOC_PATH = '/archives/1/doc/1';
@@ -88,6 +89,7 @@ let realLocation;
 
 beforeEach(() => {
   realLocation = window.location;
+  __resetUnsaved();
   __resetSuiteCache();
   window.sessionStorage.clear();
   document.cookie = 'sessionToken=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
@@ -167,3 +169,73 @@ describe('a live session', () => {
     expect(showModal).not.toHaveBeenCalled();
   });
 });
+
+// ── a dead session with unsaved changes on the page never navigates away (momus item 1) ──
+
+describe('a dead session while the editor holds unsaved changes', () => {
+  it('does not navigate, shows the notice, and keeps the page and its content', async () => {
+    const tab = staleTab();
+    installLocation(tab.fake);
+    setUnsaved('editor', true, () => 'my draft');
+    vi.stubGlobal('fetch', serverWith({ providers: ONLY_OIDC }));
+    renderPage();
+    expect(await screen.findByText(/your session ended/i)).toBeTruthy();
+    expect(screen.getByText(/your unsaved changes are still here/i)).toBeTruthy();
+    expect(screen.getByText('Loading Document...')).toBeTruthy();
+    expect(tab.fake.assign).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem('c2-oidc-bounce')).toBeNull();
+    expect(showModal).not.toHaveBeenCalled();
+  });
+
+  it('sign in again opens the current page in a new tab, leaving this one as it is', async () => {
+    const tab = staleTab();
+    installLocation(tab.fake);
+    setUnsaved('editor', true, () => 'my draft');
+    vi.stubGlobal('fetch', serverWith({ providers: ONLY_OIDC }));
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /sign in again/i }));
+    expect(open).toHaveBeenCalledWith(DOC_PATH, '_blank', 'noopener');
+    expect(tab.fake.assign).not.toHaveBeenCalled();
+    expect(screen.getByText(/your unsaved changes are still here/i)).toBeTruthy();
+    open.mockRestore();
+  });
+
+  it('copy my changes puts the editor text on the clipboard', async () => {
+    const tab = staleTab();
+    installLocation(tab.fake);
+    setUnsaved('editor', true, () => 'my draft');
+    vi.stubGlobal('fetch', serverWith({ providers: ONLY_OIDC }));
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /copy my changes/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('my draft'));
+    delete navigator.clipboard;
+  });
+
+  it('after a sign-in in another tab, "I have signed in" clears the notice and the page carries on', async () => {
+    const tab = staleTab();
+    installLocation(tab.fake);
+    setUnsaved('editor', true, () => 'my draft');
+    const base = serverWith({ providers: ONLY_OIDC });
+    vi.stubGlobal('fetch', vi.fn((url, opts) => (url === '/api/validate-session'
+      ? Promise.resolve(json({ valid: true, user: USER }))
+      : base(url, opts))));
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /i have signed in/i }));
+    await waitFor(() => expect(screen.queryByText(/your session ended/i)).toBeNull());
+    expect(tab.fake.assign).not.toHaveBeenCalled();
+  });
+
+  it('a clean page with the same dead session bounces, as before', async () => {
+    const tab = staleTab();
+    installLocation(tab.fake);
+    setUnsaved('editor', false);
+    vi.stubGlobal('fetch', serverWith({ providers: ONLY_OIDC }));
+    renderPage();
+    await waitFor(() => expect(tab.fake.assign).toHaveBeenCalledOnce());
+    expect(screen.queryByText(/your session ended/i)).toBeNull();
+  });
+});
+

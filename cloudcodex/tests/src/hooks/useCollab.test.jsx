@@ -15,10 +15,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../src/util.jsx', () => ({
   getSessionTokenFromCookie: vi.fn(() => 'tok'),
+  endDeadSession: vi.fn(),
 }));
 
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { getSessionTokenFromCookie } from '../../../src/util.jsx';
+import { getSessionTokenFromCookie, endDeadSession } from '../../../src/util.jsx';
 import useCollab from '../../../src/hooks/useCollab.js';
 
 class FakeWebSocket {
@@ -39,6 +40,11 @@ class FakeWebSocket {
   close() {
     this.readyState = 3;
     this.onclose?.();
+  }
+  // The server's close frame, as the browser delivers it to onclose.
+  closeWith(code, reason) {
+    this.readyState = 3;
+    this.onclose?.({ code, reason });
   }
 }
 
@@ -126,3 +132,40 @@ describe('useCollab', () => {
     expect(() => result.current.sendCursor({ index: 0 })).not.toThrow();
   });
 });
+
+// ── a socket the server closes as signed out (momus item 5) ──
+
+describe('useCollab, a socket closed as signed out', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    endDeadSession.mockClear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stops reconnecting on 4004 "Signed out" and ends the session once', () => {
+    renderHook(() => useCollab(1));
+    FakeWebSocket.instances[0].closeWith(4004, 'Signed out');
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(endDeadSession).toHaveBeenCalledOnce();
+  });
+
+  it('still reconnects after 2 s on an ordinary drop, and does not end the session', () => {
+    renderHook(() => useCollab(1));
+    FakeWebSocket.instances[0].closeWith(1006, '');
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(endDeadSession).not.toHaveBeenCalled();
+  });
+
+  it('a 4004 for another reason (too many connections) reconnects as before', () => {
+    renderHook(() => useCollab(1));
+    FakeWebSocket.instances[0].closeWith(4004, 'Too many connections');
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(endDeadSession).not.toHaveBeenCalled();
+  });
+});
+
