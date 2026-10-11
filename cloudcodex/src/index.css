@@ -7869,6 +7869,39 @@ body {
   .webhook-deliveries td:nth-child(5) {
     display: none;
   }
+
+  /* Each delivery is a stacked block, so its action sits on its own line and never
+     needs a sideways scroll. Each cell names its column. */
+  .webhook-deliveries thead {
+    display: none;
+  }
+
+  .webhook-deliveries,
+  .webhook-deliveries tbody,
+  .webhook-deliveries tr,
+  .webhook-deliveries td {
+    display: block;
+    width: 100%;
+  }
+
+  .webhook-deliveries tr {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .webhook-deliveries td {
+    padding: 2px 0;
+    border: none;
+  }
+
+  .webhook-deliveries td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--text-muted);
+  }
+
+  .webhook-deliveries td:empty {
+    display: none;
+  }
 }
 
 /* Narrow screens: the sidebar becomes a row above the content, not a column beside it */

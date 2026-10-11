@@ -191,12 +191,12 @@ function DeliveriesTable({ webhook, entry, onRedeliver }) {
         <tbody>
           {entry.rows.map((d) => (
             <tr key={d.id}>
-              <td>{EVENT_LABELS[d.type] ?? d.type}</td>
-              <td>{DELIVERY_LABELS[d.status] ?? d.status}</td>
-              <td>{d.attempts}</td>
-              <td>{d.last_error ?? '-'}</td>
-              <td>{timeAgo(d.created_at)}</td>
-              <td>
+              <td data-label="Event">{EVENT_LABELS[d.type] ?? d.type}</td>
+              <td data-label="Status">{DELIVERY_LABELS[d.status] ?? d.status}</td>
+              <td data-label="Attempts">{d.attempts}</td>
+              <td data-label="Last answer">{d.last_error ?? '-'}</td>
+              <td data-label="When">{timeAgo(d.created_at)}</td>
+              <td className="webhook-deliveries__action">
                 {!webhook.managed && canRedeliver(d) && (
                   <button className="btn btn-ghost btn-sm" onClick={() => onRedeliver(webhook, d)}>Redeliver</button>
                 )}
