@@ -80,6 +80,21 @@ export function isUserConnected(userId) {
 }
 
 /**
+ * The session digests of the authenticated sockets on this server, for the periodic re-check
+ * (services/socket-sweep.js). A socket that has not yet authenticated carries none.
+ * @returns {Set<string>}
+ */
+export function openSessionDigests() {
+  const digests = new Set();
+  for (const wss of servers) {
+    for (const ws of wss.clients) {
+      if (ws.sessionId !== undefined) digests.add(ws.sessionId);
+    }
+  }
+  return digests;
+}
+
+/**
  * Close every user-channel socket that authenticated with one of these sessions, with 4004
  * "Signed out" (W6-CDX-6). Only those sockets; the same user's other sessions stay connected.
  * @param {Iterable<string>} digests - sessions.id values, the digests a sign-out deleted

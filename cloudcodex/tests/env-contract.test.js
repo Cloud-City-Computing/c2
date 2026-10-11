@@ -31,7 +31,7 @@ const BARE_ENV_ALLOWED = {
   'scripts/migrate.js': ['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME'],
 };
 
-const KINDS = ['required', 'required-in-production', 'default', 'optional'];
+const KINDS = ['required', 'required-in-production', 'required-with-local', 'default', 'optional'];
 
 function sourceFiles(dir, rel = '') {
   const out = [];
@@ -189,6 +189,9 @@ function envTableProblems(contract, markdown) {
     }
     if (e.kind === 'required-in-production' && !/required in production/i.test(`${row.description} ${row.value}`)) {
       problems.push(`${e.name} is required in production but its row does not say so`);
+    }
+    if (e.kind === 'required-with-local' && !/required/i.test(row.value)) {
+      problems.push(`${e.name} is required with local sign-in but its row does not say so`);
     }
     if (e.kind === 'default' && !row.value.includes(`\`${e.default}\``)) {
       problems.push(`${e.name} defaults to ${e.default} but its row says ${row.value}`);

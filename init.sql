@@ -57,7 +57,8 @@ CREATE TABLE users (
   is_admin BOOLEAN DEFAULT FALSE,
   notification_prefs JSON DEFAULT NULL,
   onboarded_at TIMESTAMP NULL DEFAULT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deactivated_at TIMESTAMP NULL DEFAULT NULL
 ) ENGINE=InnoDB;
 
 -- workspaces is declared before users, so its owner FK is added here rather

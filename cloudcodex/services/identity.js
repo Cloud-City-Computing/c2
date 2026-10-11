@@ -16,24 +16,25 @@
  * tests queue c2_query mocks in call order, so moving or adding a query is a
  * behaviour change even when the result looks the same.
  *
- * parseAuthProviders() is the boot-time answer to "which sign-in methods does
- * this instance offer", validated so a typo stops the process instead of
- * quietly offering something the operator did not ask for.
+ * parseAuthProviders() (services/auth-providers.js, re-exported here) is the
+ * boot-time answer to "which sign-in methods does this instance offer",
+ * validated so a typo stops the process instead of quietly offering something
+ * the operator did not ask for.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 
 import crypto from 'crypto';
-import { c2_query } from '../mysql_connect.js';
-import { createDefaultPermissions } from '../routes/helpers/shared.js';
+import { c2_query, withTransaction } from '../mysql_connect.js';
+import { createDefaultPermissions, addSquadMember } from '../routes/helpers/shared.js';
 
 /**
  * Decide which local user a verified external identity is.
  *
  * Returns { ok: true, userId, created } or { ok: false, reason } where reason is
  * one of: email_not_verified, domain_not_allowed, no_account,
- * identity_conflict, email_conflict, two_factor_enabled. Never throws for a
+ * identity_conflict, email_conflict, two_factor_enabled, account_deactivated. Never throws for a
  * refusal; a thrown error is a database failure and reaches errorHandler.
  *
  * The Google branch answers two_factor_enabled when the user matched by
@@ -88,12 +89,23 @@ export async function resolveIdentity(claims, policy) {
  *    still has two-factor off and still holds the matched email. Anything but one affected row is
  *    two_factor_enabled. A unique-key refusal on the link is identity_conflict.
  *    Without linkByVerifiedEmail, an account that holds the address is email_conflict.
- * 3. Otherwise no_account. OIDC never auto-creates an account.
+ * 3. Otherwise an open invitation for the verified email (W6-CDX-8) creates the user, with its squad and
+ *    flags, in one transaction; with none, no_account. The issuer's own account never admits anyone.
+ * A deactivated user (users.deactivated_at) is account_deactivated on every rung that reaches one, before
+ * any write, so a removed member keeps their authorship and loses their access.
  *
  * The email must be verified before any read, and missing or unverified is email_not_verified.
  */
 /** The identity row for (issuer, subject), re-read after a refused INSERT. */
 const RECHECK_SQL = 'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1';
+
+/**
+ * The identity row for (issuer, subject) with its user's deactivation, read in one query. The join is
+ * what lets the identity rung refuse a deactivated user before it writes the last-sign-in touch.
+ */
+const HIT_SQL = `SELECT ui.id, ui.user_id, u.deactivated_at
+   FROM user_identities ui JOIN users u ON u.id = ui.user_id
+  WHERE ui.issuer = ? AND ui.subject = ? LIMIT 1`;
 
 async function resolveOidcIdentity(claims, policy) {
   const { issuer, subject, email, emailVerified } = claims;
@@ -102,12 +114,11 @@ async function resolveOidcIdentity(claims, policy) {
     return { ok: false, reason: 'email_not_verified' };
   }
 
-  const [identity] = await c2_query(
-    'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1',
-    [issuer, subject]
-  );
+  const [identity] = await c2_query(HIT_SQL, [issuer, subject]);
 
   if (identity) {
+    // A deactivated user is refused before anything is written, so the refusal leaves no trace.
+    if (identity.deactivated_at) return { ok: false, reason: 'account_deactivated' };
     // The issuer's email is recorded for display and audit, and users.email is never written here.
     // A change at the issuer does not move the local account's address: password reset mails that
     // address, and the local email-change rules (current password, confirmation to the new address,
@@ -122,13 +133,17 @@ async function resolveOidcIdentity(claims, policy) {
   // Binary comparison of the lowercased address. users.email's default collation is accent-insensitive,
   // so a plain LOWER(email) = LOWER(?) would treat 'é' and 'e' as one mailbox.
   const [existingUser] = await c2_query(
-    'SELECT id, email, two_factor_method FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin LIMIT 1',
+    `SELECT id, email, two_factor_method, deactivated_at FROM users
+      WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin LIMIT 1`,
     [email]
   );
 
   if (existingUser) {
     if (!policy.linkByVerifiedEmail) {
       return { ok: false, reason: 'email_conflict' };
+    }
+    if (existingUser.deactivated_at) {
+      return { ok: false, reason: 'account_deactivated' };
     }
     // Two-factor is checked before identity_conflict, as the Google rung does: it reads the row
     // already in hand and still holds once a conflicting link is cleared.
@@ -170,7 +185,117 @@ async function resolveOidcIdentity(claims, policy) {
     return { ok: true, userId: existingUser.id, created: false, identityId: linked.insertId };
   }
 
-  return { ok: false, reason: 'no_account' };
+  // Step 3: an open invitation for this verified address. The invitation is the admission; the issuer
+  // account alone never is.
+  const [invitation] = await c2_query(
+    `SELECT id, squad_id, role, can_read, can_write, can_create_log, can_create_archive,
+            can_manage_members, can_delete_version, can_publish
+       FROM user_invitations
+      WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE AND expires_at > NOW()
+      ORDER BY created_at DESC LIMIT 1`,
+    [email]
+  );
+
+  if (!invitation) {
+    return { ok: false, reason: 'no_account' };
+  }
+  return await createFromInvitation(claims, invitation);
+}
+
+/** Thrown inside the invitation transaction when the invitation was taken or revoked in the window. */
+class InvitationGone extends Error {}
+
+/** Thrown inside the invitation transaction when the identity pair was linked by a racing sign-in. */
+class IdentityRace extends Error {}
+
+/** Thrown inside the invitation transaction when a racing insert took the user's name or address. */
+class UserRace extends Error {
+  constructor(column) {
+    super(`users.${column} was taken by a racing insert`);
+    this.column = column;
+  }
+}
+
+/** The identity key names, as MySQL reports them in a duplicate-entry message (init.sql). */
+const IDENTITY_PAIR_KEYS = ['user_identities.uq_user_identities_issuer_subject', 'user_identities.uq_user_identities_user_issuer'];
+
+/** The answer for an identity a racing sign-in committed: the same person, unless it is deactivated. */
+function answerForIdentity(identity) {
+  if (identity.deactivated_at) return { ok: false, reason: 'account_deactivated' };
+  return { ok: true, userId: identity.user_id, created: false, identityId: identity.id };
+}
+
+/**
+ * Create the user an invitation admits, in one transaction, as POST /api/create-account does: the user
+ * with the derived username and no password, its default permissions, the invitation marked accepted
+ * (conditionally, and checked), the squad membership when the invitation names one, and the identity.
+ * A transaction that cannot see the invitation still open refuses with nothing written. A racing sign-in
+ * for the same subject answers with the identity it committed; a racing name collision with no identity
+ * behind it is retried once with a fresh derived name; a racing address collision is email_conflict.
+ */
+async function createFromInvitation(claims, invitation, attempt = 0) {
+  const { issuer, subject, email } = claims;
+  const username = await deriveUniqueUsername(email);
+  try {
+    return await withTransaction(async (query) => {
+      let created;
+      try {
+        created = await query(
+          'INSERT INTO users (name, email, created_at) VALUES (?, ?, NOW())',
+          [username, email]
+        );
+      } catch (userErr) {
+        if (userErr.code !== 'ER_DUP_ENTRY') throw userErr;
+        const message = String(userErr.sqlMessage);
+        if (message.includes('users.name')) throw new UserRace('name');
+        if (message.includes('users.email')) throw new UserRace('email');
+        throw userErr;
+      }
+      const userId = created.insertId;
+      await createDefaultPermissions(userId, query);
+
+      const accepted = await query(
+        'UPDATE user_invitations SET accepted = TRUE WHERE id = ? AND accepted = FALSE',
+        [invitation.id]
+      );
+      if (accepted.affectedRows !== 1) throw new InvitationGone();
+
+      if (invitation.squad_id) {
+        await addSquadMember(invitation.squad_id, userId, invitation, query);
+      }
+
+      let identity;
+      try {
+        identity = await query(
+          `INSERT INTO user_identities (user_id, issuer, subject, email_at_link, email_at_last_signin)
+           VALUES (?, ?, ?, ?, ?)`,
+          [userId, issuer, subject, email, email]
+        );
+      } catch (linkErr) {
+        // A racing sign-in for this subject linked first. The transaction rolls back, so this user never exists.
+        if (linkErr.code === 'ER_DUP_ENTRY' && IDENTITY_PAIR_KEYS.some((key) => String(linkErr.sqlMessage).includes(key))) {
+          throw new IdentityRace();
+        }
+        throw linkErr;
+      }
+      return { ok: true, userId, created: true, identityId: identity.insertId };
+    });
+  } catch (err) {
+    if (err instanceof InvitationGone) return { ok: false, reason: 'no_account' };
+    if (err instanceof IdentityRace || err instanceof UserRace) {
+      // The racing sign-in for this subject, if it committed, is the answer: the same person's identity. The
+      // subject key is the only one that can refuse this new user's identity insert.
+      const [winner] = await c2_query(HIT_SQL, [issuer, subject]);
+      if (winner) return answerForIdentity(winner);
+      if (err instanceof UserRace) {
+        if (err.column === 'email') return { ok: false, reason: 'email_conflict' };
+        if (attempt === 0) return await createFromInvitation(claims, invitation, 1);
+        return { ok: false, reason: 'identity_conflict' };
+      }
+      return { ok: false, reason: 'identity_conflict' };
+    }
+    throw err;
+  }
 }
 
 /**
@@ -205,11 +330,13 @@ async function resolveGoogleIdentity(claims, policy) {
 
   // Check if this Google account is already linked
   const [existingOAuth] = await c2_query(
-    `SELECT user_id FROM oauth_accounts WHERE provider = 'google' AND provider_user_id = ? LIMIT 1`,
+    `SELECT oa.user_id, u.deactivated_at FROM oauth_accounts oa JOIN users u ON u.id = oa.user_id
+      WHERE oa.provider = 'google' AND oa.provider_user_id = ? LIMIT 1`,
     [googleUserId]
   );
 
   if (existingOAuth) {
+    if (existingOAuth.deactivated_at) return { ok: false, reason: 'account_deactivated' };
     // Already linked, log them in. No local two-factor here, deliberately, and
     // that includes a user who turned it on after linking: a linked account
     // signs in on Google's own sign-in, its MFA included. What keeps this from
@@ -221,7 +348,7 @@ async function resolveGoogleIdentity(claims, policy) {
   // Check if a user with this email already exists, and whether it has
   // two-factor on (the link-by-email refusals below need both).
   const [existingUser] = await c2_query(
-    `SELECT id, two_factor_method FROM users WHERE email = ? LIMIT 1`,
+    `SELECT id, two_factor_method, deactivated_at FROM users WHERE email = ? LIMIT 1`,
     [email]
   );
 
@@ -231,6 +358,7 @@ async function resolveGoogleIdentity(claims, policy) {
       // creating a second user with it would collide on users.email.
       return { ok: false, reason: 'email_conflict' };
     }
+    if (existingUser.deactivated_at) return { ok: false, reason: 'account_deactivated' };
     // An account with two-factor on is never linked by email: password
     // sign-in demands its second factor, and a link would let every later
     // Google sign-in skip it. Both methods refuse alike; 'none' and NULL are
@@ -349,100 +477,8 @@ export async function deriveUniqueUsername(email) {
   return `user_${crypto.randomBytes(4).toString('hex')}`;
 }
 
-/** Sign-in providers this version knows. */
-const KNOWN_AUTH_PROVIDERS = ['local', 'google', 'oidc'];
-
 /**
- * Google counts as configured on the same rule routes/oauth.js applies: both
- * the client id and the secret set. Read here at call time, by literal name.
+ * parseAuthProviders() now lives in services/auth-providers.js, which the database layer can import
+ * without a cycle. The re-export keeps the existing import path.
  */
-function isGoogleConfigured() {
-  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-}
-
-/**
- * The OIDC relying party counts as configured when an issuer is set. The full
- * settings are checked by getOidcConfig() when the app mounts its routes.
- */
-function isOidcConfigured() {
-  const issuer = process.env.OIDC_ISSUER_URL;
-  return issuer !== undefined && issuer.trim() !== '';
-}
-
-/**
- * The sign-in providers this instance offers, from AUTH_PROVIDERS.
- *
- * Unset (or blank): today's derived set, `local` always plus `google` when
- * Google is configured. Set: a comma list of `local` and `google`, compared
- * case-insensitively. Throws, with a sentence naming the variable, on an
- * unknown name, on a list without `local` (an instance without local sign-in
- * is not supported yet), on a listed provider that is not configured, and on
- * a configured Google the list leaves out, because the Google routes would
- * still offer it and the variable would then say something untrue.
- *
- * @returns {Set<string>}
- */
-export function parseAuthProviders() {
-  const googleConfigured = isGoogleConfigured();
-  const oidcConfigured = isOidcConfigured();
-  const raw = process.env.AUTH_PROVIDERS;
-
-  if (raw === undefined || raw.trim() === '') {
-    return new Set([
-      'local',
-      ...(googleConfigured ? ['google'] : []),
-      ...(oidcConfigured ? ['oidc'] : []),
-    ]);
-  }
-
-  const names = raw.split(',').map(name => name.trim().toLowerCase()).filter(name => name !== '');
-
-  for (const name of names) {
-    if (!KNOWN_AUTH_PROVIDERS.includes(name)) {
-      throw new Error(
-        `AUTH_PROVIDERS lists "${name}", which is not a sign-in provider this version knows; ` +
-        `use a comma list of ${KNOWN_AUTH_PROVIDERS.join(' and ')}, or leave AUTH_PROVIDERS unset.`
-      );
-    }
-  }
-
-  const providers = new Set(names);
-
-  if (!providers.has('local')) {
-    throw new Error(
-      'AUTH_PROVIDERS must include local, because an instance without local sign-in is not ' +
-      'supported yet; add local, or leave AUTH_PROVIDERS unset.'
-    );
-  }
-
-  if (providers.has('google') && !googleConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS lists google, but GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not both ' +
-      'set; set them, or remove google from AUTH_PROVIDERS.'
-    );
-  }
-
-  if (!providers.has('google') && googleConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS does not list google, but GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are ' +
-      'set, so Google sign-in would still be offered; add google to AUTH_PROVIDERS, or unset ' +
-      'the Google variables.'
-    );
-  }
-
-  if (providers.has('oidc') && !oidcConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS lists oidc, but OIDC_ISSUER_URL is not set; set the OIDC_ variables, or ' +
-      'remove oidc from AUTH_PROVIDERS.'
-    );
-  }
-
-  if (!providers.has('oidc') && oidcConfigured) {
-    throw new Error(
-      'AUTH_PROVIDERS does not list oidc, but OIDC_ISSUER_URL is set, so OIDC sign-in would still ' +
-      'be offered; add oidc to AUTH_PROVIDERS, or unset OIDC_ISSUER_URL.'
-    );
-  }
-
-  return providers;
-}
+export { parseAuthProviders } from './auth-providers.js';

@@ -193,9 +193,9 @@ All seed accounts use the password **`password`**.
 | `SMTP_USER` | SMTP username | — (optional; leave blank to run without email) |
 | `SMTP_PASS` | SMTP password | — (optional; leave blank to run without email) |
 | `SMTP_FROM` | Sender address for outbound email; blank uses the default | `Cloud Codex <noreply@cloudcitycomputing.com>` |
-| `ADMIN_USERNAME` | Username for the admin super-user. Boot creates it, or syncs an existing admin, and never promotes a non-admin (`.env.example` ships `admin`) | (required) |
+| `ADMIN_USERNAME` | Username for the admin super-user. Boot creates it, or syncs an existing admin, and never promotes a non-admin (`.env.example` ships `admin`). Required while local sign-in is on; on a hosted instance (`AUTH_PROVIDERS` without `local`) unset gives the admin a name derived from `ADMIN_EMAIL` | (required with local sign-in) |
 | `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — (required) |
-| `ADMIN_PASSWORD` | Password for the admin super-user | — (required) |
+| `ADMIN_PASSWORD` | Password for the admin super-user. Required while local sign-in is on; a hosted instance never reads it | none (required with local sign-in) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (enables Google SSO) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | — |
 | `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
@@ -206,7 +206,7 @@ All seed accounts use the password **`password`**.
 | `OIDC_LINK_BY_VERIFIED_EMAIL` | `1` links an existing account by its verified email when that account has two-factor off; `0` never links by email | `1` (on) |
 | `OIDC_SESSION_TTL_HOURS` | How long an OIDC sign-in lasts, in whole hours | `24` |
 | `LEGACY_SESSION_COOKIE` | Whether a lone `sessionToken` cookie from before the https session cookie became `__Host-sessionToken` still signs its holder in. Only `0` turns it off (for an https instance sharing its domain with hosts you do not control) | `1` (on) |
-| `AUTH_PROVIDERS` | Sign-in methods to offer, a comma list of `local`, `google` and `oidc`. Leave unset: the server derives it (local, plus Google when configured) and refuses to start on a value that disagrees with the Google variables | unset |
+| `AUTH_PROVIDERS` | Sign-in methods to offer, a comma list of `local`, `google` and `oidc`. Leave unset: the server derives it (local, plus Google when configured) and refuses to start on a value that disagrees with the Google variables. A list without `local` is a hosted instance: it must be `oidc` alone, the Google variables must be unset, and local sign-in, sign-up, reset, 2FA and local email change are refused on the server | unset |
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |
 | `NODE_ENV` | `production` serves the built frontend and puts the security headers on every response; the Docker image and `npm run start` set it. In every mode the API accepts the app's own origin, `APP_URL`'s and `CORS_ORIGIN`; outside production it also accepts any `localhost` or `127.0.0.1` origin, for the Vite dev server. `test` switches the rate limiters off | unset (development) |

@@ -22,6 +22,7 @@ import {
   validateInviteToken,
 } from '../util';
 import useGitHubStatus, { GitHubStatusProvider } from '../hooks/useGitHubStatus';
+import { useSignedOutTarget, clearOidcBounce } from '../hooks/useSignedOutTarget';
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
 // --- Icons ---
@@ -256,15 +257,20 @@ function StdLayout({ children }) {
     } catch { return false; }
   });
 
+  const bounceToSignIn = useSignedOutTarget();
+
   const checkAuth = useCallback(async () => {
     const token = getSessionTokenFromCookie();
+    let loggedInUser = null;
 
     if (token) {
-      const loggedInUser = await attemptAutoLogin(token);
+      loggedInUser = await attemptAutoLogin(token);
       setUser(loggedInUser ?? false);
 
       // Check admin status if logged in
       if (loggedInUser) {
+        // A sign-in ends the deep-link bounce for this tab (hooks/useSignedOutTarget.js).
+        clearOidcBounce();
         try {
           const adminRes = await fetchAdminStatus();
           setIsAdmin(adminRes.isAdmin === true);
@@ -272,13 +278,19 @@ function StdLayout({ children }) {
       }
     } else {
       setUser(false);
-      if (window.location.pathname !== '/' && window.location.pathname !== '/404') {
+    }
+
+    // Signed out, with no cookie or with one the server no longer accepts. On an OIDC-only instance a deep
+    // link goes to the sign-in once per tab. Otherwise a visitor with no cookie is sent to the root, as before.
+    if (!loggedInUser) {
+      const bounced = await bounceToSignIn();
+      if (!bounced && !token && window.location.pathname !== '/' && window.location.pathname !== '/404') {
         standardRedirect('/');
       }
     }
 
     setAuthChecked(true);
-  }, []);
+  }, [bounceToSignIn]);
 
   useEffect(() => {
     checkAuth();
@@ -322,6 +334,7 @@ function StdLayout({ children }) {
       identity_conflict: 'This account is already linked to a different sign-in identity. Ask your administrator to relink it.',
       two_factor_enabled: 'This account has two-factor authentication on, so it cannot be linked to single sign-on by email. Sign in with your password and code instead.',
       flow_expired: 'Sign-in session expired. Please try again.',
+      account_deactivated: 'This account has been deactivated. Ask your administrator.',
     };
 
     const messages = {
@@ -330,6 +343,7 @@ function StdLayout({ children }) {
       email_not_verified: 'Your Google email is not verified.',
       identity_conflict: 'This email is already linked to a different Google account. Ask your administrator to relink it.',
       two_factor_enabled: 'This account has two-factor authentication on, so it cannot be linked to Google by email. Sign in with your password and code instead.',
+      account_deactivated: 'This account has been deactivated. Ask your administrator.',
       token_exchange_failed: 'Google sign-in failed. Please try again.',
       token_verification_failed: 'Google sign-in verification failed. Please try again.',
       invalid_state: 'Sign-in session expired. Please try again.',

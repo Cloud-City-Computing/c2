@@ -37,6 +37,7 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
   '2026-10-13-session-id-token.sql':
     'ALTER TABLE sessions DROP CHECK chk_sessions_id_token_oidc_only, DROP COLUMN oidc_id_token',
   '2026-10-12-identity-last-signin-email.sql': 'ALTER TABLE user_identities DROP COLUMN email_at_last_signin',
+  '2026-10-12-user-deactivation.sql': 'ALTER TABLE users DROP COLUMN deactivated_at',
   '2026-10-11-user-identities.sql':
     'ALTER TABLE sessions DROP FOREIGN KEY fk_sessions_identity, DROP INDEX idx_sessions_provider_sid, ' +
     'DROP COLUMN provider_sid, DROP COLUMN identity_id, DROP CHECK chk_sessions_identity_pairing, ' +

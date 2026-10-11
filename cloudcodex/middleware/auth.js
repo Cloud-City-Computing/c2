@@ -8,6 +8,7 @@
 import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
 import { verifyMachineCredential, MachineAuthUnavailable } from '../services/machine-auth.js';
 import { readSessionCookie, legacyCookieAllowed } from '../services/session-cookie.js';
+import { localSignInEnabled, providerListed } from '../services/auth-providers.js';
 
 /**
  * A machine credential the issuer's keys could not verify (W6-CDX-7) is an outage, not a refusal:
@@ -163,4 +164,29 @@ export function requireAdmin(req, res, next) {
     return res.status(403).json({ success: false, message: 'Admin access required' });
   }
   next();
+}
+
+/**
+ * Mounted on every route that is a local human sign-in (password login, sign-up, reset, 2FA, the
+ * username check, the local email-change confirmation). With local sign-in off (hosted mode, see
+ * services/auth-providers.js) the route answers 404 before it reads anything, the way an unmounted
+ * route would, so no local credential is ever checked on a hosted instance.
+ */
+export function requireLocalSignIn(req, res, next) {
+  if (localSignInEnabled()) return next();
+  return res.status(404).json({ success: false, message: 'Local sign-in is not offered on this instance' });
+}
+
+/**
+ * Mounted on a sign-in route of one external provider. When AUTH_PROVIDERS is set and does not list the
+ * provider the route answers 404, so a configured but unlisted provider has no door. Unset, the route's
+ * own configuration check decides, as before.
+ * @param {'google'|'oidc'} name
+ * @returns {import('express').RequestHandler}
+ */
+export function requireProviderOffered(name) {
+  return function providerOffered(req, res, next) {
+    if (providerListed(name)) return next();
+    return res.status(404).json({ success: false, message: `${name} sign-in is not offered on this instance` });
+  };
 }

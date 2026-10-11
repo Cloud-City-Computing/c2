@@ -8,7 +8,8 @@
 // Data only, no imports: a paired product pins a copy of this file and reads it.
 //
 // kind: 'required' (boot exits without it), 'required-in-production' (boot
-// exits without it when NODE_ENV=production), 'default' (unset or blank behaves as
+// exits without it when NODE_ENV=production), 'required-with-local' (boot exits without it
+// while local sign-in is on, which AUTH_PROVIDERS decides), 'default' (unset or blank behaves as
 // `default`) or 'optional' (unset turns something off, or keeps a documented
 // behaviour). requiredWith, on an optional entry: boot requires it whenever
 // the variable it names is set.
@@ -61,10 +62,12 @@ export const ENV_CONTRACT = [
       + 'upgrade that must start before npm run backfill:doc-images has run' },
 
   // The boot admin
-  { name: 'ADMIN_USERNAME', kind: 'required', perInstance: false,
-    why: 'the boot admin\'s name: created, or an existing admin synced, never a non-admin promoted' },
-  { name: 'ADMIN_PASSWORD', kind: 'required', perInstance: false,
-    why: 'the boot admin\'s password, reset at every boot' },
+  { name: 'ADMIN_USERNAME', kind: 'required-with-local', perInstance: false,
+    why: 'the boot admin\'s name: created, or an existing admin synced, never a non-admin promoted; required '
+      + 'while local sign-in is on, and on a hosted instance (no local) unset means a name derived from ADMIN_EMAIL' },
+  { name: 'ADMIN_PASSWORD', kind: 'required-with-local', perInstance: false,
+    why: 'the boot admin\'s password, reset at every boot; required while local sign-in is on, and never read on a '
+      + 'hosted instance' },
   { name: 'ADMIN_EMAIL', kind: 'required', perInstance: false,
     why: 'the boot admin\'s email, reset at every boot; the operator\'s address' },
 

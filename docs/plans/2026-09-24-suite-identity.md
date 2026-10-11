@@ -1381,8 +1381,10 @@ here.
 
 ### Task 8.3 Invitations bind on verified email
 
-`resolveIdentity`'s step 3 for `oidc`: `SELECT * FROM user_invitations WHERE LOWER(email) =
-LOWER(?) AND accepted = FALSE AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`. A hit runs,
+`resolveIdentity`'s step 3 for `oidc`: `SELECT * FROM user_invitations WHERE LOWER(email) COLLATE utf8mb4_bin =
+LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`. The binary
+comparison is required: the default collation is accent-insensitive, so an invitation for josé@ must not admit a verified jose@
+(review finding, W6-CDX-8). A hit runs,
 in one `withTransaction`, the same sequence `POST /api/create-account` runs (`routes/auth.js:139-165`):
 insert the user with `deriveUniqueUsername(email)` and no password, `createDefaultPermissions`,
 the conditional `UPDATE user_invitations SET accepted = TRUE WHERE id = ? AND accepted = FALSE`
@@ -1419,6 +1421,50 @@ builds suite mode and the mixed-provider case on this hook.
       integration, build.
 
 ---
+
+### Decisions recorded by W6-CDX-8 (shipped with the PR)
+
+The code proved these points open or wrong in this section, or the hosted-mode brief settled them:
+
+- **Sessions at the switch.** Plan silent. `validateAndAutoLogin` takes only `auth_provider = 'oidc'`
+  sessions on a hosted instance, so a pre-switch local or Google session ends at the switch and the
+  user signs in through OIDC. OIDC sessions keep their own expiry.
+- **Account update.** Task 8.1 unmounted the password branch. The local email change is refused too
+  (403 for an email or password change through `POST /api/update-account`; a display-name change still
+  works), and `POST /api/update-account/confirm-email` answers 404 with local sign-in off.
+- **Static `SERVICE_TOKEN` is not refused** on hosted instances. The spec's "static path unchanged"
+  stands; machine callers may use either credential.
+- **Email lookup in `ensureAdminUser`** is `LOWER(email) = LOWER(?)` on a hosted instance, the default
+  collation, so an accent variant the unique key would refuse is found, not inserted past.
+- **Seeded workspace name.** `bootstrapInstance` reads the admin's name from its row inside the existing
+  content-guard query (`admin_name`), so the seed adds no query. The row wins; the variable is the fallback.
+- **A held admin name.** A hosted create with an `ADMIN_USERNAME` some account already holds derives the
+  name from `ADMIN_EMAIL` instead of failing on the unique key.
+- **Invitations** bind in ladder step 3 on every OIDC instance, not only hosted ones: the step is reached
+  only when no identity or email match exists, so a self-hosted install with no invitation still gets
+  `no_account`.
+- **GitHub is not a sign-in** (it links an account that is already signed in), so its routes are not
+  refused on hosted instances.
+- **Migration date** is `2026-10-12-user-deactivation.sql`: `2026-10-12-identity-last-signin-email.sql`
+  already exists, and the runner applies migrations in filename order.
+- **Invitation match** is binary-collated (`COLLATE utf8mb4_bin`), as the Google and OIDC link rungs are, so an
+  accented address never matches its unaccented twin.
+- **Socket re-check.** Auth is read on a socket's first message, so a later deactivation or deleted session
+  would keep an open socket. Every 60 seconds `services/socket-sweep.js` batches the digests the open sockets
+  carry and closes, with 4004, those with no live session for an active user (OIDC only on a hosted instance).
+- **Boot purge.** On a hosted instance the boot deletes every session that is not an OIDC session
+  (`services/sessions-hosted.js`), logging the count, matching the switch decision above.
+- **Machine principal and 2FA.** A deactivated `SERVICE_TOKEN_USER` is no principal on either credential path, and
+  `POST /api/2fa/verify` refuses a challenge for a user deactivated since the password was proven.
+- **Deep links.** A signed-out `returnTo` that fails the validator, or does not decode, falls back to `/`, the same
+  rule as Cloud Command's corpus, rather than an error page.
+- **Races.** Two boots creating the admin at once: one INSERT wins, the other re-reads once and adopts it. A racing
+  identity insert for the same subject answers the identity that won, not a 500.
+- **Local credentials kept on a hosted instance.** Password hashes and local 2FA secrets stay in their rows, unreadable
+  by any path while hosted, so a switch back restores local sign-in. Clearing them is a product call (see
+  `docs/deployment.md`, Hosted mode).
+- **Env contract** gains the kind `required-with-local` for `ADMIN_USERNAME` and `ADMIN_PASSWORD`,
+  and `tests/env-contract.test.js` names it.
 
 ## PR 9: W6-CDX-9, machine membership endpoints for the sync
 

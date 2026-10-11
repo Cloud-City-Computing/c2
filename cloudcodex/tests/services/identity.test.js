@@ -22,8 +22,8 @@ import { c2_query } from '../../mysql_connect.js';
 import { resolveIdentity, deriveUniqueUsername, parseAuthProviders } from '../../services/identity.js';
 import { resetMocks } from '../helpers.js';
 
-const LINK_LOOKUP_SQL = `SELECT user_id FROM oauth_accounts WHERE provider = 'google' AND provider_user_id = ? LIMIT 1`;
-const EMAIL_LOOKUP_SQL = `SELECT id, two_factor_method FROM users WHERE email = ? LIMIT 1`;
+const LINK_LOOKUP_SQL = `SELECT oa.user_id, u.deactivated_at FROM oauth_accounts oa JOIN users u ON u.id = oa.user_id WHERE oa.provider = 'google' AND oa.provider_user_id = ? LIMIT 1`;
+const EMAIL_LOOKUP_SQL = `SELECT id, two_factor_method, deactivated_at FROM users WHERE email = ? LIMIT 1`;
 const LINK_INSERT_SQL = `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`;
 /**
  * The link-by-email INSERT copies the user row only while its two-factor is
@@ -649,10 +649,10 @@ describe('parseAuthProviders', () => {
       expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS lists oidc.*OIDC_ISSUER_URL/);
     });
 
-    it('refuses a list without local', () => {
+    it('refuses a list without local that does not name oidc: hosted mode is OIDC only', () => {
       process.env.AUTH_PROVIDERS = 'google';
       configureGoogle();
-      expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS must include local/);
+      expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS without local is hosted mode.*list oidc/);
     });
 
     it('refuses google when Google is not configured, naming the missing variables', () => {
@@ -669,7 +669,7 @@ describe('parseAuthProviders', () => {
 
     it.each([
       ['an unknown provider', 'nope', false],
-      ['a list without local', 'google', true],
+      ['a hosted list without oidc', 'google', true],
       ['an unconfigured google', 'local,google', false],
       ['a configured google left out', 'local', true],
     ])('phrases the refusal for %s as a sentence that opens with the variable', (_label, value, google) => {

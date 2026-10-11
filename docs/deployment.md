@@ -136,14 +136,73 @@ Production-specific notes:
 | `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
 | `SMTP_*`                   | Optional; the server starts without them. Without them invitations show a copyable link, and password reset, email two-factor codes and notification emails are unavailable |
-| `ADMIN_*`                  | Hard requirement. **They reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
+| `ADMIN_*`                  | `ADMIN_EMAIL` is always required. `ADMIN_USERNAME` and `ADMIN_PASSWORD` are required while local sign-in is on, and a [hosted instance](#hosted-mode) sets neither. **On a local instance they reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
 | `GITHUB_CLIENT_SECRET`     | Doubles as the AES-256-GCM seed for stored OAuth tokens. **Never rotate without re-encrypting** existing rows or all linked GitHub accounts go invalid |
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
-| `AUTH_PROVIDERS`           | Leave unset. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which |
+| `AUTH_PROVIDERS`           | Leave unset for a self-hosted instance. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which. Without `local` it is a [hosted instance](#hosted-mode): `oidc` alone, with the Google variables unset |
 | `LEGACY_SESSION_COOKIE`    | Leave unset. On https the session cookie is `__Host-sessionToken`; unset keeps a browser that still holds the older `sessionToken` signed in and moves it across on its next visit. `0` (https only) makes a lone `sessionToken` sign nobody in: set it when hosts you do not control share your domain. See [security.md](./security.md#the-session-cookie) |
 | `WEBHOOK_*`                | Optional outbound events ([api/webhooks.md](./api/webhooks.md)). `WEBHOOK_URL` must be `https` in production and `WEBHOOK_SECRET` at least 32 characters, or the env subscription is switched off with the reason logged; neither stops the boot. Leave `WEBHOOK_ALLOW_PRIVATE_TARGETS` unset unless the receiver has only a private address |
 
 Add new env vars to `.env.example` (with a comment) when introducing them.
+
+### Hosted mode
+
+A hosted instance signs people in through one OIDC issuer and nothing else. Set
+`AUTH_PROVIDERS=oidc`, with `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`
+(and `APP_URL`, which OIDC needs). Leave `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+unset. The server then refuses, on the server and not only in the page:
+
+- sign-up, password login, password reset, two-factor, the username check, and the
+  local email change (`/api/create-account`, `/api/login`, `/api/forgot-password`,
+  `/api/reset-password`, every `/api/2fa/*`, `/api/update-account/confirm-email`): 404;
+- an email or password change through `POST /api/update-account`: 403. A display name still changes;
+- Google sign-in (`/api/oauth/google` and its callback): 404.
+
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` may be unset. The boot admin is matched by
+`ADMIN_EMAIL` alone and created with no password; its username is `ADMIN_USERNAME` when no
+account holds it, and otherwise a name derived from `ADMIN_EMAIL`. Its starter workspace is
+named from that account, and it has the `General` squad that synced members join. A boot
+that sets `AUTH_PROVIDERS` without `oidc`, or sets Google's variables, exits with a sentence
+naming the variable. `SERVICE_TOKEN` is unchanged on a hosted instance: machine callers use
+their JWTs (`OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE`, `MACHINE_OIDC_SUBJECTS`) or the static
+credential, as on any instance.
+
+**Invitations bind on verified email.** An OIDC sign-in whose verified email matches an open
+invitation creates the account with that invitation's squad and flags, once. With no
+invitation the sign-in is `no_account`: the issuer's own account never admits anyone. The
+issuer's self-registration is therefore not an admission.
+
+**Deactivation.** `users.deactivated_at` (set by hand until an admin control exists) refuses a
+user at their next request, and every sign-in path refuses them as `account_deactivated`. Their
+open WebSocket connections are closed by a periodic re-check that runs every 60 seconds and closes
+any socket whose session is no longer live for an active user, so a deactivation takes effect within
+about a minute. Their authorship stays.
+
+**Existing sessions at the switch.** A session minted by local or Google sign-in ends when an
+instance switches to hosted mode. Validation refuses it, and the next boot on the hosted instance
+deletes every session that is not an OIDC session, logging how many it ended, so none can be used
+again. Those users sign in through OIDC. Sessions minted by OIDC keep their own expiry
+(`OIDC_SESSION_TTL_HOURS`).
+
+**Local credentials on a hosted instance are kept.** A password hash and a local two-factor secret that
+were set before the switch stay in their rows. Nothing on a hosted instance reads them: local login,
+password reset, two-factor and the local email change answer 404, and `validateAndAutoLogin` refuses any
+session that is not OIDC. The rows are kept on purpose: clearing them is destructive, and switching the
+instance back to local sign-in restores the same passwords without a reset. Clearing them is a product
+decision, not a boot step, so it is not automated.
+
+**Deep links.** A signed-out deep link is carried through sign-in as `returnTo` only when it passes
+the same validator as Cloud Command's corpus. A link that fails validation, or whose encoding does not
+decode, falls back to `/`, which is the landing page, rather than being refused with an error.
+
+**An account with two-factor on before the switch.** Its two-factor routes are unmounted, so it
+cannot turn two-factor off itself, and its first OIDC sign-in is refused as `two_factor_enabled`,
+because an email link would let it skip the second factor. An operator clears it on the user row,
+as for an `identity_conflict` relink, and the next OIDC sign-in links the account:
+
+```sql
+UPDATE users SET two_factor_method = 'none', totp_secret = NULL WHERE id = <id>;
+```
 
 ### The boot admin
 

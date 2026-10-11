@@ -7,11 +7,14 @@
 
 import ViteExpress from 'vite-express';
 import { initMail } from './services/email.js';
-import { setupCollabServer, flushPendingSaves, closeAll as closeCollabSockets } from './services/collab.js';
-import { setupUserChannelServer, closeAll as closeUserChannelSockets } from './services/user-channel.js';
+import { setupCollabServer, flushPendingSaves, closeAll as closeCollabSockets, closeSocketsForSessions as closeCollabSessions, openSessionDigests as openCollabDigests } from './services/collab.js';
+import { setupUserChannelServer, closeAll as closeUserChannelSockets, closeSocketsForSessions as closeUserChannelSessions, openSessionDigests as openUserChannelDigests } from './services/user-channel.js';
+import { sweepSocketSessions, startSocketSweep } from './services/socket-sweep.js';
+import { endSessionsOutsideOidc } from './services/sessions-hosted.js';
 import { c2_query, openConnection, endPool } from './mysql_connect.js';
 import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import { parseAuthProviders } from './services/identity.js';
+import { localSignInEnabled } from './services/auth-providers.js';
 import { acquireInstanceLock } from './services/instance-lock.js';
 import { reconcileEnvSubscription, loadSubscriptions } from './services/webhooks.js';
 import { startWebhookWorker, pruneWebhookRows } from './services/webhook-worker.js';
@@ -50,8 +53,19 @@ process.on('SIGTERM', () => onStopSignal('SIGTERM'));
 process.on('SIGINT', () => onStopSignal('SIGINT'));
 
 // ─── Require Admin credentials before starting ──────────────
-if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_EMAIL) {
-  console.error('✖ Missing required admin configuration: ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_EMAIL');
+//
+// ADMIN_EMAIL is always required: it is the operator's address, the key the boot admin sync matches on.
+// ADMIN_USERNAME and ADMIN_PASSWORD are required only while local sign-in is on (services/auth-providers.js).
+// A hosted instance signs in through OIDC and has no password, and its ADMIN_USERNAME may be unset: the admin
+// then takes a name derived from ADMIN_EMAIL.
+const localSignIn = localSignInEnabled();
+const missingAdmin = [
+  ...(localSignIn && !process.env.ADMIN_USERNAME ? ['ADMIN_USERNAME'] : []),
+  ...(localSignIn && !process.env.ADMIN_PASSWORD ? ['ADMIN_PASSWORD'] : []),
+  ...(!process.env.ADMIN_EMAIL ? ['ADMIN_EMAIL'] : []),
+];
+if (missingAdmin.length > 0) {
+  console.error(`✖ Missing required admin configuration: ${missingAdmin.join(', ')}`);
   console.error('  Copy .env.example to .env and fill in your admin credentials.');
   process.exit(1);
 }
@@ -177,6 +191,14 @@ try {
   console.error(`[${new Date().toISOString()}] instance bootstrap failed:`, err);
 }
 
+// A hosted instance ends the sessions it no longer accepts (services/sessions-hosted.js). A failure here is
+// logged and the boot goes on: validation refuses those sessions regardless.
+try {
+  await endSessionsOutsideOidc();
+} catch (err) {
+  console.error(`[${new Date().toISOString()}] hosted session purge failed:`, err);
+}
+
 // Outbound webhooks (services/webhooks.js): make the env subscription match
 // WEBHOOK_URL / WEBHOOK_SECRET / WEBHOOK_WORKSPACE_ID, then fill the cache
 // emitEvent matches against, and refresh it every minute. Neither may stop
@@ -265,6 +287,18 @@ server.on('error', (err) => {
 
 // Attach WebSocket collaborative editing server to the HTTP server
 setupCollabServer(server);
+
+// Open sockets are re-checked every minute, so a session ended after its socket authenticated closes the socket
+// (services/socket-sweep.js). The sweep is a function of the two servers, not of either one alone.
+startSocketSweep({
+  sweep: async () => {
+    const closed = await sweepSocketSessions({
+      openDigests: () => new Set([...openCollabDigests(), ...openUserChannelDigests()]),
+      closeSessions: (digests) => closeCollabSessions(digests) + closeUserChannelSessions(digests),
+    });
+    if (closed > 0) console.error(`[${new Date().toISOString()}] socket sweep: closed ${closed} sockets whose session has ended`);
+  },
+});
 console.log('✔ Collaborative editing WebSocket server attached');
 
 // Attach user-scoped notification WebSocket server (for inbox push)

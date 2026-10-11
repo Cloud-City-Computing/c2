@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { hashSessionToken } from './services/session-token.js';
+import { localSignInEnabled } from './services/auth-providers.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 // The repository root's .env, one level up; quiet, since the image has none to report.
@@ -252,14 +253,19 @@ export async function validateAndAutoLogin(sessionToken) {
   if (!isTokenShaped(sessionToken)) return null;
 
   const [session] = await c2_query(
-    `SELECT user_id, expires_at FROM sessions WHERE id = ? LIMIT 1`,
+    `SELECT user_id, expires_at, auth_provider FROM sessions WHERE id = ? LIMIT 1`,
     [hashSessionToken(sessionToken)]
   );
 
   if (!session || session.expires_at <= new Date()) return null;
 
+  // Hosted mode (no local sign-in) takes only sessions minted by OIDC. A session from before the switch
+  // carries 'local' or 'google', and it ends here, so OIDC is the only way in. See services/auth-providers.js.
+  if (!localSignInEnabled() && session.auth_provider !== 'oidc') return null;
+
+  // A deactivated user keeps their authorship and loses access: the same null as a missing row.
   const [user] = await c2_query(
-    `SELECT id, name, email, avatar_url, is_admin FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, name, email, avatar_url, is_admin FROM users WHERE id = ? AND deactivated_at IS NULL LIMIT 1`,
     [session.user_id]
   );
 

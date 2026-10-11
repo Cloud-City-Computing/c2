@@ -14,11 +14,12 @@ import express from 'express';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { c2_query, generateSessionToken } from '../mysql_connect.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireProviderOffered } from '../middleware/auth.js';
 import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL } from './helpers/shared.js';
 import { resolveIdentity, isSecondLinkForProvider } from '../services/identity.js';
 import { sessionCookieName, COOKIE_OWS } from '../services/session-cookie.js';
 import { getOidcConfig } from '../services/oidc.js';
+import { offeredProviders } from '../services/auth-providers.js';
 
 const router = express.Router();
 
@@ -187,10 +188,13 @@ setInterval(() => {
  */
 router.get('/oauth/providers', (_req, res) => {
   const oidc = getOidcConfig();
+  const offered = offeredProviders();
   res.json({
     success: true,
     providers: {
-      google: isGoogleOAuthConfigured(),
+      // local is the password sign-in: false on a hosted instance (AUTH_PROVIDERS without local).
+      local: offered.has('local'),
+      google: isGoogleOAuthConfigured() && offered.has('google'),
       github: isGitHubOAuthConfigured(),
       // name is the label on the sign-in button; OIDC_PROVIDER_NAME, default SSO.
       oidc: { enabled: oidc !== null, name: oidc?.providerName ?? (process.env.OIDC_PROVIDER_NAME || 'SSO') },
@@ -202,7 +206,7 @@ router.get('/oauth/providers', (_req, res) => {
  * GET /api/oauth/google
  * Redirects the user to Google's OAuth consent screen.
  */
-router.get('/oauth/google', (req, res) => {
+router.get('/oauth/google', requireProviderOffered('google'), (req, res) => {
   if (!isGoogleOAuthConfigured()) {
     return res.status(404).json({ success: false, message: 'Google OAuth is not configured' });
   }
@@ -227,7 +231,7 @@ router.get('/oauth/google', (req, res) => {
  * Handles the redirect back from Google after consent.
  * Links or creates an account, then redirects to the app with a session.
  */
-router.get('/oauth/google/callback', asyncHandler(async (req, res) => {
+router.get('/oauth/google/callback', requireProviderOffered('google'), asyncHandler(async (req, res) => {
   const { code, state, error: oauthError } = req.query;
 
   if (oauthError) {

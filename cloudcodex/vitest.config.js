@@ -155,6 +155,9 @@ export default defineConfig({
         // local user here. Measured at 100% on all four when it landed
         // (W6-CDX-4); the buffer allows a small uncovered guard, not a branch.
         'services/identity.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
+        // The sign-in provider rules (W6-CDX-8). Measured on its own test file when it landed; the
+        // uncovered lines are the defensive guards on configuration the boot check already refused.
+        'services/auth-providers.js': { lines: 83, statements: 83, branches: 80, functions: 85 },
         // The one definition of how a session token is stored (W6-CDX-2): one
         // function with no branches, measured at 100%.
         'services/session-token.js': { lines: 95, statements: 95, branches: 95, functions: 95 },

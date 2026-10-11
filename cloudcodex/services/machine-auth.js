@@ -182,7 +182,8 @@ export async function verifyMachineCredential(token) {
  */
 async function principalFor(email) {
   const [row] = await c2_query(
-    'SELECT id, name, email, is_admin FROM users WHERE email = ? LIMIT 1',
+    // A deactivated service user is no principal, on either path: the same answer as a missing row.
+    'SELECT id, name, email, is_admin FROM users WHERE email = ? AND deactivated_at IS NULL LIMIT 1',
     [email]
   );
   if (!row) {
@@ -193,7 +194,7 @@ async function principalFor(email) {
     // comparison above, so it cannot be driven by an anonymous flood.
     console.error(
       `[${new Date().toISOString()}] machine-auth: SERVICE_TOKEN_USER "${email}" ` +
-      'matches no user, refusing to issue a machine principal'
+      'matches no active user (missing, or deactivated), refusing to issue a machine principal'
     );
     return null;
   }
