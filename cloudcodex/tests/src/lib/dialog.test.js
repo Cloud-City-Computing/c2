@@ -44,7 +44,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  closeDialog();
+  // Drain the stack: a test that leaves dialogs open must not leak them into the next.
+  for (let i = 0; i < 10; i += 1) closeDialog();
   appRoot.remove();
   host.remove();
   document.body.style.overflow = '';
@@ -220,3 +221,102 @@ describe('listeners', () => {
     remove.mockRestore();
   });
 });
+
+describe('nested dialogs', () => {
+  it('closing the inner dialog leaves the outer one inert-protected, trapped, Escape-able, and focused inside it', () => {
+    const onEscapeA = vi.fn();
+    const onEscapeB = vi.fn();
+    const a = makeDialog('<h2>Outer</h2><button id="a1">a1</button><button id="a2">a2</button>');
+    openDialog(a, { onEscape: onEscapeA });
+    const a1 = document.getElementById('a1');
+    a1.focus();
+    const b = makeDialog('<h2>Inner</h2><button id="b1">b1</button>');
+    const entryB = openDialog(b, { onEscape: onEscapeB });
+    expect(document.activeElement.id).toBe('b1');
+
+    closeDialog(entryB);
+    expect(appRoot.hasAttribute('inert')).toBe(true);
+    expect(a.isConnected).toBe(true);
+    expect(a.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(a1);
+
+    keyOn(document.activeElement, 'Escape');
+    expect(onEscapeA).toHaveBeenCalledTimes(1);
+    expect(onEscapeB).not.toHaveBeenCalled();
+
+    const tabOut = keyOn(document.getElementById('a2'), 'Tab');
+    expect(tabOut.defaultPrevented).toBe(false);
+  });
+
+  it('closing the outer dialog then returns focus to its opener, and the root is released', () => {
+    const a = makeDialog('<h2>Outer</h2><button id="a1">a1</button>');
+    openDialog(a);
+    const b = makeDialog('<h2>Inner</h2><button id="b1">b1</button>');
+    const entryB = openDialog(b);
+    closeDialog(entryB);
+    closeDialog();
+    expect(appRoot.hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('gives the inner dialog the opener it was opened from, when that element is still on the page', () => {
+    const a = makeDialog('<h2>Outer</h2><button id="a1">a1</button>');
+    openDialog(a);
+    document.getElementById('a1').focus();
+    const b = makeDialog('<h2>Inner</h2><button id="b1">b1</button>');
+    const entryB = openDialog(b);
+    closeDialog(entryB);
+    expect(document.activeElement.id).toBe('a1');
+  });
+});
+
+describe('Escape from inside a dialog', () => {
+  it('ignores an Escape that is part of an IME composition', () => {
+    const onEscape = vi.fn();
+    const wrapper = makeDialog('<button>x</button>');
+    openDialog(wrapper, { onEscape });
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true }));
+    expect(onEscape).not.toHaveBeenCalled();
+  });
+
+  it('ignores an Escape whose keyCode is 229 (the IME process key)', () => {
+    const onEscape = vi.fn();
+    const wrapper = makeDialog('<button>x</button>');
+    openDialog(wrapper, { onEscape });
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { value: 229 });
+    document.activeElement.dispatchEvent(event);
+    expect(onEscape).not.toHaveBeenCalled();
+  });
+
+  it('ignores an Escape that a control inside the dialog has already handled', () => {
+    const onEscape = vi.fn();
+    const wrapper = makeDialog('<div id="popup"><button id="pick">pick</button></div>');
+    openDialog(wrapper, { onEscape });
+    document.getElementById('pick').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') e.preventDefault();
+    });
+    document.getElementById('pick').focus();
+    keyOn(document.getElementById('pick'), 'Escape');
+    expect(onEscape).not.toHaveBeenCalled();
+  });
+
+  it('still closes on a plain Escape', () => {
+    const onEscape = vi.fn();
+    const wrapper = makeDialog('<button>x</button>');
+    openDialog(wrapper, { onEscape });
+    keyOn(document.activeElement, 'Escape');
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the opener is captured before the content mounts', () => {
+  it('uses the opener passed in, not whatever autoFocus put inside the dialog', () => {
+    const wrapper = makeDialog('<input id="typed" />');
+    wrapper.querySelector('#typed').focus();
+    openDialog(wrapper, { opener });
+    closeDialog();
+    expect(document.activeElement).toBe(opener);
+  });
+});
+

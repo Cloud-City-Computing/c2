@@ -13,11 +13,13 @@
  * https://cloudcitycomputing.com
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { openDialog, closeDialog } from '../lib/dialog.js';
 
 export default function useDialog(ref, { open = true, onEscape } = {}) {
   const escape = useRef(onEscape);
+  // Read before the first render, so an autoFocus inside the dialog cannot become its opener.
+  const [opener] = useState(() => document.activeElement);
 
   useEffect(() => {
     escape.current = onEscape;
@@ -26,7 +28,7 @@ export default function useDialog(ref, { open = true, onEscape } = {}) {
   useEffect(() => {
     const node = ref.current;
     if (!open || !node) return undefined;
-    const entry = openDialog(node, { onEscape: () => escape.current?.() });
+    const entry = openDialog(node, { onEscape: () => escape.current?.(), opener });
     return () => closeDialog(entry);
-  }, [ref, open]);
+  }, [ref, open, opener]);
 }

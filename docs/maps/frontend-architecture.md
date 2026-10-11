@@ -143,7 +143,12 @@ keeps the one overlay and the one claim. The contract is four plain modules:
 `src/lib/focus-trap.js` (`FOCUSABLE`, `trapTab`), `src/lib/overlay.js` (the
 inert-and-no-scroll counter), `src/lib/focus-claim.js` (the opener; a detached
 opener falls back to the first control in `#root`), and `src/lib/dialog.js`
-(`openDialog`, `closeDialog`, one keydown listener for the page's life).
+(`openDialog`, `closeDialog`, one keydown listener for the page's life). Dialogs
+form a stack: only the top one is trapped and receives Escape, each holds its own
+overlay count so an inner close leaves the root inert for the outer, and Escape
+inside a dialog is ignored when it is composing, keyCode 229, or already
+`defaultPrevented` by a control in the dialog. A GitHub modal's Escape goes
+through the same guards as its button (a discard prompt, or nothing while in flight).
 
 A dialog that renders in the page instead (the GitHub modals in `GitHubPage.jsx`,
 `ImageCropModal`, the `FirstRunGate` welcome) uses `useDialog`

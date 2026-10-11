@@ -70,4 +70,24 @@ describe('focus claim', () => {
     expect(() => restoreOpener()).not.toThrow();
     expect(document.activeElement.id).toBe('brand');
   });
+
+  it('refuses document.body as the opener, and focuses the fallback instead', () => {
+    const elsewhere = document.createElement('input');
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    rememberOpener(document.body);
+    restoreOpener();
+    expect(document.activeElement.id).toBe('brand');
+    elsewhere.remove();
+  });
+
+  it('falls back when the claimed opener cannot take focus', () => {
+    const plain = document.createElement('div');
+    appRoot.appendChild(plain);
+    plain.focus();
+    rememberOpener(plain);
+    document.body.focus();
+    restoreOpener();
+    expect(document.activeElement.id).toBe('brand');
+  });
 });

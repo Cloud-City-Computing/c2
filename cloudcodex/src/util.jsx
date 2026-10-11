@@ -8,7 +8,6 @@
 import { createRoot } from 'react-dom/client';
 import DOMPurify from 'dompurify';
 import { openDialog, closeDialog } from './lib/dialog.js';
-import { rememberOpener } from './lib/focus-claim.js';
 
 // --- Constants ---
 
@@ -548,11 +547,16 @@ export function hideModalDimmer() {
   if (dimmer) dimmer.style.display = 'none';
 }
 
+// The dialog entry of the open modal (see lib/dialog.js), so destroyModal closes that one even
+// when an in-page dialog has been opened on top of it.
+let modalEntry = null;
+
 export function destroyModal() {
   const modalRoot = getModalRoot();
   if (modalRoot) clearInner(modalRoot);
   hideModalDimmer();
-  closeDialog();
+  closeDialog(modalEntry);
+  modalEntry = null;
 }
 
 export function showModalDimmer(onClose) {
@@ -578,13 +582,13 @@ export function showModal(content, extraClass = '', { labelledBy } = {}) {
   const modalRoot = getModalRoot();
   if (!modalRoot) return;
 
-  // Claimed before the content renders, so an autoFocus inside it cannot become the opener.
-  rememberOpener();
+  // Captured before the content renders, so an autoFocus inside it cannot become the opener.
+  const opener = document.activeElement;
   clearInner(modalRoot);
   const wrapper = createAndAppend(modalRoot, 'div', `modal-content-wrapper ${extraClass}`.trim());
   getOrCreateRoot(wrapper).render(content);
   showModalDimmer(destroyModal);
-  openDialog(wrapper, { labelledBy, onEscape: destroyModal });
+  modalEntry = openDialog(wrapper, { labelledBy, onEscape: destroyModal, opener });
 }
 
 /**

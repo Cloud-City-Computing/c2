@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchArchives, createArchive, updateArchive, deleteArchive,
@@ -677,9 +677,25 @@ export function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
 // ExploreCard: the tree row is the piece worth testing on its own.
 export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDeleted, getLogUsers }) {
   const [expanded, setExpanded] = useState(depth === 0);
+  const rowRef = useRef(null);
   const [commentCount, setCommentCount] = useState(0);
   const navigate = useNavigate();
   const activeUsers = getLogUsers(log.id);
+
+  // A deleted row unmounts with focus still in it (its dialog returned focus to the delete button,
+  // and the refresh removes the row). Removed, that focus would fall to <body>, so move it first, to
+  // the next row, which stays. The cleanup runs before the row leaves the DOM, so the move can see it.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    return () => {
+      if (!row || !row.contains(document.activeElement)) return;
+      const stable = row.nextElementSibling ?? row.previousElementSibling;
+      const target = stable?.querySelector('button, a[href]') ?? row.parentElement;
+      if (!target) return;
+      if (target === row.parentElement) target.tabIndex = -1;
+      target.focus();
+    };
+  }, []);
 
   // Load open comment count
   useEffect(() => {
@@ -728,7 +744,7 @@ export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDele
   };
 
   return (
-    <li className="log-tree-item" style={{ paddingLeft: `${depth * 16}px` }}>
+    <li className="log-tree-item" ref={rowRef} style={{ paddingLeft: `${depth * 16}px` }}>
       <div className="log-tree-row">
         {log.children?.length > 0 && (
           <button className="log-tree-toggle" onClick={() => setExpanded(e => !e)}

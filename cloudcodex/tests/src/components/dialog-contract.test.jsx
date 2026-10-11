@@ -158,3 +158,44 @@ describe('the dialog contract, for the dialogs opened through showModal', () => 
     opener.remove();
   });
 });
+
+describe('Escape on a dialog with unsaved work asks before it closes', () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(() => new Promise(() => {}));
+  });
+
+  it('NewFileModal: Cancel on the discard prompt keeps the dialog and what was typed', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(
+      <MemoryRouter>
+        <NewFileModal owner="o" repo="r" branch="main" branches={['main']} onCreated={vi.fn()} onClose={onClose} />
+      </MemoryRouter>,
+    );
+    const path = screen.getByPlaceholderText('e.g. docs/guide.md');
+    await user.type(path, 'docs/unsaved.md');
+    await user.keyboard('{Escape}');
+    expect(confirm).toHaveBeenCalledWith('You have unsaved work. Discard and close?');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('e.g. docs/guide.md')).toHaveValue('docs/unsaved.md');
+    confirm.mockRestore();
+  });
+
+  it('NewFileModal: OK on the discard prompt closes it', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <MemoryRouter>
+        <NewFileModal owner="o" repo="r" branch="main" branches={['main']} onCreated={vi.fn()} onClose={onClose} />
+      </MemoryRouter>,
+    );
+    await user.type(screen.getByPlaceholderText('e.g. docs/guide.md'), 'x');
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
+  });
+});
+

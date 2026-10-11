@@ -427,13 +427,6 @@ export function CommitPanel({ owner, repo, filePath, fileSha, content, branch, o
     if (result || error) modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [result, error]);
 
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !committing) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [committing, onClose]);
-
   const handleCommit = async () => {
     setError(null);
     setResult(null);
@@ -656,20 +649,6 @@ export function NewFileModal({ owner, repo, branch, branches, onCreated, onClose
     if (result || error) modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [result, error]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape' && !creating) {
-        if (hasWork && !result) {
-          // eslint-disable-next-line no-alert
-          if (!window.confirm('You have unsaved work. Discard and close?')) return;
-        }
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [creating, onClose, hasWork, result]);
-
   const isMarkdown = /\.(md|mdx|markdown)$/i.test(filePath);
 
   const isUpdate = fileMode === 'existing' && Boolean(selectedSha);
@@ -828,7 +807,17 @@ export function NewFileModal({ owner, repo, branch, branches, onCreated, onClose
   };
 
   const dialogRef = useRef(null);
-  useDialog(dialogRef, { onEscape: creating ? null : onClose });
+  // Escape is the dialog's close, so it gets the same guards as the button: nothing while a create
+  // is in flight, and a discard prompt when there is typed work the user has not saved.
+  const handleEscape = () => {
+    if (creating) return;
+    if (hasWork && !result) {
+      // eslint-disable-next-line no-alert
+      if (!window.confirm('You have unsaved work. Discard and close?')) return;
+    }
+    onClose();
+  };
+  useDialog(dialogRef, { onEscape: handleEscape });
   return createPortal(
     <div className="gh-modal-backdrop" onClick={handleBackdropClick}>
       <div className="gh-modal gh-modal--wide" role="dialog" aria-modal="true" ref={dialogRef}>
@@ -1026,12 +1015,6 @@ export function DeleteFileModal({ owner, repo, filePath, fileSha, branch, onDele
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !deleting) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [deleting, onClose]);
-
   const handleDelete = async () => {
     setError(null);
     setDeleting(true);
@@ -1098,12 +1081,6 @@ export function RenameFileModal({ owner, repo, filePath, branch, onRenamed, onCl
   const [message, setMessage] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !renaming) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [renaming, onClose]);
 
   const handleRename = async () => {
     const trimmed = newPath.trim().replace(/^\//, '');
@@ -1659,12 +1636,6 @@ export function ImportToCodexModal({ owner, repo, filePath, branch, onClose, onI
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' && !importing) onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [importing, onClose]);
 
   useEffect(() => {
     (async () => {
