@@ -6,8 +6,20 @@
  */
 
 import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
-import { verifyMachineCredential } from '../services/machine-auth.js';
+import { verifyMachineCredential, MachineAuthUnavailable } from '../services/machine-auth.js';
 import { readSessionCookie, legacyCookieAllowed } from '../services/session-cookie.js';
+
+/**
+ * A machine credential the issuer's keys could not verify (W6-CDX-7) is an outage, not a refusal:
+ * 503, so the caller retries instead of treating its credential as revoked. Anything else is a
+ * real error and goes to the default handler.
+ */
+function machineFailure(err, res, next) {
+  if (err instanceof MachineAuthUnavailable) {
+    return res.status(503).json({ success: false, message: 'Machine authentication is temporarily unavailable' });
+  }
+  return next(err);
+}
 
 /**
  * The bearer token in the Authorization header, or null. A bare "Bearer " is
@@ -97,7 +109,7 @@ export function machineOrAuth(req, res, next) {
       req.user = principal;
       next();
     })
-    .catch(next);
+    .catch((err) => machineFailure(err, res, next));
 }
 
 /**
@@ -139,7 +151,7 @@ export function requireMachine(req, res, next) {
       req.user = principal;
       next();
     })
-    .catch(next);
+    .catch((err) => machineFailure(err, res, next));
 }
 
 /**

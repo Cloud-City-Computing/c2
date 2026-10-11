@@ -116,6 +116,12 @@ export const ENV_CONTRACT = [
       + 'at least 32 characters' },
   { name: 'SERVICE_TOKEN_USER', kind: 'optional', perInstance: true,
     why: 'the email of the existing non-admin user whose access the machine credential acts with' },
+  { name: 'MACHINE_OIDC_AUDIENCE', kind: 'optional', perInstance: true,
+    why: 'this instance\'s own Zitadel project id; with OIDC_ISSUER_URL and MACHINE_OIDC_SUBJECTS, turns on '
+      + 'machine JWTs, and a token must carry it in aud' },
+  { name: 'MACHINE_OIDC_SUBJECTS', kind: 'optional', perInstance: true,
+    why: 'a comma list of this instance\'s allowlisted service-user ids (the token sub); with the two above, '
+      + 'turns on machine JWTs, and a token from any other subject is refused' },
 
   // Outbound webhooks
   { name: 'WEBHOOK_URL', kind: 'optional', perInstance: true,
