@@ -15,10 +15,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
+  contrastRatio, parseColor, parseThemeTokens, relativeLuminance, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { CURSOR_COLORS } from '../../services/cursor-colors.js';
-import { avatarLabel, INK_HEX } from '../../src/lib/avatar-label.js';
+import { avatarLabel, INK_LUMINANCE } from '../../src/lib/avatar-label.js';
 import { ROOT } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
@@ -39,11 +39,8 @@ describe('the presence palette', () => {
     for (const c of CURSOR_COLORS) expect(c).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
-  it('pins the ink constant to the --cx-on-accent token it stands for', () => {
-    const token = paintOf('var(--cx-on-accent)');
-    const hex = parseColor(INK_HEX);
-    expect(round(contrastRatio(hex, parseColor('#fff')), 1))
-      .toBe(round(contrastRatio(token, parseColor('#fff')), 1));
+  it('pins the ink luminance to the --cx-on-accent token it stands for', () => {
+    expect(relativeLuminance(paintOf('var(--cx-on-accent)'))).toBeCloseTo(INK_LUMINANCE, 9);
   });
 
   it.each(CURSOR_COLORS)('%s: the chosen label clears 4.5:1 on it', (bg) => {

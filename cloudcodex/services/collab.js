@@ -18,6 +18,7 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { validateAndAutoLogin } from '../mysql_connect.js';
+import { CURSOR_COLORS } from './cursor-colors.js';
 import { hashSessionToken } from './session-token.js';
 import { markSessionsClosed, sessionClosedRecently } from './closed-sessions.js';
 import { c2_query } from '../mysql_connect.js';
@@ -332,15 +333,10 @@ function broadcastAwareness(entry) {
   }
 }
 
-// Color palette for user cursors
-const COLORS = [
-  '#2ca7db', '#e5544e', '#50c878', '#ffa500', '#9b59b6',
-  '#e91e63', '#00bcd4', '#8bc34a', '#ff5722', '#607d8b',
-];
-
+// Color palette for user cursors (services/cursor-colors.js, shared with the presence label helper)
 let colorIndex = 0;
 function nextColor() {
-  const c = COLORS[colorIndex % COLORS.length];
+  const c = CURSOR_COLORS[colorIndex % CURSOR_COLORS.length];
   colorIndex++;
   return c;
 }

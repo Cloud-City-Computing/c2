@@ -61,8 +61,15 @@
   --cx-danger-fill-hover: oklch(0.44 0.19 25);
   --cx-danger-fill-press: oklch(0.38 0.19 25);
   --cx-on-danger: #fff;
-  /* A solid white: the label on a dark accent step, the mark on a filled swatch, the sheet a QR code is drawn on. */
+  /* A solid white: the label on a dark accent step, the danger fill, and a presence avatar on a light cursor colour
+     (src/lib/avatar-label.js); a solid black, the last label a presence avatar falls back to on the two
+     cursor colours that clear 4.5:1 with neither white nor the ink. The labels they set are measured where they
+     sit: painted.test.js for the accent dark and danger fill, presence-palette.test.js for every cursor colour.
+     The swatch check and the QR sheet carry no text. */
   --cx-white: #fff;
+  --cx-ink-deep: #000;
+  /* The info step, bound to the package's fixed accent step (not the picked accent), for an info badge's label. */
+  --cx-info-bright: var(--accent-200);
 
   /* Lines and the overlay wash: flat and tinted. */
   --cx-border: oklch(0.386 0.014 240);

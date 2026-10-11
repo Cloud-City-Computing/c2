@@ -109,6 +109,12 @@
       "on": "surfaces",
       "min": 3,
       "reason": "A focus indicator is a non-text component: 3:1 against every surface it can sit on (WCAG 1.4.11)."
+    },
+    {
+      "text": "--cx-info-bright",
+      "on": "surfaces",
+      "min": 4.5,
+      "reason": "An info badge's label on its fixed info wash, on the strongest surface: AA, and it does not change with the picked accent."
     }
   ],
   "decorative": {
@@ -148,8 +154,9 @@
     "--cx-tint-slate": "A translucent slate wash behind a label; measured over every surface in tests/design/tints.test.js.",
     "--cx-tint-neutral": "A translucent neutral wash behind a label; measured over every surface in tests/design/tints.test.js.",
     "--cx-ring-light": "A pale ring around a hovered swatch; a non-text indicator over the swatch, not text, so it has no contrast minimum.",
-    "--cx-white": "A solid white for a label on a dark fill (measured in painted.test.js), a mark, and the sheet under a QR code; the labels it sets are measured where they sit.",
+    "--cx-white": "A solid white for labels on dark fills (measured in painted.test.js and presence-palette.test.js), a mark, and the sheet under a QR code (no text).",
     "--cx-presence": "The presence dot on the archive and explore pages, a status mark rather than text, so it has no contrast minimum.",
-    "--cx-presence-glow": "The soft glow around the presence dot; a shadow falls on a surface and carries no text."
+    "--cx-presence-glow": "The soft glow around the presence dot; a shadow falls on a surface and carries no text.",
+    "--cx-ink-deep": "A solid black, the last label a presence avatar falls back to on the two cursor colours (#e91e63, #607d8b) that clear 4.5:1 with neither white nor the ink; measured on every cursor colour in tests/design/presence-palette.test.js."
   }
 }

@@ -36,9 +36,9 @@ banners. The Avatar Upload, Archives Management and Account Log banners were alr
 
 - **Comments, editor canvas and draw.io were not burned.** The session brief asked for them, but the
   plan (Task 9.1) and the W6-CDX-28 record both say PR 9 leaves the editor canvas in place, and the
-  suite UI spec defers it to a later wave, because changing layout around the editor moves every
-  comment highlight and remote cursor, and those components have no coverage. They stay in the
-  ledger with `_later` notes. This needs Kyle's confirmation if the brief's reading was intended.
+  spec's deferred list names it, because changing layout around the editor moves every comment highlight
+  and remote cursor, and those components have no coverage. They stay in the ledger with `_later` notes
+  that point at the roadmap row UI-later. The orchestrator confirmed this deferral per the plan.
 - **Four leftovers from earlier sessions stay in the ledger**, named in its `_later` notes: Modal and
   Overlay (5), Login Tabs (1), Signup Validation Styles (3), and the Welcome block that follows the
   toast CSS (11). The plan expected only the editor canvas and GitHub to remain. The Login modal's
@@ -133,8 +133,9 @@ tooltip shadow.
 - `cdx29-leftovers-before-1280.png` and `cdx29-leftovers-after-1280.png`: the modal stage, the login
   tabs and signup hints, and the Welcome block, presence avatars and tooltip. Read by eye. Visible:
   the scrim is a blue-grey dark, not black; the "Available" and "At least 12 characters" hints and the
-  "Saved." line are a paler green; the presence tooltip's shadow is a little tighter. Everything else
-  reads the same.
+  "Saved." line are a paler green; the presence tooltip's shadow is a little tighter. The record of
+  every rewrite that is not a same-value change is in the review-round section below, which corrects
+  the earlier claim that everything else reads the same.
 - `cdx29-leftovers-before-390.png` and `cdx29-leftovers-after-390.png`: the same stack at 390 pixels, after
   read for wrap and clipping. No wrap or clipping difference.
 
@@ -174,3 +175,102 @@ height set to show every section.
 - `raw/findings.mjs`: the finding lister used to pick each replacement by line.
 - `raw/oklch.mjs`: the sRGB to OKLCH converter used for the new washes (it reproduces the existing
   accent wash's `oklch(0.686 0.128 231.9)` exactly).
+
+## Review round (momus findings, 2026-10-11, same branch)
+
+Each item below was fixed on this branch, tests first where behaviour changed. The earlier claim that
+"everything else reads the same" was wrong: every rewrite that is not a same-value change is recorded
+here, and the CHANGELOG repeats the list.
+
+### Presence avatars: the label is chosen per cursor colour
+
+The initial on a presence avatar was white on every cursor colour. White reads poorly on most of the
+palette (`#ffa500` measures 1.97:1 and `#8bc34a` 2.10:1 before this fix). `src/lib/avatar-label.js`
+chooses, per colour, the first of white (`--cx-white`), the dark ink (`--cx-on-accent`) or black
+(`--cx-ink-deep`) that clears 4.5:1. The palette now lives in `services/cursor-colors.js`, shared by
+`services/collab.js` and the helper. `PresenceAvatars.jsx` sets the label inline on each avatar and the
+tooltip avatar. `tests/design/presence-palette.test.js` walks every colour, resolves each label through
+the real tokens and measures it with the vendored gate.
+
+| Cursor colour | White | Ink (`--cx-on-accent`) | Black | Chosen | Chosen ratio |
+|---|---|---|---|---|---|
+| `#2ca7db` | 2.74 | 7.06 | 7.66 | ink | 7.06 |
+| `#e5544e` | 3.68 | 5.26 | 5.71 | ink | 5.26 |
+| `#50c878` | 2.13 | 9.10 | 9.87 | ink | 9.10 |
+| `#ffa500` | 1.97 | 9.80 | 10.63 | ink | 9.80 |
+| `#9b59b6` | 4.67 | 4.15 | 4.50 | white | 4.67 |
+| `#e91e63` | 4.35 | 4.45 | 4.83 | black | 4.83 |
+| `#00bcd4` | 2.30 | 8.43 | 9.14 | ink | 8.43 |
+| `#8bc34a` | 2.10 | 9.22 | 10.00 | ink | 9.22 |
+| `#ff5722` | 3.16 | 6.12 | 6.64 | ink | 6.12 |
+| `#607d8b` | 4.37 | 4.43 | 4.80 | black | 4.80 |
+
+Neither white nor the ink clears 4.5:1 on `#e91e63` or `#607d8b`, so black is the third candidate, and
+it is a new token (`--cx-ink-deep`, decorative in `pairs.json`). Changing those two cursor colours
+instead would change the product's palette, so it was not done. The ratios in the table are the vendored
+gate's own measurements (`presence-palette.test.js` asserts the chosen label on each colour).
+
+### The rewrites that are not same-value (recorded, not reverted)
+
+- **`.badge-info` label.** It was `--cx-accent-hover`, which follows the picked accent, so an info badge
+  changed hue with the user's accent. It is now `--cx-info-bright`, bound to the package's fixed accent
+  step (`var(--accent-200)`), so the info badge keeps its hue whatever the accent. Its wash
+  (`--cx-tint-accent-mid`) was already the fixed blue. Pinned in `tints.test.js`.
+- **`.presence-tooltip` background.** The rule read `var(--bg-secondary, #2a2a3e)`, and `--bg-secondary`
+  is not declared, so the tooltip painted `#2a2a3e`. It now paints `--bg-panel` (the Codex panel step,
+  `--cx-surface-2`), a little lighter than the old literal.
+- **`.presence-avatar` border.** The rule read `var(--bg-primary, #1a1a2e)`, and `--bg-primary` is not
+  declared, so the ring painted `#1a1a2e`. It now paints `--cx-surface-0`, the page surface the avatar
+  sits on. The ring is a little lighter than the old navy.
+- **`.setup-checkbox` accent.** The rule read `accent-color: var(--accent, #4a9eff)`, and `--accent` is
+  not declared, so the checkbox was always `#4a9eff`. It now reads `--cx-accent`, so the checkbox
+  follows the picked accent. This is a deliberate choice and is visible: a coral or jade pick now
+  recolours the Welcome checkbox. Kyle may prefer the old fixed blue; that would be `var(--cx-info)`.
+- **`.notification-bell__action` label.** The label was `--cx-accent`. The action's hover paints the
+  accent wash behind it, and the label measured 4.26:1 on the strongest surface. The rule has one colour,
+  so the label steps to `--cx-accent-hover` for the rest state as well as the hover (the rest state is
+  not on a wash, so it is only a shade lighter). The same step applies to the other accent labels on
+  washes; the shell labels below were found by the derived scan.
+- **Shell labels found by the derived scan.** `.cc-suite__link:hover`, `.sidebar__link.active` and
+  `.account-button:hover` painted `--cx-accent` on an accent wash, measuring 4.49, 4.49 and 4.26:1. They
+  now paint `--cx-accent-hover`. These are suite-chrome rules (W6-CDX-25), not part of this PR's banners,
+  and the derived test is what found them.
+- **The scrim is shared.** `--cx-scrim` replaces `rgba(0, 0, 0, 0.6)` on `#dropdown-backshadow`, and
+  `#modal-dimmer` already paints `--cx-scrim`. The scrim is the shared dialog primitive, so every dialog
+  repaints with it, including the GitHub and editor dialogs that are deferred. Their scrim changes from
+  black to the blue-grey Codex scrim, with no other change to those dialogs.
+- **Presence avatar labels** (the palette table above). Initials on the light cursor colours are dark
+  now, where they were white (about 2:1 on orange and green).
+
+### btn-watch stays burned
+
+`.btn-watch` renders in the editor header at `Editor.jsx:1167`, outside the canvas. Its change is colour
+only (`--brand-blue` to `--cx-accent`, and the wash to a token), with no layout, position or structure
+change, and the rule's label is measured on its wash in `tints.test.js`. The spec defers the editor
+canvas and the families on it, not every control near it. So the watch toggle is burned.
+
+### The classification rule, so the two calls agree
+
+Deferral is by family, as the spec names it: the canvas and its annotation, syntax and diff families,
+the comments, and the GitHub surface. A control in the editor's header or toolbar chrome is not one of
+those families, so it burns when its change is colour-only and measured. The Version History panel is
+part of the document page's surfaces, and its restore writes into the canvas, so it stays with the
+canvas: its five findings are not a colour-only change to a control, they are the panel the spec
+defers with the canvas.
+
+### Mutation check on the derived tint scan
+
+The tint list is now derived from `src/index.css`: every rule whose background reads a `--cx-tint-`
+name is measured, with its label taken from its own rule, its bare selector, or the inherited-label
+table. A new wash with a failing label was added as `.zz-mutation-wash { background:
+var(--cx-tint-accent-mid); color: var(--cx-surface-1); }`. Before the revert the file had 1 match for
+the rule; the tints test went red naming `.zz-mutation-wash` (1.37:1 on `--cx-surface-0`); the file was
+restored byte for byte (0 matches, `cmp` clean) and the test passed again (53 of 53).
+
+### Deferred bare washes
+
+The derived scan also checks that no translucent background sits bare on an element that sets a colour.
+Twenty-eight such rules exist, all in the deferred families (GitHub, the editor canvas and its
+toolbar and status, the comments, the read-only document, and the Version History badge). They are
+listed by name in `tints.test.js` (`DEFERRED_BARE`) with the reason, so a new bare wash outside the
+list fails.

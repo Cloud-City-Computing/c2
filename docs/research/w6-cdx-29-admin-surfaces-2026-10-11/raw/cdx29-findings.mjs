@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { banners } from '/home/kadams/Repos/c2-wt/w6-cdx-29-admin-surfaces/cloudcodex/tests/design/buckets.js';
-import { scanRawColorLiterals, scanAccentRampPositions, scanSuppressedOutlines } from '/home/kadams/Repos/c2-wt/w6-cdx-29-admin-surfaces/cloudcodex/vendor/cloud-city-design/gates/token-discipline.mjs';
+import { banners } from '<worktree>/cloudcodex/tests/design/buckets.js';
+import { scanRawColorLiterals, scanAccentRampPositions, scanSuppressedOutlines } from '<worktree>/cloudcodex/vendor/cloud-city-design/gates/token-discipline.mjs';
 const file = process.argv[2];
 const src = readFileSync(file, 'utf8');
 const marks = banners(src);

@@ -64,92 +64,105 @@ const ACCENT_TOKENS = [['default', base], ...Object.entries(ACCENTS).map(([name,
 // The five surfaces a tint can sit on: the page, its panels, a hover and the strongest hover.
 const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-surface-3', '--cx-surface-4'];
 
-// [the site whose background is the tint, the site whose colour is the label]. Each site was
-// a bare rgba() (or a literal label) before this burndown; the label is read from its own rule
-// and, where the rule sets none (a hover), from the rule that does.
-const TINTED = [
-  ['.gh-merge-dialog__warn', '.gh-merge-dialog__warn'],
-  ['.gh-code-embed__stale', '.gh-code-embed__stale'],
-  ['.ci-badge--success', '.ci-badge--success'],
-  ['.ci-badge--failure', '.ci-badge--failure'],
-  ['.ci-badge--in_progress, .ci-badge--queued', '.ci-badge--in_progress, .ci-badge--queued'],
-  ['.gh-reconnect-banner', '.gh-reconnect-banner'],
-  ['.btn-fav-filter--active', '.btn-fav-filter--active'],
-  ['.btn-clear-filters', '.btn-clear-filters'],
-  ['.btn-clear-filters:hover', '.btn-clear-filters'],
-  ['.explore-badge--content', '.explore-badge--content'],
-  ['.explore-badge--title', '.explore-badge--title'],
-  ['.btn-filter-toggle--active', '.btn-filter-toggle--active'],
-  ['.explore-match', '.explore-match'],
-  ['.log-tree-add:hover', '.log-tree-add'],
-  ['.log-tree-delete:hover', '.log-tree-delete'],
-  ['.page-tree-back-btn:hover', '.page-tree-back-btn:hover'],
-  ['.page-tree-add-btn:hover', '.page-tree-add-btn'],
-  ['.page-tree-row--active', '.page-tree-row--active'],
-  ['.page-tree-row--active:hover', '.page-tree-row--active'],
-  ['.page-tree-row-add:hover', '.page-tree-row-add'],
-  // W6-CDX-29: the admin, settings, notification and archive-access surfaces.
-  ['.notification-bell__button:hover,\n.notification-bell__button.has-unread', '.notification-bell__button:hover,\n.notification-bell__button.has-unread'],
-  ['.notification-bell__action:hover', '.notification-bell__action'],
-  ['.notification-item--unread', '.notification-item'],
-  ['.notification-item--unread:hover', '.notification-item'],
-  ['.btn-watch:hover:not(:disabled)', '.btn-watch:hover:not(:disabled)'],
-  ['.settings-item.active', '.settings-item.active'],
-  ['.user-search__item:hover', 'var(--cx-text-primary)'],
-  ['.tfa-method-option.active', 'var(--cx-text-primary)'],
-  ['.admin-sidebar__item.active', '.admin-sidebar__item.active'],
-  ['.admin-badge--admin', '.admin-badge--admin'],
-  ['.admin-badge--admin:hover', '.admin-badge--admin'],
-  ['.admin-badge--user:hover', '.admin-badge--user:hover'],
-  ['.admin-role-badge--owner', '.admin-role-badge--owner'],
-  ['.admin-role-badge--admin', '.admin-role-badge--admin'],
-  ['.admin-activity-doc', '.admin-activity-doc'],
-  ['.status-badge--pending', '.status-badge--pending'],
-  ['.status-badge--accepted', '.status-badge--accepted'],
-  ['.status-badge--expired', '.status-badge--expired'],
-  ['.panel-status.success', '.panel-status.success'],
-  ['.panel-status.error', '.panel-status.error'],
-  ['.btn-danger.btn-ghost:hover,\n.btn.btn-ghost.btn-danger:hover', '.btn-danger.btn-ghost,\n.btn.btn-ghost.btn-danger'],
-  ['.badge-info', '.badge-info'],
-  ['.badge-warning', '.badge-warning'],
-  ['.badge-accent', '.badge-accent'],
-  ['.badge-muted', '.badge-muted'],
+/** Every rule of src/index.css as { selector, body }: comments blanked, at-rule headers skipped. */
+const RULES = (() => {
+  const css = index.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((m) => ({ selector: m[1].replace(/\s+/g, ' ').trim(), body: m[2] }))
+    .filter((r) => !r.selector.startsWith('@'));
+})();
+
+/** The last value a rule declares for one property, or undefined. */
+function ruleValue(selector, prop) {
+  let value;
+  for (const r of RULES) {
+    if (r.selector !== selector) continue;
+    for (const d of r.body.matchAll(/(?:^|;|\s)([a-z-]+)\s*:\s*([^;]+);/g)) if (d[1] === prop) value = d[2].trim();
+  }
+  return value;
+}
+
+/** A selector with its pseudo-classes stripped, so a hover names the element whose colour it inherits. */
+const bareSelector = (sel) => sel.split(',').map((s) => s.replace(/:[a-z-]+(\([^)]*\))?/g, '').trim()).join(', ');
+
+// The label where neither the rule nor its bare element sets a colour: the text colour the element
+// inherits from its body. Each entry is measured like any other label, so the inheritance is checked.
+const INHERITED_LABELS = {
+  '.user-search__item:hover': 'var(--cx-text-primary)',
+  '.tfa-method-option.active': 'var(--cx-text-primary)',
+  // The unread modifier sets the wash on the row, and its text is the row's own colour.
+  '.notification-item--unread': '.notification-item',
+  '.notification-item--unread:hover': '.notification-item',
+};
+
+// The translucent backgrounds the deferred families still paint bare: the GitHub surface (GitHubPage,
+// the .gh-* block), the editor canvas (.tiptap chips, toolbar, the editor status and code language badge),
+// the comments (the selection and quote), the read-only document and the Version History badge. Each waits
+// for the roadmap's UI-later row, and each must be converted with its family. A new bare wash outside this
+// list fails the test above.
+const DEFERRED_BARE = [
+  '.mention', '.gh-export-banner', '.gh-import-source__path', '.gh-btn-danger-ghost:hover',
+  '.gh-history__commit-sha code', '.gh-history__full-msg', '.gh-history__file-status--added',
+  '.gh-history__file-status--modified', '.gh-history__file-status--removed', '.gh-history__file-status--renamed',
+  '.gh-file-actions .btn.active', '.gh-pr-badge--open', '.gh-pr-badge--closed', '.gh-pr-badge--merged',
+  '.gh-diff__hunk-header', '.gh-history__detail-actions .btn.active', '.editor-status.success',
+  '.editor-status.error', '.tiptap-toolbar__btn:hover', '.tiptap-toolbar__btn--active', '.resize-badge',
+  '.markdown-editor__rendered blockquote', '.version-list__badge', '.comment-thread__selection',
+  '.comment-manager__item-quote', '.document-readonly blockquote', '.code-lang-badge', '.document-readonly code',
 ];
 
-
-describe('every translucent tint is a --cx- binding, never a bare rgba()', () => {
-  it.each(TINTED)('%s paints its background from a --cx-tint- name', (bgSite) => {
-    expect(declared(bgSite, 'background'), bgSite).toMatch(/^var\(--cx-tint-[\w-]+\)$/);
+// Every rule that paints a --cx-tint- wash behind its element, with the label that sits on it. Derived
+// from the stylesheet, so a new wash with a label is measured without being listed here.
+const TINT_SITES = RULES
+  .filter((r) => /(?:^|[;\s])background(?:-color)?\s*:\s*var\(--cx-tint-[\w-]+\)/.test(r.body))
+  .map((r) => {
+    const inherited = INHERITED_LABELS[r.selector];
+    const label = ruleValue(r.selector, 'color') ?? ruleValue(bareSelector(r.selector), 'color')
+      ?? (inherited?.startsWith('.') ? ruleValue(inherited, 'color') : inherited);
+    if (label === undefined) throw new Error(`${r.selector}: no label rule and no inherited-label entry`);
+    const bgProp = /(?:^|[;\s])background-color\s*:/.test(r.body) ? 'background-color' : 'background';
+    return { site: r.selector, label, bgProp };
   });
 
-  it('declares each tint in codex.css as a translucent colour the gate can read', () => {
-    for (const [bgSite] of TINTED) {
-      const name = /var\((--[\w-]+)\)/.exec(declared(bgSite, 'background'))[1];
-      expect(parseColor(resolveTokenValue(base, name)), `${name} is not a translucent colour`).toBeDefined();
-      expect(parseColor(resolveTokenValue(base, name)).alpha, `${name} is opaque`).toBeLessThan(1);
+describe('every wash behind a label is a --cx- tint, derived from the stylesheet', () => {
+  it('finds every wash-bearing rule, so the derived list cannot quietly shrink', () => {
+    expect(TINT_SITES.length).toBeGreaterThanOrEqual(45);
+  });
+
+  it('names no bare translucent background on an element that sets a colour, outside the deferred families', () => {
+    const bare = RULES
+      .filter((r) => /(?:^|[;\s])background(?:-color)?\s*:\s*(rgba?\(|oklch\([^)]*\/)/.test(r.body))
+      .filter((r) => ruleValue(r.selector, 'color') !== undefined)
+      .map((r) => r.selector);
+    expect(bare.filter((sel) => !DEFERRED_BARE.includes(sel)),
+      'a translucent background must be a --cx-tint- name (or join DEFERRED_BARE with a reason)').toEqual([]);
+    expect(DEFERRED_BARE.filter((sel) => !bare.includes(sel)), 'a DEFERRED_BARE entry no longer paints bare').toEqual([]);
+  });
+
+  it('declares each wash in codex.css as a translucent colour the gate can read', () => {
+    for (const { site, bgProp } of TINT_SITES) {
+      const name = /var\((--[\w-]+)\)/.exec(ruleValue(site, bgProp))[1];
+      const colour = parseColor(resolveTokenValue(base, name));
+      expect(colour, `${name} is not a translucent colour`).toBeDefined();
+      expect(colour.alpha, `${name} is opaque`).toBeLessThan(1);
     }
   });
 });
 
-describe('a label on a tint is at 4.5:1 or more on the tint over every surface, on every accent', () => {
-  it.each(TINTED)('%s over %s', (bgSite, labelSite) => {
+describe('a label on a wash is at 4.5:1 or more on the wash over every surface, on every accent', () => {
+  it.each(TINT_SITES.map((t) => [t.site, t.label, t.bgProp]))('%s', (site, label, bgProp) => {
     const measured = [];
     for (const [name, tokens] of ACCENT_TOKENS) {
-      const tint = paint(declared(bgSite, 'background'), tokens);
-      const label = labelSite.startsWith('var(') ? paint(labelSite, tokens) : paint(declared(labelSite, 'color'), tokens);
+      const tint = paint(ruleValue(site, bgProp), tokens);
+      const text = paint(label, tokens);
       for (const surface of SURFACES) {
         const flat = compositeOver(tint, paint(`var(${surface})`, tokens));
-        const ratio = contrastRatio(label, flat);
+        const ratio = contrastRatio(text, flat);
         measured.push(ratio);
-        expect(ratio, `${bgSite} label on ${surface} (${name}) measures ${round(ratio)}:1`)
-          .toBeGreaterThanOrEqual(4.5);
+        expect(ratio, `${site} label on ${surface} (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
       }
     }
     expect(measured.length).toBe(ACCENT_TOKENS.length * SURFACES.length);
-  });
-
-  it('measures every site, so the list cannot quietly shrink', () => {
-    expect(TINTED.length).toBeGreaterThanOrEqual(45);
   });
 });
 

@@ -1,5 +1,5 @@
 
- RUN  v4.1.11 /home/kadams/Repos/c2-wt/w6-cdx-29-admin-surfaces/cloudcodex
+ RUN  v4.1.11 <worktree>/cloudcodex
 
 
  Test Files  14 passed (14)

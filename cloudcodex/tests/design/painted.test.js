@@ -346,7 +346,7 @@ describe('the suite cluster labels (W6-CDX-25) are measured on the surface that 
     expect(declared(PANEL, 'background')).toBe('var(--bg-secondary)');
     expect(declared('.cc-suite__link', 'color')).toBe('var(--text-primary)');
     expect(declared('.cc-suite__link[aria-current="true"]', 'color')).toBe('var(--cx-accent)');
-    expect(declared('.cc-suite__link:hover', 'color')).toBe('var(--cx-accent)');
+    expect(declared('.cc-suite__link:hover', 'color')).toBe('var(--cx-accent-hover)');
     expect(declared('.cc-suite__link:hover', 'background')).toBe('var(--cx-tint-accent-soft)');
   });
 

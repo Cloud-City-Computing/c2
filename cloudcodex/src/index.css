@@ -316,7 +316,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .cc-suite__link:hover {
   background: var(--cx-tint-accent-soft);
-  color: var(--cx-accent);
+  color: var(--cx-accent-hover);
 }
 
 .cc-suite__link[aria-current="true"] {
@@ -394,7 +394,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sidebar__link.active {
-  color: var(--cx-accent);
+  color: var(--cx-accent-hover);
   background: var(--cx-tint-accent-soft);
   border-left: 3px solid var(--cx-accent);
 }
@@ -585,7 +585,7 @@ h1, h2, h3, h4, h5, h6 {
   transition: var(--transition);
 }
 .account-button:hover {
-  color: var(--cx-accent);
+  color: var(--cx-accent-hover);
   background: var(--cx-tint-accent);
 }
 .account-button svg {
@@ -5857,7 +5857,7 @@ textarea:focus-visible {
 
 .badge-info {
   background: var(--cx-tint-accent-mid);
-  color: var(--cx-accent-hover);
+  color: var(--cx-info-bright);
 }
 
 .badge-warning {
