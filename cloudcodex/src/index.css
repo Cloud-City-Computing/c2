@@ -1159,7 +1159,7 @@ body {
   transition: var(--transition);
 }
 .search-result-item:hover {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -1169,7 +1169,7 @@ body {
   font-size: 16px;
   font-weight: 600;
 }
-.search-result-item:hover .result-title { color: var(--brand-blue); }
+.search-result-item:hover .result-title { color: var(--cx-accent); }
 
 /* The row stays clickable for the mouse; this button is what the keyboard reaches. */
 .result-title-btn {
