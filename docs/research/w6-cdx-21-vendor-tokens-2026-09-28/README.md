@@ -1,6 +1,6 @@
 # W6-CDX-21: vendoring the design package, and what the first gate run found
 
-Session W6-CDX-21 of the suite UI track (`docs/plans/2026-09-24-suite-ui.md`, PR 1),
+Session W6-CDX-21 of the suite UI track (the suite UI plan (retired in W6-CDX-29; the record is `docs/maps/`), PR 1),
 2026-09-28, branch `track/w6-cdx-21-vendor-tokens`. This folder is the evidence: the
 before and after captures, the computed-style probes behind them, the contrast matrix, the
 ledger's first buckets and the seeded mutations.

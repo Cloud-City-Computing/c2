@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 /home/kadams/Repos/c2-wt/w6-cdx-29-admin-surfaces/cloudcodex
+
+
+ Test Files  14 passed (14)
+      Tests  283 passed (283)
+   Start at  06:03:19
+   Duration  626ms (transform 300ms, setup 0ms, import 898ms, tests 731ms, environment 1ms)
+

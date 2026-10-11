@@ -1,6 +1,6 @@
 # W6-CDX-27: the Linked tasks link, checked
 
-Evidence for PR 7 of `docs/plans/2026-09-24-suite-ui.md`.
+Evidence for PR 7 of the suite UI plan (retired in W6-CDX-29; the record is `docs/maps/`).
 
 ## What was looked at
 

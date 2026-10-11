@@ -412,8 +412,12 @@ load-bearing:
    drop-shadow inks, and its layout sizes and transition. Since W6-CDX-28 it also
    holds the translucent tints (`--cx-tint-*`, measured over every surface by
    `tints.test.js`), the bright text steps a label on a tint steps up to, and the
-   popover shadow.
-4. `src/index.css`, about 8,700 lines, the whole app. No CSS modules, no
+   popover shadow. W6-CDX-29 adds the admin, settings and notification washes at
+   their exact alphas (`--cx-tint-accent-faint` to `-edge`, `-success-quiet`, `-danger-quiet`,
+   `-slate`, `-neutral`), a solid `--cx-white` for labels and marks on dark fills, and
+   `--cx-ring-light` for a swatch's hover ring. A label on a tint that sank below 4.5:1 steps to
+   `--cx-accent-hover` or a bright step, as W6-CDX-28 did.
+4. `src/index.css`, about 9,200 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
    `:focus-visible` rule (`index.css:5422`), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips

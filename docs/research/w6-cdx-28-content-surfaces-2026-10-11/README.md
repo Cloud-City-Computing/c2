@@ -15,7 +15,7 @@ under them and stepped one shade lighter (`--cx-warning-bright`, `--cx-danger-br
 `--cx-success-bright`, `--cx-violet` lifted, and `--cx-accent-hover` on the Page Tree and Log Tree
 rows). The highlight.js comment and keyword hues lifted one step, measured on the code wash
 (`tests/design/code-blocks.test.js`). Plan deviations are recorded in the PR 8 section of
-`docs/plans/2026-09-24-suite-ui.md`.
+the suite UI plan (retired in W6-CDX-29; the record is `docs/maps/`).
 
 ## Captures
 

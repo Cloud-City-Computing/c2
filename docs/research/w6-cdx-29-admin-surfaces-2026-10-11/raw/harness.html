@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>cdx29 admin, settings and social</title>
+<link rel="stylesheet" href="vendor/core.css"><link rel="stylesheet" href="vendor/fonts.css">
+<link rel="stylesheet" href="codex.css"><link rel="stylesheet" href="index.css">
+<style>body{margin:0;padding:16px;background:var(--bg-main);width:auto;box-sizing:border-box} .row{display:block} .col{width:100%;max-width:760px;margin:0 0 28px 0;min-width:0} h4{color:var(--text-muted);font:12px system-ui;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em} .demo{width:100%} .admin-dashboard{min-height:0 !important}</style>
+</head><body>
+<div class="row">
+ <div class="col demo">
+  <h4>Admin dashboard: sidebar, stats and the admin table</h4>
+  <div class="admin-dashboard" style="display:flex;border:1px solid var(--border-color)">
+   <aside class="admin-sidebar" style="width:200px">
+    <div class="admin-sidebar__title">Admin</div>
+    <nav class="admin-sidebar__nav">
+     <button class="admin-sidebar__item"><span class="admin-sidebar__icon">&#9632;</span>Overview</button>
+     <button class="admin-sidebar__item active"><span class="admin-sidebar__icon">&#9632;</span>Users</button>
+     <button class="admin-sidebar__item"><span class="admin-sidebar__icon">&#9632;</span>Squads</button>
+    </nav>
+   </aside>
+   <main class="admin-main" style="flex:1">
+    <div class="admin-stats">
+     <div class="admin-stat-card"><span class="admin-stat-card__icon">&#9733;</span><span class="admin-stat-card__value">128</span><span class="admin-stat-card__label">Users</span></div>
+     <div class="admin-stat-card" style="border-color:var(--cx-accent)"><span class="admin-stat-card__icon">&#9733;</span><span class="admin-stat-card__value">14</span><span class="admin-stat-card__label">Hover</span></div>
+    </div>
+    <div class="admin-panel">
+     <div class="admin-table-wrap"><table class="admin-table">
+      <thead><tr><th>User</th><th>Admin</th><th>Role</th></tr></thead>
+      <tbody>
+       <tr><td class="admin-cell--name">Ada Lovelace</td><td><span class="admin-badge admin-badge--admin">Admin</span></td><td><span class="admin-role-badge admin-role-badge--owner">owner</span></td></tr>
+       <tr><td class="admin-cell--name">Grace Hopper</td><td><span class="admin-badge admin-badge--user">User</span></td><td><span class="admin-role-badge admin-role-badge--admin">admin</span></td></tr>
+       <tr><td class="admin-cell--name">Alan Turing</td><td><span class="admin-badge admin-badge--user">User</span></td><td><span class="admin-role-badge admin-role-badge--member">member</span></td></tr>
+      </tbody>
+     </table></div>
+    </div>
+    <div class="admin-activity-list">
+     <div class="admin-activity-item"><span class="admin-activity-item__user"><span class="admin-online-dot"></span>Ada</span>
+      <span class="admin-activity-item__docs"><span class="admin-activity-doc">Runbook</span><span class="admin-activity-doc">Cutover</span></span></div>
+    </div>
+    <div style="margin-top:12px">
+     <span class="status-badge status-badge--pending">Pending</span>
+     <span class="status-badge status-badge--accepted">Accepted</span>
+     <span class="status-badge status-badge--expired">Expired</span>
+     <span class="status-badge webhook-state webhook-state--delivering">Delivering</span>
+     <span class="status-badge webhook-state webhook-state--stalled">Stalled</span>
+    </div>
+    <div class="admin-squad-card admin-squad-card--expanded" style="margin-top:12px">
+     <div class="admin-squad-card__header"><div class="admin-squad-card__info"><span class="admin-squad-card__name">Platform</span><span class="admin-squad-card__meta">6 members</span></div><span class="admin-squad-card__toggle">&#9662;</span></div>
+    </div>
+    <div style="margin-top:12px"><button class="btn btn-danger btn-ghost">Remove access</button> <button class="btn btn-danger btn-ghost" style="margin-left:8px">Delete squad</button></div>
+   </main>
+  </div>
+ </div>
+
+ <div class="col demo">
+  <h4>Settings: sidebar items, forms, status, 2FA and the TOTP code</h4>
+  <div class="settings-item-list compact" style="width:360px">
+   <div class="settings-item active" style="padding:8px 12px">Profile</div>
+   <div class="settings-item" style="padding:8px 12px">Security</div>
+  </div>
+  <div class="panel-status success" style="margin-top:12px">Your changes were saved.</div>
+  <div class="panel-status error" style="margin-top:8px">That code did not match.</div>
+  <div class="form-group" style="margin-top:12px"><label>Display name</label><input value="Ada" /></div>
+  <div class="form-group" style="margin-top:12px"><label>Focused field</label><input class="" value="Ada" style="border-color:var(--cx-accent)" /></div>
+  <div class="user-search" style="margin-top:12px;width:360px">
+   <ul class="user-search__results" style="position:static">
+    <li class="user-search__item"><span class="user-search__name">Grace Hopper</span><span class="user-search__email">grace@example.com</span></li>
+    <li class="user-search__item" style="background:var(--cx-tint-accent-soft)"><span class="user-search__name">Alan Turing</span><span class="user-search__email">alan@example.com</span></li>
+   </ul>
+  </div>
+  <div class="tfa-method-options" style="margin-top:12px;width:360px">
+   <label class="tfa-method-option active"><input type="radio" checked /><div><strong>Authenticator app</strong><p>Codes from an app on your phone.</p></div></label>
+   <label class="tfa-method-option"><input type="radio" /><div><strong>Email code</strong><p>A code by email.</p></div></label>
+  </div>
+  <div class="totp-confirm-section" style="width:360px"><div class="totp-setup-inline"><img class="totp-qr-image" alt="" src="" style="height:120px;width:120px;border:0" /><input class="totp-code-input" value="123456" /></div></div>
+ </div>
+
+ <div class="col demo">
+  <h4>Archive access and badges</h4>
+  <div class="archive-access" style="width:520px">
+   <div class="panel-title">Access</div>
+   <div><span class="badge badge-info">read</span> <span class="badge badge-warning">write</span> <span class="badge badge-accent">owner</span> <span class="badge badge-muted">none</span></div>
+   <div style="margin-top:10px"><span class="role-badge role-badge--owner">owner</span> <span class="role-badge role-badge--member">member</span></div>
+   <div class="linked-repo-row" style="margin-top:10px"><div class="linked-repo-row__info"><span class="linked-repo-row__name">org/repo</span></div></div>
+   <div style="margin-top:10px"><ul class="admin-role-badge-x"></ul></div>
+  </div>
+  <h4 style="margin-top:16px">Watch toggle and export</h4>
+  <div style="display:flex;gap:10px;align-items:center">
+   <button class="btn-watch btn-watch--active" title="Watching">&#128065;</button>
+   <button class="btn-watch" title="Watch" style="color:var(--text-muted)">&#128065;</button>
+   <button class="btn-watch btn-watch--hover" style="background:var(--cx-tint-accent);color:var(--cx-accent-hover)">hover</button>
+  </div>
+  <div class="export-dropdown" style="position:static;width:220px;margin-top:10px;background:var(--bg-panel);border:1px solid var(--border-color)">
+   <div class="export-dropdown__item">Export as Markdown</div>
+   <div class="export-dropdown__item" style="background:var(--bg-hover);color:var(--brand-blue-light)">Export as PDF</div>
+   <hr class="export-dropdown__separator" />
+   <div class="export-dropdown__item">Export archive</div>
+  </div>
+ </div>
+
+ <div class="col demo">
+  <h4>Notification bell (open) and the notifications list</h4>
+  <div class="notification-bell__dropdown" style="position:static;width:420px">
+   <div class="notification-bell__header"><span>Notifications</span><button class="notification-bell__action">Mark all read</button></div>
+   <div class="notification-bell__list">
+    <a class="notification-item notification-item--unread"><div class="notification-item__avatar notification-item__avatar--placeholder" style="width:32px;height:32px">AL</div><div class="notification-item__body"><div class="notification-item__title">Ada mentioned you</div><div class="notification-item__snippet">Please review the runbook before cutover.</div><div class="notification-item__meta">2 minutes ago</div></div><span class="notification-item__dot"></span></a>
+    <a class="notification-item"><div class="notification-item__body"><div class="notification-item__title">Grace replied</div><div class="notification-item__snippet">Looks good to me.</div><div class="notification-item__meta">1 hour ago</div></div></a>
+   </div>
+   <div class="notification-bell__footer"><a href="#">See all activity</a></div>
+  </div>
+  <div style="margin-top:12px;position:relative;display:inline-block"><button class="notification-bell__button has-unread" style="width:36px;height:36px">&#128276;<span class="notification-bell__badge">3</span></button></div>
+ </div>
+
+ <div class="col demo">
+  <h4>Activity and the notifications and preferences pages</h4>
+  <div class="activity-page" style="max-width:520px;padding:12px 0">
+   <div class="activity-page__filters"><button class="activity-page__filter active">All</button><button class="activity-page__filter">Mentions</button></div>
+   <div class="activity-page__list">
+    <div class="activity-item" style="display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border-color)">
+     <div class="activity-item__avatar activity-item__avatar--placeholder" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%">AL</div>
+     <div class="activity-item__body"><div class="activity-item__line"><span class="activity-item__actor">Ada</span> <span class="activity-item__verb">edited</span> <a href="#">Runbook</a></div><div class="activity-item__meta">Today</div></div>
+    </div>
+   </div>
+   <div class="activity-page__footer"><a href="#">Open the full history</a></div>
+  </div>
+  <div class="notification-prefs-page" style="max-width:520px;padding:12px 0">
+   <div class="notification-prefs-page__header"><h1>Notifications</h1><a href="#">Back</a></div>
+  </div>
+  <h4 style="margin-top:16px">Account: accent swatches</h4>
+  <div class="color-swatch-row" style="display:flex;gap:8px">
+   <button class="color-swatch" style="--swatch-color:oklch(0.78 0.12 231.9)" aria-label="Ocean Blue"><svg viewBox="0 0 24 24" fill="none" style="stroke:var(--cx-white)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></button>
+   <button class="color-swatch active" style="--swatch-color:oklch(0.78 0.12 355)" aria-label="Coral"><svg viewBox="0 0 24 24" fill="none" style="stroke:var(--cx-white)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></button>
+   <button class="color-swatch" style="--swatch-color:oklch(0.78 0.12 145)" aria-label="Jade"></button>
+  </div>
+ </div>
+</div>
+</body></html>
