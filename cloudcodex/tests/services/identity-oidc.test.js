@@ -19,9 +19,9 @@ import { resetMocks } from '../helpers.js';
 const ISSUER = 'https://id.example.test';
 const SUBJECT = 'sub-0192f5a0';
 
-const HIT_SQL = 'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1';
+const HIT_SQL = 'SELECT ui.id, ui.user_id, u.deactivated_at FROM user_identities ui JOIN users u ON u.id = ui.user_id WHERE ui.issuer = ? AND ui.subject = ? LIMIT 1';
 const TOUCH_SQL = 'UPDATE user_identities SET last_login_at = NOW(), email_at_last_signin = ? WHERE id = ?';
-const EMAIL_LOOKUP_SQL = 'SELECT id, email, two_factor_method FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin LIMIT 1';
+const EMAIL_LOOKUP_SQL = 'SELECT id, email, two_factor_method, deactivated_at FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin LIMIT 1';
 const RECHECK_SQL = 'SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ? LIMIT 1';
 const SAME_ISSUER_SQL = 'SELECT id FROM user_identities WHERE user_id = ? AND issuer = ? LIMIT 1';
 const LINK_SQL =

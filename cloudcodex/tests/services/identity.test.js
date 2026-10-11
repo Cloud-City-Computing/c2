@@ -22,8 +22,8 @@ import { c2_query } from '../../mysql_connect.js';
 import { resolveIdentity, deriveUniqueUsername, parseAuthProviders } from '../../services/identity.js';
 import { resetMocks } from '../helpers.js';
 
-const LINK_LOOKUP_SQL = `SELECT user_id FROM oauth_accounts WHERE provider = 'google' AND provider_user_id = ? LIMIT 1`;
-const EMAIL_LOOKUP_SQL = `SELECT id, two_factor_method FROM users WHERE email = ? LIMIT 1`;
+const LINK_LOOKUP_SQL = `SELECT oa.user_id, u.deactivated_at FROM oauth_accounts oa JOIN users u ON u.id = oa.user_id WHERE oa.provider = 'google' AND oa.provider_user_id = ? LIMIT 1`;
+const EMAIL_LOOKUP_SQL = `SELECT id, two_factor_method, deactivated_at FROM users WHERE email = ? LIMIT 1`;
 const LINK_INSERT_SQL = `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email) VALUES (?, 'google', ?, ?)`;
 /**
  * The link-by-email INSERT copies the user row only while its two-factor is

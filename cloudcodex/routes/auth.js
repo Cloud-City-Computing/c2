@@ -573,7 +573,7 @@ router.post('/login', requireLocalSignIn, asyncHandler(async (req, res) => {
 
   // Fetch by username only — never compare passwords in SQL
   const users = await c2_query(
-    `SELECT id, name, email, avatar_url, password_hash, two_factor_method, totp_secret, is_admin FROM users WHERE name = ? LIMIT 1`,
+    `SELECT id, name, email, avatar_url, password_hash, two_factor_method, totp_secret, is_admin, deactivated_at FROM users WHERE name = ? LIMIT 1`,
     [username]
   );
 
@@ -589,7 +589,12 @@ router.post('/login', requireLocalSignIn, asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 
-  const { password_hash: _, two_factor_method, totp_secret: __, ...user } = users[0];
+  // A deactivated user is refused after the password is proven, before any session or two-factor challenge.
+  if (users[0].deactivated_at) {
+    return res.status(403).json({ success: false, message: 'This account has been deactivated. Contact your administrator.' });
+  }
+
+  const { password_hash: _, two_factor_method, totp_secret: __, deactivated_at: ___, ...user } = users[0];
   user.is_admin = Boolean(user.is_admin);
 
   // If 2FA is enabled (email or TOTP), require verification
