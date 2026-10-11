@@ -276,3 +276,86 @@ describe('machineOrAuth Middleware', () => {
     expect(req.user).toBeUndefined();
   });
 });
+
+/**
+ * W6-CDX-7: the JWT branch's failure answers. An issuer outage is a 503 on both machine middlewares
+ * (the caller retries; it is never read as a revoked credential). A JWS that does not verify is a
+ * refusal, a 401 from requireMachine and the ordinary session fallback from machineOrAuth.
+ */
+import { requireMachine } from '../../middleware/auth.js';
+import { resetMachineJwtCache } from '../../services/machine-auth.js';
+
+describe('machine JWT failures at the middleware (W6-CDX-7)', () => {
+  const ISSUER = 'https://id.example.test';
+  const MALFORMED_JWS = 'aaaa.bbbb.cccc';
+
+  function discoveryResponse() {
+    return new Response(
+      JSON.stringify({ issuer: ISSUER, jwks_uri: `${ISSUER}/oauth/v2/keys` }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
+  beforeEach(() => {
+    resetMocks();
+    resetMachineJwtCache();
+    process.env.OIDC_ISSUER_URL = ISSUER;
+    process.env.MACHINE_OIDC_AUDIENCE = '392804036467752963';
+    process.env.MACHINE_OIDC_SUBJECTS = '392804036115431427';
+    process.env.SERVICE_TOKEN_USER = 'svc@example.com';
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    delete process.env.OIDC_ISSUER_URL;
+    delete process.env.MACHINE_OIDC_AUDIENCE;
+    delete process.env.MACHINE_OIDC_SUBJECTS;
+    delete process.env.SERVICE_TOKEN_USER;
+  });
+
+  it('machineOrAuth answers 503, and calls neither next nor the session path, when the issuer is down', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
+    const { req, res, next } = createMocks({ headers: { authorization: `Bearer ${MALFORMED_JWS}` } });
+
+    machineOrAuth(req, res, next);
+    await vi.waitFor(() => expect(res.statusCode).toBe(503));
+
+    expect(res.body.success).toBe(false);
+    expect(next).not.toHaveBeenCalled();
+    expect(req.user).toBeUndefined();
+    expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('requireMachine answers 503 when the issuer is down, never a 401', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
+    const { req, res, next } = createMocks({ headers: { authorization: `Bearer ${MALFORMED_JWS}` } });
+
+    requireMachine(req, res, next);
+    await vi.waitFor(() => expect(res.statusCode).toBe(503));
+
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('requireMachine answers 401 for a JWS that does not verify, with the same body as no credential', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => discoveryResponse()));
+    const { req, res, next } = createMocks({ headers: { authorization: `Bearer ${MALFORMED_JWS}` } });
+
+    requireMachine(req, res, next);
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+
+    expect(res.body).toEqual({ success: false, message: 'Authentication required' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('machineOrAuth falls through to the session check for a JWS that does not verify', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => discoveryResponse()));
+    const { req, res, next } = createMocks({ headers: { authorization: `Bearer ${MALFORMED_JWS}` } });
+
+    machineOrAuth(req, res, next);
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+
+    expect(req.user).toBeUndefined();
+  });
+});
