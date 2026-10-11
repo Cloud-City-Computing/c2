@@ -239,6 +239,8 @@ One subscription may be declared by the server environment (`WEBHOOK_URL`, `WEBH
 
 **Stored secrets.** An admin-created subscription's secret is stored in the database in plaintext, so whoever holds a database dump can sign events to that one receiver. The env-declared subscription avoids this: its secret lives only in the environment.
 
+**The console.** Admin, then Webhooks, is a panel over these routes (`src/components/WebhooksPanel.jsx`). A subscription whose receiver keeps failing is labelled Stalled, with the failed attempts in a row, the receiver's last answer and the next try. A `401` or `403` from the receiver means it rejected the signature: a stalled subscription stays stalled until its secret is fixed or its head expires at 72 hours. Rotating a secret shows the new one once, and the list never carries it.
+
 ### `GET /api/admin/webhooks`
 
 **Response**

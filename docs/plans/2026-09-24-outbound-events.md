@@ -523,11 +523,24 @@ dead ones.
 
 ### Task 4.2 Tests and a look
 
-- [ ] `tests/src/components/WebhooksPanel.test.jsx`: rendering, create, a validation error, rotate
+- [x] `tests/src/components/WebhooksPanel.test.jsx`: rendering, create, a validation error, rotate
       (the secret appears once and not after a re-render), redeliver.
 - [ ] By hand, against a running app, at desktop and mobile widths: `iris shoot` the admin page with
       two subscriptions and a dead delivery, and read the images. `docs/features.md` and
       `docs/api/admin.md`. Lint, test, coverage, build.
+
+**Deviations taken in W6-CDX-15** (recorded here and in the PR report):
+
+- Task 4.1 said `AdminPage.jsx` gets one line. It takes three: the import, a `webhooks` entry in
+  `NAV_ITEMS` (the console has no other way to reach the panel), and the panel's render line.
+- `ConfirmDialog`'s Cancel button takes focus on open (`autoFocus`). Every confirmation in the
+  console, this panel's included, now starts on the safe choice for keyboard users. This is the
+  smallest part of the dialog contract the UI stack holds back for W6-CDX-23.
+- The panel's tints use `color-mix()` over the existing colour variables, not `rgba()`, so the
+  design gate's ledger does not grow. The ledger is unchanged.
+- The panel reads the deliveries of every stalled subscription when it loads, so a stalled card can
+  state the receiver's last answer. No route changed: `GET /api/admin/webhooks` already carries the
+  failure count and the pause, and the deliveries route already carries the last answer.
 
 ---
 

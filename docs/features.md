@@ -276,6 +276,9 @@ A dedicated admin dashboard provides platform-wide management:
   pending invitations, and revoke.
 - **Live presence telemetry** — see which documents are currently being
   edited and by whom.
+- **Outbound webhooks** — tell a receiver about document and archive changes,
+  and see when one has stalled and why (Admin, then Webhooks;
+  [api/admin.md](api/admin.md#webhooks)).
 
 An admin super-user is automatically synced from environment variables on
 server startup.
