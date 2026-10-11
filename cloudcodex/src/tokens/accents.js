@@ -8,16 +8,20 @@
 // Eight hues at L 0.78, C 0.12, each at least 15 degrees from the danger (25),
 // warning (78), success (150) and violet (300) arcs, so no accent can be read as
 // a status. Four keep their names; the four that sat on an arc (rose, amber,
-// emerald, violet) moved and were renamed. Nothing is removed, and every old key
-// has exactly one successor (LEGACY_ACCENT). The names are placeholders until
-// Kyle confirms them: a rename is one line here, one line in the labels in
-// src/components/AccountMenu.jsx, and nothing else.
+// emerald, violet) moved and were renamed to Nova, Solar, Aurora and Nebula
+// (Kyle, 2026-10-11). Nothing is removed. A saved key from before a rename maps
+// to its successor (LEGACY_ACCENT): the shipped rose, amber, emerald and violet,
+// and the placeholder coral, apricot, jade and iris that a build of this stack
+// could have saved in a browser before the names were confirmed.
 export const ACCENTS = {
   blue: 232, cyan: 200, pink: 325, lime: 131,
-  coral: 355, apricot: 50, jade: 175, iris: 275,
+  nova: 355, solar: 50, aurora: 175, nebula: 275,
 };
 
-export const LEGACY_ACCENT = { rose: 'coral', amber: 'apricot', emerald: 'jade', violet: 'iris' };
+export const LEGACY_ACCENT = {
+  rose: 'nova', amber: 'solar', emerald: 'aurora', violet: 'nebula',
+  coral: 'nova', apricot: 'solar', jade: 'aurora', iris: 'nebula',
+};
 
 // invariant-exempt: the accent ramp is token data, measured pair by pair in tests/design/accents.test.js
 export const accentValue = (hue) => `oklch(0.78 0.12 ${hue})`;

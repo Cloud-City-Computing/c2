@@ -230,8 +230,8 @@ initialises an empty data directory.
   the surfaces, text, status colours and focus ring read one source. Codex's
   own radii, shadows and layout sizes moved to `codex.css` at their old values.
   Fifty-seven CSS rules that no markup could match were deleted. Four accent
-  hues moved off the status colours and were renamed (rose is now coral,
-  amber is now apricot, emerald is now jade, violet is now iris); blue, cyan,
+  hues moved off the status colours and were renamed (rose is now Nova,
+  amber is now Solar, emerald is now Aurora, violet is now Nebula); blue, cyan,
   pink and lime keep their names. Nothing was removed: the picker still offers
   eight choices, and a saved rose, amber, emerald or violet loads as its
   successor. The default accent is now the package's blue step, a little

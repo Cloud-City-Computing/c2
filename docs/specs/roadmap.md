@@ -444,8 +444,8 @@ reach a test-box instance as its boot admin, D-R). Each spec lists the narrower
 items it defers and why.
 
 **Open questions for Kyle** live in each spec, and the second and third rounds
-answered all but one. The only open question left in Wave 6 is the eight accent
-names, which Kyle confirms in W6-CDX-22's review.
+answered all but one. The eight accent names were confirmed by Kyle on 2026-10-11 (rose is
+Nova, amber is Solar, emerald is Aurora, violet is Nebula); no Wave 6 open question remains on them.
 
 ## Sequencing
 

@@ -134,8 +134,8 @@ describe('a white label on the accent dark is measured on the avatar that paints
 
   it('moves with the picked accent: the dark step differs from the default and follows the hue', () => {
     const def = paint(declared(ACCENT_DARK_SITES[0], 'background'), base);
-    const coral = paint(declared(ACCENT_DARK_SITES[0], 'background'), onAccent(ACCENTS.coral));
-    expect(coral).not.toEqual(def);
+    const nova = paint(declared(ACCENT_DARK_SITES[0], 'background'), onAccent(ACCENTS.nova));
+    expect(nova).not.toEqual(def);
   });
 });
 

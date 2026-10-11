@@ -368,8 +368,8 @@ truth: `ACCENT_COLORS` (8 colours, each with value/hover/fill, a view over
 `FONT_SIZES` (sm/md/lg), `DENSITIES` (compact/comfortable/spacious).
 
 `loadUserPrefs()` (`userPrefs.js:23`) maps a renamed accent key through
-`LEGACY_ACCENT` (rose to coral, amber to apricot, emerald to jade, violet to
-iris) and drops an accent key this build does not offer, so the default
+`LEGACY_ACCENT` (rose to Nova, amber to Solar, emerald to Aurora, violet to
+Nebula; the placeholder keys coral, apricot, jade and iris map to the same names) and drops an accent key this build does not offer, so the default
 palette applies.
 
 `applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes `--cx-accent`,

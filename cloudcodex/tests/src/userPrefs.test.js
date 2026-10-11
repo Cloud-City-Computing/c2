@@ -34,7 +34,7 @@ describe('userPrefs', () => {
   describe('exported constants', () => {
     it('ACCENT_COLORS has exactly the eight picker hues, each with value, hover and fill oklch strings', () => {
       expect(Object.keys(ACCENT_COLORS).sort())
-        .toEqual(['apricot', 'blue', 'coral', 'cyan', 'iris', 'jade', 'lime', 'pink']);
+        .toEqual(['aurora', 'blue', 'cyan', 'lime', 'nebula', 'nova', 'pink', 'solar']);
       for (const key of Object.keys(ACCENT_COLORS)) {
         const c = ACCENT_COLORS[key];
         expect(c.value).toMatch(/^oklch\(0\.78 0\.12 [\d.]+\)$/);
@@ -67,12 +67,13 @@ describe('userPrefs', () => {
     });
 
     it('returns the stored object when valid JSON is present', () => {
-      localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'coral', fontSize: 'md' }));
-      expect(loadUserPrefs()).toEqual({ accentColor: 'coral', fontSize: 'md' });
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'nova', fontSize: 'md' }));
+      expect(loadUserPrefs()).toEqual({ accentColor: 'nova', fontSize: 'md' });
     });
 
     it('maps each renamed accent key to its one successor, and keeps the four kept names', () => {
-      const pairs = [['rose', 'coral'], ['amber', 'apricot'], ['emerald', 'jade'], ['violet', 'iris'],
+      const pairs = [['rose', 'nova'], ['amber', 'solar'], ['emerald', 'aurora'], ['violet', 'nebula'],
+        ['coral', 'nova'], ['apricot', 'solar'], ['jade', 'aurora'], ['iris', 'nebula'],
         ['blue', 'blue'], ['cyan', 'cyan'], ['pink', 'pink'], ['lime', 'lime']];
       for (const [stored, loaded] of pairs) {
         localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: stored, fontSize: 'md' }));
@@ -115,7 +116,7 @@ describe('userPrefs', () => {
     });
 
     it('round-trips with loadUserPrefs', () => {
-      const prefs = { accentColor: 'apricot', fontSize: 'lg', density: 'spacious', sidebarDefault: 'collapsed' };
+      const prefs = { accentColor: 'solar', fontSize: 'lg', density: 'spacious', sidebarDefault: 'collapsed' };
       saveUserPrefs(prefs);
       expect(loadUserPrefs()).toEqual(prefs);
     });
@@ -131,20 +132,20 @@ describe('userPrefs', () => {
 
   describe('applyPrefsToDOM', () => {
     it('sets the three --cx-accent custom properties for a known accent, never --brand-blue*', () => {
-      applyPrefsToDOM({ accentColor: 'coral' });
+      applyPrefsToDOM({ accentColor: 'nova' });
       const style = document.documentElement.style;
-      expect(style.getPropertyValue('--cx-accent')).toBe(ACCENT_COLORS.coral.value);
-      expect(style.getPropertyValue('--cx-accent-hover')).toBe(ACCENT_COLORS.coral.hover);
-      expect(style.getPropertyValue('--cx-accent-fill')).toBe(ACCENT_COLORS.coral.fill);
-      expect(style.getPropertyValue('--cx-accent-dark')).toBe(ACCENT_COLORS.coral.dark);
+      expect(style.getPropertyValue('--cx-accent')).toBe(ACCENT_COLORS.nova.value);
+      expect(style.getPropertyValue('--cx-accent-hover')).toBe(ACCENT_COLORS.nova.hover);
+      expect(style.getPropertyValue('--cx-accent-fill')).toBe(ACCENT_COLORS.nova.fill);
+      expect(style.getPropertyValue('--cx-accent-dark')).toBe(ACCENT_COLORS.nova.dark);
       for (const name of ['--brand-blue', '--brand-blue-light', '--brand-blue-dark', '--brand-blue-hover']) {
         expect(style.getPropertyValue(name)).toBe('');
       }
     });
 
     it('writes --cx-accent-dark for a picked accent and removes it for the default', () => {
-      applyPrefsToDOM({ accentColor: 'coral' });
-      expect(document.documentElement.style.getPropertyValue('--cx-accent-dark')).toBe(ACCENT_COLORS.coral.dark);
+      applyPrefsToDOM({ accentColor: 'nova' });
+      expect(document.documentElement.style.getPropertyValue('--cx-accent-dark')).toBe(ACCENT_COLORS.nova.dark);
       applyPrefsToDOM({});
       expect(document.documentElement.style.getPropertyValue('--cx-accent-dark')).toBe('');
     });

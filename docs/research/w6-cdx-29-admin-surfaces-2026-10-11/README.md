@@ -224,7 +224,7 @@ gate's own measurements (`presence-palette.test.js` asserts the chosen label on 
   sits on. The ring is a little lighter than the old navy.
 - **`.setup-checkbox` accent.** The rule read `accent-color: var(--accent, #4a9eff)`, and `--accent` is
   not declared, so the checkbox was always `#4a9eff`. It now reads `--cx-accent`, so the checkbox
-  follows the picked accent. This is a deliberate choice and is visible: a coral or jade pick now
+  follows the picked accent. This is a deliberate choice and is visible: a Nova or Aurora pick now
   recolours the Welcome checkbox. Kyle may prefer the old fixed blue; that would be `var(--cx-info)`.
 - **`.notification-bell__action` label.** The label was `--cx-accent`. The action's hover paints the
   accent wash behind it, and the label measured 4.26:1 on the strongest surface. The rule has one colour,
