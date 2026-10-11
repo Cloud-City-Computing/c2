@@ -306,11 +306,23 @@ function StdLayout({ children }) {
     const params = new URLSearchParams(window.location.search);
     const oauthError = params.get('oauth_error');
     if (!oauthError) return;
+    // The OIDC callback names its provider, so its refusal copy says "sign-in", not "Google".
+    const fromOidc = params.get('oauth_provider') === 'oidc';
 
     // Clean the URL
     const url = new URL(window.location);
     url.searchParams.delete('oauth_error');
+    url.searchParams.delete('oauth_provider');
     window.history.replaceState({}, '', url.pathname + url.search);
+
+    const oidcMessages = {
+      email_not_verified: 'Your email address is not verified with your sign-in provider.',
+      no_account: 'No account found for this sign-in. Ask your administrator for an invitation.',
+      email_conflict: 'That email address already belongs to another account here. Ask your administrator.',
+      identity_conflict: 'This account is already linked to a different sign-in identity. Ask your administrator to relink it.',
+      two_factor_enabled: 'This account has two-factor authentication on, so it cannot be linked to single sign-on by email. Sign in with your password and code instead.',
+      flow_expired: 'Sign-in session expired. Please try again.',
+    };
 
     const messages = {
       domain_not_allowed: 'Your Google account domain is not allowed. Contact your administrator.',
@@ -324,7 +336,9 @@ function StdLayout({ children }) {
       access_denied: 'Google sign-in was cancelled.',
     };
 
-    const message = messages[oauthError] || 'Google sign-in failed. Please try again.';
+    const message = fromOidc
+      ? oidcMessages[oauthError] || 'Sign-in failed. Please try again.'
+      : messages[oauthError] || 'Google sign-in failed. Please try again.';
     showModal(<Login />, 'modal-md');
     // Brief delay so the modal mounts before we could show a message
     setTimeout(() => {

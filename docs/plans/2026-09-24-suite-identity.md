@@ -875,12 +875,16 @@ ALTER TABLE sessions
 foreign-key checks on, `init.sql:38`), joins the `DROP TABLE` list at the top, and `sessions`
 gains the two columns, the index, the FK and the widened CHECK.
 
-**Why no pairing CHECK:** MySQL refuses a CHECK over a column that carries a foreign-key
-referential action (`identity_id` has `ON DELETE CASCADE`). `generateSessionToken` therefore takes
-`{ provider: 'oidc', identityId, providerSid }` and throws before issuing SQL if `provider` is
-`oidc` without an `identityId`, or has one without being `oidc`.
+**The pairing, as shipped (corrected in W6-CDX-5, PR 5):** the plan first reasoned that MySQL
+refuses a CHECK over a column with a foreign-key referential action. Measured on MySQL 8.4.11 that is
+true only for `ON UPDATE CASCADE` and `ON DELETE SET NULL` (error 3823); `ON DELETE CASCADE`, which
+`identity_id` uses, is allowed. So the migration adds `chk_sessions_identity_pairing`, a CHECK in both
+directions, and `generateSessionToken` also takes `{ provider: 'oidc', identityId, providerSid }` and
+throws before issuing SQL if the pairing is broken. Both are pinned by
+`tests/integration/identities.test.js`.
 
-`tests/integration/identities.test.js`, written first: a subject differing only in case is a
+`tests/integration/identities.test.js`, written first (it failed on the missing table before the
+migration existed): a subject differing only in case is a
 different identity; a second identity at the same issuer for one user is refused by
 `uq_user_identities_user_issuer`; deleting a user cascades to identities and their sessions;
 `auth_provider = 'oidc'` is accepted; attempting the pairing CHECK in a scratch schema fails with
@@ -918,7 +922,7 @@ export function resetOidcCache() {} // tests only
 
 Load-bearing details, each with a test:
 
-- **Discovery once per process**, with the client metadata
+- **Discovery once per process** (as shipped, a failed discovery is not kept), with the client metadata
   `{ client_secret, [client.clockTolerance]: 60 }`, and `execute: [client.allowInsecureRequests]`
   **only** when the configured issuer is `http:` on a loopback host (`localhost`, `127.0.0.1`,
   `::1` or a `*.localhost` name). Any other `http:` issuer fails config validation at boot.
@@ -968,20 +972,28 @@ export function safeReturnTo(value) {
 
 `tests/fixtures/return-to-corpus.json` is **the file Cloud Command commits for W6-CMD-24, copied
 byte for byte**, with its source commit in a `_source` field; the test asserts every hostile entry
-maps to `/` and every benign one to itself. If W6-CMD-24 has not landed, write the corpus here
+maps to `/` and every benign one to itself. **As shipped (W6-CDX-5):** copied from
+`Cloud-City-Computing/command` at commit `86710ee` (path `cloudcommand/tests/fixtures/return-to-corpus.json`,
+127 cases, sha256 `3367ca48...5595`); the validator is a port of Command's `validateReturnTo`, which
+passes every case, including the `/api` ones, and the snippet above is superseded by the corpus. If W6-CMD-24 has not landed, write the corpus here
 (`//evil.example`, `/\evil.example`, `https://evil.example`, `/%2F%2Fevil.example`,
 `/%5Cevil.example`, `javascript:alert(1)`, `/\u0000x`, a 2049-character path, and benign
 `/archives/1/doc/2?x=1#h`) and hand it to Cloud Command.
 
 ### Task 5.6 The ladder for `oidc`
 
-`resolveIdentity` gains the `oidc` branch, in this order:
+`resolveIdentity` gains the `oidc` branch, in this order. **As shipped:** the answer also carries
+`identityId` (the `user_identities` row), which the callback needs for the session; and with
+`linkByVerifiedEmail` off, an account holding the address is `email_conflict`, the same answer the
+Google rung gives, since the plan did not say which refusal applies there:
 
 1. `SELECT id, user_id FROM user_identities WHERE issuer = ? AND subject = ?`. A hit: update
-   `last_login_at`; if the verified email differs from `users.email`, update it unless another row
-   holds that address (`SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id <> ?`), which
-   refuses `email_conflict` and changes nothing. Return the user. No local second factor is asked
-   for, whatever `two_factor_method` holds: the issuer's own MFA governs a linked identity.
+   `last_login_at` and `email_at_last_signin` (the issuer's current email, for display and audit).
+   **As amended in W6-CDX-5 after review: the hit never writes `users.email`.** Following the issuer
+   would let a change there reach the local account, which password reset mails and the local
+   email-change rules guard, and would let a recycled address be pulled back. Return the user. No local
+   second factor is asked for, whatever `two_factor_method` holds: the issuer's own MFA governs a linked
+   identity.
 2. With `linkByVerifiedEmail`: `SELECT id, two_factor_method FROM users WHERE LOWER(email) =
    LOWER(?)`. A hit with two-factor on, `(two_factor_method ?? 'none') !== 'none'`, refuses
    `two_factor_enabled` and writes nothing (spec Decision 3; the Google rung's rule, after any
@@ -1042,10 +1054,16 @@ already linked signs in as before, the issuer's own MFA governing it. `two_facto
 only by the ladder's link-by-email rung (Task 5.6), which refuses to link an account with it on. `GET
 /api/2fa/status` adds `managed_by: 'oidc' | null` from the caller's session's `auth_provider`.
 `GET /api/oauth/providers` adds `oidc: { enabled, name }`, with `name` from `OIDC_PROVIDER_NAME`
-(default `SSO`). `Login.jsx` renders "Sign in with {name}" linking to `/api/auth/oidc/start`,
-beside the Google button.
+(default `SSO`). **As shipped:** that entry sits inside `providers`, beside `google` and `github`.
+`Login.jsx` renders "Sign in with {name}" linking to `/api/auth/oidc/start`, beside the Google button.
+The callback's refusal redirect carries `&oauth_provider=oidc`, and `Std_Layout.jsx` reads it for copy
+that does not name Google (the Google copy is unchanged).
 
 `parseAuthProviders` (PR 3) now accepts `oidc`, still requiring `local` until PR 8.
+
+**As shipped:** the `oidc` session is minted with `{ provider, identityId, providerSid, expiresAt }`
+(`rotationOptionsFor`, `routes/auth.js`), read by `getSessionProvenance` before the delete; a local or
+Google session is still minted with `{ provider }` alone.
 
 **Carried from PR 2:** update-account and `/update-account/confirm-email` rotate the caller's session
 by deleting every row of the user and minting one replacement, tagged through
@@ -1060,8 +1078,9 @@ with a route test per field and a live test that rotates an OIDC session and rea
 `routes/workspaces.js` reader check: an optional `subject` query parameter (at most 255
 characters). When present, the user is resolved first through
 `JOIN user_identities ui ON ui.user_id = u.id WHERE ui.issuer = ? AND ui.subject = ?` with the
-configured issuer, then by email as today. Unknown subject and unknown email answer the same
-`{ canRead: false }`. The existing 14 reader-check tests pass unedited; new ones cover the subject
+configured issuer, and **answered from the subject alone** when one is sent (amended in W6-CDX-5 after
+review, to match the spec: an unknown subject is `{ canRead: false }` even when an email matches, since
+the ladder refuses such an identity too). Email decides only when no subject is sent. The existing 14 reader-check tests pass unedited; new ones cover the subject
 path and that the answer is identical when the subject matches nobody.
 
 ### Task 5.9 The fake issuer, and a real one
@@ -1073,7 +1092,9 @@ path and that the answer is identical when the subject matches nobody.
       flow cookie, a wrong `state`, a wrong `nonce`, an unverified email, a `sub` conflict.
 - [ ] A real sign-in against the local Cloud City ID stack (W6-CCID-1 and W6-CCID-2), recorded in
       `docs/research/oidc-cloud-city-id-<date>/` with the commands, the decoded ID token (no
-      secrets), and a screenshot read by a person.
+      secrets), and a screenshot read by a person. **Not done in W6-CDX-5:** the stack is not
+      running on the build machine, so the protocol is proven against the in-process issuer only.
+      The recording is an open item for the session that runs the stack.
 
 ### Task 5.10 Docs and verification
 
@@ -1129,9 +1150,9 @@ post-logout URI with no page. An expired ID token is accepted as the hint (the s
 ID token), and so is the hint of a session that has already ended, which still redirects.
 
 So `sessions` gains `oidc_id_token TEXT NULL` (a dated migration and the `init.sql` edit, per the
-Global constraints), which the callback (Task 5.7) writes from the token response for an OIDC
-session, and which the session rotation carried from PR 2 passes on with the other provenance
-fields. Treat the value as a credential: seal it or at least never log it, and never send it
+Global constraints), which the **callback writes in this PR, Task 6.1, not Task 5.7** (corrected in
+W6-CDX-5: PR 5 stores no token, and its spec defers storing ID or refresh tokens), and which the session
+rotation carried from PR 2 passes on with the other provenance fields. Treat the value as a credential: seal it or at least never log it, and never send it
 anywhere except in this URL. (Whether it is good for anything at the issuer beyond ending its session
 was not measured; the issuer's discovery document advertises no token-exchange grant.) `AccountPanel.jsx`'s `performLogout` keeps ending locally first (it
 already clears the cookie before navigating), then navigates to `endSessionUrl` when present, else

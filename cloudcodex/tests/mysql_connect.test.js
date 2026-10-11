@@ -55,6 +55,7 @@ const {
   generateSessionToken,
   validateAndAutoLogin,
   getSessionProvider,
+  getSessionProvenance,
   touchSession,
   withTransaction,
   endPool,
@@ -437,5 +438,77 @@ describe('dotenv', () => {
     const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     expect(config).toHaveBeenCalledTimes(1);
     expect(config).toHaveBeenCalledWith({ path: path.resolve(appDir, '..', '.env'), quiet: true });
+  });
+});
+
+describe('generateSessionToken for an OIDC session (W6-CDX-5)', () => {
+  const user = { id: 7 };
+
+  it('names the identity and the issuer sid, and expires ttlHours from now', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 1 }, []]);
+    const before = Date.now();
+
+    const token = await generateSessionToken(user, '1.2.3.4', 'agent', {
+      provider: 'oidc',
+      identityId: 55,
+      providerSid: 'sid-abc',
+      ttlHours: 8,
+    });
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = executeMock.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO sessions \(user_id, id, auth_provider, identity_id, provider_sid, created_at, expires_at/);
+    expect(params[0]).toBe(7);
+    expect(params[1]).toBe(hashSessionToken(token));
+    expect(params[2]).toBe(55);
+    expect(params[3]).toBe('sid-abc');
+    expect(params[4].getTime()).toBeGreaterThanOrEqual(before + 8 * 60 * 60 * 1000);
+    expect(params[4].getTime()).toBeLessThanOrEqual(Date.now() + 8 * 60 * 60 * 1000);
+    expect(params.slice(5)).toEqual(['1.2.3.4', 'agent']);
+  });
+
+  it('keeps the absolute expiry it is given, for a rotated session', async () => {
+    executeMock.mockResolvedValueOnce([{ insertId: 1 }, []]);
+    const expiresAt = new Date('2031-01-02T03:04:05Z');
+
+    await generateSessionToken(user, null, null, { provider: 'oidc', identityId: 9, providerSid: 'sid-r', expiresAt });
+
+    expect(executeMock.mock.calls[0][1][4]).toBe(expiresAt);
+  });
+
+  it('refuses oidc without an identity, and an identity without oidc, before any SQL', async () => {
+    await expect(generateSessionToken(user, null, null, { provider: 'oidc', ttlHours: 1 })).rejects.toThrow(/identityId/);
+    await expect(generateSessionToken(user, null, null, { provider: 'google', identityId: 3 })).rejects.toThrow(
+      /identityId/
+    );
+    expect(executeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getSessionProvenance', () => {
+  it('reads every provenance field of an OIDC session by the digest of its token', async () => {
+    const expiresAt = new Date('2031-01-02T03:04:05Z');
+    executeMock.mockResolvedValueOnce([[{ auth_provider: 'oidc', identity_id: 55, provider_sid: 'sid-abc', expires_at: expiresAt }], []]);
+
+    expect(await getSessionProvenance('raw')).toEqual({
+      provider: 'oidc',
+      identityId: 55,
+      providerSid: 'sid-abc',
+      expiresAt,
+    });
+    expect(executeMock.mock.calls[0][1]).toEqual([hashSessionToken('raw')]);
+  });
+
+  it('answers a local session, or no row, with null provenance', async () => {
+    executeMock.mockResolvedValueOnce([[{ auth_provider: 'local', identity_id: null, provider_sid: null, expires_at: null }], []]);
+    expect(await getSessionProvenance('local-one')).toEqual({ provider: 'local', identityId: null, providerSid: null, expiresAt: null });
+
+    executeMock.mockResolvedValueOnce([[], []]);
+    expect(await getSessionProvenance('gone')).toEqual({ provider: 'local', identityId: null, providerSid: null, expiresAt: null });
+  });
+
+  it('answers without querying for a value that cannot be a token', async () => {
+    expect(await getSessionProvenance(undefined)).toEqual({ provider: 'local', identityId: null, providerSid: null, expiresAt: null });
+    expect(executeMock).not.toHaveBeenCalled();
   });
 });

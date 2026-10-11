@@ -34,7 +34,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import app from '../../app.js';
-import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, withTransaction } from '../../mysql_connect.js';
+import { c2_query, validateAndAutoLogin, generateSessionToken, getSessionProvider, getSessionProvenance, withTransaction } from '../../mysql_connect.js';
 import { sendEmail, isMailEnabled } from '../../services/email.js';
 import { resetMocks, TEST_USER, expectOwnerPredicatesBindIds } from '../helpers.js';
 
@@ -365,6 +365,26 @@ describe('POST /api/update-account', () => {
       await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
 
       expect(generateSessionToken.mock.calls[0][3]).toEqual({ provider: 'local' });
+    });
+
+    it('keeps every provenance field of an OIDC session on its replacement, read before the delete (W6-CDX-5)', async () => {
+      const EXPIRY = new Date('2031-01-02T03:04:05Z');
+      fakeAccount({ providers: { [CALLER]: 'oidc' } });
+      getSessionProvenance.mockResolvedValueOnce({ provider: 'oidc', identityId: 55, providerSid: 'sid-9', expiresAt: EXPIRY });
+
+      const res = await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+
+      expect(res.status).toBe(200);
+      expect(getSessionProvenance).toHaveBeenCalledWith(CALLER);
+      expect(generateSessionToken.mock.calls[0][3]).toEqual({
+        provider: 'oidc',
+        identityId: 55,
+        providerSid: 'sid-9',
+        expiresAt: EXPIRY,
+      });
+      const del = c2_query.mock.calls.find(([sql]) => /DELETE FROM sessions/.test(sql));
+      const deleteOrder = c2_query.mock.invocationCallOrder[c2_query.mock.calls.indexOf(del)];
+      expect(getSessionProvenance.mock.invocationCallOrder[0]).toBeLessThan(deleteOrder);
     });
 
     it('mints no token when the transaction fails, so the caller is not handed a session for a change that did not land', async () => {

@@ -161,6 +161,12 @@ export default defineConfig({
         // The one server-side definition of the session cookie's names and
         // which one a request carries (W6-CDX-3). Measured at 100% on all four.
         'services/session-cookie.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
+        // The OIDC relying party (W6-CDX-5). Measured at 92.7 lines, 88.9 branches, 100 functions.
+        'services/oidc.js': { lines: 90, statements: 89, branches: 86, functions: 97 },
+        // The one returnTo validator, checked against Command's corpus (127 cases). Measured at 100.
+        'services/return-to.js': { lines: 98, statements: 98, branches: 95, functions: 98 },
+        // The OIDC routes (W6-CDX-5). Measured at 100 lines, 94 statements, 75 branches.
+        'routes/oidc.js': { lines: 96, statements: 92, branches: 72, functions: 95 },
         // Outbound webhooks (W6-CDX-13): the emit hook, the env subscription and
         // the SSRF guard every receiver address passes. Measured when they
         // landed: webhooks.js 99.03 lines, 99.19 statements, 94.3 branches, 100

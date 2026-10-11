@@ -912,6 +912,18 @@ of a primitive. Whether the bridge renames it or the package's rule gets a
 recorded exception is W6-CDX-22's call. `tests/design/codex-css.test.js` pins
 the overlap to exactly these four, so it can shrink but not grow.
 
+### C9b. `users.email` is unique under an accent-insensitive collation
+
+`init.sql:52` declares `email VARCHAR(255) NOT NULL UNIQUE` under the database default,
+`utf8mb4_0900_ai_ci`, which treats `é` and `e` (and case) as the same character. W6-CDX-5 made the
+OIDC identity lookups compare the lowercased address in binary (`services/identity.js:125`, `:151`),
+so a verified address that differs only by an accent no longer matches someone else's account. The
+UNIQUE key itself is still accent-insensitive repo-wide: two real mailboxes that differ only by an
+accent cannot both hold a Codex account, and the second sign-up is refused as a duplicate. Changing
+it needs a collation migration on `users.email` across existing installs (and a check that no
+current rows collide under the new collation), so it is recorded here rather than done in an
+identity PR. Found by W6-CDX-5's review, 2026-10-11.
+
 ## D. Stale claims in the root `CLAUDE.md`
 
 Corrected in this pass, listed here so the drift pattern is visible:

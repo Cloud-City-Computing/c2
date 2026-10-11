@@ -374,6 +374,14 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
                 </a>
               </>
             )}
+            {tab === 'login' && oauthProviders.oidc?.enabled && (
+              <>
+                {!oauthProviders.google && <div className="oauth-divider"><span>or</span></div>}
+                <a href="/api/auth/oidc/start" className="btn btn-oauth stretched-button">
+                  Sign in with {oauthProviders.oidc.name || 'SSO'}
+                </a>
+              </>
+            )}
           </div>
         </>
       ) : (

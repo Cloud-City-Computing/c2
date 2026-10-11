@@ -264,7 +264,7 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:355-362`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` (`app.js:367-374`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:380`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:390`) |
+| `authLimiter` (`app.js:355-362`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm`, `/api/oauth/google/callback` and `/api/auth/oidc/callback` (`app.js:367-377`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:380`); and the `/api/workspaces/:id/reader-check` pattern (`app.js:390`) |
 | `searchLimiter` (`app.js:393-400`) | 15 min / 60 | `/api/users/search` only (`app.js:401`), to blunt user enumeration |
 | `stateLimiter` (`app.js:407-414`) | 15 min / 120 | `/api/documents/state` only (`app.js:415`), the reconciliation read; mounted before the routers, so an unauthenticated caller spends it too |
 
@@ -372,7 +372,7 @@ component that consume it.
    **exported**, so it is the single definition of "which token is this request
    carrying" and `POST /api/logout` uses the same one.
 2. No token, 401 `Authentication required`.
-3. `validateAndAutoLogin(token)` (`mysql_connect.js:196-214`) looks the session
+3. `validateAndAutoLogin(token)` (`mysql_connect.js:219`) looks the session
    up by primary key, **by the digest of the token** (`hashSessionToken`, see
    "Session tokens" below), rejects if `expires_at <= now`, then loads the user
    row. Anything that is not a non-empty string is no session, answered without
@@ -422,11 +422,13 @@ verified claims and a policy to the seam, and turns the answer into a session
 or a redirect. The answer is `{ ok: true, userId, created }` or
 `{ ok: false, reason }`, `reason` one of `email_not_verified`,
 `domain_not_allowed`, `no_account`, `identity_conflict`, `email_conflict`,
-`two_factor_enabled`. A refusal never throws and writes nothing; a thrown
+`two_factor_enabled`. An OIDC success also carries `identityId` (the
+`user_identities` row the session names). A refusal never throws and writes nothing; a thrown
 error is a database failure and reaches the router's `errorHandler`.
 
-Google (`GET /api/oauth/google/callback` in `routes/oauth.js`) is the only
-caller. Its policy is `requiredHostedDomain: GOOGLE_OAUTH_DOMAIN`,
+Two providers call it: Google (`GET /api/oauth/google/callback` in
+`routes/oauth.js`) and OIDC (`GET /api/auth/oidc/callback` in `routes/oidc.js`,
+below). Google's policy is `requiredHostedDomain: GOOGLE_OAUTH_DOMAIN`,
 `linkByVerifiedEmail: true`, `autoCreate: Boolean(GOOGLE_OAUTH_DOMAIN)`, and the
 Google branch is the ladder the route used to carry inline, in the same order
 plus two checks: refuse an unverified email, refuse a hosted domain other than
@@ -463,8 +465,63 @@ A refusal becomes `/?oauth_error=<reason>`, which `Std_Layout.jsx`
 turns into copy in the Login modal, with a generic fallback for a code it does
 not know. A provider the seam has no ladder for throws. The route keeps everything around
 the seam unchanged: the browser-bound state cookie, the token exchange, the
-user fetch and `generateSessionToken`. The OIDC relying party (W6-CDX-5) is the
-seam's second caller.
+user fetch and `generateSessionToken`.
+
+### OIDC sign-in (W6-CDX-5)
+
+An instance signs people in through one OIDC issuer, set by `OIDC_ISSUER_URL`
+with `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` (`env-contract.js`). `app.js`
+mounts `routes/oidc.js` only when `getOidcConfig()` (`services/oidc.js`) returns
+a config, and that function throws at boot on any setting that would make a
+sign-in fail or run insecurely (an http issuer that is not loopback, a missing
+client value or `APP_URL`, a non-numeric lifetime). The callback is on
+`authLimiter` (`app.js:377`).
+
+- `GET /api/auth/oidc/start?returnTo=`: `safeReturnTo` (`services/return-to.js`)
+  validates the path, then `beginLogin` makes a fresh state, nonce and PKCE pair,
+  seals the validated `returnTo` in a signed flow cookie (HMAC-SHA256 keyed by the
+  client secret, ten minutes, under 3,800 characters or it seals `/`), and the
+  route redirects to the issuer. The cookie is `__Host-oidcFlow` on an https
+  `APP_URL` (Path `/`), else `oidcFlow` at `/api/auth/oidc`. Discovery is cached
+  per process and a failed discovery is not kept. A discovery failure redirects
+  to `/?oauth_error=exchange_failed`.
+- `GET /api/auth/oidc/callback`: the flow cookie is cleared on every outcome.
+  `completeLogin` checks the signature and expiry, runs the code exchange with
+  `expectedState`, `expectedNonce`, the PKCE verifier and `idTokenExpected`,
+  reads `sub` (1 to 255 printable ASCII) and `sid` (an empty one is null), and
+  reads `email`, `email_verified` and `name` from USERINFO, falling back to the ID
+  token only when no access token came back. `emailVerified` must be exactly
+  `true`, because Cloud City ID omits the claim for an unverified address. Every
+  refusal is an `OidcLoginError` code (`flow_expired`, `exchange_failed`,
+  `no_id_token`, `invalid_subject`, `userinfo_failed`, `email_not_verified`),
+  logged by name only, and redirected as `/?oauth_error=<code>&oauth_provider=oidc`,
+  which `Std_Layout.jsx` reads for OIDC-specific copy. The `returnTo` is validated
+  again here, so a seal written under an older rule cannot redirect where the
+  current one refuses.
+- `resolveIdentity` with `provider: 'oidc'` (`services/identity.js:95`) runs
+  the oidc ladder: a `user_identities` hit on `(issuer, subject)` signs in with no
+  local second factor, never writes `users.email` (a changed issuer email is recorded
+  as `email_at_last_signin` only, so password reset keeps mailing the local address), and
+  touches `last_login_at`. Otherwise,
+  with `linkByVerifiedEmail` on, an account matched by email with two-factor on
+  is `two_factor_enabled`, one that already holds another subject at this issuer
+  is `identity_conflict`, and the rest links through a conditional `INSERT ...
+  SELECT ... FOR SHARE`, exactly as the Google rung does. With linking off, an
+  account holding the address is `email_conflict`. Nothing matches, `no_account`:
+  OIDC never creates a user. A unique-key refusal on the link is `identity_conflict`.
+- The session is `generateSessionToken(user, ip, ua, { provider: 'oidc',
+  identityId, providerSid, ttlHours })` (`mysql_connect.js:188`), with
+  `OIDC_SESSION_TTL_HOURS` (default 24) as its absolute expiry and the session
+  cookie set exactly as the Google callback sets it. Local two-factor is never
+  asked: the issuer's MFA governs a linked identity. The ID token is not stored
+  (sign-out, W6-CDX-6, decides that).
+
+A session's provenance is read back by `getSessionProvenance` (`mysql_connect.js:264`)
+where it must survive a rotation: update-account and confirm-email re-mint an
+OIDC session with its identity, sid and expiry (`rotationOptionsFor` in
+`routes/auth.js`), and a local or Google session is re-minted with its flow tag
+only, as before. `GET /api/2fa/status` answers `managed_by: 'oidc'` for an OIDC
+session.
 
 The query order is load-bearing for tests, not only for behaviour: route tests
 queue `c2_query` mocks in call order, which is why
@@ -477,8 +534,10 @@ refusal and the linked rung's trade-off against MySQL 8.4.
 ### Session tokens
 
 `generateSessionToken(user, ip, userAgent, { provider })`
-(`mysql_connect.js:180-188`) is **one session per sign-in** (W6-CDX-2): every
-call is exactly one `INSERT INTO sessions` with a 7-day expiry, and nothing
+(`mysql_connect.js:188`) is **one session per sign-in** (W6-CDX-2): every
+call is exactly one `INSERT INTO sessions` with a 7-day expiry (an OIDC session
+takes `identityId`, `providerSid` and `ttlHours` or `expiresAt`, and the pairing
+of `oidc` with an identity is refused before any SQL), and nothing
 reuses or refreshes a row. A second device gets a row of its own, and
 `POST /api/logout` signs out only the device that presents the token.
 

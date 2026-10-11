@@ -18,6 +18,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler, errorHandler, DEFAULT_PERMISSIONS, APP_URL } from './helpers/shared.js';
 import { resolveIdentity, isSecondLinkForProvider } from '../services/identity.js';
 import { sessionCookieName, COOKIE_OWS } from '../services/session-cookie.js';
+import { getOidcConfig } from '../services/oidc.js';
 
 const router = express.Router();
 
@@ -185,11 +186,14 @@ setInterval(() => {
  * Returns which OAuth providers are configured (public — used by the login UI).
  */
 router.get('/oauth/providers', (_req, res) => {
+  const oidc = getOidcConfig();
   res.json({
     success: true,
     providers: {
       google: isGoogleOAuthConfigured(),
       github: isGitHubOAuthConfigured(),
+      // name is the label on the sign-in button; OIDC_PROVIDER_NAME, default SSO.
+      oidc: { enabled: oidc !== null, name: oidc?.providerName ?? (process.env.OIDC_PROVIDER_NAME || 'SSO') },
     },
   });
 });

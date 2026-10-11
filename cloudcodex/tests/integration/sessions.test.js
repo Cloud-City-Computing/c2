@@ -127,7 +127,7 @@ describe('sessions.auth_provider, on a real server', () => {
     const userId = await newUser();
     const err = await rejection(
       c2_query(
-        "INSERT INTO sessions (id, user_id, auth_provider, expires_at) VALUES (?, ?, 'oidc', DATE_ADD(NOW(), INTERVAL 1 DAY))",
+        "INSERT INTO sessions (id, user_id, auth_provider, expires_at) VALUES (?, ?, 'saml', DATE_ADD(NOW(), INTERVAL 1 DAY))",
         [hashSessionToken(rawToken()), userId]
       )
     );
@@ -148,8 +148,12 @@ describe(`${MIGRATION} applied for real`, () => {
       const query = queryVia(conn);
       const userId = await newUser();
 
-      // The install before this file: no column, no CHECK, not recorded.
-      await query('ALTER TABLE sessions DROP CHECK chk_sessions_auth_provider, DROP COLUMN auth_provider');
+      // The install before this file: no column, no CHECK, not recorded. The
+      // pairing CHECK that migrations/2026-10-11-user-identities.sql adds names
+      // auth_provider, so it goes first (MySQL refuses to drop the column under it).
+      await query(
+        'ALTER TABLE sessions DROP CHECK chk_sessions_identity_pairing, DROP CHECK chk_sessions_auth_provider, DROP COLUMN auth_provider'
+      );
       await query('DELETE FROM schema_migrations WHERE filename = ?', [MIGRATION]);
 
       // What the old image wrote: the raw token as the id.

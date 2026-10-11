@@ -19,7 +19,11 @@ both `requireAuth` and an active GitHub OAuth link — these routes return
 Returns which OAuth providers are configured. Public — called by the login
 UI before rendering OAuth buttons.
 
-**Response:** `{ success: true, providers: { google: true, github: false } }`
+**Response:** `{ success: true, providers: { google: true, github: false, oidc: { enabled: true, name: "Cloud City ID" } } }`
+
+`oidc.name` is the label on the sign-in button (`OIDC_PROVIDER_NAME`, default `SSO`). OIDC sign-in
+starts at `GET /api/auth/oidc/start?returnTo=<path>` and ends at `GET /api/auth/oidc/callback`, which
+is not an API call: it redirects. A refused sign-in lands on `/?oauth_error=<code>&oauth_provider=oidc`.
 
 ---
 

@@ -171,14 +171,37 @@ function isTokenShaped(value) {
  * device leaves the others alone. Returns the raw token; only its digest
  * (hashSessionToken) is stored, so a database dump yields nothing a browser
  * can present.
+ *
+ * An OIDC session (W6-CDX-5) names the identity it signed in through and the
+ * issuer's sid, and its expiry is either `ttlHours` from now (a sign-in) or the
+ * absolute `expiresAt` it already had (a rotation). The pairing is enforced here
+ * as well as by chk_sessions_identity_pairing: "oidc" needs an identityId, and an
+ * identityId needs "oidc". Both checks throw before any SQL is issued.
+ *
  * @param { Object } user - Must contain an `id` property
  * @param { string } [ip] - Client IP address
  * @param { string } [userAgent] - Client User-Agent header
- * @param { { provider?: 'local'|'google' } } [options] - the flow that minted it
+ * @param { { provider?: 'local'|'google'|'oidc', identityId?: number|null, providerSid?: string|null,
+ *   ttlHours?: number, expiresAt?: Date } } [options] - the flow that minted it
  * @returns { Promise<String> }
  */
-export async function generateSessionToken(user, ip = null, userAgent = null, { provider = 'local' } = {}) {
+export async function generateSessionToken(user, ip = null, userAgent = null, options = {}) {
+  const { provider = 'local', identityId = null, providerSid = null, ttlHours, expiresAt } = options;
+  if ((provider === 'oidc') !== (identityId !== null && identityId !== undefined)) {
+    throw new Error('generateSessionToken: an oidc session needs an identityId, and only an oidc session has one');
+  }
+
   const token = createNewSessionToken();
+  if (provider === 'oidc') {
+    const expiry = expiresAt ?? new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+    await c2_query(
+      `INSERT INTO sessions (user_id, id, auth_provider, identity_id, provider_sid, created_at, expires_at, ip_address, user_agent)
+       VALUES (?, ?, 'oidc', ?, ?, NOW(), ?, ?, ?)`,
+      [user.id, hashSessionToken(token), identityId, providerSid, expiry, ip, userAgent]
+    );
+    return token;
+  }
+
   await c2_query(
     `INSERT INTO sessions (user_id, id, auth_provider, created_at, expires_at, ip_address, user_agent)
      VALUES (?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), ?, ?)`,
@@ -228,6 +251,30 @@ export async function getSessionProvider(sessionToken) {
     [hashSessionToken(sessionToken)]
   );
   return session?.auth_provider ?? 'local';
+}
+
+/**
+ * Every provenance field an OIDC session carries, so a rotated session (update-account,
+ * confirm-email) keeps its identity, its issuer sid and its absolute expiry. Read before the
+ * rotation deletes the row. Answers `{ provider: 'local' }` (with null fields) for a missing row or
+ * a value that cannot be a token, the same answer getSessionProvider gives.
+ * @param { String } sessionToken
+ * @returns { Promise<{ provider: String, identityId: Number|null, providerSid: String|null, expiresAt: Date|null }> }
+ */
+export async function getSessionProvenance(sessionToken) {
+  const none = { provider: 'local', identityId: null, providerSid: null, expiresAt: null };
+  if (!isTokenShaped(sessionToken)) return none;
+  const [session] = await c2_query(
+    `SELECT auth_provider, identity_id, provider_sid, expires_at FROM sessions WHERE id = ? LIMIT 1`,
+    [hashSessionToken(sessionToken)]
+  );
+  if (!session) return none;
+  return {
+    provider: session.auth_provider,
+    identityId: session.identity_id ?? null,
+    providerSid: session.provider_sid ?? null,
+    expiresAt: session.expires_at ?? null,
+  };
 }
 
 /**
