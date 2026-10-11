@@ -23,6 +23,7 @@ import ReadOnlyContent from '../components/editor/ReadOnlyContent';
 import VersionHistory from '../components/editor/VersionHistory';
 import DrawioBlock from '../components/DrawioBlock';
 import { getPreferredEditorMode } from '../userPrefs';
+import SuiteDocLink from '../components/SuiteDocLink';
 import useCollab from '../hooks/useCollab';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollabPresence from '../components/CollabPresence';
@@ -1149,6 +1150,7 @@ function EditorView({ embedded = false } = {}) {
                 <span>v{documentData.version ?? 1} &middot; {new Date(documentData.created_at).toLocaleString()}</span>
               </>
             )}
+            <SuiteDocLink archiveId={documentData?.archive_id} logId={logId} />
             {viewMode === 'edit' && <CollabPresence users={collabUsers} connected={collabConnected} />}
             {documentData && (
               <button

@@ -11,7 +11,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 vi.mock('../../../src/util.jsx', () => ({ apiFetch: vi.fn() }));
 
 import { apiFetch } from '../../../src/util.jsx';
-import useSuite, { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
+import useSuite, { useSuiteLinks, __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 
 const USER = { id: 1, name: 'Alice' };
 
@@ -51,5 +51,34 @@ describe('useSuite', () => {
     const { result } = renderHook(() => useSuite(USER));
     await new Promise((r) => setTimeout(r, 0));
     expect(result.current).toEqual({ enabled: false, name: null, commandWorkspaceUrl: null });
+  });
+});
+
+describe('useSuiteLinks', () => {
+  it('is null, and asks for no links, when suite mode is off', async () => {
+    apiFetch.mockResolvedValue({ enabled: false, name: null });
+    const { result } = renderHook(() => useSuiteLinks());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(result.current).toBeNull();
+    expect(apiFetch.mock.calls.map(([, url]) => url)).toEqual(['/api/suite']);
+  });
+
+  it('answers the Cloud Command URL when suite mode is on', async () => {
+    apiFetch.mockImplementation(async (_m, url) => (url === '/api/suite'
+      ? { enabled: true, name: 'Example Suite' }
+      : { commandWorkspaceUrl: 'https://command.example.test/w/1' }));
+    const { result } = renderHook(() => useSuiteLinks());
+    await waitFor(() => expect(result.current).toEqual({ commandWorkspaceUrl: 'https://command.example.test/w/1' }));
+  });
+
+  it('stays null when the links request fails, and never throws', async () => {
+    apiFetch.mockImplementation(async (_m, url) => {
+      if (url === '/api/suite') return { enabled: true, name: 'Example Suite' };
+      throw new Error('unauthorized');
+    });
+    const { result } = renderHook(() => useSuiteLinks());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(result.current).toBeNull();
   });
 });

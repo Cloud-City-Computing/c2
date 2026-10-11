@@ -68,3 +68,29 @@ export default function useSuite(user) {
 
   return { ...suite, commandWorkspaceUrl: signedIn ? commandWorkspaceUrl : null };
 }
+
+/**
+ * The Cloud Command links for a page that is already signed in: { commandWorkspaceUrl }, or null
+ * when suite mode is off or the links request fails (no session, or any other error). Used by a
+ * page that is not inside the layout's user state, such as the document editor.
+ *
+ * @returns {{ commandWorkspaceUrl: string }|null}
+ */
+export function useSuiteLinks() {
+  const [links, setLinks] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    loadSuite()
+      .then((s) => (s.enabled ? apiFetch('GET', '/api/suite/links') : null))
+      .then((body) => {
+        if (live && body?.commandWorkspaceUrl) setLinks({ commandWorkspaceUrl: body.commandWorkspaceUrl });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return links;
+}
