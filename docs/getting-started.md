@@ -195,7 +195,7 @@ All seed accounts use the password **`password`**.
 | `SMTP_FROM` | Sender address for outbound email; blank uses the default | `Cloud Codex <noreply@cloudcitycomputing.com>` |
 | `ADMIN_USERNAME` | Username for the admin super-user. Boot creates it, or syncs an existing admin, and never promotes a non-admin (`.env.example` ships `admin`). Required while local sign-in is on; on a hosted instance (`AUTH_PROVIDERS` without `local`) unset gives the admin a name derived from `ADMIN_EMAIL` | (required with local sign-in) |
 | `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — (required) |
-| `ADMIN_PASSWORD` | Password for the admin super-user. Required while local sign-in is on; a hosted instance never reads it | — (required with local sign-in) |
+| `ADMIN_PASSWORD` | Password for the admin super-user. Required while local sign-in is on; a hosted instance never reads it | none (required with local sign-in) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (enables Google SSO) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | — |
 | `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
