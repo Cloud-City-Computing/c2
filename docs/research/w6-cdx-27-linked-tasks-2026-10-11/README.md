@@ -25,3 +25,10 @@ page was `https://command.example.test/w/1/docs/1/1`, with tab index 0 (a native
 - `raw/backup-restore-local-output.txt`: that excluded file fails on this machine because the
   local `mysqldump` is MariaDB's; the test says so itself. CI's runner image has MySQL's
   clients, so this is an environment gap, not a change in this PR.
+
+## Re-check after the review round
+
+The same capture after the review fixes (`raw/` holds the rerun counts): the link still renders on
+document 1 and document 2 with each document's own archive and log ids, and the server answered
+the workspace URL shape at boot. Unit: 131 files, 2858 tests. Integration without the backup drill:
+17 files, 195 tests. Full notes in the PR 7 section of the plan.
