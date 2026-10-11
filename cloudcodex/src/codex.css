@@ -22,8 +22,9 @@
  *  - Every text colour clears its minimum on every surface below, measured by
  *    tests/design/contrast.test.js over tests/design/pairs.json.
  *
- * No component reads these names yet (W6-CDX-22 repoints index.css onto
- * them), so loading this file changes nothing on screen.
+ * index.css reads these names through its :root bridge (W6-CDX-22), and the
+ * content banners read them directly (W6-CDX-28), so every colour on the page
+ * comes from this file or core.css.
  */
 
 [data-theme='dark'] {

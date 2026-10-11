@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>cdx28 navigation surfaces</title>
+<link rel="stylesheet" href="vendor/cloud-city-design/core.css"><link rel="stylesheet" href="vendor/cloud-city-design/fonts.css">
+<link rel="stylesheet" href="CSS_CODEX"><link rel="stylesheet" href="CSS_INDEX">
+<style>body{margin:0;padding:16px;background:var(--bg-main);width:1100px} .row{display:flex;gap:20px;align-items:flex-start;margin-bottom:14px} .col{flex:1;min-width:0} h4{color:var(--text-muted);font:12px system-ui;margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em}</style>
+</head><body>
+<div class="row">
+ <div class="col">
+  <h4>Page tree (active row, hover tint)</h4>
+  <div class="page-tree" style="width:300px">
+   <div class="page-tree-header"><span class="page-tree-title">Pages</span><div class="page-tree-header-actions"><button class="page-tree-add-btn">+ Add</button></div></div>
+   <div class="page-tree-list">
+    <div class="page-tree-item"><div class="page-tree-row"><span class="page-tree-label">Runbook</span></div></div>
+    <div class="page-tree-item"><div class="page-tree-row page-tree-row--active"><span class="page-tree-label">Cutover plan</span></div></div>
+    <div class="page-tree-item"><div class="page-tree-row"><span class="page-tree-label">Rollback</span><button class="page-tree-row-add">+</button></div></div>
+   </div>
+   <button class="page-tree-back-btn">&larr; Back to archive</button>
+  </div>
+ </div>
+ <div class="col">
+  <h4>Explore: filters, badges and a match</h4>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+   <button class="btn-filter-toggle btn-filter-toggle--active">Filters</button>
+   <button class="btn-fav-filter btn-fav-filter--active">&#9733; Favourites</button>
+   <button class="btn-clear-filters">Clear filters</button>
+  </div>
+  <div class="explore-card" style="margin-top:10px;width:460px">
+   <div class="explore-card__header"><a class="explore-card__title-link"><span class="explore-card__title">Cutover <span class="explore-match">window</span></span></a>
+    <span class="explore-badge explore-badge--title">title</span> <span class="explore-badge explore-badge--content">content</span></div>
+   <div class="explore-card__meta"><span class="explore-card__archive">Platform</span> <span class="explore-card__author">alice</span></div>
+   <div class="explore-card__snippet">The <span class="explore-match">window</span> opens after the 14:00 deploy.</div>
+  </div>
+ </div>
+</div>
+<div class="row">
+ <div class="col">
+  <h4>Search results</h4>
+  <div class="search-result-item" style="width:460px"><h3 class="result-title"><button class="result-title-btn">Cutover window</button></h3><p class="result-excerpt">The <mark>window</mark> opens after the deploy.</p></div>
+ </div>
+ <div class="col">
+  <h4>Archive log tree (add, delete, CI badges)</h4>
+  <ul class="log-tree-list" style="list-style:none;padding:0;margin:0;width:340px">
+   <li class="log-tree-item"><div class="log-tree-row"><a class="log-tree-title">Runbook</a><button class="log-tree-add">+</button><button class="log-tree-delete">&times;</button></div></li>
+   <li class="log-tree-item"><div class="log-tree-row"><a class="log-tree-title">Rollback</a><span class="ci-badge ci-badge--in_progress">running</span></div></li>
+  </ul>
+ </div>
+</div>
+</body></html>

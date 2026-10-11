@@ -1,0 +1,108 @@
+== page-tree-row--active
+  src/components/PageTree.jsx:32:        className={`page-tree-row${isActive ? ' page-tree-row--active' : ''}`}
+  (index.css rule(s): 2)
+== page-tree-add-btn
+  src/components/PageTree.jsx:130:          <button className="page-tree-add-btn" onClick={handleNewPage} title="New page" aria-label="New page">+</button>
+  (index.css rule(s): 2)
+== page-tree-back-btn
+  src/components/PageTree.jsx:121:          className="page-tree-back-btn"
+  (index.css rule(s): 2)
+== page-tree-row-add
+  src/components/PageTree.jsx:67:        <button className="page-tree-row-add" onClick={handleAddSublog}
+  (index.css rule(s): 3)
+== log-tree-add
+  src/components/ArchiveBrowser.jsx:774:          <button className="log-tree-add" onClick={handleNewSublog}
+  (index.css rule(s): 3)
+== log-tree-delete
+  src/components/ArchiveBrowser.jsx:787:          <button className="log-tree-delete" onClick={handleDelete}
+  (index.css rule(s): 3)
+== btn-clear-filters
+  src/components/ExploreBrowser.jsx:395:            <button className="btn-clear-filters" onClick={clearFilters}>
+  (index.css rule(s): 2)
+== btn-fav-filter--active
+  src/components/ExploreBrowser.jsx:358:            className={`btn-fav-filter${favoritesOnly ? ' btn-fav-filter--active' : ''}`}
+  (index.css rule(s): 1)
+== btn-filter-toggle--active
+  src/components/ExploreBrowser.jsx:335:            className={`btn-filter-toggle${showFilters || hasActiveFilters ? ' btn-filter-toggle--active' : ''}`}
+  (index.css rule(s): 1)
+== explore-badge
+  src/components/ExploreBrowser.jsx:67:            <span className={`explore-badge explore-badge--${item.matchedOn}`}>
+  (index.css rule(s): 3)
+== explore-match
+  src/components/ExploreBrowser.jsx:26:      <mark className="explore-match">{snippet.slice(matchStart, matchEnd)}</mark>
+  (index.css rule(s): 1)
+== ci-badge
+  src/components/CIStatusBadge.jsx:51:  if (loading) return <span className="ci-badge ci-badge--loading" title="Checking CI…">·</span>;
+  src/components/CIStatusBadge.jsx:57:  const className = `ci-badge ci-badge--${state}`;
+  src/components/CIStatusBadge.jsx:62:        <span className="ci-badge__icon">{icon}</span>
+  src/components/CIStatusBadge.jsx:63:        {!compact && <span className="ci-badge__label">{state}</span>}
+  src/components/CIStatusBadge.jsx:69:      <span className="ci-badge__icon">{icon}</span>
+  src/components/CIStatusBadge.jsx:70:      {!compact && <span className="ci-badge__label">{state}</span>}
+  (index.css rule(s): 6)
+== gh-code-embed__stale
+  src/extensions/GitHubCodeEmbed.jsx:90:        {isStale && <span className="gh-code-embed__stale" title="Pinned SHA no longer matches branch tip">stale</span>}
+  (index.css rule(s): 1)
+== gh-merge-dialog__warn
+  src/components/GitHubMergeDialog.jsx:76:          <p className="gh-merge-dialog__warn">
+  (index.css rule(s): 1)
+== gh-reconnect-banner
+  src/components/AccountMenu.jsx:846:          <div className="gh-reconnect-banner" role="alert">
+  (index.css rule(s): 1)
+== hljs-comment
+  (index.css rule(s): 1)
+== hljs-keyword
+  (index.css rule(s): 2)
+== hljs-addition
+  (index.css rule(s): 1)
+== hljs-quote
+  (index.css rule(s): 1)
+== code-block-wrapper
+  src/components/CodeBlockWithLanguage.jsx:46:    <NodeViewWrapper className="code-block-wrapper">
+  (index.css rule(s): 3)
+== error-boundary
+  src/components/ErrorBoundary.jsx:62:      <div className="error-boundary" role="alert">
+  src/components/ErrorBoundary.jsx:63:        <div className="error-boundary__panel">
+  src/components/ErrorBoundary.jsx:64:          <h1 className="error-boundary__title">Something went wrong</h1>
+  src/components/ErrorBoundary.jsx:65:          <p className="error-boundary__body">
+  src/components/ErrorBoundary.jsx:70:            <pre className="error-boundary__detail">{error.message}</pre>
+  src/components/ErrorBoundary.jsx:72:          <div className="error-boundary__actions">
+  (index.css rule(s): 6)
+== not-found
+  src/App.jsx:32:    <div className="not-found-page">
+  routes/squads.js:98:    // 404 rather than 403, with the not-found message byte for byte, because a
+  (index.css rule(s): 3)
+== dynamic builders and generators
+  src/App.jsx
+  src/editorUtils.js
+  src/components/ArchiveBrowser.jsx
+  src/components/ExportMenu.jsx
+  src/components/AccountMenu.jsx
+  src/components/RemoteCursors.jsx
+  src/components/CommentHighlights.jsx
+  src/extensions/GitHubCodeEmbed.jsx
+  src/components/CommentManager.jsx
+  src/components/CommentForm.jsx
+  src/extensions/Mention.jsx
+  src/components/ResizableImage.jsx
+  src/components/Login.jsx
+  src/components/PageTree.jsx
+  src/components/editor/ReadOnlyContent.jsx
+  src/components/CodeBlockWithLanguage.jsx
+  src/components/Toast.jsx
+  src/components/github/IssuePickerModal.jsx
+  src/components/CommentSidebar.jsx
+  src/pages/ArchiveView.jsx
+  src/components/ExploreBrowser.jsx
+  src/components/GitHubSyncBanner.jsx
+  src/pages/WorkspaceActivity.jsx
+  src/components/ConfirmDialog.jsx
+  src/components/NotificationBell.jsx
+  src/extensions/GitHubIssueEmbed.jsx
+  src/page_layouts/Std_Layout.jsx
+  src/components/editor/VersionHistory.jsx
+  src/pages/AdminPage.jsx
+  src/pages/WorkspacesPage.jsx
+  src/pages/NotificationsPage.jsx
+  src/index.css
+  src/pages/Editor.jsx
+  src/pages/GitHubPage.jsx

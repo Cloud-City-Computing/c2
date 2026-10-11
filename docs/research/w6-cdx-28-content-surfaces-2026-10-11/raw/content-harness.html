@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>cdx28 content surfaces</title>
+<link rel="stylesheet" href="vendor/core.css"><link rel="stylesheet" href="vendor/fonts.css">
+<link rel="stylesheet" href="CSS_CODEX"><link rel="stylesheet" href="CSS_INDEX">
+<style>body{margin:0;padding:24px;background:var(--bg-main);width:1200px} .row{display:flex;gap:24px;align-items:flex-start} .col{flex:1;min-width:0} h4{color:var(--text-muted);font:12px system-ui;margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em}</style>
+</head><body>
+<div class="row">
+ <div class="col">
+  <h4>Document editor and code block</h4>
+  <div class="editor-container" style="padding:16px;width:560px">
+   <div class="tiptap">
+    <h1>Deploy notes</h1>
+    <p>Ping <span class="mention" data-mention-username="bob">@bob</span> before the cutover, then read the <a href="#">runbook</a>.</p>
+    <blockquote><p>Rollback is one command, and it is tested.</p></blockquote>
+    <div class="code-block-wrapper">
+     <div class="code-block-header"><select class="code-block-lang-select"><option>javascript</option></select></div>
+     <pre><code><span class="hljs-comment">// retry twice, then give up</span>
+<span class="hljs-keyword">const</span> <span class="hljs-title">retry</span> = <span class="hljs-number">2</span>;
+<span class="hljs-keyword">function</span> <span class="hljs-title">run</span>(<span class="hljs-params">name</span>) { <span class="hljs-built_in">console</span>.log(<span class="hljs-string">"ok"</span>, name); }</code></pre>
+    </div>
+    <table><thead><tr><th>Service</th><th>Owner</th></tr></thead><tbody><tr><td>api</td><td>alice</td></tr><tr><td>web</td><td>carol</td></tr></tbody></table>
+   </div>
+  </div>
+ </div>
+ <div class="col">
+  <h4>Comments and the sidebar</h4>
+  <div class="comment-sidebar" style="width:360px">
+   <div class="comment-sidebar__header"><span class="comment-sidebar__title">Comments</span><span class="comment-sidebar__count">2</span></div>
+   <div class="comment-sidebar__list">
+    <div class="comment-thread">
+     <div class="comment-thread__header"><span class="comment-thread__meta">alice, 2h ago</span><span class="comment-thread__status-badge">open</span></div>
+     <div class="comment-thread__selection"><span class="comment-thread__selection-icon">&#8220;</span> Rollback is one command</div>
+     <div class="comment-thread__body">Can we <span class="mention" data-mention-username="bob">@bob</span> confirm the cutover window?</div>
+     <div class="comment-reply"><div class="comment-reply__header"><span class="comment-reply__author">bob</span><span class="comment-reply__time">1h ago</span></div><div class="comment-reply__body">Yes, after the 14:00 deploy.</div></div>
+     <div class="comment-thread__actions"><button class="comment-btn comment-btn--sm comment-btn--resolve">Resolve</button><button class="comment-btn comment-btn--sm comment-btn--delete">Delete</button></div>
+    </div>
+   </div>
+  </div>
+  <h4 style="margin-top:20px">Markdown preview and embeds</h4>
+  <div class="markdown-editor__rendered" style="width:420px;padding:12px">
+   <h2>Runbook</h2><p>See the <code>retry</code> helper.</p>
+   <pre><code><span class="hljs-keyword">const</span> <span class="hljs-title">retry</span> = <span class="hljs-number">2</span>;</code></pre>
+   <table><thead><tr><th>Step</th><th>Status</th></tr></thead><tbody><tr><td>build</td><td><span class="ci-badge ci-badge--success">success</span></td></tr><tr><td>deploy</td><td><span class="ci-badge ci-badge--failure">failure</span></td></tr></tbody></table>
+  </div>
+  <div class="gh-code-embed" style="width:420px;margin-top:12px">
+   <div class="gh-code-embed__header"><span class="gh-code-embed__icon">&lt;/&gt;</span><span class="gh-code-embed__path">src/retry.js</span><span class="gh-code-embed__lang">js</span><span class="gh-code-embed__stale">stale</span></div>
+   <div class="gh-code-embed__body"><pre class="hljs"><span class="hljs-comment">// retry twice</span>
+<span class="hljs-keyword">const</span> <span class="hljs-number">2</span></pre></div>
+  </div>
+  <div class="gh-issue-embed" style="width:420px;margin-top:12px">
+   <span class="gh-issue-embed__state gh-issue-embed__state--open">open</span> <span class="gh-issue-embed__ref">#412</span> <span class="gh-issue-embed__title">Cutover window</span>
+  </div>
+ </div>
+</div>
+</body></html>
