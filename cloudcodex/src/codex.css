@@ -86,9 +86,10 @@
   /* Labels on a tint, one step lighter than the status text they replace: the
      tint lightens the surface under a label, and these clear 4.5:1 on the
      strongest surface where the status step does not. --cx-warning-bright is
-     the old #ffc832 label. Each is listed in tests/design/pairs.json. */
+     the old #ffc832 label, and --cx-success-bright is the same lift for a CI badge. Each is listed in tests/design/pairs.json. */
   --cx-warning-bright: oklch(0.86 0.16 87);
   --cx-danger-bright: oklch(0.87 0.1 25);
+  --cx-success-bright: oklch(0.86 0.15 151);
   /* The violet of a content-match badge's label, and the shadow under a
      popover. The label is measured on the surfaces in tests/design/pairs.json. */
   --cx-violet: oklch(0.86 0.1 291);

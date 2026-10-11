@@ -75,6 +75,12 @@
       "reason": "A danger label on a clear-filters tint, on hover: one step lighter than --cx-danger, the one that clears 4.5:1 on the strongest surface."
     },
     {
+      "text": "--cx-success-bright",
+      "on": "surfaces",
+      "min": 4.5,
+      "reason": "A success label on a CI-badge tint, on the strongest surface too: the bright step, one lighter than --cx-success."
+    },
+    {
       "text": "--cx-violet",
       "on": "surfaces",
       "min": 4.5,

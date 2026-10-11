@@ -1,6 +1,6 @@
 {
   "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
-  "_measured": "631 after W6-CDX-23's review fixes (the text-field halos, the editor and sidebar rings, the danger press), from 642 after the first pass, from 674 at W6-CDX-22.",
+  "_measured": "510 after W6-CDX-28 burned the eight content banners (Search, Cards, Search Results, Not Found, Error Boundary, Page Tree, Explore, Log Tree), from 631 at W6-CDX-23's review fixes, from 642 after the first pass, from 674 at W6-CDX-22.",
   "src/components/AccountMenu.jsx": {
     "(file)": 5
   },
