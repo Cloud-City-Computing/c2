@@ -438,6 +438,8 @@ manifest lists.
 | `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
 | `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
 | `contrast.test.js` | every pair in `pairs.json` clears its minimum in the dark theme, and every colour binding in `src/codex.css` is in a pair or named decorative |
+| `bridge.test.js` | the 27 legacy names and the five fallback names in `index.css`'s `:root` are each one `var()` into `codex.css` or `core.css`, resolve through the vendored resolver, and hold no literal (the colour ones resolve to a colour) |
+| `accents.test.js` | the eight picker hues in `src/tokens/accents.js`: 40 of 40 hue-by-surface pairs at 4.5:1 (non-vacuity counted), on-accent at 4.5:1 on each fill, at least 15 degrees from the danger, warning, success and violet arcs read from `core.css`, no two closer than 25 degrees, `LEGACY_ACCENT` targets unique keys |
 | `codex-css.test.js` | `codex.css` declares only `--cx-` custom properties, nothing else, under `[data-theme='dark']`, never a core name; `index.html` sets the attribute; `src/main.jsx` imports core, fonts, codex, index in that order; no font under `public/`; Vite keeps legal comments |
 
 **The ledger is exact, not a ceiling.** `ledger.json` holds a count per file,
@@ -446,7 +448,9 @@ and per section banner inside `index.css` (`tests/design/buckets.js`,
 above its number fails as a regression and one below it fails as an unrecorded
 fix, so a burndown PR lowers the ledger by exactly what it burned, in the same
 PR. It started at 745 (646 literal colours, 77 accent positions, 22 outline
-suppressions); `node tests/design/report.mjs [file]` prints the live buckets.
+suppressions) and stands at 679 after W6-CDX-22: the `:root` bridge took its 19
+literal colours out, and the dead-CSS burndown and the picker's data file took
+the rest. `node tests/design/report.mjs [file]` prints the live buckets.
 In `src/codex.css` (`TOKEN_DEFINITIONS`) the literal rule skips the
 custom-property declarations (`maskCustomProperties` blanks them first),
 because those literals are the definitions the contrast gate measures; a

@@ -1,6 +1,6 @@
 {
   "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
-  "_measured": "679 after W6-CDX-22 (the bridge, the dead-CSS burndown and the accent set), from 745 at W6-CDX-21. Regenerate a bucket with node tests/design/report.mjs.",
+  "_measured": "679 after W6-CDX-22 (the bridge, the dead-CSS burndown and the picker's literal hues), from 745 at W6-CDX-21. Regenerate a bucket with node tests/design/report.mjs.",
   "src/components/AccountMenu.jsx": {
     "(file)": 5
   },
