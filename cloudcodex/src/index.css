@@ -994,7 +994,7 @@ body {
 }
 
 .card:hover {
-  border-color: var(--brand-blue);
+  border-color: var(--cx-accent);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
