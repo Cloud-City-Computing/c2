@@ -53,7 +53,7 @@ const SQUAD_ROLES = ['member', 'admin', 'owner'];
  *
  * @returns {Promise<number|null>} the admin's id, or null when refused
  */
-export async function ensureAdminUser() {
+export async function ensureAdminUser({ retried = false } = {}) {
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;
   const email = process.env.ADMIN_EMAIL;
@@ -109,10 +109,18 @@ export async function ensureAdminUser() {
       ? await c2_query(`SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1`, [username])
       : [];
     const name = username && taken.length === 0 ? username : await deriveUniqueUsername(email);
-    const result = await c2_query(
-      `INSERT INTO users (name, email, is_admin, created_at) VALUES (?, ?, TRUE, NOW())`,
-      [name, email]
-    );
+    let result;
+    try {
+      result = await c2_query(
+        `INSERT INTO users (name, email, is_admin, created_at) VALUES (?, ?, TRUE, NOW())`,
+        [name, email]
+      );
+    } catch (err) {
+      // Another boot created the admin between the look above and this INSERT: the unique key refuses this
+      // one. Read again once and decide on what is there, so two boots at once make one admin.
+      if (err.code === 'ER_DUP_ENTRY' && !retried) return ensureAdminUser({ retried: true });
+      throw err;
+    }
     await createDefaultPermissions(result.insertId);
     console.error(
       `[${new Date().toISOString()}] admin sync: created ${name} / ${email} as the admin (user ${result.insertId}).`
@@ -121,11 +129,18 @@ export async function ensureAdminUser() {
   }
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const result = await c2_query(
-    `INSERT INTO users (name, password_hash, email, is_admin, created_at)
-     VALUES (?, ?, ?, TRUE, NOW())`,
-    [username, passwordHash, email]
-  );
+  let result;
+  try {
+    result = await c2_query(
+      `INSERT INTO users (name, password_hash, email, is_admin, created_at)
+       VALUES (?, ?, ?, TRUE, NOW())`,
+      [username, passwordHash, email]
+    );
+  } catch (err) {
+    // The same race as the hosted branch: read again once, and adopt or refuse what the other boot left.
+    if (err.code === 'ER_DUP_ENTRY' && !retried) return ensureAdminUser({ retried: true });
+    throw err;
+  }
 
   // Create default permissions row
   await createDefaultPermissions(result.insertId);

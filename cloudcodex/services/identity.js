@@ -205,6 +205,12 @@ async function resolveOidcIdentity(claims, policy) {
 /** Thrown inside the invitation transaction when the invitation was taken or revoked in the window. */
 class InvitationGone extends Error {}
 
+/** Thrown inside the invitation transaction when the identity pair was linked by a racing sign-in. */
+class IdentityRace extends Error {}
+
+/** The identity key names, as MySQL reports them in a duplicate-entry message (init.sql). */
+const IDENTITY_PAIR_KEYS = ['user_identities.uq_user_identities_issuer_subject', 'user_identities.uq_user_identities_user_issuer'];
+
 /**
  * Create the user an invitation admits, in one transaction, as POST /api/create-account does: the user
  * with the derived username and no password, its default permissions, the invitation marked accepted
@@ -233,15 +239,32 @@ async function createFromInvitation(claims, invitation) {
         await addSquadMember(invitation.squad_id, userId, invitation, query);
       }
 
-      const identity = await query(
-        `INSERT INTO user_identities (user_id, issuer, subject, email_at_link, email_at_last_signin)
-         VALUES (?, ?, ?, ?, ?)`,
-        [userId, issuer, subject, email, email]
-      );
+      let identity;
+      try {
+        identity = await query(
+          `INSERT INTO user_identities (user_id, issuer, subject, email_at_link, email_at_last_signin)
+           VALUES (?, ?, ?, ?, ?)`,
+          [userId, issuer, subject, email, email]
+        );
+      } catch (linkErr) {
+        // A racing sign-in for this subject linked first. The transaction rolls back, so this user never exists.
+        if (linkErr.code === 'ER_DUP_ENTRY' && IDENTITY_PAIR_KEYS.some((key) => String(linkErr.sqlMessage).includes(key))) {
+          throw new IdentityRace();
+        }
+        throw linkErr;
+      }
       return { ok: true, userId, created: true, identityId: identity.insertId };
     });
   } catch (err) {
     if (err instanceof InvitationGone) return { ok: false, reason: 'no_account' };
+    if (err instanceof IdentityRace) {
+      // The identity that won is the same person's sign-in, so it answers in place of this one. Only the key
+      // on (issuer, subject) can refuse this insert for a new user; the one on (user, issuer) cannot.
+      const [winner] = await c2_query(HIT_SQL, [issuer, subject]);
+      if (!winner) return { ok: false, reason: 'identity_conflict' };
+      if (winner.deactivated_at) return { ok: false, reason: 'account_deactivated' };
+      return { ok: true, userId: winner.user_id, created: false, identityId: winner.id };
+    }
     throw err;
   }
 }

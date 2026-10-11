@@ -121,6 +121,41 @@ describe('a hosted boot, on a real server', () => {
   });
 });
 
+describe('two boots and two sign-ins at once, on a real server', () => {
+  it('two concurrent boot admin syncs make one admin, and both answer its id', async () => {
+    const email = `race${tag}@example.com`;
+    goHosted(email);
+
+    const [a, b] = await Promise.all([ensureAdminUser(), ensureAdminUser()]);
+
+    expect(a).not.toBeNull();
+    expect(b).toBe(a);
+    const rows = await c2_query('SELECT id FROM users WHERE email = ?', [email]);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('two concurrent first sign-ins for one subject make one user, and both answer that user', async () => {
+    const inviter = await newUser('racer');
+    const address = `twice${tag}@example.com`;
+    await c2_query(
+      `INSERT INTO user_invitations (email, token, invited_by, role, expires_at)
+       VALUES (?, ?, ?, 'member', NOW() + INTERVAL 1 DAY)`,
+      [address, randomBytes(32).toString('hex'), inviter]
+    );
+
+    const [a, b] = await Promise.all([
+      resolveIdentity(claims(`twice-${tag}`, address), POLICY),
+      resolveIdentity(claims(`twice-${tag}`, address), POLICY),
+    ]);
+
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(b.userId).toBe(a.userId);
+    const users = await c2_query('SELECT id FROM users WHERE email = ?', [address]);
+    expect(users).toHaveLength(1);
+  });
+});
+
 describe('an invited verified email, on a real server', () => {
   it('lands in its squad, once, and a second sign-in is the same identity', async () => {
     const inviter = await newUser('inviter');
