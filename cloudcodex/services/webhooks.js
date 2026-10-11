@@ -331,6 +331,12 @@ export async function emitEvent(ctx, scope) {
     const actor = { id: ctx.user.id, name: typeof ctx.user.name === 'string' ? ctx.user.name : null };
     const ids = matching.map((s) => s.id);
 
+    // The lock row is created by the first emit, not seeded (see the migration).
+    // This insert is its own autocommit statement, before the transaction: inside
+    // it, the insert's duplicate check would hold a shared lock on the row until
+    // commit, and two emits holding shared locks would deadlock on FOR UPDATE.
+    await c2_query('INSERT IGNORE INTO webhook_sequence_lock (id) VALUES (1)', []);
+
     return await withTransaction(async (query) => {
       // Ids are allocated in commit order: this row is held to the commit, so
       // an emit that starts while another is uncommitted waits for it, and

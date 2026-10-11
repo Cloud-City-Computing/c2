@@ -538,12 +538,12 @@ CREATE TABLE webhook_deliveries (
   FOREIGN KEY (event_id) REFERENCES webhook_events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- The emit order lock (migrations/2026-10-10-webhook-sequence-lock.sql): emits
--- take this row FOR UPDATE, so their ids are allocated in commit order.
+-- The emit order lock (migrations/2026-10-10-webhook-sequence-lock.sql): an
+-- emit creates its one row if absent and takes it FOR UPDATE, so their ids are
+-- allocated in commit order. No row is seeded: restore.sh treats a database
+-- with no rows as a new install, and a seeded row would make it look used.
 CREATE TABLE webhook_sequence_lock (
   id TINYINT PRIMARY KEY,
   CONSTRAINT chk_webhook_sequence_lock_row CHECK (id = 1)
 ) ENGINE=InnoDB;
-
-INSERT INTO webhook_sequence_lock (id) VALUES (1);
 

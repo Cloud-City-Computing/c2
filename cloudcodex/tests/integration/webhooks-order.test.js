@@ -16,9 +16,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mysql from 'mysql2/promise';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { c2_query } from '../../mysql_connect.js';
 import { emitEvent, loadSubscriptions } from '../../services/webhooks.js';
 import { schemaClaims, MIGRATIONS_DIR } from '../../scripts/migrate.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 const ACTION = { action: 'archive.delete', resourceId: 9, user: { id: 1, name: 'order' }, metadata: {} };
 const SCOPE = { workspaceId: 1, squadId: null };
@@ -55,8 +58,25 @@ afterEach(async () => {
 });
 
 describe('emit order', () => {
+  it('nothing seeds the lock row: init.sql and the migration insert none, and no row exists before the first emit', async () => {
+    // restore.sh refuses a non-empty database unless told --replace, and counts
+    // rows, so a seeded lock row would make a new install look like data. The
+    // first emit creates the row instead (INSERT IGNORE inside its transaction).
+    // Statements only: the comments in both files describe the seed in words.
+    const statements = (file) =>
+      readFileSync(file, 'utf8').split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
+    const init = statements(path.join(here, '..', '..', '..', 'init.sql'));
+    const migration = statements(path.join(MIGRATIONS_DIR, '2026-10-10-webhook-sequence-lock.sql'));
+    expect(init).not.toMatch(/INSERT[^;]*webhook_sequence_lock/i);
+    expect(migration).not.toMatch(/INSERT[^;]*webhook_sequence_lock/i);
+    const [row] = await c2_query('SELECT COUNT(*) AS n FROM webhook_sequence_lock', []);
+    expect(Number(row.n)).toBe(0);
+  });
+
   it('an emit waits for the emit holding the order lock, so its id is above the one that commits first', async () => {
     holder = await openSecond();
+    // As emitEvent does: the row is ensured in autocommit, then the transaction locks it.
+    await holder.query('INSERT IGNORE INTO webhook_sequence_lock (id) VALUES (1)');
     await holder.beginTransaction();
     // The in-flight emit: it holds the order lock and has taken an id, but has not committed.
     await holder.query('SELECT id FROM webhook_sequence_lock WHERE id = 1 FOR UPDATE');
@@ -86,26 +106,44 @@ describe('emit order', () => {
     expect(visible).toEqual([slowId, result.eventId]);
   });
 
-  it('overlapping emits never leave a gap: every snapshot of the visible ids is contiguous', async () => {
-    const snapshots = [];
-    let done = false;
-    const reader = (async () => {
-      while (!done) {
-        snapshots.push((await c2_query('SELECT id FROM webhook_events ORDER BY id', [])).map((r) => Number(r.id)));
-      }
-    })();
+  it('a later emit that could finish first does not overtake an earlier emit still in flight', async () => {
+    // Emit A takes its id, then blocks writing its deliveries: the subscription
+    // row for its workspace is locked by the holder below. Emit B is for another
+    // workspace, with no lock in its way, so without the order lock it would
+    // insert, commit and become visible under a higher id before A commits.
+    const subA = (await c2_query(
+      `INSERT INTO webhook_subscriptions (url, secret, source, workspace_id) VALUES ('https://203.0.113.11/a', ?, 'admin', 1)`,
+      ['d'.repeat(64)]
+    )).insertId;
+    await c2_query(
+      `INSERT INTO webhook_subscriptions (url, secret, source, workspace_id) VALUES ('https://203.0.113.12/b', ?, 'admin', 2)`,
+      ['d'.repeat(64)]
+    );
+    await loadSubscriptions();
 
-    const results = await Promise.all(Array.from({ length: 40 }, () => emitEvent(ACTION, SCOPE)));
-    done = true;
-    await reader;
+    holder = await openSecond();
+    await holder.beginTransaction();
+    await holder.query('UPDATE webhook_subscriptions SET enabled = enabled WHERE id = ?', [subA]);
 
-    const ids = results.map((r) => r.eventId);
-    expect(new Set(ids).size).toBe(40);
-    for (const snapshot of snapshots) {
-      if (snapshot.length === 0) continue;
-      const contiguous = snapshot.every((id, i) => i === 0 || id === snapshot[i - 1] + 1);
-      expect(contiguous, `visible ids ${snapshot.join(',')}`).toBe(true);
-    }
+    const emitA = emitEvent(ACTION, { workspaceId: 1, squadId: null });
+    await sleep(300);
+    let bSettled = false;
+    const emitB = emitEvent(ACTION, { workspaceId: 2, squadId: null }).then((result) => {
+      bSettled = true;
+      return result;
+    });
+    await sleep(400);
+    // B must wait behind A (the order lock), so it cannot have committed yet.
+    expect(bSettled).toBe(false);
+
+    await holder.commit();
+    const [a, b] = await Promise.all([emitA, emitB]);
+
+    expect(a.deliveries).toBeGreaterThan(0);
+    expect(b.deliveries).toBeGreaterThan(0);
+    expect(a.eventId).toBeLessThan(b.eventId);
+    const visible = (await c2_query('SELECT id FROM webhook_events ORDER BY id', [])).map((r) => Number(r.id));
+    expect(visible).toEqual([a.eventId, b.eventId]);
   });
 
   it('the migration claims the lock table, so --adopt-fresh-install checks it', () => {
