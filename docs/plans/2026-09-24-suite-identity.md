@@ -1458,6 +1458,11 @@ The code proved these points open or wrong in this section, or the hosted-mode b
   `POST /api/2fa/verify` refuses a challenge for a user deactivated since the password was proven.
 - **Deep links.** A signed-out `returnTo` that fails the validator, or does not decode, falls back to `/`, the same
   rule as Cloud Command's corpus, rather than an error page.
+- **Races.** Two boots creating the admin at once: one INSERT wins, the other re-reads once and adopts it. A racing
+  identity insert for the same subject answers the identity that won, not a 500.
+- **Local credentials kept on a hosted instance.** Password hashes and local 2FA secrets stay in their rows, unreadable
+  by any path while hosted, so a switch back restores local sign-in. Clearing them is a product call (see
+  `docs/deployment.md`, Hosted mode).
 - **Env contract** gains the kind `required-with-local` for `ADMIN_USERNAME` and `ADMIN_PASSWORD`,
   and `tests/env-contract.test.js` names it.
 

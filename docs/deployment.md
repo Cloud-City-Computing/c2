@@ -184,6 +184,13 @@ deletes every session that is not an OIDC session, logging how many it ended, so
 again. Those users sign in through OIDC. Sessions minted by OIDC keep their own expiry
 (`OIDC_SESSION_TTL_HOURS`).
 
+**Local credentials on a hosted instance are kept.** A password hash and a local two-factor secret that
+were set before the switch stay in their rows. Nothing on a hosted instance reads them: local login,
+password reset, two-factor and the local email change answer 404, and `validateAndAutoLogin` refuses any
+session that is not OIDC. The rows are kept on purpose: clearing them is destructive, and switching the
+instance back to local sign-in restores the same passwords without a reset. Clearing them is a product
+decision, not a boot step, so it is not automated.
+
 **Deep links.** A signed-out deep link is carried through sign-in as `returnTo` only when it passes
 the same validator as Cloud Command's corpus. A link that fails validation, or whose encoding does not
 decode, falls back to `/`, which is the landing page, rather than being refused with an error.

@@ -581,6 +581,9 @@ the address is refused as below. The starter workspace is named from the admin's
 seeds its `General` squad. The OIDC rungs can create users, but only through an
 invitation (`resolveIdentity`, `createFromInvitation`), never through the admin sync, and
 no path promotes a user by email or name collision.
+The create is safe under two boots at once: an `INSERT` that loses the race on the unique key is read again
+once (`ensureAdminUser({ retried: true })`), and the second look decides, so the losing boot adopts the admin
+the winner made, or refuses a non-admin, and never makes a second one.
 
 **The boot sync creates or syncs, and never promotes** (GHSA-w8q3-r34w-3pjh).
 It reads every row matching `LOWER(name) = LOWER(ADMIN_USERNAME)` or
