@@ -13,7 +13,7 @@
  * client secret, compared with timingSafeEqual, and good for ten minutes. It carries the returnTo,
  * validated at login and again at the callback (services/return-to.js).
  *
- * Identity claims are read from USERINFO, not the ID token alone: a Cloud City ID application
+ * Identity claims are read from USERINFO, not the ID token alone: an application at the issuer
  * does not put email or email_verified into its ID tokens (docs/research/issuer-contract-2026-09-28).
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026

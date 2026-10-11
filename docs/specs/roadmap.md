@@ -420,7 +420,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-22 | The palette bridge and the accent picker (**done 2026-10-10** on `track/w6-cdx-22-palette-bridge`, PR 2 of the suite UI plan; the four renamed hues await Kyle's name review) | W6-CDX-21 | yes |
 | W6-CDX-23 | Focus, buttons and the Toast (**done 2026-10-11** on `track/w6-cdx-23-focus-buttons-toast`, PR 3 of the suite UI plan; the Toast is the suite's shared primitive, D-V; Kyle's review pending) | W6-CDX-22 | yes |
 | W6-CDX-24 | Dialogs with real semantics (**done 2026-10-11** on `track/w6-cdx-24-dialogs`, PR 4 of the suite UI plan; every dialog is a role dialog, the close controls are buttons, the page is inert behind one) | W6-CDX-23 | yes |
-| W6-CDX-25 | Shell chrome and the suite identity cluster | W6-CDX-23, W6-CMD-23 | yes |
+| W6-CDX-25 | Shell chrome and the suite identity cluster (**done 2026-10-11** on `track/w6-cdx-25-shell-chrome`, PR 5 of the suite UI plan; the switcher mirrors Cloud Command's W6-CMD-23 disclosure, the chrome sections are on the tokens, every z-index is on the shared scale) | W6-CDX-23, W6-CMD-23 | yes |
 | W6-CDX-26 | The suite front door, deep links in | W6-CDX-24, W6-CDX-25, W6-CDX-8, W6-CMD-24 | yes |
 | W6-CDX-27 | Deep links out: Linked tasks | W6-CDX-25, W6-CMD-25 | yes |
 | W6-CDX-28 | Content surfaces on the tokens (**done 2026-10-11** on `track/w6-cdx-28-content-surfaces`, PR 8 of the suite UI plan; the eight content banners are on the tokens, ledger 631 to 510, and every label on a tint is measured over every surface) | W6-CDX-22 | yes |

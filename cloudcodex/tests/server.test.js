@@ -143,6 +143,52 @@ describe('server.js — startup env validation', () => {
   });
 });
 
+describe('server.js: suite mode', () => {
+  const withEnv = async (env, assertions) => {
+    const original = { ...process.env };
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    delete process.env.SUITE_COMMAND_WORKSPACE_URL;
+    delete process.env.SUITE_NAME;
+    Object.assign(process.env, env);
+    try {
+      await import('../server.js');
+      await assertions();
+    } finally {
+      process.env = original;
+    }
+  };
+
+  it('boots with a valid suite pair', async () => {
+    await withEnv({ SUITE_COMMAND_WORKSPACE_URL: 'https://command.example.test/w/1', SUITE_NAME: 'Example Suite' }, () => {
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(listenMock).toHaveBeenCalled();
+    });
+  });
+
+  it('exits 1 with the rule it broke when the URL is not https', async () => {
+    await withEnv({ SUITE_COMMAND_WORKSPACE_URL: 'http://command.example.test/w/1', SUITE_NAME: 'Example Suite', NODE_ENV: 'production' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().join('\n')).toContain('SUITE_COMMAND_WORKSPACE_URL must be https');
+    });
+  });
+
+  it('exits 1 with the not-a-URL sentence when SUITE_COMMAND_WORKSPACE_URL is not a URL', async () => {
+    await withEnv({ SUITE_COMMAND_WORKSPACE_URL: 'command workspace, not a url', SUITE_NAME: 'Example Suite' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().join('\n')).toContain('SUITE_COMMAND_WORKSPACE_URL is not a URL.');
+    });
+  });
+
+  it('exits 1 when suite mode has no name', async () => {
+    await withEnv({ SUITE_COMMAND_WORKSPACE_URL: 'https://command.example.test/w/1' }, () => {
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().join('\n')).toContain('SUITE_NAME is required in suite mode');
+    });
+  });
+});
+
 describe('server.js: PORT', () => {
   const withEnv = async (env, assertions) => {
     const original = { ...process.env };

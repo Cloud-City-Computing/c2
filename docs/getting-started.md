@@ -218,6 +218,8 @@ All seed accounts use the password **`password`**.
 | `WEBHOOK_SECRET` | That subscription's signing secret, at least 32 characters, never stored in the database | unset (optional) |
 | `WEBHOOK_WORKSPACE_ID` | Send only this workspace's events to it; unset sends every workspace's | unset (optional) |
 | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `1` lets any webhook reach loopback and private addresses; link-local and metadata addresses are always refused | unset (optional) |
+| `SUITE_COMMAND_WORKSPACE_URL` | The Cloud Command workspace this instance belongs to. Setting it turns suite mode on: the shell shows the suite cluster and its switcher. An `https` URL with no user or password; plain `http` only outside production; a bad value stops the boot | unset (off) |
+| `SUITE_NAME` | The suite's display name, shown only in suite mode. Required when `SUITE_COMMAND_WORKSPACE_URL` is set: 1 to 40 characters, no control characters | unset |
 
 ---
 

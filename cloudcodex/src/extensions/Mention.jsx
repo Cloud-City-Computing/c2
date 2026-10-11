@@ -258,7 +258,7 @@ export function MentionPicker({ editor }) {
     position: 'fixed',
     top: coords.bottom + 4,
     left: coords.left,
-    zIndex: 1000,
+    zIndex: 'var(--z-menu)',
   };
 
   return (
