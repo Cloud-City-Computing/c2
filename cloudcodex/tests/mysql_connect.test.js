@@ -9,7 +9,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { contractDefault } from './contract-default.js';
@@ -195,6 +195,48 @@ describe('validateAndAutoLogin', () => {
       .mockResolvedValueOnce([[{ user_id: 999, expires_at: future }], []])
       .mockResolvedValueOnce([[], []]);
     expect(await validateAndAutoLogin('orphan')).toBeNull();
+  });
+});
+
+describe('validateAndAutoLogin in hosted mode (W6-CDX-8)', () => {
+  const KEYS = ['AUTH_PROVIDERS', 'OIDC_ISSUER_URL', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
+  let saved;
+  const future = () => new Date(Date.now() + 60_000);
+
+  beforeEach(() => {
+    saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
+    for (const k of KEYS) delete process.env[k];
+    process.env.AUTH_PROVIDERS = 'oidc';
+    process.env.OIDC_ISSUER_URL = 'https://id.example.test';
+  });
+
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it.each(['local', 'google'])('signs out a %s session on a hosted instance, reading no user', async (provider) => {
+    executeMock.mockResolvedValueOnce([[{ user_id: 1, expires_at: future(), auth_provider: provider }], []]);
+    expect(await validateAndAutoLogin('old-session')).toBeNull();
+    expect(executeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an oidc session on a hosted instance', async () => {
+    executeMock
+      .mockResolvedValueOnce([[{ user_id: 1, expires_at: future(), auth_provider: 'oidc' }], []])
+      .mockResolvedValueOnce([[{ id: 1, name: 'Alice', email: 'a@b.c', avatar_url: null, is_admin: 0 }], []]);
+    expect(await validateAndAutoLogin('oidc-session')).toEqual({ id: 1, name: 'Alice', email: 'a@b.c', avatar_url: null, is_admin: 0 });
+  });
+
+  it('refuses a deactivated user, in the user lookup itself', async () => {
+    executeMock
+      .mockResolvedValueOnce([[{ user_id: 1, expires_at: future(), auth_provider: 'oidc' }], []])
+      .mockResolvedValueOnce([[], []]);
+    expect(await validateAndAutoLogin('deactivated')).toBeNull();
+    const [sql] = executeMock.mock.calls[1];
+    expect(sql).toMatch(/FROM users WHERE id = \?\s+AND deactivated_at IS NULL/);
   });
 });
 
