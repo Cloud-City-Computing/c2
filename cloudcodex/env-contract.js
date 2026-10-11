@@ -126,6 +126,12 @@ export const ENV_CONTRACT = [
     why: 'a comma list of this instance\'s allowlisted service-user ids (the token sub); with the two above, '
       + 'turns on machine JWTs, and a token from any other subject is refused' },
 
+  // Suite mode (the shell's suite cluster and the links it offers)
+  { name: 'SUITE_COMMAND_WORKSPACE_URL', kind: 'optional', perInstance: true,
+    why: 'turns suite mode on: the paired workspace this instance belongs to' },
+  { name: 'SUITE_NAME', kind: 'optional', requiredWith: 'SUITE_COMMAND_WORKSPACE_URL', perInstance: true,
+    why: "the suite's display name, shown only in suite mode" },
+
   // Outbound webhooks
   { name: 'WEBHOOK_URL', kind: 'optional', perInstance: true,
     why: 'with WEBHOOK_SECRET, the receiver the env-declared subscription sends events to; either unset '

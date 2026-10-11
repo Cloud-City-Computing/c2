@@ -164,7 +164,7 @@ function Sidebar({ collapsed, onToggle, isAdmin }) {
 
 // --- Top Bar ---
 
-function TopBar({ user }) {
+export function TopBar({ user }) {
   return (
     <header className="topbar">
       <div className="topbar__left">
