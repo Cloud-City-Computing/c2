@@ -118,9 +118,9 @@ after the `activity_log` insert and before auto-watch, in a `try` of its own
 returns before the insert) is never emitted, an event is emitted only for an
 activity row that was written, and the outbox and the watchers cannot fail
 each other. `emitEvent` also never throws: it catches, logs
-`webhook emit failed` and resolves `null` (`services/webhooks.js:352`).
+`webhook emit failed` and resolves `null` (`services/webhooks.js:365`).
 
-What it does, in order (`services/webhooks.js:308`):
+What it does, in order (`services/webhooks.js:315`):
 
 1. Return unless the action is one of the eight in `EMITTED_TYPES`
    (`log.update`, `log.publish`, `log.restore`, `log.rename`, `log.move`,
@@ -131,17 +131,17 @@ What it does, in order (`services/webhooks.js:308`):
    no subscription, and every unit test that never calls `loadSubscriptions`,
    issues nothing new (`services/webhooks.js:317`).
 3. Build `data` per type. Document types read `SELECT archive_id, title,
-   parent_id FROM logs WHERE id = ?` once (`services/webhooks.js:278`) and emit
+   parent_id FROM logs WHERE id = ?` once (`services/webhooks.js:285`) and emit
    nothing if the row is gone. `title` is the document's: from
    `metadata.title` where the caller logged the document's title, and from the
    row for `log.publish`, whose `metadata.title` is the name given to the
-   version (`services/webhooks.js:291`). `log.delete`'s activity row names the
+   version (`services/webhooks.js:300`). `log.delete`'s activity row names the
    archive with `metadata.log_id`, so its data needs no read; the archive
    types need none either. The route records `log.delete` only when its
    `DELETE ... WHERE id = ? AND archive_id = ?` removed a row
    (`routes/archives.js:690`), so an id from another archive can never be
    announced as deleted. Every id field is an integer or `null`.
-4. In one `withTransaction` (`services/webhooks.js:327`): insert the
+4. In one `withTransaction` (`services/webhooks.js:334`), after taking the order lock (`webhook_sequence_lock FOR UPDATE`): insert the
    `webhook_events` row with an empty body to get its id (the envelope's
    `sequence`), serialize the envelope with a fresh UUID v4 as `id`, store its
    UTF-8 bytes, and insert the deliveries with `INSERT ... SELECT` over the
@@ -149,7 +149,7 @@ What it does, in order (`services/webhooks.js:308`):
    so a subscription deleted, disabled or narrowed since the cache last loaded
    gets nothing. When that leaves no delivery at all, the transaction throws a
    private sentinel and rolls the event row back, and `emitEvent` resolves
-   `null` without logging (`services/webhooks.js:349`). Otherwise it resolves
+   `null` without logging (`services/webhooks.js:360`). Otherwise it resolves
    `{ eventId, deliveries }`, the count the database wrote.
 
 `serializeEnvelope` bounds `data.title` and `data.name` to 255 code points
@@ -158,7 +158,7 @@ exceeds 4 KiB however its text escapes; the worst case measures 3,631 bytes
 (`tests/services/webhooks.test.js`). The envelope is public:
 [`docs/api/webhooks.md`](../api/webhooks.md).
 
-**The cache** (`loadSubscriptions`, `services/webhooks.js:109`) holds id,
+**The cache** (`loadSubscriptions`, `services/webhooks.js:116`) holds id,
 workspace and types of every enabled subscription and **no secret** (the
 query never selects it). `server.js` loads it at boot and every 60 seconds,
 and every admin write reloads it. A failed load keeps the previous cache.
@@ -168,7 +168,7 @@ table before an admin write cannot put back the cache that write's reload
 replaced.
 
 **The env subscription** (`reconcileEnvSubscription`,
-`services/webhooks.js:195`) runs once at boot, before the load: with
+`services/webhooks.js:202`) runs once at boot, before the load: with
 `WEBHOOK_URL` and a `WEBHOOK_SECRET` of at least 32 characters it creates or
 re-enables the one `source = 'env'` row (secret column `NULL`: the secret is
 read from the environment at send time, W6-CDX-14); with either unset, a short
@@ -178,7 +178,10 @@ change drops the row's pending deliveries, so one workspace's events never
 reach a receiver configured for another. A name that only fails to resolve
 keeps it on, since the send re-checks.
 
-Nothing sends yet: the delivery worker is W6-CDX-14.
+Ids are allocated in commit order: before its insert, the transaction takes
+`webhook_sequence_lock FOR UPDATE` (the one-row table from
+`2026-10-10-webhook-sequence-lock.sql`), so an emit that starts while another is
+uncommitted waits for it. The delivery worker that sends these rows is section 2b.
 
 ### Auto-watch (`routes/helpers/activity.js:33-37`, `routes/helpers/activity.js:112-137`)
 
@@ -215,6 +218,86 @@ Fan-out is a **sequential `await` loop**, one `createNotification` per watcher.
 For a heavily-watched archive that is a lot of serial round trips inside a
 fire-and-forget promise. Fine at current scale, worth knowing before someone
 watches a 500-document archive.
+
+## 2b. The delivery worker (`services/webhook-worker.js`, W6-CDX-14)
+
+Sends the rows section 2a writes. Started by `server.js` after `loadSubscriptions()`
+(`startWebhookWorker`, a `setInterval` of `TICK_MS` = 2 s, `.unref()`ed, never two ticks at
+once; a tick that throws is logged). Every dependency is injected into
+`createWebhookWorker({ query, send, now, owner, resolve, targetOptions })`, so the tick is
+testable without timers or a network.
+
+**One tick** (`tick`, `services/webhook-worker.js:299`). It reads every enabled, unpaused
+subscription (`SUBS_SQL`, no `LIMIT`: an instance holds at most 50, see
+`MAX_WEBHOOK_SUBSCRIPTIONS`). It is round-robin: each round takes one step for every
+subscription still going, so an endless backlog on one cannot starve another. The
+first subscription of a round rotates from tick to tick. A tick stops at 100 sends
+(`MAX_SENDS_PER_TICK`) or 5 seconds (`TICK_BUDGET_MS`), checked before each step. A
+step that is `delivered`, `dead` (422) or `expired` lets its subscription go on;
+anything else ends its run for the tick. Every query has a 10-second deadline
+(`QUERY_TIMEOUT_MS`, `withDeadline`), so a hung query fails the tick rather than the
+loop.
+
+**One head** (`deliverHead`, `:223`). The head is the subscription's oldest `pending`
+delivery (`HEAD_SQL`, `ORDER BY d.event_id LIMIT 1`). Nothing behind it is read, which is the
+ordering guarantee. The lease is a guarded `UPDATE` (`LEASE_SQL`): `leased_by` is the
+worker's owner token, `lease_expires_at` 30 seconds out, taken only when the row is pending
+and unleased or expired. After the DNS check and before the send it is renewed (`RENEW_SQL`),
+guarded, so the send starts with its full window; a renewal that touches no row sends nothing. `affectedRows !== 1` means another worker holds it: the subscription
+is skipped this tick (`held`). Then, in order:
+
+- `occurred_at` older than 72 hours, compared in SQL with `UTC_TIMESTAMP(3)`: dead-lettered
+  with `expired after 72h`, nothing sent; the run goes on to the next head (`:230`).
+- No signing secret at send time (an env row reads `WEBHOOK_SECRET`; an admin row stores its
+  own): a failure, retried, nothing sent (`:203`).
+- `checkWebhookTarget` runs again at send time (`:239`). A refusal that is not a DNS failure
+  releases the lease, disables the subscription with the guard's sentence and leaves the
+  delivery pending for an administrator. A name that does not resolve yet is a failure.
+- The send (`:271`): `postWebhook` (`:72`) POSTs the stored bytes with `Content-Type`,
+  `Content-Length`, `X-Codex-Signature-256` (`signBody`, `:60`, HMAC-SHA256 over the bytes,
+  keyed by the UTF-8 secret), `X-Codex-Event` and `X-Codex-Delivery`. It uses `node:https`
+  or `node:http` with `lookup: pinnedLookup(addresses)` from the check that just ran, a
+  10-second `AbortSignal.timeout` (reported as `ETIMEDOUT`), and never reads or follows the
+  response.
+
+**Outcomes** (every write after the lease is `... AND leased_by = ?`; a write that touches no
+row is counted `stale` and changes nothing else, so a lapsed lease writes nothing):
+
+| Answer | Delivery | Subscription |
+|---|---|---|
+| any 2xx | `delivered`, `delivered_at`, `last_status`, lease released | `consecutive_failures = 0`, `paused_until = NULL`, only when no pause is live (`RESET_SQL`), so a slow success cannot clear another worker's backoff |
+| 410 (`:240`) | pending, `last_status = 410`, lease released | `enabled = FALSE`, `disabled_reason = 'receiver answered 410'` |
+| 422 (`:246`) | `dead`, `last_status = 422` | untouched |
+| anything else (3xx, 5xx, a timeout, a connection error, a missing secret, a DNS failure) (`:250`) | `attempts + 1`, `last_status`, `last_error` (at most 255 code points, never the body), lease released | paused until `UTC_TIMESTAMP(3) + LEAST(10 * 2^consecutive_failures, 3600)` seconds, `consecutive_failures + 1` (`BACKOFF_SQL`) |
+
+A 3xx is a failure with `last_error` `HTTP 302 (redirects are not followed)`: `node:https`
+does not follow redirects. The backoff reads the count before the increment, so the first
+failure pauses 10 s, then 20, 40, and so on, capped at one hour.
+
+**Clock.** Every stored or compared time the worker touches is `UTC_TIMESTAMP(3)`, matching the UTC `occurred_at`. `occurred_at` is written from the application clock, the same instant the envelope carries, and the 72-hour test compares it with the database clock, so the two clocks can differ only by the application-to-database skew, which matters only at the 72-hour edge. The prune's `created_at` is a `TIMESTAMP`, which MySQL converts to the session zone on comparison, so it uses `NOW()`; `UTC_TIMESTAMP` there would be wrong.
+
+**Logging.** `startWebhookWorker` counts a tick that is still running when the next is due and logs the count at most once a minute; a tick that throws is logged.
+
+**Prune** (`pruneWebhookRows`, `:370`, run daily from `server.js`, `pruneWebhooks`). Deletes
+`delivered` and `dead` deliveries older than 30 days by `created_at`, then events older than
+30 days that no delivery references.
+
+**Admin.** `GET /api/admin/webhooks/:id/deliveries` (the last 50) and
+`POST /api/admin/webhooks/deliveries/:id/redeliver` (a `dead` delivery back to `pending` with
+`attempts = 0`; 409 for any other status, and for an event older than 72 hours) are in `routes/webhooks.js`, documented in
+`docs/api/admin.md`.
+
+Tests: `tests/services/webhook-worker.test.js` (the three signature vectors, and each
+outcome, the backoff SQL, the 72-hour expiry, the budgets, the lapsed-lease write count, the
+send-time guard and the timer) and `tests/integration/webhooks-worker.test.js` against a real
+receiver on 127.0.0.1: the body is byte-identical to the outbox row and its signature
+verifies; event 3 waits for event 2; two workers on one database send each delivery once; a
+lapsed lease writes nothing after another worker delivers; 410, 422, 302 and a timeout; the
+backoff gaps read back from `paused_until`; the 72-hour dead-letter; a name that resolves to a
+private address is refused, and the connect goes to the approved address; the prune; and the
+save latency with a subscriber that never answers.
+
+---
 
 ## 3. Watches (`routes/watches.js`)
 

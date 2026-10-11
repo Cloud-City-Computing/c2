@@ -19,7 +19,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import {
@@ -41,6 +41,11 @@ import {
 import {
   ADMIN, APP, freePort, holdLock, kill, killChildren, signIn, startServer,
 } from './app-process.js';
+
+// Each test runs the real scripts against a live server: a restore of the whole
+// schema takes 13 to 26 seconds on a loaded runner, so the 30-second default is
+// too tight for the drill's longest steps.
+vi.setConfig({ testTimeout: 120000, hookTimeout: 120000 });
 
 const REPO_ROOT = path.resolve(APP, '..');
 const BACKUP = path.join(REPO_ROOT, 'scripts', 'backup.sh');

@@ -21,6 +21,13 @@ import { checkWebhookTarget } from './webhook-target.js';
 /** The envelope's schema string. */
 export const ENVELOPE_SCHEMA = 'codex.event.v1';
 
+/**
+ * The most subscriptions an instance holds, the env one included. The delivery
+ * tick reads them all, so this bounds that read and the round-robin (documented
+ * in docs/api/admin.md). Enforced when an admin subscription is created.
+ */
+export const MAX_WEBHOOK_SUBSCRIPTIONS = 50;
+
 /** The activity actions emitted as events; any other action emits nothing. */
 export const EMITTED_TYPES = new Set([
   'log.update', 'log.publish', 'log.restore', 'log.rename',
@@ -324,7 +331,17 @@ export async function emitEvent(ctx, scope) {
     const actor = { id: ctx.user.id, name: typeof ctx.user.name === 'string' ? ctx.user.name : null };
     const ids = matching.map((s) => s.id);
 
+    // The lock row is created by the first emit, not seeded (see the migration).
+    // This insert is its own autocommit statement, before the transaction: inside
+    // it, the insert's duplicate check would hold a shared lock on the row until
+    // commit, and two emits holding shared locks would deadlock on FOR UPDATE.
+    await c2_query('INSERT IGNORE INTO webhook_sequence_lock (id) VALUES (1)', []);
+
     return await withTransaction(async (query) => {
+      // Ids are allocated in commit order: this row is held to the commit, so
+      // an emit that starts while another is uncommitted waits for it, and
+      // takes an id above it (migrations/2026-10-10-webhook-sequence-lock.sql).
+      await query('SELECT id FROM webhook_sequence_lock WHERE id = 1 FOR UPDATE', []);
       const inserted = await query(
         `INSERT INTO webhook_events (event_uuid, type, workspace_id, occurred_at, body)
          VALUES (?, ?, ?, ?, ?)`,

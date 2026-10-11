@@ -167,6 +167,11 @@ export default defineConfig({
         // functions; webhook-target.js 100, 95.86, 91.66, 100.
         'services/webhooks.js': { lines: 95, statements: 95, branches: 90, functions: 95 },
         'services/webhook-target.js': { lines: 95, statements: 92, branches: 88, functions: 95 },
+        // The delivery worker (W6-CDX-14), measured in the backend project alone:
+        // lines 96.49, statements 98.03, branches 81.81, functions 94.44. The
+        // timeout branch and the live-MySQL paths are proved in the integration
+        // project, which coverage does not run.
+        'services/webhook-worker.js': { lines: 95, statements: 95, branches: 80, functions: 90 },
         // The stop and the single-writer lock (W6-CDX-31). Measured after the
         // review round: shutdown.js 100 lines, 98.03 statements, 93.54
         // branches, 100 functions; instance-lock.js 100, 95.91, 93.93, 77.77

@@ -14,6 +14,17 @@ initialises an empty data directory.
 
 ### Added
 
+- **The outbound webhook delivery worker.** An in-process worker, started by `server.js`, sends
+  the queued events every two seconds: per subscription, in event order, one lease at a time,
+  signed with `X-Codex-Signature-256`, with the send-time SSRF check and a 10-second timeout. A
+  `2xx` delivers, `410` disables the subscription, `422` dead-letters that one event, and anything
+  else retries on a backoff of 10 seconds doubling to one hour. An event older than 72 hours is
+  dead-lettered. A daily prune removes finished deliveries and unreferenced events older than 30
+  days. Two admin endpoints list a subscription's last 50 deliveries and redeliver a dead one
+  (`docs/api/admin.md`). An instance holds at most 50 webhook subscriptions. Subscriptions are
+  served round-robin, so one with a backlog cannot starve the others. Outbox ids are allocated in
+  commit order. A receiver that rejects the signature stalls its subscription until fixed or
+  expired, and is never dropped silently.
 - **The shared Cloud City design package, vendored, and a design gate.**
   `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
   Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)

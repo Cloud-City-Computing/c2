@@ -9,7 +9,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS webhook_deliveries, webhook_events, webhook_subscriptions, doc_images;
+DROP TABLE IF EXISTS webhook_deliveries, webhook_events, webhook_sequence_lock, webhook_subscriptions, doc_images;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS watches;
 DROP TABLE IF EXISTS activity_log;
@@ -536,5 +536,14 @@ CREATE TABLE webhook_deliveries (
   INDEX idx_webhook_deliveries_head (subscription_id, status, event_id),
   FOREIGN KEY (subscription_id) REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
   FOREIGN KEY (event_id) REFERENCES webhook_events(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- The emit order lock (migrations/2026-10-10-webhook-sequence-lock.sql): an
+-- emit creates its one row if absent and takes it FOR UPDATE, so their ids are
+-- allocated in commit order. No row is seeded: restore.sh treats a database
+-- with no rows as a new install, and a seeded row would make it look used.
+CREATE TABLE webhook_sequence_lock (
+  id TINYINT PRIMARY KEY,
+  CONSTRAINT chk_webhook_sequence_lock_row CHECK (id = 1)
 ) ENGINE=InnoDB;
 

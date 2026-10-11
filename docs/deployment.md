@@ -904,10 +904,15 @@ introduce a structured-logging library without discussing first.
 
 ## Background work
 
-There is one scheduled task running inside the Node process: the
-`activity_log` daily prune (rows older than 365 days are deleted at
-startup and once per day after that). It's a `setInterval` in
-`server.js` — there's no separate worker process or cron container.
+There are three scheduled tasks running inside the Node process, all `setInterval`s
+in `server.js`, with no separate worker process or cron container:
+
+- the outbound webhook delivery worker, which sends queued events every two
+  seconds (`services/webhook-worker.js`). An install with no webhook
+  subscription runs one short query per tick and sends nothing;
+- the `activity_log` daily prune (rows older than 365 days);
+- the webhook prune, which deletes finished deliveries and unreferenced events
+  older than 30 days, once a day.
 
 If you ever need a true background worker, prefer adding a deliberate
 single-process scheduler (BullMQ-like) over splitting into a second

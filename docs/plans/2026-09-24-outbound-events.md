@@ -475,6 +475,39 @@ DNS cannot be rebound between the check and the connect. Redirects are never fol
 
 ---
 
+### Recorded deviations, W6-CDX-14 (made in the PR that shipped it)
+
+- **Redirects.** The send is `node:https`/`node:http` (Task 3.2), which never follows a redirect;
+  the spec's `fetch` with `redirect: 'manual'` was not used. The outcome is the same: a `3xx` is a
+  failure.
+- **A tick works a subscription until it stops.** Task 3.2 reads one head per subscription per
+  tick. A tick here keeps going on a subscription while its head is delivered or dead-lettered
+  (422), within the 100-send and 5-second budget, so a backlog drains in one tick. A failure, a
+  lease held elsewhere, a 72-hour expiry or a 410 stops that subscription for the tick.
+- **A send-time refusal disables the subscription.** When `checkWebhookTarget` refuses a name at
+  send time for a reason that is not a DNS failure, the subscription is disabled with the guard's
+  sentence and the head stays pending for an administrator. A DNS failure is a retried failure.
+- **Backoff is computed by the database.** `paused_until` is `NOW(3)` plus the backoff, so the
+  pause and the `paused_until <= NOW(3)` filter read one clock. The injected `now` only bounds the
+  tick's budget.
+- **`attempts` counts failed sends.** A delivered row keeps the attempts it had. Redeliver resets
+  them to 0.
+- **A missing signing secret at send time** (an env row whose `WEBHOOK_SECRET` vanished after
+  boot) is a retried failure; nothing is sent unsigned.
+- **Pruning** keys on `created_at` for both tables, since a dead row has no death time.
+- **Review follow-ups (2026-10-11).** The subscription read has no `LIMIT`; the instance is capped
+  at 50 subscriptions instead (409 at create). The tick is round-robin across subscriptions, not one
+  subscription's run after another. `expired` continues the run like `delivered` and `dead`. An
+  emit takes `webhook_sequence_lock FOR UPDATE` so outbox ids are allocated in commit order (a new
+  migration, `2026-10-10-webhook-sequence-lock.sql`). The lease is renewed after the DNS check and
+  before the send, and the DNS lookup is bounded at 5 seconds. Every query has a 10-second deadline.
+  Redelivering an event older than 72 hours answers 409. AWS's IPv6 metadata address
+  `fd00:ec2::254` is refused always. The shutdown stops the worker first. The delivered write clears
+  a backoff only when no pause is live. All worker time is `UTC_TIMESTAMP(3)`; the prune keeps
+  `NOW()` for its `TIMESTAMP` column, where it is the correct clock.
+
+---
+
 ## PR 4: W6-CDX-15, webhooks in the admin console
 
 ### Task 4.1 The component

@@ -14,6 +14,7 @@ import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import { parseAuthProviders } from './services/identity.js';
 import { acquireInstanceLock } from './services/instance-lock.js';
 import { reconcileEnvSubscription, loadSubscriptions } from './services/webhooks.js';
+import { startWebhookWorker, pruneWebhookRows } from './services/webhook-worker.js';
 import { createShutdown } from './services/shutdown.js';
 import { readiness } from './routes/health.js';
 import app from './app.js';
@@ -189,6 +190,11 @@ try {
 await loadSubscriptions();
 setInterval(loadSubscriptions, 60 * 1000).unref();
 
+// The delivery worker (services/webhook-worker.js) sends what the outbox
+// holds, every two seconds. It never throws, and an install with no
+// subscription runs a query per tick that finds nothing.
+const webhookWorker = startWebhookWorker();
+
 // ─── Resolve the port ───────────────────────────────────────
 //
 // PORT is honoured so an instance can run somewhere other than 3000, which a
@@ -278,6 +284,7 @@ shutdown = createShutdown({
     closeCollabSockets(code, reason);
     closeUserChannelSockets(code, reason);
   },
+  stopWorkers: () => webhookWorker.stop(),
   releaseLock: () => instanceLock?.release(),
   endPool,
   exit: (code) => process.exit(code),
@@ -303,6 +310,23 @@ async function pruneOldActivity() {
 setInterval(pruneOldActivity, ONE_DAY_MS).unref();
 // Run once shortly after boot so a long-uptime process gets cleaned without waiting 24h
 setTimeout(pruneOldActivity, 60 * 1000).unref();
+
+// Daily prune of finished webhook deliveries and unreferenced events, both
+// older than 30 days (services/webhook-worker.js).
+async function pruneWebhooks() {
+  try {
+    const removed = await pruneWebhookRows();
+    if (removed.deliveries || removed.events) {
+      console.error(
+        `[${new Date().toISOString()}] webhook prune: removed ${removed.deliveries} deliveries, ${removed.events} events`
+      );
+    }
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] webhook prune failed:`, err);
+  }
+}
+setInterval(pruneWebhooks, ONE_DAY_MS).unref();
+setTimeout(pruneWebhooks, 60 * 1000).unref();
 
 // Daily prune of expired sessions. Every row has a fixed 7-day life and
 // nothing refreshes one in place, and each sign-in adds a row, so without

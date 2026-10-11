@@ -186,7 +186,9 @@ throws. Every receiver URL goes through `checkWebhookTarget` (the SSRF
 guard); do not build a second check. The env subscription's secret is never
 stored; an admin one's is returned only once. Contract:
 `docs/api/webhooks.md`; mechanism: `docs/maps/notifications-and-activity.md`
-section 2a. The delivery worker is not built yet (W6-CDX-14).
+section 2a. The delivery worker (`services/webhook-worker.js`, W6-CDX-14) sends them from
+an in-process tick every two seconds: one head per subscription, leased, in order; the
+mechanism is in `docs/maps/notifications-and-activity.md` section 2b.
 
 ### Mentions: `routes/helpers/mentions.js`, `src/extensions/Mention.jsx`
 `<span data-mention-user-id="N">` nodes, diffed old-vs-new HTML so only newly

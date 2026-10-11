@@ -36,7 +36,7 @@ export const SHUTDOWN_TIMEOUT_MS = 10_000;
  *   code once every step has run: 0 for a signal, 1 for a stop the process was forced into.
  */
 export function createShutdown({ server, readiness, flushPendingSaves, closeSockets, releaseLock,
-                                 endPool, exit, log, timeoutMs = SHUTDOWN_TIMEOUT_MS }) {
+                                 endPool, exit, log, stopWorkers = () => {}, timeoutMs = SHUTDOWN_TIMEOUT_MS }) {
   let started = false;
   let exited = false;
   const exitOnce = (code) => {
@@ -68,6 +68,9 @@ export function createShutdown({ server, readiness, flushPendingSaves, closeSock
       }
     };
 
+    // The background workers stop first: the webhook delivery worker must not
+    // start a send while the lock and the pool are going away.
+    await run('stopping the background workers', () => stopWorkers());
     await run('closing the HTTP server', () => server.close());   // stop accepting connections
     const flushed = await run('flushing pending saves', () => flushPendingSaves());
     const unsaved = flushed?.failed ?? 0;

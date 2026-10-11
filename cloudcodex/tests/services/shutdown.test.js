@@ -39,6 +39,14 @@ afterEach(() => {
 const logged = () => deps.log.mock.calls.map(([line]) => line).join('\n');
 
 describe('createShutdown', () => {
+  it('stops the background workers first, before the lock is released', async () => {
+    deps.stopWorkers = step('stopWorkers');
+    await createShutdown(deps)('SIGTERM');
+    expect(calls[0]).toBe('stopWorkers');
+    expect(calls.indexOf('stopWorkers')).toBeLessThan(calls.indexOf('releaseLock'));
+    expect(deps.stopWorkers).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses new work, flushes, closes the sockets, releases the lock, ends the pool, then exits 0', async () => {
     await createShutdown(deps)('SIGTERM');
 

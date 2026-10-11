@@ -8,7 +8,7 @@
 
 Cloud Codex can tell a receiver you run when a document or an archive is renamed, moved, edited, published, restored or deleted. It is off by default: an instance with no subscription writes nothing and sends nothing. Subscriptions are declared in the server environment (one, see [Configuration](#configuration)) or made by an instance admin ([admin.md, Webhooks](admin.md#webhooks)).
 
-> **Status.** Events are recorded in an outbox (`webhook_events`, `webhook_deliveries`) as they happen. The delivery worker that POSTs them to receivers ships in a later release; the envelope, headers and answers below are the contract it will follow.
+> **Status.** Events are recorded in an outbox (`webhook_events`, `webhook_deliveries`) as they happen. An in-process delivery worker POSTs them to receivers, in order per subscription, every two seconds. The envelope, headers and answers below are the contract it follows.
 
 ---
 
@@ -83,7 +83,9 @@ What your answer means:
 | `422` | this one event is given up on (dead-lettered); later events continue |
 | anything else, a timeout or a refused connection | retried, and later events for that subscription wait behind it |
 
-Delivery is at least once and in order per subscription.
+A receiver that rejects the signature (`401`) is a retried failure like any other answer: its subscription stalls, with later events waiting behind the head, until the secret is fixed or the head expires at 72 hours. The admin console (W6-CDX-15) surfaces a stalled subscription.
+
+Delivery is at least once and in order per subscription. `sequence` (the envelope's, and the outbox id) increases in commit order. A repeated `id` is possible only when a delivery's lease lapses during its send, so receivers must treat `id` as the idempotency key.
 
 ---
 
@@ -100,4 +102,4 @@ The server environment can declare one subscription, reconciled at every boot:
 
 With `WEBHOOK_URL` or `WEBHOOK_SECRET` unset the subscription is switched off. Changing `WEBHOOK_URL` or `WEBHOOK_WORKSPACE_ID` drops the events still queued for the old receiver or workspace. See [.env.example](../../.env.example).
 
-**Receiver addresses.** Every receiver URL, from the environment or the admin API, passes a guard: `https` (plain `http` only outside production), no user name or password, and every address its host resolves to must be public. Loopback and private ranges need `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`; link-local and cloud-metadata addresses, and the IPv6 transition prefixes (6to4, Teredo, local-use NAT64), are refused always. The URL is at most 2,048 characters once normalised.
+**Receiver addresses.** Every receiver URL, from the environment or the admin API, passes a guard: `https` (plain `http` only outside production), no user name or password, and every address its host resolves to must be public. Loopback and private ranges need `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`; link-local and cloud-metadata addresses (including AWS's IPv6 metadata endpoint `fd00:ec2::254`, which is unique-local, not link-local), and the IPv6 transition prefixes (6to4, Teredo, local-use NAT64), are refused always. The URL is at most 2,048 characters once normalised.
