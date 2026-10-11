@@ -233,6 +233,13 @@ export const fetchAdminSquadMembers = (id) => apiFetch('GET', `/api/admin/squads
 export const updateAdminSquadMember = (squadId, userId, updates) => apiFetch('PUT', `/api/admin/squads/${squadId}/members/${userId}`, updates);
 export const removeAdminSquadMember = (squadId, userId) => apiFetch('DELETE', `/api/admin/squads/${squadId}/members/${userId}`);
 export const fetchAdminPresence = () => apiFetch('GET', '/api/admin/presence');
+export const fetchWebhooks = () => apiFetch('GET', '/api/admin/webhooks');
+export const createWebhook = (body) => apiFetch('POST', '/api/admin/webhooks', body);
+export const rotateWebhook = (id) => apiFetch('POST', `/api/admin/webhooks/${id}/rotate`);
+export const setWebhookEnabled = (id, enabled) => apiFetch('PATCH', `/api/admin/webhooks/${id}`, { enabled });
+export const deleteWebhook = (id) => apiFetch('DELETE', `/api/admin/webhooks/${id}`);
+export const fetchWebhookDeliveries = (id) => apiFetch('GET', `/api/admin/webhooks/${id}/deliveries`);
+export const redeliverWebhook = (id) => apiFetch('POST', `/api/admin/webhooks/deliveries/${id}/redeliver`);
 export const validateInviteToken = (token) => apiFetch('GET', `/api/invite/validate/${encodeURIComponent(token)}`);
 
 // --- Browse / Search APIs ---

@@ -35,6 +35,7 @@ import {
   timeAgo,
 } from '../util';
 import ConfirmDialog from '../components/ConfirmDialog';
+import WebhooksPanel from '../components/WebhooksPanel';
 import { showToast, toastError } from '../components/Toast';
 
 // ─── Overview Panel ─────────────────────────────────────────
@@ -885,6 +886,7 @@ const NAV_ITEMS = [
   { key: 'workspaces', label: 'Workspaces', icon: '🏢' },
   { key: 'squads', label: 'Squads', icon: '👥' },
   { key: 'invitations', label: 'Invitations', icon: '✉' },
+  { key: 'webhooks', label: 'Webhooks', icon: '🔗' },
 ];
 
 export default function AdminPage() {
@@ -928,6 +930,7 @@ export default function AdminPage() {
           {activePanel === 'workspaces' && <WorkspacesPanel />}
           {activePanel === 'squads' && <SquadsPanel />}
           {activePanel === 'invitations' && <InvitationsPanel />}
+          {activePanel === 'webhooks' && <WebhooksPanel />}
         </main>
       </div>
     </StdLayout>
