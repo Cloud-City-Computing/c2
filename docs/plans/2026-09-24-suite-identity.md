@@ -1381,8 +1381,10 @@ here.
 
 ### Task 8.3 Invitations bind on verified email
 
-`resolveIdentity`'s step 3 for `oidc`: `SELECT * FROM user_invitations WHERE LOWER(email) =
-LOWER(?) AND accepted = FALSE AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`. A hit runs,
+`resolveIdentity`'s step 3 for `oidc`: `SELECT * FROM user_invitations WHERE LOWER(email) COLLATE utf8mb4_bin =
+LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`. The binary
+comparison is required: the default collation is accent-insensitive, so an invitation for josé@ must not admit a verified jose@
+(review finding, W6-CDX-8). A hit runs,
 in one `withTransaction`, the same sequence `POST /api/create-account` runs (`routes/auth.js:139-165`):
 insert the user with `deriveUniqueUsername(email)` and no password, `createDefaultPermissions`,
 the conditional `UPDATE user_invitations SET accepted = TRUE WHERE id = ? AND accepted = FALSE`
@@ -1445,6 +1447,17 @@ The code proved these points open or wrong in this section, or the hosted-mode b
   refused on hosted instances.
 - **Migration date** is `2026-10-12-user-deactivation.sql`: `2026-10-12-identity-last-signin-email.sql`
   already exists, and the runner applies migrations in filename order.
+- **Invitation match** is binary-collated (`COLLATE utf8mb4_bin`), as the Google and OIDC link rungs are, so an
+  accented address never matches its unaccented twin.
+- **Socket re-check.** Auth is read on a socket's first message, so a later deactivation or deleted session
+  would keep an open socket. Every 60 seconds `services/socket-sweep.js` batches the digests the open sockets
+  carry and closes, with 4004, those with no live session for an active user (OIDC only on a hosted instance).
+- **Boot purge.** On a hosted instance the boot deletes every session that is not an OIDC session
+  (`services/sessions-hosted.js`), logging the count, matching the switch decision above.
+- **Machine principal and 2FA.** A deactivated `SERVICE_TOKEN_USER` is no principal on either credential path, and
+  `POST /api/2fa/verify` refuses a challenge for a user deactivated since the password was proven.
+- **Deep links.** A signed-out `returnTo` that fails the validator, or does not decode, falls back to `/`, the same
+  rule as Cloud Command's corpus, rather than an error page.
 - **Env contract** gains the kind `required-with-local` for `ADMIN_USERNAME` and `ADMIN_PASSWORD`,
   and `tests/env-contract.test.js` names it.
 

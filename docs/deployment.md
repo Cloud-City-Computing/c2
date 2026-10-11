@@ -172,13 +172,21 @@ invitation creates the account with that invitation's squad and flags, once. Wit
 invitation the sign-in is `no_account`: the issuer's own account never admits anyone. The
 issuer's self-registration is therefore not an admission.
 
-**Deactivation.** `users.deactivated_at` (set by hand until an admin control exists) ends a
-user's sessions, and every sign-in path refuses them as `account_deactivated`. Their
-authorship stays.
+**Deactivation.** `users.deactivated_at` (set by hand until an admin control exists) refuses a
+user at their next request, and every sign-in path refuses them as `account_deactivated`. Their
+open WebSocket connections are closed by a periodic re-check that runs every 60 seconds and closes
+any socket whose session is no longer live for an active user, so a deactivation takes effect within
+about a minute. Their authorship stays.
 
 **Existing sessions at the switch.** A session minted by local or Google sign-in ends when an
-instance switches to hosted mode: the next request is signed out, and the user signs in through
-OIDC. Sessions minted by OIDC keep their own expiry (`OIDC_SESSION_TTL_HOURS`).
+instance switches to hosted mode. Validation refuses it, and the next boot on the hosted instance
+deletes every session that is not an OIDC session, logging how many it ended, so none can be used
+again. Those users sign in through OIDC. Sessions minted by OIDC keep their own expiry
+(`OIDC_SESSION_TTL_HOURS`).
+
+**Deep links.** A signed-out deep link is carried through sign-in as `returnTo` only when it passes
+the same validator as Cloud Command's corpus. A link that fails validation, or whose encoding does not
+decode, falls back to `/`, which is the landing page, rather than being refused with an error.
 
 **An account with two-factor on before the switch.** Its two-factor routes are unmounted, so it
 cannot turn two-factor off itself, and its first OIDC sign-in is refused as `two_factor_enabled`,

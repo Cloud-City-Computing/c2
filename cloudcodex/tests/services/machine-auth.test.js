@@ -126,7 +126,8 @@ describe('verifyMachineCredential', () => {
     it('refuses a deactivated SERVICE_TOKEN_USER, with a log line, and issues no principal', async () => {
       const token = 'valid-service-token-gggggggggggggggggggg';
       configure(token);
-      c2_query.mockResolvedValueOnce([{ ...SERVICE_ROW, deactivated_at: new Date('2026-10-01T00:00:00Z') }]);
+      // The lookup filters deactivated rows in SQL, so a deactivated user comes back as no row at all.
+      c2_query.mockResolvedValueOnce([]);
 
       expect(await verifyMachineCredential(token)).toBeNull();
       const [sql] = c2_query.mock.calls[0];

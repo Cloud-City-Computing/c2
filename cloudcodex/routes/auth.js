@@ -1146,9 +1146,14 @@ router.post('/2fa/verify', requireLocalSignIn, asyncHandler(async (req, res) => 
 
   // Determine which 2FA method the user uses
   const [userRow] = await c2_query(
-    `SELECT two_factor_method, totp_secret FROM users WHERE id = ? LIMIT 1`,
+    `SELECT two_factor_method, totp_secret, deactivated_at FROM users WHERE id = ? LIMIT 1`,
     [tokenRecord.user_id]
   );
+
+  // A user deactivated since the password was proven gets no session from a challenge issued before it.
+  if (userRow?.deactivated_at) {
+    return res.status(403).json({ success: false, message: 'This account has been deactivated. Contact your administrator.' });
+  }
 
   let verified = false;
 

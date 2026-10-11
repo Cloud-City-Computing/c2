@@ -191,7 +191,7 @@ async function resolveOidcIdentity(claims, policy) {
     `SELECT id, squad_id, role, can_read, can_write, can_create_log, can_create_archive,
             can_manage_members, can_delete_version, can_publish
        FROM user_invitations
-      WHERE LOWER(email) = LOWER(?) AND accepted = FALSE AND expires_at > NOW()
+      WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE AND expires_at > NOW()
       ORDER BY created_at DESC LIMIT 1`,
     [email]
   );

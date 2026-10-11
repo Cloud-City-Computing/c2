@@ -1070,6 +1070,9 @@ describe('server.js: the boot admin by sign-in mode', () => {
     await bootWith({ AUTH_PROVIDERS: 'oidc', OIDC_ISSUER_URL: 'https://id.example.test', OIDC_CLIENT_ID: 'c', OIDC_CLIENT_SECRET: 's', APP_URL: 'https://codex.example.test', ADMIN_EMAIL: 'operator@example.com' });
     expect(exitSpy).not.toHaveBeenCalled();
     expect(listenMock).toHaveBeenCalledTimes(1);
+    // The boot ends the sessions a hosted instance no longer accepts (services/sessions-hosted.js).
+    const { c2_query } = await import('../mysql_connect.js');
+    expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM sessions WHERE auth_provider <> 'oidc'/.test(sql))).toBe(true);
   });
 
   it('exits 1 on a hosted instance that has no ADMIN_EMAIL, naming it', async () => {
