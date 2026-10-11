@@ -1,0 +1,47 @@
+import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+const BIN = '/home/kadams/.cache/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell';
+const BASE = 'http://127.0.0.1:33082';
+const OUT = process.argv[2];
+const login = await (await fetch(BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'Admin-pass-25' }) })).json();
+const token = login.token;
+const port = 9333;
+const chrome = spawn(BIN, ['--headless', '--no-sandbox', '--disable-gpu', `--remote-debugging-port=${port}`, '--window-size=1280,800', '--user-data-dir=/tmp/cdx25/shot/profile', 'about:blank'], { stdio: 'ignore' });
+let targets;
+for (let i = 0; i < 50; i++) { try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); if (targets.find(t => t.type === 'page')) break; } catch {} await new Promise(r => setTimeout(r, 200)); }
+const page = targets.find(t => t.type === 'page');
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise(r => ws.addEventListener('open', r));
+let id = 0; const pending = new Map();
+ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
+const send = (method, params = {}) => new Promise(r => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const evalJs = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
+await send('Network.enable');
+await send('Network.setCookie', { name: 'sessionToken', value: token, url: BASE + '/' });
+const shot = async (file, w, h) => {
+  await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: w < 600 });
+  await sleep(600);
+  const r = await send('Page.captureScreenshot', { format: 'png' });
+  writeFileSync(file, Buffer.from(r.result.data, 'base64'));
+};
+await send('Page.enable');
+await send('Page.navigate', { url: BASE + '/' });
+await sleep(4000);
+console.log('toggle present:', await evalJs("!!document.querySelector('.cc-suite__toggle')"));
+const toggleName = await evalJs("document.querySelector('.cc-suite__toggle')?.getAttribute('aria-label')");
+console.log('toggle name:', toggleName);
+await evalJs("(document.querySelector('.cc-suite__toggle').focus(), document.querySelector('.cc-suite__toggle').click())");
+await sleep(500);
+console.log('panel links:', await evalJs("[...document.querySelectorAll('.cc-suite__panel a')].map(a=>a.textContent.trim()+' -> '+a.getAttribute('href')+' '+(a.getAttribute('aria-current')||'')).join(' | ')"));
+await shot(OUT + '-1280.png', 1280, 800);
+// Dismiss the disclosure with Escape, check focus returns
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+await sleep(300);
+console.log('after Escape expanded:', await evalJs("document.querySelector('.cc-suite__toggle').getAttribute('aria-expanded')"), 'focus is toggle:', await evalJs("document.activeElement?.classList.contains('cc-suite__toggle')"));
+await evalJs("(document.querySelector('.cc-suite__toggle').focus(), document.querySelector('.cc-suite__toggle').click())");
+await sleep(400);
+await shot(OUT + '-390.png', 390, 800);
+console.log('computed panel bounds 390:', await evalJs("JSON.stringify(document.querySelector('.cc-suite__panel').getBoundingClientRect())"));
+ws.close(); chrome.kill('SIGTERM');

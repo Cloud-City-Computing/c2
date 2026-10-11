@@ -12,20 +12,21 @@
 import express from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { readSuiteConfig } from '../services/suite.js';
-import { asyncHandler, errorHandler } from './helpers/shared.js';
+import { errorHandler } from './helpers/shared.js';
 
 const router = express.Router();
 
-router.get('/suite', asyncHandler(async (req, res) => {
+// Synchronous: the config is read from the environment, so there is nothing to await.
+router.get('/suite', (req, res) => {
   const suite = readSuiteConfig();
   res.json({ enabled: suite.enabled, name: suite.name });
-}));
+});
 
-router.get('/suite/links', requireAuth, asyncHandler(async (req, res) => {
+router.get('/suite/links', requireAuth, (req, res) => {
   const suite = readSuiteConfig();
   if (!suite.enabled) return res.status(404).json({ success: false, message: 'Suite mode is off' });
   res.json({ commandWorkspaceUrl: suite.commandWorkspaceUrl });
-}));
+});
 
 router.use(errorHandler);
 

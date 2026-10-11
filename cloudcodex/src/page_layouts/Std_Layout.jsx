@@ -8,6 +8,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Login from '../components/Login';
+import SuiteCluster from '../components/SuiteCluster';
+import useSuite from '../hooks/useSuite';
 import AccountPanel from '../components/AccountPanel';
 import SearchBox from '../components/SearchBox';
 import NotificationBell from '../components/NotificationBell';
@@ -164,14 +166,23 @@ function Sidebar({ collapsed, onToggle, isAdmin }) {
 
 // --- Top Bar ---
 
-export function TopBar({ user }) {
+const SUITE_OFF = { enabled: false, name: null, commandWorkspaceUrl: null };
+
+export function TopBar({ user, suite = SUITE_OFF }) {
+  // The suite cluster takes the brand slot only for a signed-in user in suite mode: the Cloud
+  // Command link it offers comes from a session-only request. Otherwise the slot is unchanged.
+  const showCluster = Boolean(user && suite.enabled && suite.commandWorkspaceUrl);
   return (
     <header className="topbar">
       <div className="topbar__left">
-        <Link to="/" className="topbar__brand">
-          <img src={transparent_logo} alt="Cloud City Computing" className="topbar__brand-logo" />
-          <span className="topbar__brand-title">Cloud Codex</span>
-        </Link>
+        {showCluster ? (
+          <SuiteCluster suiteName={suite.name} commandWorkspaceUrl={suite.commandWorkspaceUrl} />
+        ) : (
+          <Link to="/" className="topbar__brand">
+            <img src={transparent_logo} alt="Cloud City Computing" className="topbar__brand-logo" />
+            <span className="topbar__brand-title">Cloud Codex</span>
+          </Link>
+        )}
       </div>
       <div className="topbar__center">
         {user && <SearchBox inline />}
@@ -250,6 +261,7 @@ function StdLayout({ children }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const suite = useSuite(user);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('c2-user-prefs'));
@@ -374,7 +386,7 @@ function StdLayout({ children }) {
   return (
     <GitHubStatusProvider enabled={Boolean(user)}>
       <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
-        <TopBar user={user} />
+        <TopBar user={user} suite={suite} />
         {user && (
           <Sidebar
             collapsed={sidebarCollapsed}

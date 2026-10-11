@@ -84,7 +84,9 @@ describe('SuiteCluster: the disclosure', () => {
     const user = userEvent.setup();
     renderCluster();
     await user.click(toggle());
-    const items = within(panel()).getAllByRole('listitem');
+    // The separator is aria-hidden, so the role query above skips it; read the list directly.
+    const items = [...panel().querySelectorAll('li')];
+    expect(items.map((li) => li.className)).toEqual(['', '', 'cc-suite__separator', '']);
     expect(items[2]).toHaveAttribute('aria-hidden', 'true');
     expect(items[2].textContent).toBe('');
   });

@@ -86,6 +86,12 @@ initialises an empty data directory.
   button of a confirmation now takes focus when it opens. The admin console stacks its sidebar above
   the content on a narrow screen. Its times are UTC whatever the server's zone. A failed action is toasted, not
   dropped, and a 404 reloads the list; create and rotate pause while a secret is on screen.
+- **Suite mode: a suite cluster in the top bar.** Setting `SUITE_COMMAND_WORKSPACE_URL`
+  (with `SUITE_NAME`) turns it on. A signed-in user sees a disclosure in the brand slot that lists
+  Cloud Codex, Cloud Command, and All workspaces. `GET /api/suite` answers the name, and
+  `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot.
+  With suite mode off the top bar is unchanged. The chrome sections are on the design tokens, and
+  every `z-index` is on the shared scale.
 - **The shared Cloud City design package, vendored, and a design gate.**
   `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
   Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)

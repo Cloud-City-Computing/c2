@@ -167,6 +167,7 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 | `useCollab.js` | the `/collab` WebSocket and the shared `Y.Doc`; returns connection state, presence, cursors, and five senders |
 | `usePresence.js` | polls `/api/presence` for who is in which document, for browse/archive views |
 | `useNotificationChannel.js` | the `/notifications-ws` socket, feeding `NotificationBell` |
+| `useSuite.js` | suite mode: `GET /api/suite` once per page load, and `GET /api/suite/links` only for a signed-in user while suite mode is on. Any failure reads as off. `__resetSuiteCache` is the test seam |
 | `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
 | `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
@@ -204,6 +205,22 @@ never leaves the welcome stuck on screen (worst case it reappears once on
 the next load). A fetch failure on mount leaves `firstRun` `null`, which
 renders nothing, on purpose: onboarding must never be able to gate the rest
 of the application.
+
+## 3b. Suite mode (W6-CDX-25)
+
+Suite mode is off unless the server reads `SUITE_COMMAND_WORKSPACE_URL` (`services/suite.js:17`,
+`readSuiteConfig`). Boot calls it once and exits 1 with its sentence on a refusal (`server.js:199`).
+`routes/suite.js` mounts `GET /api/suite` (public, `enabled` and `name` only) and
+`GET /api/suite/links` (`requireAuth`, 404 when off), registered in `app.js` beside the other
+`/api` routers. In the client, `useSuite(user)` (`src/hooks/useSuite.js:40`) feeds
+`StdLayout` (`Std_Layout.jsx:263`), which passes `suite` to `TopBar` (`Std_Layout.jsx:170`).
+`TopBar` renders `SuiteCluster` in place of the plain brand link only when the user is signed in
+and suite mode is on with a URL; otherwise the brand slot is the old markup, which
+`tests/src/page_layouts/top-bar.test.jsx` snapshots. `SuiteCluster`
+(`src/components/SuiteCluster.jsx:35`) is a non-modal disclosure, not `role="menu"`: this product
+(`aria-current="true"`), Cloud Command, a separator, All workspaces (`/?switch=1`, Cloud Command's
+choice). Its panel is absolutely positioned under the toggle inside `.cc-suite`, unclipped
+because `.topbar` does not clip. Open state resets on every history entry (`location.key`).
 
 ## 4. Components
 

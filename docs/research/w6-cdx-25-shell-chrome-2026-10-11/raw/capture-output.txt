@@ -1,0 +1,5 @@
+toggle present: true
+toggle name: Cloud Codex, Example Suite: switch app
+panel links: Cloud Codex -> / true | Cloud Command -> https://command.example.test/w/1  | All workspaces -> https://command.example.test/?switch=1 
+after Escape expanded: false focus is toggle: true
+computed panel bounds 390: {"x":20,"y":53.6875,"width":240,"height":138,"top":53.6875,"right":260,"bottom":191.6875,"left":20}

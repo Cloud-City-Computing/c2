@@ -207,6 +207,121 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* =========================
+   Suite cluster (W6-CDX-25)
+========================= */
+
+/* A disclosure in the brand slot, shown only in suite mode. The panel is positioned under the
+   toggle inside this box, so the top bar (which does not clip) shows all of it. */
+.cc-suite {
+  position: relative;
+}
+
+.cc-suite__toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 4px 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cc-suite__logo {
+  height: 30px;
+  width: auto;
+}
+
+.cc-suite__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.cc-suite__name {
+  font-family: var(--font-brand);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.cc-suite__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.cc-suite__chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.cc-suite__toggle:hover .cc-suite__name,
+.cc-suite[data-open="true"] .cc-suite__name {
+  color: var(--cx-accent);
+}
+
+.cc-suite__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-menu);
+  min-width: 240px;
+  padding: 6px 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.cc-suite__panel[hidden] {
+  display: none;
+}
+
+.cc-suite__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cc-suite__link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.cc-suite__link:hover {
+  background: var(--cx-tint-accent-soft);
+  color: var(--cx-accent);
+}
+
+.cc-suite__link[aria-current="true"] {
+  color: var(--cx-accent);
+}
+
+.cc-suite__tick {
+  display: inline-flex;
+  width: 14px;
+  color: var(--cx-accent);
+}
+
+.cc-suite__separator {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border-color);
+}
+
+/* =========================
    Sidebar
 ========================= */
 
