@@ -28,6 +28,11 @@ function loadSuite() {
   return suitePromise;
 }
 
+/** Whether suite mode is on, from the one cached GET /api/suite answer. Any failure reads as off. */
+export function suiteEnabled() {
+  return loadSuite().then((s) => s.enabled);
+}
+
 /** Test seam: forget the cached answer so the next render asks again. */
 export function __resetSuiteCache() {
   suitePromise = null;
