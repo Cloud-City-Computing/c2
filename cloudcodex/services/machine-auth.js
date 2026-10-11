@@ -6,7 +6,7 @@
  *
  *   - The static path: a shared SERVICE_TOKEN, compared by digest. Unchanged.
  *   - The JWT path (W6-CDX-7): a JWS-shaped token is an OIDC client-credentials
- *     access token from Cloud City ID, verified with jose against the issuer's
+ *     access token from the issuer, verified with jose against the issuer's
  *     cached key set. It is taken only when OIDC_ISSUER_URL,
  *     MACHINE_OIDC_AUDIENCE and MACHINE_OIDC_SUBJECTS are all set. It is reached
  *     only after the static digest has missed, so a dotted SERVICE_TOKEN still
