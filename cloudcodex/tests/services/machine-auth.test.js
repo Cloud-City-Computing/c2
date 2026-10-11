@@ -206,7 +206,7 @@ describe('verifyMachineCredential', () => {
  * the JWT exports exist.
  */
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, sign as cryptoSign } from 'node:crypto';
 import * as machineAuth from '../../services/machine-auth.js';
 
 const ISSUER = 'https://id.example.test';
@@ -295,6 +295,7 @@ describe('verifyMachineCredential, the client-credentials JWT branch (W6-CDX-7)'
 
   afterEach(() => {
     errorSpy.mockRestore();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     for (const name of JWT_ENV) delete process.env[name];
   });
@@ -437,15 +438,51 @@ describe('verifyMachineCredential, the client-credentials JWT branch (W6-CDX-7)'
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('never falls through to the static token for a JWS-shaped token', async () => {
-    const staticLookalike = `${'a'.repeat(10)}.${'b'.repeat(10)}.${'c'.repeat(20)}`;
+  it('matches a dotted SERVICE_TOKEN by its digest before any routing to jose', async () => {
+    const dotted = `${'a'.repeat(10)}.${'b'.repeat(10)}.${'c'.repeat(20)}`;
     configureJwt();
-    process.env.SERVICE_TOKEN = staticLookalike;
-    process.env.SERVICE_TOKEN_USER = 'svc@example.com';
+    process.env.SERVICE_TOKEN = dotted;
+    const fetchMock = stubIssuer();
+    c2_query.mockResolvedValueOnce([SERVICE_ROW]);
+
+    expect((await verifyMachineCredential(dotted)).id).toBe(7);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('routes a JWS that misses a dotted SERVICE_TOKEN digest to jose', async () => {
+    const dotted = `${'a'.repeat(10)}.${'b'.repeat(10)}.${'c'.repeat(20)}`;
+    configureJwt();
+    process.env.SERVICE_TOKEN = dotted;
+    const fetchMock = stubIssuer();
+    c2_query.mockResolvedValueOnce([SERVICE_ROW]);
+
+    expect((await verifyMachineCredential(await signToken())).id).toBe(7);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('refuses a dotted SERVICE_TOKEN lookalike that is neither the digest nor a valid JWT, without a 503', async () => {
+    const dotted = `${'a'.repeat(10)}.${'b'.repeat(10)}.${'c'.repeat(20)}`;
+    configureJwt();
+    process.env.SERVICE_TOKEN = dotted;
     stubIssuer();
 
-    expect(await verifyMachineCredential(staticLookalike)).toBeNull();
+    expect(await verifyMachineCredential(`${'x'.repeat(10)}.${'y'.repeat(10)}.${'z'.repeat(20)}`)).toBeNull();
     expect(c2_query).not.toHaveBeenCalled();
+  });
+
+  it('returns null, never a 503, for a token with an unknown crit header, and logs no outage', async () => {
+    configureJwt();
+    stubIssuer();
+    const { privateKey } = await signingKeys();
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    const header = b64({ alg: 'RS256', kid: KID, typ: 'JWT', crit: ['x-unknown'], 'x-unknown': 'v' });
+    const body = b64({ iss: ISSUER, aud: PROJECT_A, sub: SUB_A, iat: now, nbf: now, exp: now + 3600 });
+    const sig = cryptoSign('sha256', Buffer.from(`${header}.${body}`), privateKey).toString('base64url');
+
+    await expect(verifyMachineCredential(`${header}.${body}.${sig}`)).resolves.toBeNull();
+    expect(c2_query).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join(' ')).not.toMatch(/unavailable/);
   });
 
   it('still authenticates the static token when the JWT variables are set but the token is opaque', async () => {
@@ -514,7 +551,48 @@ describe('verifyMachineCredential, the client-credentials JWT branch (W6-CDX-7)'
       const token = await signToken();
 
       await expect(verifyMachineCredential(token)).rejects.toBeInstanceOf(machineAuth.MachineAuthUnavailable);
+      // Within the 30 second window the outage is answered from memory; past it, discovery runs again.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.now() + 30_001);
       expect((await verifyMachineCredential(token)).id).toBe(7);
+    });
+
+    it('answers 1,000 bearers during an outage with one fetch and one log line per 30 second window', async () => {
+      configureJwt();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-11T12:00:00Z'));
+      const fetchMock = vi.fn(async () => { throw new TypeError('fetch failed'); });
+      vi.stubGlobal('fetch', fetchMock);
+      const bearer = 'aaaa.bbbb.cccc';
+      let refused = 0;
+
+      for (let i = 0; i < 1000; i += 1) {
+        await verifyMachineCredential(bearer).catch((err) => {
+          if (err instanceof machineAuth.MachineAuthUnavailable) refused += 1;
+        });
+      }
+      expect(refused).toBe(1000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(new Date(Date.now() + 30_001));
+      await verifyMachineCredential(bearer).catch(() => {});
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens the same window when the key set fetch fails after discovery succeeded', async () => {
+      configureJwt();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-11T12:00:00Z'));
+      const fetchMock = stubIssuer({ jwksStatus: 500 });
+      const token = await signToken();
+
+      await expect(verifyMachineCredential(token)).rejects.toBeInstanceOf(machineAuth.MachineAuthUnavailable);
+      const callsAfterFirst = fetchMock.mock.calls.length;
+      await expect(verifyMachineCredential(token)).rejects.toBeInstanceOf(machineAuth.MachineAuthUnavailable);
+      expect(fetchMock.mock.calls.length).toBe(callsAfterFirst);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
     });
 
     it('logs the failure without the token', async () => {
