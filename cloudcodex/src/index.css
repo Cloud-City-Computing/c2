@@ -6425,7 +6425,7 @@ textarea:focus-visible {
 
 .btn-fav-filter--active {
   background: var(--cx-tint-warning);
-  border-color: var(--cx-warning);
+  border-color: var(--cx-warning-bright);
   color: var(--cx-warning);
 }
 
@@ -6452,7 +6452,7 @@ textarea:focus-visible {
   border: none;
   border-radius: var(--radius-sm);
   background: var(--cx-tint-danger);
-  color: var(--cx-danger);
+  color: var(--cx-danger-bright);
   cursor: pointer;
   transition: var(--transition);
   white-space: nowrap;

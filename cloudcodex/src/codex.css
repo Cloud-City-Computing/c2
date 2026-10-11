@@ -83,9 +83,15 @@
   --cx-tint-success: oklch(0.745 0.158 151.5 / 0.12);
   --cx-tint-violet: oklch(0.697 0.17 288.9 / 0.15);
 
+  /* Labels on a tint, one step lighter than the status text they replace: the
+     tint lightens the surface under a label, and these clear 4.5:1 on the
+     strongest surface where the status step does not. --cx-warning-bright is
+     the old #ffc832 label. Each is listed in tests/design/pairs.json. */
+  --cx-warning-bright: oklch(0.86 0.16 87);
+  --cx-danger-bright: oklch(0.87 0.1 25);
   /* The violet of a content-match badge's label, and the shadow under a
      popover. The label is measured on the surfaces in tests/design/pairs.json. */
-  --cx-violet: oklch(0.79 0.12 291.1);
+  --cx-violet: oklch(0.86 0.1 291);
   --cx-shadow-popover: 0 4px 12px oklch(0 0 0 / 0.3);
 
   /* Status, on the package's pale step, the one that reads as text on
