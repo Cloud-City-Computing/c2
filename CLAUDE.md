@@ -129,8 +129,12 @@ write a second account ladder in a route. OIDC never creates an account. `parseA
 boot (unset means today's set).
 
 **Machine callers**: `services/machine-auth.js` exports the one seam,
-`verifyMachineCredential`, gated on `SERVICE_TOKEN` + `SERVICE_TOKEN_USER`
-(both required, off by default). `machineOrAuth` in `middleware/auth.js` is
+`verifyMachineCredential`, with two paths. The static one is gated on
+`SERVICE_TOKEN` + `SERVICE_TOKEN_USER` (both required, off by default). The JWT
+one (W6-CDX-7) takes a JWS-shaped token, verified by jose against the issuer's
+key set, only when `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE` and
+`MACHINE_OIDC_SUBJECTS` are all set; it authorizes by a subject allowlist, never
+by `aud` alone, and an issuer outage is a 503, never a 401. `machineOrAuth` in `middleware/auth.js` is
 mounted on `GET /api/search`, `GET /api/browse` and `GET /api/documents/state`
 (the reconciliation read, W6-CDX-16) and **nothing else**. The third is safe
 for the same reason as the first two: the same `readAccessWhere` fragment with

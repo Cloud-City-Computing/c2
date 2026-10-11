@@ -150,7 +150,7 @@ The credential has no access-control rules of its own. Because it acts as a real
 
 **An admin is refused outright.** `is_admin` is the first bound parameter of every access fragment in `routes/helpers/ownership.js`, so an admin principal matches every archive in the install. `verifyMachineCredential` refuses an admin row and logs it, and the principal it returns is built with a literal `is_admin: false` rather than the column. Both guards exist because either one alone silently converts a scoped read credential into a full-install one.
 
-The whole surface is one function, `verifyMachineCredential` in `services/machine-auth.js`. A later OIDC client-credentials grant replaces its body without touching a call site.
+The whole surface is one function, `verifyMachineCredential` in `services/machine-auth.js`, with two paths: the shared `SERVICE_TOKEN`, and a client-credentials JWT from Cloud City ID (W6-CDX-7). The JWT is verified against the issuer's keys, its `aud` is pinned to this instance, and its `sub` must be on an allowlist. `aud` is not the tenant boundary, because the issuer lets any client mint any project's audience, so the allowlist is the control. An issuer outage answers 503, never 401.
 
 ---
 

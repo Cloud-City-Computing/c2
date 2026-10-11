@@ -496,14 +496,20 @@ that its reach stays enumerable by reading the routers.
 
 ### `verifyMachineCredential(token)`
 
-The single seam for non-human authentication. Returns the principal the
-credential acts as, or `null` when machine auth is unconfigured, the token does
-not match, or the configured user does not resolve. A later OIDC
-client-credentials grant replaces the body of this one function and no call
-site changes.
+The single seam for non-human authentication, with two paths behind one call
+site. Returns the principal the credential acts as, or `null` when the
+credential is refused or the configured user does not resolve.
 
-Configured by `SERVICE_TOKEN` (the shared secret, minimum 32 characters) and
-`SERVICE_TOKEN_USER` (the email of an existing non-admin user), both required.
+A JWS-shaped token takes the JWT path (W6-CDX-7) when `OIDC_ISSUER_URL`,
+`MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS` are all set. It is verified
+with `jose` against the issuer's key set, pinned to this instance's own project
+as `aud`, and its `sub` must be on the allowlist. A key set that cannot be read
+throws `MachineAuthUnavailable`, which the middleware answers as 503. It is never
+`null`, so an outage cannot read as a revoked credential.
+
+The static path is configured by `SERVICE_TOKEN` (the shared secret, minimum 32
+characters) and `SERVICE_TOKEN_USER` (the email of an existing non-admin user),
+both required.
 The token is compared with `crypto.timingSafeEqual` over SHA-256 digests, and
 the users lookup only runs after that comparison passes. An admin
 `SERVICE_TOKEN_USER` is refused outright and logged, and the principal is built

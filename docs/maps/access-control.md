@@ -591,18 +591,31 @@ which exports exactly one function:
 export async function verifyMachineCredential(token)
 ```
 
-It returns a principal, or `null` when machine auth is unconfigured, when the
-token does not match, or when the configured user does not resolve. A later
-OIDC client-credentials grant replaces the body of that function and no call
-site changes.
+It returns a principal, or `null` when the credential is refused, or when the
+configured user does not resolve. It has two paths, and no call site knows
+which one ran:
 
-Two environment variables, **both required**, so an install that sets neither
-gains no new authentication path:
+- **The static path** (`SERVICE_TOKEN`), described below.
+- **The JWT path** (W6-CDX-7), for a client-credentials access token from the
+  issuer (`verifyMachineJwt`, `machine-auth.js:242`, further down). It is taken only for a
+  JWS-shaped token, and only when `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE`
+  and `MACHINE_OIDC_SUBJECTS` are all set. It never falls through to the
+  static comparison.
 
-| Variable | Meaning |
-|---|---|
-| `SERVICE_TOKEN` | the shared secret. Under 32 characters the feature stays off and logs why. |
-| `SERVICE_TOKEN_USER` | the email of an existing, non-admin user whose access the token acts with. |
+A **key set that cannot be read** is not a `null`. It throws
+`MachineAuthUnavailable`, which `machineOrAuth` and `requireMachine` answer as
+**503** (`machineFailure`, `middleware/auth.js:17`). A caller must read an outage as
+"retry", never as "revoked".
+
+| Variable | Path | Meaning |
+|---|---|---|
+| `SERVICE_TOKEN` | static | the shared secret. Under 32 characters the feature stays off and logs why. |
+| `SERVICE_TOKEN_USER` | both | the email of an existing, non-admin user whose access the token acts with. |
+| `OIDC_ISSUER_URL` | JWT | the issuer; `iss` must equal it exactly. Shared with the browser sign-in. |
+| `MACHINE_OIDC_AUDIENCE` | JWT | this instance's own Zitadel project id; `aud` must include it. |
+| `MACHINE_OIDC_SUBJECTS` | JWT | a comma list of this instance's service-user ids; `sub` must be on it. |
+
+With the three JWT variables unset, the static path is exactly what it was.
 
 The credential has **no ACL of its own**. It acts as a real user, so every
 fragment in section 1 applies unchanged and there is no machine-specific
@@ -613,6 +626,40 @@ The comparison is `crypto.timingSafeEqual` over two SHA-256 digests, never
 `===`, so a wrong-length token is rejected without throwing and without the
 comparison leaking the configured length. The `users` lookup runs only after
 the token matches, so a wrong token costs no query.
+
+### The JWT path (W6-CDX-7): verify, then the allowlist, then the same principal
+
+`verifyMachineJwt` (`services/machine-auth.js:242`) runs
+in this order, and the first refusal returns `null` (nothing is deleted or
+logged with the token):
+
+1. `jose.jwtVerify` against the issuer's key set, with `issuer` (exact),
+   `audience` (`MACHINE_OIDC_AUDIENCE`, the instance's own project), an
+   asymmetric-only `algorithms` list (HS256 absent on purpose), a 60-second
+   `clockTolerance`, and `requiredClaims` `exp`, `iat`, `sub`.
+2. `iat` may not sit more than 60 seconds in the future (jose does not check it).
+3. `sub` must be in `MACHINE_OIDC_SUBJECTS`.
+4. `principalFor(SERVICE_TOKEN_USER)` (`machine-auth.js:196`): the same row, admin refusal and literal
+   `is_admin: false` as the static path. Both paths share the one function.
+
+The **audience is not the tenant boundary**. Zitadel lets any client request
+any project's audience (W6-CCID-3's P7 minted instance B's `aud` for instance A's
+service user), so the subject allowlist is the control. Each instance's service
+user is one client, so the allowlist also pins the client.
+
+**Refusal and outage are separate.** A token is refused (`null`, a 401 from
+`requireMachine`) only for a code in `TOKEN_REFUSAL_CODES`: a claim, expiry,
+signature, algorithm or `kid` failure. Any other failure is an outage: the
+discovery document or key set cannot be fetched, a timeout, a non-200, or a
+document that names another issuer. That throws `MachineAuthUnavailable`, which
+is a 503 and is never cached. A failed discovery is not kept, and concurrent
+first calls share one fetch (`remoteKeySet` at `machine-auth.js:301`, `discoverJwksUri` at `:329`). The key set
+itself is jose's `createRemoteJWKSet`, cached for 10 minutes, with a 30-second
+cooldown before an unknown `kid` refetches.
+
+A 64-character session token has no dots, so it never matches the JWS shape
+and never reaches jose. A JWS-shaped token presented while the branch is
+configured is never compared to `SERVICE_TOKEN`.
 
 ### The never-admin rule
 
