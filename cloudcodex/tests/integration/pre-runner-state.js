@@ -31,4 +31,5 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
     'ALTER TABLE sessions DROP CHECK chk_sessions_auth_provider, DROP COLUMN auth_provider',
   '2026-09-27-who-may-see-doc-images.sql': 'DROP TABLE doc_images',
   '2026-09-28-webhooks.sql': 'DROP TABLE webhook_deliveries, webhook_events, webhook_subscriptions',
+  '2026-10-10-webhook-sequence-lock.sql': 'DROP TABLE webhook_sequence_lock',
 });

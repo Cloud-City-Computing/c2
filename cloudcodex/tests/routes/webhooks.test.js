@@ -112,8 +112,8 @@ describe('/api/admin/webhooks', () => {
       expect(res.body.secret).toMatch(/^[0-9a-f]{64}$/);
 
       const insert = c2_query.mock.calls.find(([sql]) => /INSERT INTO webhook_subscriptions/.test(sql));
-      expect(insert[0]).toMatch(/\(url, secret, source, event_types, workspace_id, created_by\)\s+VALUES \(\?, \?, 'admin', \?, \?, \?\)/);
-      expect(insert[1]).toEqual(['https://93.184.215.14/hook', res.body.secret, '["log.rename","log.delete"]', 3, ADMIN_USER.id]);
+      expect(insert[0]).toMatch(/\(url, secret, source, event_types, workspace_id, created_by\)\s+SELECT \?, \?, 'admin', \?, \?, \? FROM DUAL/);
+      expect(insert[1]).toEqual(['https://93.184.215.14/hook', res.body.secret, '["log.rename","log.delete"]', 3, ADMIN_USER.id, 50]);
       expect(sqls().some((sql) => /FROM webhook_subscriptions\s+WHERE enabled = TRUE/.test(sql))).toBe(true);
       expect(res.body.webhook).toMatchObject({ id: 6, managed: false });
       expect(res.body.webhook).not.toHaveProperty('secret');
@@ -392,5 +392,45 @@ describe('the delivery log and redelivery (W6-CDX-14)', () => {
       mockAuthenticated(TEST_USER);
       expect((await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t')).status).toBe(403);
     });
+  });
+});
+
+describe('the subscription cap and the expired redelivery (review follow-ups)', () => {
+  let errorSpy;
+
+  beforeEach(() => {
+    resetMocks();
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it('refuses a new subscription at the maximum with 409, the insert itself carrying the count check', async () => {
+    mockAuthenticated(ADMIN_USER);
+    c2_query.mockResolvedValueOnce({ affectedRows: 0 });
+    const res = await request(app)
+      .post('/api/admin/webhooks')
+      .set('Authorization', 'Bearer t')
+      .send({ url: 'https://93.184.215.14/hook' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/maximum of 50 webhook subscriptions/);
+    const [sql, params] = c2_query.mock.calls[0];
+    expect(sql).toMatch(/SELECT \?, \?, 'admin'.*WHERE \(SELECT COUNT\(\*\) FROM webhook_subscriptions\) < \?/s);
+    expect(params).toContain(50);
+    expect(sqls()).toHaveLength(1);
+  });
+
+  it('refuses to redeliver a dead delivery whose event is older than 72 hours, and says why', async () => {
+    mockAuthenticated(ADMIN_USER);
+    c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead', expired: 1 }]);
+    const res = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/older than 72 hours/);
+    expect(sqls()).toHaveLength(1);
+    expect(sqls()[0]).toMatch(/UTC_TIMESTAMP\(3\) - INTERVAL 72 HOUR/);
   });
 });

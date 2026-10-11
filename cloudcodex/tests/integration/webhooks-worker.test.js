@@ -264,7 +264,7 @@ describe('a lapsed lease writes nothing', () => {
       if (Date.now() > deadline) throw new Error('owner A never leased the delivery');
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    await c2_query('UPDATE webhook_deliveries SET lease_expires_at = NOW(3) - INTERVAL 1 SECOND', []);
+    await c2_query('UPDATE webhook_deliveries SET lease_expires_at = UTC_TIMESTAMP(3) - INTERVAL 1 SECOND', []);
 
     const b = worker({ owner: 'owner-b' });
     expect((await b.tick()).sent).toBe(1);
@@ -369,7 +369,7 @@ describe('outcomes', () => {
       ]);
       await w.tick();
       const [gap] = await c2_query(
-        `SELECT ROUND(TIMESTAMPDIFF(MICROSECOND, NOW(3), paused_until) / 1000000) AS secs,
+        `SELECT ROUND(TIMESTAMPDIFF(MICROSECOND, UTC_TIMESTAMP(3), paused_until) / 1000000) AS secs,
                 consecutive_failures AS failures
            FROM webhook_subscriptions WHERE id = ?`,
         [subId]
@@ -384,19 +384,72 @@ describe('outcomes', () => {
     await addEvent('old', [subId], { hoursOld: 73 });
     await addEvent('fresh', [subId], { hoursOld: 71 });
 
-    const w = worker();
-    await w.tick();
-    // The run stops for this subscription on the expired head, so the next
-    // event waits for the next tick.
-    expect(received).toHaveLength(0);
-    expect((await deliveriesOf(subId))[0].status).toBe('dead');
-    await unpause();
-    await w.tick();
+    // An expired head is dead-lettered and the run goes on in the same tick.
+    const result = await worker().tick();
 
+    expect(result.sent).toBe(1);
     expect(received.map((r) => r.label)).toEqual(['fresh']);
+    expect((await deliveriesOf(subId))[0].status).toBe('dead');
     const rows = await deliveriesOf(subId);
     expect(rows[0].last_error).toBe('expired after 72h');
     expect(rows[1].status).toBe('delivered');
+  });
+});
+
+describe('review follow-ups, against the database', () => {
+  it('a late delivered write does not clear a backoff another worker set while it was sending', async () => {
+    const subId = await addSubscription(`http://127.0.0.1:${port}/late`);
+    await addEvent('late', [subId]);
+
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const a = worker({ owner: 'owner-late', send: async () => { await gate; return { status: 200 }; } });
+    const pendingA = a.tick();
+    const deadline = Date.now() + 3000;
+    while ((await deliveriesOf(subId))[0].leased_by !== 'owner-late') {
+      if (Date.now() > deadline) throw new Error('owner-late never leased the delivery');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    // Another worker's failure, while A is still sending: a live pause and a count.
+    await c2_query(
+      'UPDATE webhook_subscriptions SET consecutive_failures = 3, paused_until = UTC_TIMESTAMP(3) + INTERVAL 1 HOUR WHERE id = ?',
+      [subId]
+    );
+    release();
+    await pendingA;
+
+    const sub = await subscriptionRow(subId);
+    expect(sub.consecutive_failures).toBe(3);
+    expect(sub.paused_until).not.toBeNull();
+    expect((await deliveriesOf(subId))[0].status).toBe('delivered');
+  });
+
+  it('a renewed lease covers a send that starts after the DNS check, and the renewal is visible in the row', async () => {
+    const subId = await addSubscription(`http://slow.test:${port}/renew`);
+    await addEvent('renew', [subId]);
+    let leaseAtSend;
+    // A slow name: the DNS check takes four seconds before the send.
+    const slowName = () => new Promise((resolve) => setTimeout(() => resolve([{ address: '127.0.0.1', family: 4 }]), 4000));
+    const w = worker({
+      resolve: slowName,
+      send: async () => {
+        [leaseAtSend] = await c2_query('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(3), lease_expires_at) AS left_s FROM webhook_deliveries', []);
+        return { status: 200 };
+      },
+    });
+    await w.tick();
+    // Renewed after the four-second check: about 30 seconds were left at the send.
+    expect(Number(leaseAtSend.left_s)).toBeGreaterThan(27);
+    expect(received).toHaveLength(0);
+  });
+
+  it('the subscription read is not capped: a subscription beyond the twentieth is served', async () => {
+    const ids = [];
+    for (let i = 0; i < 22; i += 1) ids.push(await addSubscription(`http://127.0.0.1:${port}/many/${i}`));
+    for (const id of ids) await addEvent(`many-${id}`, [id]);
+    expect(await drain(worker())).toBe(0);
+    expect(received).toHaveLength(22);
   });
 });
 

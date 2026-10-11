@@ -48,6 +48,7 @@ async function cache(rows) {
  */
 function queueEmitWrites(eventId = 1042) {
   c2_query
+    .mockResolvedValueOnce([{ id: 1 }])               // the order lock, held to commit
     .mockResolvedValueOnce({ insertId: eventId })
     .mockResolvedValueOnce({ affectedRows: 1 })
     .mockResolvedValueOnce({ affectedRows: 1 });
@@ -293,7 +294,8 @@ describe('services/webhooks', () => {
       expect(envelope.occurred_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect(Date.parse(envelope.occurred_at)).toBeGreaterThanOrEqual(before - 1);
 
-      const [lookup, insert, update, deliveries] = calls();
+      const [lookup, orderLock, insert, update, deliveries] = calls();
+      expect(orderLock.sql).toMatch(/SELECT id FROM webhook_sequence_lock WHERE id = 1 FOR UPDATE/);
       expect(lookup.sql).toMatch(/SELECT archive_id, title, parent_id FROM logs WHERE id = \?/);
       expect(lookup.params).toEqual([113]);
       expect(insert.sql).toMatch(/INSERT INTO webhook_events \(event_uuid, type, workspace_id, occurred_at, body\)/);

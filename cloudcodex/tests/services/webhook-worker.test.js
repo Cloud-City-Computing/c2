@@ -52,7 +52,8 @@ const NONE = { affectedRows: 0 };
 
 const SUBS = /FROM webhook_subscriptions\s+WHERE enabled = TRUE/;
 const HEAD = /JOIN webhook_events e ON/;
-const LEASE = /SET leased_by = \?, lease_expires_at = NOW\(3\)/;
+const LEASE = /SET leased_by = \?, lease_expires_at = UTC_TIMESTAMP\(3\)/;
+const RENEW = /lease_expires_at = UTC_TIMESTAMP\(3\) \+ INTERVAL 30 SECOND\s+WHERE id = \? AND leased_by = \? AND status/;
 const EXPIRE = /last_error = 'expired after 72h'/;
 const DELIVERED = /SET status = 'delivered'/;
 const SUB_RESET = /SET consecutive_failures = 0, paused_until = NULL/;
@@ -61,6 +62,7 @@ const SUB_DISABLE = /SET enabled = FALSE, disabled_reason = \?/;
 const DEAD_422 = /SET status = 'dead', last_status = \?/;
 const FAILED = /SET attempts = attempts \+ 1/;
 const SUB_BACKOFF = /LEAST\(10 \* POW\(2, consecutive_failures\), 3600\)/;
+const SUBS_ALL = /FROM webhook_subscriptions\s+WHERE enabled = TRUE/;
 
 /** A head row as the head query returns it. */
 const head = (over = {}) => ({
@@ -87,12 +89,13 @@ const sub = (over = {}) => ({
  * (an empty array ends a subscription's run), every lease succeeding unless
  * `lease` says otherwise, and every guarded write matching.
  */
-function tickDb({ subs = [sub()], heads = [head()], lease = OK, writes = OK } = {}) {
+function tickDb({ subs = [sub()], heads = [head()], lease = OK, writes = OK, renew = writes } = {}) {
   const queue = [...heads];
   return fakeDb([
     [SUBS, subs],
     [HEAD, () => (queue.length ? [queue.shift()] : [])],
     [LEASE, lease],
+    [RENEW, renew],
     [EXPIRE, writes],
     [DELIVERED, writes],
     [SUB_RESET, OK],
@@ -242,7 +245,7 @@ describe('one send', () => {
     expect(db.writes(FAILED)[0].params).toContain(500);
     const [pause] = db.writes(SUB_BACKOFF);
     expect(pause.params).toEqual([3]);
-    expect(pause.sql).toMatch(/DATE_ADD\(NOW\(3\)/);
+    expect(pause.sql).toMatch(/DATE_ADD\(UTC_TIMESTAMP\(3\)/);
   });
 
   it('a signing secret that is missing at send time is a failure, and nothing is sent', async () => {
@@ -272,14 +275,52 @@ describe('the lease and the head', () => {
     expect(headQuery.sql).toMatch(/d\.status = 'pending'/);
   });
 
-  it('selects the subscriptions that are enabled and not paused, at most twenty', async () => {
+  it('reads every enabled, unpaused subscription, with no LIMIT that could leave one unserved', async () => {
     const db = tickDb({ subs: [] });
     await worker(db).tick();
     const subQuery = db.calls.find((c) => SUBS.test(c.sql));
-    expect(subQuery.sql).toMatch(/paused_until IS NULL OR paused_until <= NOW\(3\)/);
-    expect(subQuery.sql).toMatch(/LIMIT 20/);
+    expect(subQuery.sql).toMatch(/paused_until IS NULL OR paused_until <= UTC_TIMESTAMP\(3\)/);
+    expect(subQuery.sql).not.toMatch(/LIMIT/);
+  });
+
+  it('serves the 21st and later subscriptions, not only the first twenty', async () => {
+    const subs = Array.from({ length: 25 }, (_, i) => sub({ id: 100 + i, url: `https://r${i}.example/hook` }));
+    const heads = new Map(subs.map((s) => [s.id, [head({ id: 1000 + s.id, sequence: s.id })]]));
+    const sent = [];
+    const db = perSubscriptionDb({ subs, heads });
+    const result = await worker(db, {
+      send: async ({ url }) => { sent.push(url); return { status: 200 }; },
+    }).tick();
+    expect(result.sent).toBe(25);
+    expect(sent).toContain('https://r24.example/hook');
   });
 });
+
+/**
+ * A fake database whose heads are per subscription: `heads` maps a
+ * subscription id to an array; each head query takes the next one, and an
+ * endless backlog is an array-like that never runs out (see `endless`).
+ */
+function perSubscriptionDb({ subs, heads }) {
+  return fakeDb([
+    [SUBS_ALL, subs],
+    [HEAD, (params) => {
+      const queue = heads.get(params[0]);
+      const next = typeof queue === 'function' ? queue() : queue?.shift();
+      return next ? [next] : [];
+    }],
+    [LEASE, OK],
+    [RENEW, OK],
+    [DELIVERED, OK],
+    [SUB_RESET, OK],
+    [FAILED, OK],
+    [SUB_BACKOFF, OK],
+    [RELEASE_410, OK],
+    [SUB_DISABLE, OK],
+    [DEAD_422, OK],
+    [EXPIRE, OK],
+  ]);
+}
 
 describe('an expired head', () => {
   it('is dead-lettered with the 72-hour reason and nothing is sent for it', async () => {
@@ -481,5 +522,116 @@ describe('postWebhook, the real send to a local receiver', () => {
         addresses: [],
       })
     ).rejects.toMatchObject({ code: 'ENOTFOUND' });
+  });
+});
+
+describe('review follow-ups: round-robin, expiry, deadlines, renewal, clock', () => {
+  it('a subscription with an endless backlog does not starve another: the second is served in the first round', async () => {
+    let n = 0;
+    const endless = () => head({ id: 5000 + n, sequence: 5000 + (n++) });
+    const second = head({ id: 77, sequence: 77 });
+    const subs = [sub({ id: 1, url: 'https://busy.example/hook' }), sub({ id: 2, url: 'https://quiet.example/hook' })];
+    const db = perSubscriptionDb({ subs, heads: new Map([[1, endless], [2, [second]]]) });
+    const urls = [];
+    const result = await worker(db, {
+      send: async ({ url }) => { urls.push(url); return { status: 200 }; },
+    }).tick();
+
+    expect(urls.indexOf('https://quiet.example/hook')).toBeGreaterThanOrEqual(0);
+    expect(urls.indexOf('https://quiet.example/hook')).toBeLessThanOrEqual(1);
+    expect(result.sent).toBe(100);
+  });
+
+  it('rotates the starting subscription from tick to tick, so a tick cut short by the budget does not always serve the same one first', async () => {
+    const subs = [sub({ id: 1, url: 'https://a.example/hook' }), sub({ id: 2, url: 'https://b.example/hook' })];
+    const db = perSubscriptionDb({ subs, heads: new Map([[1, () => head({ id: 1 })], [2, () => head({ id: 2 })]]) });
+    const urls = [];
+    let t = 0;
+    const w = worker(db, {
+      // The budget runs out after the first send of each tick.
+      send: async ({ url }) => { urls.push(url); t = 5001; return { status: 200 }; },
+      now: () => t,
+    });
+    t = 0;
+    await w.tick();
+    t = 0;
+    await w.tick();
+    expect(urls).toEqual(['https://a.example/hook', 'https://b.example/hook']);
+  });
+
+  it('an expired head does not stop the run: the next event is sent in the same tick', async () => {
+    const db = tickDb({ heads: [head({ expired: 1 }), head({ id: 12, sequence: 6 })] });
+    const send = vi.fn(async () => ({ status: 200 }));
+    const result = await worker(db, { send }).tick();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0].headers['X-Codex-Delivery']).toBe('12');
+    expect(result.sent).toBe(1);
+  });
+
+  it('a query that never answers fails the tick at the query deadline, instead of hanging it', async () => {
+    const hang = vi.fn(() => new Promise(() => {}));
+    const w = createWebhookWorker({ query: hang, owner: 'o', queryTimeoutMs: 50 });
+    await expect(w.tick()).rejects.toMatchObject({ code: 'ETIMEOUT' });
+  });
+
+  it('renews the lease after the target check and before the send, and sends nothing if the renewal lost the lease', async () => {
+    const db = tickDb({ renew: NONE });
+    const send = vi.fn(async () => ({ status: 200 }));
+    const result = await worker(db, { send }).tick();
+    expect(send).not.toHaveBeenCalled();
+    expect(result.stale).toBe(1);
+    const renewAt = db.query.mock.calls.findIndex(([sql]) => RENEW.test(sql));
+    expect(renewAt).toBeGreaterThan(-1);
+  });
+
+  it('renews before every send, so a send starts with the full lease', async () => {
+    const db = tickDb();
+    const send = vi.fn(async () => {
+      const renewed = db.query.mock.calls.some(([sql]) => RENEW.test(sql));
+      expect(renewed).toBe(true);
+      return { status: 200 };
+    });
+    await worker(db, { send }).tick();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('the delivered write clears the backoff only when no pause is live, so a late success cannot clear another worker\'s', async () => {
+    const db = tickDb();
+    await worker(db, { send: async () => ({ status: 200 }) }).tick();
+    const [reset] = db.writes(SUB_RESET);
+    expect(reset.sql).toMatch(/AND \(paused_until IS NULL OR paused_until <= UTC_TIMESTAMP\(3\)\)/);
+  });
+
+  it('every time comparison and every stored time in the worker uses UTC_TIMESTAMP, never NOW()', async () => {
+    const db = tickDb({ heads: [head(), head({ id: 12, sequence: 6 })] });
+    await worker(db, { send: async () => ({ status: 500 }) }).tick();
+    const db2 = tickDb({ heads: [head()] });
+    await worker(db2, { send: async () => ({ status: 200 }) }).tick();
+    for (const call of [...db.calls, ...db2.calls]) {
+      expect(call.sql, call.sql.trim().split('\n')[0]).not.toMatch(/NOW\(/);
+    }
+  });
+});
+
+describe('startWebhookWorker reports the ticks it skips', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('logs a skipped tick once a minute at most, with how many were skipped', async () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const started = startWebhookWorker({ query: vi.fn(() => new Promise(() => {})), owner: 'o-skip', now: () => 0 });
+
+    await vi.advanceTimersByTimeAsync(4000);
+    const skipLines = () => errorSpy.mock.calls.filter(([line]) => /tick\(s\) skipped/.test(String(line)));
+    expect(skipLines()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(50000);
+    expect(skipLines()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(skipLines()).toHaveLength(2);
+    expect(String(skipLines()[1][0])).toMatch(/\d+ tick\(s\) skipped/);
+    started.stop();
   });
 });

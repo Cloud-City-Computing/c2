@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { checkWebhookTarget, pinnedLookup, embeddedIPv4 } from '../../services/webhook-target.js';
+import { webhookTargetOptions } from '../../services/webhooks.js';
 
 /** A resolver that answers every name with `addresses` and records what it was asked. */
 function resolver(...addresses) {
@@ -189,5 +190,50 @@ describe('pinnedLookup', () => {
     const cb = vi.fn();
     pinnedLookup(addresses)('x', cb);
     expect(cb).toHaveBeenCalledWith(null, PUBLIC, 4);
+  });
+});
+
+describe('the AWS IPv6 metadata address (W6-CDX-14)', () => {
+  const IMDS_V6 = 'fd00:ec2::254';
+
+  it('is refused always, with WEBHOOK_ALLOW_PRIVATE_TARGETS=1, as an IP literal', async () => {
+    const previous = process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS;
+    process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS = '1';
+    try {
+      const options = webhookTargetOptions();
+      expect(options.allowPrivate).toBe(true);
+      const bracketed = await checkWebhookTarget(`https://[${IMDS_V6}]/hook`, options);
+      expect(bracketed.ok).toBe(false);
+      expect(bracketed.reason).toMatch(/never allowed/);
+      const resolvedName = await checkWebhookTarget('https://imds.example/hook', {
+        ...options,
+        resolve: async () => [{ address: IMDS_V6, family: 6 }],
+      });
+      expect(resolvedName.ok).toBe(false);
+      expect(resolvedName.reason).toMatch(/never allowed/);
+    } finally {
+      if (previous === undefined) delete process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS;
+      else process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS = previous;
+    }
+  });
+
+  it('only that one address is refused: the rest of fd00:ec2::/32 stays a private range', async () => {
+    const otherUla = await checkWebhookTarget('https://receiver.example/hook', {
+      allowPrivate: true,
+      resolve: async () => [{ address: 'fd00:ec2::1', family: 6 }],
+    });
+    expect(otherUla.ok).toBe(true);
+  });
+});
+
+describe('the DNS lookup is bounded', () => {
+  it('a lookup that never answers is a transient refusal, after dnsTimeoutMs', async () => {
+    const started = Date.now();
+    const check = await checkWebhookTarget('https://slow.example/hook', {
+      dnsTimeoutMs: 50,
+      resolve: () => new Promise(() => {}),
+    });
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(check).toMatchObject({ ok: false, transient: true });
   });
 });
