@@ -20,6 +20,7 @@ import { resolveIdentity, isSecondLinkForProvider } from '../services/identity.j
 import { sessionCookieName, COOKIE_OWS } from '../services/session-cookie.js';
 import { getOidcConfig } from '../services/oidc.js';
 import { offeredProviders } from '../services/auth-providers.js';
+import { readSuiteConfig } from '../services/suite.js';
 
 const router = express.Router();
 
@@ -183,6 +184,17 @@ setInterval(() => {
 // --- Routes ---
 
 /**
+ * The label on the OIDC sign-in button. OIDC_PROVIDER_NAME wins when it is set. Otherwise, in suite mode,
+ * the button names the suite, so the one sign-in reads as the suite's (W6-CDX-26). Otherwise it is SSO.
+ */
+function oidcButtonName(oidc) {
+  if (process.env.OIDC_PROVIDER_NAME) return oidc?.providerName ?? process.env.OIDC_PROVIDER_NAME;
+  const suite = readSuiteConfig();
+  if (suite.enabled) return suite.name;
+  return oidc?.providerName ?? 'SSO';
+}
+
+/**
  * GET /api/oauth/providers
  * Returns which OAuth providers are configured (public — used by the login UI).
  */
@@ -196,8 +208,8 @@ router.get('/oauth/providers', (_req, res) => {
       local: offered.has('local'),
       google: isGoogleOAuthConfigured() && offered.has('google'),
       github: isGitHubOAuthConfigured(),
-      // name is the label on the sign-in button; OIDC_PROVIDER_NAME, default SSO.
-      oidc: { enabled: oidc !== null, name: oidc?.providerName ?? (process.env.OIDC_PROVIDER_NAME || 'SSO') },
+      // name is the label on the sign-in button (oidcButtonName).
+      oidc: { enabled: oidc !== null, name: oidcButtonName(oidc) },
     },
   });
 });
