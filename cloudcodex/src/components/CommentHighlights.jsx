@@ -135,7 +135,7 @@ export function RichTextHighlights({ editorRef, comments, activeCommentId, conta
   if (highlights.length === 0) return null;
 
   return (
-    <div className="comment-highlights" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
+    <div className="comment-highlights" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 'var(--z-base)' }}>
       {highlights.map(h => {
         const color = TAG_COLORS[h.tag] || TAG_COLORS.comment;
         const isActive = h.commentId === activeCommentId;
