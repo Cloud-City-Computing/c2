@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
   contrastRatio, parseColor, parseThemeTokens, relativeLuminance, resolveTokenValue, round,
@@ -84,7 +84,7 @@ const ACCENT_DARK_SITES = [
 ];
 // Sites where a white label sits on a danger background, at rest and on hover.
 const DANGER_REST_SITES = ['.btn-danger', '.notification-bell__badge', '.btn-ghost.btn-danger:hover'];
-const DANGER_HOVER_SITES = ['.btn-danger:hover', '.drawio-block__delete-btn:hover'];
+const DANGER_HOVER_SITES = ['.btn-danger:hover:not(:disabled)', '.drawio-block__delete-btn:hover'];
 
 describe('a label on the accent fill is measured in the colour the page paints', () => {
   it('reads each site from the real declarations, with the label and the fill both named', () => {
@@ -150,7 +150,7 @@ describe('a white label on a danger background', () => {
       expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
     }
     const rest = paint(declared('.btn-danger', 'background'), base);
-    const hover = paint(declared('.btn-danger:hover', 'background'), base);
+    const hover = paint(declared('.btn-danger:hover:not(:disabled)', 'background'), base);
     expect(luminance(hover)).toBeLessThan(luminance(rest));
   });
 });
@@ -160,11 +160,9 @@ describe('the focus ring: one non-text component, measured at 3:1 against every 
   // The one :focus-visible outline; the ring sits on the page around the control, so the surfaces are the measure.
   const ringToken = /var\((--[\w-]+)\)/.exec(declared(':focus-visible', 'outline'))?.[1];
 
-  it('reads the ring from the real :focus-visible declaration, and no rule in index.css removes an outline', () => {
+  it('reads the ring from the real :focus-visible declaration', () => {
     expect(declared(':focus-visible', 'outline')).toBe('2px solid var(--cx-focus-ring)');
     expect(ringToken).toBe('--cx-focus-ring');
-    const suppressed = [...index.matchAll(/outline\s*:\s*(none|0)\s*(?=[;}])/g)].map((m) => m[0]);
-    expect(suppressed, 'a focus ring is restyled, never removed').toEqual([]);
   });
 
   it('measures at least 3:1 on every surface, on the default accent and all eight picker hues', () => {
@@ -187,11 +185,11 @@ describe('the label and fill on the buttons and the toast are read from their ow
   });
 
   it('keeps the primary hover on the accent text step, with the on-accent label at 4.5:1 or more on every hue', () => {
-    expect(declared('.btn-primary:hover', 'background')).toBe('var(--brand-blue)');
+    expect(declared('.btn-primary:hover:not(:disabled)', 'background')).toBe('var(--brand-blue)');
     expect(declared('.btn-primary', 'color')).toBe('var(--cx-on-accent)');
     for (const [name, tokens] of ACCENT_TOKENS) {
       const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
-        paint(declared('.btn-primary:hover', 'background'), tokens));
+        paint(declared('.btn-primary:hover:not(:disabled)', 'background'), tokens));
       expect(ratio, `primary hover (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
     }
   });
@@ -205,5 +203,107 @@ describe('the label and fill on the buttons and the toast are read from their ow
     const hover = contrastRatio(paint(declared('.toast__dismiss:hover', 'color'), base),
       paint(declared('.toast__dismiss:hover', 'background'), base));
     expect(hover, `dismiss hover measures ${round(hover)}:1`).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('no source under src/ removes a focus ring', () => {
+  // Every stylesheet and every script under src/, comments removed first, so prose cannot trip it.
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return walk(full);
+    return /\.(css|js|jsx)$/.test(e.name) ? [full] : [];
+  });
+  // One pattern for both forms: CSS (`outline-color: transparent`) and a script style object (`outlineColor: 'transparent'`).
+  const SUPPRESSION = /(?<![-\w])outline(?:-color|-width|-style|Color|Width|Style)?\s*:\s*['"`]?(?:none|transparent|0(?:px|em|rem|%)?)(?![-\w])|(?<![-\w])outline\s*:[^;}\n]*\btransparent\b/gi;
+  const suppressionsIn = (source) => {
+    const bare = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    return [...bare.matchAll(SUPPRESSION)].map((m) => m[0]);
+  };
+
+  it('finds none of the suppressing forms in a seeded source, and each form is caught', () => {
+    expect(suppressionsIn('.a { outline: none; }')).toHaveLength(1);
+    expect(suppressionsIn('.a { outline: 0; }')).toHaveLength(1);
+    expect(suppressionsIn('.a { outline-color: transparent; }')).toHaveLength(1);
+    expect(suppressionsIn('.a { outline-width: 0; }')).toHaveLength(1);
+    expect(suppressionsIn('.a { outline: 2px solid transparent; }')).toHaveLength(1);
+    expect(suppressionsIn("const s = { outlineColor: 'transparent' };")).toHaveLength(1);
+    expect(suppressionsIn("const s = { outline: 'none' };")).toHaveLength(1);
+    expect(suppressionsIn('/* outline: none; in prose */ .a { outline: 2px solid red; }')).toEqual([]);
+  });
+
+  it('finds no suppressing form in any file under src/', () => {
+    const found = walk(path.join(ROOT, 'src')).flatMap((file) => suppressionsIn(readFileSync(file, 'utf8'))
+      .map((hit) => `${path.relative(ROOT, file)}: ${hit}`));
+    expect(found, 'a focus ring is restyled, never removed').toEqual([]);
+  });
+});
+
+describe('a text field has one focus treatment, the shared ring, and no second halo', () => {
+  it('declares no box-shadow on a focus rule for an input or a textarea', () => {
+    const bare = index.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [...bare.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
+    const halos = rules
+      .filter((r) => /:focus(?![-\w])/.test(r.sel) && /input|textarea/.test(r.sel) && /box-shadow\s*:/.test(r.body))
+      .map((r) => r.sel);
+    expect(halos, 'the global ring is the field\'s focus indicator; a second ring doubles on click').toEqual([]);
+  });
+});
+
+describe('a text field draws its ring against its own border, so it reads as one edge', () => {
+  it.each(['input', 'textarea'])('%s:focus-visible has a zero outline offset', (field) => {
+    expect(declared(`${field}:focus-visible`, 'outline-offset')).toBe('0');
+  });
+});
+
+describe('a container that clips its contents draws the ring inside the control', () => {
+  const CLIPPING = [
+    '.editor-container',
+    '.markdown-editor__textarea-wrapper',
+    '.sidebar',
+    '.gh-browser__sidebar',
+    '.gh-modal',
+    '.gh-sync-menu',
+  ];
+  it.each(CLIPPING)('%s clips, and its focused controls use a negative outline offset', (container) => {
+    expect(declared(container, 'overflow')).toBe('hidden');
+    expect(parseFloat(declared(`${container} :focus-visible`, 'outline-offset'))).toBeLessThan(0);
+  });
+});
+
+describe('the button states: disabled, hover, pressed', () => {
+  it('disables visibly and shows no hover or press on a disabled control', () => {
+    expect(declared('.btn:disabled', 'cursor')).toBe('not-allowed');
+    expect(declared('.btn:disabled', 'opacity')).toMatch(/^0?\.\d+$/);
+  });
+
+  it('presses the primary one step, with the on-accent label at 4.5:1 or more on the pressed fill on every hue', () => {
+    expect(declared('.btn-primary:active:not(:disabled)', 'background')).toBe('var(--cx-accent-hover)');
+    for (const [name, tokens] of ACCENT_TOKENS) {
+      const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
+        paint(declared('.btn-primary:active:not(:disabled)', 'background'), tokens));
+      expect(ratio, `primary pressed (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('presses the ghost one step, with its secondary label at 4.5:1 or more on the pressed surface', () => {
+    expect(declared('.btn-ghost:active:not(:disabled)', 'background')).toBe('var(--bg-hover-strong)');
+    const ratio = contrastRatio(paint(declared('.btn-ghost', 'color'), base),
+      paint(declared('.btn-ghost:active:not(:disabled)', 'background'), base));
+    expect(ratio, `ghost pressed measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('presses the danger darker than its hover, with the white label at 4.5:1 or more on the pressed fill', () => {
+    expect(declared('.btn-danger:active:not(:disabled)', 'background')).toBe('var(--cx-danger-fill-press)');
+    const press = paint(declared('.btn-danger:active:not(:disabled)', 'background'), base);
+    const label = paint(declared('.btn-danger', 'color'), base);
+    expect(contrastRatio(label, press), 'danger pressed label').toBeGreaterThanOrEqual(4.5);
+    expect(luminance(press)).toBeLessThan(luminance(paint(declared('.btn-danger:hover:not(:disabled)', 'background'), base)));
+  });
+});
+
+describe('the toast dismiss target', () => {
+  it('is at least 24 by 24 CSS pixels', () => {
+    expect(parseFloat(declared('.toast__dismiss', 'min-width'))).toBeGreaterThanOrEqual(24);
+    expect(parseFloat(declared('.toast__dismiss', 'min-height'))).toBeGreaterThanOrEqual(24);
   });
 });

@@ -74,10 +74,11 @@
       "text": "--cx-on-danger",
       "on": [
         "--cx-danger-fill",
-        "--cx-danger-fill-hover"
+        "--cx-danger-fill-hover",
+        "--cx-danger-fill-press"
       ],
       "min": 4.5,
-      "reason": "A label on a filled danger control, at rest and on hover."
+      "reason": "A label on a filled danger control, at rest, on hover and pressed."
     },
     {
       "text": "--cx-focus-ring",
