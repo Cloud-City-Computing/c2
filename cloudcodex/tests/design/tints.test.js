@@ -88,7 +88,34 @@ const TINTED = [
   ['.page-tree-row--active', '.page-tree-row--active'],
   ['.page-tree-row--active:hover', '.page-tree-row--active'],
   ['.page-tree-row-add:hover', '.page-tree-row-add'],
+  // W6-CDX-29: the admin, settings, notification and archive-access surfaces.
+  ['.notification-bell__button:hover,\n.notification-bell__button.has-unread', '.notification-bell__button:hover,\n.notification-bell__button.has-unread'],
+  ['.notification-bell__action:hover', '.notification-bell__action'],
+  ['.notification-item--unread', '.notification-item'],
+  ['.notification-item--unread:hover', '.notification-item'],
+  ['.btn-watch:hover:not(:disabled)', '.btn-watch:hover:not(:disabled)'],
+  ['.settings-item.active', '.settings-item.active'],
+  ['.user-search__item:hover', 'var(--cx-text-primary)'],
+  ['.tfa-method-option.active', 'var(--cx-text-primary)'],
+  ['.admin-sidebar__item.active', '.admin-sidebar__item.active'],
+  ['.admin-badge--admin', '.admin-badge--admin'],
+  ['.admin-badge--admin:hover', '.admin-badge--admin'],
+  ['.admin-badge--user:hover', '.admin-badge--user:hover'],
+  ['.admin-role-badge--owner', '.admin-role-badge--owner'],
+  ['.admin-role-badge--admin', '.admin-role-badge--admin'],
+  ['.admin-activity-doc', '.admin-activity-doc'],
+  ['.status-badge--pending', '.status-badge--pending'],
+  ['.status-badge--accepted', '.status-badge--accepted'],
+  ['.status-badge--expired', '.status-badge--expired'],
+  ['.panel-status.success', '.panel-status.success'],
+  ['.panel-status.error', '.panel-status.error'],
+  ['.btn-danger.btn-ghost:hover,\n.btn.btn-ghost.btn-danger:hover', '.btn-danger.btn-ghost,\n.btn.btn-ghost.btn-danger'],
+  ['.badge-info', '.badge-info'],
+  ['.badge-warning', '.badge-warning'],
+  ['.badge-accent', '.badge-accent'],
+  ['.badge-muted', '.badge-muted'],
 ];
+
 
 describe('every translucent tint is a --cx- binding, never a bare rgba()', () => {
   it.each(TINTED)('%s paints its background from a --cx-tint- name', (bgSite) => {
@@ -109,7 +136,7 @@ describe('a label on a tint is at 4.5:1 or more on the tint over every surface, 
     const measured = [];
     for (const [name, tokens] of ACCENT_TOKENS) {
       const tint = paint(declared(bgSite, 'background'), tokens);
-      const label = paint(declared(labelSite, 'color'), tokens);
+      const label = labelSite.startsWith('var(') ? paint(labelSite, tokens) : paint(declared(labelSite, 'color'), tokens);
       for (const surface of SURFACES) {
         const flat = compositeOver(tint, paint(`var(${surface})`, tokens));
         const ratio = contrastRatio(label, flat);
@@ -122,6 +149,17 @@ describe('a label on a tint is at 4.5:1 or more on the tint over every surface, 
   });
 
   it('measures every site, so the list cannot quietly shrink', () => {
-    expect(TINTED.length).toBeGreaterThanOrEqual(20);
+    expect(TINTED.length).toBeGreaterThanOrEqual(46);
+  });
+});
+
+describe('a label on a solid accent fill is at 4.5:1 or more on every accent', () => {
+  it('the owner role badge is the accent fill with the on-accent label, not a white label on the pale accent', () => {
+    for (const [name, tokens] of ACCENT_TOKENS) {
+      const fill = paint(declared('.role-badge--owner', 'background'), tokens);
+      const label = paint(declared('.role-badge--owner', 'color'), tokens);
+      const ratio = contrastRatio(label, fill);
+      expect(ratio, `.role-badge--owner (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
