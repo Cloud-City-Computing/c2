@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-theme="dark"ACCENT_STYLE><head><meta charset="utf-8"><title>cdx28 repainted states</title>
+<link rel="stylesheet" href="vendor/cloud-city-design/core.css"><link rel="stylesheet" href="vendor/cloud-city-design/fonts.css">
+<link rel="stylesheet" href="CSS_CODEX"><link rel="stylesheet" href="CSS_INDEX">
+<style>body{margin:0;padding:16px;background:var(--bg-main);width:1100px} .row{display:flex;gap:20px;align-items:flex-start;margin-bottom:14px} .col{flex:1;min-width:0} h4{color:var(--text-muted);font:12px system-ui;margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em}</style>
+</head><body>
+<div class="row">
+ <div class="col">
+  <h4>GitHub sync banners (info, danger, ok, warn)</h4>
+  <div class="gh-sync-banner gh-sync-banner--info"><span class="gh-sync-banner__icon">i</span><span class="gh-sync-banner__label">Synced with main</span><span class="gh-sync-banner__path">docs/runbook.md</span></div>
+  <div class="gh-sync-banner gh-sync-banner--danger" style="margin-top:8px"><span class="gh-sync-banner__icon">!</span><span class="gh-sync-banner__label">Push failed: the branch moved</span><span class="gh-sync-banner__path">docs/runbook.md</span></div>
+  <div class="gh-sync-banner gh-sync-banner--ok" style="margin-top:8px"><span class="gh-sync-banner__icon">&#10003;</span><span class="gh-sync-banner__label">Pushed</span><span class="gh-sync-banner__path">docs/runbook.md</span></div>
+  <div class="gh-sync-banner gh-sync-banner--warn" style="margin-top:8px"><span class="gh-sync-banner__icon">&#9888;</span><span class="gh-sync-banner__label">Pull requested changes</span><span class="gh-sync-banner__path">docs/runbook.md</span></div>
+  <h4 style="margin-top:16px">Reconnect and releases</h4>
+  <div class="gh-reconnect-banner" role="alert">GitHub access expired. Reconnect to keep syncing.</div>
+  <div class="gh-releases__item" style="margin-top:8px"><span class="gh-releases__tag">v0.13.0</span><div class="gh-releases__body">Release notes for the cutover.</div></div>
+ </div>
+ <div class="col">
+  <h4>Failing code and issue embeds</h4>
+  <div class="gh-code-embed" style="width:460px">
+   <div class="gh-code-embed__header"><span class="gh-code-embed__icon">&lt;/&gt;</span><span class="gh-code-embed__path">src/retry.js</span><span class="gh-code-embed__lang">js</span><button class="gh-code-embed__remove">&times;</button></div>
+   <div class="gh-code-embed__error">Could not load this file from GitHub. It may have been deleted.</div>
+  </div>
+  <div class="gh-issue-embed" style="width:460px;margin-top:10px"><span class="gh-issue-embed__state gh-issue-embed__state--closed">closed</span> <span class="gh-issue-embed__ref">#412</span> <span class="gh-issue-embed__title">Cutover window</span> <button class="gh-issue-embed__remove">&times;</button></div>
+  <div class="gh-issue-embed" style="width:460px;margin-top:10px"><span class="gh-issue-embed__state gh-issue-embed__state--open">open</span> <span class="gh-issue-embed__ref">#413</span> <span class="gh-issue-embed__title">Rollback plan</span></div>
+  <div class="gh-issue-embed" style="width:460px;margin-top:10px"><span class="gh-issue-embed__error">Issue #499 is not accessible to you.</span></div>
+ </div>
+</div>
+<div class="row">
+ <div class="col">
+  <h4>Merge dialog conflict panes</h4>
+  <p class="gh-merge-dialog__warn" style="width:460px">Both sides changed the same lines. Choose one before merging.</p>
+  <div class="gh-merge-dialog__pane" style="width:460px;margin-top:8px"><div class="gh-merge-dialog__pane-header">Yours</div><pre class="gh-merge-dialog__readonly gh-merge-dialog__editor">retry = 2</pre></div>
+ </div>
+ <div class="col">
+  <h4>Error Boundary</h4>
+  <div class="error-boundary" role="alert" style="width:460px"><div class="error-boundary__panel"><h1 class="error-boundary__title">Something went wrong</h1><p class="error-boundary__body">Cloud Codex hit an unexpected error while drawing this page. Your saved work is not affected.</p><pre class="error-boundary__detail">TypeError: cannot read properties of undefined</pre><div class="error-boundary__actions"><button type="button" class="btn">Reload the page</button></div></div></div>
+ </div>
+</div>
+</body></html>

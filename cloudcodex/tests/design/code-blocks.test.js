@@ -1,8 +1,11 @@
 /**
- * Every syntax-highlighting colour measured on the code background it is painted on, over every surface
+ * The syntax-highlighting colours measured on the code background they are painted on, over every surface
  *
  * A code block is a translucent black wash (the editor's `pre` and the code-block wrapper) over the
- * surface the editor or embed sits on, and each highlight.js token colour is painted on that. The
+ * surface the editor or embed sits on. The eight highlight.js colour rules (the classes that set a hex
+ * colour) are each measured on that wash; the seven classes with no colour rule inherit the block
+ * text colour, which is measured too. Those eight rules do not cover every class, only every colour.
+ *
  * colours are read from the real `.hljs-*` declarations of src/index.css, and the wash is read from
  * the real `.editor-container .tiptap pre` declaration, composited over each of the five surfaces
  * (the strongest hover included) and measured with the vendored contrast gate. A revert of a hue to
@@ -98,7 +101,7 @@ describe('every highlight.js token colour is at 4.5:1 or more on the code wash, 
 
   it('reads the token rules from src/index.css', () => {
     expect(HLJS.length).toBeGreaterThanOrEqual(8);
-    expect(HLJS.map((r) => r.colour)).toContain('#78a763');
+    expect(HLJS.map((r) => r.colour)).toContain('#7cab67');
   });
 
   it.each(HLJS.map((r) => [r.selectors.replace(/\s+/g, ' '), r.colour]))('%s (%s)', (selectors, colour) => {

@@ -56,3 +56,34 @@ are static markup, and the reading below is the check.
 - `raw/new-tests.txt`: `tints.test.js` and `code-blocks.test.js` (52 of 52).
 - `raw/report-after.txt`: the live buckets after the burndown.
 - `raw/content-harness.html` and `raw/navigation-harness.html`: the markup behind the harness pages.
+
+## Review round: repainted component families
+
+The Log Tree banner contains the GitHub `.gh-*` block, so the GitHub components repaint too. The
+states harness (`raw/repainted-states-harness.html`) renders them with the real CSS, three ways:
+the base CSS (`cdx28-states-before-default.png`), this branch on the default accent
+(`cdx28-states-after-default-fixed.png`), and this branch with the coral pick (hue 355, the one
+closest to the danger red) (`cdx28-states-after-coral-fixed.png`).
+
+What reads, read by eye:
+
+- Failing code and issue embeds, the reconnect banner and the sync danger edge still read as
+  errors: the danger step is a pale salmon, and the text and the "!" carry the meaning beside it.
+- The merge dialog warning reads as a warning (yellow) on both accents.
+- The Error Boundary root no longer paints the old dark fallback (`#1b1b1d`); it takes the page
+  surface, so the boundary's own panel and border carry it. It still reads as a boundary.
+- The releases tag and the closed issue state follow the picked accent, as the token system intends.
+
+What did not read, and was fixed: under coral, the sync **info** edge followed the accent and sat
+beside the danger edge as a near-identical pink (`cdx28-states-after-coral-before-info-fix.png`).
+The info edge now takes `--cx-info`, the palette's fixed info blue, which is the same as the
+default accent, so the default view does not move. `cdx28-states-after-coral-fixed.png` shows
+info blue beside the salmon danger edge.
+
+Not captured: the hover states (`.gh-code-embed__remove:hover`, `.gh-issue-embed__remove:hover`),
+which a static capture cannot show; their colour is now the danger token. The sync menu item hover
+and the PR discussion panel were repainted by token value but not captured.
+
+Review-round numbers: the tints test measures the accent hover on each picker hue; the code-block
+test adds the seven inherited classes and a 4.6:1 margin, which lifts the comment green, the keyword
+blue and the deletion mauve off the 4.5:1 line.
