@@ -371,3 +371,24 @@ describe('the suite cluster labels (W6-CDX-25) are measured on the surface that 
     expect(measured.length).toBe(ACCENT_TOKENS.length * 2);
   });
 });
+
+describe('the Linked tasks link (W6-CDX-27) is measured on the page surface that paints it', () => {
+  const LINK = '.suite-doc-link';
+
+  it('reads the link colour and the page surface from the real declarations', () => {
+    expect(declared(LINK, 'color')).toBe('var(--cx-accent)');
+    expect(declared(LINK, 'text-decoration')).toBe('underline');
+    expect(declared(':root', 'background-color')).toBe('var(--bg-main)');
+  });
+
+  it('measures the link at 4.5:1 or more on the page surface, on the default accent and all eight picker hues', () => {
+    const measured = [];
+    for (const [name, tokens] of ACCENT_TOKENS) {
+      const surface = paint('var(--bg-main)', tokens);
+      const ratio = contrastRatio(paint(declared(LINK, 'color'), tokens), surface);
+      measured.push(ratio);
+      expect(ratio, `${LINK} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(measured.length).toBe(ACCENT_TOKENS.length);
+  });
+});
