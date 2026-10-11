@@ -310,3 +310,87 @@ describe('/api/admin/webhooks', () => {
     });
   });
 });
+
+describe('the delivery log and redelivery (W6-CDX-14)', () => {
+  let errorSpy;
+
+  beforeEach(() => {
+    resetMocks();
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  describe('GET /api/admin/webhooks/:id/deliveries', () => {
+    it('lists the last 50 deliveries, newest first, without the event body', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 4 }]);
+      c2_query.mockResolvedValueOnce([
+        { id: 90, event_id: 12, type: 'log.rename', status: 'dead', attempts: 3, last_status: 422, last_error: 'receiver answered 422', delivered_at: null, created_at: '2026-09-28T00:00:00.000Z' },
+      ]);
+      const res = await request(app).get('/api/admin/webhooks/4/deliveries').set('Authorization', 'Bearer t');
+
+      expect(res.status).toBe(200);
+      expect(res.body.deliveries).toEqual([
+        expect.objectContaining({ id: 90, status: 'dead', attempts: 3, last_status: 422, last_error: 'receiver answered 422' }),
+      ]);
+      const list = sqls()[1];
+      expect(list).toMatch(/ORDER BY d\.id DESC\s+LIMIT 50/);
+      expect(list).toMatch(/JOIN webhook_events e ON e\.id = d\.event_id/);
+      expect(list).not.toMatch(/\be\.body\b|\bbody\b/);
+      expect(c2_query.mock.calls[1][1]).toEqual([4]);
+    });
+
+    it('answers 404 for no such subscription, and 400 for a bad id', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]);
+      expect((await request(app).get('/api/admin/webhooks/4/deliveries').set('Authorization', 'Bearer t')).status).toBe(404);
+
+      mockAuthenticated(ADMIN_USER);
+      const bad = await request(app).get('/api/admin/webhooks/nope/deliveries').set('Authorization', 'Bearer t');
+      expect(bad.status).toBe(400);
+    });
+
+    it('is admin-only', async () => {
+      mockAuthenticated(TEST_USER);
+      const res = await request(app).get('/api/admin/webhooks/4/deliveries').set('Authorization', 'Bearer t');
+      expect(res.status).toBe(403);
+      expect(sqls()).toHaveLength(0);
+    });
+  });
+
+  describe('POST /api/admin/webhooks/deliveries/:id/redeliver', () => {
+    it('returns a dead delivery to pending with attempts reset, guarded on its status', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead' }]);
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 });
+      const res = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, id: 90 });
+      const [sql, params] = c2_query.mock.calls[1];
+      expect(sql).toMatch(/SET status = 'pending', attempts = 0/);
+      expect(sql).toMatch(/WHERE id = \? AND status = 'dead'/);
+      expect(params).toEqual([90]);
+    });
+
+    it('refuses a delivery that is not dead, and answers 404 for none', async () => {
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([{ id: 90, status: 'pending' }]);
+      const notDead = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
+      expect(notDead.status).toBe(409);
+      expect(sqls()).toHaveLength(1);
+
+      mockAuthenticated(ADMIN_USER);
+      c2_query.mockResolvedValueOnce([]);
+      expect((await request(app).post('/api/admin/webhooks/deliveries/91/redeliver').set('Authorization', 'Bearer t')).status).toBe(404);
+    });
+
+    it('is admin-only', async () => {
+      mockAuthenticated(TEST_USER);
+      expect((await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t')).status).toBe(403);
+    });
+  });
+});

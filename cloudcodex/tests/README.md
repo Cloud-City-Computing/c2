@@ -61,7 +61,8 @@ tests/
 │   ├── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
 │   ├── webhooks-emit.test.js ← the outbound-event emit hook, driven through the HTTP routes, read from the outbox tables
 │   ├── webhooks-env.test.js ← the env-declared webhook subscription across boots
-│   └── webhooks-schema.test.js ← the webhook tables' CHECKs, unique keys and cascade, written directly
+│   ├── webhooks-schema.test.js ← the webhook tables' CHECKs, unique keys and cascade, written directly
+│   └── webhooks-worker.test.js ← the delivery worker against a real receiver: order, leases, outcomes, the send-time guard
 ├── routes/                 ← per-route HTTP integration tests (Supertest)
 ├── middleware/             ← middleware unit tests
 ├── services/               ← service-layer tests (email, notifications, collab)
