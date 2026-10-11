@@ -104,6 +104,13 @@
   --cx-warning: var(--warning-pale);
   --cx-info: var(--accent-300);
 
+  /* The four colours of the Google "G" on the sign-in button. Brand values, named here so the component
+     carries no literal colour (the token gate reads components, not this definition file). */
+  --cx-brand-google-blue: #4285f4;
+  --cx-brand-google-green: #34a853;
+  --cx-brand-google-yellow: #fbbc05;
+  --cx-brand-google-red: #ea4335;
+
   /* The focus ring follows the accent. */
   --cx-focus-ring: var(--cx-accent);
 

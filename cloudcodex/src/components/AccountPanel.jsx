@@ -30,7 +30,7 @@ function isHttpUrl(value) {
  * Signs out here first, then, for an OIDC session, sends the browser on to the issuer's end-session
  * URL so the issuer ends its own session (W6-CDX-6). The request is started before the cookie is
  * cleared, so it already carries the session token; the local teardown never waits on the network.
- * A failed or slow request still ends locally and lands on /.
+ * A failed or slow request still ends locally and lands on /?signedOut=1.
  */
 async function performLogout() {
   const request = apiFetch('POST', '/api/logout', {}).catch(() => null);
@@ -43,7 +43,8 @@ async function performLogout() {
   clearTimeout(timer);
 
   const endSessionUrl = answer?.endSessionUrl;
-  window.location.href = isHttpUrl(endSessionUrl) ? endSessionUrl : '/';
+  // /?signedOut=1 is the landing that says so in suite mode (Std_Layout); outside suite mode it is the root.
+  window.location.href = isHttpUrl(endSessionUrl) ? endSessionUrl : '/?signedOut=1';
 }
 
 function AccountPanel({ name, email }) {

@@ -10,6 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
+import { SIGN_IN_TARGET_KEY } from '../../src/lib/sign-in-target.js';
 import {
   showModal,
   destroyModal,
@@ -42,6 +43,12 @@ afterEach(() => {
 
 
 describe('hideModalDimmer / showModalDimmer / destroyModal', () => {
+  it('forgets a kept sign-in target, so a later sign-in does not jump to a stale deep link (W6-CDX-26)', () => {
+    window.sessionStorage.setItem(SIGN_IN_TARGET_KEY, '/doc/9');
+    destroyModal();
+    expect(window.sessionStorage.getItem(SIGN_IN_TARGET_KEY)).toBeNull();
+  });
+
   it('hideModalDimmer is a no-op when there is no dimmer', () => {
     dimmer.remove();
     expect(() => hideModalDimmer()).not.toThrow();

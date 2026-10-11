@@ -81,13 +81,13 @@ describe('AccountPanel', () => {
       expect(utilMock.clearSessionCookie).toHaveBeenCalledTimes(1);
     });
 
-    it('goes to / for a local session, which has no endSessionUrl', async () => {
+    it('goes to /?signedOut=1 for a local session, which has no endSessionUrl', async () => {
       utilMock.apiFetch.mockResolvedValueOnce({ success: true });
       render(<AccountPanel name="ada" email="ada@example.com" />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
 
-      await waitFor(() => expect(location.href).toBe('/'));
+      await waitFor(() => expect(location.href).toBe('/?signedOut=1'));
     });
 
     it('never navigates to a URL that is not http or https', async () => {
@@ -98,7 +98,7 @@ describe('AccountPanel', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
 
-        await waitFor(() => expect(location.href).toBe('/'));
+        await waitFor(() => expect(location.href).toBe('/?signedOut=1'));
         unmount();
       }
     });
@@ -114,7 +114,7 @@ describe('AccountPanel', () => {
       expect(utilMock.apiFetch).toHaveBeenCalledWith('POST', '/api/logout', {});
     });
 
-    it('stops waiting for a server that never answers after five seconds, and goes to /', async () => {
+    it('stops waiting for a server that never answers after five seconds, and goes to /?signedOut=1', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       utilMock.apiFetch.mockReturnValueOnce(new Promise(() => {}));
       render(<AccountPanel name="ada" email="ada@example.com" />);
@@ -122,7 +122,7 @@ describe('AccountPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
       await vi.advanceTimersByTimeAsync(5000);
 
-      expect(location.href).toBe('/');
+      expect(location.href).toBe('/?signedOut=1');
     });
   });
 });

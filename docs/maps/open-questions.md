@@ -1000,3 +1000,14 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
   sorts before it. The runner's handling of an out-of-order pending file on such an instance is not verified here.
 - **F4. The socket sweep's latency is one minute, by design.** A socket authenticated before a deactivation stays
   open for up to 60 s. Closing sooner would need a push from the deactivation path, which does not exist yet.
+
+## G. Open questions from W6-CDX-26 (the suite front door), not defects yet
+
+- **G1. The live run against the Cloud City ID stack is not recorded.** The plan's Task 6.3 wants a signed-out
+  deep link to `/archives/:a/doc/:l` to land on the document after the bounce, with Cloud Command signed in, and
+  with no Cloud City session to land on the issuer's login first. That needs the cloud-city-id stack and a
+  Cloud Command instance on the same domain. Checked here only by the unit and route tests and the captures.
+- **G2. The silent-return path is not exercised end to end.** On a live issuer session, the bounce should return
+  the person silently to the document. The tests pin the URL and the loop guard, not the issuer's answer.
+- **G3. Command's D4 decides the bare root for both products.** `BOUNCE_BARE_ROOT` is `false` on Command and the
+  same rule holds here. If Kyle flips it, Codex's `decideSignedOut` needs the same one-line change on `/`.
