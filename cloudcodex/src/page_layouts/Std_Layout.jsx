@@ -19,12 +19,13 @@ import {
   getSessionTokenFromCookie,
   attemptAutoLogin,
   showDropdownMenu,
-  standardRedirect,
   fetchAdminStatus,
   validateInviteToken,
 } from '../util';
 import useGitHubStatus, { GitHubStatusProvider } from '../hooks/useGitHubStatus';
 import { useSignedOutTarget, clearOidcBounce } from '../hooks/useSignedOutTarget';
+// The one sentence after a sign-out, the same as Cloud Command's (W6-CMD-22). Suite mode only.
+const signedOutSentence = (suiteName) => `You're signed out of ${suiteName}.`;
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
 
 // --- Icons ---
@@ -243,12 +244,13 @@ function MobileNav({ isAdmin }) {
 
 // --- No Login ---
 
-function NoLoginMessage() {
+function NoLoginMessage({ suiteName, signedOut }) {
   return (
     <div className="welcome-message">
       <div className="logo-container">
         <img src={transparent_logo} alt="Cloud City Computing Logo" className="welcome-logo" />
         <h2>Welcome to Cloud Codex</h2>
+        {signedOut && suiteName && <p className="signed-out-sentence">{signedOutSentence(suiteName)}</p>}
         <p>Please log in to get started.</p>
       </div>
     </div>
@@ -262,6 +264,8 @@ function StdLayout({ children }) {
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const suite = useSuite(user);
+  // Read once, before anything strips it: the landing after a sign-out says so in suite mode (W6-CDX-26).
+  const [signedOut] = useState(() => new URLSearchParams(window.location.search).get('signedOut') === '1');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('c2-user-prefs'));
@@ -292,13 +296,12 @@ function StdLayout({ children }) {
       setUser(false);
     }
 
-    // Signed out, with no cookie or with one the server no longer accepts. On an OIDC-only instance a deep
-    // link goes to the sign-in once per tab. Otherwise a visitor with no cookie is sent to the root, as before.
+    // Signed out, with no cookie or with one the server no longer accepts. A deep link goes to the sign-in
+    // once per tab where OIDC is the sign-in (hooks/useSignedOutTarget.js). Where no OIDC is offered, the
+    // link is kept and the Login modal opens; a successful sign-in then returns to it.
     if (!loggedInUser) {
-      const bounced = await bounceToSignIn();
-      if (!bounced && !token && window.location.pathname !== '/' && window.location.pathname !== '/404') {
-        standardRedirect('/');
-      }
+      const outcome = await bounceToSignIn();
+      if (outcome === 'login') showModal(<Login />, 'modal-md');
     }
 
     setAuthChecked(true);
@@ -395,7 +398,7 @@ function StdLayout({ children }) {
           />
         )}
         <main className="main-content">
-          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage />)}
+          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage suiteName={suite.enabled ? suite.name : null} signedOut={signedOut} />)}
         </main>
         {user && <MobileNav isAdmin={isAdmin} />}
         <footer className="log-footer">
