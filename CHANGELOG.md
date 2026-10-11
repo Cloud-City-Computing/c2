@@ -25,6 +25,13 @@ initialises an empty data directory.
   served round-robin, so one with a backlog cannot starve the others. Outbox ids are allocated in
   commit order. A receiver that rejects the signature stalls its subscription until fixed or
   expired, and is never dropped silently.
+- **OIDC sign-in through one issuer per instance (W6-CDX-5).** Set `OIDC_ISSUER_URL`,
+  `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` (with `APP_URL`) and the sign-in screen
+  offers "Sign in with <OIDC_PROVIDER_NAME>". Identities are keyed on `(issuer, subject)`
+  in the new `user_identities` table; an account is linked by a verified email only when
+  it has no second factor, and OIDC never creates an account. Sessions record their
+  identity and the issuer's sid. The reader check accepts an optional `subject`.
+  See `docs/security.md` ("OIDC Sign-in") for what the issuer is trusted for.
 - **The shared Cloud City design package, vendored, and a design gate.**
   `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
   Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)
@@ -101,6 +108,9 @@ initialises an empty data directory.
   the webhooks migration (see Migration).
 
 ### Changed
+
+- **Node 22.** The image (`node:22-slim`), CI and the release workflow run Node 22, and
+  `package.json` declares `engines` `>=22`. openid-client 6 and jose 6 need it.
 
 - The GitHub page's linked file path and its file picker, which asked for a
   `--font-mono` nothing declared and fell back to `'SF Mono', monospace`, now

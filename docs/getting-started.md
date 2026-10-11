@@ -199,8 +199,14 @@ All seed accounts use the password **`password`**.
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (enables Google SSO) | — |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | — |
 | `GOOGLE_OAUTH_DOMAIN` | Restrict Google SSO to a specific email domain | — |
+| `OIDC_ISSUER_URL` | The OIDC issuer to sign people in through (enables OIDC sign-in with `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`). `https`, or plain `http` on `localhost`, `127.0.0.1`, `::1` or a `*.localhost` name only | — |
+| `OIDC_CLIENT_ID` | This instance's application client ID at the issuer. Set it with `OIDC_ISSUER_URL` | — |
+| `OIDC_CLIENT_SECRET` | That application's client secret. Set it with `OIDC_ISSUER_URL` | — |
+| `OIDC_PROVIDER_NAME` | The label on the sign-in button, "Sign in with <name>" | `SSO` |
+| `OIDC_LINK_BY_VERIFIED_EMAIL` | `1` links an existing account by its verified email when that account has two-factor off; `0` never links by email | `1` (on) |
+| `OIDC_SESSION_TTL_HOURS` | How long an OIDC sign-in lasts, in whole hours | `24` |
 | `LEGACY_SESSION_COOKIE` | Whether a lone `sessionToken` cookie from before the https session cookie became `__Host-sessionToken` still signs its holder in. Only `0` turns it off (for an https instance sharing its domain with hosts you do not control) | `1` (on) |
-| `AUTH_PROVIDERS` | Sign-in methods to offer, a comma list of `local` and `google`. Leave unset: the server derives it (local, plus Google when configured) and refuses to start on a value that disagrees with the Google variables | unset |
+| `AUTH_PROVIDERS` | Sign-in methods to offer, a comma list of `local`, `google` and `oidc`. Leave unset: the server derives it (local, plus Google when configured) and refuses to start on a value that disagrees with the Google variables | unset |
 | `GITHUB_CLIENT_ID` | GitHub OAuth application client ID | — |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth application client secret | — |
 | `NODE_ENV` | `production` serves the built frontend and puts the security headers on every response; the Docker image and `npm run start` set it. In every mode the API accepts the app's own origin, `APP_URL`'s and `CORS_ORIGIN`; outside production it also accepts any `localhost` or `127.0.0.1` origin, for the Vite dev server. `test` switches the rate limiters off | unset (development) |

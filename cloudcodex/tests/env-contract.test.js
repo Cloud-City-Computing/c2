@@ -326,6 +326,9 @@ describe('env-contract.js', () => {
     LEGACY_SESSION_COOKIE: 'tests/services/session-cookie.test.js',
     SMTP_PORT: 'tests/services/email.test.js',
     SMTP_FROM: 'tests/services/email.test.js',
+    OIDC_PROVIDER_NAME: 'tests/services/oidc.test.js',
+    OIDC_LINK_BY_VERIFIED_EMAIL: 'tests/services/oidc.test.js',
+    OIDC_SESSION_TTL_HOURS: 'tests/services/oidc.test.js',
   };
 
   it('has a test proving every stated default against the code', () => {

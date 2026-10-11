@@ -674,6 +674,15 @@ could point it at any workspace here and read document titles out of it. Cloud C
 the answer has to come from the system that owns the rules. Its consuming half is `S5.1b-f` in that
 repo.
 
+**The subject path (W6-CDX-5, `routes/workspaces.js`).** The reader check takes an optional
+`subject`, the OIDC `sub` a Cloud Command person signed in with. When OIDC is configured and a subject is
+given, the person is first resolved through `user_identities` at this instance's configured issuer
+(`JOIN user_identities ui ON ui.user_id = u.id WHERE ui.issuer = ? AND ui.subject = ?`), and only when
+that matches nobody by email, as before. A subject with no match and no email answers the same
+`{ canRead: false }` as an unknown email. The subject is at most 255 characters. The principal is still
+the machine credential, so the subject path is an oracle about a third party exactly as the email path
+is, and it is no wider.
+
 **The test that proves the machine-only property only proves it because it queues a principal row it
 does not use** (`tests/routes/reader-check.test.js`). Without that row the credential lookup finds
 nothing and the request is refused anyway, so the 401 would pass even if the route had been written

@@ -465,9 +465,10 @@ There is none; see "No OIDC client" above.
   - `sessions.auth_provider`'s CHECK (from W6-CDX-2) widens to `('local', 'google', 'oidc')`, and
     `sessions` gains `identity_id` (FK to `user_identities` `ON DELETE CASCADE`) and
     `provider_sid` with an index.
-    **The pairing rule "oidc if and only if `identity_id` is set" cannot be a CHECK here**: MySQL
-    prohibits a CHECK over a column that carries a foreign-key referential action. It is enforced
-    in `generateSessionToken`'s signature and pinned by a live-MySQL test.
+    **The pairing rule "oidc if and only if `identity_id` is set" is a CHECK, and also enforced in
+    `generateSessionToken`'s signature.** (Corrected in W6-CDX-5: MySQL 8.4 prohibits a CHECK only over
+    a column with an `ON UPDATE CASCADE` or `ON DELETE SET NULL` action, not `ON DELETE CASCADE`.)
+    Both are pinned by live-MySQL tests.
 - `cloudcodex/services/oidc.js`, a port of Cloud Command's relying party: discovery cached per
   process, authorization code with PKCE, `state` and `nonce` in a **signed, stateless flow cookie**
   (never the `oauth.js:84` Map), identity claims read from **userinfo**, a 60-second clock

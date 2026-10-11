@@ -103,10 +103,12 @@ deployment, API contracts). `docs/maps/` is the mechanism layer.
 Before writing new code in any of these areas, **read the existing files**.
 Most "new feature" work is extension, not greenfield.
 
-### Auth & accounts: `routes/auth.js`, `routes/oauth.js`, `middleware/auth.js`
+### Auth & accounts: `routes/auth.js`, `routes/oauth.js`, `routes/oidc.js`, `middleware/auth.js`
 Email+password login, signup via invite token, password reset, two-factor (email
 OTP and TOTP with QR), session tokens (DB-backed, one row per sign-in, stored
-only as a SHA-256 digest), Google Workspace SSO, GitHub OAuth (token
+only as a SHA-256 digest), Google Workspace SSO, OIDC sign-in through one issuer
+per instance (`services/oidc.js`, `OIDC_*`, keyed on `(issuer, subject)` in
+`user_identities`, `returnTo` by `services/return-to.js`), GitHub OAuth (token
 AES-256-GCM encrypted at rest). Use `requireAuth` and `requireAdmin` from
 `middleware/auth.js` on any new protected route. **Never bind a raw session
 token into a `sessions` query**: hash it with `hashSessionToken` in
@@ -122,8 +124,8 @@ alone needs an accepted `Origin` (`requireOriginForCookieWrites` in `app.js`).
 **External sign-in** decides its local user in one seam, `resolveIdentity(claims,
 policy)` in `services/identity.js`: a provider route verifies the protocol and
 hands over claims plus a policy, and gets back a user id or a named refusal.
-Google is its only caller today. Do not write a second account ladder in a
-route. `parseAuthProviders()` in the same file validates `AUTH_PROVIDERS` at
+Google and OIDC are its callers (the `oidc` branch is `resolveOidcIdentity`). Do not
+write a second account ladder in a route. OIDC never creates an account. `parseAuthProviders()` in the same file validates `AUTH_PROVIDERS` at
 boot (unset means today's set).
 
 **Machine callers**: `services/machine-auth.js` exports the one seam,
@@ -264,6 +266,7 @@ Stored in localStorage. New preferences go through `loadUserPrefs` /
    column. No external index.
 4. **Invite-only signup**. The `users` table is never written without a valid
    invite token, an admin action, or an OAuth flow with a valid provider config.
+   OIDC sign-in links an existing account, or refuses; it never creates one.
 5. **OAuth tokens encrypted at rest** with AES-256-GCM, key derived from
    `GITHUB_CLIENT_SECRET` via scrypt. Never log raw tokens. Rotating that secret
    invalidates every stored token, there is no key version and no re-encryption

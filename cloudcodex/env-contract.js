@@ -81,13 +81,27 @@ export const ENV_CONTRACT = [
 
   // Sign-in
   { name: 'AUTH_PROVIDERS', kind: 'optional', perInstance: false,
-    why: 'the sign-in methods offered; unset is local, plus google when Google is configured' },
+    why: 'the sign-in methods offered; unset is local, plus google and oidc when each is configured' },
   { name: 'GOOGLE_CLIENT_ID', kind: 'optional', perInstance: false,
     why: 'with GOOGLE_CLIENT_SECRET, turns Google sign-in on' },
   { name: 'GOOGLE_CLIENT_SECRET', kind: 'optional', perInstance: false,
     why: 'the Google OAuth client secret' },
   { name: 'GOOGLE_OAUTH_DOMAIN', kind: 'optional', perInstance: false,
     why: 'a Google Workspace domain whose users may sign up without an invitation' },
+  { name: 'OIDC_ISSUER_URL', kind: 'optional', perInstance: true,
+    why: 'the OIDC issuer this instance signs people in through, https or plain http on loopback; with '
+      + 'OIDC_CLIENT_ID and OIDC_CLIENT_SECRET, turns OIDC sign-in on; the issuer application is per instance' },
+  { name: 'OIDC_CLIENT_ID', kind: 'optional', requiredWith: 'OIDC_ISSUER_URL', perInstance: true,
+    why: 'the client id of this instance\'s application at the issuer; boot requires it when OIDC_ISSUER_URL is set' },
+  { name: 'OIDC_CLIENT_SECRET', kind: 'optional', requiredWith: 'OIDC_ISSUER_URL', perInstance: true,
+    why: 'that application\'s client secret, which also keys the signature on the sign-in flow cookie' },
+  { name: 'OIDC_PROVIDER_NAME', kind: 'default', default: 'SSO', perInstance: false,
+    why: 'the label on the sign-in button, "Sign in with <name>"' },
+  { name: 'OIDC_LINK_BY_VERIFIED_EMAIL', kind: 'default', default: '1', perInstance: false,
+    why: '1 links an existing account to the issuer identity by its verified email when that account has '
+      + 'two-factor off; 0 never links by email; any other value exits at boot' },
+  { name: 'OIDC_SESSION_TTL_HOURS', kind: 'default', default: '24', perInstance: false,
+    why: 'how long an OIDC sign-in lasts, in whole hours; a value that is not a positive whole number exits at boot' },
   { name: 'LEGACY_SESSION_COOKIE', kind: 'default', default: '1', perInstance: false,
     why: 'whether a lone sessionToken cookie from before __Host-sessionToken still signs its '
       + 'holder in; only 0 turns it off, which a hosted instance on https sets' },

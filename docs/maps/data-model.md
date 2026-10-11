@@ -151,13 +151,13 @@ sessions`). The token is minted by `createNewSessionToken`
 (`services/session-token.js`) is the one definition of what is stored, and
 every lookup and delete by token binds its output. A hex digest is also 64
 characters, so the column did not change. There are **many rows per user by
-design**, one per sign-in: `generateSessionToken` (`mysql_connect.js:180-188`)
+design**, one per sign-in: `generateSessionToken` (`mysql_connect.js:188`)
 only ever inserts, and the `user_id` index serves the deletes that sign every
 device out (password reset, update-account).
 
 `sessions.auth_provider VARCHAR(16) NOT NULL` records which flow minted the row,
-with `chk_sessions_auth_provider` restricting it to `local` and `google`
-(W6-CDX-5 widens it to `oidc`). No default, for `purpose`'s reason below: a flow
+with `chk_sessions_auth_provider` restricting it to `local`, `google` and `oidc`
+(widened by `migrations/2026-10-11-user-identities.sql`, W6-CDX-5). No default, for `purpose`'s reason below: a flow
 that forgets to name itself fails at insert with error 1364, which
 `tests/integration/sessions.test.js` pins on a live server along with the
 CHECK. Both arrived in `migrations/2026-09-27-session-per-sign-in.sql`, which
@@ -169,6 +169,22 @@ the hash idempotent: a digest is never hashed again. The hash rides in a file
 that adds a column because `--adopt-fresh-install` refuses any post-baseline
 file it cannot check against the schema. Expired rows are deleted daily by
 `pruneExpiredSessions` in `server.js`; nothing else removes them.
+
+**OIDC session provenance (W6-CDX-5, `migrations/2026-10-11-user-identities.sql`).**
+Three columns are added to `sessions`. `identity_id INT NULL` is the
+`user_identities` row an OIDC sign-in used, with `fk_sessions_identity ON DELETE
+CASCADE`, so deleting an identity ends the sessions signed in through it.
+`provider_sid VARCHAR(255) NULL`, indexed by `idx_sessions_provider_sid`, is the
+issuer's sid, which back-channel logout (W6-CDX-6) matches on. `chk_sessions_identity_pairing`
+keeps the two together in both directions: `(auth_provider = 'oidc') = (identity_id
+IS NOT NULL)`. The map used to say MySQL refuses a CHECK over a foreign-key column;
+that is true only for `ON UPDATE CASCADE` and `ON DELETE SET NULL` (error 3823,
+measured on 8.4.11), so the pairing is both a CHECK and a refusal in
+`generateSessionToken`, before any SQL. `user_identities` has `UNIQUE (issuer,
+subject)`, `UNIQUE (user_id, issuer)` (one identity per issuer per user), and a
+`utf8mb4_bin` subject, because an OIDC `sub` is case-sensitive. An OIDC session's
+expiry is `OIDC_SESSION_TTL_HOURS` from sign-in, and a rotation keeps the absolute
+expiry (`getSessionProvenance`, `mysql_connect.js:264`). The ID token is not stored.
 
 `password_reset_tokens` is a **five-flow pool**, not a reset table. It also
 stores the short-lived 2FA handoff token issued during login, the TOTP
@@ -324,6 +340,7 @@ Section 4 above for the `user_invitations` columns that drive it.
 
 | Table | Key | Written by | Read by |
 |---|---|---|---|
+| `user_identities` | unique `(issuer, subject)` and unique `(user_id, issuer)` | `services/identity.js` (the OIDC ladder; never links a user with two-factor on by email, never creates a user), `routes/oidc.js` (`last_login_at` by the ladder) | `resolveIdentity` (the `(issuer, subject)` lookup), the reader check by subject (`routes/workspaces.js`), `sessions.identity_id` |
 | `oauth_accounts` | unique `(provider, provider_user_id)` and unique `(user_id, provider)` | `services/identity.js` (Google; never links a user with two-factor on by email), `routes/oauth.js` (GitHub) | `resolveIdentity` (Google subject lookup and the one-Google-row check), `getGitHubToken` (`github.js:54`), team sync identity match |
 | `archive_repos` | unique `(archive_id, repo_full_name)` | `routes/archives.js:764` | bulk import |
 | `github_links` | **unique `(log_id)`** | link CRUD, import, every sync route | status/pull/push/resolve |
