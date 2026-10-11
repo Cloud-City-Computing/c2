@@ -163,3 +163,9 @@ describe('a label on a solid accent fill is at 4.5:1 or more on every accent', (
     }
   });
 });
+
+describe('the info badge is the fixed info step, so it does not change hue with the accent', () => {
+  it('.badge-info labels in --cx-info-bright, which reads the package accent step and not the picker', () => {
+    expect(declared('.badge-info', 'color')).toBe('var(--cx-info-bright)');
+  });
+});
