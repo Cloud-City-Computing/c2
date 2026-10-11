@@ -310,6 +310,38 @@ describe('services/webhooks', () => {
       expect(withTransaction).toHaveBeenCalledTimes(1);
     });
 
+    it('reads the clock only once the order lock is held, so occurred_at follows commit order', async () => {
+      await cache([sub(1)]);
+      c2_query.mockResolvedValueOnce([{ archive_id: 29, title: 'Stored title', parent_id: null }]);
+      // The fake clock moves at each query, the way a waiting emit would see it:
+      // the lock row insert, then the FOR UPDATE that waits for an earlier emit.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(Date.parse('2026-10-10T10:00:00.000Z'));
+        c2_query
+          .mockImplementationOnce(async () => {
+            vi.setSystemTime(Date.parse('2026-10-10T10:00:01.000Z'));
+            return { affectedRows: 0 };
+          })
+          .mockImplementationOnce(async () => {
+            vi.setSystemTime(Date.parse('2026-10-10T10:00:02.000Z'));
+            return [{ id: 1 }];
+          })
+          .mockResolvedValueOnce({ insertId: 1042 })
+          .mockResolvedValueOnce({ affectedRows: 1 })
+          .mockResolvedValueOnce({ affectedRows: 1 });
+        await emitEvent(ctx(), { workspaceId: 3, squadId: 8 });
+      } finally {
+        vi.useRealTimers();
+      }
+
+      // The instant is the one read after the lock was granted, not the one
+      // read when the emit started, and the row carries the same instant.
+      expect(emittedEnvelope().occurred_at).toBe('2026-10-10T10:00:02.000Z');
+      const insert = calls().find((c) => /INSERT INTO webhook_events/.test(c.sql));
+      expect(insert.params[3]).toBe('2026-10-10 10:00:02.000');
+    });
+
     it('builds each type\'s data from the spec\'s table', async () => {
       await cache([sub(1)]);
       const row = { archive_id: 29, title: 'Stored title', parent_id: 7 };

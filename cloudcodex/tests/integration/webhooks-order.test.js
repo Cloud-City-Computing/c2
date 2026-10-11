@@ -146,6 +146,40 @@ describe('emit order', () => {
     expect(visible).toEqual([a.eventId, b.eventId]);
   });
 
+  it('two emits that wait on the order lock commit with occurred_at non-decreasing in sequence order', async () => {
+    // Both emits start while the holder owns the lock, so both wait. Their
+    // occurred_at must be read under the lock: if it were read on entry, the
+    // emit that started first could carry the earlier instant yet commit after
+    // the other, and a receiver ordering by occurred_at would see it go back.
+    holder = await openSecond();
+    await holder.query('INSERT IGNORE INTO webhook_sequence_lock (id) VALUES (1)');
+    await holder.beginTransaction();
+    await holder.query('SELECT id FROM webhook_sequence_lock WHERE id = 1 FOR UPDATE');
+
+    let settled = 0;
+    const track = (p) => p.then((result) => { settled++; return result; });
+    const emitA = track(emitEvent(ACTION, SCOPE));
+    await sleep(300);
+    const emitB = track(emitEvent(ACTION, SCOPE));
+    await sleep(400);
+    // Neither emit can have committed while the holder still owns the lock.
+    expect(settled).toBe(0);
+
+    await holder.commit();
+    const [a, b] = await Promise.all([emitA, emitB]);
+
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    const rows = await c2_query(
+      "SELECT id, DATE_FORMAT(occurred_at, '%Y-%m-%d %H:%i:%s.%f') AS at FROM webhook_events ORDER BY id",
+      []
+    );
+    expect(rows.map((r) => Number(r.id))).toEqual([a.eventId, b.eventId].sort((x, y) => x - y));
+    for (let i = 1; i < rows.length; i++) {
+      expect(rows[i].at >= rows[i - 1].at).toBe(true);
+    }
+  });
+
   it('the migration claims the lock table, so --adopt-fresh-install checks it', () => {
     const contents = readFileSync(path.join(MIGRATIONS_DIR, '2026-10-10-webhook-sequence-lock.sql'), 'utf8');
     expect(schemaClaims(contents)).toEqual([{ kind: 'table', table: 'webhook_sequence_lock' }]);
