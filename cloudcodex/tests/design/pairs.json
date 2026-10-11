@@ -137,6 +137,17 @@
     "--cx-tint-danger-strong": "A translucent danger wash behind a label, on hover; measured over every surface in tests/design/tints.test.js.",
     "--cx-tint-success": "A translucent success wash behind a label; measured over every surface in tests/design/tints.test.js.",
     "--cx-tint-violet": "A translucent violet wash behind a label; measured over every surface in tests/design/tints.test.js.",
-    "--cx-shadow-popover": "A drop shadow's ink; a shadow falls on a surface and carries no text."
+    "--cx-shadow-popover": "A drop shadow's ink; a shadow falls on a surface and carries no text.",
+    "--cx-tint-accent-faint": "A translucent accent wash behind a selected row's label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-accent-quiet": "A translucent accent wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-accent-lift": "A translucent accent wash behind an unread row's label, on hover; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-accent-edge": "A translucent accent edge on a badge or a chip; a border, not a background, so it carries no label of its own.",
+    "--cx-tint-success-quiet": "A translucent success wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-success-mid": "A translucent success wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-danger-quiet": "A translucent danger wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-slate": "A translucent slate wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-tint-neutral": "A translucent neutral wash behind a label; measured over every surface in tests/design/tints.test.js.",
+    "--cx-ring-light": "A pale ring around a hovered swatch; a non-text indicator over the swatch, not text, so it has no contrast minimum.",
+    "--cx-white": "A solid white for a label on a dark fill (measured in painted.test.js), a mark, and the sheet under a QR code; the labels it sets are measured where they sit."
   }
 }
