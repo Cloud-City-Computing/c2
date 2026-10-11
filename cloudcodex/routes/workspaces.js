@@ -9,6 +9,7 @@ import express from 'express';
 import { c2_query } from '../mysql_connect.js';
 import { requireAuth, requireMachine } from '../middleware/auth.js';
 import { isValidId, asyncHandler, errorHandler, addSquadOwnerMember } from './helpers/shared.js';
+import { getOidcConfig } from '../services/oidc.js';
 
 const router = express.Router();
 
@@ -199,13 +200,49 @@ router.delete('/workspaces/:id', requireAuth, asyncHandler(async (req, res) => {
 router.get('/workspaces/:workspaceId/reader-check', requireMachine, asyncHandler(async (req, res) => {
   const { workspaceId } = req.params;
   const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+  const subject = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
 
   if (!isValidId(workspaceId)) {
     return res.status(400).json({ success: false, message: 'Invalid workspace id' });
   }
-  if (!email || email.length > 255) {
+  if (subject.length > 255) {
+    return res.status(400).json({ success: false, message: 'A subject query parameter is at most 255 characters' });
+  }
+  if (email.length > 255 || (!email && !subject)) {
     return res.status(400).json({ success: false, message: 'An email query parameter is required' });
   }
+
+  // The reader's columns, the same for both lookups below: the subject lookup and the email lookup
+  // answer the same question about the same user.
+  const readerColumns = `u.is_admin AS isAdmin,
+       EXISTS (SELECT 1 FROM workspaces w WHERE w.id = ? AND w.owner_id = u.id) AS ownsIt,
+       EXISTS (
+         SELECT 1 FROM squad_members sm
+         JOIN squads s ON s.id = sm.squad_id
+         WHERE sm.user_id = u.id AND s.workspace_id = ?
+       ) AS inASquad`;
+  const canReadOf = row => Boolean(row) && Boolean(row.isAdmin || row.ownsIt || row.inASquad);
+
+  /*
+   * By subject first (W6-CDX-5): an OIDC subject names one person at this
+   * instance's configured issuer, which an email does not. Only when OIDC is
+   * configured, and only when a subject is given. A subject that matches nobody
+   * falls through to the email, and an unknown subject with no email answers the
+   * same false as an unknown email.
+   */
+  const oidc = getOidcConfig();
+  if (subject && oidc !== null) {
+    const [bySubject] = await c2_query(
+      `SELECT ${readerColumns}
+     FROM users u
+     JOIN user_identities ui ON ui.user_id = u.id
+     WHERE ui.issuer = ? AND ui.subject = ?
+     LIMIT 1`,
+      [Number(workspaceId), Number(workspaceId), oidc.issuer, subject]
+    );
+    if (bySubject) return res.json({ canRead: canReadOf(bySubject) });
+  }
+  if (!email) return res.json({ canRead: false });
 
   /*
    * LOWER() on both sides. MySQL's default collation is already
@@ -213,25 +250,15 @@ router.get('/workspaces/:workspaceId/reader-check', requireMachine, asyncHandler
    * survives a future collation change rather than depending on one.
    */
   const rows = await c2_query(
-    `SELECT
-       u.is_admin AS isAdmin,
-       EXISTS (SELECT 1 FROM workspaces w WHERE w.id = ? AND w.owner_id = u.id) AS ownsIt,
-       EXISTS (
-         SELECT 1 FROM squad_members sm
-         JOIN squads s ON s.id = sm.squad_id
-         WHERE sm.user_id = u.id AND s.workspace_id = ?
-       ) AS inASquad
+    `SELECT ${readerColumns}
      FROM users u
      WHERE LOWER(u.email) = LOWER(?)
      LIMIT 1`,
     [Number(workspaceId), Number(workspaceId), email]
   );
 
-  const row = rows[0];
   // No row at all is the unknown-email case, and it lands on the same answer.
-  const canRead = Boolean(row) && Boolean(row.isAdmin || row.ownsIt || row.inASquad);
-
-  res.json({ canRead });
+  res.json({ canRead: canReadOf(rows[0]) });
 }));
 
 router.use(errorHandler);

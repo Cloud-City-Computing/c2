@@ -29,6 +29,7 @@ import docImagesRouter from './routes/doc-images.js';
 import { docImagesHandler } from './routes/doc-images-serve.js';
 import adminRouter from './routes/admin.js';
 import oauthRouter from './routes/oauth.js';
+import oidcRouter from './routes/oidc.js';
 import githubRouter from './routes/github.js';
 import favoritesRouter from './routes/favorites.js';
 import notificationsRouter from './routes/notifications.js';
@@ -39,6 +40,7 @@ import healthRouter from './routes/health.js';
 import { warnUntrustedForwarders, ipv6Groups } from './middleware/forwarded-for.js';
 import { bearerToken } from './middleware/auth.js';
 import { readSessionCookie } from './services/session-cookie.js';
+import { getOidcConfig } from './services/oidc.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -372,6 +374,7 @@ app.use('/api/2fa/verify', authLimiter);
 app.use('/api/2fa/totp/confirm', authLimiter);
 app.use('/api/2fa/disable/confirm', authLimiter);
 app.use('/api/oauth/google/callback', authLimiter);
+app.use('/api/auth/oidc/callback', authLimiter);
 // update-account checks the current password for an email or password change,
 // which would otherwise let a stolen session guess at it without limit. A
 // path mount also matches /api/update-account/confirm-email, whose code check
@@ -437,6 +440,8 @@ app.use('/api', avatarsRouter);
 app.use('/api', docImagesRouter);
 app.use('/api', adminRouter);
 app.use('/api', oauthRouter);
+// Mounted only when an OIDC issuer is configured; getOidcConfig() throws at boot on a bad setting.
+if (getOidcConfig() !== null) app.use('/api', oidcRouter);
 app.use('/api', githubRouter);
 app.use('/api', favoritesRouter);
 app.use('/api', notificationsRouter);

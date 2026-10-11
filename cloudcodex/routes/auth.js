@@ -10,13 +10,25 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
-import { c2_query, generateSessionToken, getSessionProvider, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
+import { c2_query, generateSessionToken, getSessionProvider, getSessionProvenance, validateAndAutoLogin, withTransaction } from '../mysql_connect.js';
 import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
 import { requireAuth, extractSessionToken } from '../middleware/auth.js';
 import { legacyCookieAllowed } from '../services/session-cookie.js';
 import { isValidId, asyncHandler, errorHandler, DEFAULT_PERMISSIONS, TOKEN_PURPOSE, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadMember } from './helpers/shared.js';
+
+/**
+ * The options a rotated session is minted with (update-account, confirm-email). A local or Google
+ * session keeps its flow tag, exactly as before. An OIDC session also keeps the identity it signed in
+ * through, the issuer's sid (back-channel logout matches on it) and its absolute expiry, so the
+ * rotation cannot quietly widen or detach it. Call before the rotation deletes the row.
+ */
+async function rotationOptionsFor(token, provider) {
+  if (provider !== 'oidc') return { provider };
+  const { identityId, providerSid, expiresAt } = await getSessionProvenance(token);
+  return { provider, identityId, providerSid, expiresAt };
+}
 
 const router = express.Router();
 
@@ -401,6 +413,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
 
   // Read before the delete below removes the row it is read from.
   const provider = await getSessionProvider(token);
+  const rotation = await rotationOptionsFor(token, provider);
 
   await withTransaction(async (query) => {
     await query(updateSql, params);
@@ -409,7 +422,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
 
   // Only after the commit, as create-account does: the token is the caller's
   // proof that the change landed, and every old one is already gone.
-  const freshToken = await generateSessionToken(sessionUser, req.ip, req.headers['user-agent'], { provider });
+  const freshToken = await generateSessionToken(sessionUser, req.ip, req.headers['user-agent'], rotation);
 
   if (emailChanging) {
     await sendEmailChangedNotice(req, { oldEmail: sessionUser.email, recipientName: name ?? sessionUser.name, newEmail: email });
@@ -464,6 +477,7 @@ router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (re
 
   // Read before the delete below removes the row it is read from.
   const provider = await getSessionProvider(req.sessionToken);
+  const rotation = await rotationOptionsFor(req.sessionToken, provider);
 
   await withTransaction(async (query) => {
     await query(`UPDATE two_factor_codes SET used = TRUE WHERE id = ?`, [codeRecord.id]);
@@ -472,7 +486,7 @@ router.post('/update-account/confirm-email', requireAuth, asyncHandler(async (re
     await query(`DELETE FROM sessions WHERE user_id = ?`, [req.user.id]);
   });
 
-  const freshToken = await generateSessionToken(req.user, req.ip, req.headers['user-agent'], { provider });
+  const freshToken = await generateSessionToken(req.user, req.ip, req.headers['user-agent'], rotation);
 
   await sendEmailChangedNotice(req, { oldEmail: req.user.email, recipientName: req.user.name, newEmail: tokenRecord.new_email });
 
@@ -1345,7 +1359,9 @@ router.get('/2fa/status', requireAuth, asyncHandler(async (req, res) => {
   );
 
   const method = row?.two_factor_method ?? 'none';
-  res.json({ success: true, method, enabled: method !== 'none' });
+  // Who owns the second factor: an OIDC session's issuer governs a linked identity's sign-in (W6-CDX-5).
+  const managedBy = (await getSessionProvider(req.sessionToken)) === 'oidc' ? 'oidc' : null;
+  res.json({ success: true, method, enabled: method !== 'none', managed_by: managedBy });
 }));
 
 // --- Centralized error handler ---
