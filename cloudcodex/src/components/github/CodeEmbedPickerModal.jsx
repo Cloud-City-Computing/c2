@@ -98,7 +98,7 @@ export default function CodeEmbedPickerModal({ onInsert, onCancel }) {
         {loadingRepos ? (
           <p className="text-muted">Loading your repos…</p>
         ) : reposError ? (
-          <p className="text-muted" style={{ color: 'var(--accent-red, #e5544e)' }}>{reposError}</p>
+          <p className="text-muted" style={{ color: 'var(--cx-danger)' }}>{reposError}</p>
         ) : (
           <select id="gh-embed-repo" value={selectedFullName} onChange={handleRepoChange}>
             {repos.map((r) => (

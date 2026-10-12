@@ -412,6 +412,9 @@ Every existing pair passes on the new values; no ledger bucket rises; captures a
 of home, an archive, a document, Account and Admin, read and described beside the suite pattern; the
 document page with two cursors and one comment shows highlights in place.
 
+
+**Recorded at execution (W6-CDX-38).** Three choices the spec did not spell out, each in the plan's deviation list: the danger fill moved with its label and hover (a white label on the bright fill fails 4.5:1), so the danger button's inset-ring hover landed here; a hover on a row inside a panel is the sunken well, since a border-colour hover gives a borderless row nothing; and X4 inherits the typeface only (`font-family`), because the `font` shorthand moved the top-bar search field from 31px to 36px.
+
 ---
 
 ## W6-CDX-39. Controls, the Toast and dialog panels

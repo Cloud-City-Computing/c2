@@ -11,8 +11,8 @@
  * https://cloudcitycomputing.com
  */
 
-// The WCAG relative luminance of --cx-on-accent (oklch(0.16 0.03 240)), as the vendored gate measures it.
-export const INK_LUMINANCE = 0.004175134234249585;
+// The WCAG relative luminance of --cx-on-accent (oklch(0.14 0.03 240)), as the vendored gate measures it.
+export const INK_LUMINANCE = 0.002799639880542578;
 
 const CANDIDATES = [
   { color: 'var(--cx-white)', luminance: 1 },

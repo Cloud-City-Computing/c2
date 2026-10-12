@@ -426,12 +426,19 @@ load-bearing:
    with relative URLs, so Vite fingerprints the six `.woff2` files into
    `dist/assets/`. Never `public/`, which the `app_public` volume shadows.
    Nothing sets either family yet, so no font is fetched.
-3. `src/codex.css`, Codex's bindings: every name `--cx-` prefixed, all under
-   `[data-theme='dark']`, which `index.html` sets on `<html>` (Codex is dark
-   only through Wave 6). Five surfaces, three text levels, the accent
-   (`--accent-300`), its hover and fill, the status colours on the pale step,
-   the border, the scrim, the focus ring, Codex's radii (4, 8, 12 px), its
-   drop-shadow inks, and its layout sizes and transition. Since W6-CDX-28 it also
+3. `src/codex.css`, Codex's bindings: every name `--cx-` prefixed, in three
+   blocks. A bare `[data-theme]` holds what both themes share (`--cx-white`, the
+   Google colours, the layout sizes and the transition); `[data-theme='dark']`
+   holds the rest, with `color-scheme: dark`, and `index.html` sets the attribute
+   on `<html>` (dark only until W6-CDX-43). The dark values are the suite
+   pattern's, restated in `tests/design/suite-theme.json`, and this file must
+   equal it (W6-CDX-38). Three surfaces and the selection wash (`--cx-surface-0`
+   to `-2`, `--cx-select-wash`; the fourth and fifth steps retired with the hover
+   fills), three text levels, the accent (`--accent-400`), its hover and fill, the
+   status colours on the bright step, the card hairline and the control's strong
+   hairline (`--cx-border-strong`), the scrim and the focus ring, the drop-shadow
+   inks, and the layout sizes and transition. Core's radii apply: Codex no longer
+   declares its own. Since W6-CDX-28 it also
    holds the translucent tints (`--cx-tint-*`, measured over every surface by
    `tints.test.js`), the bright text steps a label on a tint steps up to, and the
    popover shadow. W6-CDX-29 adds the admin, settings and notification washes at
@@ -447,22 +454,23 @@ load-bearing:
    `.gh-browser__sidebar`, `.gh-modal`, `.gh-merge-dialog__pane`, `.gh-sync-menu`) draws its controls' rings
    inside the control (`outline-offset: -2px`), since a ring outside a flush control
    is cut off by the clip; text fields sit at `outline-offset: 0` against their border. Its `:root` block (`index.css:12`) is
-   the **legacy-alias bridge** (W6-CDX-22): the 27 legacy names every rule
-   reads, plus five undeclared names that carried the heaviest literal
+   the **legacy-alias bridge** (W6-CDX-22): the 22 legacy names every rule
+   reads (W6-CDX-38 retired the two hover names and the three radii), plus five undeclared names that carried the heaviest literal
    fallbacks (`--bg-secondary`, `--bg-tertiary`, `--border`, `--color-accent`,
    `--accent-color`). Each points at one `var()` into `codex.css` or `core.css`
    and holds no literal, pinned by `tests/design/bridge.test.js`. Rules that
    paint white labels on an accent or danger background read the dark step
    (`--brand-blue-hover`, `--color-danger-hover`), not the pale text step.
    The accent-fill labels paint `--cx-on-accent` (a dark ink), since white on
-   the pale fill measures 2.7 to 3.1:1; the danger labels sit on
-   `--cx-danger-fill` (rest) and `--cx-danger-fill-hover`. Avatar initials sit
+   the pale fill measures 2.7 to 3.1:1. The danger fill is `--cx-danger-fill` (the
+   bright step) with the same ink, and its hover is an inset ring on that fill
+   (W6-CDX-38). Avatar initials sit
    on `--brand-blue-dark`, which is `--cx-accent-dark` and follows the picker.
 
-**Four names overlap.** `index.css` redeclares `--brand-blue` and
-`--radius-sm`, `-md`, `-lg`, which `core.css` also declares; loaded later on
-the same selector, Codex's values win (radii 4, 8, 12 px against core's 6, 10,
-14). `tests/design/codex-css.test.js` pins the set so it can only shrink.
+**One name overlaps.** `index.css` redeclares `--brand-blue`, which `core.css`
+also declares. W6-CDX-22 had a second group, the three radii, which W6-CDX-38
+removed: the bridge no longer declares them, so core's 6, 10 and 14 px apply.
+`tests/design/codex-css.test.js` pins the set so it can only shrink.
 This is a recorded exception, decided in W6-CDX-22: the bridge keeps the names
 so no rule or test changes, and `--brand-blue` now points at `--cx-accent`.
 **One name changed meaning:** `--font-mono`, which two GitHub-page rules read
