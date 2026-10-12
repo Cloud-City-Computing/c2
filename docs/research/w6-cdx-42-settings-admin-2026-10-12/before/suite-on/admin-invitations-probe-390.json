@@ -1,0 +1,38 @@
+{
+  "tabs": [
+    {
+      "label": "📊Overview",
+      "current": "admin-sidebar__item "
+    },
+    {
+      "label": "👤Users",
+      "current": "admin-sidebar__item "
+    },
+    {
+      "label": "🏢Workspaces",
+      "current": "admin-sidebar__item "
+    },
+    {
+      "label": "👥Squads",
+      "current": "admin-sidebar__item "
+    },
+    {
+      "label": "✉Invitations",
+      "current": "admin-sidebar__item active"
+    },
+    {
+      "label": "🔗Webhooks",
+      "current": "admin-sidebar__item "
+    }
+  ],
+  "sidebar": true,
+  "pictographs": [
+    "📊",
+    "👤",
+    "🏢",
+    "👥",
+    "✉",
+    "🔗"
+  ],
+  "cellsWithDigits": []
+}

@@ -1,0 +1,31 @@
+{
+  "tabs": [
+    {
+      "label": "Overview",
+      "current": "tabs__tab admin-tabs__tab"
+    },
+    {
+      "label": "Users",
+      "current": "tabs__tab admin-tabs__tab"
+    },
+    {
+      "label": "Workspaces",
+      "current": "page"
+    },
+    {
+      "label": "Squads",
+      "current": "tabs__tab admin-tabs__tab"
+    },
+    {
+      "label": "Invitations",
+      "current": "tabs__tab admin-tabs__tab"
+    },
+    {
+      "label": "Webhooks",
+      "current": "tabs__tab admin-tabs__tab"
+    }
+  ],
+  "sidebar": false,
+  "pictographs": [],
+  "cellsWithDigits": []
+}

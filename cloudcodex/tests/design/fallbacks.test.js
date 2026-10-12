@@ -35,7 +35,7 @@ describe('var() fallbacks', () => {
   });
 
   it('names no undeclared custom property with a fallback, except the two set by script', () => {
-    const SET_BY_SCRIPT = ['--density-scale', '--editor-font-size'];
+    const SET_BY_SCRIPT = ['--editor-font-size'];
     const undeclared = [...new Set(reads.filter(({ name }) => !declared.has(name)).map(({ name }) => name))]
       .filter((name) => !SET_BY_SCRIPT.includes(name));
     expect(undeclared).toEqual([]);

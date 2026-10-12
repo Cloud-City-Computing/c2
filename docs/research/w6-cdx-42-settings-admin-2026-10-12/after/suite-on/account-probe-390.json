@@ -1,0 +1,19 @@
+{
+  "textboxes": 0,
+  "radios": 0,
+  "managedBy": [
+    "Managed by Example ID",
+    "Managed by Example ID",
+    "Managed by Example ID",
+    "Managed by Example ID"
+  ],
+  "managedLinks": [
+    "https://id.example.test/ui/console/users/me",
+    "https://id.example.test/ui/console/users/me",
+    "https://id.example.test/ui/console/users/me",
+    "https://id.example.test/ui/console/users/me"
+  ],
+  "submitButtons": 0,
+  "density": "",
+  "sidebarAttr": false
+}

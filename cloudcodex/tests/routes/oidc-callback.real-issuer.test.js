@@ -4,10 +4,10 @@
  * An HTTP issuer built with jose serves discovery, JWKS, the authorization endpoint, the token
  * endpoint and userinfo, on a loopback port. It checks PKCE, client authentication and the
  * redirect URI like a real one, and it puts identity claims (email, email_verified, name) ONLY at
- * userinfo, the way Cloud City ID does. The route is driven with Supertest: /start, then the
+ * userinfo, the way Example ID does. The route is driven with Supertest: /start, then the
  * issuer's redirect followed by hand, then /callback. Every refusal is checked to mint no session.
  *
- * What this cannot show is a real Cloud City ID stack: that is recorded separately under
+ * What this cannot show is a real Example ID stack: that is recorded separately under
  * docs/research/ when someone runs it.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
@@ -162,7 +162,7 @@ async function handleIssuer(req, res) {
   if (url.pathname === '/userinfo') {
     const claims = accessTokens.get((req.headers.authorization ?? '').replace(/^Bearer /, ''));
     if (!claims) return send(401, { error: 'invalid_token' });
-    // Identity claims here only, as Cloud City ID does; email_verified is omitted when false.
+    // Identity claims here only, as Example ID does; email_verified is omitted when false.
     const out = { sub: claims.sub, name: claims.name };
     if (claims.email !== undefined) out.email = claims.email;
     if (claims.email_verified === true) out.email_verified = true;

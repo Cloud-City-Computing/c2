@@ -40,7 +40,7 @@ not a general catch-all.
 | `/admin` | AdminPage | |
 | `/notifications`, `/notifications/preferences` | NotificationsPage, NotificationPreferences | |
 | `/activity`, `/activity/workspace/:workspaceId` | WorkspaceActivity | |
-| `/404`, `*` | NotFound | catch-all redirects to `/404` |
+| `/404`, `*` | NotFoundPage | catch-all redirects to `/404`; a standalone card (`src/pages/NotFoundPage.jsx`) |
 
 `MobileEditorGuard` (`App.jsx:43-47`) checks
 `window.matchMedia('(max-width: 768px)')` **once at render** and redirects to
@@ -431,7 +431,7 @@ exports breaks the server, not just the client.
 (`userPrefs.js:16`). Three exported option maps that are the single source of
 truth: `ACCENT_COLORS` (8 colours, each with value/hover/fill, a view over
 `ACCENTS` in `src/tokens/accents.js`, the one data file for the picker's hues),
-`FONT_SIZES` (sm/md/lg), `DENSITIES` (compact/comfortable/spacious).
+`FONT_SIZES` (sm/md/lg). `DENSITIES` and the sidebar default were removed (W6-CDX-42, K8); `loadUserPrefs()` drops a stored `density` or `sidebarDefault`.
 
 `loadUserPrefs()` (`userPrefs.js:23`) maps a renamed accent key through
 `LEGACY_ACCENT` (rose to Nova, amber to Solar, emerald to Aurora, violet to
@@ -441,8 +441,7 @@ palette applies.
 `applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes `--cx-accent`,
 `--cx-accent-hover`, `--cx-accent-fill` and `--cx-accent-dark` on
 `document.documentElement` (the index.css bridge points `--brand-blue*` at
-them), `--editor-font-size`, `--density-scale`, and a
-`data-sidebar-default` attribute on `body`. Crucially it **removes** each
+them) and `--editor-font-size`. There is no density scale and no sidebar attribute (W6-CDX-42). Crucially it **removes** each
 property when the preference is unset rather than writing a default, so the
 stylesheet's own defaults win.
 

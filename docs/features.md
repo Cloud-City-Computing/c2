@@ -335,8 +335,12 @@ excerpt. Favorites are scoped per-user and persist across sessions.
 
 Users can upload a profile picture (automatically resized to 256 × 256 WebP),
 update their name, email, and password, and customize appearance preferences
-including accent color, font size, UI density, sidebar behavior, and default
-editor mode.
+including accent color, editor font size, and default editor mode. Density and the sidebar
+default were removed (W6-CDX-42); a value an earlier build stored is dropped on load.
+
+In suite mode an account that signs in through the issuer has its name, email, password and
+two-factor managed there: the Account page shows those as read-only with a link to the issuer's account page
+(`OIDC_ACCOUNT_URL`), and the server refuses the same writes with `managed_by_issuer`.
 
 ---
 

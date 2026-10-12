@@ -209,7 +209,8 @@ router.get('/oauth/providers', (_req, res) => {
       google: isGoogleOAuthConfigured() && offered.has('google'),
       github: isGitHubOAuthConfigured(),
       // name is the label on the sign-in button (oidcButtonName).
-      oidc: { enabled: oidc !== null, name: oidcButtonName(oidc) },
+      // accountUrl is the issuer's account page (OIDC_ACCOUNT_URL), linked from a managed account in suite mode.
+      oidc: { enabled: oidc !== null, name: oidcButtonName(oidc), accountUrl: oidc?.accountUrl ?? null },
     },
   });
 });

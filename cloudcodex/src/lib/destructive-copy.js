@@ -46,6 +46,12 @@ export const archiveDelete = (name) => ({
   message: `Delete "${name}" and all its documents? Their versions and comments go too. This cannot be undone.`,
 });
 
+/** routes/admin.js: DELETE FROM user_invitations. The invitation's link stops working; nothing else is removed. */
+export const invitationRevoke = (email) => ({
+  title: `Revoke the invitation to ${email}?`,
+  message: 'Its link stops working. The address can be invited again.',
+});
+
 /** routes/archives.js: DELETE FROM archive_repos. Only the link goes. */
 export const repoRemove = (repo) => ({
   title: 'Remove repository?',

@@ -263,7 +263,7 @@ reset, and **never promoted** from an existing non-admin account, which boot
 refuses and logs (`docs/maps/access-control.md` section 6).
 
 ### User preferences: `src/userPrefs.js`
-Editor mode (WYSIWYG vs Markdown), accent color, font size, layout density.
+Editor mode (WYSIWYG vs Markdown), accent color, editor font size. Density and the sidebar default were removed (W6-CDX-42).
 Stored in localStorage. New preferences go through `loadUserPrefs` /
 `saveUserPrefs` and `applyPrefsToDOM` — don't write to localStorage directly.
 

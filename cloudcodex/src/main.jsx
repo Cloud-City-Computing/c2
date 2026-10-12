@@ -18,7 +18,7 @@ import { applyPrefsToDOM, loadUserPrefs } from './userPrefs'
 import { upgradeLegacySessionCookie } from './util'
 import App from './App.jsx'
 
-// Apply user preferences (accent color, density, etc.) before first render
+// Apply user preferences (accent color, editor font size) before first render
 applyPrefsToDOM(loadUserPrefs());
 
 // A session held under the pre-__Host- cookie name moves across before the

@@ -55,6 +55,14 @@ describe('destructive copy names what is lost and what stays', () => {
     expect(m.message).toMatch(/cannot be undone/i);
   });
 
+  // W6-CDX-42, X8: routes/admin.js DELETE FROM user_invitations. The invitation's link stops working; nothing else goes.
+  it('revoking an invitation: the link stops working, and the address can be invited again', () => {
+    const m = copy.invitationRevoke('pending@example.test');
+    expect(m.title).toBe('Revoke the invitation to pending@example.test?');
+    expect(m.message).toMatch(/link .*stop/i);
+    expect(m.message).toMatch(/invited again/i);
+  });
+
   it('removing a repository from an archive: the link goes; the documents stay', () => {
     const m = copy.repoRemove('acme/api');
     expect(m.message).toMatch(/documents .*not deleted|documents .*stay/i);

@@ -9,7 +9,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { Routes, Route, Navigate } from "react-router-dom";
 import HomePage from './pages/HomePage'
 import WorkspacesGate from './components/WorkspacesGate';
-import ProductMark from './components/ProductMark';
+import NotFoundPage from './pages/NotFoundPage';
 
 // Heavy pages are lazy-loaded so the initial bundle stays small.
 // Editor alone pulls in Tiptap, Yjs, lowlight, marked, turndown, etc.
@@ -27,17 +27,6 @@ const WorkspaceActivity = lazy(() => import('./pages/WorkspaceActivity'));
 
 function PageLoader() {
   return <div className="page-loader"><div className="spinner" /></div>;
-}
-
-function NotFound() {
-  return (
-    <div className="not-found-page">
-      <ProductMark className="not-found-page__mark" size={48} />
-      <h1>404</h1>
-      <p>Page not found</p>
-      <a href="/" className="btn btn-primary">Go Home</a>
-    </div>
-  );
 }
 
 /**
@@ -75,7 +64,7 @@ function App() {
       <Route path="/notifications/preferences" element={<NotificationPreferences />} />
       <Route path="/activity" element={<WorkspaceActivity />} />
       <Route path="/activity/workspace/:workspaceId" element={<WorkspaceActivity />} />
-      <Route path="/404" element={<NotFound />} />
+      <Route path="/404" element={<NotFoundPage />} />
       <Route path="*" element={<Navigate to="/404" replace />} />
     </Routes>
     </Suspense>

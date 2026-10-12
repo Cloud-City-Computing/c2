@@ -1,5 +1,5 @@
 /**
- * Cloud Codex — Admin Dashboard
+ * Cloud Codex - Admin Dashboard
  *
  * Dashboard-style admin console with sidebar navigation and
  * management panels for workspaces, users, squads, and live activity.
@@ -44,7 +44,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import WebhooksPanel from '../components/WebhooksPanel';
 import { showToast, toastError } from '../components/Toast';
 import Menu from '../components/Menu';
-import { squadMemberRemove, squadDelete, workspaceDelete, userDelete } from '../lib/destructive-copy.js';
+import PageHeader from '../components/PageHeader';
+import { ChevronDownIcon, CheckIcon } from '../components/icons.jsx';
+import { squadMemberRemove, squadDelete, workspaceDelete, userDelete, invitationRevoke } from '../lib/destructive-copy.js';
 
 /**
  * An admin action's failure. An API error (one with a status) shows the server's message; anything else, a network
@@ -82,35 +84,35 @@ function OverviewPanel() {
     return () => clearInterval(interval);
   }, [loadStats, loadPresence]);
 
+  // W6-CDX-42: the numbers are primary text, the labels faint; no icons (X12).
   const statItems = stats ? [
-    { label: 'Users', value: stats.userCount, icon: '👤' },
-    { label: 'Workspaces', value: stats.workspaceCount, icon: '🏢' },
-    { label: 'Squads', value: stats.squadCount, icon: '👥' },
-    { label: 'Archives', value: stats.archiveCount, icon: '📁' },
-    { label: 'Logs', value: stats.logCount, icon: '📄' },
-    { label: 'Pending Invites', value: stats.pendingInviteCount, icon: '✉' },
-    { label: 'Online Now', value: stats.onlineUserCount ?? 0, icon: '🟢' },
-    { label: 'Active Docs', value: stats.activeDocCount ?? 0, icon: '✏' },
+    { label: 'Users', value: stats.userCount },
+    { label: 'Workspaces', value: stats.workspaceCount },
+    { label: 'Squads', value: stats.squadCount },
+    { label: 'Archives', value: stats.archiveCount },
+    { label: 'Logs', value: stats.logCount },
+    { label: 'Pending invites', value: stats.pendingInviteCount },
+    { label: 'Online now', value: stats.onlineUserCount ?? 0 },
+    { label: 'Active docs', value: stats.activeDocCount ?? 0 },
   ] : [];
 
   return (
     <div className="admin-overview">
       {stats && (
-        <div className="admin-stats">
+        <dl className="admin-summary">
           {statItems.map(item => (
-            <div key={item.label} className="admin-stat-card">
-              <span className="admin-stat-card__icon">{item.icon}</span>
-              <span className="admin-stat-card__value">{item.value}</span>
-              <span className="admin-stat-card__label">{item.label}</span>
+            <div key={item.label} className="admin-summary__item">
+              <dt className="admin-summary__label">{item.label}</dt>
+              <dd className="admin-summary__value">{item.value}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       )}
 
       <div className="admin-panel">
         <div className="admin-panel__header">
           <h3>Live Activity</h3>
-          <button className="btn btn-ghost btn-sm" onClick={loadPresence}>↻ Refresh</button>
+          <button className="btn btn-ghost btn-sm" onClick={loadPresence}>Refresh</button>
         </div>
         {!presence ? (
           <p className="text-muted">Loading…</p>
@@ -353,7 +355,7 @@ export function UserPermissionsModal({ user, onUpdated }) {
   return (
     <div className="modal-content">
       <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
-      <h2>Permissions — {user.name}</h2>
+      <h2>Permissions: {user.name}</h2>
       <div className="modal-form admin-perms-form">
         <label className="setup-checkbox">
           <input type="checkbox" checked={perms.create_squad}
@@ -413,7 +415,7 @@ export function EditMemberModal({ squadId, member, onUpdated }) {
   return (
     <div className="modal-content">
       <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
-      <h2>Edit Member — {member.name}</h2>
+      <h2>Edit member: {member.name}</h2>
       <div className="modal-form admin-perms-form">
         <label htmlFor="member-role">Role:</label>
         <select id="member-role" value={role} onChange={(e) => setRole(e.target.value)} className="admin-select">
@@ -579,7 +581,7 @@ function UsersPanel() {
     );
   };
 
-  const handleToggleAdmin = async (user) => {
+  const handleToggleAdmin = (user) => {
     const newAdmin = !user.is_admin;
     showModal(
       <ConfirmDialog
@@ -610,55 +612,47 @@ function UsersPanel() {
       </div>
       {loading ? (
         <p className="text-muted">Loading…</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-muted">{filter ? 'No matching users.' : 'No users yet.'}</p>
       ) : (
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Email</th>
-                <th>Squads</th>
-                <th>Admin</th>
-                <th>Joined</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(u => (
-                <tr key={u.id}>
-                  <td className="admin-cell--user">
-                    {u.avatar_url && <img src={u.avatar_url} alt="" className="admin-user-avatar" />}
-                    {u.name}
-                  </td>
-                  <td>{u.email}</td>
-                  <td>{u.squad_count}</td>
-                  <td>
-                    <button
-                      className={`admin-badge ${u.is_admin ? 'admin-badge--admin' : 'admin-badge--user'}`}
-                      onClick={() => handleToggleAdmin(u)}
-                      title={u.is_admin ? 'Click to revoke admin' : 'Click to grant admin'}
-                    >
-                      {u.is_admin ? 'Admin' : 'User'}
-                    </button>
-                  </td>
-                  <td>{timeAgo(u.created_at)}</td>
-                  <td>
-                    <div className="admin-cell-actions">
-                      <button className="btn btn-ghost btn-sm" onClick={() => showModal(<UserPermissionsModal user={u} onUpdated={load} />, 'modal-md')}>
-                        Permissions
-                      </button>
-                      {((u.two_factor_method && u.two_factor_method !== 'none') || u.has_totp_secret) && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleResetTwoFactor(u)}>Reset 2FA</button>
-                      )}
-                      {!u.is_admin && (
-                        <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(u)}>Delete</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="admin-member-list">
+          {filtered.map(u => {
+            // X7: a Boolean, so a count of 0 or a false flag never reaches the page as a bare number.
+            const hasTwoFactor = Boolean((u.two_factor_method && u.two_factor_method !== 'none') || u.has_totp_secret);
+            return (
+              <div key={u.id} className="admin-member-row">
+                <div className="admin-member-row__who">
+                  {u.avatar_url && <img src={u.avatar_url} alt="" className="admin-user-avatar" />}
+                  <div className="admin-member-row__text">
+                    <span className="admin-member-row__name">{u.name}</span>
+                    <span className="admin-member-row__meta">{u.email}</span>
+                  </div>
+                </div>
+                <div className="admin-member-row__facts">
+                  <span className="admin-member-row__meta">{u.squad_count} {u.squad_count === 1 ? 'squad' : 'squads'}</span>
+                  <span className="admin-member-row__meta">Joined {timeAgo(u.created_at)}</span>
+                  <button
+                    className={`admin-badge ${u.is_admin ? 'admin-badge--admin' : 'admin-badge--user'}`}
+                    onClick={() => handleToggleAdmin(u)}
+                    title={u.is_admin ? 'Click to revoke admin' : 'Click to grant admin'}
+                  >
+                    {u.is_admin ? 'Admin' : 'User'}
+                  </button>
+                </div>
+                <div className="admin-cell-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={() => showModal(<UserPermissionsModal user={u} onUpdated={load} />, 'modal-md')}>
+                    Permissions
+                  </button>
+                  {hasTwoFactor && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleResetTwoFactor(u)}>Reset 2FA</button>
+                  )}
+                  {!u.is_admin && (
+                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(u)}>Delete</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -786,7 +780,9 @@ function SquadsPanel() {
                     {squad.workspace_name || 'No workspace'} · {squad.member_count} member{squad.member_count !== 1 ? 's' : ''} · {squad.archive_count} archive{squad.archive_count !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <span className="admin-squad-card__toggle">{expandedSquad === squad.id ? '▾' : '▸'}</span>
+                <span className={`admin-squad-card__toggle${expandedSquad === squad.id ? ' admin-squad-card__toggle--open' : ''}`} aria-hidden="true">
+                  <ChevronDownIcon />
+                </span>
               </div>
 
               {expandedSquad === squad.id && (
@@ -797,74 +793,78 @@ function SquadsPanel() {
                     <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDeleteSquad(squad)}>Delete squad</button>
                   </div>
                   {invitations.length > 0 && (
-                    <table className="admin-table admin-table--compact">
-                      <thead>
-                        <tr>
-                          <th>Pending invitation</th>
-                          <th>Role</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {invitations.map(inv => (
-                          <tr key={inv.id}>
-                            <td>{inv.email || inv.name}</td>
-                            <td>{inv.role}</td>
-                            <td>
-                              <button className="btn btn-ghost btn-sm" onClick={() => handleCancelInvitation(squad.id, inv)}>Cancel invitation</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="admin-table-wrap">
+                      <table className="admin-table admin-table--compact">
+                                            <thead>
+                                              <tr>
+                                                <th>Pending invitation</th>
+                                                <th>Role</th>
+                                                <th />
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {invitations.map(inv => (
+                                                <tr key={inv.id}>
+                                                  <td>{inv.email || inv.name}</td>
+                                                  <td>{inv.role}</td>
+                                                  <td>
+                                                    <button className="btn btn-ghost btn-sm" onClick={() => handleCancelInvitation(squad.id, inv)}>Cancel invitation</button>
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                    </div>
                   )}
                   {membersLoading ? (
                     <p className="text-muted">Loading members…</p>
                   ) : members.length === 0 ? (
                     <p className="text-muted">No members.</p>
                   ) : (
-                    <table className="admin-table admin-table--compact">
-                      <thead>
-                        <tr>
-                          <th>User</th>
-                          <th>Role</th>
-                          <th>Read</th>
-                          <th>Write</th>
-                          <th>Logs</th>
-                          <th>Archives</th>
-                          <th>Members</th>
-                          <th>Versions</th>
-                          <th>Publish</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {members.map(m => (
-                          <tr key={m.user_id}>
-                            <td className="admin-cell--user">
-                              {m.avatar_url && <img src={m.avatar_url} alt="" className="admin-user-avatar" />}
-                              {m.name}
-                            </td>
-                            <td>
-                              <span className={`chip admin-role-badge admin-role-badge--${m.role}`}>{m.role}</span>
-                            </td>
-                            <td>{m.can_read ? '✓' : '—'}</td>
-                            <td>{m.can_write ? '✓' : '—'}</td>
-                            <td>{m.can_create_log ? '✓' : '—'}</td>
-                            <td>{m.can_create_archive ? '✓' : '—'}</td>
-                            <td>{m.can_manage_members ? '✓' : '—'}</td>
-                            <td>{m.can_delete_version ? '✓' : '—'}</td>
-                            <td>{m.can_publish ? '✓' : '—'}</td>
-                            <td>
-                              <div className="admin-cell-actions">
-                                <button className="btn btn-ghost btn-sm" onClick={() => handleEditMember(squad.id, m)}>Edit</button>
-                                <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleRemoveMember(squad.id, m)}>Remove</button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="admin-table-wrap">
+                      <table className="admin-table admin-table--compact">
+                                            <thead>
+                                              <tr>
+                                                <th>User</th>
+                                                <th>Role</th>
+                                                <th>Read</th>
+                                                <th>Write</th>
+                                                <th>Logs</th>
+                                                <th>Archives</th>
+                                                <th>Members</th>
+                                                <th>Versions</th>
+                                                <th>Publish</th>
+                                                <th />
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {members.map(m => (
+                                                <tr key={m.user_id}>
+                                                  <td className="admin-cell--user">
+                                                    {m.avatar_url && <img src={m.avatar_url} alt="" className="admin-user-avatar" />}
+                                                    {m.name}
+                                                  </td>
+                                                  <td>
+                                                    <span className={`chip admin-role-badge admin-role-badge--${m.role}`}>{m.role}</span>
+                                                  </td>
+                                                  <td><GrantMark granted={Boolean(m.can_read)} /></td>
+                                                  <td><GrantMark granted={Boolean(m.can_write)} /></td>
+                                                  <td><GrantMark granted={Boolean(m.can_create_log)} /></td>
+                                                  <td><GrantMark granted={Boolean(m.can_create_archive)} /></td>
+                                                  <td><GrantMark granted={Boolean(m.can_manage_members)} /></td>
+                                                  <td><GrantMark granted={Boolean(m.can_delete_version)} /></td>
+                                                  <td><GrantMark granted={Boolean(m.can_publish)} /></td>
+                                                  <td>
+                                                    <div className="admin-cell-actions">
+                                                      <button className="btn btn-ghost btn-sm" onClick={() => handleEditMember(squad.id, m)}>Edit</button>
+                                                      <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleRemoveMember(squad.id, m)}>Remove</button>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                    </div>
                   )}
                 </div>
               )}
@@ -892,21 +892,34 @@ function InvitationsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleRevoke = async (inv) => {
-    try {
-      await deleteAdminInvitation(inv.id);
-      load();
-    } catch (e) {
-      adminToast(e, 'Error revoking invitation.');
-    }
+  // X8: Revoke confirms first, naming the invitation. The row's address is what the confirm names.
+  const handleRevoke = (inv) => {
+    showModal(
+      <ConfirmDialog
+        {...invitationRevoke(inv.email)}
+        confirmLabel="Revoke"
+        danger
+        onConfirm={async () => {
+          try {
+            await deleteAdminInvitation(inv.id);
+          } catch (e) {
+            destroyModal();
+            adminToast(e, 'Error revoking invitation.');
+            return;
+          }
+          destroyModal();
+          load();
+        }}
+      />
+    );
   };
 
   return (
     <div className="admin-panel">
       <div className="admin-panel__header">
-        <h3>User Invitations</h3>
+        <h3>User invitations</h3>
         <button className="btn btn-primary btn-sm" onClick={() => showModal(<InviteUserModal onInvited={load} />, 'modal-md')}>
-          + Invite User
+          Invite user
         </button>
       </div>
       {loading ? (
@@ -914,41 +927,31 @@ function InvitationsPanel() {
       ) : invitations.length === 0 ? (
         <p className="text-muted">No invitations sent yet.</p>
       ) : (
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Invited By</th>
-                <th>Sent</th>
-                <th>Expires</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {invitations.map(inv => {
-                const expired = new Date(inv.expires_at) <= new Date();
-                const status = inv.accepted ? 'Accepted' : expired ? 'Expired' : 'Pending';
-                return (
-                  <tr key={inv.id}>
-                    <td>{inv.email}</td>
-                    <td>
-                      <span className={`chip status-badge status-badge--${status.toLowerCase()}`}>{status}</span>
-                    </td>
-                    <td>{inv.invited_by_name}</td>
-                    <td>{timeAgo(inv.created_at)}</td>
-                    <td>{timeAgo(inv.expires_at)}</td>
-                    <td>
-                      {!inv.accepted && !expired && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleRevoke(inv)}>Revoke</button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="admin-member-list">
+          {invitations.map(inv => {
+            const expired = new Date(inv.expires_at) <= new Date();
+            const status = inv.accepted ? 'Accepted' : expired ? 'Expired' : 'Pending';
+            return (
+              <div key={inv.id} className="admin-member-row">
+                <div className="admin-member-row__who">
+                  <div className="admin-member-row__text">
+                    <span className="admin-member-row__name">{inv.email}</span>
+                    <span className="admin-member-row__meta">
+                      Invited by {inv.invited_by_name}, {timeAgo(inv.created_at)}. Expires {timeAgo(inv.expires_at)}.
+                    </span>
+                  </div>
+                </div>
+                <div className="admin-member-row__facts">
+                  <span className={`chip status-badge status-badge--${status.toLowerCase()}`}>{status}</span>
+                </div>
+                <div className="admin-cell-actions">
+                  {!inv.accepted && !expired && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleRevoke(inv)}>Revoke</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -958,13 +961,20 @@ function InvitationsPanel() {
 // ─── Admin Dashboard ────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { key: 'overview', label: 'Overview', icon: '📊' },
-  { key: 'users', label: 'Users', icon: '👤' },
-  { key: 'workspaces', label: 'Workspaces', icon: '🏢' },
-  { key: 'squads', label: 'Squads', icon: '👥' },
-  { key: 'invitations', label: 'Invitations', icon: '✉' },
-  { key: 'webhooks', label: 'Webhooks', icon: '🔗' },
+  { key: 'overview', label: 'Overview' },
+  { key: 'users', label: 'Users' },
+  { key: 'workspaces', label: 'Workspaces' },
+  { key: 'squads', label: 'Squads' },
+  { key: 'invitations', label: 'Invitations' },
+  { key: 'webhooks', label: 'Webhooks' },
 ];
+
+/** A granted permission is a check mark with its name in text; a refused one is a dash, also named (W6-CDX-42, X12). */
+function GrantMark({ granted }) {
+  return granted
+    ? <span className="admin-grant"><CheckIcon /><span className="admin-sr-only">Granted</span></span>
+    : <span className="admin-grant admin-grant--off"><span aria-hidden="true">–</span><span className="admin-sr-only">Not granted</span></span>;
+}
 
 export default function AdminPage() {
   const [activePanel, setActivePanel] = useState('overview');
@@ -977,30 +987,33 @@ export default function AdminPage() {
   }, []);
 
   if (authorized === null) {
-    return <StdLayout><div className="admin-dashboard"><p className="text-muted">Loading…</p></div></StdLayout>;
+    return <StdLayout><div className="admin-page"><p className="text-muted">Loading…</p></div></StdLayout>;
   }
   if (!authorized) {
-    return <StdLayout><div className="admin-dashboard"><h1>Access Denied</h1><p>You do not have admin privileges.</p></div></StdLayout>;
+    return <StdLayout><div className="admin-page"><h1>Access Denied</h1><p>You do not have admin privileges.</p></div></StdLayout>;
   }
 
   return (
     <StdLayout>
-      <div className="admin-dashboard">
-        <aside className="admin-sidebar">
-          <div className="admin-sidebar__title">Admin Console</div>
-          <nav className="admin-sidebar__nav">
-            {NAV_ITEMS.map(item => (
-              <button
-                key={item.key}
-                className={`admin-sidebar__item ${activePanel === item.key ? 'active' : ''}`}
-                onClick={() => setActivePanel(item.key)}
-              >
-                <span className="admin-sidebar__icon">{item.icon}</span>
-                <span className="admin-sidebar__label">{item.label}</span>
-              </button>
-            ))}
-          </nav>
-        </aside>
+      <div className="admin-page">
+        <PageHeader
+          title="Admin"
+          tabs={(
+            <nav className="admin-tabs" aria-label="Admin sections">
+              {NAV_ITEMS.map(item => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`tabs__tab admin-tabs__tab${activePanel === item.key ? ' active' : ''}`}
+                  aria-current={activePanel === item.key ? 'page' : undefined}
+                  onClick={() => setActivePanel(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          )}
+        />
         <main className="admin-main">
           {activePanel === 'overview' && <OverviewPanel />}
           {activePanel === 'users' && <UsersPanel />}

@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as userPrefsModule from '../../src/userPrefs.js';
 import {
   loadUserPrefs,
   saveUserPrefs,
@@ -16,7 +17,6 @@ import {
   getPreferredEditorMode,
   ACCENT_COLORS,
   FONT_SIZES,
-  DENSITIES,
 } from '../../src/userPrefs.js';
 
 const PREFS_KEY = 'c2-user-prefs';
@@ -27,6 +27,7 @@ describe('userPrefs', () => {
     document.documentElement.removeAttribute('style');
     document.documentElement.style.cssText = '';
     document.body.removeAttribute('data-sidebar-default');
+    document.documentElement.style.removeProperty('--density-scale');
   });
 
   // ── Constants ──────────────────────────────────────────
@@ -50,12 +51,9 @@ describe('userPrefs', () => {
       expect(FONT_SIZES.lg).toMatch(/px$/);
     });
 
-    it('DENSITIES are numeric scale factors', () => {
-      expect(typeof DENSITIES.compact).toBe('number');
-      expect(typeof DENSITIES.comfortable).toBe('number');
-      expect(typeof DENSITIES.spacious).toBe('number');
-      expect(DENSITIES.compact).toBeLessThan(DENSITIES.comfortable);
-      expect(DENSITIES.comfortable).toBeLessThan(DENSITIES.spacious);
+    // W6-CDX-42, K8: Codex keeps the editor font size only; density and the sidebar default are gone.
+    it('exports no DENSITIES table', () => {
+      expect(userPrefsModule.DENSITIES).toBeUndefined();
     });
   });
 
@@ -83,14 +81,20 @@ describe('userPrefs', () => {
 
     it('treats prototype names as unknown accents, never as hues', () => {
       for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
-        localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: name, density: 'compact' }));
-        expect(loadUserPrefs(), name).toEqual({ density: 'compact' });
+        localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: name, fontSize: 'lg' }));
+        expect(loadUserPrefs(), name).toEqual({ fontSize: 'lg' });
       }
     });
 
     it('drops an unknown accent key, so the default palette applies', () => {
-      localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'no-such-color', density: 'compact' }));
-      expect(loadUserPrefs()).toEqual({ density: 'compact' });
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'no-such-color', fontSize: 'lg' }));
+      expect(loadUserPrefs()).toEqual({ fontSize: 'lg' });
+    });
+
+    // W6-CDX-42, K8: a density or sidebar default stored by an earlier build is dropped on load.
+    it('drops a stored density and sidebarDefault, and keeps the rest', () => {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ density: 'compact', sidebarDefault: 'collapsed', fontSize: 'sm', preferredEditor: 'markdown' }));
+      expect(loadUserPrefs()).toEqual({ fontSize: 'sm', preferredEditor: 'markdown' });
     });
 
     it('falls back to {} when stored JSON is corrupt', () => {
@@ -108,15 +112,15 @@ describe('userPrefs', () => {
 
   describe('saveUserPrefs', () => {
     it('persists prefs as JSON under the canonical key', () => {
-      saveUserPrefs({ accentColor: 'cyan', density: 'compact' });
+      saveUserPrefs({ accentColor: 'cyan', fontSize: 'sm' });
       expect(JSON.parse(localStorage.getItem(PREFS_KEY))).toEqual({
         accentColor: 'cyan',
-        density: 'compact',
+        fontSize: 'sm',
       });
     });
 
     it('round-trips with loadUserPrefs', () => {
-      const prefs = { accentColor: 'solar', fontSize: 'lg', density: 'spacious', sidebarDefault: 'collapsed' };
+      const prefs = { accentColor: 'solar', fontSize: 'lg', preferredEditor: 'markdown' };
       saveUserPrefs(prefs);
       expect(loadUserPrefs()).toEqual(prefs);
     });
@@ -179,20 +183,13 @@ describe('userPrefs', () => {
       expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('');
     });
 
-    it('sets --density-scale for a known density', () => {
+    // W6-CDX-42, K8: no density scale, and no sidebar attribute, whatever the prefs hold.
+    it('never sets --density-scale, whatever density holds', () => {
       applyPrefsToDOM({ density: 'compact' });
-      expect(document.documentElement.style.getPropertyValue('--density-scale')).toBe(
-        String(DENSITIES.compact)
-      );
-    });
-
-    it('removes --density-scale when density is unknown', () => {
       applyPrefsToDOM({ density: 'spacious' });
-      applyPrefsToDOM({ density: 'absurd' });
       expect(document.documentElement.style.getPropertyValue('--density-scale')).toBe('');
     });
 
-    // W6-CDX-40: the sidebar has no collapse state, so no preference writes the attribute any more.
     it('never sets data-sidebar-default, whatever sidebarDefault holds', () => {
       applyPrefsToDOM({ sidebarDefault: 'collapsed' });
       expect(document.body.hasAttribute('data-sidebar-default')).toBe(false);
