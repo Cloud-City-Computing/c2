@@ -5658,6 +5658,8 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-areas: "sidebar" "main";
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
+    /* The shell is 100vh tall; without this the two rows stretch to fill it and the page starts far below the strip. */
+    align-content: start;
   }
 
   .sidebar {
@@ -8127,10 +8129,36 @@ textarea:focus-visible {
 
 /* The admin tabs: one row in the page header that scrolls sideways on a phone rather than wrapping (W6-CDX-42) */
 
+/* On a phone the tabs wrap onto a second line rather than scroll sideways, so every section stays visible (W6-CDX-42) */
 @media (max-width: 599px) {
   .admin-page .page-header__tabs {
-    overflow-x: auto;
-    scrollbar-width: thin;
+    overflow: visible;
+  }
+
+  .admin-tabs {
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 6px 18px;
+  }
+
+  .admin-tabs .tabs__tab {
+    padding-bottom: 6px;
+  }
+
+  .admin-panel__header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .admin-panel__actions {
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .admin-panel__actions .admin-filter-input {
+    flex: 1 1 140px;
+    min-width: 0;
   }
 }
 
