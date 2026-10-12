@@ -679,15 +679,17 @@ products together; no step was changed in this PR.
    `oklch(0.78 0.1 H)` in both themes (the dark hover step), and the light fill is `--accent-400` as before.
 2. `--cx-accent-dark` (the white avatar label's dark step) is derived per hue in the picked-accent blocks, as the
    prior picker wrote it, so the avatar follows the pick. It is `oklch(0.45 0.13 H)` in both themes.
-3. The light `--cx-on-accent` is `oklch(0.14 0.03 240)`, the dark value, not the table's `0.16`. The presence
-   avatar label is pinned to one ink luminance (`src/lib/avatar-label.js`), and a second value would need a second
-   constant.
-4. The suite-theme fixture's light column is the table's, except the on-accent row (item 3).
-5. Dark values changed where the new per-theme gate found a dark failure that predates this track (the deferred
-   families were not gated in dark before): labels on the accent fill and on the comment kind fills take the ink
-   (`--cx-on-accent`), the note kind fill is lightened from `#ab47bc` to `#b860cc` so the ink clears 4.5:1, and
-   text on tinted washes takes the bright tint-label steps. Each changed site is listed in the PR report.
+3. The light `--cx-on-accent` is the table's `oklch(0.16 0.03 240)` (restored in review; the first draft used the dark ink).
+   The presence label constant `INK_LUMINANCE` is pinned to it. The dark ink (`0.14`) is 0.0014 away, so
+   `presence-label.test.js` measures each cursor colour's real label in each theme.
+4. The suite-theme fixture's light column is the table's, on-accent included.
+5. Dark values changed only where the original dark value fails its gate (W6-CDX-43 review, item 5). The list, with the
+   original and the new value and the measured contrast, is in the plan's PR 6 deviation list; `deferred-dark.test.js`
+   pins every other colour declaration of the deferred families to its original dark value.
 6. The picked accent's steps are derived in CSS (K7). `data-accent` carries the key; `--cx-accent-h` carries the hue.
+7. The light hover washes of the deferred families are raised to a floor, so each hover steps at least 0.025 (oklab L)
+   from the surface beneath it (`deferred-hover.test.js`). The light black washes under 0.4 (the inline code, the code
+   header) become a 0.06 to 0.15 ink wash, so a code span is not a grey slab on the light page. Dark is unchanged.
 
 ## W6-CDX-44. The theme switch, and the suite preference contract
 

@@ -339,9 +339,9 @@
      replaces; its light value is chosen for the role the literal plays. The geometry fingerprint pins that nothing
      else in those families moved, and deferred-colour.test.js measures every text binding on every surface. */
   --cx-deferred-000000-a00: oklch(0 0 0 / 0);
-  --cx-deferred-000000-a20: oklch(0 0 0 / 0.2);
-  --cx-deferred-000000-a30: oklch(0 0 0 / 0.3);
-  --cx-deferred-000000-a35: oklch(0 0 0 / 0.35);
+  --cx-deferred-000000-a20: oklch(0.2 0.02 240 / 0.1);
+  --cx-deferred-000000-a30: oklch(0.2 0.02 240 / 0.15);
+  --cx-deferred-000000-a35: oklch(0.2 0.02 240 / 0.175);
   --cx-deferred-000000-a50: oklch(0 0 0 / 0.5);
   --cx-deferred-000000-a55: oklch(0 0 0 / 0.55);
   --cx-deferred-000000-a60: oklch(0 0 0 / 0.6);
