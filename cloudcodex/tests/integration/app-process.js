@@ -78,13 +78,38 @@ export async function kill(run, signal) {
   return run.closed;
 }
 
-/** A port nothing is listening on, from the OS. */
+/** A port nothing is listening on, from the OS. The probe releases it, so another process can take it before a boot binds it. */
 export async function freePort() {
   const probe = net.createServer();
   await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
   const { port } = probe.address();
   await new Promise((resolve) => probe.close(resolve));
   return port;
+}
+
+/** The line server.js prints when its port is already bound (its 'error' handler). */
+const PORT_TAKEN = /Port \d+ is already in use/;
+
+/**
+ * Runs `attempt` until it succeeds. Only a boot that lost its port to another process is retried (see freePort); any
+ * other failure is thrown at once. At most `attempts` boots are made, and the last failure is thrown when they run out.
+ */
+export async function retryOnPortRace(attempt, attempts = 3) {
+  for (let n = 1; ; n += 1) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (n >= attempts || !PORT_TAKEN.test(String(err?.message))) throw err;
+    }
+  }
+}
+
+/** Boots server.js on a fresh free port, retrying a lost port race. Resolves `{ port, run }`. */
+export function startServerOnFreePort(env = {}) {
+  return retryOnPortRace(async () => {
+    const port = await freePort();
+    return { port, run: await startServer(port, env) };
+  });
 }
 
 /**

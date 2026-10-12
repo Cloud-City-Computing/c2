@@ -21,7 +21,7 @@ import mysql from 'mysql2/promise';
 import { c2_query, openConnection } from '../../mysql_connect.js';
 import { INSTANCE_LOCK_NAME_SQL } from '../../services/instance-lock.js';
 import { SCHEMA_PREFIX, dropSchema, openAdminConnection, throwawaySchemaName } from './mysql-admin.js';
-import { freePort, holdLock as holdLockWith, kill, killChildren, openCollab, signIn, startServer } from './server-child.js';
+import { holdLock as holdLockWith, kill, killChildren, openCollab, signIn, startServer, startServerOnFreePort } from './server-child.js';
 
 afterEach(killChildren);
 
@@ -112,8 +112,7 @@ function randomHex(n) {
 
 describe('a stop in the middle of an edit', () => {
   it('flushes the pending save: the edit is in ydoc_state and in the restarted server', { timeout: 120_000 }, async () => {
-    const port = await freePort();
-    const first = await startServer(port, ADMIN);
+    const { port, run: first } = await startServerOnFreePort(ADMIN);
     const token = await signIn(port, ADMIN);
     // bootstrapInstance seeded one document for the admin on this empty schema.
     const [log] = await c2_query('SELECT id FROM logs ORDER BY id LIMIT 1', []);
@@ -157,8 +156,7 @@ describe('a stop in the middle of an edit', () => {
 
 describe('a lock lost to another process', () => {
   it('the server that lost it stops through its shutdown and exits 1, naming the new holder', { timeout: 120_000 }, async () => {
-    const port = await freePort();
-    const server = await startServer(port, ADMIN);
+    const { run: server } = await startServerOnFreePort(ADMIN);
     const [{ holder }] = await c2_query(`SELECT IS_USED_LOCK(${INSTANCE_LOCK_NAME_SQL}) AS holder`, []);
     expect(holder).toEqual(expect.any(Number));
 

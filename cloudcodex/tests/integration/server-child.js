@@ -15,6 +15,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
+import { retryOnPortRace } from './app-process.js';
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
@@ -90,13 +91,21 @@ export function holdLock(env = {}) {
   return { ...run, outcome };
 }
 
-/** A port nothing is listening on, from the OS. */
+/** A port nothing is listening on, from the OS. The probe releases it, so another process can take it before a boot binds it. */
 export async function freePort() {
   const probe = net.createServer();
   await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
   const { port } = probe.address();
   await new Promise((resolve) => probe.close(resolve));
   return port;
+}
+
+/** Boots server.js on a fresh free port, retrying a lost port race (see retryOnPortRace). Resolves `{ port, run }`. */
+export function startServerOnFreePort(admin, env = {}) {
+  return retryOnPortRace(async () => {
+    const port = await freePort();
+    return { port, run: await startServer(port, admin, env) };
+  });
 }
 
 /**

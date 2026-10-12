@@ -39,7 +39,7 @@ import {
   adminConfig, buildSchemaFromInitSql, dropSchema, openAdminConnection, throwawaySchemaName,
 } from './mysql-admin.js';
 import {
-  ADMIN, APP, freePort, holdLock, kill, killChildren, signIn, startServer,
+  ADMIN, APP, holdLock, kill, killChildren, signIn, startServerOnFreePort,
 } from './app-process.js';
 
 // Each test runs the real scripts against a live server: a restore of the whole
@@ -219,8 +219,7 @@ beforeAll(async () => {
 
   // A running instance: a document with a pasted image and some Unicode, a
   // comment on it, and collaborative state in its BLOB column.
-  const port = await freePort();
-  const server = await startServer(port);
+  const { port, run: server } = await startServerOnFreePort();
   const token = await signIn(port);
   const [log] = await c2_query('SELECT id FROM logs ORDER BY id LIMIT 1', []);
   seen.logId = log.id;
@@ -599,8 +598,7 @@ describe('the drill: destroy the instance, restore it, and find everything', () 
     }
     expect(readFileSync(path.join(DOC_IMAGES_DIR, `${seen.hash}.webp`)).equals(seen.imageBytes)).toBe(true);
 
-    const port = await freePort();
-    const server = await startServer(port, { DB_NAME: scratch });  // resolves only on /readyz 200
+    const { port, run: server } = await startServerOnFreePort({ DB_NAME: scratch });  // resolves only on /readyz 200
     const token = await signIn(port);
     const doc = await api(port, token, 'GET', `/api/document?doc_id=${seen.logId}`);
     expect(JSON.stringify(doc)).toContain(`/doc-images/${seen.hash}.webp`);
