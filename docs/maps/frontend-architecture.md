@@ -234,7 +234,7 @@ built by `suiteDocHref` (`src/lib/suite-doc-href.js:27`, kept out of the compone
 fast-refresh lint rule holds). It renders nothing outside suite mode, before the
 archive id is known, for a signed-out viewer, when the URL is not http(s), or when an id is not a
 positive int4. The archive id is passed only once the loaded document's id is the route's log id. It
-is mounted once in the document meta line of `Editor.jsx:1153`; the class `.suite-doc-link` is
+is mounted once in the document header's meta line (`DocumentHeader.jsx:91`, rendered by `Editor.jsx`); the class `.suite-doc-link` is
 in `src/index.css`, and its colour is measured in `tests/design/painted.test.js`.
 
 ## 3c. The signed-out front door (W6-CDX-26)
@@ -317,21 +317,34 @@ one:
   the trigger; an outside press closes it. No scrim. The Explore sort and the invite dialog's squad and role use it; the export
   and GitHub sync menus take its look (colour only) and keep their own markup. Tests: `tests/src/components/Menu.test.jsx`,
   `tests/src/pages/invite-menu-focus.test.jsx`.
+- `<Menu mode="actions">` (W6-CDX-41) is the **More actions** menu on a list row: an icon trigger named by `label`, no choice
+  shown, `role="menuitem"` items with no `aria-checked`, and an item flagged `danger` takes the danger text (never a solid
+  button). It end-aligns its popup under the trigger (`translateX(-100%)`), so it cannot run off a phone. The archive list
+  is its one caller (Go to squad, Rename, Manage access, Delete). Tests: `tests/src/components/Menu.actions.test.jsx`.
+- `<EmptyState>` (`src/components/EmptyState.jsx`, W6-CDX-41) is the one empty state: a Poppins title, one line and an
+  optional action, in `.empty-state`. Home, an empty document tree, the archive list, Notifications and Activity render it.
+- `<DocumentHeader>` (`src/components/DocumentHeader.jsx`, W6-CDX-41) is the document page header, built on `<PageHeader>`
+  above the editor canvas and mounted by `Editor.jsx`. It shows the author's name (never the email), the title (the page h1,
+  renamed in place in edit mode), star and watch as icon buttons with `aria-pressed`, Edit as the read-mode primary, and the
+  GitHub link. The editor's own toolbar below it is unchanged in structure; its emoji became stroke icons.
+  `tests/src/components/DocumentHeader.test.jsx` pins it.
 - `<Avatar>` (`src/components/Avatar.jsx`, W6-CDX-39) draws a photo or the initial on one of the package's
   `--avatar-1..8` tints; the tint is `avatarTint(id)` in `src/lib/avatar-tint.js`, a stable hash of the actor's id
   (`user_id`, `actor_id`), so two users with one name keep their own tints.
 - `src/lib/destructive-copy.js` (W6-CDX-39) holds the title and message of each destructive `ConfirmDialog`; each sentence
   names what is lost and what stays, checked against the FK actions in `init.sql` and the route's delete.
 - `src/components/icons.jsx` is the stroke icon set (15 px, `currentColor`, decorative): the menu chevron, the toast's
-  status marks, the favourite star, the Account warning, the comment count and Login's marks. Emoji still stand in the
-  admin console (W6-CDX-42) and the document header (W6-CDX-41).
+  status marks, the favourite star, the Account warning, the comment count, Login's marks, and (W6-CDX-41) the More actions
+  dots, the document toolbar's pencil, eye, save, package, list, history and tray. Emoji still stand in the admin console
+  (W6-CDX-42).
 - `.btn-icon` (W6-CDX-39) is the 30 px icon button with a 44 px hit area; the dialog close buttons, the toast dismiss and the
   search clear carry it. `.chip` is the pill at the 12 px floor; `.tabs` and `.tabs__tab` are the one tab row.
 - `src/lib/inbox-cache.js` keeps the signed-in user's unread count, recent list and archives for the page's life, so the
   sidebar, which remounts on every navigation, shows them at once. Sign-out clears it. `subscribeInboxFrames`
   (`useNotificationChannel.js`) is how a page hears the live channel; the Notifications list reloads on it.
 - `<PresenceAvatars>` pairs with `usePresence`.
-- `<PageTree>` renders the `logs.parent_id` tree.
+- `<PageTree>` renders the `logs.parent_id` tree (its heading is "Documents"; the archive's name is in the page header
+  above the grid when no document is open, and in the document header's crumb when one is).
 - `<WebhooksPanel>` is the admin console's Webhooks panel (W6-CDX-15). Its confirmations go through
   `<ConfirmDialog>`, and it renders a subscription's secret only in its one-time reveal box.
 - The shell (W6-CDX-40): `<Sidebar>` (`src/components/Sidebar.jsx`) is the one navigation column; `<SearchPalette>`
@@ -479,7 +492,7 @@ load-bearing:
    `--cx-accent-hover` or a bright step, as W6-CDX-28 did.
 4. `src/index.css`, about 9,200 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
-   `:focus-visible` rule (`index.css:5622`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
+   `:focus-visible` rule (`index.css:5756`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips
    (`.editor-container`, `.markdown-editor__textarea-wrapper`, `.sidebar`,
    `.gh-browser__sidebar`, `.gh-modal`, `.gh-merge-dialog__pane`, `.gh-sync-menu`) draws its controls' rings

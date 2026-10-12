@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, Fragment } from 'react';
 import useClickOutside from '../hooks/useClickOutside';
 import useGitHubStatus from '../hooks/useGitHubStatus';
+import { ChevronDownIcon, TrayIcon } from './icons.jsx';
 
 const FORMATS = [
   ['html', 'HTML (.html)'],
@@ -13,9 +14,9 @@ const FORMATS = [
 
 /**
  * Reusable dropdown menu for document export.
- * @param {{ onExport: (format: string) => void, btnClass?: string, btnLabel?: string, ariaLabel?: string, menuClass?: string }} props
+ * @param {{ onExport: (format: string) => void, btnClass?: string, btnLabel?: import('react').ReactNode, ariaLabel?: string, menuClass?: string }} props
  */
-export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm', btnLabel = '📥 Export ▾', ariaLabel, menuClass = '' }) {
+export default function ExportMenu({ onExport, btnClass = 'btn btn-ghost btn-sm', btnLabel = <><TrayIcon /> Export <ChevronDownIcon /></>, ariaLabel, menuClass = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const { connected: githubConnected } = useGitHubStatus();

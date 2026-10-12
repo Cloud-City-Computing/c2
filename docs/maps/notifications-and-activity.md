@@ -60,7 +60,7 @@ Steps:
    (`routes/helpers/activity.js:293`) for a caller that deletes the resource:
    after the delete nothing leads back to a workspace, so that caller resolves
    first and passes `workspaceId` and `squadId` in. `DELETE /api/archives/:id`
-   is the one such caller (`routes/archives.js:204`), and it skips
+   is the one such caller (`routes/archives.js:205`), and it skips
    `logActivity` when the archive has no workspace.
 3. `log.update` events from the same user for the same log inside a **5-minute**
    window are coalesced away entirely (`routes/helpers/activity.js:23`, `routes/helpers/activity.js:72-83`).
@@ -83,16 +83,16 @@ squad.invite_create   squad.member_join   squad.member_leave
 
 `log.rename` has three sources: `PUT /api/document/:logId/title`, the collab
 `title` message, and the tree route `PUT /api/archives/:archiveId/logs/:logId`
-(`routes/archives.js:541`). The tree route is the only source of `log.move`,
+(`routes/archives.js:542`). The tree route is the only source of `log.move`,
 with `title`, `parent_id` and `previous_parent_id` in its metadata (the title
 is what the feed names the document by). It reads the row first and logs each
-event only when the value actually changes (`routes/archives.js:592-657`). A
+event only when the value actually changes (`routes/archives.js:593-658`). A
 new parent must be a log in the same archive and not the log itself or one of
 its descendants, checked by a recursive walk up the new parent's ancestry that
-stays in the archive (`routes/archives.js:610-626`), so a `log.move` never
+stays in the archive (`routes/archives.js:611-627`), so a `log.move` never
 names a parent outside the tree. The read, the walk and the UPDATE run in one
 transaction behind `SELECT ... FOR UPDATE` on the archive row
-(`routes/archives.js:593`), so moves in one archive take turns: two opposite
+(`routes/archives.js:594`), so moves in one archive take turns: two opposite
 moves sent at once cannot both pass the walk, and `previous_parent_id` is the
 parent the move actually replaced. The two routes that create a log,
 `POST /api/archives/:archiveId/logs` and the upload route, hold a new log's
@@ -139,7 +139,7 @@ What it does, in order (`services/webhooks.js:315`):
    archive with `metadata.log_id`, so its data needs no read; the archive
    types need none either. The route records `log.delete` only when its
    `DELETE ... WHERE id = ? AND archive_id = ?` removed a row
-   (`routes/archives.js:690`), so an id from another archive can never be
+   (`routes/archives.js:691`), so an id from another archive can never be
    announced as deleted. Every id field is an integer or `null`.
 4. In one `withTransaction` (`services/webhooks.js:339`), after taking the order lock (`webhook_sequence_lock FOR UPDATE`,
    `:343`): read the instant (`occurred_at`, `:347`), insert the

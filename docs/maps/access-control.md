@@ -191,8 +191,8 @@ Note step 7 maps only two of the three flags (`permissions.js:114-117`). There
 is no squad-level fallback for `create_squad`, which is correct: squads are
 created in a workspace, not in a squad.
 
-Currently applied on exactly two routes: `routes/archives.js:117`
-(`create_archive`) and `routes/archives.js:489` (`create_log`), plus the upload
+Currently applied on exactly two routes: `routes/archives.js:118`
+(`create_archive`) and `routes/archives.js:490` (`create_log`), plus the upload
 route `routes/upload.js:95` (`create_log`).
 
 Step 3 is what makes the global flag mean "may create" rather than "may create
@@ -236,9 +236,9 @@ destructive and administrative verbs. Admin, archive creator, workspace owner
 `can_write` or the JSON grant arrays: someone with full write access on an
 archive still cannot delete it or change its ACLs.
 
-Callers: delete archive (`archives.js:198`), manage access
-(`archives.js:259`), link and unlink archive repos (`archives.js:749`,
-`archives.js:798`).
+Callers: delete archive (`archives.js:199`), manage access
+(`archives.js:260`), link and unlink archive repos (`archives.js:750`,
+`archives.js:799`).
 
 ### 3d. Squad management: `canManageSquad`, and its GitHub-only twin
 
@@ -358,7 +358,7 @@ and a rewrite of every caller, for a check most of those callers do not need.
 stays exactly where it is, below the global flag, and is not hoisted into step 3:
 
 - Both `create_log` routes re-check with `writeAccessWhere` immediately after
-  the middleware (`archives.js:505-515`, `upload.js:107-119`), so the
+  the middleware (`archives.js:506-516`, `upload.js:107-119`), so the
   archive-derived path was never open the way the body path was.
 - Checking it in the middleware would be a behaviour regression. A caller
   holding the global `create_log` flag plus an explicit `write_access` JSON

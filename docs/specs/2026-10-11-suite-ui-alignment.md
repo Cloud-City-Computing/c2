@@ -555,6 +555,15 @@ passes.
 
 ---
 
+*Decided at execution (W6-CDX-41, 2026-10-12):* the archive list's count comes from a new `log_count` field on
+`GET /api/archives`; the page's primary is New Archive (New Log is per archive, and the expanded tree keeps its own);
+Home keeps its one in-page search field (the shell's trigger is global) (**decided pending Kyle**); read mode has one Edit
+control, the header's primary; the archive header shows only with no document open. The edit-mode column stays at 708 px and
+the canvas and editor keep their sizes, measured in the research folder's README. The phone shell's rows are
+`auto minmax(0, 1fr)`. Full list: the plan's PR 4 section.
+
+---
+
 ## W6-CDX-42. Settings, admin, not-found and first run
 
 ### In scope

@@ -19,6 +19,9 @@ import {
   apiFetch,
 } from '../util';
 import ConfirmDialog from './ConfirmDialog';
+import Menu from './Menu';
+import PageHeader from './PageHeader';
+import EmptyState from './EmptyState';
 import { toastError } from './Toast';
 import usePresence from '../hooks/usePresence';
 import useGitHubStatus from '../hooks/useGitHubStatus';
@@ -26,7 +29,7 @@ import PresenceAvatars from './PresenceAvatars';
 import ExportMenu from './ExportMenu';
 import NewLogModal from './NewLogModal';
 import CommentManager from './CommentManager';
-import { CommentIcon } from './icons.jsx';
+import { CommentIcon, TrayIcon } from './icons.jsx';
 import { logDelete, repoRemove, archiveDelete } from '../lib/destructive-copy.js';
 
 // --- New Archive Form ---
@@ -770,7 +773,7 @@ export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDele
         )}
         <PresenceAvatars users={activeUsers} />
         <div className="log-tree-actions">
-          <ExportMenu onExport={handleExport} btnClass="log-tree-export" btnLabel="⤓"
+          <ExportMenu onExport={handleExport} btnClass="log-tree-export" btnLabel={<TrayIcon />}
             ariaLabel={`Export ${log.title}`} menuClass="export-dropdown__menu--up" />
           <button className="log-tree-add" onClick={handleNewSublog}
             title="Add sublog" aria-label={`Add a sublog under ${log.title}`}>+</button>
@@ -849,7 +852,7 @@ function LogTree({ archiveId, onLogCreated, getLogUsers }) {
         <button className="btn btn-ghost btn-sm" onClick={handleUpload}>Upload Document</button>
       </div>
       {logs.length === 0
-        ? <p className="text-muted">No logs yet. Create one to get started.</p>
+        ? <EmptyState title="No documents yet">Create one, or upload a document, to get started.</EmptyState>
         : (
           <ul className="log-tree-list">
             {logs.map(log => (
@@ -1298,106 +1301,112 @@ export default function ArchiveBrowser() {
   if (loading) return <p className="text-muted">Loading archives...</p>;
   if (error) return <p className="form-error">{error}</p>;
 
+  // The row's actions. Each one is a menu item (X9): Delete is flagged danger in the menu, never a solid button.
+  const rowActions = (archive) => ({
+    squad: () => navigate(`/workspaces/${archive.workspace_id}?squad=${archive.squad_id}`),
+    rename: () => showModal(
+      <RenameArchiveModal archive={archive} onRenamed={loadArchives} />,
+      'modal-md'
+    ),
+    access: () => showModal(
+      <ManageArchiveAccessModal
+        archive={archive}
+        onAccessUpdated={loadArchives}
+        onAccessSaved={setAccessNotice}
+      />,
+      'modal-lg'
+    ),
+    delete: () => handleDeleteArchive(archive),
+  });
+
+  const rowItems = (archive) => [
+    ...(archive.squad_id && archive.workspace_id ? [{ key: 'squad', label: 'Go to squad' }] : []),
+    { key: 'rename', label: 'Rename' },
+    { key: 'access', label: 'Manage access' },
+    { key: 'delete', label: 'Delete', danger: true },
+  ];
+
+  const headerMeta = squadFilter
+    ? <>Showing archives for {squadName ? <strong>{squadName}</strong> : 'the selected squad'}.</>
+    : (visibleArchives.length > 0
+      ? `${visibleArchives.length} archive${visibleArchives.length !== 1 ? 's' : ''}`
+      : null);
+
   return (
     <div className="archive-management">
-      <div className="log-header">
-        <h1>Archives</h1>
-        <button className="btn btn-primary" onClick={handleNewArchive}>+ New Archive</button>
-      </div>
+      <PageHeader
+        title="Archives"
+        meta={headerMeta}
+        primary={<button className="btn btn-primary" onClick={handleNewArchive}>+ New Archive</button>}
+      />
 
       {accessNotice && <p className="panel-status success">{accessNotice}</p>}
 
-      {squadFilter && (
-        <p className="text-muted" style={{ marginBottom: 14 }}>
-          Showing archives for {squadName ? <strong>{squadName}</strong> : 'the selected squad'}.
-        </p>
+      {archives.length === 0 && (
+        <EmptyState title="No archives yet">
+          An archive holds the documents of one squad. Create one to get started.
+        </EmptyState>
       )}
 
-      {!loading && visibleArchives.length > 0 && (
-        <p className="text-muted" style={{ marginBottom: 14 }}>
-          {visibleArchives.length} archive{visibleArchives.length !== 1 ? 's' : ''}
-        </p>
+      {archives.length > 0 && visibleArchives.length === 0 && (
+        <EmptyState title="No archives match this squad">
+          Choose another squad, or clear the squad filter.
+        </EmptyState>
       )}
 
-      {!loading && archives.length === 0 && (
-        <div className="empty-state">
-          <p>No archives yet. Create one to get started.</p>
+      {visibleArchives.length > 0 && (
+        <div className="archive-list">
+          {visibleArchives.map((archive) => {
+            const expanded = expandedArchive === archive.id;
+            // A missing count is said to be missing, never shown as zero.
+            const countLabel = typeof archive.log_count === 'number'
+              ? `${archive.log_count} document${archive.log_count !== 1 ? 's' : ''}`
+              : 'Count unavailable';
+            const createdLabel = archive.created_at ? new Date(archive.created_at).toLocaleDateString() : '';
+            const actions = rowActions(archive);
+            return (
+              <div key={archive.id}
+                className={`archive-row${expanded ? ' archive-row--expanded' : ''}`}
+                ref={archiveId && archive.id === Number(archiveId) ? (el) => {
+                  if (el && !scrolledRef.current) {
+                    scrolledRef.current = true;
+                    requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }
+                } : undefined}>
+                <div className="archive-row__main">
+                  <button type="button" className="archive-row__toggle" aria-expanded={expanded}
+                    onClick={() => toggleArchive(archive.id)}>
+                    <span className="archive-row__chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                    <span className="archive-row__name">{archive.name}</span>
+                  </button>
+                  <span className="archive-row__meta">
+                    <span className="archive-row__squad">{archive.squad_name || 'No squad'}</span>
+                    <span className="archive-row__owner">{archive.created_by}</span>
+                    <span className="archive-row__created">{createdLabel}</span>
+                    <span className="archive-row__count">{countLabel}</span>
+                  </span>
+                  <span className="archive-row__actions">
+                    <Menu
+                      mode="actions"
+                      label={`More actions for ${archive.name}`}
+                      items={rowItems(archive)}
+                      onSelect={(key) => actions[key]?.()}
+                    />
+                  </span>
+                </div>
+
+                {expanded && (
+                  <div className="archive-row__expanded">
+                    <ArchiveAccess archiveId={archive.id} />
+                    {githubConnected && <LinkedRepos archiveId={archive.id} />}
+                    <LogTree key={archive.id} archiveId={archive.id} getLogUsers={getLogUsers} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
-
-      {!loading && archives.length > 0 && visibleArchives.length === 0 && (
-        <div className="empty-state">
-          <p>No archives matched the selected squad.</p>
-        </div>
-      )}
-
-      <div className="archive-list-cards">
-        {visibleArchives.map((archive) => (
-          <div key={archive.id} className={`card ${expandedArchive === archive.id ? 'card--expanded' : ''}`}
-            ref={archiveId && archive.id === Number(archiveId) ? (el) => {
-              if (el && !scrolledRef.current) {
-                scrolledRef.current = true;
-                requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-              }
-            } : undefined}>
-            <div className="card__body" onClick={() => toggleArchive(archive.id)} style={{ cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '0.8em' }}>{expandedArchive === archive.id ? '▾' : '▸'}</span>
-                <h3 className="card__title" style={{ margin: 0 }}>{archive.name}</h3>
-              </div>
-              <p className="card__meta">
-                {archive.squad_name ? `Squad: ${archive.squad_name} · ` : ''}
-                Owner: {archive.created_by} · Created: {new Date(archive.created_at).toLocaleDateString()}
-              </p>
-            </div>
-
-            <div className="card__actions" onClick={(e) => e.stopPropagation()}>
-              {archive.squad_id && archive.workspace_id && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => navigate(`/workspaces/${archive.workspace_id}?squad=${archive.squad_id}`)}
-                  title={`Back to ${archive.squad_name || 'squad'}`}
-                >
-                  ← Squad
-                </button>
-              )}
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => showModal(
-                  <RenameArchiveModal archive={archive} onRenamed={loadArchives} />,
-                  'modal-md'
-                )}
-              >
-                Rename
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => showModal(
-                  <ManageArchiveAccessModal
-                    archive={archive}
-                    onAccessUpdated={loadArchives}
-                    onAccessSaved={setAccessNotice}
-                  />,
-                  'modal-lg'
-                )}
-              >
-                Manage Access
-              </button>
-              <button className="btn btn-danger btn-sm" onClick={() => handleDeleteArchive(archive)}>
-                Delete
-              </button>
-            </div>
-
-            {expandedArchive === archive.id && (
-              <div className="card__expanded-content archive-card__expanded">
-                <ArchiveAccess archiveId={archive.id} />
-                {githubConnected && <LinkedRepos archiveId={archive.id} />}
-                <LogTree key={archive.id} archiveId={archive.id} getLogUsers={getLogUsers} />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

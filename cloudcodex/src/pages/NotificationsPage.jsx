@@ -15,6 +15,7 @@ import {
   markAllNotificationsRead,
 } from '../util';
 import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
 import { subscribeInboxFrames } from '../hooks/useNotificationChannel.js';
 
 const FILTERS = [
@@ -123,7 +124,9 @@ export default function NotificationsPage() {
         {loading ? (
           <div className="notifications-page__empty">Loading…</div>
         ) : visible.length === 0 ? (
-          <div className="notifications-page__empty">No notifications.</div>
+          <EmptyState title={filter === 'unread' ? 'No unread notifications' : 'No notifications'}>
+            Mentions, comments and changes to documents you watch appear here.
+          </EmptyState>
         ) : (
           <div className="notifications-page__list">
             {visible.map((n) => (

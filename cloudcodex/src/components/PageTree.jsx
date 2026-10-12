@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchLogs, showModal } from '../util';
 import NewLogModal from './NewLogModal';
+import EmptyState from './EmptyState';
 
 function TreeItem({ log, depth = 0, activeLogId, onSelect, archiveId, onLogCreated }) {
   const [expanded, setExpanded] = useState(true);
@@ -115,7 +116,7 @@ export default function PageTree({ archiveId, archiveName, archiveMeta, activeLo
   };
 
   return (
-    <div className="page-tree">
+    <div className="page-tree" role="region" aria-label={archiveName ? `Documents in ${archiveName}` : 'Documents'}>
       <div className="page-tree-header">
         <button
           className="page-tree-back-btn"
@@ -125,7 +126,7 @@ export default function PageTree({ archiveId, archiveName, archiveMeta, activeLo
         >
           ←
         </button>
-        <h3 className="page-tree-title">{archiveName || 'Pages'}</h3>
+        <h3 className="page-tree-title">Documents</h3>
         <div className="page-tree-header-actions">
           <button className="page-tree-add-btn" onClick={handleNewPage} title="New page" aria-label="New page">+</button>
           {onCollapse && (
@@ -136,7 +137,7 @@ export default function PageTree({ archiveId, archiveName, archiveMeta, activeLo
       {loading ? (
         <p className="page-tree-loading">Loading...</p>
       ) : logs.length === 0 ? (
-        <p className="page-tree-empty">No pages yet.</p>
+        <EmptyState className="page-tree-empty" title="No pages yet">Add a page with the + above.</EmptyState>
       ) : (
         <ul className="page-tree-list">
           {logs.map(log => (

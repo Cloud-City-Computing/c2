@@ -1,0 +1,172 @@
+{
+  "viewport": {
+    "w": 1280,
+    "h": 860
+  },
+  "toolbar": {
+    "x": 536,
+    "y": 183,
+    "w": 708,
+    "h": 86
+  },
+  "toolbarButtons": [
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "👁 Read",
+      "x": 549,
+      "y": 195,
+      "w": 75,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-primary btn-sm",
+      "text": "💾 Save",
+      "x": 628,
+      "y": 195,
+      "w": 74,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "📦 Publish",
+      "x": 707,
+      "y": 195,
+      "w": 90,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-sm btn-primary",
+      "text": "Rich Text",
+      "x": 813,
+      "y": 195,
+      "w": 82,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-sm btn-ghost",
+      "text": "Markdown",
+      "x": 899,
+      "y": 195,
+      "w": 88,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "💬 Comment",
+      "x": 1003,
+      "y": 195,
+      "w": 102,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "💬 2",
+      "x": 1109,
+      "y": 195,
+      "w": 52,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "📋",
+      "x": 1165,
+      "y": 195,
+      "w": 41,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "🕓 History",
+      "x": 549,
+      "y": 232,
+      "w": 88,
+      "h": 26
+    },
+    {
+      "cls": "export-dropdown",
+      "text": "📥 Export ▾",
+      "x": 641,
+      "y": 230,
+      "w": 95,
+      "h": 30
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "📥 Export ▾",
+      "x": 641,
+      "y": 230,
+      "w": 95,
+      "h": 30
+    }
+  ],
+  "canvas": {
+    "x": 536,
+    "y": 285,
+    "w": 708,
+    "h": 527
+  },
+  "tiptap": {
+    "x": 537,
+    "y": 361,
+    "w": 706,
+    "h": 450
+  },
+  "contentColumn": {
+    "x": 536,
+    "y": 56,
+    "w": 708,
+    "h": 756
+  },
+  "header": {
+    "x": 536,
+    "y": 56,
+    "w": 708,
+    "h": 111
+  },
+  "headerParts": [
+    {
+      "sel": ".editor-breadcrumb",
+      "x": 536,
+      "y": 56,
+      "w": 708,
+      "h": 18
+    },
+    {
+      "sel": ".page-header__row"
+    },
+    {
+      "sel": ".page-header__titles"
+    },
+    {
+      "sel": ".page-header__title"
+    },
+    {
+      "sel": ".page-header__meta"
+    },
+    {
+      "sel": ".page-header__actions"
+    }
+  ],
+  "mainContent": {
+    "x": 248,
+    "y": 0,
+    "w": 1024,
+    "h": 868
+  },
+  "archiveMain": {
+    "x": 508,
+    "y": 28,
+    "w": 764,
+    "h": 812
+  },
+  "archiveView": {
+    "x": 248,
+    "y": 28,
+    "w": 1024,
+    "h": 812
+  },
+  "scrollHeights": {
+    "mainContent": 868,
+    "mainContentClient": 868
+  }
+}

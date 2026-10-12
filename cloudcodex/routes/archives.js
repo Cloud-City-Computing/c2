@@ -38,7 +38,8 @@ router.get('/archives', requireAuth, asyncHandler(async (req, res) => {
             t.name AS squad_name,
             t.id AS squad_id,
             o.id AS workspace_id,
-            o.name AS workspace_name
+            o.name AS workspace_name,
+            (SELECT COUNT(*) FROM logs l WHERE l.archive_id = p.id) AS log_count
      FROM archives p
      LEFT JOIN users u  ON p.created_by  = u.id
      LEFT JOIN squads t  ON p.squad_id     = t.id

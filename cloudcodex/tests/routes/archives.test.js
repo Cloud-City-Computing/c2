@@ -43,6 +43,34 @@ describe('Archive Routes', () => {
       expect(c2_query.mock.calls[0][0]).toMatch(/COALESCE\(p\.`system`, FALSE\)/);
     });
 
+    it('passes each archive\'s document count through as the number the query returned', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([
+        { id: 1, name: 'Archive A', created_at: '2026-01-01', created_by: 'user', created_by_id: 1, squad_name: null, squad_id: null, workspace_id: null, workspace_name: null, log_count: 3 },
+        { id: 2, name: 'Archive B', created_at: '2026-01-01', created_by: 'user', created_by_id: 1, squad_name: null, squad_id: null, workspace_id: null, workspace_name: null, log_count: 0 },
+      ]);
+
+      const res = await request(app)
+        .get('/api/archives')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(res.body.archives.map((a) => a.log_count)).toEqual([3, 0]);
+      expect(typeof res.body.archives[0].log_count).toBe('number');
+    });
+
+    it('counts each archive\'s documents in the list query (the row count, W6-CDX-41)', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      await request(app)
+        .get('/api/archives')
+        .set('Authorization', 'Bearer valid-token');
+
+      // The count is a correlated subquery over the same archive ids the list already filters by access, so a
+      // reader sees the count of every document the log tree shows them (GET /api/archives/:id/logs lists all of them).
+      expect(c2_query.mock.calls[0][0]).toMatch(/\(SELECT COUNT\(\*\) FROM logs l WHERE l\.archive_id = p\.id\) AS log_count/);
+    });
+
     it('requires authentication', async () => {
       mockUnauthenticated();
 
