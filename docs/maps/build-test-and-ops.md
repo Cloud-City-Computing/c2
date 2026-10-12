@@ -453,7 +453,10 @@ manifest lists.
 | `suite-theme.test.js` | every dark row of `tests/design/suite-theme.json`, the suite pattern's theme table restated, equals its declaration in `src/codex.css` as text (W6-CDX-38; the light column arrives with W6-CDX-43) |
 | `hover-fills.test.js` | no rule in `index.css` reads `--bg-hover` or `--bg-hover-strong`, the bridge declares neither, and the deferred editor, comments and GitHub banners bind their hover to `--cx-surface-2` (Decision 12, W6-CDX-38) |
 | `fallbacks.test.js` | no `var()` fallback under `src` is a colour literal, and no undeclared name carries a fallback except `--density-scale` and `--editor-font-size`, which script sets (W6-CDX-38) |
-| `control-font.test.js` | `.btn`, `button`, `input`, `select` and `textarea` declare `font-family: inherit` (X4). The family only: the `font` shorthand also reset size and line height, which grew the top-bar search field (W6-CDX-38) |
+| `control-font.test.js` | `.btn`, `button`, `input`, `select` and `textarea` declare `font-family: inherit` on the shell (X4), and the rule excludes the deferred families (comments, the editor and its toolbars, Markdown, Draw.io, Version History, GitHub), which keep the browser font until W6-CDX-43 (K3). The family only: the `font` shorthand also reset size and line height, which grew the top-bar search field (W6-CDX-38) |
+| `ghost-hover.test.js` | a ghost button's hover background differs from the page's and from a dialog panel's (`.modal-content`), resolved through the dark theme (declaration-level; the live hover is checked in the browser captures) (W6-CDX-38 review) |
+| `topbar.test.js` | the top bar's background is an opaque token (`--bg-elevated`, `--cx-surface-1`), with no translucent literal and no opacity (W6-CDX-38 review) |
+| `deferred-radius.test.js` | the deferred families read `--cx-deferred-radius-*` (4, 8, 12px) in their banners, never a core radius, until W6-CDX-43 (W6-CDX-38 review) |
 
 **The ledger is exact, not a ceiling.** `ledger.json` holds a count per file,
 and per section banner inside `index.css` (`tests/design/buckets.js`,

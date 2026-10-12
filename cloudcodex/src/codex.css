@@ -55,6 +55,12 @@
   --cx-sidebar-collapsed: 56px;
   --cx-footer-height: 44px;
   --cx-transition: all 0.2s ease;
+
+  /* Codex's own radii (4, 8, 12px), kept for the deferred editor, comments and GitHub families until W6-CDX-43:
+     K3 allows no geometry change there, and core's steps (6, 10, 14px) would move them. */
+  --cx-deferred-radius-sm: 4px;
+  --cx-deferred-radius-md: 8px;
+  --cx-deferred-radius-lg: 12px;
 }
 
 [data-theme='dark'] {

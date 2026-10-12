@@ -116,6 +116,22 @@ place where the code proved a step wrong, or a step needed a choice the plan did
    instead is the document page's geometry before and after (the content column, the header, the archive view and
    every control's box, at 1280 and 390): the only movement is the typeface change in item 3. The editor canvas is
    not on the read-only page, so the editor's own geometry is covered by the colour-only diff, not by a probe.
+10. **A ghost hover is the sunken step, `--cx-surface-1`.** A surface-2 hover vanished inside a dialog (the panel
+    is surface-2), so the ghost hover now differs from both the page (surface-0) and a dialog panel (surface-2).
+    `ghost-hover.test.js` pins both.
+11. **The deferred families keep Codex's own radii (4, 8, 12px) through `--cx-deferred-radius-*`** until W6-CDX-43.
+    K3 allows no geometry change there, and core's steps (6, 10, 14px) would have moved the comments, the editor,
+    Draw.io, Version History and the GitHub banners. The alias sits in codex.css's shared block, and every
+    `var(--radius-*)` read inside those banners now reads it (25 reads). `deferred-radius.test.js` pins both.
+12. **The font inherit rule excludes the deferred families.** Measured in edit mode on the document page, before
+    and after: the editor container, the editor, the toolbar and every toolbar button sit at identical boxes, and
+    the toolbar buttons keep the browser font. The rule therefore excludes `.comment-manager`, `.comment-thread`,
+    `.editor-container`, `.tiptap-toolbar`, `.editor-toolbar`, `.markdown-editor`, `.version-history`, `.drawio-block`,
+    `.document-readonly`, `.editor-log`, `.editor-with-comments`, the comment textarea, and every `gh-` element and
+    its descendants. `control-font.test.js` pins the exclusion.
+13. **The top bar was already opaque, so nothing changed there.** A scrolled capture showed the card's meta line
+    cut at the bar's lower edge; pixel samples of the bar band (y 40 to 52) match the bar's own colour, and the
+    computed background has alpha 1. `topbar.test.js` pins the opaque background as a guard.
 9. **The mutation note.** Lifting `--cx-surface-2` to `oklch(0.24 0.014 240)` turns `--cx-text-faint` on
    `--cx-surface-2` red in `contrast.test.js` (it measures under 4.5:1); the mutation landed (the file was checked
    for the new value) and was restored (`cmp` against the saved copy).
