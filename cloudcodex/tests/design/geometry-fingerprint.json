@@ -1,0 +1,6 @@
+{
+  "_rule": "The digest of every non-colour declaration of the deferred families (tests/design/geometry.js), taken at the start of W6-CDX-43 before any colour changed. tests/design/geometry-fingerprint.test.js fails on any change to it. Re-taking it is a layout change and belongs to UI-later.",
+  "_taken": "2026-10-12, at origin/main 235c11a, before the colour-only pass",
+  "declarations": 2359,
+  "sha256": "7918c0b5617db24d0943ea68fa1992aea2a115319966fc548206bc2cc15fff4a"
+}
