@@ -12,12 +12,13 @@ are updated to cover it.
 |---|---|
 | [roadmap.md](roadmap.md) | The tracks the project is decomposed into, the evidence behind each, and the order to do them in. Start here. |
 | [2026-09-24-suite-identity.md](2026-09-24-suite-identity.md) | Wave 6: Cloud Codex as a generic OIDC relying party, with hashed per-sign-in sessions and sign-out that propagates. Also the shared live-MySQL test project, W6-CDX-10. |
-| [2026-09-24-outbound-events.md](2026-09-24-outbound-events.md) | Wave 6: a general outbound webhook subsystem, off by default, and the `codex.event.v1` contract. |
-| [2026-09-24-suite-hosting-readiness.md](2026-09-24-suite-hosting-readiness.md) | Wave 6: stop handling, health, a single-writer lock, production configuration, per-instance grants, authorized document images, backups, and the release the test box pins. |
 
 Track A and track S (C2-0 to C2-5) both shipped, and their specs and plans were
 deleted per the convention below; see [roadmap.md](roadmap.md) for what shipped
 and the maps for how it works now.
+
+The Wave 6 outbound-events and hosting-readiness tracks shipped with 0.14.0 (W6-CDX-36), and their specs and plans
+were deleted in that release. The identity spec and plan stay until the live Cloud City ID sign-in is recorded.
 
 ## Conventions
 
