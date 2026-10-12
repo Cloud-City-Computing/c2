@@ -326,7 +326,7 @@ export function UserPermissionsModal({ user, onUpdated }) {
       destroyModal();
       onUpdated?.();
     } catch (e) {
-      toastError(e.body?.message ?? 'Error saving permissions.');
+      toastError(e, 'Error saving permissions.');
     }
     setSaving(false);
   };
@@ -382,7 +382,7 @@ export function EditMemberModal({ squadId, member, onUpdated }) {
       destroyModal();
       onUpdated?.();
     } catch (e) {
-      toastError(e.body?.message ?? 'Error updating member.');
+      toastError(e, 'Error updating member.');
     }
     setSaving(false);
   };
@@ -820,7 +820,7 @@ function InvitationsPanel() {
       await deleteAdminInvitation(inv.id);
       load();
     } catch (e) {
-      toastError(e.body?.message ?? 'Error revoking invitation.');
+      toastError(e, 'Error revoking invitation.');
     }
   };
 

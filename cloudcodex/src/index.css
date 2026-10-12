@@ -6852,9 +6852,11 @@ textarea:focus-visible {
    Toast Notifications
 ========================= */
 
+/* X2/X10 and the placement (W6-CDX-39): the stack sits bottom right, where no navigation can be under it now
+   that the top bar is gone. The message is the primary text; the status is carried by the icon and the edge. */
 .toast-container {
   position: fixed;
-  top: 16px;
+  bottom: 16px;
   right: 16px;
   z-index: var(--z-toast);
   display: flex;
@@ -6875,23 +6877,34 @@ textarea:focus-visible {
   pointer-events: auto;
   animation: toast-slide-in 0.25s ease-out;
   box-shadow: var(--shadow-md);
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border-strong);
+  color: var(--cx-text-primary);
 }
 
 .toast--exit {
   animation: toast-fade-out 0.3s ease-in forwards;
 }
 
-/* The status is carried by the edge and the text, both on the package's pale steps. */
+/* The status is carried by the icon and the edge; the message stays the primary text colour. */
+.toast--info {
+  border-color: var(--cx-border-strong);
+}
+.toast--info .toast__icon {
+  color: var(--cx-info);
+}
+
 .toast--success {
   border-color: var(--cx-success);
+}
+.toast--success .toast__icon {
   color: var(--cx-success);
 }
 
 .toast--error {
   border-color: var(--cx-danger);
+}
+.toast--error .toast__icon {
   color: var(--cx-danger);
 }
 

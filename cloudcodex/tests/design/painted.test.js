@@ -198,8 +198,10 @@ describe('the label and fill on the buttons and the toast are read from their ow
   });
 
   it('measures each toast label on the toast surface at 4.5:1 or more, at rest and on the dismiss hover', () => {
+    // W6-CDX-39: the message is the primary text; the status is the icon's colour, not the message's.
     const surface = paint(declared('.toast', 'background'), base);
-    for (const site of ['.toast', '.toast--success', '.toast--error', '.toast__dismiss']) {
+    for (const site of ['.toast', '.toast--info .toast__icon', '.toast--success .toast__icon',
+      '.toast--error .toast__icon', '.toast__dismiss']) {
       const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
       expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
     }

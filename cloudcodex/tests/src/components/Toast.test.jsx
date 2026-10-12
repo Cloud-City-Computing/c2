@@ -18,6 +18,8 @@ import {
   describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
 import { act, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import userEvent from '@testing-library/user-event';
 
 let showToast, toastError;
@@ -219,5 +221,60 @@ describe('Toast — timers pause while the toast is held, and focus is kept', ()
     act(() => { dismissOf('Dismissed by key').click(); });
     expect(present('Dismissed by key')).toBe(false);
     expect(document.activeElement).toBe(document.querySelector('.toast-container'));
+  });
+});
+
+// X2 and X3 (W6-CDX-39). The first toast after a fresh module load is queued and shown, not dropped,
+// and toastError takes a plain string as the message, so a caller can pass a server message through.
+describe('Toast — the first call and a string error (X2, X3)', () => {
+  it('shows the first toast after a fresh load, with no priming call', async () => {
+    vi.resetModules();
+    const fresh = await import('../../../src/components/Toast.jsx');
+    document.body.innerHTML = '';
+    act(() => { fresh.showToast('First', 'info'); });
+    expect(await screen.findByText('First')).toBeInTheDocument();
+  });
+
+  it('shows a string passed to toastError as the message', async () => {
+    await act(async () => { showToast('priming-call'); });
+    await act(async () => { toastError('Could not revoke the invitation.'); });
+    expect(await screen.findByText('Could not revoke the invitation.')).toBeInTheDocument();
+  });
+
+  it('shows the message of an error that carries a server body, as before', async () => {
+    await act(async () => { showToast('priming-call'); });
+    await act(async () => {
+      toastError({ body: { message: 'Could not revoke the invitation. Try again in a moment.' }, status: 500 });
+    });
+    expect(await screen.findByText('Could not revoke the invitation. Try again in a moment.')).toBeInTheDocument();
+  });
+});
+
+// X10 and the placement: the stylesheet has a rule for the info toast, the stack is bottom right, and the
+// message is the primary text colour with the status on the icon and the edge.
+describe('Toast — the stylesheet (X10 and the placement)', () => {
+  const css = readFileSync(path.resolve(__dirname, '../../../src/index.css'), 'utf8');
+  const rule = (selector) => {
+    const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`, 'g');
+    let body;
+    for (const hit of css.matchAll(m)) body = hit[1];
+    return body;
+  };
+
+  it('has a .toast--info rule', () => {
+    expect(rule('.toast--info'), 'no .toast--info rule').toBeDefined();
+  });
+
+  it('stacks the container at the bottom right', () => {
+    const body = rule('.toast-container');
+    expect(body).toMatch(/bottom:\s*16px/);
+    expect(body).toMatch(/right:\s*16px/);
+    expect(body).not.toMatch(/top:\s*16px/);
+  });
+
+  it('paints the message in the primary text colour, not the status colour', () => {
+    expect(rule('.toast')).toMatch(/color:\s*var\(--cx-text-primary\)/);
+    expect(rule('.toast--error')).not.toMatch(/(^|;|\s)color:/);
   });
 });
