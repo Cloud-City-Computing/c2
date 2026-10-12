@@ -43,6 +43,19 @@ describe('Archive Routes', () => {
       expect(c2_query.mock.calls[0][0]).toMatch(/COALESCE\(p\.`system`, FALSE\)/);
     });
 
+    it('counts each archive\'s documents in the list query (the row count, W6-CDX-41)', async () => {
+      mockAuthenticated();
+      c2_query.mockResolvedValueOnce([]);
+
+      await request(app)
+        .get('/api/archives')
+        .set('Authorization', 'Bearer valid-token');
+
+      // The count is a correlated subquery over the same archive ids the list already filters by access, so a
+      // reader sees the count of every document the log tree shows them (GET /api/archives/:id/logs lists all of them).
+      expect(c2_query.mock.calls[0][0]).toMatch(/\(SELECT COUNT\(\*\) FROM logs l WHERE l\.archive_id = p\.id\) AS log_count/);
+    });
+
     it('requires authentication', async () => {
       mockUnauthenticated();
 
