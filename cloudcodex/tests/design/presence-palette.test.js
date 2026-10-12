@@ -19,10 +19,10 @@ import {
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { CURSOR_COLORS } from '../../services/cursor-colors.js';
 import { avatarLabel, INK_LUMINANCE } from '../../src/lib/avatar-label.js';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
-const tokens = parseThemeTokens(`${read('vendor/cloud-city-design/core.css')}\n${read('src/codex.css')}`).dark;
+const tokens = parseThemeTokens(`${read('vendor/cloud-city-design/core.css')}\n${read('src/codex.css')}`, THEME_OPTIONS).dark;
 
 /** The colour a label variable paints, resolved through the tokens. */
 function paintOf(value) {

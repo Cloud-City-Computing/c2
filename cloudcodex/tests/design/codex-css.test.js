@@ -31,15 +31,27 @@ describe('src/codex.css', () => {
   it('declares custom properties and nothing else', () => {
     // A plain property here would paint the page from the one file whose
     // custom-property literals the token-discipline ledger reads as definitions.
+    // color-scheme is the one plain property allowed: it tells native controls and scrollbars to paint dark (X11).
     const declarations = blocks(codex).flatMap((b) => b.body.split(';'))
       .map((d) => d.trim()).filter(Boolean);
-    expect(declarations.length).toBe(declaredNames(codex).length);
-    expect(declarations.filter((d) => !/^--cx-[\w-]+\s*:/.test(d))).toEqual([]);
+    expect(declarations.length).toBe(declaredNames(codex).length + 1);
+    expect(declarations.filter((d) => !/^--cx-[\w-]+\s*:/.test(d))).toEqual(['color-scheme: dark']);
   });
 
-  it('declares everything under the dark theme attribute, and nothing on :root', () => {
+  it('declares under exactly [data-theme] and [data-theme=\'dark\'], and nothing on :root', () => {
     const selectors = blocks(codex).map((b) => b.selector);
-    expect(selectors).toEqual(["[data-theme='dark']"]);
+    expect(selectors).toEqual(['[data-theme]', "[data-theme='dark']"]);
+  });
+
+  it('declares no radius, no third or fourth surface step (W6-CDX-38: the hover fills retire)', () => {
+    const names = declaredNames(codex);
+    expect(names.filter((n) => /^--cx-radius-/.test(n))).toEqual([]);
+    expect(names.filter((n) => /^--cx-surface-[34]$/.test(n))).toEqual([]);
+  });
+
+  it('sets color-scheme dark on the dark block, where native controls read it', () => {
+    const dark = blocks(codex).find((b) => b.selector === "[data-theme='dark']");
+    expect(dark.body).toMatch(/color-scheme:\s*dark/);
   });
 
   it('never redeclares a core.css primitive', () => {
@@ -51,9 +63,9 @@ describe('src/codex.css', () => {
 describe('index.css and core.css', () => {
   it('overlap only on the legacy names W6-CDX-22 repoints', () => {
     // index.css loads after core.css and redeclares these on :root, so its
-    // values win (Codex's radii are 4, 8 and 12px, core's 6, 10 and 14px;
-    // --brand-blue is the same #2ca7db in both). The list may only shrink.
-    const LEGACY = ['--brand-blue', '--radius-lg', '--radius-md', '--radius-sm'];
+    // values win (--brand-blue is the same #2ca7db in both). The list may only shrink.
+    // W6-CDX-38: the radius names are no longer redeclared, so core's 6, 10 and 14px apply.
+    const LEGACY = ['--brand-blue'];
     const overlap = [...new Set(declaredNames(read('src/index.css')))].filter((name) => coreNames.has(name)).sort();
     expect(overlap).toEqual(LEGACY);
   });

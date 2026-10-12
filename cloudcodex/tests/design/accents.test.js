@@ -14,14 +14,14 @@ import {
 import {
   ACCENTS, LEGACY_ACCENT, accentValue, accentHover, accentFill, accentDark,
 } from '../../src/tokens/accents.js';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
-const dark = parseThemeTokens(`${core}\n${codex}`).dark;
+const dark = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS).dark;
 const WHITE = parseColor('#fff');
-const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-surface-3', '--cx-surface-4'];
+const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-select-wash'];
 
 // The hue of a `--name: oklch(L C H)` declaration in the vendored core.css.
 const hueOf = (name) => {
@@ -82,7 +82,7 @@ describe('the accent picker', () => {
     }
   });
 
-  it('measures every hue on every surface at 4.5:1 or more, and measured all 40 pairs', () => {
+  it('measures every hue on every surface at 4.5:1 or more, and measured all 32 pairs', () => {
     const measured = [];
     for (const [name, hue] of entries) {
       const text = parseColor(accentValue(hue));
@@ -92,7 +92,8 @@ describe('the accent picker', () => {
         expect(ratio, `${name} on ${surface} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
       }
     }
-    expect(measured.length).toBe(40);
+    // Four surfaces (W6-CDX-38 retired the two hover steps) times the eight picker hues.
+    expect(measured.length).toBe(32);
   });
 
   it('keeps a white label at 4.5:1 or more on every hue dark step (the avatar initials)', () => {

@@ -4,8 +4,7 @@
     "--cx-surface-0",
     "--cx-surface-1",
     "--cx-surface-2",
-    "--cx-surface-3",
-    "--cx-surface-4"
+    "--cx-select-wash"
   ],
   "groups": [
     {
@@ -24,7 +23,7 @@
       "text": "--cx-text-faint",
       "on": "surfaces",
       "min": 4.5,
-      "reason": "Faint is the quietest text, not decoration: AA on every surface, where Cloud Command's faint measures 2.57:1 on the strongest hover."
+      "reason": "Faint is the quietest text, not decoration: AA on every surface, on the selection wash, the strongest surface a row can take."
     },
     {
       "text": "--cx-accent",
@@ -157,6 +156,7 @@
     "--cx-white": "A solid white for labels on dark fills (measured in painted.test.js and presence-palette.test.js), a mark, and the sheet under a QR code (no text).",
     "--cx-presence": "The presence dot on the archive and explore pages, a status mark rather than text, so it has no contrast minimum.",
     "--cx-presence-glow": "The soft glow around the presence dot; a shadow falls on a surface and carries no text.",
-    "--cx-ink-deep": "A solid black, the last label a presence avatar falls back to on the two cursor colours (#e91e63, #607d8b) that clear 4.5:1 with neither white nor the ink; measured on every cursor colour in tests/design/presence-palette.test.js."
+    "--cx-ink-deep": "A solid black, the last label a presence avatar falls back to on the two cursor colours (#e91e63, #607d8b) that clear 4.5:1 with neither white nor the ink; measured on every cursor colour in tests/design/presence-palette.test.js.",
+    "--cx-border-strong": "A control's hairline; the control's label carries the contrast, and the hairline is the edge a border draws, so it has no text minimum."
   }
 }

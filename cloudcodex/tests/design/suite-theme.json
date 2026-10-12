@@ -1,0 +1,27 @@
+{
+  "_rule": "The suite pattern's theme values, restated from docs/specs/2026-10-11-suite-ui-alignment.md (\"The light theme, token by token\"). src/codex.css must equal this file; a change here is a change to the suite pattern, made in both products. The light column arrives with W6-CDX-43.",
+  "dark": {
+    "--cx-surface-0": "oklch(0.17 0.012 240)",
+    "--cx-surface-1": "oklch(0.145 0.012 240)",
+    "--cx-surface-2": "oklch(0.21 0.014 240)",
+    "--cx-border": "oklch(0.3 0.015 240)",
+    "--cx-border-strong": "oklch(0.38 0.016 240)",
+    "--cx-text-primary": "oklch(0.93 0.005 230)",
+    "--cx-text-secondary": "oklch(0.72 0.01 235)",
+    "--cx-text-faint": "oklch(0.61 0.012 238)",
+    "--cx-accent": "var(--accent-400)",
+    "--cx-accent-hover": "var(--accent-300)",
+    "--cx-accent-fill": "var(--accent-400)",
+    "--cx-on-accent": "oklch(0.14 0.03 240)",
+    "--cx-select-wash": "oklch(0.21 0.055 240)",
+    "--cx-danger": "var(--danger-bright)",
+    "--cx-success": "var(--success-bright)",
+    "--cx-warning": "var(--warning-bright)",
+    "--cx-info": "var(--accent-400)",
+    "--cx-danger-fill": "var(--danger-bright)",
+    "--cx-scrim": "oklch(0.12 0.02 240 / 0.5)",
+    "--cx-shadow-sm": "0 1px 2px oklch(0 0 0 / 0.3)",
+    "--cx-shadow-md": "0 4px 16px oklch(0 0 0 / 0.4)",
+    "--cx-focus-ring": "var(--cx-accent)"
+  }
+}

@@ -12,13 +12,13 @@ import {
   parseColor, parseThemeTokens, resolveTokenValue,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { declaredNames } from '../../vendor/cloud-city-design/gates/dangling.mjs';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
 const index = read('src/index.css');
-const dark = parseThemeTokens(`${core}\n${codex}`).dark;
+const dark = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS).dark;
 
 // The bridge block is the first :root block of index.css.
 const rootBlock = /:root\s*\{([^}]*)\}/.exec(index)[1];
@@ -27,12 +27,13 @@ const bridge = new Map(
 );
 
 // The 27 names the page declared before the bridge, colour and layout alike.
+// W6-CDX-38 retires the two hover fills and the three radius names: index.css no longer redeclares
+// them, so core.css's values apply and the bridge is 22 names.
 const LEGACY_27 = [
-  '--bg-main', '--bg-elevated', '--bg-panel', '--bg-hover', '--bg-hover-strong',
+  '--bg-main', '--bg-elevated', '--bg-panel',
   '--border-color', '--text-primary', '--text-secondary', '--text-muted',
   '--brand-blue', '--brand-blue-light', '--brand-blue-dark', '--brand-blue-hover',
   '--color-danger', '--color-danger-hover', '--color-success',
-  '--radius-sm', '--radius-md', '--radius-lg',
   '--shadow-sm', '--shadow-md', '--shadow-lg',
   '--topbar-height', '--sidebar-width', '--sidebar-collapsed', '--footer-height',
   '--transition',
@@ -40,12 +41,16 @@ const LEGACY_27 = [
 // The undeclared names that carry the heaviest fallbacks, bridged so the fallback can go (PR 8).
 const FALLBACK_NAMES = ['--bg-secondary', '--color-accent', '--border', '--bg-tertiary', '--accent-color'];
 // The names whose target is a length, a shadow or a transition, not a colour.
-const NON_COLOUR = ['--radius-sm', '--radius-md', '--radius-lg', '--shadow-sm', '--shadow-md', '--shadow-lg',
+const NON_COLOUR = ['--shadow-sm', '--shadow-md', '--shadow-lg',
   '--topbar-height', '--sidebar-width', '--sidebar-collapsed', '--footer-height', '--transition'];
 const COLOUR_NAMES = LEGACY_27.filter((name) => !NON_COLOUR.includes(name));
 
 describe('the bridge in index.css :root', () => {
-  it('declares all 27 legacy names and the five fallback names', () => {
+  it('retires the two hover names: no --bg-hover or --bg-hover-strong in the bridge', () => {
+    expect([...bridge.keys()].filter((name) => /^--bg-hover/.test(name))).toEqual([]);
+  });
+
+  it('declares all legacy names and the five fallback names', () => {
     for (const name of [...LEGACY_27, ...FALLBACK_NAMES]) {
       expect(bridge.has(name), `${name} is not declared in the bridge`).toBe(true);
     }
@@ -74,10 +79,12 @@ describe('the bridge in index.css :root', () => {
     }
   });
 
-  it('keeps the Codex radii, shadows and layout sizes it had before the bridge', () => {
-    expect(resolveTokenValue(dark, bridge.get('--radius-sm').slice(4, -1))).toBe('4px');
-    expect(resolveTokenValue(dark, bridge.get('--radius-md').slice(4, -1))).toBe('8px');
-    expect(resolveTokenValue(dark, bridge.get('--radius-lg').slice(4, -1))).toBe('12px');
+  it('does not redeclare the core radius names, so core\'s 6, 10 and 14px apply', () => {
+    expect([...bridge.keys()].filter((name) => name.startsWith('--radius-'))).toEqual([]);
+    expect(rootBlock).not.toMatch(/--radius-/);
+  });
+
+  it('keeps the layout sizes and transition it had before the bridge', () => {
     expect(resolveTokenValue(dark, bridge.get('--topbar-height').slice(4, -1))).toBe('56px');
     expect(resolveTokenValue(dark, bridge.get('--sidebar-width').slice(4, -1))).toBe('220px');
     expect(resolveTokenValue(dark, bridge.get('--sidebar-collapsed').slice(4, -1))).toBe('56px');

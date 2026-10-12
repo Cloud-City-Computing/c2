@@ -15,10 +15,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
-  compositeOver, contrastRatio, parseColor, parseThemeTokens, relativeLuminance, resolveTokenValue, round,
+  compositeOver, contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { ACCENTS, accentValue, accentFill, accentDark } from '../../src/tokens/accents.js';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
@@ -26,7 +26,7 @@ const codex = read('src/codex.css');
 const index = read('src/index.css');
 // The bridge is the first :root block of index.css; its names join the dark map so a chain can follow them.
 const bridgeBlock = /:root\s*\{([^}]*)\}/.exec(index)[1];
-const base = parseThemeTokens(`${core}\n${codex}\n:root {${bridgeBlock}}`).dark;
+const base = parseThemeTokens(`${core}\n${codex}\n:root {${bridgeBlock}}`, THEME_OPTIONS).dark;
 
 /** The last value of one property in the last rule whose selector is exactly `selector`. */
 function declared(selector, prop) {
@@ -66,7 +66,6 @@ const onAccent = (hue) => ({
 });
 // The default accent (no inline override) and each of the eight picker hues.
 const ACCENT_TOKENS = [['default', base], ...Object.entries(ACCENTS).map(([name, hue]) => [name, onAccent(hue)])];
-const luminance = (colour) => relativeLuminance(colour);
 
 // Sites where a label sits on the accent fill (the primary ink, the active and hover states).
 const ACCENT_FILL_SITES = [
@@ -147,19 +146,20 @@ describe('a white label on a danger background', () => {
     }
   });
 
-  it('measures at least 4.5:1 on hover, and the hover is darker than the rest it replaces', () => {
+  it('measures at least 4.5:1 on hover; the button hover is an inset ring on the same fill (W6-CDX-38)', () => {
+    // The button keeps its fill on hover (no background declared), so the rest fill is the one it measures.
+    const fills = { '.btn-danger:hover:not(:disabled)': '.btn-danger' };
     for (const site of DANGER_HOVER_SITES) {
-      const ratio = contrastRatio(paint(labelOf(site), base), paint(declared(site, 'background'), base));
+      const ratio = contrastRatio(paint(labelOf(site), base), paint(declared(fills[site] ?? site, 'background'), base));
       expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
     }
-    const rest = paint(declared('.btn-danger', 'background'), base);
-    const hover = paint(declared('.btn-danger:hover:not(:disabled)', 'background'), base);
-    expect(luminance(hover)).toBeLessThan(luminance(rest));
+    expect(() => declared('.btn-danger:hover:not(:disabled)', 'background')).toThrow();
+    expect(declared('.btn-danger:hover:not(:disabled)', 'box-shadow')).toBe('inset 0 0 0 1px var(--cx-text-primary)');
   });
 });
 
 describe('the focus ring: one non-text component, measured at 3:1 against every surface it can sit on', () => {
-  const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-surface-3', '--cx-surface-4'];
+  const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-select-wash'];
   // The one :focus-visible outline; the ring sits on the page around the control, so the surfaces are the measure.
   const ringToken = /var\((--[\w-]+)\)/.exec(declared(':focus-visible', 'outline'))?.[1];
 
@@ -290,18 +290,17 @@ describe('the button states: disabled, hover, pressed', () => {
   });
 
   it('presses the ghost one step, with its secondary label at 4.5:1 or more on the pressed surface', () => {
-    expect(declared('.btn-ghost:active:not(:disabled)', 'background')).toBe('var(--bg-hover-strong)');
+    expect(declared('.btn-ghost:active:not(:disabled)', 'background')).toBe('var(--cx-surface-1)');
     const ratio = contrastRatio(paint(declared('.btn-ghost', 'color'), base),
       paint(declared('.btn-ghost:active:not(:disabled)', 'background'), base));
     expect(ratio, `ghost pressed measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('presses the danger darker than its hover, with the white label at 4.5:1 or more on the pressed fill', () => {
+  it('presses the danger on the same fill, with the dark label at 4.5:1 or more on it', () => {
     expect(declared('.btn-danger:active:not(:disabled)', 'background')).toBe('var(--cx-danger-fill-press)');
     const press = paint(declared('.btn-danger:active:not(:disabled)', 'background'), base);
     const label = paint(declared('.btn-danger', 'color'), base);
     expect(contrastRatio(label, press), 'danger pressed label').toBeGreaterThanOrEqual(4.5);
-    expect(luminance(press)).toBeLessThan(luminance(paint(declared('.btn-danger:hover:not(:disabled)', 'background'), base)));
   });
 });
 

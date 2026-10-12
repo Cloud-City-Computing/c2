@@ -21,15 +21,15 @@ import path from 'node:path';
 import {
   compositeOver, contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
 const index = read('src/index.css');
-const tokens = parseThemeTokens(`${core}\n${codex}`).dark;
+const tokens = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS).dark;
 
-const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-surface-3', '--cx-surface-4'];
+const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-select-wash'];
 
 /** The value of one property in the last rule whose selector is exactly `selector`. */
 function declared(selector, prop) {
@@ -94,7 +94,7 @@ describe('every highlight.js token colour is at 4.5:1 or more on the code wash, 
   it('keeps each token clear of the 4.5:1 line: 4.6:1 or more on the strongest surface, not a knife-edge', () => {
     const wash = paint(declared('.editor-container .tiptap pre', 'background'));
     for (const { colour, selectors } of HLJS) {
-      const ratio = contrastRatio(parseColor(colour), compositeOver(wash, paint('var(--cx-surface-4)')));
+      const ratio = contrastRatio(parseColor(colour), compositeOver(wash, paint('var(--cx-select-wash)')));
       expect(ratio, `${selectors} ${colour} measures ${round(ratio)}:1 on the strongest surface`).toBeGreaterThanOrEqual(4.6);
     }
   });

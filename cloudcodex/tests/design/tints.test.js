@@ -21,14 +21,14 @@ import {
 import {
   ACCENTS, accentValue, accentHover, accentFill, accentDark,
 } from '../../src/tokens/accents.js';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
 const index = read('src/index.css');
 const bridgeBlock = /:root\s*\{([^}]*)\}/.exec(index)[1];
-const base = parseThemeTokens(`${core}\n${codex}\n:root {${bridgeBlock}}`).dark;
+const base = parseThemeTokens(`${core}\n${codex}\n:root {${bridgeBlock}}`, THEME_OPTIONS).dark;
 
 /** The last value of one property in the last rule whose selector is exactly `selector`, as in painted.test.js. */
 function declared(selector, prop) {
@@ -62,7 +62,7 @@ const onAccent = (hue) => ({
 const ACCENT_TOKENS = [['default', base], ...Object.entries(ACCENTS).map(([name, hue]) => [name, onAccent(hue)])];
 
 // The five surfaces a tint can sit on: the page, its panels, a hover and the strongest hover.
-const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-surface-3', '--cx-surface-4'];
+const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-select-wash'];
 
 /** Every rule of src/index.css as { selector, body }: comments blanked, at-rule headers skipped. */
 const RULES = (() => {
@@ -93,6 +93,10 @@ const INHERITED_LABELS = {
   // The unread modifier sets the wash on the row, and its text is the row's own colour.
   '.notification-item--unread': '.notification-item',
   '.notification-item--unread:hover': '.notification-item',
+  // The picked commit option: its label is the body text colour the element inherits (the GitHub surface, colour only).
+  '.gh-commit-option.active': 'var(--cx-text-primary)',
+  // A selected table cell in the editor: its text is the editor's body colour, measured as an inherited label.
+  '.editor-container .tiptap table .selectedCell': 'var(--cx-text-primary)',
 };
 
 // The translucent backgrounds the deferred families still paint bare: the GitHub surface (GitHubPage,
