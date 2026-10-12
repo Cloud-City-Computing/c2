@@ -37,6 +37,7 @@ import {
 import ConfirmDialog from '../components/ConfirmDialog';
 import WebhooksPanel from '../components/WebhooksPanel';
 import { showToast, toastError } from '../components/Toast';
+import Menu from '../components/Menu';
 
 // ─── Overview Panel ─────────────────────────────────────────
 
@@ -262,27 +263,27 @@ export function InviteUserModal({ onInvited }) {
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="newuser@example.com" />
-        <label htmlFor="invite-squad">Squad (optional):</label>
-        <select id="invite-squad" value={squadId} onChange={(e) => setSquadId(e.target.value)}>
-          <option value="">No squad, assign later</option>
-          {squads.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.workspace_name ? `${s.workspace_name} / ${s.name}` : s.name}
-            </option>
-          ))}
-        </select>
+        <div className="field">
+          <label htmlFor="invite-squad" className="field__label">Squad (optional):</label>
+          <Menu id="invite-squad" label="Squad (optional)" value={squadId} onSelect={setSquadId}
+            items={[
+              { key: '', label: 'No squad, assign later' },
+              ...squads.map(s => ({
+                key: String(s.id),
+                label: s.workspace_name ? `${s.workspace_name} / ${s.name}` : s.name,
+              })),
+            ]} />
+        </div>
+        {/* No "Admin" option here on purpose: nothing in the access-control
+            code (ownership.js, canManageSquad) distinguishes squad role
+            'admin' from 'member', so it would grant nothing extra while
+            looking like it does. Owner genuinely differs. */}
         {squadId && (
-          <>
-            <label htmlFor="invite-role">Role:</label>
-            {/* No "Admin" option here on purpose: nothing in the access-control
-                code (ownership.js, canManageSquad) distinguishes squad role
-                'admin' from 'member', so it would grant nothing extra while
-                looking like it does. Owner genuinely differs. */}
-            <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="member">Member</option>
-              <option value="owner">Owner</option>
-            </select>
-          </>
+          <div className="field">
+            <label htmlFor="invite-role" className="field__label">Role:</label>
+            <Menu id="invite-role" label="Role:" value={role} onSelect={setRole}
+              items={[{ key: 'member', label: 'Member' }, { key: 'owner', label: 'Owner' }]} />
+          </div>
         )}
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Send Invitation</button>
       </div>

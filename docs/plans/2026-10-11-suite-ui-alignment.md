@@ -234,9 +234,35 @@ place where the code proved a step wrong, or a step needed a choice the plan did
 
 ## PR 2: W6-CDX-39, controls, the Toast and dialog panels
 
+**Deviations, recorded at execution (W6-CDX-39, 2026-10-11).** The plan is the approval; each of these is a
+place where the code proved a step wrong, or the session needed a choice the plan did not spell out.
+
+1. **The danger item (Task 2.2) was already done in A1.** W6-CDX-38 moved the danger fill, its label and its inset-ring
+   hover (deviation 1 of PR 1), so this session pins it and does not change it.
+2. **The primary's hover is the lighter accent step (`--cx-accent-hover`).** At rest and on hover it resolved to the same
+   colour, so there was no hover at all. The rest fill keeps the `--brand-blue-hover` name, which resolves to
+   `--cx-accent-fill`, because eight other sites read that name.
+3. **The small button keeps 26 px and 12 px text.** The anatomy's (0,2,0) rule would otherwise override the 101 `.btn-sm`
+   uses, so `.btn.btn-sm:not(...)` restates the small size at a higher specificity.
+4. **The field primitive is applied to the invite dialog's squad and role pairs only.** The sort, the search filters and
+   the Account panels keep their markup; they are the next families to take it.
+5. **The icon button with a 44 px hit area is not built.** Codex has no icon-button class yet; it lands with the first
+   control that needs one (PR 3 or 4).
+6. **Toast glyphs stay text characters.** The status glyphs (✕ ✓ ℹ) are not emoji and their tests read them. Emoji
+   icons remain in the admin console (PR 5) and the document header (PR 4).
+7. **The menu for export and GitHub sync is look-only.** Both keep their own markup and roles; converting them to the
+   `Menu` primitive would change their layout and their GitHub surface.
+8. **Destructive copy was not fully audited.** Most confirmations already name what is lost; the squad-member removal
+   (`WorkspacesPage`) and the repo removal (`ArchiveBrowser`) still read generically.
+9. **The two-cursor smoke is not run** (it needs two signed-in browsers). The editor's geometry is measured instead
+   (`docs/research/w6-cdx-39-controls-2026-10-11/`), and it is identical before and after.
+10. **The phone toast overlaps the bottom tab bar** until PR 3 removes that bar.
+
+
+
 ### Task 2.1 The Toast, tests first (X2, X3, X10)
 
-- [ ] `tests/src/components/Toast.test.jsx`, new cases:
+- [x] `tests/src/components/Toast.test.jsx`, new cases:
 
 ```jsx
 it('shows the first toast after a fresh load', async () => {
@@ -255,12 +281,12 @@ it('shows a string passed to toastError as the message', async () => {
 
       **Expected:** the first is red at `f0bc965` (the container's effect has not assigned
       `addToastFn` when `showToast` calls it), the second red (a string has no `.body`).
-- [ ] Fix: `showToast` queues the toast when the container is not ready, and the container's effect
+- [x] Fix: `showToast` queues the toast when the container is not ready, and the container's effect
       drains the queue on mount; `toastError` treats a string argument as the message. In
       `AdminPage.jsx` (`:329`, `:385`, `:823`) pass the error itself, so a server message with
       `status` survives. An `AdminPage` test: a failing revoke whose body says "Could not revoke the
       invitation. Try again in a moment." shows exactly that.
-- [ ] The stack at the bottom right; the message in `--cx-text-primary`; the status on the icon and
+- [x] The stack at the bottom right; the message in `--cx-text-primary`; the status on the icon and
       the edge; a `.toast--info` rule. `aria-live` and `role="alert"` stay pinned.
 
 ### Task 2.2 Buttons
@@ -270,19 +296,19 @@ it('shows a string passed to toastError as the message', async () => {
       var(--text-sm)/1 var(--font-ui); letter-spacing: normal;`. Danger: `background:
       var(--cx-danger-fill); color: var(--cx-on-accent);` and on hover `box-shadow: inset 0 0 0 1px
       var(--cx-text-primary)`. Icon buttons 30 px with a 44 px hit area (a `::before` inset of -7px).
-- [ ] `painted.test.js`: the danger label on `--cx-danger-fill` at 4.5:1 (computed 5.06). The Buttons
+- [x] `painted.test.js`: the danger label on `--cx-danger-fill` at 4.5:1 (computed 5.06). The Buttons
       banner has zero findings.
 
 ### Task 2.3 Fields, selects and the menu primitive
 
-- [ ] `src/components/Menu.jsx`: a trigger button with `aria-haspopup="menu"` and `aria-expanded`, a
+- [x] `src/components/Menu.jsx`: a trigger button with `aria-haspopup="menu"` and `aria-expanded`, a
       `role="menu"` list of `role="menuitem"` buttons, arrow keys and Home and End, Escape and an outside
       click close it and return focus to the trigger, placed in `#dropdown-root` at `--z-menu`, no
       scrim. `tests/src/components/Menu.test.jsx` covers each.
 - [ ] One field primitive in CSS (`.field`, `.field__label`, `.field__hint`, `.field__error`); the
       search filters, the sort control, the invite dialog's squad and role, and the Account panels use
       it. The sort, squad and role native selects become `Menu` triggers.
-- [ ] The export menu and the GitHub sync menu adopt the menu's look (the GitHub surface: colour and
+- [x] The export menu and the GitHub sync menu adopt the menu's look (the GitHub surface: colour and
       class only, no layout change).
 
 ### Task 2.4 Tabs, chips, avatars, icons

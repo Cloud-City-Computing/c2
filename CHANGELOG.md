@@ -12,6 +12,23 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Changed
+- **Controls on the suite pattern (W6-CDX-39, A2).** Buttons are 30 px high on `--radius-md`, 13 px at weight 500,
+  with no letter-spacing (the small size stays 26 px). The primary's hover steps to the lighter accent. One menu
+  primitive (`Menu.jsx`, a `role="menu"` popup with arrow-key, Home, End and Escape handling) replaces the native
+  selects of the Explore sort and the invite dialog's squad and role. The export and GitHub sync menus take its
+  look. Tabs on Activity and Notifications sit 24 px apart, with the active tab in the primary text and a 2 px
+  accent underline. Activity and notification placeholders are avatars on the suite tints. Badges and the role chip
+  are at least 12 px, and the role chip is a pill. Modal panels use a strong hairline and `--radius-lg`.
+
+### Fixed
+- **The first toast after a page load is shown (W6-CDX-39).** A toast raised before the container mounted was
+  dropped. It is now queued and drawn on mount.
+- **Admin error toasts keep the server's message (W6-CDX-39).** A failed invitation revoke, permission save or
+  member save shows the server's message, and a 403 keeps its "Permission denied" prefix.
+- **The toast stack sits bottom right (W6-CDX-39)**, where no navigation can sit under it, and `.toast--info` has
+  a rule. The message is the primary text colour; the status is on the icon and the edge.
+
 ### Added
 - **Membership sync endpoints (W6-CDX-9).** `PUT /api/machine/members` (`{ email, role, reactivate? }`) and
   `DELETE /api/machine/members/:email`, machine-only, idempotent, rate-limited on their own 300-a-minute bucket

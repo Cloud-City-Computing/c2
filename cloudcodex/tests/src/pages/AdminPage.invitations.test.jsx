@@ -9,7 +9,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 const serverMessage = 'Could not revoke the invitation. Try again in a moment.';
@@ -59,7 +59,7 @@ async function renderWithRejectedRevoke(error) {
   fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
 }
 
-describe('AdminPage — a failing invitation revoke shows the server message (X3)', () => {
+describe('AdminPage: a failing invitation revoke shows the server message (X3)', () => {
   afterEach(() => { cleanup(); });
 
   it('shows the body message of the error, not the generic fallback', async () => {

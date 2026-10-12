@@ -301,9 +301,25 @@ one:
   it, and resumes with the time it had left; a dismiss that drops focus sends it
   back to where focus came from, or to the container. These are pinned in
   `tests/src/components/Toast.test.jsx` with fake timers. The toast CSS is on tokens
-  at `src/index.css` (the `.toast` block, after `Toast Notifications`). **`no-alert` is an ESLint error**
+  at `src/index.css` (the `.toast` block, after `Toast Notifications`). The stack sits bottom right
+  (`.toast-container`, W6-CDX-39). A `showToast` before the container's effect has registered is queued
+  and drained on mount (X2), and `toastError` takes a string or an error, with an optional fallback second
+  argument (X3); the admin revoke, permission and member saves pass the error itself, so a refusal keeps its
+  "Permission denied" prefix. **`no-alert` is an ESLint error**
   (`eslint.config.js:45`); there are two legacy disables in `Editor.jsx` and
   `GitHubPage.jsx` and no more should be added.
+- `<Menu>` (`src/components/Menu.jsx`, W6-CDX-39) is the one menu primitive: a `button` trigger with
+  `aria-haspopup="menu"` and `aria-expanded`, and a `role="menu"` popup of `role="menuitem"` buttons portalled
+  into `#dropdown-root` at fixed coordinates, with no scrim. Arrow keys wrap, Home and End jump, Escape and a
+  choice return focus to the trigger, and an outside press closes it. The Explore sort and the invite dialog's
+  squad and role use it. The export and GitHub sync menus take its look (colour only) and keep their own markup.
+  Its tests are `tests/src/components/Menu.test.jsx`.
+- `<Avatar>` (`src/components/Avatar.jsx`, W6-CDX-39) draws a photo or the initial on one of the package's
+  `--avatar-1..8` tints; the tint is `avatarTint(id)` in `src/lib/avatar-tint.js`, a stable hash, so one person
+  keeps one tint in every list. The activity and notification placeholders use it.
+- `src/components/icons.jsx` is the stroke icon set (15 px, `currentColor`, decorative). The toast's
+  status glyphs stay text characters; emoji still stand in the admin console and the document header until
+  W6-CDX-41 and W6-CDX-42.
 - `<PresenceAvatars>` pairs with `usePresence`.
 - `<PageTree>` renders the `logs.parent_id` tree.
 - `<WebhooksPanel>` is the admin console's Webhooks panel (W6-CDX-15). Its confirmations go through
@@ -448,7 +464,7 @@ load-bearing:
    `--cx-accent-hover` or a bright step, as W6-CDX-28 did.
 4. `src/index.css`, about 9,200 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
-   `:focus-visible` rule (`index.css:5422`), on `--cx-focus-ring`; no source under
+   `:focus-visible` rule (`index.css:5622`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips
    (`.editor-container`, `.markdown-editor__textarea-wrapper`, `.sidebar`,
    `.gh-browser__sidebar`, `.gh-modal`, `.gh-merge-dialog__pane`, `.gh-sync-menu`) draws its controls' rings

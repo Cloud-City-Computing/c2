@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  compositeOver, contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
+  contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { ROOT, THEME_OPTIONS } from './buckets.js';
 
@@ -121,5 +121,72 @@ describe('the danger button keeps its one look (A2, Task 2.2)', () => {
     expect(declared('.btn-danger', 'background')).toBe('var(--cx-danger-fill)');
     expect(declared('.btn-danger', 'color')).toBe('var(--cx-on-danger)');
     expect(declared('.btn-danger:hover:not(:disabled)', 'box-shadow')).toBe('inset 0 0 0 1px var(--cx-text-primary)');
+  });
+});
+
+describe('the menu primitive and the menus that adopt its look (A2, Task 2.3)', () => {
+  it('hovers an item on the sunken step, which differs from the raised panel it sits on', () => {
+    expect(declared('.menu', 'background')).toBe('var(--cx-surface-2)');
+    expect(declared('.menu__item:hover:not(:disabled)', 'background')).toBe('var(--cx-surface-1)');
+  });
+
+  it('hovers the trigger by its border, never its fill, so the hover reads in a dialog too', () => {
+    expect(declared('.menu-trigger:hover:not(:disabled)', 'border-color')).toBe('var(--cx-text-faint)');
+    expect(() => declared('.menu-trigger:hover:not(:disabled)', 'background')).toThrow();
+  });
+
+  it('marks the current item with the selection wash and an accent ring', () => {
+    expect(declared('.menu__item[aria-current=\'true\']', 'background')).toBe('var(--cx-select-wash)');
+    expect(declared('.menu__item[aria-current=\'true\']', 'border-color')).toBe('var(--cx-accent)');
+  });
+
+  it('gives the export menu and the GitHub sync menu the raised panel and the sunken item hover', () => {
+    expect(declared('.export-dropdown__menu', 'background')).toBe('var(--cx-surface-2)');
+    expect(declared('.gh-sync-menu', 'background')).toBe('var(--cx-surface-2)');
+    expect(declared('.gh-sync-menu__item:hover:not(:disabled)', 'background')).toBe('var(--cx-surface-1)');
+  });
+
+  it('gives a field its uppercase faint label', () => {
+    expect(declared('.field__label', 'text-transform')).toBe('uppercase');
+    expect(declared('.field__label', 'color')).toBe('var(--cx-text-faint)');
+  });
+});
+
+describe('the tab row (A2, Task 2.4)', () => {
+  it('spaces the tabs 24 px apart, with the active tab in the primary text and a 2 px accent underline', () => {
+    expect(declared('.notifications-page__filters', 'gap')).toBe('24px');
+    expect(declared('.activity-page__filters', 'gap')).toBe('24px');
+    expect(declared('.notifications-page__filter.active', 'color')).toBe('var(--cx-text-primary)');
+    expect(declared('.notifications-page__filter.active', 'border-bottom-color')).toBe('var(--cx-accent)');
+    expect(declared('.activity-page__filter.active', 'border-bottom-color')).toBe('var(--cx-accent)');
+  });
+});
+
+describe('the avatar (A2, Task 2.4)', () => {
+  it('paints the initial in the dark ink, at 4.5:1 or more on each of the eight tints', () => {
+    expect(declared('.avatar', 'color')).toBe('var(--cx-on-accent)');
+    for (let n = 1; n <= 8; n += 1) {
+      const ratio = contrastRatio(paint(declared('.avatar', 'color')), paint(`var(--avatar-${n})`));
+      expect(ratio, `--avatar-${n} measures ${round(ratio)}:1 under the ink`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+describe('chips and badges sit on the 12 px floor, and the role chip is a pill (A2, Task 2.4)', () => {
+  it('sets .badge and .role-badge at 12 px or more', () => {
+    expect(parseFloat(declared('.badge', 'font-size'))).toBeGreaterThanOrEqual(12);
+    expect(parseFloat(declared('.role-badge', 'font-size'))).toBeGreaterThanOrEqual(12);
+  });
+
+  it('draws the role chip as a pill', () => {
+    expect(declared('.role-badge', 'border-radius')).toBe('999px');
+  });
+});
+
+describe('dialog panels sit on the panel tokens (A2, Task 2.5)', () => {
+  it('draws the modal panel on the raised surface, a strong hairline and --radius-lg', () => {
+    expect(declared('.modal-content', 'background')).toBe('var(--bg-panel)');
+    expect(declared('.modal-content', 'border')).toBe('1px solid var(--cx-border-strong)');
+    expect(declared('.modal-content', 'border-radius')).toBe('var(--radius-lg)');
   });
 });

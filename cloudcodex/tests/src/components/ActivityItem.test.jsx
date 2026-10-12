@@ -102,6 +102,6 @@ describe('ActivityItem', () => {
       id: 1, actor_name: 'A', action: 'log.update', resource_type: 'log', resource_id: 1,
       metadata: {}, created_at: new Date().toISOString(),
     }} /></MemoryRouter>);
-    expect(container.querySelector('.activity-item__avatar--placeholder')).not.toBeNull();
+    expect(container.querySelector('.activity-item__avatar.avatar')).not.toBeNull();
   });
 });

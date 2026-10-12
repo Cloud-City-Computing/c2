@@ -78,6 +78,6 @@ describe('NotificationItem', () => {
 
   it('falls back to a placeholder initial when there is no avatar URL', () => {
     const { container } = wrap(<NotificationItem notification={baseNotif} onActivate={vi.fn()} />);
-    expect(container.querySelector('.notification-item__avatar--placeholder')).not.toBeNull();
+    expect(container.querySelector('.notification-item__avatar.avatar')).not.toBeNull();
   });
 });

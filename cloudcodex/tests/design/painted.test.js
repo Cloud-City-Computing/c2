@@ -76,10 +76,10 @@ const ACCENT_FILL_SITES = [
   '.drawio-block__edit-btn:hover:not(:disabled)',
 ];
 // Sites where a white label sits on the accent dark (avatar initials).
+// The notification and activity placeholders moved to the --avatar-1..8 tints (W6-CDX-39, Task 2.4); their ink
+// is measured in controls.test.js.
 const ACCENT_DARK_SITES = [
   '.mention-picker__avatar--placeholder',
-  '.notification-item__avatar--placeholder',
-  '.activity-item__avatar--placeholder',
 ];
 // Sites where a white label sits on a danger background, at rest and on hover.
 const DANGER_REST_SITES = ['.btn-danger', '.notification-bell__badge', '.btn-ghost.btn-danger:hover'];
@@ -114,7 +114,7 @@ describe('a white label on the accent dark is measured on the avatar that paints
     // avatar (editor-adjacent, deferred) still carries the literal, and both measure the same white.
     for (const site of ACCENT_DARK_SITES) {
       expect(declared(site, 'background'), site).toBe('var(--brand-blue-dark)');
-      const white = site === '.mention-picker__avatar--placeholder' ? '#fff' : 'var(--cx-white)';
+      const white = '#fff';
       expect(declared(site, 'color'), site).toBe(white);
     }
   });

@@ -873,15 +873,6 @@ h1, h2, h3, h4, h5, h6 {
   flex-shrink: 0;
   object-fit: cover;
 }
-.notification-item__avatar--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--brand-blue-dark);
-  color: var(--cx-white);
-  font-weight: 600;
-  font-size: 13px;
-}
 .notification-item__body { flex: 1; min-width: 0; }
 .notification-item__title {
   font-weight: 500;
@@ -949,33 +940,35 @@ h1, h2, h3, h4, h5, h6 {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* The one tab row (W6-CDX-39, Task 2.4): a 24 px gap, the active tab in the primary text at weight 500 with a
+   2 px accent underline inside its own box (so it moves no geometry), the others in the secondary text. */
 .notifications-page__filters,
 .activity-page__filters {
   display: flex;
-  gap: 2px;
+  gap: 24px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--cx-border);
   flex-wrap: wrap;
 }
 .notifications-page__filter,
 .activity-page__filter {
-  padding: 8px 14px;
+  padding: 8px 0;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--cx-text-secondary);
   transition: color 0.15s;
   margin-bottom: -1px;
 }
 .notifications-page__filter:hover,
-.activity-page__filter:hover { color: var(--text-secondary); }
+.activity-page__filter:hover { color: var(--cx-text-primary); }
 .notifications-page__filter.active,
 .activity-page__filter.active {
-  color: var(--cx-accent);
-  border-bottom-color: var(--brand-blue);
+  color: var(--cx-text-primary);
+  border-bottom-color: var(--cx-accent);
 }
 .notifications-page__list,
 .activity-page__list {
@@ -1090,15 +1083,6 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 50%;
   flex-shrink: 0;
   object-fit: cover;
-}
-.activity-item__avatar--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--brand-blue-dark);
-  color: var(--cx-white);
-  font-weight: 600;
-  font-size: 12px;
 }
 .activity-item__body { flex: 1; min-width: 0; }
 .activity-item__line {
@@ -1440,8 +1424,8 @@ h1, h2, h3, h4, h5, h6 {
 .dropdown-menu,
 .modal-content {
   background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 24px;
   color: var(--text-primary);
@@ -4240,8 +4224,8 @@ h1, h2, h3, h4, h5, h6 {
   right: 0;
   margin-top: 4px;
   min-width: 240px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border-strong);
   border-radius: 6px;
   box-shadow: var(--cx-shadow-popover);
   z-index: var(--z-menu);
@@ -4259,7 +4243,7 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
 }
 .gh-sync-menu__item:hover:not(:disabled) {
-  background: var(--bg-tertiary);
+  background: var(--cx-surface-1);
 }
 .gh-sync-menu__item:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -5710,10 +5694,10 @@ textarea:focus-visible {
 
 .role-badge {
   display: inline-block;
-  padding: 3px 10px;
-  font-size: 11px;
+  padding: 2px 10px;
+  font-size: 12px;
   font-weight: 600;
-  border-radius: 12px;
+  border-radius: 999px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -5920,7 +5904,7 @@ textarea:focus-visible {
 /* Badges */
 .badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
@@ -6433,8 +6417,8 @@ textarea:focus-visible {
   left: 0;
   z-index: var(--z-menu);
   min-width: 180px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   padding: 4px 0;
@@ -6558,6 +6542,115 @@ textarea:focus-visible {
 
 .explore-sort:focus {
   border-color: var(--cx-accent);
+}
+
+/* ── The menu primitive (W6-CDX-39, Task 2.3) ──────────────────
+   The trigger is a field-height button on the sunken step with a strong hairline. Its hover changes the
+   border, never the fill, so it reads on the page and inside a dialog panel alike. The popup is a raised
+   panel (surface-2) with no scrim; an item's hover is the sunken step (surface-1), which differs from the
+   panel it sits on, and the current choice takes the selection wash with a 1 px accent ring. */
+.menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.menu-trigger:hover:not(:disabled) {
+  border-color: var(--cx-text-faint);
+}
+.menu-trigger[aria-expanded='true'] {
+  border-color: var(--cx-accent);
+}
+.menu-trigger__chevron {
+  color: var(--cx-text-faint);
+  font-size: 12px;
+}
+
+.menu {
+  position: fixed;
+  z-index: var(--z-menu);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-2);
+  box-shadow: var(--cx-shadow-md);
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--cx-text-secondary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.menu__item:hover:not(:disabled),
+.menu__item:focus-visible {
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
+}
+.menu__item[aria-current='true'] {
+  background: var(--cx-select-wash);
+  border-color: var(--cx-accent);
+  color: var(--cx-text-primary);
+}
+.menu__item:disabled {
+  color: var(--cx-text-faint);
+  cursor: not-allowed;
+}
+
+/* ── The avatar (W6-CDX-39, Task 2.4): a disc on one of --avatar-1..8, the initial in the dark ink ── */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--cx-on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  object-fit: cover;
+}
+
+/* ── The field primitive (W6-CDX-39, Task 2.3): an uppercase faint label over the control, a hint or an error ── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field__label {
+  color: var(--cx-text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.field__hint {
+  color: var(--cx-text-faint);
+  font-size: 12px;
+}
+.field__error {
+  color: var(--cx-danger-bright);
+  font-size: 12px;
 }
 
 /* Filter toggle button */

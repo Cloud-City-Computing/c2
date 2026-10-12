@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, fetchSearchFilters, docUrl } from '../util';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
+import Menu from './Menu';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -277,8 +278,8 @@ export default function ExploreBrowser() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSortChange = (e) => {
-    setSort(e.target.value);
+  const handleSortChange = (value) => {
+    setSort(value);
     setPage(1);
   };
 
@@ -343,12 +344,13 @@ export default function ExploreBrowser() {
             Filters
             {hasActiveFilters && <span className="filter-active-dot" />}
           </button>
-          <select className="explore-sort" value={sort} onChange={handleSortChange} aria-label="Sort documents">
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="title">By title</option>
-            <option value="archive">By archive</option>
-          </select>
+          <Menu className="explore-sort" label="Sort documents" value={sort} onSelect={handleSortChange}
+            items={[
+              { key: 'newest', label: 'Newest first' },
+              { key: 'oldest', label: 'Oldest first' },
+              { key: 'title', label: 'By title' },
+              { key: 'archive', label: 'By archive' },
+            ]} />
         </div>
       </div>
 

@@ -7,6 +7,7 @@
 
 import { Link } from 'react-router-dom';
 import { timeAgo } from '../util';
+import Avatar from './Avatar';
 
 function safeMetadata(meta) {
   if (!meta) return {};
@@ -57,8 +58,7 @@ function ResourceLink({ entry, meta }) {
 
 function ActorAvatar({ name, url }) {
   if (url) return <img src={url} alt="" className="activity-item__avatar" />;
-  const ch = (name || '?').charAt(0).toUpperCase();
-  return <div className="activity-item__avatar activity-item__avatar--placeholder">{ch}</div>;
+  return <Avatar name={name} size={28} className="activity-item__avatar" />;
 }
 
 export default function ActivityItem({ entry }) {
