@@ -1,0 +1,6 @@
+{
+  "_rule": "The digest of every non-colour declaration of the deferred families, and of the definitions of every token they read (tests/design/geometry.js), followed through the tokens' own reads. Taken at origin/main 235c11a, before the W6-CDX-43 colour pass; the colour pass moves no line. tests/design/geometry-fingerprint.test.js fails on any change to it.",
+  "_taken": "Re-taken 2026-10-12 with the stronger algorithm (token definitions and box-shadow geometry), from the original sources at 235c11a; the same digest is produced by the current tree.",
+  "declarations": 2385,
+  "sha256": "6529a31e2cf3dbae99dab2edb92ced6e553256992e7d5f0ea8fe9e9a984c190c"
+}

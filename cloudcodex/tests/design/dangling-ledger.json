@@ -5,5 +5,11 @@
       "count": 2,
       "reason": "Not dangling: AccountMenu.jsx declares it per swatch through an inline style prop, which the gate cannot see because only .css files contribute declarations."
     }
+  },
+  "src/codex.css": {
+    "--cx-accent-h": {
+      "count": 12,
+      "reason": "Set on the root by userPrefs.js (applyPrefsToDOM) when an accent is picked, so codex.css reads it under [data-accent]; the gate reads only stylesheets, so it cannot see the JavaScript that declares it."
+    }
   }
 }

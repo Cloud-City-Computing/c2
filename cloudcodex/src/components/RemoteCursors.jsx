@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { labelStyle } from '../lib/avatar-label.js';
 
 const CURSOR_STALE_MS = 10000; // Hide cursors older than 10s
 
@@ -166,7 +167,7 @@ export function RichTextCursors({ remoteCursors, editorRef, containerRef }) {
             style={{ top: cursor.top, left: cursor.left }}
           >
             <div className="remote-cursor__caret" style={{ backgroundColor: cursor.color }} />
-            <span className="remote-cursor__label" style={{ backgroundColor: cursor.color }}>
+            <span className="remote-cursor__label" style={labelStyle(cursor.color)}>
               {cursor.userName}
             </span>
           </div>
@@ -348,7 +349,7 @@ export function MarkdownCursors({ remoteCursors, textareaRef }) {
             style={{ top: cursor.top, left: cursor.left }}
           >
             <div className="remote-cursor__caret" style={{ backgroundColor: cursor.color }} />
-            <span className="remote-cursor__label" style={{ backgroundColor: cursor.color }}>
+            <span className="remote-cursor__label" style={labelStyle(cursor.color)}>
               {cursor.userName}
             </span>
           </div>

@@ -240,14 +240,21 @@ For each preference, the first step that yields a valid value wins:
   | Text, links, icons | `oklch(0.68 0.13 H)` | `oklch(0.47 0.12 H)` |
   | Hover | `oklch(0.78 0.1 H)` | `oklch(0.41 0.1 H)` |
   | Fill (a background; its label is the product's on-accent ink) | `oklch(0.68 0.13 H)` | `oklch(0.68 0.13 H)` |
+  | Fill hover (a background on hover; v2, below) | `oklch(0.78 0.1 H)` | `oklch(0.78 0.1 H)` |
   | Selection wash | `oklch(0.21 0.055 H)` | `oklch(0.97 0.025 H)` |
 
-  These are the package ramp's own shapes (`--accent-400`, `-300`, the light text step the audit
-  measured at L 0.47, `--accent-700`'s shape) with the hue swapped, so the default and a picked hue
-  differ only in hue. Computed: the light text step measures at least 4.81:1 on every proposed light
+  **v2, 2026-10-12: adds fillHover; Command adopts it in a follow-up PR.**
+  The primary button's hover on a filled accent cannot be the light theme's text hover (the deep step, which the dark
+  ink measures 2.2:1 on as a fill), so the fill has its own hover, lighter than the fill in both themes. Until Command
+  adopts it, its primary hover is not the contract's.
+
+  The default bindings are the package ramp's own shapes: dark uses `--accent-400` and `-300`, and light uses
+  `--accent-600` for the text step (`oklch(0.49 0.12 240)`), `--accent-700` for the hover and `--accent-400` for the
+  fill. A picked hue swaps the hue into the contract's values above, so the picked light text step (`0.47`) is the
+  formula, not the default light text colour. The default and a picked hue differ only in hue. Computed: the light text step measures at least 4.81:1 on every proposed light
   surface for all eight hues, and the fill carries the dark ink at about 6.9:1. **Each product's
   gates must prove, for all eight hues and both themes:** the text step at 4.5:1 or more on every
-  surface it paints, the fill's label at 4.5:1 or more, and the focus ring at 3:1 or more. If either
+  surface it paints, the fill's label at 4.5:1 or more on the fill and on the fill hover, and the focus ring at 3:1 or more. If either
   product's gate finds a failing pair, the step changes in this table and in both products together,
   as contract version 2.
 - With no accent set, each product keeps its own default bindings onto the package ramp.
@@ -654,6 +661,35 @@ Every gate passes in both themes; the fingerprint is unchanged; captures of ever
 document with two cursors and a comment in light.
 
 ---
+
+### Recorded at execution (W6-CDX-43, 2026-10-12)
+
+**Open item: gamut (contract version 1, not changed here).** The contract steps are not all inside sRGB. Measured
+by converting each `oklch(L C H)` to linear sRGB and flagging any channel outside 0 to 1 before clipping (the
+browser clips; the vendored gate clips too, and every pair still passes on the clipped colour). Of the four
+contract steps (text, hover, fill, wash) per theme, 19 of 64 hue-theme-step combinations fall outside sRGB. Per hue:
+232 has 4 (dark wash; light text, hover, wash), 200 has 6 and 175 has 6 (dark text, fill, wash; light text, hover,
+fill), 355, 275 and 50 have one each (the light wash). Counting the dark avatar step as well gives 29 of 80. The sibling product's count of 17 for the same three hues is not reconciled
+here, since its script is not in this repository. Any change to a step is contract version 2 and lands in both
+products together; no step was changed in this PR.
+
+**Deviations from the contract, each decided pending Kyle:**
+1. `--cx-accent-fill-hover` is a sixth binding. The primary button's hover on a filled accent cannot be the light
+   theme's text hover (`--cx-accent-hover`, the deep step): the dark ink measures 2.2:1 on it. The fill hover is
+   `oklch(0.78 0.1 H)` in both themes (the dark hover step), and the light fill is `--accent-400` as before.
+2. `--cx-accent-dark` (the white avatar label's dark step) is derived per hue in the picked-accent blocks, as the
+   prior picker wrote it, so the avatar follows the pick. It is `oklch(0.45 0.13 H)` in both themes.
+3. The light `--cx-on-accent` is the table's `oklch(0.16 0.03 240)` (restored in review; the first draft used the dark ink).
+   The presence label constant `INK_LUMINANCE` is pinned to it. The dark ink (`0.14`) is 0.0014 away, so
+   `presence-label.test.js` measures each cursor colour's real label in each theme.
+4. The suite-theme fixture's light column is the table's, on-accent included.
+5. Dark values changed only where the original dark value fails its gate (W6-CDX-43 review, item 5). The list, with the
+   original and the new value and the measured contrast, is in the plan's PR 6 deviation list; `deferred-dark.test.js`
+   pins every other colour declaration of the deferred families to its original dark value.
+6. The picked accent's steps are derived in CSS (K7). `data-accent` carries the key; `--cx-accent-h` carries the hue.
+7. The light hover washes of the deferred families are raised to a floor, so each hover steps at least 0.025 (oklab L)
+   from the surface beneath it (`deferred-hover.test.js`). The light black washes under 0.4 (the inline code, the code
+   header) become a 0.06 to 0.15 ink wash, so a code span is not a grey slab on the light page. Dark is unchanged.
 
 ## W6-CDX-44. The theme switch, and the suite preference contract
 

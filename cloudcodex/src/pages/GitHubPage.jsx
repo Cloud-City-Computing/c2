@@ -136,7 +136,7 @@ function SearchIcon() {
 
 function DiffAddIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: '#3fb950' }}>
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: 'var(--cx-deferred-3fb950)' }}>
       <path d="M2.75 9.25a.75.75 0 0 1 0-1.5h4.5v-4.5a.75.75 0 0 1 1.5 0v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5Z" />
     </svg>
   );
@@ -144,7 +144,7 @@ function DiffAddIcon() {
 
 function DiffRemoveIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: '#f85149' }}>
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: 'var(--cx-deferred-f85149)' }}>
       <path d="M2.75 9.25a.75.75 0 0 1 0-1.5h10.5a.75.75 0 0 1 0 1.5Z" />
     </svg>
   );

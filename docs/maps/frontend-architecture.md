@@ -430,18 +430,20 @@ exports breaks the server, not just the client.
 `src/userPrefs.js`. One localStorage key, `c2-user-prefs`
 (`userPrefs.js:16`). Three exported option maps that are the single source of
 truth: `ACCENT_COLORS` (8 colours, each with value/hover/fill, a view over
-`ACCENTS` in `src/tokens/accents.js`, the one data file for the picker's hues),
-`FONT_SIZES` (sm/md/lg). `DENSITIES` and the sidebar default were removed (W6-CDX-42, K8); `loadUserPrefs()` drops a stored `density` or `sidebarDefault`.
+`ACCENTS` in `src/tokens/accents.js`, the one data file for the picker's hues; each
+choice stores a hue, and the steps are derived in CSS, W6-CDX-43 K7), `FONT_SIZES` (sm/md/lg). `DENSITIES` and the sidebar default were removed (W6-CDX-42, K8); `loadUserPrefs()` drops a stored `density` or `sidebarDefault`.
 
 `loadUserPrefs()` (`userPrefs.js:23`) maps a renamed accent key through
 `LEGACY_ACCENT` (rose to Nova, amber to Solar, emerald to Aurora, violet to
 Nebula; the placeholder keys coral, apricot, jade and iris map to the same names) and drops an accent key this build does not offer, so the default
 palette applies.
 
-`applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes `--cx-accent`,
-`--cx-accent-hover`, `--cx-accent-fill` and `--cx-accent-dark` on
-`document.documentElement` (the index.css bridge points `--brand-blue*` at
-them) and `--editor-font-size`. There is no density scale and no sidebar attribute (W6-CDX-42). Crucially it **removes** each
+`applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes the picked hue as
+`--cx-accent-h` and the accent's name as `data-accent` on
+`document.documentElement`, and never a finished colour (W6-CDX-43). `codex.css`
+derives the four steps per theme under `[data-theme][data-accent]` from that
+hue; the index.css bridge points `--brand-blue*` at the derived names. It also
+writes `--editor-font-size`. There is no density scale and no sidebar attribute (W6-CDX-42). Crucially it **removes** each
 property when the preference is unset rather than writing a default, so the
 stylesheet's own defaults win.
 
@@ -471,9 +473,14 @@ load-bearing:
    Nothing sets either family yet, so no font is fetched.
 3. `src/codex.css`, Codex's bindings: every name `--cx-` prefixed, in three
    blocks. A bare `[data-theme]` holds what both themes share (`--cx-white`, the
-   Google colours, the layout sizes and the transition); `[data-theme='dark']`
-   holds the rest, with `color-scheme: dark`, and `index.html` sets the attribute
-   on `<html>` (dark only until W6-CDX-43). The dark values are the suite
+   Google colours, the layout sizes and the transition); `[data-theme='dark']` and
+   `[data-theme='light']` hold the rest, each with its `color-scheme` (W6-CDX-43
+   added the light block). `index.html` sets the attribute on `<html>` to dark; the
+   switch that changes it lands in W6-CDX-44. Two `[data-theme][data-accent]`
+   blocks derive the picked accent's steps from `--cx-accent-h`. The deferred
+   families' literals are `--cx-deferred-*` bindings, one per literal, and
+   `--cx-code-wash` and `--cx-syntax-*` carry the code block (W6-CDX-43, colour
+   only; `tests/design/geometry-fingerprint.test.js` pins their geometry). The dark values are the suite
    pattern's, restated in `tests/design/suite-theme.json`, and this file must
    equal it (W6-CDX-38). Three surfaces and the selection wash (`--cx-surface-0`
    to `-2`, `--cx-select-wash`; the fourth and fifth steps retired with the hover

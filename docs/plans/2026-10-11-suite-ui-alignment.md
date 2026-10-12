@@ -690,6 +690,44 @@ const STEPS = {
 
 ---
 
+**Deviations, recorded at execution (W6-CDX-43, 2026-10-12).** Full list and reasons in the spec's "Recorded at
+execution" section. In short: the picker's steps are CSS-derived from `--cx-accent-h` (K7); a sixth binding,
+`--cx-accent-fill-hover`, carries the primary button's hover (the light text hover cannot be a fill); the light
+on-accent is the dark ink (presence label); dark values changed where the new per-theme gate found a dark failure
+that predates the track; the geometry fingerprint was written before the colour pass and is green after it; and the
+tests for `userPrefs` and the accent swatch were rewritten after the code, not before (the picker's behaviour changed
+in the same commit). The daylight theme is named `daylight` in the gates, because the vendored parser reserves
+`light` for its base map.
+
+**Review round, W6-CDX-43 (2026-10-12): dark changes, with before and after.** The review asked that dark be byte-identical
+in the deferred families unless a contrast gate fails. `tests/design/deferred-dark.json` holds the resolved dark value of
+every colour declaration in those families from the original tree; `deferred-dark.test.js` fails on any other change. The
+sites below are the only dark changes. "Before" is the original dark value and its lowest measured contrast over the
+surfaces the rule paints on (the original tree fails each one); "after" is the new value and its lowest contrast.
+
+| Site | Dark before (contrast) | Dark after (contrast) |
+|---|---|---|
+| `.gh-file-picker__item.selected` | `#fff` on the accent (2.80) | the on-accent ink (7.10); the fill is unchanged in dark |
+| `.gh-btn-danger-ghost:hover` | `#f44336` (4.40) | the bright danger, `oklch(0.87 0.1 25)` (10.02) |
+| `.gh-history__file-status--removed`, `.gh-pr-badge--closed` | `#f85149` (4.47) | the bright danger (9.27) |
+| `.gh-history__file-status--renamed` | `#8282dc` (4.24) | the violet, `oklch(0.86 0.1 291)` (9.07) |
+| `.gh-pr-badge--merged` | `#a371f7` (4.33) | the violet (9.14) |
+| `.gh-diff__hunk-header` | `rgba(44, 167, 219, 0.7)` (3.61) | the picked accent text step, `oklch(0.68 0.13 230)` (5.75) |
+| `.editor-status.success` | the success text (4.43) | the bright success, `oklch(0.86 0.15 151)` (9.65) |
+| `.editor-status.error` | the danger text (4.01) | the bright danger (9.51) |
+| `.comment-sidebar__count`, `.comment-btn--primary`, `.comment-btn--active`, `.comment-count-badge` | `#fff` on the accent fill (2.80) | the on-accent ink (7.10) |
+| `.comment-tag`, `.comment-tag-btn--active` on the comment, suggestion and issue kinds | `#fff` on the kind fill (2.36 to 3.49) | the ink (5.70 to 8.41). The note and question kinds keep their original labels (`#fff` on `#ab47bc`, 4.82; `#222` on `#ffa726`) |
+| `.document-readonly blockquote` | `--text-muted` (4.33) | `--text-secondary` (6.61) |
+| `.code-lang-badge` | `#888` (4.38) | `--text-secondary` (6.27) |
+| `.document-readonly code` | `#e06c75` (4.45) | the bright danger (8.79) |
+| `.collab-avatar`, `.remote-cursor__label` | `#fff`, which measures under 4.5:1 on nine of the ten cursor colours | the label `avatarLabel()` chooses for each cursor colour, inline; `presence-label.test.js` resolves it in each theme |
+
+Every other site is dark-identical, including the restored `.gh-file-actions .btn.active`, `.gh-history__detail-actions
+.btn.active`, `.tiptap-toolbar__btn--active`, `.gh-history__file-status--added`, `.gh-pr-badge--open`, `.comment-btn--resolve`,
+`.comment-btn--delete`, `.comment-btn--icon:hover`, the GitHub status icons, the note and question kinds, and the code wash.
+Captures: the original tree's dark state of the GitHub history, the read-only document and the editor is in
+`docs/research/w6-cdx-43-light-theme-2026-10-12/dark-before/`; the same pages after the change are in `shots/`.
+
 ## PR 7: W6-CDX-44, the theme switch and the suite preference contract
 
 ### Task 7.1 The domain, server side

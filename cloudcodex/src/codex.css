@@ -83,6 +83,8 @@
   --cx-accent: var(--accent-400);
   --cx-accent-hover: var(--accent-300);
   --cx-accent-fill: var(--accent-400);
+  /* The primary button's hover on a filled accent: a lighter step than the fill, the ink's label on it (K7 notes). */
+  --cx-accent-fill-hover: var(--accent-300);
   --cx-on-accent: oklch(0.14 0.03 240);
   /* The dark step behind a white avatar label (painted.test.js measures it). */
   --cx-accent-dark: oklch(0.45 0.13 240);
@@ -157,8 +159,293 @@
   /* The focus ring follows the accent. */
   --cx-focus-ring: var(--cx-accent);
 
+  /* The deferred families' colour, tokenised (W6-CDX-43, colour only). Each binding's dark value is the literal it
+     replaces; its light value is chosen for the role the literal plays. The geometry fingerprint pins that nothing
+     else in those families moved, and deferred-colour.test.js measures every text binding on every surface. */
+  --cx-deferred-000000-a00: rgba(0, 0, 0, 0);
+  --cx-deferred-000000-a20: rgba(0, 0, 0, 0.2);
+  --cx-deferred-000000-a30: rgba(0, 0, 0, 0.3);
+  --cx-deferred-000000-a35: rgba(0, 0, 0, 0.35);
+  --cx-deferred-000000-a50: rgba(0, 0, 0, 0.5);
+  --cx-deferred-000000-a55: rgba(0, 0, 0, 0.55);
+  --cx-deferred-000000-a60: rgba(0, 0, 0, 0.6);
+  --cx-deferred-000000-a70: rgba(0, 0, 0, 0.7);
+  --cx-deferred-1a1a2e: #1a1a2e;
+  --cx-deferred-222: #222;
+  --cx-deferred-2ca7db-a05: rgba(44, 167, 219, 0.05);
+  --cx-deferred-2ca7db-a06: rgba(44, 167, 219, 0.06);
+  --cx-deferred-2ca7db-a08: rgba(44, 167, 219, 0.08);
+  --cx-deferred-2ca7db-a10: rgba(44, 167, 219, 0.1);
+  --cx-deferred-2ca7db-a12: rgba(44, 167, 219, 0.12);
+  --cx-deferred-2ca7db-a15: rgba(44, 167, 219, 0.15);
+  --cx-deferred-2ca7db-a18: rgba(44, 167, 219, 0.18);
+  --cx-deferred-2ca7db-a25: rgba(44, 167, 219, 0.25);
+  --cx-deferred-2ca7db-a30: rgba(44, 167, 219, 0.3);
+  --cx-deferred-333: #333;
+  --cx-deferred-34a853-a10: rgba(52, 168, 83, 0.1);
+  --cx-deferred-34a853-a30: rgba(52, 168, 83, 0.3);
+  --cx-deferred-3a3a3a: #3a3a3a;
+  --cx-deferred-3fb950: #3fb950;
+  --cx-deferred-3fb950-a10: rgba(63, 185, 80, 0.1);
+  --cx-deferred-3fb950-a15: rgba(63, 185, 80, 0.15);
+  --cx-deferred-4a9eff: #4a9eff;
+  --cx-deferred-4caf50-a15: rgba(76, 175, 80, 0.15);
+  --cx-deferred-50c878: #50c878;
+  --cx-deferred-50c878-a50: rgba(80, 200, 120, 0.5);
+  --cx-deferred-66bb6a: #66bb6a;
+  --cx-deferred-66bb6a-a15: rgba(102, 187, 106, 0.15);
+  --cx-deferred-66bb6a-text: #66bb6a;
+  --cx-deferred-8282dc-a15: rgba(130, 130, 220, 0.15);
+  --cx-deferred-888: #888;
+  --cx-deferred-a371f7-a15: rgba(163, 113, 247, 0.15);
+  --cx-deferred-aaffaa: #aaffaa;
+  --cx-deferred-ab47bc: #ab47bc;
+  --cx-deferred-active-text: var(--color-accent);
+  --cx-deferred-d29922: #d29922;
+  --cx-deferred-d29922-a15: rgba(210, 153, 34, 0.15);
+  --cx-deferred-d4d4d4: #d4d4d4;
+  --cx-deferred-e54545-a15: rgba(229, 69, 69, 0.15);
+  --cx-deferred-ef5350: #ef5350;
+  --cx-deferred-ef5350-a15: rgba(239, 83, 80, 0.15);
+  --cx-deferred-ef5350-text: #ef5350;
+  --cx-deferred-f44336-a10: rgba(244, 67, 54, 0.1);
+  --cx-deferred-f5a623: #f5a623;
+  --cx-deferred-f85149: #f85149;
+  --cx-deferred-f85149-a10: rgba(248, 81, 73, 0.1);
+  --cx-deferred-f85149-a15: rgba(248, 81, 73, 0.15);
+  --cx-deferred-ff6b6b: #ff6b6b;
+  --cx-deferred-ffa726: #ffa726;
+  --cx-deferred-ffaaaa: #ffaaaa;
+  --cx-deferred-ffeb3b-a08: rgba(255, 235, 59, 0.08);
+  --cx-deferred-ffeb3b-a10: rgba(255, 235, 59, 0.1);
+  --cx-deferred-ffeb3b-a40: rgba(255, 235, 59, 0.4);
+  --cx-deferred-fff: #fff;
+  --cx-deferred-ffffff-a02: rgba(255, 255, 255, 0.02);
+  --cx-deferred-ffffff-a03: rgba(255, 255, 255, 0.03);
+  --cx-deferred-ffffff-a04: rgba(255, 255, 255, 0.04);
+  --cx-deferred-ffffff-a05: rgba(255, 255, 255, 0.05);
+  --cx-deferred-ffffff-a06: rgba(255, 255, 255, 0.06);
+  --cx-deferred-ffffff-a08: rgba(255, 255, 255, 0.08);
+  --cx-deferred-ffffff-a10: rgba(255, 255, 255, 0.1);
+  --cx-deferred-ffffff-a12: rgba(255, 255, 255, 0.12);
+  --cx-deferred-ffffff-a30: rgba(255,255,255,0.3);
+  --cx-deferred-note-label: #fff;
+  --cx-deferred-tag-label: var(--cx-on-accent);
+
+  /* The code block: the wash behind a block of code (the editor's pre, a translucent black), and the highlight.js
+     token colours that paint on it (W6-CDX-43, colour only: the dark values are the literals they replace). Each
+     token is measured over the wash and every surface in tests/design/code-blocks.test.js. */
+  --cx-code-wash: oklch(0 0 0 / 0.25);
+  --cx-syntax-plain: #d4d4d4;
+  --cx-syntax-comment: #7cab67;
+  --cx-syntax-keyword: #5fa5e0;
+  --cx-syntax-string: #ce9178;
+  --cx-syntax-title: #dcdcaa;
+  --cx-syntax-type: #4ec9b0;
+  --cx-syntax-builtin: #ca8ac4;
+  --cx-syntax-formula: #d7ba7d;
+
   /* Drop shadows: the ink is black, at the suite pattern's two strengths and the modal's own. */
   --cx-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
   --cx-shadow-md: 0 4px 16px oklch(0 0 0 / 0.4);
   --cx-shadow-lg: 0 8px 24px oklch(0 0 0 / 0.6);
+}
+
+[data-theme='light'] {
+  /* color-scheme tells native selects, scrollbars and form chrome to paint light (X11). */
+  color-scheme: light;
+
+  /* Surfaces and the selection wash: the suite pattern's light column (tests/design/suite-theme.json). */
+  --cx-surface-0: oklch(0.985 0.002 230);
+  --cx-surface-1: oklch(0.962 0.004 230);
+  --cx-surface-2: oklch(0.995 0.003 230);
+  --cx-select-wash: oklch(0.97 0.025 230);
+
+  /* Text. Primary clears 7:1 on every surface; secondary and faint clear 4.5:1 on every surface. */
+  --cx-text-primary: oklch(0.24 0.015 240);
+  --cx-text-secondary: oklch(0.45 0.015 240);
+  --cx-text-faint: oklch(0.54 0.012 240);
+
+  /* Accent. The light text step is the package's accent-600 (the one that reads as text on a light surface), the
+     hover its accent-700, and the fill its accent-400, the same fill as dark, with the dark ink as its label. */
+  --cx-accent: var(--accent-600);
+  --cx-accent-hover: var(--accent-700);
+  --cx-accent-fill: var(--accent-400);
+  --cx-accent-fill-hover: var(--accent-300);
+  /* The contract's light ink (suite-theme.json; a change is made in both products). avatar-label.js pins INK_LUMINANCE to it. */
+  --cx-on-accent: oklch(0.16 0.03 240);
+  /* The dark step behind a white avatar label: white clears 4.5:1 on it in either theme. */
+  --cx-accent-dark: oklch(0.45 0.13 240);
+  /* Danger is the same fill and ink as dark: the package's bright step with the dark ink, and an inset ring on hover. */
+  --cx-danger-fill: var(--danger-bright);
+  --cx-danger-fill-hover: var(--cx-danger-fill);
+  --cx-danger-fill-press: var(--cx-danger-fill);
+  --cx-on-danger: var(--cx-on-accent);
+  /* The info label on its fixed info wash, the package's accent-700 on a light wash. */
+  --cx-info-bright: var(--accent-700);
+
+  /* Lines and the overlay wash. */
+  --cx-border: oklch(0.9 0.006 230);
+  --cx-border-strong: oklch(0.82 0.01 230);
+  --cx-scrim: oklch(0.12 0.02 240 / 0.5);
+
+  /* Tints: the same translucent washes as dark, each the hue and chroma of its dark twin. A wash is translucent, so
+     it reads on a light surface too; its labels are the deep steps below (tests/design/tints.test.js measures them). */
+  --cx-tint-accent-soft: oklch(0.686 0.128 231.9 / 0.08);
+  --cx-tint-accent: oklch(0.686 0.128 231.9 / 0.12);
+  --cx-tint-accent-mid: oklch(0.686 0.128 231.9 / 0.15);
+  --cx-tint-accent-strong: oklch(0.686 0.128 231.9 / 0.2);
+  --cx-tint-accent-strongest: oklch(0.686 0.128 231.9 / 0.25);
+  --cx-tint-warning-soft: oklch(0.793 0.171 70.7 / 0.08);
+  --cx-tint-warning: oklch(0.793 0.171 70.7 / 0.12);
+  --cx-tint-warning-mid: oklch(0.793 0.171 70.7 / 0.15);
+  --cx-tint-danger-soft: oklch(0.639 0.181 25.9 / 0.08);
+  --cx-tint-danger: oklch(0.639 0.181 25.9 / 0.12);
+  --cx-tint-danger-strong: oklch(0.639 0.181 25.9 / 0.22);
+  --cx-tint-success: oklch(0.745 0.158 151.5 / 0.12);
+  --cx-tint-violet: oklch(0.697 0.17 288.9 / 0.15);
+  --cx-tint-accent-faint: oklch(0.686 0.128 231.9 / 0.06);
+  --cx-tint-accent-quiet: oklch(0.686 0.128 231.9 / 0.1);
+  --cx-tint-accent-lift: oklch(0.686 0.128 231.9 / 0.14);
+  --cx-tint-accent-edge: oklch(0.686 0.128 231.9 / 0.3);
+  --cx-tint-success-quiet: oklch(0.673 0.162 144.2 / 0.1);
+  --cx-tint-success-mid: oklch(0.673 0.162 144.2 / 0.15);
+  --cx-tint-danger-quiet: oklch(0.621 0.197 25 / 0.1);
+  --cx-tint-slate: oklch(0.711 0.035 256.8 / 0.1);
+  --cx-tint-neutral: oklch(0.627 0 0 / 0.15);
+  /* A pale ring on a light surface would vanish, so the ring is the ink at a low strength. */
+  --cx-ring-light: oklch(0.2 0.02 240 / 0.25);
+  /* The presence dot and its glow: a status mark, the same on both themes. */
+  --cx-presence: oklch(0.745 0.158 151.5);
+  --cx-presence-glow: oklch(0.745 0.158 151.5 / 0.5);
+
+  /* Labels on a tint, the deep steps: the dark labels measure 1.27 to 1.41 on a light wash (the spec). */
+  --cx-warning-bright: oklch(0.42 0.11 78);
+  --cx-danger-bright: oklch(0.47 0.19 25);
+  --cx-success-bright: oklch(0.42 0.12 150);
+  --cx-violet: oklch(0.45 0.15 291);
+  --cx-shadow-popover: 0 4px 12px oklch(0.2 0.02 240 / 0.14);
+
+  /* Status text: Codex's own L 0.5 values, measured on the light surfaces (the spec's status notes). */
+  --cx-danger: var(--danger-deep);
+  --cx-success: oklch(0.5 0.13 150);
+  --cx-warning: oklch(0.5 0.11 78);
+  --cx-info: var(--accent-600);
+
+  /* The focus ring follows the accent. */
+  --cx-focus-ring: var(--cx-accent);
+
+  /* The deferred families' colour, tokenised (W6-CDX-43, colour only). Each binding's dark value is the literal it
+     replaces; its light value is chosen for the role the literal plays. The geometry fingerprint pins that nothing
+     else in those families moved, and deferred-colour.test.js measures every text binding on every surface. */
+  --cx-deferred-000000-a00: oklch(0 0 0 / 0);
+  --cx-deferred-000000-a20: oklch(0.2 0.02 240 / 0.1);
+  --cx-deferred-000000-a30: oklch(0.2 0.02 240 / 0.15);
+  --cx-deferred-000000-a35: oklch(0.2 0.02 240 / 0.175);
+  --cx-deferred-000000-a50: oklch(0 0 0 / 0.5);
+  --cx-deferred-000000-a55: oklch(0 0 0 / 0.55);
+  --cx-deferred-000000-a60: oklch(0 0 0 / 0.6);
+  --cx-deferred-000000-a70: oklch(0 0 0 / 0.7);
+  --cx-deferred-1a1a2e: var(--cx-surface-1);
+  --cx-deferred-222: oklch(0.2 0.01 240);
+  --cx-deferred-2ca7db-a05: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a06: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a08: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a10: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a12: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a15: oklch(0.49 0.12 240 / 0.075);
+  --cx-deferred-2ca7db-a18: oklch(0.49 0.12 240 / 0.09);
+  --cx-deferred-2ca7db-a25: oklch(0.49 0.12 240 / 0.125);
+  --cx-deferred-2ca7db-a30: oklch(0.49 0.12 240 / 0.15);
+  --cx-deferred-333: var(--cx-border-strong);
+  --cx-deferred-34a853-a10: oklch(0.55 0.14 150 / 0.06);
+  --cx-deferred-34a853-a30: oklch(0.55 0.14 150 / 0.15);
+  --cx-deferred-3a3a3a: var(--cx-border-strong);
+  --cx-deferred-3fb950: oklch(0.46 0.13 146);
+  --cx-deferred-3fb950-a10: oklch(0.55 0.14 150 / 0.06);
+  --cx-deferred-3fb950-a15: oklch(0.55 0.14 150 / 0.075);
+  --cx-deferred-4a9eff: oklch(0.72 0.14 254);
+  --cx-deferred-4caf50-a15: oklch(0.55 0.14 150 / 0.075);
+  --cx-deferred-50c878: oklch(0.745 0.158 151.5);
+  --cx-deferred-50c878-a50: oklch(0.55 0.14 150 / 0.25);
+  --cx-deferred-66bb6a: oklch(0.74 0.14 145);
+  --cx-deferred-66bb6a-a15: oklch(0.55 0.14 150 / 0.075);
+  --cx-deferred-66bb6a-text: oklch(0.45 0.13 150);
+  --cx-deferred-8282dc-a15: oklch(0.55 0.15 290 / 0.075);
+  --cx-deferred-888: oklch(0.5 0.01 240);
+  --cx-deferred-a371f7-a15: oklch(0.55 0.15 290 / 0.075);
+  --cx-deferred-aaffaa: oklch(0.45 0.13 145);
+  --cx-deferred-ab47bc: oklch(0.7 0.16 322);
+  --cx-deferred-active-text: var(--cx-accent-hover);
+  --cx-deferred-d29922: oklch(0.5 0.11 80);
+  --cx-deferred-d29922-a15: oklch(0.6 0.13 78 / 0.075);
+  --cx-deferred-d4d4d4: var(--cx-text-primary);
+  --cx-deferred-e54545-a15: oklch(0.55 0.19 25 / 0.075);
+  --cx-deferred-ef5350: oklch(0.72 0.16 25);
+  --cx-deferred-ef5350-a15: oklch(0.55 0.19 25 / 0.075);
+  --cx-deferred-ef5350-text: oklch(0.5 0.19 25);
+  --cx-deferred-f44336-a10: oklch(0.55 0.19 25 / 0.075);
+  --cx-deferred-f5a623: oklch(0.5 0.13 73);
+  --cx-deferred-f85149: oklch(0.5 0.19 27);
+  --cx-deferred-f85149-a10: oklch(0.55 0.19 25 / 0.075);
+  --cx-deferred-f85149-a15: oklch(0.55 0.19 25 / 0.075);
+  --cx-deferred-ff6b6b: oklch(0.5 0.19 23);
+  --cx-deferred-ffa726: oklch(0.8 0.15 70);
+  --cx-deferred-ffaaaa: oklch(0.5 0.15 20);
+  --cx-deferred-ffeb3b-a08: oklch(0.9 0.16 98 / 0.08);
+  --cx-deferred-ffeb3b-a10: oklch(0.9 0.16 98 / 0.1);
+  --cx-deferred-ffeb3b-a40: oklch(0.9 0.16 98 / 0.4);
+  --cx-deferred-fff: #fff;
+  --cx-deferred-ffffff-a02: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a03: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a04: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a05: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a06: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a08: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a10: oklch(0.2 0.02 240 / 0.05);
+  --cx-deferred-ffffff-a12: oklch(0.2 0.02 240 / 0.06);
+  --cx-deferred-ffffff-a30: oklch(0.2 0.02 240 / 0.15);
+  --cx-deferred-note-label: var(--cx-on-accent);
+  --cx-deferred-tag-label: var(--cx-on-accent);
+
+  /* The code block: a light wash behind code, and deep token colours that clear 4.6:1 on it and on every surface
+     (tests/design/code-blocks.test.js). Each keeps its dark twin's hue; the light step is chosen per token. */
+  --cx-code-wash: oklch(0.2 0.02 240 / 0.05);
+  --cx-syntax-plain: oklch(0.3 0.01 90);
+  --cx-syntax-comment: oklch(0.46 0.1 136.5);
+  --cx-syntax-keyword: oklch(0.46 0.12 245.8);
+  --cx-syntax-string: oklch(0.48 0.1 43.2);
+  --cx-syntax-title: oklch(0.46 0.08 107.7);
+  --cx-syntax-type: oklch(0.46 0.09 177.2);
+  --cx-syntax-builtin: oklch(0.46 0.12 329.9);
+  --cx-syntax-formula: oklch(0.48 0.09 85.1);
+
+  /* Drop shadows: the ink is the suite's dark neutral, at the pattern's two light strengths and the modal's own. */
+  --cx-shadow-sm: 0 1px 2px oklch(0.2 0.02 240 / 0.06);
+  --cx-shadow-md: 0 4px 16px oklch(0.2 0.02 240 / 0.1);
+  --cx-shadow-lg: 0 8px 24px oklch(0.2 0.02 240 / 0.16);
+}
+
+/*
+ * The picked accent. The picker writes a hue, --cx-accent-h, and an attribute, data-accent, on the root (userPrefs.js);
+ * each theme derives its four steps from that hue here. The steps are the contract's (docs/specs/...): text, hover,
+ * fill and selection wash, plus the dark step behind a white label. Without data-accent the default bindings above
+ * apply. tests/design/accents.test.js substitutes H and measures every hue on every surface of each theme.
+ */
+[data-theme='dark'][data-accent] {
+  --cx-accent: oklch(0.68 0.13 var(--cx-accent-h));
+  --cx-accent-hover: oklch(0.78 0.1 var(--cx-accent-h));
+  --cx-accent-fill: oklch(0.68 0.13 var(--cx-accent-h));
+  --cx-accent-fill-hover: oklch(0.78 0.1 var(--cx-accent-h));
+  --cx-select-wash: oklch(0.21 0.055 var(--cx-accent-h));
+  --cx-accent-dark: oklch(0.45 0.13 var(--cx-accent-h));
+}
+
+[data-theme='light'][data-accent] {
+  --cx-accent: oklch(0.47 0.12 var(--cx-accent-h));
+  --cx-accent-hover: oklch(0.41 0.1 var(--cx-accent-h));
+  --cx-accent-fill: oklch(0.68 0.13 var(--cx-accent-h));
+  --cx-accent-fill-hover: oklch(0.78 0.1 var(--cx-accent-h));
+  --cx-select-wash: oklch(0.97 0.025 var(--cx-accent-h));
+  --cx-accent-dark: oklch(0.45 0.13 var(--cx-accent-h));
 }

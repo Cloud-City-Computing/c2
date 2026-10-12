@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react';
+import { labelStyle } from '../lib/avatar-label.js';
 
 export default function CollabPresence({ users, connected }) {
   const [expanded, setExpanded] = useState(false);
@@ -29,7 +30,7 @@ export default function CollabPresence({ users, connected }) {
           <span
             key={u.id}
             className="collab-avatar"
-            style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}
+            style={u.avatar_url ? { backgroundColor: 'transparent' } : labelStyle(u.color)}
             title={u.name}
           >
             {u.avatar_url
@@ -42,7 +43,7 @@ export default function CollabPresence({ users, connected }) {
         <div className="collab-user-list">
           {users.map((u) => (
             <div key={u.id} className="collab-user-list__item">
-              <span className="collab-avatar collab-avatar--sm" style={{ backgroundColor: u.avatar_url ? 'transparent' : u.color }}>
+              <span className="collab-avatar collab-avatar--sm" style={u.avatar_url ? { backgroundColor: 'transparent' } : labelStyle(u.color)}>
                 {u.avatar_url
                   ? <img src={u.avatar_url} alt={u.name} />
                   : (u.name?.charAt(0)?.toUpperCase() || '?')}

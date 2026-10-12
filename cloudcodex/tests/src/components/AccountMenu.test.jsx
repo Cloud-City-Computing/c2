@@ -32,7 +32,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { apiFetch, getSessStorage, getSessionTokenFromCookie, setSessionCookie } from '../../../src/util.jsx';
 import { AccountPreferencesPanel, AccountInfoUpdatePanel, UserPreferencesPanel } from '../../../src/components/AccountMenu.jsx';
-import { ACCENTS, accentValue } from '../../../src/tokens/accents.js';
+import { ACCENTS, swatchValue } from '../../../src/tokens/accents.js';
 
 beforeEach(() => {
   apiFetch.mockReset();
@@ -292,10 +292,10 @@ describe('UserPreferencesPanel: the accent swatches render from src/tokens/accen
     }
   });
 
-  it('paints each swatch from accentValue(hue) of its own key', () => {
+  it('paints each swatch from swatchValue(hue) of its own key: the fill step, one per hue (K7)', () => {
     const { container } = render(<UserPreferencesPanel />);
     const swatches = [...container.querySelectorAll('.color-swatch')];
     const painted = swatches.map((s) => s.style.getPropertyValue('--swatch-color'));
-    expect(painted).toEqual(Object.values(ACCENTS).map((hue) => accentValue(hue)));
+    expect(painted).toEqual(Object.values(ACCENTS).map((hue) => swatchValue(hue)));
   });
 });

@@ -12,20 +12,22 @@ import {
   contrastRatio, parseThemeTokens, resolveToken, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { declaredNames } from '../../vendor/cloud-city-design/gates/dangling.mjs';
-import { ROOT, THEME_OPTIONS } from './buckets.js';
+import { ROOT, THEME_NAMES, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
 const spec = JSON.parse(read('tests/design/pairs.json'));
 
-// core.css is the :root base; codex.css's [data-theme='dark'] block lays over it.
-const dark = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS).dark;
+// core.css is the :root base; codex.css's theme block lays over it, once per theme (W6-CDX-43: dark and daylight).
+const themed = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS);
 
 const pairs = spec.groups.flatMap((group) => (group.on === 'surfaces' ? spec.surfaces : group.on)
   .map((surface) => ({ text: group.text, surface, min: group.min })));
 
-describe('codex.css contrast', () => {
+describe.each(THEME_NAMES)('codex.css contrast, %s theme', (theme) => {
+  const dark = themed[theme];
+
   it('declares a real matrix', () => {
     // 10 groups over 5 surfaces plus the on-accent pair.
     expect(pairs.length).toBeGreaterThanOrEqual(51);
@@ -47,6 +49,7 @@ describe('codex.css contrast', () => {
     const named = new Set([...pairs.flatMap((p) => [p.text, p.surface]), ...Object.keys(spec.decorative)]);
     const colours = declaredNames(codex).filter((name) => resolveToken(dark, name) !== undefined);
     expect(colours.length).toBeGreaterThanOrEqual(19);
-    expect(colours.filter((name) => !named.has(name))).toEqual([]);
+    // The deferred families' bindings (--cx-deferred-*) are measured in use, rule by rule, by deferred-colour.test.js.
+    expect(colours.filter((name) => !named.has(name) && !name.startsWith('--cx-deferred-'))).toEqual([]);
   });
 });

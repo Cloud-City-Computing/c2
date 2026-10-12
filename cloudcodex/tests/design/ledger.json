@@ -1,6 +1,9 @@
 {
   "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
-  "_measured": "187 after W6-CDX-38: the fallbacks on declared names came out (they never painted), and the undeclared names read a --cx- token, so the deferred GitHub, editor and comments banners fell by 157 and the total by 212. Every bucket fell or held. Before that: 399 after W6-CDX-29's leftover pass, which burned Modal + Overlay (5), Login Tabs (1), Signup Validation Styles (3) and Toast Notifications (11, the presence avatars and tooltip, which render on the archive and explore pages, and the Welcome block), 20 in all. Before that pass, 419 after the first W6-CDX-29 pass (73 findings: admin, settings, notification, activity, watch, archive-access, squad, export, preferences, and AccountMenu.jsx). Earlier: 492 by this ledger's own sum (the old 500 note was stale), 500 after W6-CDX-25, 510 after W6-CDX-28, 631 at W6-CDX-23's review fixes, 674 at W6-CDX-22.",
+  "_measured": "16 after W6-CDX-43's colour pass: the deferred families' literal colours are --cx-deferred- bindings (dark: the literal; light: chosen per role), and their text is measured in use by tests/design/deferred-colour.test.js. The remainder: util.jsx's print stylesheet (out of scope, a later wave owns print), four HTML entities (&#8226; and &#8676; read as hex colours by the scanner, not colours) in Editor.jsx, and the comment highlight's runtime rgba() built from TAG_COLORS in CommentHighlights.jsx (a JS colour, not a stylesheet one). Before that: 187 after W6-CDX-38: the fallbacks on declared names came out (they never painted), and the undeclared names read a --cx- token. Before that: 399 after W6-CDX-29's leftover pass. Earlier: 492 by this ledger's own sum (the old 500 note was stale), 500 after W6-CDX-25, 510 after W6-CDX-28, 631 at W6-CDX-23's review fixes, 674 at W6-CDX-22.",
+  "src/util.jsx": {
+    "(file)": 6
+  },
   "src/components/CommentForm.jsx": {
     "(file)": 2
   },
@@ -13,49 +16,15 @@
   "src/components/CommentSidebar.jsx": {
     "(file)": 1
   },
-  "src/index.css": {
-    "Mentions (inline @user chips)": 2,
-    "GitHub Integration": 47,
-    "Editor Log": 26,
-    "Markdown Editor": 2,
-    "Version History": 4,
-    "Collaborative Editing - Presence UI": 8,
-    "Remote Cursors - Collaborative Editing": 2,
-    "Comments & Annotations": 51,
-    "Read-only Document View": 10,
-    "Code Block with Language Selector": 3,
-    "Syntax Highlighting (highlight.js compatible - dark theme)": 8,
-    "Draw.io Diagram Block": 6
-  },
   "src/pages/Editor.jsx": {
     "(file)": 4
-  },
-  "src/pages/GitHubPage.jsx": {
-    "(file)": 2
-  },
-  "src/util.jsx": {
-    "(file)": 6
   },
   "_later": {
     "src/components/CommentForm.jsx :: (file)": "The comment components, deferred to the roadmap row UI-later with the editor canvas.",
     "src/components/CommentHighlights.jsx :: (file)": "The comment components, deferred to the roadmap row UI-later with the editor canvas.",
     "src/components/CommentManager.jsx :: (file)": "The comment components, deferred to the roadmap row UI-later with the editor canvas.",
     "src/components/CommentSidebar.jsx :: (file)": "The comment components, deferred to the roadmap row UI-later with the editor canvas.",
-    "src/components/github/CodeEmbedPickerModal.jsx :: (file)": "The GitHub embed picker, deferred to the roadmap row UI-later with the GitHub surface.",
-    "src/index.css :: Mentions (inline @user chips)": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage. The chip sits inside .tiptap.",
-    "src/index.css :: GitHub Integration": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the GitHub surface, until track E2 extracts GitHubPage.jsx (out of test scope).",
-    "src/index.css :: Editor Log": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage.",
-    "src/index.css :: Markdown Editor": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage. Classified editor: the markdown source pane of the editor.",
-    "src/index.css :: Version History": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage. Classified editor-adjacent: it renders on the document page beside the canvas, and its restore writes into the canvas, so it waits with the canvas.",
-    "src/index.css :: Collaborative Editing - Presence UI": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage. The live presence inside the document.",
-    "src/index.css :: Remote Cursors - Collaborative Editing": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage.",
-    "src/index.css :: Comments & Annotations": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the comments, which sit on the editor canvas and share its annotation family.",
-    "src/index.css :: Read-only Document View": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage. Classified editor-adjacent: it shares the canvas markup (.tiptap), so a value change here changes how the canvas renders.",
-    "src/index.css :: Code Block with Language Selector": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage.",
-    "src/index.css :: Syntax Highlighting (highlight.js compatible - dark theme)": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage.",
-    "src/index.css :: Draw.io Diagram Block": "Deferred to the roadmap row UI-later (docs/specs/roadmap.md): the editor canvas, because changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage.",
     "src/pages/Editor.jsx :: (file)": "The editor page, deferred to the roadmap row UI-later with the editor canvas.",
-    "src/pages/GitHubPage.jsx :: (file)": "The GitHub page (out of test scope), deferred to the roadmap row UI-later with the GitHub surface.",
     "src/util.jsx :: (file)": "The print stylesheet, not a surface; a later wave owns print."
   }
 }

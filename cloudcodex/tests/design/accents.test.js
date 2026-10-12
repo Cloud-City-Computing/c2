@@ -12,16 +12,40 @@ import {
   contrastRatio, parseColor, parseThemeTokens, resolveToken, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import {
-  ACCENTS, LEGACY_ACCENT, accentValue, accentHover, accentFill, accentDark,
+  ACCENTS, LEGACY_ACCENT, STEPS,
 } from '../../src/tokens/accents.js';
-import { ROOT, THEME_OPTIONS } from './buckets.js';
+import { ROOT, THEME_NAMES, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
-const dark = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS).dark;
+const themed = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS);
 const WHITE = parseColor('#fff');
-const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-select-wash'];
+// The surfaces of a theme that a label can sit on: the three surface steps, and the picked wash, which is per hue.
+const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2'];
+// codex.css's picked-accent block for a theme, its declarations with var(--cx-accent-h) written as H.
+const CSS_THEME = { dark: 'dark', daylight: 'light' };
+const accentBlock = (theme) => {
+  const m = new RegExp(`\\[data-theme='${CSS_THEME[theme]}'\\]\\[data-accent\\]\\s*\\{([^}]*)\\}`).exec(codex);
+  if (!m) throw new Error(`no picked-accent block for ${theme} in codex.css`);
+  return new Map(m[1].split(';').map((d) => d.trim()).filter(Boolean).map((d) => {
+    const i = d.indexOf(':');
+    return [d.slice(0, i).trim(), d.slice(i + 1).trim().replace(/var\(--cx-accent-h\)/g, 'H')];
+  }));
+};
+// The CSS name each contract step is declared under in the picked-accent block.
+const CSS_NAME = {
+  text: '--cx-accent', hover: '--cx-accent-hover', fill: '--cx-accent-fill', fillHover: '--cx-accent-fill-hover',
+  wash: '--cx-select-wash', dark: '--cx-accent-dark',
+};
+// The picked steps of a theme and hue as codex.css declares them (W6-CDX-43 review, item 6): the gates below measure
+// these, so an edit to the stylesheet is what they test, and the JS table is checked against it, not used in its place.
+const cssSteps = (theme, hue) => {
+  const block = accentBlock(theme);
+  return Object.fromEntries(Object.entries(CSS_NAME).map(([step, name]) => [
+    step, block.get(name).replaceAll('H', String(hue)),
+  ]));
+};
 
 // The hue of a `--name: oklch(L C H)` declaration in the vendored core.css.
 const hueOf = (name) => {
@@ -82,41 +106,78 @@ describe('the accent picker', () => {
     }
   });
 
-  it('measures every hue on every surface at 4.5:1 or more, and measured all 32 pairs', () => {
-    const measured = [];
-    for (const [name, hue] of entries) {
-      const text = parseColor(accentValue(hue));
-      for (const surface of SURFACES) {
-        const ratio = contrastRatio(text, resolveToken(dark, surface));
-        measured.push({ name, surface, ratio });
-        expect(ratio, `${name} on ${surface} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+  it('declares, in codex.css, the contract steps of each theme with H substituted (K7)', () => {
+    for (const theme of THEME_NAMES) {
+      const block = accentBlock(theme);
+      for (const [step, css] of Object.entries(CSS_NAME)) {
+        expect(block.get(css), `${theme} ${css}`).toBe(STEPS[theme][step]);
       }
     }
-    // Four surfaces (W6-CDX-38 retired the two hover steps) times the eight picker hues.
-    expect(measured.length).toBe(32);
   });
 
-  it('keeps a white label at 4.5:1 or more on every hue dark step (the avatar initials)', () => {
-    for (const [name, hue] of entries) {
-      const ratio = contrastRatio(WHITE, parseColor(accentDark(hue)));
-      expect(ratio, `white on ${name} dark measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+  it('measures the text step and the hover step of every hue on every surface of each theme at 4.5:1: 8 by 2 by 4 by 2', () => {
+    const measured = [];
+    for (const theme of THEME_NAMES) {
+      for (const [name, hue] of entries) {
+        const steps = cssSteps(theme, hue);
+        for (const step of ['text', 'hover']) {
+          const text = parseColor(steps[step]);
+          for (const surface of [...SURFACES, 'picked wash']) {
+            const bg = surface === 'picked wash' ? parseColor(steps.wash) : resolveToken(themed[theme], surface);
+            const ratio = contrastRatio(text, bg);
+            measured.push({ theme, name, step, surface, ratio });
+            expect(ratio, `${theme} ${name} ${step} on ${surface} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+          }
+        }
+      }
+    }
+    expect(measured.length).toBe(128);
+  });
+
+  it('keeps the on-accent label at 4.5:1 or more on every hue fill and fill hover, in both themes', () => {
+    let checked = 0;
+    for (const theme of THEME_NAMES) {
+      const label = resolveToken(themed[theme], '--cx-on-accent');
+      for (const [name, hue] of entries) {
+        const steps = cssSteps(theme, hue);
+        for (const fill of [steps.fill, steps.fillHover]) {
+          const ratio = contrastRatio(label, parseColor(fill));
+          checked += 1;
+          expect(ratio, `${theme} on-accent on ${name} ${fill} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+    expect(checked).toBe(32);
+  });
+
+  it('keeps the focus ring at 3:1 or more on every surface, in both themes, for every hue', () => {
+    for (const theme of THEME_NAMES) {
+      for (const [name, hue] of entries) {
+        const ring = parseColor(cssSteps(theme, hue).text);
+        for (const surface of [...SURFACES, cssSteps(theme, hue).wash]) {
+          const bg = surface.startsWith('oklch') ? parseColor(surface) : resolveToken(themed[theme], surface);
+          expect(contrastRatio(ring, bg), `${theme} ring ${name} on ${surface}`).toBeGreaterThanOrEqual(3);
+        }
+      }
     }
   });
 
-  it('keeps the on-accent label at 4.5:1 or more on every hue fill', () => {
-    const label = resolveToken(dark, '--cx-on-accent');
-    for (const [name, hue] of entries) {
-      const ratio = contrastRatio(label, parseColor(accentFill(hue)));
-      expect(ratio, `on-accent on ${name} fill measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+  it('keeps a white label at 4.5:1 or more on every hue dark step (the avatar initials), in both themes', () => {
+    for (const theme of THEME_NAMES) {
+      for (const [name, hue] of entries) {
+        const ratio = contrastRatio(WHITE, parseColor(cssSteps(theme, hue).dark));
+        expect(ratio, `white on ${theme} ${name} dark measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
     }
   });
 
-  it('builds the hover and fill steps from the same hue, lighter and stronger than the text step', () => {
-    for (const [, hue] of entries) {
-      expect(accentHover(hue)).toBe(`oklch(0.88 0.06 ${hue})`);
-      expect(accentFill(hue)).toBe(`oklch(0.68 0.13 ${hue})`);
-      expect(accentValue(hue)).toBe(`oklch(0.78 0.12 ${hue})`);
-      expect(accentDark(hue)).toBe(`oklch(0.45 0.13 ${hue})`);
+  it('gives the fill hover a step that differs from the fill it sits on', () => {
+    for (const theme of THEME_NAMES) {
+      for (const [, hue] of entries) {
+        const steps = cssSteps(theme, hue);
+        expect(steps.fillHover).not.toBe(steps.fill);
+        expect(contrastRatio(parseColor(steps.fillHover), parseColor(steps.fill))).toBeGreaterThan(1.05);
+      }
     }
   });
 });

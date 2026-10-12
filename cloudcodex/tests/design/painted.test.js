@@ -17,8 +17,10 @@ import path from 'node:path';
 import {
   compositeOver, contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
-import { ACCENTS, accentValue, accentFill, accentDark } from '../../src/tokens/accents.js';
-import { ROOT, THEME_OPTIONS } from './buckets.js';
+import { ACCENTS } from '../../src/tokens/accents.js';
+import {
+  pickedTokens, ROOT, THEME_OPTIONS, THEME_NAMES,
+} from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
@@ -26,373 +28,373 @@ const codex = read('src/codex.css');
 const index = read('src/index.css');
 // The bridge is the first :root block of index.css; its names join the dark map so a chain can follow them.
 const bridgeBlock = /:root\s*\{([^}]*)\}/.exec(index)[1];
-const base = parseThemeTokens(`${core}\n${codex}\n:root {${bridgeBlock}}`, THEME_OPTIONS).dark;
+const themed = parseThemeTokens(`${core}\n${codex}\n:root {${bridgeBlock}}`, THEME_OPTIONS);
+describe.each(THEME_NAMES)('%s theme', (theme) => {
+  const base = themed[theme];
 
-/** The last value of one property in the last rule whose selector is exactly `selector`. */
-function declared(selector, prop) {
-  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  let value;
-  for (const m of index.matchAll(new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`, 'g'))) {
-    for (const d of m[1].matchAll(/(?:^|;|\s)([a-z-]+)\s*:\s*([^;]+);/g)) {
-      if (d[1] === prop) value = d[2].trim();
+
+  /** The last value of one property in the last rule whose selector is exactly `selector`. */
+  function declared(selector, prop) {
+    const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let value;
+    for (const m of index.matchAll(new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`, 'g'))) {
+      for (const d of m[1].matchAll(/(?:^|;|\s)([a-z-]+)\s*:\s*([^;]+);/g)) {
+        if (d[1] === prop) value = d[2].trim();
+      }
+    }
+    if (value === undefined) throw new Error(`${selector} declares no ${prop} in src/index.css`);
+    return value;
+  }
+
+  /** The colour a declared value paints: a var() is followed through the tokens, a literal is parsed. */
+  function paint(value, tokens) {
+    const v = /^var\((--[\w-]+)\)$/.exec(value);
+    const raw = v ? resolveTokenValue(tokens, v[1]) : value;
+    const colour = parseColor(raw);
+    if (colour === undefined) throw new Error(`${value} does not paint a colour`);
+    return colour;
+  }
+
+  /** A site's label colour: its own colour declaration, or the danger button's where the rule only sets a background. */
+  function labelOf(site) {
+    try {
+      return declared(site, 'color');
+    } catch {
+      return declared('.btn-danger', 'color');
     }
   }
-  if (value === undefined) throw new Error(`${selector} declares no ${prop} in src/index.css`);
-  return value;
-}
+  // The picked accent of this theme: the contract's steps for the hue, written over the base map.
+  const onAccent = (hue) => ({ ...base, ...pickedTokens(theme, hue) });
+  // The default accent (no inline override) and each of the eight picker hues.
+  const ACCENT_TOKENS = [['default', base], ...Object.entries(ACCENTS).map(([name, hue]) => [name, onAccent(hue)])];
 
-/** The colour a declared value paints: a var() is followed through the tokens, a literal is parsed. */
-function paint(value, tokens) {
-  const v = /^var\((--[\w-]+)\)$/.exec(value);
-  const raw = v ? resolveTokenValue(tokens, v[1]) : value;
-  const colour = parseColor(raw);
-  if (colour === undefined) throw new Error(`${value} does not paint a colour`);
-  return colour;
-}
-
-/** A site's label colour: its own colour declaration, or the danger button's where the rule only sets a background. */
-function labelOf(site) {
-  try {
-    return declared(site, 'color');
-  } catch {
-    return declared('.btn-danger', 'color');
-  }
-}
-const onAccent = (hue) => ({
-  ...base,
-  '--cx-accent': accentValue(hue),
-  '--cx-accent-fill': accentFill(hue),
-  '--cx-accent-dark': accentDark(hue),
-});
-// The default accent (no inline override) and each of the eight picker hues.
-const ACCENT_TOKENS = [['default', base], ...Object.entries(ACCENTS).map(([name, hue]) => [name, onAccent(hue)])];
-
-// Sites where a label sits on the accent fill (the primary ink, the active and hover states).
-const ACCENT_FILL_SITES = [
-  '.btn-primary',
-  '.pref-toggle-btn.active',
-  '.explore-pagination__num--active',
-  '.explore-pagination__num--active:hover',
-  '.drawio-block__edit-btn:hover:not(:disabled)',
-];
-// Sites where a white label sits on the accent dark (avatar initials).
-// The notification and activity placeholders moved to the --avatar-1..8 tints (W6-CDX-39, Task 2.4); their ink
-// is measured in controls.test.js.
-const ACCENT_DARK_SITES = [
-  '.mention-picker__avatar--placeholder',
-];
-// Sites where a white label sits on a danger background, at rest and on hover.
-const DANGER_REST_SITES = ['.btn-danger', '.btn-ghost.btn-danger:hover'];
-const DANGER_HOVER_SITES = ['.btn-danger:hover:not(:disabled)', '.drawio-block__delete-btn:hover'];
-
-describe('a label on the accent fill is measured in the colour the page paints', () => {
-  it('reads each site from the real declarations, with the label and the fill both named', () => {
-    for (const site of ACCENT_FILL_SITES) {
-      expect(declared(site, 'background'), site).toBe('var(--brand-blue-hover)');
-      expect(declared(site, 'color'), site).toMatch(/^var\(--cx-on-accent\)$/);
-    }
-  });
-
-  it('measures at least 4.5:1 for every site on the default accent and all eight picker hues', () => {
-    const measured = [];
-    for (const site of ACCENT_FILL_SITES) {
-      const label = paint(declared(site, 'color'), base);
-      for (const [name, tokens] of ACCENT_TOKENS) {
-        const fill = paint(declared(site, 'background'), tokens);
-        const ratio = contrastRatio(label, fill);
-        measured.push(ratio);
-        expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-      }
-    }
-    expect(measured.length).toBe(ACCENT_FILL_SITES.length * 9);
-  });
-});
-
-describe('a white label on the accent dark is measured on the avatar that paints it', () => {
-  it('reads each avatar site from the real declarations', () => {
-    // W6-CDX-29 moved the notification and activity avatars onto the --cx-white token; the mention
-    // avatar (editor-adjacent, deferred) still carries the literal, and both measure the same white.
-    for (const site of ACCENT_DARK_SITES) {
-      expect(declared(site, 'background'), site).toBe('var(--brand-blue-dark)');
-      const white = '#fff';
-      expect(declared(site, 'color'), site).toBe(white);
-    }
-  });
-
-  it('measures at least 4.5:1 for every avatar on the default accent and all eight picker hues', () => {
-    const measured = [];
-    for (const site of ACCENT_DARK_SITES) {
-      for (const [name, tokens] of ACCENT_TOKENS) {
-        const ratio = contrastRatio(paint(labelOf(site), tokens), paint(declared(site, 'background'), tokens));
-        measured.push(ratio);
-        expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-      }
-    }
-    expect(measured.length).toBe(ACCENT_DARK_SITES.length * 9);
-  });
-
-  it('moves with the picked accent: the dark step differs from the default and follows the hue', () => {
-    const def = paint(declared(ACCENT_DARK_SITES[0], 'background'), base);
-    const nova = paint(declared(ACCENT_DARK_SITES[0], 'background'), onAccent(ACCENTS.nova));
-    expect(nova).not.toEqual(def);
-  });
-});
-
-describe('a white label on a danger background', () => {
-  it('measures at least 4.5:1 at rest', () => {
-    for (const site of DANGER_REST_SITES) {
-      const ratio = contrastRatio(paint(labelOf(site), base), paint(declared(site, 'background'), base));
-      expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it('measures at least 4.5:1 on hover; the button hover is an inset ring on the same fill (W6-CDX-38)', () => {
-    // The button keeps its fill on hover (no background declared), so the rest fill is the one it measures.
-    const fills = { '.btn-danger:hover:not(:disabled)': '.btn-danger' };
-    for (const site of DANGER_HOVER_SITES) {
-      const ratio = contrastRatio(paint(labelOf(site), base), paint(declared(fills[site] ?? site, 'background'), base));
-      expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-    expect(() => declared('.btn-danger:hover:not(:disabled)', 'background')).toThrow();
-    expect(declared('.btn-danger:hover:not(:disabled)', 'box-shadow')).toBe('inset 0 0 0 1px var(--cx-text-primary)');
-  });
-});
-
-describe('the focus ring: one non-text component, measured at 3:1 against every surface it can sit on', () => {
-  const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-select-wash'];
-  // The one :focus-visible outline; the ring sits on the page around the control, so the surfaces are the measure.
-  const ringToken = /var\((--[\w-]+)\)/.exec(declared(':focus-visible', 'outline'))?.[1];
-
-  it('reads the ring from the real :focus-visible declaration', () => {
-    expect(declared(':focus-visible', 'outline')).toBe('2px solid var(--cx-focus-ring)');
-    expect(ringToken).toBe('--cx-focus-ring');
-  });
-
-  it('measures at least 3:1 on every surface, on the default accent and all eight picker hues', () => {
-    const measured = [];
-    for (const [name, tokens] of ACCENT_TOKENS) {
-      const ring = paint(`var(${ringToken})`, tokens);
-      for (const surface of SURFACES) {
-        const ratio = contrastRatio(ring, paint(`var(${surface})`, tokens));
-        measured.push(ratio);
-        expect(ratio, `the ring on ${surface} (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(3);
-      }
-    }
-    expect(measured.length).toBe(SURFACES.length * 9);
-  });
-});
-
-describe('the label and fill on the buttons and the toast are read from their own declarations', () => {
-  it('paints the label of a danger control with --cx-on-danger, not a literal', () => {
-    expect(declared('.btn-danger', 'color')).toBe('var(--cx-on-danger)');
-  });
-
-  it('keeps the primary hover on the accent text step, with the on-accent label at 4.5:1 or more on every hue', () => {
-    expect(declared('.btn-primary:hover:not(:disabled)', 'background')).toBe('var(--cx-accent-hover)');
-    expect(declared('.btn-primary', 'color')).toBe('var(--cx-on-accent)');
-    for (const [name, tokens] of ACCENT_TOKENS) {
-      const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
-        paint(declared('.btn-primary:hover:not(:disabled)', 'background'), tokens));
-      expect(ratio, `primary hover (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it('measures each toast label on the toast surface at 4.5:1 or more, at rest and on the dismiss hover', () => {
-    // W6-CDX-39: the message is the primary text; the status is the icon's colour, not the message's.
-    const surface = paint(declared('.toast', 'background'), base);
-    for (const site of ['.toast', '.toast--info .toast__icon', '.toast--success .toast__icon',
-      '.toast--error .toast__icon', '.toast__dismiss']) {
-      const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
-      expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-    const hover = contrastRatio(paint(declared('.toast__dismiss:hover', 'color'), base),
-      paint(declared('.toast__dismiss:hover', 'background'), base));
-    expect(hover, `dismiss hover measures ${round(hover)}:1`).toBeGreaterThanOrEqual(4.5);
-  });
-});
-
-describe('no source under src/ removes a focus ring', () => {
-  // Every stylesheet and every script under src/, comments removed first, so prose cannot trip it.
-  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) return walk(full);
-    return /\.(css|js|jsx)$/.test(e.name) ? [full] : [];
-  });
-  // One pattern for both forms: CSS (`outline-color: transparent`) and a script style object (`outlineColor: 'transparent'`).
-  const SUPPRESSION = /(?<![-\w])outline(?:-color|-width|-style|Color|Width|Style)?\s*:\s*['"`]?(?:none|transparent|0(?:px|em|rem|%)?)(?![-\w])|(?<![-\w])outline\s*:[^;}\n]*\btransparent\b/gi;
-  const suppressionsIn = (source) => {
-    const bare = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    return [...bare.matchAll(SUPPRESSION)].map((m) => m[0]);
-  };
-
-  it('finds none of the suppressing forms in a seeded source, and each form is caught', () => {
-    expect(suppressionsIn('.a { outline: none; }')).toHaveLength(1);
-    expect(suppressionsIn('.a { outline: 0; }')).toHaveLength(1);
-    expect(suppressionsIn('.a { outline-color: transparent; }')).toHaveLength(1);
-    expect(suppressionsIn('.a { outline-width: 0; }')).toHaveLength(1);
-    expect(suppressionsIn('.a { outline: 2px solid transparent; }')).toHaveLength(1);
-    expect(suppressionsIn("const s = { outlineColor: 'transparent' };")).toHaveLength(1);
-    expect(suppressionsIn("const s = { outline: 'none' };")).toHaveLength(1);
-    expect(suppressionsIn('/* outline: none; in prose */ .a { outline: 2px solid red; }')).toEqual([]);
-  });
-
-  it('finds no suppressing form in any file under src/', () => {
-    const found = walk(path.join(ROOT, 'src')).flatMap((file) => suppressionsIn(readFileSync(file, 'utf8'))
-      .map((hit) => `${path.relative(ROOT, file)}: ${hit}`));
-    expect(found, 'a focus ring is restyled, never removed').toEqual([]);
-  });
-});
-
-describe('a text field has one focus treatment, the shared ring, and no second halo', () => {
-  it('declares no box-shadow on a focus rule for an input or a textarea', () => {
-    const bare = index.replace(/\/\*[\s\S]*?\*\//g, '');
-    const rules = [...bare.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
-    const halos = rules
-      .filter((r) => /:focus(?![-\w])/.test(r.sel) && /input|textarea/.test(r.sel) && /box-shadow\s*:/.test(r.body))
-      .map((r) => r.sel);
-    expect(halos, 'the global ring is the field\'s focus indicator; a second ring doubles on click').toEqual([]);
-  });
-});
-
-describe('a text field draws its ring against its own border, so it reads as one edge', () => {
-  it.each(['input', 'textarea'])('%s:focus-visible has a zero outline offset', (field) => {
-    expect(declared(`${field}:focus-visible`, 'outline-offset')).toBe('0');
-  });
-});
-
-describe('a container that clips its contents draws the ring inside the control', () => {
-  const CLIPPING = [
-    '.editor-container',
-    '.markdown-editor__textarea-wrapper',
-    '.gh-browser__sidebar',
-    '.gh-modal',
-    '.gh-sync-menu',
-    '.gh-merge-dialog__pane',
+  // Sites where a label sits on the accent fill (the primary ink, the active and hover states).
+  const ACCENT_FILL_SITES = [
+    '.btn-primary',
+    '.pref-toggle-btn.active',
+    '.explore-pagination__num--active',
+    '.explore-pagination__num--active:hover',
+    '.drawio-block__edit-btn:hover:not(:disabled)',
   ];
-  it.each(CLIPPING)('%s clips, and its focused controls use a negative outline offset', (container) => {
-    expect(declared(container, 'overflow')).toBe('hidden');
-    expect(parseFloat(declared(`${container} :focus-visible`, 'outline-offset'))).toBeLessThan(0);
-  });
-});
+  // Sites where a white label sits on the accent dark (avatar initials).
+  // The notification and activity placeholders moved to the --avatar-1..8 tints (W6-CDX-39, Task 2.4); their ink
+  // is measured in controls.test.js.
+  const ACCENT_DARK_SITES = [
+    '.mention-picker__avatar--placeholder',
+  ];
+  // Sites where a white label sits on a danger background, at rest and on hover.
+  const DANGER_REST_SITES = ['.btn-danger', '.btn-ghost.btn-danger:hover'];
+  const DANGER_HOVER_SITES = ['.btn-danger:hover:not(:disabled)', '.drawio-block__delete-btn:hover'];
 
-describe('the button states: disabled, hover, pressed', () => {
-  it('disables visibly and shows no hover or press on a disabled control', () => {
-    expect(declared('.btn:disabled', 'cursor')).toBe('not-allowed');
-    expect(declared('.btn:disabled', 'opacity')).toMatch(/^0?\.\d+$/);
-  });
+  describe('a label on the accent fill is measured in the colour the page paints', () => {
+    it('reads each site from the real declarations, with the label and the fill both named', () => {
+      for (const site of ACCENT_FILL_SITES) {
+        expect(declared(site, 'background'), site).toBe('var(--brand-blue-hover)');
+        expect(declared(site, 'color'), site).toMatch(/^var\(--cx-on-accent\)$/);
+      }
+    });
 
-  it('presses the primary one step, with the on-accent label at 4.5:1 or more on the pressed fill on every hue', () => {
-    expect(declared('.btn-primary:active:not(:disabled)', 'background')).toBe('var(--cx-accent-hover)');
-    for (const [name, tokens] of ACCENT_TOKENS) {
-      const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
-        paint(declared('.btn-primary:active:not(:disabled)', 'background'), tokens));
-      expect(ratio, `primary pressed (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it('presses the ghost one step, with its secondary label at 4.5:1 or more on the pressed surface', () => {
-    expect(declared('.btn-ghost:active:not(:disabled)', 'background')).toBe('var(--cx-surface-1)');
-    const ratio = contrastRatio(paint(declared('.btn-ghost', 'color'), base),
-      paint(declared('.btn-ghost:active:not(:disabled)', 'background'), base));
-    expect(ratio, `ghost pressed measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it('presses the danger on the same fill, with the dark label at 4.5:1 or more on it', () => {
-    expect(declared('.btn-danger:active:not(:disabled)', 'background')).toBe('var(--cx-danger-fill-press)');
-    const press = paint(declared('.btn-danger:active:not(:disabled)', 'background'), base);
-    const label = paint(declared('.btn-danger', 'color'), base);
-    expect(contrastRatio(label, press), 'danger pressed label').toBeGreaterThanOrEqual(4.5);
-  });
-});
-
-describe('a dialog close control is measured on the panel it sits on', () => {
-  // The × is 24px and bold, and it sits on the dialog's own panel; at rest it is the muted text and on hover the accent.
-  const PANEL = '.modal-content';
-  it('reads the control and the panel from the real declarations', () => {
-    expect(declared('.close-button', 'color'), 'the rest colour').toBe('var(--text-muted)');
-    expect(declared(PANEL, 'background'), 'the panel').toBe('var(--bg-panel)');
-    expect(declared('.close-button:hover', 'color'), 'the hover colour').toBe('var(--cx-accent)');
+    it('measures at least 4.5:1 for every site on the default accent and all eight picker hues', () => {
+      const measured = [];
+      for (const site of ACCENT_FILL_SITES) {
+        const label = paint(declared(site, 'color'), base);
+        for (const [name, tokens] of ACCENT_TOKENS) {
+          const fill = paint(declared(site, 'background'), tokens);
+          const ratio = contrastRatio(label, fill);
+          measured.push(ratio);
+          expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      expect(measured.length).toBe(ACCENT_FILL_SITES.length * 9);
+    });
   });
 
-  it('measures at least 4.5:1 at rest and on hover, on the default accent and all eight picker hues', () => {
-    const measured = [];
-    for (const site of ['.close-button', '.close-button:hover']) {
+  describe('a white label on the accent dark is measured on the avatar that paints it', () => {
+    it('reads each avatar site from the real declarations', () => {
+      // W6-CDX-29 moved the notification and activity avatars onto the --cx-white token; the mention
+      // avatar (editor-adjacent, deferred) reads its white through the --cx-deferred-fff binding (W6-CDX-43),
+      // whose dark value is the same #fff. Both measure the same white in both themes.
+      for (const site of ACCENT_DARK_SITES) {
+        expect(declared(site, 'background'), site).toBe('var(--brand-blue-dark)');
+        expect(declared(site, 'color'), site).toMatch(/^var\(--(cx-white|cx-deferred-fff)\)$/);
+      }
+    });
+
+    it('measures at least 4.5:1 for every avatar on the default accent and all eight picker hues', () => {
+      const measured = [];
+      for (const site of ACCENT_DARK_SITES) {
+        for (const [name, tokens] of ACCENT_TOKENS) {
+          const ratio = contrastRatio(paint(labelOf(site), tokens), paint(declared(site, 'background'), tokens));
+          measured.push(ratio);
+          expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      expect(measured.length).toBe(ACCENT_DARK_SITES.length * 9);
+    });
+
+    it('moves with the picked accent: the dark step differs from the default and follows the hue', () => {
+      const def = paint(declared(ACCENT_DARK_SITES[0], 'background'), base);
+      const nova = paint(declared(ACCENT_DARK_SITES[0], 'background'), onAccent(ACCENTS.nova));
+      expect(nova).not.toEqual(def);
+    });
+  });
+
+  describe('a white label on a danger background', () => {
+    it('measures at least 4.5:1 at rest', () => {
+      for (const site of DANGER_REST_SITES) {
+        const ratio = contrastRatio(paint(labelOf(site), base), paint(declared(site, 'background'), base));
+        expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('measures at least 4.5:1 on hover; the button hover is an inset ring on the same fill (W6-CDX-38)', () => {
+      // The button keeps its fill on hover (no background declared), so the rest fill is the one it measures.
+      const fills = { '.btn-danger:hover:not(:disabled)': '.btn-danger' };
+      for (const site of DANGER_HOVER_SITES) {
+        const ratio = contrastRatio(paint(labelOf(site), base), paint(declared(fills[site] ?? site, 'background'), base));
+        expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(() => declared('.btn-danger:hover:not(:disabled)', 'background')).toThrow();
+      expect(declared('.btn-danger:hover:not(:disabled)', 'box-shadow')).toBe('inset 0 0 0 1px var(--cx-text-primary)');
+    });
+  });
+
+  describe('the focus ring: one non-text component, measured at 3:1 against every surface it can sit on', () => {
+    const SURFACES = ['--cx-surface-0', '--cx-surface-1', '--cx-surface-2', '--cx-select-wash'];
+    // The one :focus-visible outline; the ring sits on the page around the control, so the surfaces are the measure.
+    const ringToken = /var\((--[\w-]+)\)/.exec(declared(':focus-visible', 'outline'))?.[1];
+
+    it('reads the ring from the real :focus-visible declaration', () => {
+      expect(declared(':focus-visible', 'outline')).toBe('2px solid var(--cx-focus-ring)');
+      expect(ringToken).toBe('--cx-focus-ring');
+    });
+
+    it('measures at least 3:1 on every surface, on the default accent and all eight picker hues', () => {
+      const measured = [];
+      for (const [name, tokens] of ACCENT_TOKENS) {
+        const ring = paint(`var(${ringToken})`, tokens);
+        for (const surface of SURFACES) {
+          const ratio = contrastRatio(ring, paint(`var(${surface})`, tokens));
+          measured.push(ratio);
+          expect(ratio, `the ring on ${surface} (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(3);
+        }
+      }
+      expect(measured.length).toBe(SURFACES.length * 9);
+    });
+  });
+
+  describe('the label and fill on the buttons and the toast are read from their own declarations', () => {
+    it('paints the label of a danger control with --cx-on-danger, not a literal', () => {
+      expect(declared('.btn-danger', 'color')).toBe('var(--cx-on-danger)');
+    });
+
+    it('keeps the primary hover on the lighter fill step, with the on-accent label at 4.5:1 or more on every hue', () => {
+      expect(declared('.btn-primary:hover:not(:disabled)', 'background')).toBe('var(--cx-accent-fill-hover)');
+      expect(declared('.btn-primary', 'color')).toBe('var(--cx-on-accent)');
+      for (const [name, tokens] of ACCENT_TOKENS) {
+        const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
+          paint(declared('.btn-primary:hover:not(:disabled)', 'background'), tokens));
+        expect(ratio, `primary hover (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('measures each toast label on the toast surface at 4.5:1 or more, at rest and on the dismiss hover', () => {
+      // W6-CDX-39: the message is the primary text; the status is the icon's colour, not the message's.
+      const surface = paint(declared('.toast', 'background'), base);
+      for (const site of ['.toast', '.toast--info .toast__icon', '.toast--success .toast__icon',
+        '.toast--error .toast__icon', '.toast__dismiss']) {
+        const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
+        expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+      const hover = contrastRatio(paint(declared('.toast__dismiss:hover', 'color'), base),
+        paint(declared('.toast__dismiss:hover', 'background'), base));
+      expect(hover, `dismiss hover measures ${round(hover)}:1`).toBeGreaterThanOrEqual(4.5);
+    });
+  });
+
+  describe('no source under src/ removes a focus ring', () => {
+    // Every stylesheet and every script under src/, comments removed first, so prose cannot trip it.
+    const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) return walk(full);
+      return /\.(css|js|jsx)$/.test(e.name) ? [full] : [];
+    });
+    // One pattern for both forms: CSS (`outline-color: transparent`) and a script style object (`outlineColor: 'transparent'`).
+    const SUPPRESSION = /(?<![-\w])outline(?:-color|-width|-style|Color|Width|Style)?\s*:\s*['"`]?(?:none|transparent|0(?:px|em|rem|%)?)(?![-\w])|(?<![-\w])outline\s*:[^;}\n]*\btransparent\b/gi;
+    const suppressionsIn = (source) => {
+      const bare = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      return [...bare.matchAll(SUPPRESSION)].map((m) => m[0]);
+    };
+
+    it('finds none of the suppressing forms in a seeded source, and each form is caught', () => {
+      expect(suppressionsIn('.a { outline: none; }')).toHaveLength(1);
+      expect(suppressionsIn('.a { outline: 0; }')).toHaveLength(1);
+      expect(suppressionsIn('.a { outline-color: transparent; }')).toHaveLength(1);
+      expect(suppressionsIn('.a { outline-width: 0; }')).toHaveLength(1);
+      expect(suppressionsIn('.a { outline: 2px solid transparent; }')).toHaveLength(1);
+      expect(suppressionsIn("const s = { outlineColor: 'transparent' };")).toHaveLength(1);
+      expect(suppressionsIn("const s = { outline: 'none' };")).toHaveLength(1);
+      expect(suppressionsIn('/* outline: none; in prose */ .a { outline: 2px solid red; }')).toEqual([]);
+    });
+
+    it('finds no suppressing form in any file under src/', () => {
+      const found = walk(path.join(ROOT, 'src')).flatMap((file) => suppressionsIn(readFileSync(file, 'utf8'))
+        .map((hit) => `${path.relative(ROOT, file)}: ${hit}`));
+      expect(found, 'a focus ring is restyled, never removed').toEqual([]);
+    });
+  });
+
+  describe('a text field has one focus treatment, the shared ring, and no second halo', () => {
+    it('declares no box-shadow on a focus rule for an input or a textarea', () => {
+      const bare = index.replace(/\/\*[\s\S]*?\*\//g, '');
+      const rules = [...bare.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
+      const halos = rules
+        .filter((r) => /:focus(?![-\w])/.test(r.sel) && /input|textarea/.test(r.sel) && /box-shadow\s*:/.test(r.body))
+        .map((r) => r.sel);
+      expect(halos, 'the global ring is the field\'s focus indicator; a second ring doubles on click').toEqual([]);
+    });
+  });
+
+  describe('a text field draws its ring against its own border, so it reads as one edge', () => {
+    it.each(['input', 'textarea'])('%s:focus-visible has a zero outline offset', (field) => {
+      expect(declared(`${field}:focus-visible`, 'outline-offset')).toBe('0');
+    });
+  });
+
+  describe('a container that clips its contents draws the ring inside the control', () => {
+    const CLIPPING = [
+      '.editor-container',
+      '.markdown-editor__textarea-wrapper',
+      '.gh-browser__sidebar',
+      '.gh-modal',
+      '.gh-sync-menu',
+      '.gh-merge-dialog__pane',
+    ];
+    it.each(CLIPPING)('%s clips, and its focused controls use a negative outline offset', (container) => {
+      expect(declared(container, 'overflow')).toBe('hidden');
+      expect(parseFloat(declared(`${container} :focus-visible`, 'outline-offset'))).toBeLessThan(0);
+    });
+  });
+
+  describe('the button states: disabled, hover, pressed', () => {
+    it('disables visibly and shows no hover or press on a disabled control', () => {
+      expect(declared('.btn:disabled', 'cursor')).toBe('not-allowed');
+      expect(declared('.btn:disabled', 'opacity')).toMatch(/^0?\.\d+$/);
+    });
+
+    it('presses the primary one step, with the on-accent label at 4.5:1 or more on the pressed fill on every hue', () => {
+      expect(declared('.btn-primary:active:not(:disabled)', 'background')).toBe('var(--cx-accent-fill-hover)');
+      for (const [name, tokens] of ACCENT_TOKENS) {
+        const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
+          paint(declared('.btn-primary:active:not(:disabled)', 'background'), tokens));
+        expect(ratio, `primary pressed (${name}) measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('presses the ghost one step, with its secondary label at 4.5:1 or more on the pressed surface', () => {
+      expect(declared('.btn-ghost:active:not(:disabled)', 'background')).toBe('var(--cx-surface-1)');
+      const ratio = contrastRatio(paint(declared('.btn-ghost', 'color'), base),
+        paint(declared('.btn-ghost:active:not(:disabled)', 'background'), base));
+      expect(ratio, `ghost pressed measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('presses the danger on the same fill, with the dark label at 4.5:1 or more on it', () => {
+      expect(declared('.btn-danger:active:not(:disabled)', 'background')).toBe('var(--cx-danger-fill-press)');
+      const press = paint(declared('.btn-danger:active:not(:disabled)', 'background'), base);
+      const label = paint(declared('.btn-danger', 'color'), base);
+      expect(contrastRatio(label, press), 'danger pressed label').toBeGreaterThanOrEqual(4.5);
+    });
+  });
+
+  describe('a dialog close control is measured on the panel it sits on', () => {
+    // The × is 24px and bold, and it sits on the dialog's own panel; at rest it is the muted text and on hover the accent.
+    const PANEL = '.modal-content';
+    it('reads the control and the panel from the real declarations', () => {
+      expect(declared('.close-button', 'color'), 'the rest colour').toBe('var(--text-muted)');
+      expect(declared(PANEL, 'background'), 'the panel').toBe('var(--bg-panel)');
+      expect(declared('.close-button:hover', 'color'), 'the hover colour').toBe('var(--cx-accent)');
+    });
+
+    it('measures at least 4.5:1 at rest and on hover, on the default accent and all eight picker hues', () => {
+      const measured = [];
+      for (const site of ['.close-button', '.close-button:hover']) {
+        for (const [name, tokens] of ACCENT_TOKENS) {
+          const panel = paint(declared(PANEL, 'background'), tokens);
+          const ratio = contrastRatio(paint(declared(site, 'color'), tokens), panel);
+          measured.push(ratio);
+          expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      expect(measured.length).toBe(2 * 9);
+    });
+  });
+
+  describe('the toast dismiss target', () => {
+    it('is at least 24 by 24 CSS pixels', () => {
+      expect(parseFloat(declared('.toast__dismiss', 'min-width'))).toBeGreaterThanOrEqual(24);
+      expect(parseFloat(declared('.toast__dismiss', 'min-height'))).toBeGreaterThanOrEqual(24);
+    });
+  });
+
+  describe('the suite cluster labels (W6-CDX-25) are measured on the surface that paints them', () => {
+    // W6-CDX-40: the cluster sits at the top of the sidebar, which paints the surface its labels sit on.
+    const SIDEBAR = '.sidebar';
+    const PANEL = '.cc-suite__panel';
+
+    it('reads each label, its surface and the current-product state from the real declarations', () => {
+      expect(declared(SIDEBAR, 'background')).toBe('var(--cx-surface-1)');
+      expect(declared('.cc-suite__name', 'color')).toBe('var(--text-primary)');
+      expect(declared('.cc-suite__eyebrow', 'color')).toBe('var(--text-muted)');
+      expect(declared(PANEL, 'background')).toBe('var(--bg-secondary)');
+      expect(declared('.cc-suite__link', 'color')).toBe('var(--text-primary)');
+      expect(declared('.cc-suite__link[aria-current="true"]', 'color')).toBe('var(--cx-accent)');
+      expect(declared('.cc-suite__link:hover', 'color')).toBe('var(--cx-accent-hover)');
+      expect(declared('.cc-suite__link:hover', 'background')).toBe('var(--cx-tint-accent-soft)');
+    });
+
+    it('measures the name, the eyebrow and the panel links at 4.5:1 or more on their surfaces', () => {
+      const sidebar = paint(declared(SIDEBAR, 'background'), base);
+      const panel = paint(declared(PANEL, 'background'), base);
+      for (const [site, surface] of [['.cc-suite__name', sidebar], ['.cc-suite__eyebrow', sidebar], ['.cc-suite__link', panel]]) {
+        const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
+        expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('measures the current product and the hovered link on every accent, the tint composited over the panel', () => {
+      const measured = [];
       for (const [name, tokens] of ACCENT_TOKENS) {
         const panel = paint(declared(PANEL, 'background'), tokens);
-        const ratio = contrastRatio(paint(declared(site, 'color'), tokens), panel);
-        measured.push(ratio);
-        expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+        const current = contrastRatio(paint(declared('.cc-suite__link[aria-current="true"]', 'color'), tokens), panel);
+        const tint = paint(declared('.cc-suite__link:hover', 'background'), tokens);
+        const hovered = contrastRatio(paint(declared('.cc-suite__link:hover', 'color'), tokens), compositeOver(tint, panel));
+        for (const [site, ratio] of [['current product', current], ['hovered link', hovered]]) {
+          measured.push(ratio);
+          expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
       }
-    }
-    expect(measured.length).toBe(2 * 9);
-  });
-});
-
-describe('the toast dismiss target', () => {
-  it('is at least 24 by 24 CSS pixels', () => {
-    expect(parseFloat(declared('.toast__dismiss', 'min-width'))).toBeGreaterThanOrEqual(24);
-    expect(parseFloat(declared('.toast__dismiss', 'min-height'))).toBeGreaterThanOrEqual(24);
-  });
-});
-
-describe('the suite cluster labels (W6-CDX-25) are measured on the surface that paints them', () => {
-  // W6-CDX-40: the cluster sits at the top of the sidebar, which paints the surface its labels sit on.
-  const SIDEBAR = '.sidebar';
-  const PANEL = '.cc-suite__panel';
-
-  it('reads each label, its surface and the current-product state from the real declarations', () => {
-    expect(declared(SIDEBAR, 'background')).toBe('var(--cx-surface-1)');
-    expect(declared('.cc-suite__name', 'color')).toBe('var(--text-primary)');
-    expect(declared('.cc-suite__eyebrow', 'color')).toBe('var(--text-muted)');
-    expect(declared(PANEL, 'background')).toBe('var(--bg-secondary)');
-    expect(declared('.cc-suite__link', 'color')).toBe('var(--text-primary)');
-    expect(declared('.cc-suite__link[aria-current="true"]', 'color')).toBe('var(--cx-accent)');
-    expect(declared('.cc-suite__link:hover', 'color')).toBe('var(--cx-accent-hover)');
-    expect(declared('.cc-suite__link:hover', 'background')).toBe('var(--cx-tint-accent-soft)');
+      expect(measured.length).toBe(ACCENT_TOKENS.length * 2);
+    });
   });
 
-  it('measures the name, the eyebrow and the panel links at 4.5:1 or more on their surfaces', () => {
-    const sidebar = paint(declared(SIDEBAR, 'background'), base);
-    const panel = paint(declared(PANEL, 'background'), base);
-    for (const [site, surface] of [['.cc-suite__name', sidebar], ['.cc-suite__eyebrow', sidebar], ['.cc-suite__link', panel]]) {
-      const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
-      expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-  });
+  describe('the Linked tasks link (W6-CDX-27) is measured on the page surface that paints it', () => {
+    const LINK = '.suite-doc-link';
 
-  it('measures the current product and the hovered link on every accent, the tint composited over the panel', () => {
-    const measured = [];
-    for (const [name, tokens] of ACCENT_TOKENS) {
-      const panel = paint(declared(PANEL, 'background'), tokens);
-      const current = contrastRatio(paint(declared('.cc-suite__link[aria-current="true"]', 'color'), tokens), panel);
-      const tint = paint(declared('.cc-suite__link:hover', 'background'), tokens);
-      const hovered = contrastRatio(paint(declared('.cc-suite__link:hover', 'color'), tokens), compositeOver(tint, panel));
-      for (const [site, ratio] of [['current product', current], ['hovered link', hovered]]) {
+    it('reads the link colour and the page surface from the real declarations', () => {
+      expect(declared(LINK, 'color')).toBe('var(--cx-accent)');
+      expect(declared(LINK, 'text-decoration')).toBe('underline');
+      expect(declared(':root', 'background-color')).toBe('var(--bg-main)');
+    });
+
+    it('measures the link at 4.5:1 or more on the page surface, on the default accent and all eight picker hues', () => {
+      const measured = [];
+      for (const [name, tokens] of ACCENT_TOKENS) {
+        const surface = paint('var(--bg-main)', tokens);
+        const ratio = contrastRatio(paint(declared(LINK, 'color'), tokens), surface);
         measured.push(ratio);
-        expect(ratio, `${site} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
+        expect(ratio, `${LINK} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
       }
-    }
-    expect(measured.length).toBe(ACCENT_TOKENS.length * 2);
-  });
-});
-
-describe('the Linked tasks link (W6-CDX-27) is measured on the page surface that paints it', () => {
-  const LINK = '.suite-doc-link';
-
-  it('reads the link colour and the page surface from the real declarations', () => {
-    expect(declared(LINK, 'color')).toBe('var(--cx-accent)');
-    expect(declared(LINK, 'text-decoration')).toBe('underline');
-    expect(declared(':root', 'background-color')).toBe('var(--bg-main)');
-  });
-
-  it('measures the link at 4.5:1 or more on the page surface, on the default accent and all eight picker hues', () => {
-    const measured = [];
-    for (const [name, tokens] of ACCENT_TOKENS) {
-      const surface = paint('var(--bg-main)', tokens);
-      const ratio = contrastRatio(paint(declared(LINK, 'color'), tokens), surface);
-      measured.push(ratio);
-      expect(ratio, `${LINK} on ${name} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
-    }
-    expect(measured.length).toBe(ACCENT_TOKENS.length);
+      expect(measured.length).toBe(ACCENT_TOKENS.length);
+    });
   });
 });

@@ -1,5 +1,5 @@
 {
-  "_rule": "The suite pattern's theme values, restated from docs/specs/2026-10-11-suite-ui-alignment.md (\"The light theme, token by token\"). src/codex.css must equal this file; a change here is a change to the suite pattern, made in both products. The light column arrives with W6-CDX-43.",
+  "_rule": "The suite pattern's theme values, restated from docs/specs/2026-10-11-suite-ui-alignment.md (\"The light theme, token by token\"). src/codex.css must equal this file; a change here is a change to the suite pattern, made in both products. The light column is the same table's light column (W6-CDX-43).",
   "dark": {
     "--cx-surface-0": "oklch(0.17 0.012 240)",
     "--cx-surface-1": "oklch(0.145 0.012 240)",
@@ -22,6 +22,30 @@
     "--cx-scrim": "oklch(0.12 0.02 240 / 0.5)",
     "--cx-shadow-sm": "0 1px 2px oklch(0 0 0 / 0.3)",
     "--cx-shadow-md": "0 4px 16px oklch(0 0 0 / 0.4)",
+    "--cx-focus-ring": "var(--cx-accent)"
+  },
+  "light": {
+    "--cx-surface-0": "oklch(0.985 0.002 230)",
+    "--cx-surface-1": "oklch(0.962 0.004 230)",
+    "--cx-surface-2": "oklch(0.995 0.003 230)",
+    "--cx-border": "oklch(0.9 0.006 230)",
+    "--cx-border-strong": "oklch(0.82 0.01 230)",
+    "--cx-text-primary": "oklch(0.24 0.015 240)",
+    "--cx-text-secondary": "oklch(0.45 0.015 240)",
+    "--cx-text-faint": "oklch(0.54 0.012 240)",
+    "--cx-accent": "var(--accent-600)",
+    "--cx-accent-hover": "var(--accent-700)",
+    "--cx-accent-fill": "var(--accent-400)",
+    "--cx-on-accent": "oklch(0.16 0.03 240)",
+    "--cx-select-wash": "oklch(0.97 0.025 230)",
+    "--cx-danger": "var(--danger-deep)",
+    "--cx-success": "oklch(0.5 0.13 150)",
+    "--cx-warning": "oklch(0.5 0.11 78)",
+    "--cx-info": "var(--accent-600)",
+    "--cx-danger-fill": "var(--danger-bright)",
+    "--cx-scrim": "oklch(0.12 0.02 240 / 0.5)",
+    "--cx-shadow-sm": "0 1px 2px oklch(0.2 0.02 240 / 0.06)",
+    "--cx-shadow-md": "0 4px 16px oklch(0.2 0.02 240 / 0.1)",
     "--cx-focus-ring": "var(--cx-accent)"
   }
 }
