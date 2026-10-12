@@ -33,7 +33,7 @@ beforeEach(() => {
 describe('InviteUserModal: the squad and role pickers are menus', () => {
   it('renders no native select', async () => {
     const { container } = render(<InviteUserModal />);
-    await screen.findByRole('button', { name: 'Squad (optional)' });
+    await screen.findByRole('button', { name: /^Squad \(optional\)/ });
     expect(container.querySelector('select')).toBeNull();
   });
 
@@ -42,17 +42,17 @@ describe('InviteUserModal: the squad and role pickers are menus', () => {
     render(<InviteUserModal />);
     await user.type(screen.getByLabelText('Email Address:'), 'new@example.test');
 
-    const squad = await screen.findByRole('button', { name: 'Squad (optional)' });
+    const squad = await screen.findByRole('button', { name: /^Squad \(optional\)/ });
     expect(squad.getAttribute('aria-haspopup')).toBe('menu');
     expect(squad.textContent).toContain('No squad, assign later');
     await user.click(squad);
-    await user.click(screen.getByRole('menuitem', { name: 'HQ / Core' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'HQ / Core' }));
     expect(squad.textContent).toContain('HQ / Core');
 
-    const role = await screen.findByRole('button', { name: 'Role:' });
+    const role = await screen.findByRole('button', { name: /^Role:/ });
     expect(role.textContent).toContain('Member');
     await user.click(role);
-    await user.click(screen.getByRole('menuitem', { name: 'Owner' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Owner' }));
     expect(role.textContent).toContain('Owner');
 
     await user.click(screen.getByRole('button', { name: 'Send Invitation' }));

@@ -234,31 +234,49 @@ place where the code proved a step wrong, or a step needed a choice the plan did
 
 ## PR 2: W6-CDX-39, controls, the Toast and dialog panels
 
-**Deviations, recorded at execution (W6-CDX-39, 2026-10-11).** The plan is the approval; each of these is a
-place where the code proved a step wrong, or the session needed a choice the plan did not spell out.
+**Deviations, recorded at execution (W6-CDX-39, 2026-10-11), and the momus round-one fixes.** The plan is the approval;
+each of these is a place where the code proved a step wrong, or the session needed a choice the plan did not spell out.
 
-1. **The danger item (Task 2.2) was already done in A1.** W6-CDX-38 moved the danger fill, its label and its inset-ring
-   hover (deviation 1 of PR 1), so this session pins it and does not change it.
+1. **The danger item (Task 2.2) was already done in A1** (W6-CDX-38, PR 1 deviation 1). This session pins it.
 2. **The primary's hover is the lighter accent step (`--cx-accent-hover`).** At rest and on hover it resolved to the same
    colour, so there was no hover at all. The rest fill keeps the `--brand-blue-hover` name, which resolves to
    `--cx-accent-fill`, because eight other sites read that name.
-3. **The small button keeps 26 px and 12 px text.** The anatomy's (0,2,0) rule would otherwise override the 101 `.btn-sm`
-   uses, so `.btn.btn-sm:not(...)` restates the small size at a higher specificity.
-4. **The field primitive is applied to the invite dialog's squad and role pairs only.** The sort, the search filters and
-   the Account panels keep their markup; they are the next families to take it.
-5. **The icon button with a 44 px hit area is not built.** Codex has no icon-button class yet; it lands with the first
-   control that needs one (PR 3 or 4).
-6. **Toast glyphs stay text characters.** The status glyphs (✕ ✓ ℹ) are not emoji and their tests read them. Emoji
-   icons remain in the admin console (PR 5) and the document header (PR 4).
-7. **The menu for export and GitHub sync is look-only.** Both keep their own markup and roles; converting them to the
-   `Menu` primitive would change their layout and their GitHub surface.
-8. **Destructive copy was not fully audited.** Most confirmations already name what is lost; the squad-member removal
-   (`WorkspacesPage`) and the repo removal (`ArchiveBrowser`) still read generically.
-9. **The two-cursor smoke is not run** (it needs two signed-in browsers). The editor's geometry is measured instead
-   (`docs/research/w6-cdx-39-controls-2026-10-11/`), and it is identical before and after.
-10. **The phone toast overlaps the bottom tab bar** until PR 3 removes that bar.
-
-
+3. **The button's height is a minimum (`min-height: 30px`, the small size 26 px), not a fixed height.** A label that wraps
+   or grows must not be clipped at 320 or 390 px. The measurement is in the research folder's README.
+4. **The `.btn` anatomy is scoped with the X4 exclusion; `.btn.btn-sm:not(...)` restates the small size** at a higher
+   specificity, so the 101 `.btn-sm` uses keep their size.
+5. **The Menu is single-choice, so its items are `menuitemradio` with `aria-checked`.** The trigger's accessible name is
+   "label: visible choice" (WCAG 2.5.3). Typing a letter jumps to the next item starting with it. Tab and Escape close the
+   menu and return focus to the trigger; inside an aria-modal dialog that holds the dialog's focus trap.
+6. **The popup lives in its own `#menu-root`, never in `#dropdown-root`** (showDropdownMenu hides and clears that node, so
+   a menu opened after the account panel was dismissed was invisible). Inside an aria-modal dialog it is portalled into
+   that dialog, so the dialog's focus trap and the accessibility tree reach it.
+7. **The popup follows the trigger on scroll (capture phase) and resize.**
+8. **The field primitive is on the search, the sort and the Account panels' fields** (`.field__control`, with `.field` and
+   `.field__label` on the Account pairs). Other inputs in the app keep their markup until their session.
+9. **The icon button (`.btn-icon`, 30 px box, 44 px hit area through `::before`) is on the dialog close buttons, the toast
+   dismiss and the search clear.** The GitHub family's close button is excluded (deferred).
+10. **The tabs are real `.tabs` and `.tabs__tab` classes** on the Notifications and Activity filter rows; the page classes
+    stay on the same elements. **The chip is a real `.chip`** on the admin role and invitation statuses and the owner role
+    in Workspaces.
+11. **Emoji and symbol glyphs in PR 2 scope are replaced by `icons.jsx`**: the toast's status marks, the favourite stars,
+    the Account warning, the archive comment count and Login's rule marks. **Moved, with reasons:** the admin console's
+    emoji and tick marks (its nav and stats are rebuilt as the tab row in PR 5, W6-CDX-42, and its tests are rewritten there);
+    the document header's and the export menu's emoji (PR 4, W6-CDX-41, the header is rebuilt there; the editor's own
+    toolbar glyphs are in the deferred families); the GitHub and draw.io glyphs (deferred, UI-later). The shell has no emoji at
+    this commit, so PR 3 has nothing to replace.
+12. **The destructive copy is one module, `src/lib/destructive-copy.js`,** with each sentence checked against the delete it
+    confirms (the FK actions in `init.sql` and the route's statement). Corrections found on the way: the workspace delete
+    said its archives and logs go, but they stay with no squad (`archives.squad_id` is SET NULL and the admin and owner routes
+    delete only the workspace row); the user delete now names the sessions, comments, favorites and memberships that go and
+    the documents that stay with no author. The repository removal names only the link.
+13. **The two-cursor smoke is not run** (it needs two signed-in browsers). The editor's geometry is measured instead
+    (`docs/research/w6-cdx-39-controls-2026-10-11/`).
+14. **The phone toast overlaps the bottom tab bar** until PR 3 removes that bar.
+15. **Activity and notification avatars are keyed on the actor id** (`user_id`, `actor_id`), so two users with one name keep
+    their own tints.
+16. **The admin toast uses the server's message only when the error has a status** (an API error); a network failure shows the
+    fallback copy (`adminToast` in AdminPage).
 
 ### Task 2.1 The Toast, tests first (X2, X3, X10)
 
@@ -291,7 +309,7 @@ it('shows a string passed to toastError as the message', async () => {
 
 ### Task 2.2 Buttons
 
-- [ ] `.btn` and its variants (`index.css`, the Buttons banner) on the spec's anatomy, class names
+- [x] `.btn` and its variants (`index.css`, the Buttons banner) on the spec's anatomy, class names
       kept: `height: 30px; padding: 0 var(--space-3); border-radius: var(--radius-md); font: 500
       var(--text-sm)/1 var(--font-ui); letter-spacing: normal;`. Danger: `background:
       var(--cx-danger-fill); color: var(--cx-on-accent);` and on hover `box-shadow: inset 0 0 0 1px
@@ -301,11 +319,12 @@ it('shows a string passed to toastError as the message', async () => {
 
 ### Task 2.3 Fields, selects and the menu primitive
 
-- [x] `src/components/Menu.jsx`: a trigger button with `aria-haspopup="menu"` and `aria-expanded`, a
-      `role="menu"` list of `role="menuitem"` buttons, arrow keys and Home and End, Escape and an outside
-      click close it and return focus to the trigger, placed in `#dropdown-root` at `--z-menu`, no
-      scrim. `tests/src/components/Menu.test.jsx` covers each.
-- [ ] One field primitive in CSS (`.field`, `.field__label`, `.field__hint`, `.field__error`); the
+- [x] `src/components/Menu.jsx`: a trigger button with `aria-haspopup="menu"` and `aria-expanded`, named "label: visible
+      choice"; a `role="menu"` list of `role="menuitemradio"` buttons with `aria-checked` (role note: every Menu is single-choice;
+      an action menu would use `menuitem`); arrow keys, Home and End, a letter jumps to the next match; Escape and Tab close it
+      and return focus to the trigger; an outside click closes it; placed in its own `#menu-root`, or in the aria-modal dialog it
+      is in, at `--z-menu`; it follows the trigger on scroll and resize; no scrim.
+- [x] One field primitive in CSS (`.field`, `.field__label`, `.field__hint`, `.field__error`); the
       search filters, the sort control, the invite dialog's squad and role, and the Account panels use
       it. The sort, squad and role native selects become `Menu` triggers.
 - [x] The export menu and the GitHub sync menu adopt the menu's look (the GitHub surface: colour and
@@ -313,13 +332,13 @@ it('shows a string passed to toastError as the message', async () => {
 
 ### Task 2.4 Tabs, chips, avatars, icons
 
-- [ ] `.tabs` (Activity, Notifications; Admin uses it in PR 5); chips; an `Avatar` component on
+- [x] `.tabs` (Activity, Notifications; Admin uses it in PR 5); chips; an `Avatar` component on
       `--avatar-1..8` from a stable hash of the user id with dark initials; one stroke icon set
       (`src/components/icons.jsx`) for every shell and content icon outside the editor canvas.
 
 ### Task 2.5 Dialog panels, and verify
 
-- [ ] `.modal-content-wrapper` and `ConfirmDialog` on the panel tokens; destructive copy names what is
+- [x] `.modal-content-wrapper` and `ConfirmDialog` on the panel tokens; destructive copy names what is
       lost. Lint, test, coverage, build. Captures of each control family on real screens, both widths,
       dark.
 
@@ -378,6 +397,10 @@ it('shows a string passed to toastError as the message', async () => {
 
 ## PR 4: W6-CDX-41, lists, home and the document header
 
+**Moved from PR 2 (W6-CDX-39, deviation 11), with the reason:** the document header's emoji (the edit, read, save, publish,
+comment and history labels) and the export menu's emoji are replaced here, because this PR rebuilds the header. The editor
+canvas's own toolbar glyphs stay with the deferred families.
+
 ### Task 4.1 Tests first
 
 - [ ] `ArchivesPage` render test: no element with class `btn-danger` inside a list row; each row has a
@@ -400,6 +423,10 @@ it('shows a string passed to toastError as the message', async () => {
 ---
 
 ## PR 5: W6-CDX-42, settings, admin, not-found and first run
+
+**Moved from PR 2 (W6-CDX-39, deviation 11), with the reason:** the admin console's emoji (the nav icons, the stats tiles and the
+permission tick marks) are replaced here, because this PR rebuilds the console's sections as the tab row, and its tests are
+rewritten in the same PR.
 
 ### Task 5.1 The server refusal, tests first (K6)
 

@@ -38,6 +38,16 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import WebhooksPanel from '../components/WebhooksPanel';
 import { showToast, toastError } from '../components/Toast';
 import Menu from '../components/Menu';
+import { squadMemberRemove, workspaceDelete, userDelete } from '../lib/destructive-copy.js';
+
+/**
+ * An admin action's failure. An API error (one with a status) shows the server's message; anything else, a network
+ * failure or a thrown TypeError, shows the fallback copy, never the raw text of the exception (momus 7).
+ */
+function adminToast(e, fallback) {
+  if (e?.status !== undefined) toastError(e, fallback);
+  else toastError(fallback);
+}
 
 // ─── Overview Panel ─────────────────────────────────────────
 
@@ -154,7 +164,7 @@ export function NewWorkspaceModal({ onCreated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -253,7 +263,7 @@ export function InviteUserModal({ onInvited }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Invite User</h2>
       {error && <p className="form-error">{error}</p>}
       {success && <p className="form-success">{success}</p>}
@@ -327,7 +337,7 @@ export function UserPermissionsModal({ user, onUpdated }) {
       destroyModal();
       onUpdated?.();
     } catch (e) {
-      toastError(e, 'Error saving permissions.');
+      adminToast(e, 'Error saving permissions.');
     }
     setSaving(false);
   };
@@ -336,7 +346,7 @@ export function UserPermissionsModal({ user, onUpdated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Permissions — {user.name}</h2>
       <div className="modal-form admin-perms-form">
         <label className="setup-checkbox">
@@ -383,7 +393,7 @@ export function EditMemberModal({ squadId, member, onUpdated }) {
       destroyModal();
       onUpdated?.();
     } catch (e) {
-      toastError(e, 'Error updating member.');
+      adminToast(e, 'Error updating member.');
     }
     setSaving(false);
   };
@@ -396,7 +406,7 @@ export function EditMemberModal({ squadId, member, onUpdated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Edit Member — {member.name}</h2>
       <div className="modal-form admin-perms-form">
         <label htmlFor="member-role">Role:</label>
@@ -443,8 +453,7 @@ function WorkspacesPanel() {
   const handleDelete = (workspace) => {
     showModal(
       <ConfirmDialog
-        title={`Delete "${workspace.name}"?`}
-        message="This will permanently delete the workspace and all its squads, archives, and logs."
+        {...workspaceDelete(workspace.name)}
         confirmLabel="Delete"
         danger
         onConfirm={async () => {
@@ -531,8 +540,7 @@ function UsersPanel() {
   const handleDelete = (user) => {
     showModal(
       <ConfirmDialog
-        title={`Delete user "${user.name}"?`}
-        message="This will permanently delete the user and all their sessions, comments, and data."
+        {...userDelete(user.name)}
         confirmLabel="Delete"
         danger
         onConfirm={async () => {
@@ -685,8 +693,7 @@ function SquadsPanel() {
   const handleRemoveMember = (squadId, member) => {
     showModal(
       <ConfirmDialog
-        title={`Remove "${member.name}" from squad?`}
-        message="They will lose access to all squad archives."
+        {...squadMemberRemove(member.name)}
         confirmLabel="Remove"
         danger
         onConfirm={async () => {
@@ -770,7 +777,7 @@ function SquadsPanel() {
                               {m.name}
                             </td>
                             <td>
-                              <span className={`admin-role-badge admin-role-badge--${m.role}`}>{m.role}</span>
+                              <span className={`chip admin-role-badge admin-role-badge--${m.role}`}>{m.role}</span>
                             </td>
                             <td>{m.can_read ? '✓' : '—'}</td>
                             <td>{m.can_write ? '✓' : '—'}</td>
@@ -821,7 +828,7 @@ function InvitationsPanel() {
       await deleteAdminInvitation(inv.id);
       load();
     } catch (e) {
-      toastError(e, 'Error revoking invitation.');
+      adminToast(e, 'Error revoking invitation.');
     }
   };
 
@@ -858,7 +865,7 @@ function InvitationsPanel() {
                   <tr key={inv.id}>
                     <td>{inv.email}</td>
                     <td>
-                      <span className={`status-badge status-badge--${status.toLowerCase()}`}>{status}</span>
+                      <span className={`chip status-badge status-badge--${status.toLowerCase()}`}>{status}</span>
                     </td>
                     <td>{inv.invited_by_name}</td>
                     <td>{timeAgo(inv.created_at)}</td>

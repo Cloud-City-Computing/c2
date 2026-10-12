@@ -12,7 +12,7 @@ import { destroyModal, showModal, docUrl } from '../util';
 export function DocumentPreviewModal({ doc, onOpen }) {
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>{doc.title}</h2>
       {doc.archive_name && <p className="text-muted">Archive: {doc.archive_name}</p>}
       <p>Created by: {doc.author} on {new Date(doc.created_at).toLocaleDateString()}</p>

@@ -118,7 +118,7 @@ describe('ExploreCard', () => {
   it('names the sort control', async () => {
     const { default: ExploreBrowser } = await import('../../../src/components/ExploreBrowser.jsx');
     wrap(<ExploreBrowser />);
-    const sort = await screen.findByRole('button', { name: 'Sort documents' });
+    const sort = await screen.findByRole('button', { name: /Sort documents/ });
     expect(sort.getAttribute('aria-haspopup')).toBe('menu');
     expect(sort.textContent).toContain('Newest first');
   });
@@ -129,9 +129,9 @@ describe('ExploreCard', () => {
     const user = userEvent.setup();
     const { default: ExploreBrowser } = await import('../../../src/components/ExploreBrowser.jsx');
     wrap(<ExploreBrowser />);
-    const sort = await screen.findByRole('button', { name: 'Sort documents' });
+    const sort = await screen.findByRole('button', { name: /Sort documents/ });
     await user.click(sort);
-    await user.click(screen.getByRole('menuitem', { name: 'By title' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'By title' }));
     expect(sort.textContent).toContain('By title');
   });
 });

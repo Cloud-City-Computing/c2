@@ -99,6 +99,7 @@ const states = {
     await evalJs(`(() => { const b=document.querySelector('[aria-label="Sort documents"]'); b&&b.click(); return !!b; })()`);
     await sleep(500); await shot('explore-sort-open', w, h);
   },
+  async 'account-fields'(w, h) { await open('/account', w, h); await sleep(800); await shot('account-fields', w, h); },
   async 'buttons-archive'(w, h) { await open('/archives/1', w, h); await sleep(800); await shot('buttons-archive', w, h); },
   async 'activity-tabs'(w, h) { await open('/activity', w, h); await sleep(800); await shot('activity-tabs', w, h); },
   async 'notifications-tabs'(w, h) { await open('/notifications', w, h); await sleep(800); await shot('notifications-tabs', w, h); },

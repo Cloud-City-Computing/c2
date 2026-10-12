@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import * as icons from '../../../src/components/icons.jsx';
 
-const NAMES = ['ChevronDownIcon', 'CheckIcon', 'XIcon', 'InfoIcon'];
+const NAMES = ['ChevronDownIcon', 'CheckIcon', 'XIcon', 'InfoIcon', 'StarIcon', 'WarningIcon', 'CommentIcon', 'CircleIcon'];
 
 describe('the stroke icon set', () => {
   it.each(NAMES)('%s is a 15 px stroke svg in currentColor, hidden from assistive tech', (name) => {
@@ -25,9 +25,17 @@ describe('the stroke icon set', () => {
     expect(svg.getAttribute('aria-hidden')).toBe('true');
   });
 
+  it('draws the favourite star filled or outlined, by its prop', () => {
+    const filled = render(icons.StarIcon({ filled: true })).container.querySelector('svg');
+    const outline = render(icons.StarIcon({ filled: false })).container.querySelector('svg');
+    expect(filled.getAttribute('fill')).toBe('currentColor');
+    expect(outline.getAttribute('fill')).toBe('none');
+  });
+
   it('draws no emoji: every icon is an svg with no text content', () => {
     for (const name of NAMES) {
-      const { container, unmount } = render(icons[name]());
+      const Icon = icons[name];
+      const { container, unmount } = render(<Icon />);
       expect(container.textContent).toBe('');
       unmount();
     }

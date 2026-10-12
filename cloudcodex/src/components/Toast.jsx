@@ -15,6 +15,7 @@
 
 import { createRoot } from 'react-dom/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { CheckIcon, XIcon, InfoIcon } from './icons.jsx';
 
 let addToastFn = null;
 let toastRoot = null;
@@ -138,10 +139,10 @@ function ToastItem({ toast, onDismiss }) {
       }}
     >
       <span className="toast__icon" aria-hidden="true">
-        {toast.type === 'error' ? '✕' : toast.type === 'success' ? '✓' : 'ℹ'}
+        {toast.type === 'error' ? <XIcon /> : toast.type === 'success' ? <CheckIcon /> : <InfoIcon />}
       </span>
       <span className="toast__message">{toast.message}</span>
-      <button type="button" className="toast__dismiss" aria-label="Dismiss notification"
+      <button type="button" className="toast__dismiss btn-icon" aria-label="Dismiss notification"
               onClick={dismissFromHere}>
         ×
       </button>

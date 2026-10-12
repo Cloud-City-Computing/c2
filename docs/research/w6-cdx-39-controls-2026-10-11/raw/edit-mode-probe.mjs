@@ -48,11 +48,15 @@ await send('Page.navigate', { url: BASE + '/archives/1/doc/1' });
 await sleep(3000);
 await ev(`[...document.querySelectorAll('button')].find((b) => /^\\s*(✏️\\s*)?Edit\\s*$/.test(b.textContent))?.click()`);
 await sleep(2500);
+// The same selection state in both builds: the caret at the start of the editor body, so the toolbar's active
+// states are read from one place rather than from wherever the page left the selection.
+await ev(`(() => { const ed = document.querySelector('.tiptap'); if (!ed) return false; ed.focus(); const r = document.createRange(); r.selectNodeContents(ed); r.collapse(true); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); return true; })()`);
+await sleep(2500);
 const measure = `JSON.stringify((() => {
   const r = (el) => { const b = el.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)]; };
   const out = {};
   for (const s of ['.editor-container', '.tiptap', '.tiptap-toolbar', '.editor-toolbar', '.editor-header', '.editor-with-comments', '.editor-title-edit']) { const el = document.querySelector(s); out[s] = el ? r(el) : null; }
-  out.toolbarButtons = [...document.querySelectorAll('.tiptap-toolbar button, .editor-toolbar button, .editor-mode-toggle')].slice(0, 30).map((b) => [b.className.slice(0,30), r(b), getComputedStyle(b).fontFamily.slice(0, 24)]);
+  out.toolbarButtons = [...document.querySelectorAll('.tiptap-toolbar button, .editor-toolbar button, .editor-mode-toggle')].slice(0, 30).map((b) => [b.className, r(b), getComputedStyle(b).fontFamily.slice(0, 24)]);
   out.textareas = [...document.querySelectorAll('textarea')].slice(0, 10).map((t) => [t.className.slice(0,30), r(t), getComputedStyle(t).fontFamily.slice(0, 24)]);
   out.commentButtons = [...document.querySelectorAll('.comment-manager button, .comment-thread button')].slice(0, 10).map((b) => [b.className.slice(0,30), r(b)]);
   return out;

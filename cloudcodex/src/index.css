@@ -579,7 +579,7 @@ h1, h2, h3, h4, h5, h6 {
    Scoped with the same exclusion as the X4 font rule above, so a button inside a deferred family (comments, the
    editor and its toolbars, Markdown, Draw.io, Version History, GitHub) keeps the metrics it had (K3). */
 .btn:not([class*="gh-"], .comment-textarea, .markdown-editor__textarea, .comment-manager *, .comment-thread *, .editor-log *, .editor-with-comments *, .editor-container *, .tiptap-toolbar *, .editor-toolbar *, .markdown-editor *, .version-history *, .drawio-block *, .document-readonly *, [class*="gh-"] *) {
-  height: 30px;
+  min-height: 30px;
   padding: 0 var(--space-3);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -588,7 +588,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn.btn-sm:not([class*="gh-"], .comment-textarea, .markdown-editor__textarea, .comment-manager *, .comment-thread *, .editor-log *, .editor-with-comments *, .editor-container *, .tiptap-toolbar *, .editor-toolbar *, .markdown-editor *, .version-history *, .drawio-block *, .document-readonly *, [class*="gh-"] *) {
-  height: 26px;
+  min-height: 26px;
   font-size: 12px;
 }
 
@@ -942,6 +942,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 /* The one tab row (W6-CDX-39, Task 2.4): a 24 px gap, the active tab in the primary text at weight 500 with a
    2 px accent underline inside its own box (so it moves no geometry), the others in the secondary text. */
+.tabs,
 .notifications-page__filters,
 .activity-page__filters {
   display: flex;
@@ -950,6 +951,7 @@ h1, h2, h3, h4, h5, h6 {
   border-bottom: 1px solid var(--cx-border);
   flex-wrap: wrap;
 }
+.tabs__tab,
 .notifications-page__filter,
 .activity-page__filter {
   padding: 8px 0;
@@ -963,8 +965,10 @@ h1, h2, h3, h4, h5, h6 {
   transition: color 0.15s;
   margin-bottom: -1px;
 }
+.tabs__tab:hover,
 .notifications-page__filter:hover,
 .activity-page__filter:hover { color: var(--cx-text-primary); }
+.tabs__tab.active,
 .notifications-page__filter.active,
 .activity-page__filter.active {
   color: var(--cx-text-primary);
@@ -1448,12 +1452,29 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
   cursor: pointer;
   position: absolute;
-  top: 14px;
-  right: 16px;
+  top: 10px;
+  right: 10px;
   transition: color 0.2s;
   line-height: 1;
 }
 .close-button:hover { color: var(--cx-accent); }
+
+/* The icon button (W6-CDX-39, Task 2.2): a 30 px square visually, a 44 px hit area. The ::before inset is the
+   target; the glyph and the box stay 30 px. Used by the dialog close buttons, the toast dismiss and the search clear. */
+.btn-icon {
+  min-width: 30px;
+  min-height: 30px;
+}
+/* A dialog's close button is already absolutely placed in its corner; it keeps that placement, and its hit area is
+   drawn from it. Every other icon button is its own containing block for the ::before. */
+.btn-icon:not(.close-button) {
+  position: relative;
+}
+.btn-icon::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
 
 .modal-content h2 {
   margin: 0 0 12px;
@@ -5692,6 +5713,26 @@ textarea:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+/* The chip (W6-CDX-39, Task 2.4): a pill at the 12 px floor. Roles and statuses in the admin and the archive
+   access lists use it; a state dot, when a row needs one, is a child span with class chip__dot. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .role-badge {
   display: inline-block;
   padding: 2px 10px;
@@ -6575,7 +6616,6 @@ textarea:focus-visible {
 }
 
 .menu {
-  position: fixed;
   z-index: var(--z-menu);
   display: flex;
   flex-direction: column;
@@ -6607,7 +6647,7 @@ textarea:focus-visible {
   background: var(--cx-surface-1);
   color: var(--cx-text-primary);
 }
-.menu__item[aria-current='true'] {
+.menu__item[aria-checked='true'] {
   background: var(--cx-select-wash);
   border-color: var(--cx-accent);
   color: var(--cx-text-primary);
@@ -6643,6 +6683,28 @@ textarea:focus-visible {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+/* The control of a field: a sunken well with a 1 px strong hairline. Its hover moves the border, never the fill,
+   and its focus is the accent hairline. Used by the search, the sort and the Account panels. A search field keeps its
+   icon insets through `.explore-search-input.field__control` below. */
+.field__control {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
+  font-size: var(--text-sm);
+}
+.field__control:hover:not(:disabled) {
+  border-color: var(--cx-text-faint);
+}
+.field__control:focus {
+  border-color: var(--cx-accent);
+}
+/* The Explore search keeps the insets for its magnifier (left) and clear button (right). */
+.explore-search-input.field__control {
+  padding: 10px 36px 10px 40px;
 }
 .field__hint {
   color: var(--cx-text-faint);

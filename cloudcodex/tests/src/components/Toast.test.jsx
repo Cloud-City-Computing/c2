@@ -59,25 +59,28 @@ describe('Toast — basic rendering', () => {
       t.textContent.includes('Just info')
     );
     expect(toast.className).toMatch(/toast--info/);
-    expect(toast.textContent).toContain('ℹ');
+    expect(toast.querySelector('.toast__icon svg')).not.toBeNull();
+    expect(toast.querySelector('.toast__icon').textContent).toBe('');
   });
 
-  it('renders a success toast with ✓ icon', async () => {
+  it('renders a success toast with a check icon', async () => {
     await primeAndShow('Saved!', 'success');
     const toast = Array.from(document.querySelectorAll('.toast--success')).find((t) =>
       t.textContent.includes('Saved!')
     );
     expect(toast).toBeDefined();
-    expect(toast.textContent).toContain('✓');
+    expect(toast.querySelector('.toast__icon svg')).not.toBeNull();
+    expect(toast.querySelector('.toast__icon').textContent).toBe('');
   });
 
-  it('renders an error toast with ✕ icon', async () => {
+  it('renders an error toast with a cross icon', async () => {
     await primeAndShow('Boom', 'error');
     const toast = Array.from(document.querySelectorAll('.toast--error')).find((t) =>
       t.textContent.includes('Boom')
     );
     expect(toast).toBeDefined();
-    expect(toast.textContent).toContain('✕');
+    expect(toast.querySelector('.toast__icon svg')).not.toBeNull();
+    expect(toast.querySelector('.toast__icon').textContent).toBe('');
   });
 });
 

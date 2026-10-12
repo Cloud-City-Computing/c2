@@ -93,12 +93,12 @@ export default function WorkspaceActivity() {
           )}
         </header>
 
-        <nav className="activity-page__filters" aria-label="Filter activity">
+        <nav className="tabs activity-page__filters" aria-label="Filter activity">
           {FILTERS.map((f) => (
             <button
               key={f.key}
               type="button"
-              className={`activity-page__filter${filter === f.key ? ' active' : ''}`}
+              className={`tabs__tab activity-page__filter${filter === f.key ? ' active' : ''}`}
               onClick={() => setFilter(f.key)}
             >
               {f.label}

@@ -27,10 +27,25 @@ container on a private network, the app published on 127.0.0.1 only). Headless C
 
 ## Geometry of the deferred editor
 
-`raw/edit-mode-probe.mjs`, the document in edit mode at 1280. The container, the editor, the toolbar, the title and
-the header are at identical boxes before and after. The 30 toolbar buttons and the textarea and comment-button
-boxes match too. One toolbar button's class string differs in its truncated suffix (the probe cuts at 30 characters),
-with its box identical; not investigated further.
+`raw/edit-mode-probe.mjs`, the document in edit mode at 1280, with the caret placed at the start of the editor body and
+a 2.5 s settle. Before and after (`raw/geometry-before.json`, `raw/geometry-after.json`): every container, the toolbar
+boxes and classes, the textareas and the comment buttons are identical. The earlier difference was a timing artefact:
+with a short settle one toolbar button's `--active` state had not yet been applied. A first after-run at 736 px was a
+run-to-run scrollbar state; the width chain (`.editor-container` through `.main-content`) measured 728 px in both builds
+on a re-run, and two later after-runs match the before build exactly.
+
+## Controls at 320 and 390
+
+`raw/button-fit-probe.mjs` (`raw/button-fit-after.json`): every visible `.btn` on seven routes at 320 and 390 wide, checked
+for horizontal or vertical overflow of its content. No button clips. `.btn` is `min-height: 30px`, and its labels do not wrap
+(`white-space: nowrap`), so a longer label widens the button rather than clipping it.
+
+## Captures, after the review round
+
+The after set and the before set were captured in one session against one reseeded database. The Account state
+(`account-fields`) was added for the field primitive. The dialog close button and the Explore search were checked after
+their fixes (the close button had been pushed above its title by an earlier cascade, and the search icon had lost its
+inset; both are corrected in these captures).
 
 ## Not verified here
 

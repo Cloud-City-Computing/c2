@@ -91,12 +91,12 @@ export default function NotificationsPage() {
           </div>
         </header>
 
-        <nav className="notifications-page__filters" aria-label="Filter">
+        <nav className="tabs notifications-page__filters" aria-label="Filter">
           {FILTERS.map((f) => (
             <button
               key={f.key}
               type="button"
-              className={`notifications-page__filter${filter === f.key ? ' active' : ''}`}
+              className={`tabs__tab notifications-page__filter${filter === f.key ? ' active' : ''}`}
               onClick={() => setFilter(f.key)}
             >
               {f.label}

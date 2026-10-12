@@ -43,7 +43,7 @@ function declared(selector, prop) {
 }
 
 /** The anatomy rule: the one whose selector starts with `.btn:not(` and carries the height. */
-const anatomy = rules.find((r) => r.selectors.some((s) => s.startsWith('.btn:not(')) && /height:\s*30px/.test(r.body));
+const anatomy = rules.find((r) => r.selectors.some((s) => s.startsWith('.btn:not(')) && /min-height:\s*30px/.test(r.body));
 
 function paint(value) {
   const v = /^var\((--[\w-]+)\)$/.exec(value);
@@ -63,8 +63,9 @@ describe('the button anatomy (A2, Task 2.2)', () => {
     }
   });
 
-  it('sets 30 px height, --radius-md, 13 px text at weight 500, and no letter-spacing', () => {
-    expect(anatomy.body).toMatch(/height:\s*30px/);
+  it('sets a 30 px minimum height (a label that grows must not be clipped), --radius-md, 13 px text at weight 500, and no letter-spacing', () => {
+    expect(anatomy.body).toMatch(/min-height:\s*30px/);
+    expect(anatomy.body).not.toMatch(/(^|[;\s])height:\s*30px/);
     expect(anatomy.body).toMatch(/border-radius:\s*var\(--radius-md\)/);
     expect(anatomy.body).toMatch(/font-size:\s*var\(--text-sm\)/);
     expect(anatomy.body).toMatch(/font-weight:\s*500/);
@@ -81,7 +82,7 @@ describe('the small button keeps its smaller size under the anatomy (A2)', () =>
   const small = rules.find((r) => r.selectors.some((s) => s.startsWith('.btn.btn-sm:not(')));
   it('has a rule of higher specificity than the anatomy, at 26 px and 12 px text', () => {
     expect(small, 'the .btn.btn-sm:not(...) rule').toBeDefined();
-    expect(small.body).toMatch(/height:\s*26px/);
+    expect(small.body).toMatch(/min-height:\s*26px/);
     expect(small.body).toMatch(/font-size:\s*12px/);
   });
 });
@@ -136,8 +137,8 @@ describe('the menu primitive and the menus that adopt its look (A2, Task 2.3)', 
   });
 
   it('marks the current item with the selection wash and an accent ring', () => {
-    expect(declared('.menu__item[aria-current=\'true\']', 'background')).toBe('var(--cx-select-wash)');
-    expect(declared('.menu__item[aria-current=\'true\']', 'border-color')).toBe('var(--cx-accent)');
+    expect(declared('.menu__item[aria-checked=\'true\']', 'background')).toBe('var(--cx-select-wash)');
+    expect(declared('.menu__item[aria-checked=\'true\']', 'border-color')).toBe('var(--cx-accent)');
   });
 
   it('gives the export menu and the GitHub sync menu the raised panel and the sunken item hover', () => {
@@ -188,5 +189,31 @@ describe('dialog panels sit on the panel tokens (A2, Task 2.5)', () => {
     expect(declared('.modal-content', 'background')).toBe('var(--bg-panel)');
     expect(declared('.modal-content', 'border')).toBe('1px solid var(--cx-border-strong)');
     expect(declared('.modal-content', 'border-radius')).toBe('var(--radius-lg)');
+  });
+});
+
+describe('the icon button (momus 4, PR 2 Task 2.2)', () => {
+  it('is a 30 px square, positioned, with a 44 px hit area drawn by ::before', () => {
+    expect(declared('.btn-icon', 'min-width')).toBe('30px');
+    expect(declared('.btn-icon', 'min-height')).toBe('30px');
+    expect(declared('.btn-icon:not(.close-button)', 'position')).toBe('relative');
+    expect(() => declared('.btn-icon', 'position')).toThrow();
+    expect(declared('.btn-icon::before', 'inset')).toBe('-7px');
+    expect(declared('.btn-icon::before', 'position')).toBe('absolute');
+  });
+});
+
+describe('the tab row and the chip are real classes (momus 4)', () => {
+  it('.tabs spaces its tabs 24 px apart on the border; .tabs__tab is the tab; .tabs__tab.active is the primary text and the accent underline', () => {
+    expect(declared('.tabs', 'gap')).toBe('24px');
+    expect(declared('.tabs', 'border-bottom')).toBe('1px solid var(--cx-border)');
+    expect(declared('.tabs__tab', 'border-bottom')).toBe('2px solid transparent');
+    expect(declared('.tabs__tab.active', 'color')).toBe('var(--cx-text-primary)');
+    expect(declared('.tabs__tab.active', 'border-bottom-color')).toBe('var(--cx-accent)');
+  });
+
+  it('.chip is a pill at 12 px or more', () => {
+    expect(declared('.chip', 'border-radius')).toBe('999px');
+    expect(parseFloat(declared('.chip', 'font-size'))).toBeGreaterThanOrEqual(12);
   });
 });

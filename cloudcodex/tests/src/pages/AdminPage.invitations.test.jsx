@@ -79,4 +79,19 @@ describe('AdminPage: a failing invitation revoke shows the server message (X3)',
     }));
     expect(await screen.findByText(`Permission denied: ${serverMessage}`)).toBeInTheDocument();
   });
+
+  // momus 7: only an API error (one with a status) carries a message worth showing; a network failure does not.
+  it('shows the fallback copy, not the raw error text, for an error with no API status', async () => {
+    await renderWithRejectedRevoke(new TypeError('Failed to fetch'));
+    expect(await screen.findByText('Error revoking invitation.')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch')).toBeNull();
+  });
+
+  // Task 2.4: statuses are chips (the pattern's pill at the 12 px floor).
+  it('draws the invitation status as a chip', async () => {
+    await renderWithRejectedRevoke(new Error('unused'));
+    const status = document.querySelector('.status-badge');
+    expect(status).not.toBeNull();
+    expect(status.classList.contains('chip')).toBe(true);
+  });
 });

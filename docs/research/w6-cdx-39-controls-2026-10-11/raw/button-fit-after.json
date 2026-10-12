@@ -1,0 +1,86 @@
+[
+ {
+  "width": 320,
+  "route": "/",
+  "buttons": 4,
+  "clipped": []
+ },
+ {
+  "width": 320,
+  "route": "/archives/1",
+  "buttons": 37,
+  "clipped": []
+ },
+ {
+  "width": 320,
+  "route": "/archives/1/doc/1",
+  "buttons": 3,
+  "clipped": []
+ },
+ {
+  "width": 320,
+  "route": "/activity",
+  "buttons": 2,
+  "clipped": []
+ },
+ {
+  "width": 320,
+  "route": "/notifications",
+  "buttons": 3,
+  "clipped": []
+ },
+ {
+  "width": 320,
+  "route": "/account",
+  "buttons": 4,
+  "clipped": []
+ },
+ {
+  "width": 320,
+  "route": "/admin",
+  "buttons": 3,
+  "clipped": []
+ },
+ {
+  "width": 390,
+  "route": "/",
+  "buttons": 4,
+  "clipped": []
+ },
+ {
+  "width": 390,
+  "route": "/archives/1",
+  "buttons": 37,
+  "clipped": []
+ },
+ {
+  "width": 390,
+  "route": "/archives/1/doc/1",
+  "buttons": 3,
+  "clipped": []
+ },
+ {
+  "width": 390,
+  "route": "/activity",
+  "buttons": 2,
+  "clipped": []
+ },
+ {
+  "width": 390,
+  "route": "/notifications",
+  "buttons": 3,
+  "clipped": []
+ },
+ {
+  "width": 390,
+  "route": "/account",
+  "buttons": 4,
+  "clipped": []
+ },
+ {
+  "width": 390,
+  "route": "/admin",
+  "buttons": 3,
+  "clipped": []
+ }
+]

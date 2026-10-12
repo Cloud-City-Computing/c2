@@ -309,17 +309,24 @@ one:
   (`eslint.config.js:45`); there are two legacy disables in `Editor.jsx` and
   `GitHubPage.jsx` and no more should be added.
 - `<Menu>` (`src/components/Menu.jsx`, W6-CDX-39) is the one menu primitive: a `button` trigger with
-  `aria-haspopup="menu"` and `aria-expanded`, and a `role="menu"` popup of `role="menuitem"` buttons portalled
-  into `#dropdown-root` at fixed coordinates, with no scrim. Arrow keys wrap, Home and End jump, Escape and a
-  choice return focus to the trigger, and an outside press closes it. The Explore sort and the invite dialog's
-  squad and role use it. The export and GitHub sync menus take its look (colour only) and keep their own markup.
-  Its tests are `tests/src/components/Menu.test.jsx`.
+  `aria-haspopup="menu"` and `aria-expanded`, named "label: visible choice" (WCAG 2.5.3), and a `role="menu"` popup of
+  `role="menuitemradio"` buttons with `aria-checked` (every Menu is single-choice). The popup is portalled into its own
+  `#menu-root` (never `#dropdown-root`, which `showDropdownMenu` hides and clears), or into the aria-modal dialog the trigger
+  sits in, so the dialog's focus trap and the accessibility tree reach it. It follows the trigger on scroll (capture phase)
+  and resize. Arrow keys wrap, Home and End jump, a letter jumps to the next match, Escape and Tab close it and return focus to
+  the trigger; an outside press closes it. No scrim. The Explore sort and the invite dialog's squad and role use it; the export
+  and GitHub sync menus take its look (colour only) and keep their own markup. Tests: `tests/src/components/Menu.test.jsx`,
+  `tests/src/pages/invite-menu-focus.test.jsx`.
 - `<Avatar>` (`src/components/Avatar.jsx`, W6-CDX-39) draws a photo or the initial on one of the package's
-  `--avatar-1..8` tints; the tint is `avatarTint(id)` in `src/lib/avatar-tint.js`, a stable hash, so one person
-  keeps one tint in every list. The activity and notification placeholders use it.
-- `src/components/icons.jsx` is the stroke icon set (15 px, `currentColor`, decorative). The toast's
-  status glyphs stay text characters; emoji still stand in the admin console and the document header until
-  W6-CDX-41 and W6-CDX-42.
+  `--avatar-1..8` tints; the tint is `avatarTint(id)` in `src/lib/avatar-tint.js`, a stable hash of the actor's id
+  (`user_id`, `actor_id`), so two users with one name keep their own tints.
+- `src/lib/destructive-copy.js` (W6-CDX-39) holds the title and message of each destructive `ConfirmDialog`; each sentence
+  names what is lost and what stays, checked against the FK actions in `init.sql` and the route's delete.
+- `src/components/icons.jsx` is the stroke icon set (15 px, `currentColor`, decorative): the menu chevron, the toast's
+  status marks, the favourite star, the Account warning, the comment count and Login's marks. Emoji still stand in the
+  admin console (W6-CDX-42) and the document header (W6-CDX-41).
+- `.btn-icon` (W6-CDX-39) is the 30 px icon button with a 44 px hit area; the dialog close buttons, the toast dismiss and the
+  search clear carry it. `.chip` is the pill at the 12 px floor; `.tabs` and `.tabs__tab` are the one tab row.
 - `<PresenceAvatars>` pairs with `usePresence`.
 - `<PageTree>` renders the `logs.parent_id` tree.
 - `<WebhooksPanel>` is the admin console's Webhooks panel (W6-CDX-15). Its confirmations go through

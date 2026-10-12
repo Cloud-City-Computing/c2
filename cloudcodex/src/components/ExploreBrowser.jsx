@@ -14,6 +14,7 @@ import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, fe
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
 import Menu from './Menu';
+import { StarIcon } from './icons.jsx';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -60,7 +61,7 @@ function ExploreCard({ item, isSearch, onClick, activeUsers, isFavorited, onTogg
               aria-label={`Favorite ${item.title}`}
               aria-pressed={isFavorited}
             >
-              {isFavorited ? '★' : '☆'}
+              <StarIcon filled={isFavorited} />
             </button>
           )}
           <PresenceAvatars users={activeUsers} />
@@ -320,13 +321,13 @@ export default function ExploreBrowser() {
           <input
             ref={inputRef}
             type="text"
-            className="explore-search-input"
+            className="explore-search-input field__control"
             placeholder="Search all documents..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           {query && (
-            <button className="explore-clear-btn" onClick={clearSearch} aria-label="Clear search">
+            <button className="explore-clear-btn btn-icon" onClick={clearSearch} aria-label="Clear search">
               &times;
             </button>
           )}
@@ -344,7 +345,7 @@ export default function ExploreBrowser() {
             Filters
             {hasActiveFilters && <span className="filter-active-dot" />}
           </button>
-          <Menu className="explore-sort" label="Sort documents" value={sort} onSelect={handleSortChange}
+          <Menu className="explore-sort field__control" label="Sort documents" value={sort} onSelect={handleSortChange}
             items={[
               { key: 'newest', label: 'Newest first' },
               { key: 'oldest', label: 'Oldest first' },
@@ -361,7 +362,7 @@ export default function ExploreBrowser() {
             onClick={() => setFavoritesOnly(v => !v)}
             title={favoritesOnly ? 'Show all documents' : 'Show favorites only'}
           >
-            {favoritesOnly ? '★' : '☆'} Favorites
+            <StarIcon filled={favoritesOnly} /> Favorites
           </button>
           <select
             className="explore-filter-select"

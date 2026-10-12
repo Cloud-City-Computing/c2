@@ -10,6 +10,7 @@ import {
   getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie, uploadAvatar,
 } from '../util';
 import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES, DENSITIES } from '../userPrefs';
+import { WarningIcon } from './icons.jsx';
 
 // ===========================
 //  Account Panels (used by AccountSettings log)
@@ -256,20 +257,21 @@ export function AccountInfoUpdatePanel() {
       <h2 className="panel-title">Update Account Information</h2>
       {status && <p className={`panel-status ${status.type}`}>{status.message}</p>}
       <form className="account-form" onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="name">Name</label>
-          <input id="name" name="name" type="text" value={fields.name} onChange={handleChange} />
+        <div className="field">
+          <label className="field__label" htmlFor="name">Name</label>
+          <input id="name" name="name" className="field__control" type="text" value={fields.name} onChange={handleChange} />
         </div>
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input id="email" name="email" type="email" value={fields.email} onChange={handleChange} disabled={Boolean(emailCode)} />
+        <div className="field">
+          <label className="field__label" htmlFor="email">Email</label>
+          <input id="email" name="email" className="field__control" type="email" value={fields.email} onChange={handleChange} disabled={Boolean(emailCode)} />
         </div>
         {needsPassword && (
-          <div className="form-group">
-            <label htmlFor="currentPassword">Current password</label>
+          <div className="field">
+            <label className="field__label" htmlFor="currentPassword">Current password</label>
             <input
               id="currentPassword"
               name="currentPassword"
+              className="field__control"
               type="password"
               autoComplete="current-password"
               value={fields.currentPassword}
@@ -848,7 +850,7 @@ export function LinkedAccountsPanel() {
         </div>
         {githubAccount?.token_status === 'revoked' && (
           <div className="gh-reconnect-banner" role="alert">
-            <span aria-hidden>⚠</span>
+            <span aria-hidden><WarningIcon /></span>
             <span style={{ flex: 1 }}>
               GitHub revoked your access. Reconnect to keep linked documents in sync.
             </span>
