@@ -65,11 +65,13 @@ const OTHER_HOLDER = 'other-holder-token';
  * so a query the route starts issuing cannot pass by being ignored.
  * `providers` names the flow that minted a session, by token; a session it
  * does not name is 'local'.
- * @param {{ passwordHash?: string|null, takenEmails?: string[], takenNames?: string[], sessions?: string[], providers?: Record<string, string> }} [opts]
+ * `identity` gives the account a user_identities row (signed in through the issuer).
+ * @param {{ passwordHash?: string|null, takenEmails?: string[], takenNames?: string[], sessions?: string[], providers?: Record<string, string>, identity?: boolean }} [opts]
  */
-function fakeAccount({ passwordHash = CURRENT_HASH, takenEmails = [], takenNames = [], sessions = [CALLER, OTHER_HOLDER], providers = {} } = {}) {
+function fakeAccount({ passwordHash = CURRENT_HASH, takenEmails = [], takenNames = [], sessions = [CALLER, OTHER_HOLDER], providers = {}, identity = false } = {}) {
   const state = {
     user: { ...TEST_USER, password_hash: passwordHash },
+    identity,
     sessions: new Set(sessions),
     codes: [],
     tokens: [],
@@ -155,6 +157,10 @@ function fakeAccount({ passwordHash = CURRENT_HASH, takenEmails = [], takenNames
     if (/^UPDATE password_reset_tokens SET used = TRUE WHERE id = \?$/.test(sql)) {
       state.tokens.filter(t => t.id === params[0]).forEach(t => { t.used = true; });
       return { affectedRows: 1 };
+    }
+    // suite mode's issuer check (services/identity.js isIssuerManaged).
+    if (/^SELECT 1 FROM user_identities WHERE user_id = \? LIMIT 1$/.test(sql)) {
+      return state.identity && params[0] === state.user.id ? [{ 1: 1 }] : [];
     }
     // requireAuth's own probe route, GET /api/2fa/status.
     if (/^SELECT two_factor_method FROM users WHERE id = \? LIMIT 1$/.test(sql)) {
@@ -850,5 +856,110 @@ describe('POST /api/update-account/confirm-email', () => {
     expect(res.body.message).toMatch(/already exists/i);
     expect(state.user.email).toBe(TEST_USER.email);
     expect(writesTo(state, 'sessions')).toEqual([]);
+  });
+});
+
+// --- Suite mode: an account the issuer manages (W6-CDX-42, K6) ---
+
+const SUITE_ENV = { SUITE_COMMAND_WORKSPACE_URL: 'https://command.example.test/w/ws-1', SUITE_NAME: 'Example Suite' };
+
+/** Every account write the issuer-managed refusal must keep out of the database. */
+const accountWrites = (state) => [
+  ...writesTo(state, 'users'), ...writesTo(state, 'sessions'), ...writesTo(state, 'two_factor_codes'),
+  ...writesTo(state, 'password_reset_tokens'),
+];
+
+describe('suite mode: an issuer-linked account is read-only here', () => {
+  const ISSUER_REFUSAL = { success: false, code: 'managed_by_issuer' };
+  const suiteAuth = (method, path) => request(app)[method](path).set('Authorization', `Bearer ${CALLER}`);
+
+  beforeEach(() => {
+    resetMocks();
+    isMailEnabled.mockReturnValue(true);
+    Object.assign(process.env, SUITE_ENV);
+  });
+
+  afterEach(() => {
+    delete process.env.SUITE_COMMAND_WORKSPACE_URL;
+    delete process.env.SUITE_NAME;
+    expectOwnerPredicatesBindIds();
+  });
+
+  it('refuses a name change on POST /api/update-account and changes nothing', async () => {
+    const state = fakeAccount({ identity: true });
+    const res = await update({ name: 'Renamed' });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject(ISSUER_REFUSAL);
+    expect(state.user.name).toBe(TEST_USER.name);
+    expect(accountWrites(state)).toEqual([]);
+  });
+
+  it('refuses an email change on POST /api/update-account, even with the current password', async () => {
+    const state = fakeAccount({ identity: true });
+    const res = await update({ email: NEW_EMAIL, currentPassword: CURRENT_PASSWORD });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject(ISSUER_REFUSAL);
+    expect(state.user.email).toBe(TEST_USER.email);
+    expect(accountWrites(state)).toEqual([]);
+  });
+
+  it('refuses a password change on POST /api/update-account and keeps every session', async () => {
+    const state = fakeAccount({ identity: true });
+    const res = await update({ password: NEW_PASSWORD, currentPassword: CURRENT_PASSWORD });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject(ISSUER_REFUSAL);
+    expect(state.user.password_hash).toBe(CURRENT_HASH);
+    expect(await stillSignedIn(OTHER_HOLDER)).toBe(true);
+    expect(accountWrites(state)).toEqual([]);
+  });
+
+  it('refuses POST /api/update-account/confirm-email before it reads the code', async () => {
+    const state = fakeAccount({ identity: true });
+    const res = await suiteAuth('post', '/api/update-account/confirm-email').send({ confirmToken: 'anything', code: '123456' });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject(ISSUER_REFUSAL);
+    expect(state.sql.some(sql => /password_reset_tokens|two_factor_codes/.test(sql))).toBe(false);
+    expect(accountWrites(state)).toEqual([]);
+  });
+
+  it.each([
+    ['POST /api/2fa/enable', 'post', '/api/2fa/enable', { method: 'totp' }],
+    ['POST /api/2fa/totp/confirm', 'post', '/api/2fa/totp/confirm', { setupToken: 'anything', code: '123456' }],
+    ['POST /api/2fa/disable', 'post', '/api/2fa/disable', {}],
+    ['POST /api/2fa/disable/confirm', 'post', '/api/2fa/disable/confirm', { confirmToken: 'anything', code: '123456' }],
+  ])('refuses %s for an issuer-linked account and writes nothing', async (_label, method, path, body) => {
+    const state = fakeAccount({ identity: true });
+    const res = await suiteAuth(method, path).send(body);
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject(ISSUER_REFUSAL);
+    expect(accountWrites(state)).toEqual([]);
+  });
+
+  it('reports managed_by "issuer" on GET /api/2fa/status for the same account', async () => {
+    fakeAccount({ identity: true });
+    const res = await suiteAuth('get', '/api/2fa/status');
+    expect(res.status).toBe(200);
+    expect(res.body.managed_by).toBe('issuer');
+  });
+
+  it('keeps an account with no identity row editable in suite mode', async () => {
+    const state = fakeAccount({ identity: false });
+    const res = await update({ name: 'Renamed' });
+    expect(res.status).toBe(200);
+    expect(state.user.name).toBe('Renamed');
+    const status = await suiteAuth('get', '/api/2fa/status');
+    expect(status.body.managed_by).not.toBe('issuer');
+  });
+
+  it('does not refuse an issuer-linked account when suite mode is off', async () => {
+    delete process.env.SUITE_COMMAND_WORKSPACE_URL;
+    delete process.env.SUITE_NAME;
+    const state = fakeAccount({ identity: true });
+    const res = await update({ name: 'Renamed' });
+    expect(res.status).toBe(200);
+    expect(state.user.name).toBe('Renamed');
+    expect(res.body.code).toBeUndefined();
+    const status = await suiteAuth('get', '/api/2fa/status');
+    expect(status.body.managed_by).not.toBe('issuer');
   });
 });

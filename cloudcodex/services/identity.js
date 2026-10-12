@@ -306,6 +306,18 @@ async function createFromInvitation(claims, invitation, attempt = 0) {
 const ONE_LINK_PER_PROVIDER_KEY = "'oauth_accounts.uq_oauth_user_provider'";
 
 /**
+ * Whether a local user is signed in through the issuer, that is holds a user_identities row. Suite mode
+ * refuses the account writes for such an account (middleware/auth.js refuseIssuerManaged, W6-CDX-42, K6), and
+ * GET /api/2fa/status reports it.
+ * @param {number} userId
+ * @returns {Promise<boolean>}
+ */
+export async function isIssuerManaged(userId) {
+  const [row] = await c2_query('SELECT 1 FROM user_identities WHERE user_id = ? LIMIT 1', [userId]);
+  return Boolean(row);
+}
+
+/**
  * Whether an INSERT failed on the one-link-per-provider key, and not on the
  * subject key uq_provider_user, which the same subject racing itself hits.
  * The Google ladder below and the GitHub link callback (routes/oauth.js) both

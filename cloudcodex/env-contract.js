@@ -100,6 +100,9 @@ export const ENV_CONTRACT = [
     why: 'that application\'s client secret, which also keys the signature on the sign-in flow cookie' },
   { name: 'OIDC_PROVIDER_NAME', kind: 'default', default: 'SSO', perInstance: false,
     why: 'the label on the sign-in button, "Sign in with <name>"' },
+  { name: 'OIDC_ACCOUNT_URL', kind: 'optional', perInstance: true,
+    why: 'the issuer\'s account page, linked from a suite member\'s read-only account settings; https, or plain http '
+      + 'outside production' },
   { name: 'OIDC_LINK_BY_VERIFIED_EMAIL', kind: 'default', default: '1', perInstance: false,
     why: '1 links an existing account to the issuer identity by its verified email when that account has '
       + 'two-factor off; 0 never links by email; any other value exits at boot' },

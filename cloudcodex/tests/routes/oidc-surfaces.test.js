@@ -14,7 +14,7 @@ import app from '../../app.js';
 import { c2_query, getSessionProvider } from '../../mysql_connect.js';
 import { mockAuthenticated, resetMocks } from '../helpers.js';
 
-const OIDC_KEYS = ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_PROVIDER_NAME', 'APP_URL'];
+const OIDC_KEYS = ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_PROVIDER_NAME', 'OIDC_ACCOUNT_URL', 'APP_URL'];
 
 describe('GET /api/oauth/providers, the oidc entry', () => {
   beforeEach(() => {
@@ -28,7 +28,7 @@ describe('GET /api/oauth/providers, the oidc entry', () => {
 
   it('reports oidc off, under the default name, when no issuer is set', async () => {
     const res = await request(app).get('/api/oauth/providers');
-    expect(res.body.providers.oidc).toEqual({ enabled: false, name: 'SSO' });
+    expect(res.body.providers.oidc).toEqual({ enabled: false, name: 'SSO', accountUrl: null });
   });
 
   it('reports oidc on, under OIDC_PROVIDER_NAME, when an issuer is configured', async () => {
@@ -38,7 +38,17 @@ describe('GET /api/oauth/providers, the oidc entry', () => {
     process.env.APP_URL = 'https://codex.example.test';
     process.env.OIDC_PROVIDER_NAME = 'Cloud City ID';
     const res = await request(app).get('/api/oauth/providers');
-    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Cloud City ID' });
+    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Cloud City ID', accountUrl: null });
+  });
+
+  it('serves OIDC_ACCOUNT_URL beside the name, for the account page link (W6-CDX-42)', async () => {
+    process.env.OIDC_ISSUER_URL = 'https://id.example.test';
+    process.env.OIDC_CLIENT_ID = 'codex-web';
+    process.env.OIDC_CLIENT_SECRET = 'a-secret-for-the-surface-tests';
+    process.env.APP_URL = 'https://codex.example.test';
+    process.env.OIDC_ACCOUNT_URL = 'https://id.example.test/ui/console/users/me';
+    const res = await request(app).get('/api/oauth/providers');
+    expect(res.body.providers.oidc.accountUrl).toBe('https://id.example.test/ui/console/users/me');
   });
 });
 

@@ -14,7 +14,9 @@ import { c2_query, generateSessionToken, getSessionProvider, getSessionProvenanc
 import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
-import { requireAuth, requireLocalSignIn, extractSessionToken } from '../middleware/auth.js';
+import { requireAuth, requireLocalSignIn, extractSessionToken, refuseIssuerManaged, ISSUER_MANAGED_REFUSAL } from '../middleware/auth.js';
+import { readSuiteConfig } from '../services/suite.js';
+import { isIssuerManaged } from '../services/identity.js';
 import { legacyCookieAllowed } from '../services/session-cookie.js';
 import { getOidcConfig } from '../services/oidc.js';
 import { endSessionUrlFor } from '../services/sign-out.js';
@@ -366,6 +368,11 @@ router.post('/update-account', asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid session token' });
   }
 
+  // Suite mode: an issuer-linked account is managed at the issuer, name included (W6-CDX-42, K6).
+  if (readSuiteConfig().enabled && await isIssuerManaged(sessionUser.id)) {
+    return res.status(403).json(ISSUER_MANAGED_REFUSAL);
+  }
+
   if (name === undefined && email === undefined && password === undefined) {
     return res.status(400).json({ success: false, message: 'No fields provided to update' });
   }
@@ -501,7 +508,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
  * does: every session of the user deleted, a fresh `token` (tagged like the
  * caller's session) in the answer, and a notice to the old address. Modelled on POST /api/2fa/disable/confirm.
  */
-router.post('/update-account/confirm-email', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
+router.post('/update-account/confirm-email', requireLocalSignIn, requireAuth, refuseIssuerManaged, asyncHandler(async (req, res) => {
   const { confirmToken, code } = req.body;
 
   if (!confirmToken || !code) {
@@ -1211,7 +1218,7 @@ router.post('/2fa/verify', requireLocalSignIn, asyncHandler(async (req, res) => 
  * For 'totp': generates a secret, emails the QR code to the user, returns a setup token.
  *   The user must then call POST /api/2fa/totp/confirm with the setup token and a code from their app.
  */
-router.post('/2fa/enable', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/enable', requireLocalSignIn, requireAuth, refuseIssuerManaged, asyncHandler(async (req, res) => {
   const method = req.body.method || 'email';
 
   // Email 2FA on a mail-less instance is a lockout: the login code and the
@@ -1303,7 +1310,7 @@ router.post('/2fa/enable', requireLocalSignIn, requireAuth, asyncHandler(async (
  * Body: { setupToken, code }
  * Verifies the user's first TOTP code to activate authenticator-app-based 2FA.
  */
-router.post('/2fa/totp/confirm', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/totp/confirm', requireLocalSignIn, requireAuth, refuseIssuerManaged, asyncHandler(async (req, res) => {
   const { setupToken, code } = req.body;
 
   if (!setupToken || !code) {
@@ -1358,7 +1365,7 @@ router.post('/2fa/totp/confirm', requireLocalSignIn, requireAuth, asyncHandler(a
  * The user must call POST /api/2fa/disable/confirm with the token and code to complete.
  * Refuses, without minting anything, when mail is disabled instance-wide.
  */
-router.post('/2fa/disable', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/disable', requireLocalSignIn, requireAuth, refuseIssuerManaged, asyncHandler(async (req, res) => {
   const [userRow] = await c2_query(`SELECT email, two_factor_method FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
   if (!userRow || userRow.two_factor_method === 'none') {
     return res.json({ success: true, message: 'Two-factor authentication is already disabled.' });
@@ -1416,7 +1423,7 @@ router.post('/2fa/disable', requireLocalSignIn, requireAuth, asyncHandler(async 
  * Body: { confirmToken, code }
  * Validates the email code and disables 2FA.
  */
-router.post('/2fa/disable/confirm', requireLocalSignIn, requireAuth, asyncHandler(async (req, res) => {
+router.post('/2fa/disable/confirm', requireLocalSignIn, requireAuth, refuseIssuerManaged, asyncHandler(async (req, res) => {
   const { confirmToken, code } = req.body;
 
   if (!confirmToken || !code) {
@@ -1466,7 +1473,9 @@ router.get('/2fa/status', requireLocalSignIn, requireAuth, asyncHandler(async (r
 
   const method = row?.two_factor_method ?? 'none';
   // Who owns the second factor: an OIDC session's issuer governs a linked identity's sign-in (W6-CDX-5).
-  const managedBy = (await getSessionProvider(req.sessionToken)) === 'oidc' ? 'oidc' : null;
+  // Suite mode: an issuer-linked account reads 'issuer', the same accounts the refusal names (W6-CDX-42).
+  const issuerManaged = readSuiteConfig().enabled && await isIssuerManaged(req.user.id);
+  const managedBy = issuerManaged ? 'issuer' : (await getSessionProvider(req.sessionToken)) === 'oidc' ? 'oidc' : null;
   res.json({ success: true, method, enabled: method !== 'none', managed_by: managedBy });
 }));
 
