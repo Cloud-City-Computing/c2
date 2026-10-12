@@ -15,8 +15,7 @@ import { hashSessionToken } from '../services/session-token.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { buildEmailChangeCodeEmail, buildEmailChangedNoticeEmail } from '../services/email-templates.js';
 import { requireAuth, requireLocalSignIn, extractSessionToken, refuseIssuerManaged, ISSUER_MANAGED_REFUSAL } from '../middleware/auth.js';
-import { readSuiteConfig } from '../services/suite.js';
-import { isIssuerManaged } from '../services/identity.js';
+import { isManagedByIssuerHere } from '../services/identity.js';
 import { legacyCookieAllowed } from '../services/session-cookie.js';
 import { getOidcConfig } from '../services/oidc.js';
 import { endSessionUrlFor } from '../services/sign-out.js';
@@ -369,7 +368,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
   }
 
   // Suite mode: an issuer-linked account is managed at the issuer, name included (W6-CDX-42, K6).
-  if (readSuiteConfig().enabled && await isIssuerManaged(sessionUser.id)) {
+  if (await isManagedByIssuerHere(sessionUser.id)) {
     return res.status(403).json(ISSUER_MANAGED_REFUSAL);
   }
 
@@ -599,6 +598,15 @@ router.post('/login', requireLocalSignIn, asyncHandler(async (req, res) => {
   // A deactivated user is refused after the password is proven, before any session or two-factor challenge.
   if (users[0].deactivated_at) {
     return res.status(403).json({ success: false, message: 'This account has been deactivated. Contact your administrator.' });
+  }
+
+  // Suite mode: an issuer-linked account signs in through its issuer, so its password (even a right one, with an old
+  // local hash still on the row) mints no session and starts no two-factor challenge.
+  if (await isManagedByIssuerHere(users[0].id)) {
+    return res.status(403).json({
+      ...ISSUER_MANAGED_REFUSAL,
+      message: 'This account signs in through your sign-in provider, not a password. Use that sign-in.',
+    });
   }
 
   const { password_hash: _, two_factor_method, totp_secret: __, deactivated_at: ___, ...user } = users[0];
@@ -1039,7 +1047,9 @@ router.post('/forgot-password', requireLocalSignIn, asyncHandler(async (req, res
   // Always respond the same way — don't reveal whether the email exists
   const [user] = await c2_query(`SELECT id FROM users WHERE email = ? LIMIT 1`, [email]);
 
-  if (user) {
+  // Suite mode: an issuer-linked account resets through its issuer, so no token is minted and no mail is sent.
+  // The answer is the generic one, so the response does not tell an issuer-linked address from an unknown one.
+  if (user && !(await isManagedByIssuerHere(user.id))) {
     // Invalidate any existing unused reset tokens for this user. Scoped to
     // the reset purpose: without it, asking for a password reset would
     // silently kill the user's in-flight 2FA login, TOTP enrolment or
@@ -1114,6 +1124,11 @@ router.post('/reset-password', requireLocalSignIn, asyncHandler(async (req, res)
 
   if (!resetRecord || resetRecord.used || resetRecord.expires_at <= new Date()) {
     return res.status(400).json({ success: false, message: 'Invalid or expired reset link' });
+  }
+
+  // Suite mode: an issuer-linked account's password is the issuer's. A live token for it is refused, and nothing is written.
+  if (await isManagedByIssuerHere(resetRecord.user_id)) {
+    return res.status(403).json(ISSUER_MANAGED_REFUSAL);
   }
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -1474,7 +1489,7 @@ router.get('/2fa/status', requireLocalSignIn, requireAuth, asyncHandler(async (r
   const method = row?.two_factor_method ?? 'none';
   // Who owns the second factor: an OIDC session's issuer governs a linked identity's sign-in (W6-CDX-5).
   // Suite mode: an issuer-linked account reads 'issuer', the same accounts the refusal names (W6-CDX-42).
-  const issuerManaged = readSuiteConfig().enabled && await isIssuerManaged(req.user.id);
+  const issuerManaged = await isManagedByIssuerHere(req.user.id);
   const managedBy = issuerManaged ? 'issuer' : (await getSessionProvider(req.sessionToken)) === 'oidc' ? 'oidc' : null;
   res.json({ success: true, method, enabled: method !== 'none', managed_by: managedBy });
 }));
