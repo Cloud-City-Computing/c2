@@ -1,0 +1,25 @@
+{
+  "scrollY": 0,
+  "shellStyle": "90px 2327.8px",
+  "shell": {
+    "y": 0,
+    "h": 2418,
+    "w": 390
+  },
+  "children": [
+    {
+      "tag": "ASIDE",
+      "cls": "sidebar",
+      "y": 0,
+      "h": 90,
+      "w": 390
+    },
+    {
+      "tag": "MAIN",
+      "cls": "main-content",
+      "y": 90,
+      "h": 2328,
+      "w": 390
+    }
+  ]
+}

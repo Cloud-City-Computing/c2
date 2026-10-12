@@ -480,24 +480,65 @@ line are the place to read.
 comment and history labels) and the export menu's emoji are replaced here, because this PR rebuilds the header. The editor
 canvas's own toolbar glyphs stay with the deferred families.
 
+**Deviations, recorded at execution (W6-CDX-41, 2026-10-12).** The plan is the approval; each is a place where the code,
+the captures or a shared rule proved a step wrong, or a step needed a choice the plan did not spell out. Captures and
+measurements are in `docs/research/w6-cdx-41-lists-2026-10-12/`.
+
+1. **The count on each archive row needed a server field.** `GET /api/archives` gained `log_count`, a correlated count over
+   `logs` for the same archive ids the list already filters by access (the log tree lists every document of an archive to
+   anyone with archive read access, so the count reveals nothing new). Tested in `tests/routes/archives.test.js`.
+2. **"New Log the page's one primary" reads as the page header's primary.** On the archive list the header's primary is New
+   Archive, because New Log belongs to one archive. The expanded tree keeps its own New Log (a primary inside the expanded
+   section, not the header). **Decided pending Kyle.**
+3. **Home keeps its one in-page search** (the explore field, which carries the filters and the sort). The shell's "Search or
+   jump to" trigger is on every route, so it is not counted as a second field on Home. **Decided pending Kyle.**
+4. **The Home header's meta is a fixed line,** not the count: the browse status line already shows the filtered count.
+5. **The Archives "← Squad" control is the first More actions item, "Go to squad".** Its function is unchanged.
+6. **Two Edit controls in read mode.** The document header's Edit is the page primary. The editor toolbar keeps its own Edit,
+   because the toolbar is in the deferred family (removing it would change the toolbar's width and its neighbours). **Decided
+   pending Kyle:** drop one of the two.
+7. **The toolbar's emoji became stroke icons at 13 px** (the plan's moved list: edit, read, save, publish, comment, history,
+   the comment manager and export). Buttons keep their height (26 px at the small size). The Export button is 9 px wider,
+   and the read toolbar 4 px shorter, because the emoji no longer set a 30 px line box. The canvas keeps its size.
+8. **The edit-mode content column is 8 px wider than before, and this breaks the plan's width rule in that mode.** The
+   before build's page overflowed the 860 px viewport in edit mode (scrollHeight 868) and showed a scrollbar; the header
+   is 14 px shorter here, so the page fits and the column is 716 px, the read-mode width. Recorded for Kyle; the canvas's
+   own height is unchanged.
+9. **The archive's page header is shown only with no document open.** With a document open, the document header's crumb
+   names the archive, so the two headers do not repeat it. The tree is headed "Documents" (the archive's name is the page
+   header's title and the crumb's text).
+10. **The shell's phone rule gained `align-content: start`** (shared, in the phone block). A page shorter than the 100 vh
+    shell stretched the strip's row to 155 px. Found on the archive placeholder at 390; no other route changes.
+11. **`.archive-view--headed` takes the header's height off the grid's minimum,** so the placeholder does not scroll at 1280.
+12. **The Activity page is full width** (`max-width: 760px` removed), and its meta line is 12 px faint text. Its rows already
+    had primary names and accent links. Workspaces (suite off) is not touched: it is W6-CDX-42's page.
+13. **The More actions menu is `Menu` in `mode="actions"`,** not a second primitive. Its popup end-aligns under the trigger, so
+    a phone never pushes it off the screen. Its danger item is text, with the sunken hover.
+14. **Test files differ from the plan's names.** The archive-list render tests are `tests/src/components/ArchiveRows.test.jsx`
+    (the list is `ArchiveBrowser`, which `ArchivesPage` renders); the empty-state and page tests are
+    `tests/src/pages/lists-and-home.test.jsx`; the document header is `tests/src/components/DocumentHeader.test.jsx`.
+    The More actions menu's tests are `tests/src/components/Menu.actions.test.jsx`.
+15. **Not run:** the two-cursor smoke (it needs two signed-in browsers). The captures measure the editor's boxes, not its
+    comment highlights or remote cursors.
+
 ### Task 4.1 Tests first
 
-- [ ] `ArchivesPage` render test: no element with class `btn-danger` inside a list row; each row has a
+- [x] `ArchivesPage` render test: no element with class `btn-danger` inside a list row; each row has a
       More actions `Menu` with Rename, Manage access and Delete.
-- [ ] `EmptyState.test.jsx` and render tests that Home with no documents, an empty archive,
+- [x] `EmptyState.test.jsx` and render tests that Home with no documents, an empty archive,
       Notifications with none and Activity with none each render `.empty-state`.
-- [ ] The document header renders the author's `name`, never the email, and exactly one `.btn-primary`.
-- [ ] **Expected:** red.
+- [x] The document header renders the author's `name`, never the email, and exactly one `.btn-primary`.
+- [x] **Expected:** red.
 
 ### Task 4.2 Build it
 
-- [ ] Home (`HomePage.jsx`): `PageHeader`, the hero and the second search field gone, the grid on the
+- [x] Home (`HomePage.jsx`): `PageHeader`, the hero and the second search field gone, the grid on the
       card pattern. Archives, the archive view and tree, Workspaces (suite off), Activity, Notifications
       as the spec says. `src/components/EmptyState.jsx`.
-- [ ] The document header: the mount in `Editor.jsx` is the only line that changes there;
+- [x] The document header: the mount in `Editor.jsx` is the only line that changes there;
       **expected** `git diff --stat cloudcodex/src/pages/Editor.jsx` shows the header lines only, and
       nothing under the editor canvas banners in `index.css` changes.
-- [ ] Captures of every listed route, both widths, dark; the two-cursor smoke.
+- [x] Captures of every listed route, both widths, dark; the two-cursor smoke.
 
 ---
 

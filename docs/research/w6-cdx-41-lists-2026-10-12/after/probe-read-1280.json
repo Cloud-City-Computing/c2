@@ -1,0 +1,123 @@
+{
+  "viewport": {
+    "w": 1280,
+    "h": 860
+  },
+  "toolbar": {
+    "x": 536,
+    "y": 163,
+    "w": 716,
+    "h": 44
+  },
+  "toolbarButtons": [
+    {
+      "cls": "btn btn-primary btn-sm",
+      "text": "Edit",
+      "x": 549,
+      "y": 172,
+      "w": 69,
+      "h": 26
+    },
+    {
+      "cls": "export-dropdown",
+      "text": "Export",
+      "x": 631,
+      "y": 172,
+      "w": 104,
+      "h": 26
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "Export",
+      "x": 631,
+      "y": 172,
+      "w": 104,
+      "h": 26
+    }
+  ],
+  "canvas": {
+    "x": 536,
+    "y": 223,
+    "w": 716,
+    "h": 458
+  },
+  "tiptap": null,
+  "contentColumn": {
+    "x": 536,
+    "y": 56,
+    "w": 716,
+    "h": 625
+  },
+  "header": {
+    "x": 536,
+    "y": 56,
+    "w": 716,
+    "h": 91
+  },
+  "headerParts": [
+    {
+      "sel": ".editor-breadcrumb",
+      "x": 536,
+      "y": 56,
+      "w": 716,
+      "h": 18
+    },
+    {
+      "sel": ".page-header__row",
+      "x": 536,
+      "y": 80,
+      "w": 716,
+      "h": 54
+    },
+    {
+      "sel": ".page-header__titles",
+      "x": 536,
+      "y": 80,
+      "w": 278,
+      "h": 54
+    },
+    {
+      "sel": ".page-header__title",
+      "x": 536,
+      "y": 80,
+      "w": 278,
+      "h": 29
+    },
+    {
+      "sel": ".page-header__meta",
+      "x": 536,
+      "y": 115,
+      "w": 278,
+      "h": 20
+    },
+    {
+      "sel": ".page-header__actions",
+      "x": 1113,
+      "y": 104,
+      "w": 139,
+      "h": 30
+    }
+  ],
+  "mainContent": {
+    "x": 248,
+    "y": 0,
+    "w": 1032,
+    "h": 860
+  },
+  "archiveMain": {
+    "x": 508,
+    "y": 28,
+    "w": 772,
+    "h": 800
+  },
+  "archiveView": {
+    "x": 248,
+    "y": 28,
+    "w": 1032,
+    "h": 800
+  },
+  "scrollHeights": {
+    "mainContent": 860,
+    "mainContentClient": 860
+  }
+}

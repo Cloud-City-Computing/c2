@@ -1,0 +1,103 @@
+{
+  "viewport": {
+    "w": 1280,
+    "h": 860
+  },
+  "toolbar": {
+    "x": 536,
+    "y": 177,
+    "w": 716,
+    "h": 48
+  },
+  "toolbarButtons": [
+    {
+      "cls": "btn btn-primary btn-sm",
+      "text": "✏️ Edit",
+      "x": 549,
+      "y": 188,
+      "w": 69,
+      "h": 26
+    },
+    {
+      "cls": "export-dropdown",
+      "text": "📥 Export ▾",
+      "x": 631,
+      "y": 186,
+      "w": 95,
+      "h": 30
+    },
+    {
+      "cls": "btn btn-ghost btn-sm",
+      "text": "📥 Export ▾",
+      "x": 631,
+      "y": 186,
+      "w": 95,
+      "h": 30
+    }
+  ],
+  "canvas": {
+    "x": 536,
+    "y": 241,
+    "w": 716,
+    "h": 458
+  },
+  "tiptap": null,
+  "contentColumn": {
+    "x": 536,
+    "y": 56,
+    "w": 716,
+    "h": 643
+  },
+  "header": {
+    "x": 536,
+    "y": 56,
+    "w": 716,
+    "h": 105
+  },
+  "headerParts": [
+    {
+      "sel": ".editor-breadcrumb",
+      "x": 536,
+      "y": 56,
+      "w": 716,
+      "h": 18
+    },
+    {
+      "sel": ".page-header__row"
+    },
+    {
+      "sel": ".page-header__titles"
+    },
+    {
+      "sel": ".page-header__title"
+    },
+    {
+      "sel": ".page-header__meta"
+    },
+    {
+      "sel": ".page-header__actions"
+    }
+  ],
+  "mainContent": {
+    "x": 248,
+    "y": 0,
+    "w": 1032,
+    "h": 860
+  },
+  "archiveMain": {
+    "x": 508,
+    "y": 28,
+    "w": 772,
+    "h": 800
+  },
+  "archiveView": {
+    "x": 248,
+    "y": 28,
+    "w": 1032,
+    "h": 800
+  },
+  "scrollHeights": {
+    "mainContent": 860,
+    "mainContentClient": 860
+  }
+}
