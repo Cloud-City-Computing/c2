@@ -18,13 +18,12 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const css = readFileSync(path.join(ROOT, 'src/index.css'), 'utf8');
 
-/** The body of the first `@media (max-width: 599px)` block that stacks the shell. */
+/** The body of the phone rule that stacks the shell rows (the `.app-shell.no-sidebar` selector inside the 599 px block). */
 function phoneShellRule() {
-  const start = css.indexOf('@media (max-width: 599px) {\n  .app-shell,');
-  if (start < 0) throw new Error('no phone shell media block');
+  const start = css.indexOf('  .app-shell,\n  .app-shell.no-sidebar {');
+  if (start < 0) throw new Error('no phone shell rule');
   const open = css.indexOf('{', start);
-  const close = css.indexOf('\n  }\n', open);
-  return css.slice(open, close);
+  return css.slice(open + 1, css.indexOf('}', open));
 }
 
 describe('the phone shell (390 px)', () => {
