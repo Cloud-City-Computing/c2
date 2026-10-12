@@ -10,6 +10,9 @@ import {
   getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie, uploadAvatar,
 } from '../util';
 import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES } from '../userPrefs';
+import {
+  clearAccent, clearTheme, resolveAccent, setAccent, setTheme, storedThemeChoice, subscribe,
+} from '../lib/suite-prefs';
 import { WarningIcon } from './icons.jsx';
 
 // ===========================
@@ -605,26 +608,70 @@ const EDITOR_MODE_OPTIONS = [
   { id: 'markdown', label: 'Markdown' },
 ];
 
+// The Theme options: the stored choice, or Match system when nothing is stored (suite-prefs.js).
+const THEME_OPTIONS = [
+  { id: 'system', label: 'Match system' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+];
+
 export function UserPreferencesPanel() {
   const [prefs, setPrefs] = useState(() => {
     const saved = loadUserPrefs();
     return {
-      accentColor: saved.accentColor || 'blue',
       fontSize: saved.fontSize || 'md',
       preferredEditor: saved.preferredEditor === 'markdown' ? 'markdown' : 'richtext',
     };
   });
+  // The theme and the accent are the suite preference contract's (suite-prefs.js), read and written there.
+  const [theme, setThemeChoice] = useState(() => storedThemeChoice() ?? 'system');
+  const [hue, setHue] = useState(() => resolveAccent());
 
+  useEffect(() => subscribe(() => {
+    setThemeChoice(storedThemeChoice() ?? 'system');
+    setHue(resolveAccent());
+  }), []);
+
+  // Merges into the stored prefs, so a key this panel does not own (a legacy accent not yet migrated) survives.
   const update = (key, value) => {
     const next = { ...prefs, [key]: value };
     setPrefs(next);
-    saveUserPrefs(next);
+    saveUserPrefs({ ...loadUserPrefs(), [key]: value });
     applyPrefsToDOM(next);
+  };
+
+  const chooseTheme = (id) => {
+    setThemeChoice(id);
+    void (id === 'system' ? clearTheme() : setTheme(id));
+  };
+
+  const chooseAccent = (accentHue) => {
+    setHue(accentHue);
+    void (accentHue === null ? clearAccent() : setAccent(accentHue));
   };
 
   return (
     <div className="settings-panel">
       <h2 className="panel-title">Appearance</h2>
+
+      {/* Theme */}
+      <div className="pref-section" role="group" aria-label="Theme">
+        <h3 className="pref-section__title">Theme</h3>
+        <p className="text-muted text-sm">Match system follows your operating system.</p>
+        <div className="pref-toggle-group">
+          {THEME_OPTIONS.map(option => (
+            <button
+              key={option.id}
+              type="button"
+              className={`pref-toggle-btn${theme === option.id ? ' active' : ''}`}
+              aria-pressed={theme === option.id}
+              onClick={() => chooseTheme(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Accent Color */}
       <div className="pref-section">
@@ -634,17 +681,29 @@ export function UserPreferencesPanel() {
           {ACCENT_COLOR_LIST.map(c => (
             <button
               key={c.id}
-              className={`color-swatch${prefs.accentColor === c.id ? ' active' : ''}`}
+              type="button"
+              className={`color-swatch${hue === c.hue ? ' active' : ''}`}
               style={{ '--swatch-color': c.swatch }}
-              onClick={() => update('accentColor', c.id)}
+              onClick={() => chooseAccent(c.hue)}
               title={c.label}
               aria-label={c.label}
+              aria-pressed={hue === c.hue}
             >
-              {prefs.accentColor === c.id && (
+              {hue === c.hue && (
                 <svg viewBox="0 0 24 24" fill="none" style={{ stroke: 'var(--cx-white)' }} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               )}
             </button>
           ))}
+        </div>
+        <div className="pref-toggle-group">
+          <button
+            type="button"
+            className={`pref-toggle-btn${hue === null ? ' active' : ''}`}
+            aria-pressed={hue === null}
+            onClick={() => chooseAccent(null)}
+          >
+            Default
+          </button>
         </div>
       </div>
 

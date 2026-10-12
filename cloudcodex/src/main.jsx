@@ -15,11 +15,16 @@ import '../vendor/cloud-city-design/fonts.css'
 import './codex.css'
 import './index.css'
 import { applyPrefsToDOM, loadUserPrefs } from './userPrefs'
+import { migrateLegacy, watch } from './lib/suite-prefs'
 import { upgradeLegacySessionCookie } from './util'
 import App from './App.jsx'
 
-// Apply user preferences (accent color, editor font size) before first render
+// The theme and accent (the suite preference contract) are applied again here, the same as the pre-paint
+// script did, and kept in step with other tabs and products. A stored Codex accent moves into the contract
+// once; the editor font size is applied from the prefs object.
 applyPrefsToDOM(loadUserPrefs());
+watch();
+void migrateLegacy();
 
 // A session held under the pre-__Host- cookie name moves across before the
 // first render, since everything that authenticates reads the cookie. It asks

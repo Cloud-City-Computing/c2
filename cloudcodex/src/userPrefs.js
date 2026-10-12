@@ -1,9 +1,10 @@
 /**
  * Cloud Codex - User Preferences
  *
- * Manages user UI preferences (accent color, editor font size, preferred
- * editor) in localStorage and applies them as CSS custom properties on the
- * document root. Density and the sidebar default are gone (W6-CDX-42, K8).
+ * Manages user UI preferences (editor font size, preferred editor) in
+ * localStorage and applies the font size as a CSS custom property on the
+ * document root. The accent moved to the suite preference contract (W6-CDX-44,
+ * src/lib/suite-prefs.js); a stored accentColor is migrated there once.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -58,22 +59,12 @@ export const FONT_SIZES = {
 };
 
 /**
- * Apply user preferences to the DOM by setting CSS custom properties
- * (accent color, editor font size). There is no density scale and no sidebar attribute.
+ * Apply the editor font size to the DOM. The theme and the accent are the suite preference contract's
+ * (src/lib/suite-prefs.js), applied there, so this never touches them.
  * @param {Object} prefs
  */
 export function applyPrefsToDOM(prefs) {
   const root = document.documentElement;
-
-  // The picked accent is a hue (K7). codex.css derives each theme's steps from --cx-accent-h under
-  // [data-accent], so the page follows the theme and never a finished colour written here.
-  if (isAccent(prefs.accentColor)) {
-    root.style.setProperty('--cx-accent-h', String(ACCENTS[prefs.accentColor]));
-    root.dataset.accent = prefs.accentColor;
-  } else {
-    root.style.removeProperty('--cx-accent-h');
-    delete root.dataset.accent;
-  }
 
   const fontSize = FONT_SIZES[prefs.fontSize];
   if (fontSize) {

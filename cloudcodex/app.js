@@ -43,6 +43,7 @@ import { warnUntrustedForwarders, ipv6Groups } from './middleware/forwarded-for.
 import { bearerToken, requireLocalSignIn } from './middleware/auth.js';
 import { readSessionCookie } from './services/session-cookie.js';
 import { getOidcConfig } from './services/oidc.js';
+import { THEME_BOOT_HASH } from './theme-boot-hash.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -307,7 +308,8 @@ const HELMET_OPTIONS = {
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      // 'self', and the pre-paint theme script in index.html by its hash (theme-boot-hash.js).
+      scriptSrc: ["'self'", THEME_BOOT_HASH],
       styleSrc: ["'self'", "'unsafe-inline'"],
       // Documents may hold any https image (pasted, or imported from GitHub),
       // and the linked GitHub account's avatar is remote; an image cannot run

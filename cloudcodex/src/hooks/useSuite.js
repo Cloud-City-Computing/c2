@@ -15,12 +15,24 @@ import { apiFetch } from '../util.jsx';
 
 const OFF = { enabled: false, name: null, commandWorkspaceUrl: null };
 
-// One request per page load: the answer cannot change until the server restarts.
+// One request per page load: the answer cannot change until the server restarts. The body is kept
+// whole so the preference domain (suite-prefs.js) shares it; a failed request is forgotten, so the
+// next asker tries again, and nothing caches a failure as "no domain".
 let suitePromise = null;
+let suiteBody = null;
+
+function fetchSuiteBody() {
+  suiteBody ??= Promise.resolve()
+    .then(() => apiFetch('GET', '/api/suite'))
+    .catch((error) => {
+      suiteBody = null;
+      throw error;
+    });
+  return suiteBody;
+}
 
 function loadSuite() {
-  suitePromise ??= Promise.resolve()
-    .then(() => apiFetch('GET', '/api/suite'))
+  suitePromise ??= fetchSuiteBody()
     .then(
       (body) => (body?.enabled ? { enabled: true, name: body.name ?? null } : { ...OFF }),
       () => ({ ...OFF }),
@@ -33,9 +45,19 @@ export function suiteEnabled() {
   return loadSuite().then((s) => s.enabled);
 }
 
+/**
+ * The suite preference domain (SUITE_PREFERENCE_DOMAIN), or null when suite mode is off or it is unset.
+ * It rejects when the request fails: a caller must then hold its cookie writes, never guess a domain.
+ */
+export async function suitePreferenceDomain() {
+  const body = await fetchSuiteBody();
+  return body?.preferenceDomain ?? null;
+}
+
 /** Test seam: forget the cached answer so the next render asks again. */
 export function __resetSuiteCache() {
   suitePromise = null;
+  suiteBody = null;
 }
 
 /**
