@@ -1,5 +1,7 @@
 /**
- * X4 (W6-CDX-38): buttons and native fields inherit the page's typeface, not the browser's default.
+ * X4 (W6-CDX-38): buttons and native fields inherit the page's typeface, not the browser's default, on the
+ * shell. The deferred families (comments, the editor and its toolbars, Markdown, Draw.io, Version History,
+ * GitHub) are excluded, so their controls keep the metrics they had (K3: no geometry change there).
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -16,10 +18,23 @@ const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
   selectors: m[1].split(',').map((s) => s.trim()),
   body: m[2],
 }));
+const shellRule = rules.find((r) => r.selectors.some((s) => s.startsWith('button:not(')) && /font-family:\s*inherit/.test(r.body));
 
-describe('controls inherit the typeface (X4)', () => {
-  it.each(['.btn', 'button', 'input', 'select', 'textarea'])('%s declares font-family: inherit', (selector) => {
-    const hit = rules.some((r) => r.selectors.includes(selector) && /font-family:\s*inherit\s*;/.test(r.body));
-    expect(hit, `${selector} has no rule with font-family: inherit`).toBe(true);
+// The deferred families' containers. Every control inside one keeps the browser font until W6-CDX-43.
+const DEFERRED_SCOPES = [
+  '.comment-manager *', '.comment-thread *', '.comment-textarea', '.editor-log *', '.editor-with-comments *',
+  '.editor-container *', '.tiptap-toolbar *', '.editor-toolbar *', '.markdown-editor *', '.version-history *',
+  '.drawio-block *', '.document-readonly *', '[class*="gh-"] *', '[class*="gh-"]',
+];
+
+describe('controls inherit the typeface on the shell (X4)', () => {
+  it.each(['.btn', 'button', 'input', 'select', 'textarea'])('%s is in the rule that sets font-family: inherit', (selector) => {
+    expect(shellRule, 'the font-family: inherit rule').toBeDefined();
+    expect(shellRule.selectors.join(' ')).toContain(selector);
+  });
+
+  it('excludes every deferred family, so their controls keep their metrics', () => {
+    const selector = shellRule.selectors.join(' ');
+    for (const scope of DEFERRED_SCOPES) expect(selector, `scope ${scope}`).toContain(scope);
   });
 });
