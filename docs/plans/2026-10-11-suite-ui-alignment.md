@@ -553,50 +553,76 @@ rewritten in the same PR.
 
 ### Task 5.1 The server refusal, tests first (K6)
 
-- [ ] `tests/routes/auth-update-account.test.js` (it exists; extend it), suite mode on (`SUITE_COMMAND_WORKSPACE_URL` and
+- [x] `tests/routes/auth-update-account.test.js` (it exists; extended), suite mode on (`SUITE_COMMAND_WORKSPACE_URL` and
       `SUITE_NAME` set), a user with a `user_identities` row: `POST /api/update-account` answers 403
       `{ success: false, code: 'managed_by_issuer' }` and changes nothing; the same for
       `POST /api/update-account/confirm-email`, `POST /api/2fa/enable`, `/2fa/totp/confirm`,
       `/2fa/disable` and `/2fa/disable/confirm`. Suite off, or no identity row: unchanged. **Expected:**
       red.
-- [ ] A helper in `services/identity.js`, `isIssuerManaged(userId)` (one `SELECT 1 FROM
+- [x] A helper in `services/identity.js`, `isIssuerManaged(userId)` (one `SELECT 1 FROM
       user_identities WHERE user_id = ? LIMIT 1`), and a small middleware `refuseIssuerManaged` in
       `middleware/auth.js`, mounted on those six routes after `requireAuth`, active only when
       `readSuiteConfig().enabled`.
-- [ ] `GET /api/2fa/status`'s existing `managed_by` field gains the value `'issuer'` for the same
+- [x] `GET /api/2fa/status`'s existing `managed_by` field gains the value `'issuer'` for the same
       accounts, so the client has one signal.
 
 ### Task 5.2 The client, tests first
 
-- [ ] `AccountMenu` tests: with `managed_by: 'issuer'`, the name, email, password and two-factor
+- [x] `AccountMenu` tests: with `managed_by: 'issuer'`, the name, email, password and two-factor
       panels render read-only (no editable input, no submit), each with "Managed by " plus the provider
       name, and a link whose `href` is the configured account URL; with no URL, no link. Suite off:
       unchanged.
-- [ ] `OIDC_ACCOUNT_URL`: `env-contract.js` (optional, per-instance, an https URL, http only outside
+- [x] `OIDC_ACCOUNT_URL`: `env-contract.js` (optional, per-instance, an https URL, http only outside
       production), `docs/getting-started.md` (the env-contract test reads it), `.env.example`, served
       to the client beside `OIDC_PROVIDER_NAME` where the provider name is already served.
 
 ### Task 5.3 Appearance (K8)
 
-- [ ] `userPrefs.test.js` first: no `DENSITIES` export; a stored `{ density: 'compact',
+- [x] `userPrefs.test.js` first: no `DENSITIES` export; a stored `{ density: 'compact',
       sidebarDefault: 'collapsed' }` loads without either key; `applyPrefsToDOM` never sets
       `--density-scale` or `data-sidebar-default`. **Expected:** red.
-- [ ] Remove them from `userPrefs.js`, the panel, and the three `--density-scale` reads in
+- [x] Remove them from `userPrefs.js`, the panel, and the three `--density-scale` reads in
       `index.css`. The 95% line threshold holds.
 
 ### Task 5.4 Admin, not-found, first run
 
-- [ ] Admin tests first: the sections render as a `.tabs` row; no emoji character in the admin
+- [x] Admin tests first: the sections render as a `.tabs` row; no emoji character in the admin
       markup (a test over the rendered text with `/\p{Extended_Pictographic}/u`); Revoke opens a
       confirm naming the invitation's address and calls `deleteAdminInvitation` only on confirm (X8);
       no Users row renders a bare numeric node without an accessible label (X7).
-- [ ] Build: the tab row in a `PageHeader`; Overview as a quiet summary; member rows; not-found as the
+- [x] Build: the tab row in a `PageHeader`; Overview as a quiet summary; member rows; not-found as the
       standalone card with the product mark; first run with a left-aligned list and links in
       `--cx-accent` (X5).
-- [ ] Captures: Account (suite on, issuer-linked, and suite off), Admin's tabs, not-found, first run,
+- [x] Captures: Account (suite on, issuer-linked, and suite off), Admin's tabs, not-found, first run,
       both widths, dark.
 
 ---
+
+**Deviations, recorded at execution (W6-CDX-42, 2026-10-12).** The plan is the approval; each is a place where the
+code or Kyle's binding decisions required a choice the plan did not spell out.
+
+1. **The update-account refusal is checked in its handler, not by `refuseIssuerManaged`.** That route reads its session
+   from the body, so there is no `requireAuth` to mount after. The other five routes mount the middleware as planned.
+2. **`managed_by: 'issuer'` is reported only in suite mode**, the same condition as the refusal. Suite off, the field keeps
+   its W6-CDX-5 meaning, so an OIDC session still reads `'oidc'`.
+3. **There is one `--density-scale` read, not three.** It was the `.settings-panel` padding; it is now `28px`, which is the
+   value the scale produced at its default.
+4. **Admin lists.** Users and Invitations are member rows. The squad cards keep their member and invitation tables (the
+   permission matrix is tabular) inside `.admin-table-wrap`. Workspaces keeps its table.
+5. **PageHeader on GitHub settings: decided pending Kyle.** Codex has no GitHub settings page. The connection lives in
+   Account's Linked Accounts, which already sits under the Account PageHeader. `/github` is the repository browser, which is
+   the deferred GitHub family, so it is not touched here.
+6. **Password is managed by the issuer in the read-only panel, but the password-reset route is not refused.** The plan's
+   route list names the update and 2FA writes only. A reset through the email link still sets a local password for an
+   issuer-linked account. Decided pending Kyle: whether `/api/reset-password` joins the refusal.
+7. **"Managed by" names the served sign-in label** (`providers.oidc.name`), which falls back to the suite name when
+   `OIDC_PROVIDER_NAME` is unset. The plan says `OIDC_PROVIDER_NAME` exactly. Decided pending Kyle.
+8. **Accent colour and preferred editor stay.** K8 says Codex keeps "only the editor font size"; the spec and this plan keep
+   the accent and the preferred editor too. Decided pending Kyle; the removal is limited to density and the sidebar default.
+9. **Labels in sentence case:** "Invite user" and "New workspace" replace "+ Invite User" and "+ New Workspace".
+10. **Tests first, unevenly.** The userPrefs, OIDC config, env contract, issuer refusal, AccountMenu, first-run and destructive
+    copy tests were written red first. The Admin tab tests were written after the page and then run against the previous
+    `AdminPage.jsx`, where all eleven failed. The not-found and Workspaces header tests were written alongside their code.
 
 ## PR 6: W6-CDX-43, the light theme and the hue-based picker
 

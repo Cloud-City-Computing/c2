@@ -67,7 +67,7 @@ in Tiptap, Yjs, lowlight, etc.).
    ├── /account                                AccountSettings
    ├── /settings                               → /account (redirect)
    │
-   ├── /404                                    NotFound
+   ├── /404                                    NotFoundPage (src/pages/NotFoundPage.jsx)
    └── *                                       → /404
 ```
 
@@ -114,9 +114,10 @@ repo's file tree, reading files, branch and PR management, code/issue
 embedding, and linking files to Cloud Codex documents for push/pull sync.
 
 ### `AdminPage`
-System administration panel. Visible only to admins. Covers user management,
-workspace management, invitation sending, permission flag toggles, and live
-presence telemetry.
+System administration panel. Visible only to admins. Its sections are tabs in the
+page header (Overview, Users, Workspaces, Squads, Invitations, Webhooks). Covers user
+management, workspace management, invitation sending and revocation (Revoke confirms),
+permission flag toggles, and live presence telemetry. It has no emoji (icons only).
 
 ### `NotificationsPage`
 The unified inbox. Lists notifications newest first with cursor pagination,

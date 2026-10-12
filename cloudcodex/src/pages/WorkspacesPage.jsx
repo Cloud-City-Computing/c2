@@ -29,6 +29,7 @@ import {
   fetchAdminStatus,
 } from '../util';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PageHeader from '../components/PageHeader';
 import { toastError } from '../components/Toast';
 import { squadMemberRemove, squadDelete, workspaceDelete } from '../lib/destructive-copy.js';
 
@@ -610,17 +611,17 @@ export default function WorkspacesPage() {
 
   return (
     <StdLayout>
-      <div className="log-header">
-        <h1>Workspaces</h1>
-        {isAdmin && (
+      <PageHeader
+        title="Workspaces"
+        primary={isAdmin && (
           <button
             className="btn btn-primary"
             onClick={() => showModal(<NewOrgModal onCreated={load} />, 'modal-md')}
           >
-            + New Workspace
+            New workspace
           </button>
         )}
-      </div>
+      />
 
       {loading && <p className="text-muted">Loading workspaces...</p>}
       {error && <p className="form-error">{error}</p>}

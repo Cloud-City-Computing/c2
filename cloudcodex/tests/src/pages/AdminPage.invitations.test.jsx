@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 
 const serverMessage = 'Could not revoke the invitation. Try again in a moment.';
 
@@ -57,6 +57,9 @@ async function renderWithRejectedRevoke(error) {
   render(<AdminPage />);
   fireEvent.click(await screen.findByRole('button', { name: /Invitations/ }));
   fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
+  // X8: Revoke opens a confirm first; the revoke itself runs when the confirm does.
+  const confirm = util.showModal.mock.calls.at(-1)[0];
+  await act(async () => { await confirm.props.onConfirm(); });
 }
 
 describe('AdminPage: a failing invitation revoke shows the server message (X3)', () => {

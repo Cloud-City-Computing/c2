@@ -13,6 +13,12 @@ initialises an empty data directory.
 ## [Unreleased]
 
 ### Changed
+- **Settings and admin (W6-CDX-42, A5).** In suite mode an account signed in through the issuer has its name, email,
+  password and two-factor read-only on the Account page, "Managed by" the provider with a link to `OIDC_ACCOUNT_URL` (a new
+  optional setting). The server refuses the same writes for that account with `403 managed_by_issuer`, so nothing changes.
+  Density and the sidebar default are removed; a stored value is dropped on load. The admin console is a tab row in the page
+  header with no emoji, member rows for users and invitations, and Revoke confirms first. Not found is a standalone card, and
+  the first-run list is left-aligned with accent links. The Workspaces page takes the shared page header.
 - **The suite shell is sidebar-led (W6-CDX-40, A3).** There is no top bar, no copyright footer and no bottom tab bar.
   One sidebar holds the suite cluster (or the product mark outside suite mode), the workspace slot, a "Search or jump to"
   palette on Ctrl K (documents and archives), the navigation with an unread count on Notifications, an Archives group and

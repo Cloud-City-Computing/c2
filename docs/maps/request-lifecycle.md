@@ -634,7 +634,10 @@ only, as before. The sealed ID token travels with the rotation too
 (`getSessionOidcIdToken`, `mysql_connect.js:302`, read before the delete); a session
 that has none, one signed in before W6-CDX-6, gets the options it always got, with
 no `oidcIdToken` key. `GET /api/2fa/status` answers `managed_by: 'oidc'` for an OIDC
-session.
+session, and `'issuer'` for an account the issuer manages in suite mode (a `user_identities` row; W6-CDX-42).
+Suite mode refuses the writes that account owns: `POST /api/update-account` (checked in the handler, since it reads its
+session from the body), `POST /api/update-account/confirm-email` and the four `/api/2fa/*` writes, mounted with
+`refuseIssuerManaged` (`middleware/auth.js`) after `requireAuth`. The refusal is `403 { code: 'managed_by_issuer' }`.
 
 The query order is load-bearing for tests, not only for behaviour: route tests
 queue `c2_query` mocks in call order, which is why
