@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { c2_query, validateAndAutoLogin, touchSession } from '../../mysql_connect.js';
 import { requireAuth, machineOrAuth, extractSessionToken, bearerToken } from '../../middleware/auth.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
+import { DEAD_SESSION_MESSAGE } from '../../services/session-messages.js';
 
 /**
  * Creates minimal mock req/res/next objects for middleware testing.
@@ -357,5 +358,23 @@ describe('machine JWT failures at the middleware (W6-CDX-7)', () => {
     await vi.waitFor(() => expect(res.statusCode).toBe(401));
 
     expect(req.user).toBeUndefined();
+  });
+});
+
+// The dead-session refusal is the one string the client reads to end a session (momus item 3). The client
+// copy must equal the server's, and the literal is pinned here so a rename on either side fails a test.
+describe('requireAuth, a dead session (the shared message)', () => {
+  beforeEach(() => {
+    resetMocks();
+  });
+
+  it('refuses an expired token with exactly the shared dead-session message', async () => {
+    validateAndAutoLogin.mockResolvedValueOnce(null);
+    const { req, res, next } = createMocks({ headers: { authorization: 'Bearer dead-token' } });
+    requireAuth(req, res, next);
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(res.body).toEqual({ success: false, message: DEAD_SESSION_MESSAGE });
+    expect(DEAD_SESSION_MESSAGE).toBe('Invalid or expired session');
+    expect(next).not.toHaveBeenCalled();
   });
 });

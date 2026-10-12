@@ -24,7 +24,7 @@ import mysql from 'mysql2/promise';
 import { INSTANCE_LOCK_NAME_SQL } from '../../services/instance-lock.js';
 import { openAdminConnection } from './mysql-admin.js';
 import { buildFresh, newInstance, provision, unprovision } from './instance-recipe.js';
-import { freePort, kill, killChildren, openCollab, signIn, startServer } from './server-child.js';
+import { kill, killChildren, openCollab, signIn, startServerOnFreePort } from './server-child.js';
 
 const ADMIN = { username: 'dmladmin', password: 'Dml-Only-Passw0rd!', email: 'dmladmin@example.com' };
 const MARKER = 'written by the DML-only account';
@@ -71,8 +71,7 @@ async function adminRead(sql, params) {
 
 describe('the app on the DML-only account', () => {
   it('boots, serves the smoke path, saves a live edit and stops cleanly, with no privilege error', { timeout: 120_000 }, async () => {
-    const port = await freePort();
-    const server = await startServer(port, ADMIN, {
+    const { port, run: server } = await startServerOnFreePort(ADMIN, {
       DB_USER: instance.app.user,
       DB_PASS: instance.app.password,
       DB_NAME: instance.schema,

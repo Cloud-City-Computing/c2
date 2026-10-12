@@ -32,6 +32,7 @@ import {
   closeDocImageCredits,
 } from '../routes/helpers/images.js';
 import { processMentionsOnSave } from '../routes/helpers/mentions.js';
+import { SIGNED_OUT_SOCKET_CLOSE } from './session-messages.js';
 import { logActivity } from '../routes/helpers/activity.js';
 
 async function fetchDocMeta(logId) {
@@ -218,7 +219,7 @@ export function closeSocketsForSessions(digests) {
   for (const wss of servers) {
     for (const ws of wss.clients) {
       if (ws.sessionId !== undefined && wanted.has(ws.sessionId)) {
-        ws.close(4004, 'Signed out');
+        ws.close(SIGNED_OUT_SOCKET_CLOSE.code, SIGNED_OUT_SOCKET_CLOSE.reason);
         closed += 1;
       }
     }
@@ -454,7 +455,7 @@ export function setupCollabServer(server) {
       }
 
       if (ws.readyState !== 1 || sessionClosedRecently(digest)) {
-        ws.close(4004, 'Signed out');
+        ws.close(SIGNED_OUT_SOCKET_CLOSE.code, SIGNED_OUT_SOCKET_CLOSE.reason);
         return;
       }
 

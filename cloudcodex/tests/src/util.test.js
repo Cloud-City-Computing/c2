@@ -14,6 +14,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   apiFetch,
+  uploadDocImage,
+  uploadAvatar,
   serverReq,
   timeAgo,
   docUrl,
@@ -44,6 +46,7 @@ import {
   fetchLogActivity,
   fetchNotifications,
   exportDocument,
+  uploadDocument,
   fetchWebhooks,
   createWebhook,
   rotateWebhook,
@@ -785,5 +788,93 @@ describe('outbound webhook admin wrappers', () => {
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/admin/webhooks/deliveries/29/redeliver');
     expect(opts.method).toBe('POST');
+  });
+});
+
+// ── a dead session announces itself (the front door's trigger) ──────
+
+describe('apiFetch, a dead session', () => {
+  const DEAD = { ok: false, status: 401, json: async () => ({ success: false, message: 'Invalid or expired session' }) };
+
+  function listen() {
+    const seen = vi.fn();
+    window.addEventListener('c2:session-ended', seen);
+    return { seen, stop: () => window.removeEventListener('c2:session-ended', seen) };
+  }
+
+  it('announces the end of the session and forgets the cached user when a signed-in request is refused as expired', async () => {
+    document.cookie = 'sessionToken=stale';
+    setSessStorage('currentUser', { id: 7 });
+    fetchMock.mockResolvedValueOnce(DEAD);
+    const { seen, stop } = listen();
+    await expect(apiFetch('GET', '/api/document?doc_id=1')).rejects.toMatchObject({ status: 401 });
+    stop();
+    expect(seen).toHaveBeenCalledOnce();
+    expect(getSessStorage('currentUser')).toBeNull();
+  });
+
+  it('does not announce a 401 that is not a dead session (a wrong current password)', async () => {
+    document.cookie = 'sessionToken=live';
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Current password is incorrect' }) });
+    const { seen, stop } = listen();
+    await expect(apiFetch('POST', '/api/change-password', {})).rejects.toMatchObject({ status: 401 });
+    stop();
+    expect(seen).not.toHaveBeenCalled();
+  });
+
+  it('does not announce anything for a signed-out request, which has no session to end', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Authentication required' }) });
+    const { seen, stop } = listen();
+    await expect(apiFetch('GET', '/api/document?doc_id=1')).rejects.toMatchObject({ status: 401 });
+    stop();
+    expect(seen).not.toHaveBeenCalled();
+  });
+});
+
+// ── a refusal is announced only for the session the tab still holds (momus item 2) ──
+
+describe('apiFetch, a refusal of a session the cookie no longer holds', () => {
+  const DEAD = { ok: false, status: 401, json: async () => ({ success: false, message: 'Invalid or expired session' }) };
+
+  it('does not announce when the cookie moved to another session while the request was in flight', async () => {
+    document.cookie = 'sessionToken=tokenA';
+    setSessStorage('currentUser', { id: 7 });
+    fetchMock.mockImplementationOnce(async () => {
+      document.cookie = 'sessionToken=tokenB';
+      return DEAD;
+    });
+    const seen = vi.fn();
+    window.addEventListener('c2:session-ended', seen);
+    await expect(apiFetch('GET', '/api/document?doc_id=1')).rejects.toMatchObject({ status: 401 });
+    window.removeEventListener('c2:session-ended', seen);
+    expect(seen).not.toHaveBeenCalled();
+  });
+});
+
+// ── the raw fetch sites share the same dead-session check (momus item 4) ──
+
+describe.each([
+  ['uploadDocument', () => uploadDocument(1, new File(['x'], 'a.md')), '/api/archives/1/logs/upload'],
+  ['exportDocument (a server-side format)', () => exportDocument(1, 'md', 'T', '<p>x</p>'), '/api/document/1/export?format=md'],
+  ['uploadDocImage', () => uploadDocImage(new File(['x'], 'a.png'), 1), '/api/doc-images/upload'],
+  ['uploadAvatar', () => uploadAvatar(7, new File(['x'], 'a.png')), '/api/users/7/avatar'],
+])('%s, a dead session', (_name, call, url) => {
+  const deadResponse = () => {
+    const body = { success: false, message: 'Invalid or expired session' };
+    return { ok: false, status: 401, json: async () => body, clone: () => deadResponse() };
+  };
+
+  it('announces the end of the session, sends the tab\'s token, and forgets the cached user', async () => {
+    document.cookie = 'sessionToken=tokA';
+    setSessStorage('currentUser', { id: 7 });
+    fetchMock.mockResolvedValueOnce(deadResponse());
+    const seen = vi.fn();
+    window.addEventListener('c2:session-ended', seen);
+    await call().catch(() => {});
+    window.removeEventListener('c2:session-ended', seen);
+    expect(fetchMock.mock.calls[0][0]).toBe(url);
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tokA');
+    expect(seen).toHaveBeenCalledOnce();
+    expect(getSessStorage('currentUser')).toBeNull();
   });
 });

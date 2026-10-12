@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client';
 import DOMPurify from 'dompurify';
 import { openDialog, closeDialog } from './lib/dialog.js';
 import { clearSignInTarget } from './lib/sign-in-target.js';
+import { DEAD_SESSION_MESSAGE, announceSessionEnded } from './lib/session-ended.js';
 
 // --- Constants ---
 
@@ -44,6 +45,7 @@ export async function apiFetch(method, url, data) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
+    noteRefusal(response.status, body, token);
     const err = new Error(body.message || `${method} ${url} responded with ${response.status}`);
     err.status = response.status;
     err.body = body;
@@ -51,6 +53,49 @@ export async function apiFetch(method, url, data) {
   }
 
   return response.json();
+}
+
+/**
+ * The session this tab carried has ended on the server. Forgets the cached user the tab still holds, and announces
+ * it, so the layout can run the signed-out front door (lib/session-ended.js). Also called by a socket the server
+ * closes as signed out (useCollab).
+ */
+export function endDeadSession() {
+  removeSessStorage('currentUser');
+  announceSessionEnded();
+}
+
+/**
+ * Every request that carries the session cookie passes its refusal here. It ends the session only for the
+ * dead-session refusal, and only while the cookie still holds the token that was refused: a refusal of a session the
+ * tab has since replaced (a sign-in in another tab) says nothing about the session the tab now holds.
+ * @param {number} status the response status
+ * @param {object} body the parsed response body
+ * @param {string|null} tokenSent the token the request carried, or null when it carried none
+ */
+export function noteRefusal(status, body, tokenSent) {
+  if (!tokenSent || status !== 401 || body?.message !== DEAD_SESSION_MESSAGE) return;
+  if (getSessionTokenFromCookie() !== tokenSent) return;
+  endDeadSession();
+}
+
+/**
+ * fetch with the session token as the Bearer header, for the requests that are not JSON (uploads, exports). A refusal
+ * goes through noteRefusal like every other request, and the response is returned for the caller to read.
+ * @param {string} url
+ * @param {RequestInit} [init]
+ * @returns {Promise<Response>}
+ */
+export async function sessionFetch(url, init = {}) {
+  const token = getSessionTokenFromCookie();
+  const headers = { ...(init.headers ?? {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(url, { ...init, headers });
+  if (!response.ok && response.status === 401) {
+    const body = await response.clone().json().catch(() => ({}));
+    noteRefusal(response.status, body, token);
+  }
+  return response;
 }
 
 /**
@@ -386,17 +431,12 @@ export const publishVersion = (logId, payload = {}) =>
  * Uses FormData (multipart) instead of JSON.
  */
 export async function uploadDocument(archiveId, file, parentId) {
-  const token = getSessionTokenFromCookie();
   const formData = new FormData();
   formData.append('file', file);
   if (parentId) formData.append('parent_id', parentId);
 
-  const headers = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const response = await fetch(`/api/archives/${archiveId}/logs/upload`, {
+  const response = await sessionFetch(`/api/archives/${archiveId}/logs/upload`, {
     method: 'POST',
-    headers,
     body: formData,
   });
 
@@ -421,6 +461,39 @@ export async function uploadDocument(archiveId, file, parentId) {
  * @param {string} [title] - Document title for PDF filename
  * @param {string} [htmlContent] - HTML content for client-side PDF generation
  */
+/**
+ * An image for a document, uploaded and answered with its served URL, or null when the upload fails (the failure is
+ * logged, and the editor keeps its placeholder out of the document).
+ */
+export async function uploadDocImage(file, logId) {
+  const formData = new FormData();
+  formData.append('logId', logId);
+  formData.append('files', file);
+  try {
+    const res = await sessionFetch('/api/doc-images/upload', { method: 'POST', body: formData });
+    const json = await res.json();
+    if (json.success && json.urls?.length) {
+      return json.urls[0];
+    }
+  } catch (err) {
+    console.error('[editor] Image upload failed:', err);
+  }
+  return null;
+}
+
+/** The user's new avatar, { avatar_url }. Throws with the server's message when the upload is refused. */
+export async function uploadAvatar(userId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await sessionFetch(`/api/users/${userId}/avatar`, {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Upload failed');
+  return data;
+}
+
 export async function exportDocument(logId, format, title, htmlContent) {
   // PDF uses the browser's native print-to-PDF via a print window.
   // This gives perfect text selection, formatting, and pagination.
@@ -475,13 +548,8 @@ export async function exportDocument(logId, format, title, htmlContent) {
   }
 
   // All other formats are handled server-side
-  const token = getSessionTokenFromCookie();
-  const headers = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const response = await fetch(`/api/document/${logId}/export?format=${format}`, {
+  const response = await sessionFetch(`/api/document/${logId}/export?format=${format}`, {
     method: 'GET',
-    headers,
   });
 
   if (!response.ok) {

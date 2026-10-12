@@ -75,7 +75,10 @@ Rollup's default chunking.
 the cookie via `getSessionTokenFromCookie()` (`util.jsx:661`), sets
 `Authorization: Bearer`, JSON-encodes the body for non-GET, and on a non-2xx
 throws an `Error` carrying `.status` and `.body`. `getErrorMessage(err)`
-(`util.jsx:102`) is the standard way to render that.
+(`util.jsx:102`) is the standard way to render that. A 401 `Invalid or expired session` on a request that
+carried a cookie is the one dead-session refusal: apiFetch forgets the cached user and announces it on the
+window (`src/lib/session-ended.js`, `c2:session-ended`), and `Std_Layout` runs the signed-out front door
+(section 3c) at once, the same as a cookie-less visit. Other 401s stay with their caller.
 
 `setSessionCookie(token)` (`util.jsx:676`) is the one client-side writer of the
 session cookie: `__Host-sessionToken` with `secure` on an https page,
@@ -245,6 +248,20 @@ the link bounces once per tab to `/api/auth/oidc/start?returnTo=`. The marker is
 the validated target is kept under `c2-sign-in-target` (`src/lib/sign-in-target.js`) and the caller
 opens the Login modal. That also covers OIDC offered beside local login outside suite mode, so a deep link
 never redirects to `/`. Dismissing the modal (`destroyModal`, `util.jsx`) forgets the kept target; `Login.jsx` `finishSignIn` sends a successful sign-in to the kept target, or reloads. A `bounced` result needs no other work.
+
+A session that the server ends while the tab is open (a sign-out in the other product) is caught by the first
+refused request: `noteRefusal` (`util.jsx`) ends the session only when the cookie still holds the refused token, and
+announces `c2:session-ended`. `Std_Layout` then checks the unsaved-changes registry (`src/lib/unsaved-changes.js`,
+written by the editor). With nothing unsaved it clears its signed-in state and runs the same front door. With unsaved
+content it does not navigate: a blocking notice (`SessionNotice`) offers sign-in in a new tab, a copy of the text, and
+"I have signed in", which re-checks the cookie. The editor's dirty state reaches the registry only after this tab's
+user has given input since the last save (`userTouchedRef`), so the initial population does not count. A socket
+the server closes as signed out (4004 "Signed out", `useCollab`) stops reconnecting and ends the session the same way.
+The raw uploads, the export and the avatar go through `sessionFetch` and `noteRefusal` too. Parallel refusals on one
+page run it once, and the once-per-tab marker stops a second bounce. A page load that validates before its own document 401s still clears the marker (checkAuth), so a server
+that validated and then refused the document would bounce again per round trip; the shared validator makes that
+unreachable today. The dead-session message is one constant (`services/session-messages.js`) that the server and
+the client both import.
 
 The target is `safeReturnTo(pathname + search + hash)` on the client too (the fragment is carried because a browser never sends it), so an encoded path (a `%`
 anywhere in the path) falls back to `/` and the bounce still happens, as Cloud Command does.

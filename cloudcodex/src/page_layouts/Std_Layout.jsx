@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Login from '../components/Login';
 import SuiteCluster from '../components/SuiteCluster';
@@ -24,6 +24,8 @@ import {
 } from '../util';
 import useGitHubStatus, { GitHubStatusProvider } from '../hooks/useGitHubStatus';
 import { useSignedOutTarget, clearOidcBounce } from '../hooks/useSignedOutTarget';
+import { onSessionEnded } from '../lib/session-ended.js';
+import { hasUnsavedChanges, unsavedCopyText } from '../lib/unsaved-changes.js';
 // The one sentence after a sign-out, the same as Cloud Command's (W6-CMD-22). Suite mode only.
 const signedOutSentence = (suiteName) => `You're signed out of ${suiteName}.`;
 import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
@@ -257,6 +259,42 @@ function NoLoginMessage({ suiteName, signedOut }) {
   );
 }
 
+// --- Session notice (a dead session with unsaved changes) ---
+
+/**
+ * Blocks the page after a dead session while an editor holds unsaved changes. The page behind it is unchanged, so
+ * the content stays where it was; the notice offers a sign-in in a new tab, a copy of the text, and a re-check.
+ */
+function SessionNotice({ stillOut, onSignIn, onCopy, onCheck }) {
+  return (
+    <>
+      <div className="session-notice-dimmer" aria-hidden="true" />
+      <div
+        className="session-notice"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="session-notice-title"
+        aria-describedby="session-notice-body"
+      >
+        <h2 id="session-notice-title" className="session-notice__title">Your session ended.</h2>
+        <p id="session-notice-body" className="session-notice__body">
+          Your unsaved changes are still here. Sign in again to save them.
+        </p>
+        {stillOut && (
+          <p role="status" className="session-notice__status">
+            Still signed out. Finish signing in in the other tab, then choose &ldquo;I have signed in&rdquo;.
+          </p>
+        )}
+        <div className="session-notice__actions">
+          <button type="button" className="btn btn-primary" onClick={onSignIn} autoFocus>Sign in again</button>
+          <button type="button" className="btn btn-ghost" onClick={onCopy}>Copy my changes</button>
+          <button type="button" className="btn btn-ghost" onClick={onCheck}>I have signed in</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // --- Layout ---
 
 function StdLayout({ children }) {
@@ -274,6 +312,18 @@ function StdLayout({ children }) {
   });
 
   const bounceToSignIn = useSignedOutTarget();
+  // Whether this page last found someone signed in, read by the session-ended listener below.
+  const signedInRef = useRef(false);
+  // The page's session ended while an editor held unsaved changes: the notice stays, and nothing navigates.
+  const [sessionNotice, setSessionNotice] = useState(false);
+  const [stillOut, setStillOut] = useState(false);
+
+  // The signed-out front door (hooks/useSignedOutTarget.js): a deep link goes to the sign-in once per tab where OIDC
+  // is the sign-in, and where local sign-in is offered the link is kept and the Login modal opens.
+  const frontDoor = useCallback(async () => {
+    const outcome = await bounceToSignIn();
+    if (outcome === 'login') showModal(<Login />, 'modal-md');
+  }, [bounceToSignIn]);
 
   const checkAuth = useCallback(async () => {
     const token = getSessionTokenFromCookie();
@@ -281,6 +331,7 @@ function StdLayout({ children }) {
 
     if (token) {
       loggedInUser = await attemptAutoLogin(token);
+      signedInRef.current = Boolean(loggedInUser);
       setUser(loggedInUser ?? false);
 
       // Check admin status if logged in
@@ -299,17 +350,50 @@ function StdLayout({ children }) {
     // Signed out, with no cookie or with one the server no longer accepts. A deep link goes to the sign-in
     // once per tab where OIDC is the sign-in (hooks/useSignedOutTarget.js). Where no OIDC is offered, the
     // link is kept and the Login modal opens; a successful sign-in then returns to it.
-    if (!loggedInUser) {
-      const outcome = await bounceToSignIn();
-      if (outcome === 'login') showModal(<Login />, 'modal-md');
-    }
+    if (!loggedInUser) await frontDoor();
 
     setAuthChecked(true);
-  }, [bounceToSignIn]);
+  }, [frontDoor]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // A request on this page was refused because the server ended the session (lib/session-ended.js). With nothing
+  // unsaved it is the cookie-less case reached late, so it takes the same front door. With unsaved changes on the
+  // page the front door would navigate them away, so the notice takes over and the page stays as it is. The first
+  // announcement wins: a page's parallel requests fail together.
+  useEffect(() => onSessionEnded(() => {
+    if (!signedInRef.current) return;
+    signedInRef.current = false;
+    if (hasUnsavedChanges()) {
+      setSessionNotice(true);
+      return;
+    }
+    setUser(false);
+    frontDoor();
+  }), [frontDoor]);
+
+  // Sign in again, in a new tab: the current page there goes through the signed-out front door, and this tab keeps
+  // its content.
+  const signInAgain = useCallback(() => {
+    window.open(`${window.location.pathname}${window.location.search}${window.location.hash}`, '_blank', 'noopener');
+  }, []);
+
+  // "I have signed in": asks the server with the cookie this tab now holds. A valid session clears the notice and
+  // the autosave carries on; otherwise the notice says so.
+  const checkSignInAgain = useCallback(async () => {
+    const token = getSessionTokenFromCookie();
+    const back = token ? await attemptAutoLogin(token) : null;
+    if (!back) {
+      setStillOut(true);
+      return;
+    }
+    signedInRef.current = true;
+    clearOidcBounce();
+    setStillOut(false);
+    setSessionNotice(false);
+  }, []);
 
   // Handle invitation tokens from URL
   useEffect(() => {
@@ -388,6 +472,14 @@ function StdLayout({ children }) {
   // route is behind requireAuth, so asking for anyone else is a 401.
   return (
     <GitHubStatusProvider enabled={Boolean(user)}>
+      {sessionNotice && (
+        <SessionNotice
+          stillOut={stillOut}
+          onSignIn={signInAgain}
+          onCopy={() => navigator.clipboard?.writeText(unsavedCopyText())}
+          onCheck={checkSignInAgain}
+        />
+      )}
       <div className={`app-shell ${user && sidebarCollapsed ? 'sidebar-collapsed' : ''} ${!user ? 'no-sidebar' : ''}`}>
         <TopBar user={user} suite={suite} />
         {user && (
