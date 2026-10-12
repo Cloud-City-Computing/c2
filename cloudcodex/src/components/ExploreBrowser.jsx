@@ -14,6 +14,7 @@ import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, fe
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
 import Menu from './Menu';
+import EmptyState from './EmptyState';
 import { StarIcon } from './icons.jsx';
 
 const ITEMS_PER_PAGE = 12;
@@ -414,13 +415,20 @@ export default function ExploreBrowser() {
       </div>
 
       {!loading && results.length === 0 && (
-        <div className="explore-empty">
-          {isSearch
-            ? <p>No documents match &ldquo;{query.trim()}&rdquo;{hasActiveFilters ? ' with the selected filters' : ''}. Try a different search term{hasActiveFilters ? ' or clear filters' : ''}.</p>
-            : hasActiveFilters
-              ? <p>No documents match the selected filters. Try adjusting your filters.</p>
-              : <p>No documents yet. Head to Archives to create your first document.</p>}
-        </div>
+        isSearch ? (
+          <EmptyState title={`No documents match \u201c${query.trim()}\u201d`}>
+            {`Try a different search term${hasActiveFilters ? ' or clear the filters' : ''}.`}
+          </EmptyState>
+        ) : hasActiveFilters ? (
+          <EmptyState title="No documents match these filters">Try adjusting your filters.</EmptyState>
+        ) : (
+          <EmptyState
+            title="No documents yet"
+            action={<Link className="btn btn-ghost btn-sm" to="/archives">Go to Archives</Link>}
+          >
+            Create an archive, then add your first document to it.
+          </EmptyState>
+        )
       )}
 
       <div className="explore-grid">

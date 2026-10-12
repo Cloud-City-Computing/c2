@@ -11,6 +11,7 @@ import StdLayout from '../page_layouts/Std_Layout';
 import ActivityItem from '../components/ActivityItem';
 import { fetchWorkspaceActivity, fetchWorkspaces, getErrorMessage } from '../util';
 import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
 
 const FILTERS = [
   { key: 'all', label: 'All', prefix: '' },
@@ -109,7 +110,9 @@ export default function WorkspaceActivity() {
         {loading && items.length === 0 ? (
           <div className="activity-page__empty">Loading…</div>
         ) : items.length === 0 ? (
-          <div className="activity-page__empty">No activity yet.</div>
+          <EmptyState title="No activity yet">
+            Edits, comments and new documents in this workspace appear here.
+          </EmptyState>
         ) : (
           <div className="activity-page__list">
             {items.map((entry) => (

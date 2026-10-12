@@ -13,6 +13,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import StdLayout from '../page_layouts/Std_Layout';
 import PageTree from '../components/PageTree';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
 import Editor from './Editor';
 import { apiFetch } from '../util';
 
@@ -48,7 +50,13 @@ export default function ArchiveView() {
 
   return (
     <StdLayout>
-      <div className={`archive-view${collapsed ? ' archive-view--collapsed' : ''}`}>
+      {!logId && (
+        <PageHeader
+          title={archiveName || 'Archive'}
+          meta={[archiveMeta.squadName, archiveMeta.workspaceName].filter(Boolean).join(' · ') || null}
+        />
+      )}
+      <div className={`archive-view${collapsed ? ' archive-view--collapsed' : ''}${logId ? '' : ' archive-view--headed'}`}>
         <div className="archive-view__sidebar">
           {collapsed ? (
             <button
@@ -74,8 +82,7 @@ export default function ArchiveView() {
             <Editor key={logId} embedded archiveId={archiveId} />
           ) : (
             <div className="archive-view__placeholder">
-              <h2>{archiveName || 'Archive'}</h2>
-              <p className="text-muted">Select a page from the sidebar to start editing.</p>
+              <EmptyState title="Select a document">Choose a page from the tree to start reading or editing.</EmptyState>
             </div>
           )}
         </div>

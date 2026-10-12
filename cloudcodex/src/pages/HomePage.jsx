@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import StdLayout from '../page_layouts/Std_Layout';
 import ExploreBrowser from '../components/ExploreBrowser';
+import PageHeader from '../components/PageHeader';
 import { fetchMyInvitations, acceptInvitation, declineInvitation } from '../util';
 
 function PendingInvitations() {
@@ -77,10 +78,10 @@ export default function HomePage() {
   return (
     <StdLayout>
       <div className="home-log">
-        <section className="home-hero">
-          <h1>Welcome to Cloud Codex</h1>
-          <p className="text-muted">Your collaborative document workspace. Browse and search your documents below.</p>
-        </section>
+        <PageHeader
+          title="Home"
+          meta="Every document you can read, across your archives."
+        />
 
         <PendingInvitations />
 
