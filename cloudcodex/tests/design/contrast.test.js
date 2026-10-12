@@ -12,7 +12,7 @@ import {
   contrastRatio, parseThemeTokens, resolveToken, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { declaredNames } from '../../vendor/cloud-city-design/gates/dangling.mjs';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
@@ -20,7 +20,7 @@ const codex = read('src/codex.css');
 const spec = JSON.parse(read('tests/design/pairs.json'));
 
 // core.css is the :root base; codex.css's [data-theme='dark'] block lays over it.
-const dark = parseThemeTokens(`${core}\n${codex}`).dark;
+const dark = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS).dark;
 
 const pairs = spec.groups.flatMap((group) => (group.on === 'surfaces' ? spec.surfaces : group.on)
   .map((surface) => ({ text: group.text, surface, min: group.min })));

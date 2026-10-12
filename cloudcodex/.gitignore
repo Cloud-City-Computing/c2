@@ -23,3 +23,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated document images under public/doc-images are uploads: never committed (the .gitkeep keeps the directory).
+public/doc-images/*.webp

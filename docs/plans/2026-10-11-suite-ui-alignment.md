@@ -80,9 +80,66 @@ The identity plan's global constraints apply. In addition:
 
 ## PR 1: W6-CDX-38, neutrals, base and the hover model
 
+**Deviations, recorded at execution (W6-CDX-38, 2026-10-11).** The plan is the approval; each of these is a
+place where the code proved a step wrong, or a step needed a choice the plan did not spell out.
+
+1. **The danger family moved into this PR.** The fixture's `--cx-danger-fill` is `var(--danger-bright)`, and a
+   white label on that fill measures well under 4.5:1. So the fill, its label (`--cx-on-danger` is now the dark
+   ink, `--cx-on-accent`), and the hover (an inset ring on the same fill, `--cx-danger-fill-hover` and `-press` both
+   equal the fill) changed together. W6-CDX-39's danger item (Task 2.2) is therefore already done here, and
+   `painted.test.js` pins the new model.
+2. **The hover on a row inside a panel is `--cx-surface-1`, not a border colour.** The plan's rule ("on a card or
+   panel, `border-color` strong") gives a row with no border no hover feedback at all. Rows and items inside a
+   panel or popover (the mention picker, the notification and search dropdowns, settings and permission rows,
+   the export menu, the admin table rows) take the sunken well. Only the two elements that already draw a 1 px
+   border take `--cx-border-strong` on hover: `.btn-oauth` and `.tfa-method-option`.
+3. **X4 is `font-family: inherit`, not `font: inherit`.** The shorthand also resets size and line height: it grew
+   the top-bar search field from 31px to 36px in a geometry probe of the document page (before and after).
+   The family alone moves the search field by 1px and the buttons' widths by 1 to 2px, which is the typeface
+   change X4 asks for. `control-font.test.js` pins the family.
+4. **The eleven undeclared fallback names read a `--cx-` token, not a bridged name.** `--bg-primary`, `--text`,
+   `--accent`, `--border-subtle`, `--accent-hover`, `--accent-rgb`, `--surface-alt`, `--bg-color`,
+   `--surface-color`, `--color-accent-alpha` and `--accent-red` each map to the token the fallback meant. One
+   visible change follows: the GitHub banner's `--accent` fallback was `#7c3aed` (violet) and now paints the
+   picked accent. Declared names lose their fallback literals (they never painted), which is why the ledger fell
+   by 212 (399 to 187) and no bucket rose.
+5. **Labels on a danger tint step to `--cx-danger-bright`.** `.panel-status.error`, `.ci-badge--failure`,
+   `.gh-reconnect-banner`, `.log-tree-delete:hover` and the ghost danger hover measured 4.24 to 4.46:1 on the new
+   surfaces with the status step. The bright step is the one the tint rules were written for (W6-CDX-28).
+6. **The shared `[data-theme]` block reaches the vendored parser through `THEME_OPTIONS`** (`tests/design/buckets.js`).
+   The parser files only `:root` selectors as base, so without the option the shared tokens (`--cx-white`,
+   `--cx-transition`, the layout sizes) resolve to nothing in the bridge and contrast tests.
+7. **`--cx-accent` is `--accent-400` (the fixture), not `--accent-300`.** Every text pair still clears 4.5:1 on the
+   four surfaces (`contrast.test.js` is green), and the eight picker hues still clear it on each surface
+   (`accents.test.js`, 32 of 32).
+8. **Two-cursor smoke: not run.** It needs two signed-in browsers and a comment on the document. What was measured
+   instead is the document page's geometry before and after (the content column, the header, the archive view and
+   every control's box, at 1280 and 390): the only movement is the typeface change in item 3. The editor canvas is
+   not on the read-only page, so the editor's own geometry is covered by the colour-only diff, not by a probe.
+10. **A ghost hover is the sunken step, `--cx-surface-1`.** A surface-2 hover vanished inside a dialog (the panel
+    is surface-2), so the ghost hover now differs from both the page (surface-0) and a dialog panel (surface-2).
+    `ghost-hover.test.js` pins both.
+11. **The deferred families keep Codex's own radii (4, 8, 12px) through `--cx-deferred-radius-*`** until W6-CDX-43.
+    K3 allows no geometry change there, and core's steps (6, 10, 14px) would have moved the comments, the editor,
+    Draw.io, Version History and the GitHub banners. The alias sits in codex.css's shared block, and every
+    `var(--radius-*)` read inside those banners now reads it (25 reads). `deferred-radius.test.js` pins both.
+12. **The font inherit rule excludes the deferred families.** Measured in edit mode on the document page, before
+    and after: the editor container, the editor, the toolbar and every toolbar button sit at identical boxes, and
+    the toolbar buttons keep the browser font. The rule therefore excludes `.comment-manager`, `.comment-thread`,
+    `.editor-container`, `.tiptap-toolbar`, `.editor-toolbar`, `.markdown-editor`, `.version-history`, `.drawio-block`,
+    `.document-readonly`, `.editor-log`, `.editor-with-comments`, the comment textarea, and every `gh-` element and
+    its descendants. `control-font.test.js` pins the exclusion.
+13. **The top bar was already opaque, so nothing changed there.** A scrolled capture showed the card's meta line
+    cut at the bar's lower edge; pixel samples of the bar band (y 40 to 52) match the bar's own colour, and the
+    computed background has alpha 1. `topbar.test.js` pins the opaque background as a guard.
+9. **The mutation note.** Lifting `--cx-surface-2` to `oklch(0.24 0.014 240)` turns `--cx-text-faint` on
+   `--cx-surface-2` red in `contrast.test.js` (it measures under 4.5:1); the mutation landed (the file was checked
+   for the new value) and was restored (`cmp` against the saved copy).
+
+
 ### Task 1.1 The fixture, and a test that holds `codex.css` to it
 
-- [ ] Create `cloudcodex/tests/design/suite-theme.json` with the spec's token table, dark column only
+- [x] Create `cloudcodex/tests/design/suite-theme.json` with the spec's token table, dark column only
       for now:
 
 ```json
@@ -115,61 +172,61 @@ The identity plan's global constraints apply. In addition:
 }
 ```
 
-- [ ] `tests/design/suite-theme.test.js`: parse `src/codex.css` with the same block reader
+- [x] `tests/design/suite-theme.test.js`: parse `src/codex.css` with the same block reader
       `codex-css.test.js` uses; for each theme key in the fixture, every name equals its declaration in
       that theme's block. Run it: **expected** red on every row (the values have not moved yet).
 
 ### Task 1.2 The gates for the new shape, red first
 
-- [ ] `codex-css.test.js`: replace "declares everything under the dark theme attribute" with "declares
+- [x] `codex-css.test.js`: replace "declares everything under the dark theme attribute" with "declares
       under exactly `[data-theme]` and `[data-theme='dark']`"; add "declares no `--cx-radius-*`,
       `--cx-surface-3` or `--cx-surface-4`". **Expected:** red.
-- [ ] `bridge.test.js`: `--bg-hover` and `--bg-hover-strong` are gone from the bridge; `--radius-sm`,
+- [x] `bridge.test.js`: `--bg-hover` and `--bg-hover-strong` are gone from the bridge; `--radius-sm`,
       `-md` and `-lg` are not redeclared by `index.css` (core's values apply). **Expected:** red.
-- [ ] `contrast.test.js` with `pairs.json`: surfaces become `--cx-surface-0`, `-1`, `-2` and
+- [x] `contrast.test.js` with `pairs.json`: surfaces become `--cx-surface-0`, `-1`, `-2` and
       `--cx-select-wash`; add a mutation note in the PR that lifting `--cx-text-faint` onto a
       `oklch(0.24 0.014 240)` surface turns it red (computed 4.34:1), confirmed to have landed.
-- [ ] `tests/design/hover-fills.test.js`: no rule outside the editor, comments and GitHub banners
+- [x] `tests/design/hover-fills.test.js`: no rule outside the editor, comments and GitHub banners
       reads `var(--bg-hover)` or `var(--bg-hover-strong)` (use `buckets.js` for the banner of each
       line). **Expected:** red, 29 sites at `f0bc965`, some inside the deferred banners; the test
       reports each.
-- [ ] A frontend test that `index.css` declares `font: inherit` for `.btn`, `button`, `input`,
+- [x] A frontend test that `index.css` declares `font: inherit` for `.btn`, `button`, `input`,
       `select` and `textarea` (declaration-level: jsdom does not substitute `var()`). **Expected:** red.
 
 ### Task 1.3 The values
 
-- [ ] `codex.css`: move the Google brand colours, `--cx-white`, `--cx-ink-deep`, the layout sizes and
+- [x] `codex.css`: move the Google brand colours, `--cx-white`, `--cx-ink-deep`, the layout sizes and
       `--cx-transition` into a bare `[data-theme]` block; set the dark block to the fixture; add
       `color-scheme: dark;` to the dark block (the contrast parser ignores a non-custom property; check
       `codex-css.test.js`'s "custom properties and nothing else" rule and allow exactly
       `color-scheme`). Delete `--cx-radius-*` and the bridge's three `--radius-*` lines.
-- [ ] `--cx-border` (123 uses through `--border-color`): each use on a control (inputs, selects,
+- [x] `--cx-border` (123 uses through `--border-color`): each use on a control (inputs, selects,
       buttons, the switcher) moves to `--cx-border-strong`; cards and dividers keep `--cx-border`. List
       the moved selectors in the PR body.
-- [ ] Re-measure every pair: `npx vitest run --project design`. **Expected:** green, the ledger total
+- [x] Re-measure every pair: `npx vitest run --project design`. **Expected:** green, the ledger total
       unchanged or lower, never higher.
 
 ### Task 1.4 The hover model
 
-- [ ] For each site `hover-fills.test.js` reports: on a row whose resting background is sunken or the
+- [x] For each site `hover-fills.test.js` reports: on a row whose resting background is sunken or the
       page, the hover becomes `var(--cx-surface-2)`; on a card or panel, the hover becomes
       `border-color: var(--cx-border-strong)` and the background does not change. Inside the deferred
       banners, the hover keeps a fill but binds to `--cx-surface-2` (colour only, no geometry).
-- [ ] Delete `--cx-surface-3`, `--cx-surface-4`, `--bg-hover` and `--bg-hover-strong`. **Expected:**
+- [x] Delete `--cx-surface-3`, `--cx-surface-4`, `--bg-hover` and `--bg-hover-strong`. **Expected:**
       `hover-fills.test.js`, `bridge.test.js` and `codex-css.test.js` green.
 
 ### Task 1.5 Undeclared fallbacks, and the font
 
-- [ ] `node -e` or `git grep -n -E "var\(--[a-z-]+, *[#a-z0-9(]" -- cloudcodex/src` lists the
+- [x] `node -e` or `git grep -n -E "var\(--[a-z-]+, *[#a-z0-9(]" -- cloudcodex/src` lists the
       fallback-carrying reads; for each of the 13 undeclared names, declare it in the bridge onto a
       `--cx-` token, or replace the read. `--editor-font-size` and `--density-scale` are set by script
       and stay (density goes in PR 5). **Expected:** `dangling.test.js` green, and a new assertion
       that no fallback literal is a colour.
-- [ ] `index.css`: `font: inherit` on the five selectors (X4).
+- [x] `index.css`: `font: inherit` on the five selectors (X4).
 
 ### Task 1.6 Look, and the smoke
 
-- [ ] Captures of home, an archive, a document, Account and Admin at both widths, dark, before and
+- [x] Captures of home, an archive, a document, Account and Admin at both widths, dark, before and
       after; the two-cursor smoke. The PR body says plainly that every screen darkens a step and the
       text tiers spread, and why.
 

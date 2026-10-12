@@ -33,7 +33,7 @@ function RepoIcon() {
 function FileIcon({ isMarkdown }) {
   if (isMarkdown) {
     return (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: 'var(--color-accent, #2ca7db)' }}>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: 'var(--color-accent)' }}>
         <path d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.64 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3ZM9 11H7V8L5.5 9.92 4 8v3H2V5h2l1.5 2L7 5h2Zm2.99.5L9.5 8H11V5h2v3h1.5Z" />
       </svg>
     );
@@ -47,7 +47,7 @@ function FileIcon({ isMarkdown }) {
 
 function FolderIcon({ open }) {
   return open ? (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: 'var(--color-accent, #2ca7db)' }}>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ color: 'var(--color-accent)' }}>
       <path d="M.513 1.513A1.75 1.75 0 0 1 1.75 1h3.5c.464 0 .909.184 1.237.513l.987.987h6.776A1.75 1.75 0 0 1 16 4.25v7.5A1.75 1.75 0 0 1 14.25 14H1.75A1.75 1.75 0 0 1 0 12.25V2.75c0-.464.184-.909.513-1.237Z" />
     </svg>
   ) : (

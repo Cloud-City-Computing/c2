@@ -1,6 +1,6 @@
 {
   "_rule": "Totals may only fall. A PR that fixes findings lowers its bucket by exactly that many in the same PR, and deletes a bucket that reaches zero. tests/design/token-discipline.test.js fails on any bucket above or below its number.",
-  "_measured": "399 after W6-CDX-29's leftover pass, which burned Modal + Overlay (5), Login Tabs (1), Signup Validation Styles (3) and Toast Notifications (11, the presence avatars and tooltip, which render on the archive and explore pages, and the Welcome block), 20 in all. Before that pass, 419 after the first W6-CDX-29 pass (73 findings: admin, settings, notification, activity, watch, archive-access, squad, export, preferences, and AccountMenu.jsx). Earlier: 492 by this ledger's own sum (the old 500 note was stale), 500 after W6-CDX-25, 510 after W6-CDX-28, 631 at W6-CDX-23's review fixes, 674 at W6-CDX-22.",
+  "_measured": "187 after W6-CDX-38: the fallbacks on declared names came out (they never painted), and the undeclared names read a --cx- token, so the deferred GitHub, editor and comments banners fell by 157 and the total by 212. Every bucket fell or held. Before that: 399 after W6-CDX-29's leftover pass, which burned Modal + Overlay (5), Login Tabs (1), Signup Validation Styles (3) and Toast Notifications (11, the presence avatars and tooltip, which render on the archive and explore pages, and the Welcome block), 20 in all. Before that pass, 419 after the first W6-CDX-29 pass (73 findings: admin, settings, notification, activity, watch, archive-access, squad, export, preferences, and AccountMenu.jsx). Earlier: 492 by this ledger's own sum (the old 500 note was stale), 500 after W6-CDX-25, 510 after W6-CDX-28, 631 at W6-CDX-23's review fixes, 674 at W6-CDX-22.",
   "src/components/CommentForm.jsx": {
     "(file)": 2
   },
@@ -13,28 +13,25 @@
   "src/components/CommentSidebar.jsx": {
     "(file)": 1
   },
-  "src/components/github/CodeEmbedPickerModal.jsx": {
-    "(file)": 1
-  },
   "src/index.css": {
     "Mentions (inline @user chips)": 2,
-    "GitHub Integration": 186,
-    "Editor Log": 40,
+    "GitHub Integration": 47,
+    "Editor Log": 26,
     "Markdown Editor": 2,
-    "Version History": 5,
-    "Collaborative Editing - Presence UI": 12,
+    "Version History": 4,
+    "Collaborative Editing - Presence UI": 8,
     "Remote Cursors - Collaborative Editing": 2,
-    "Comments & Annotations": 100,
+    "Comments & Annotations": 51,
     "Read-only Document View": 10,
     "Code Block with Language Selector": 3,
     "Syntax Highlighting (highlight.js compatible - dark theme)": 8,
-    "Draw.io Diagram Block": 8
+    "Draw.io Diagram Block": 6
   },
   "src/pages/Editor.jsx": {
     "(file)": 4
   },
   "src/pages/GitHubPage.jsx": {
-    "(file)": 4
+    "(file)": 2
   },
   "src/util.jsx": {
     "(file)": 6

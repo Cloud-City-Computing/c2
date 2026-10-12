@@ -189,6 +189,12 @@ initialises an empty data directory.
   the webhooks migration (see Migration).
 
 ### Changed
+- **The dark neutrals and the hover model follow the suite pattern (W6-CDX-38).** The dark surfaces, text tiers,
+  accent, borders, scrim and shadows take the suite pattern's values, held to `tests/design/suite-theme.json`. The two
+  hover fills retire: a hover is the panel surface on a sunken row, or a stronger hairline on a card. Core's radii
+  apply. Buttons and native fields take the page's typeface, and native controls paint dark (`color-scheme`). The
+  danger button is a bright fill with the dark ink, and its hover is an inset ring. Undeclared colour fallbacks are
+  gone; the GitHub banner's `--accent` fallback now paints the picked accent, not a violet.
 
 - **Node 22.** The image (`node:22-slim`), CI and the release workflow run Node 22, and
   `package.json` declares `engines` `>=22`. openid-client 6 and jose 6 need it.

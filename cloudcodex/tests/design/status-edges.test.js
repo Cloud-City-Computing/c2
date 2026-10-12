@@ -15,13 +15,13 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseThemeTokens, resolveTokenValue } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { ACCENTS } from '../../src/tokens/accents.js';
-import { ROOT } from './buckets.js';
+import { ROOT, THEME_OPTIONS } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const core = read('vendor/cloud-city-design/core.css');
 const codex = read('src/codex.css');
 const index = read('src/index.css');
-const tokens = parseThemeTokens(`${core}\n${codex}`).dark;
+const tokens = parseThemeTokens(`${core}\n${codex}`, THEME_OPTIONS).dark;
 
 function declared(selector, prop) {
   const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -50,7 +50,7 @@ describe('the sync banner info edge is the info status, not the picked accent', 
 
   it('keeps the info token off the accent: it is a fixed step, declared from the palette and not from --cx-accent', () => {
     expect(declared('.gh-sync-banner--info', 'border-left-color')).not.toMatch(/--cx-accent/);
-    expect(codex).toMatch(/--cx-info:\s*var\(--accent-300\)/);
+    expect(codex).toMatch(/--cx-info:\s*var\(--accent-400\)/);
   });
 
   it('keeps the info edge a visibly different hue from the danger edge, on the default and every picker accent', () => {

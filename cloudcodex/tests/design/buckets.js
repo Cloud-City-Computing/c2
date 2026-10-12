@@ -14,6 +14,12 @@ import {
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+// The bare [data-theme] block holds what both themes share (W6-CDX-38). The vendored parser files only :root
+// selectors as base, so this tells it the same: the shared block is the base map under the dark overlay.
+export const THEME_OPTIONS = Object.freeze({
+  isBase: (selector) => selector.includes(':root') || selector === '[data-theme]',
+});
+
 // Codex is plain JavaScript: the package's default walk (.ts, .tsx, .css,
 // .html) would read none of its .js or .jsx files and pass while seeing little.
 export const EXTENSIONS = ['.css', '.js', '.jsx', '.html'];

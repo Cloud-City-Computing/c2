@@ -1,0 +1,119 @@
+{
+  "w1280": {
+    ".editor-container": null,
+    ".tiptap": null,
+    ".archive-view": [
+      224,
+      56,
+      1052,
+      744
+    ],
+    ".tiptap-toolbar": null,
+    ".editor-header": [
+      512,
+      84,
+      736,
+      105
+    ],
+    ".document-readonly": [
+      512,
+      269,
+      736,
+      458
+    ],
+    "main": [
+      220,
+      56,
+      1060,
+      760
+    ],
+    "controls": [
+      "INPUT.search-input [438,12,480,32]",
+      "BUTTON.search-icon-btn [890,16,24,24]",
+      "BUTTON.notification-bell__button [1180,10,36,36]",
+      "BUTTON.account-button [1224,10,36,36]",
+      "BUTTON.sidebar__toggle [0,68,219,36]",
+      "BUTTON.page-tree-back-btn [236,70,22,18]",
+      "BUTTON.page-tree-add-btn [427,68,24,22]",
+      "BUTTON.page-tree-collapse-btn [453,70,18,18]",
+      "BUTTON.page-tree-label [254,112,200,20]",
+      "BUTTON.page-tree-row-add [458,115,17,14]",
+      "BUTTON.page-tree-label [254,142,200,20]",
+      "BUTTON.page-tree-row-add [458,144,17,14]",
+      "BUTTON.page-tree-label [254,171,200,20]",
+      "BUTTON.page-tree-row-add [458,174,17,14]",
+      "BUTTON.page-tree-label [254,201,200,20]",
+      "BUTTON.page-tree-row-add [458,203,17,14]",
+      "BUTTON.page-tree-label [254,230,200,20]",
+      "BUTTON.page-tree-row-add [458,233,17,14]",
+      "BUTTON.page-tree-label [254,260,200,20]",
+      "BUTTON.page-tree-row-add [458,262,17,14]",
+      "BUTTON.page-tree-label [254,289,200,20]",
+      "BUTTON.page-tree-row-add [458,292,17,14]",
+      "BUTTON.page-tree-label [254,319,200,20]",
+      "BUTTON.page-tree-row-add [458,321,17,14]",
+      "BUTTON.btn-favorite [890,149,29,24]",
+      "BUTTON.btn-watch [931,146,30,30]",
+      "BUTTON.btn btn-primary btn-sm [525,216,67,27]",
+      "BUTTON.btn btn-ghost btn-sm [605,214,93,30]"
+    ]
+  },
+  "w390": {
+    ".editor-container": null,
+    ".tiptap": null,
+    ".archive-view": [
+      0,
+      56,
+      390,
+      1041
+    ],
+    ".tiptap-toolbar": null,
+    ".editor-header": [
+      16,
+      292,
+      358,
+      128
+    ],
+    ".document-readonly": [
+      16,
+      496,
+      358,
+      585
+    ],
+    "main": [
+      0,
+      56,
+      390,
+      1097
+    ],
+    "controls": [
+      "INPUT.search-input [0,0,0,0]",
+      "BUTTON.search-icon-btn [0,0,0,0]",
+      "BUTTON.notification-bell__button [66,10,36,36]",
+      "BUTTON.account-button [110,10,36,36]",
+      "BUTTON.sidebar__toggle [0,0,0,0]",
+      "BUTTON.page-tree-back-btn [12,70,22,18]",
+      "BUTTON.page-tree-add-btn [326,68,24,22]",
+      "BUTTON.page-tree-collapse-btn [352,70,18,18]",
+      "BUTTON.page-tree-label [30,112,323,20]",
+      "BUTTON.page-tree-row-add [357,115,17,14]",
+      "BUTTON.page-tree-label [30,142,323,20]",
+      "BUTTON.page-tree-row-add [357,144,17,14]",
+      "BUTTON.page-tree-label [30,171,323,20]",
+      "BUTTON.page-tree-row-add [357,174,17,14]",
+      "BUTTON.page-tree-label [30,201,323,20]",
+      "BUTTON.page-tree-row-add [357,203,17,14]",
+      "BUTTON.page-tree-label [30,230,323,20]",
+      "BUTTON.page-tree-row-add [357,233,17,14]",
+      "BUTTON.page-tree-label [30,260,323,20]",
+      "BUTTON.page-tree-row-add [357,262,17,14]",
+      "BUTTON.page-tree-label [30,289,323,20]",
+      "BUTTON.page-tree-row-add [357,292,17,14]",
+      "BUTTON.page-tree-label [30,319,323,20]",
+      "BUTTON.page-tree-row-add [357,321,17,14]",
+      "BUTTON.btn-favorite [16,380,29,24]",
+      "BUTTON.btn-watch [51,377,30,30]",
+      "BUTTON.btn btn-ghost btn-sm [34,443,93,30]"
+    ]
+  }
+}
