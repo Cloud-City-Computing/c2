@@ -9,12 +9,28 @@ import { useState, useEffect, useRef } from 'react';
 import {
   getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie, uploadAvatar,
 } from '../util';
-import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES, DENSITIES } from '../userPrefs';
+import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES } from '../userPrefs';
 import { WarningIcon } from './icons.jsx';
 
 // ===========================
 //  Account Panels (used by AccountSettings log)
 // ===========================
+
+/**
+ * "Managed by <provider>" with the link to the issuer's account page (OIDC_ACCOUNT_URL). No link when the page is not
+ * configured (W6-CDX-42, K6). The provider name is its own span, so the line reads as one phrase.
+ */
+function ManagedBy({ providerName, accountUrl }) {
+  return (
+    <p className="text-muted text-sm managed-by">
+      <span>Managed by {providerName}</span>
+      {accountUrl && <>{' · '}<a href={accountUrl}>Open {providerName}</a></>}
+    </p>
+  );
+}
+
+/** The two-factor method's name, for the read-only panel. */
+const METHOD_LABELS = { none: 'Disabled', email: 'Email verification', totp: 'Authenticator app' };
 
 export function AvatarUploadPanel() {
   const [avatarUrl, setAvatarUrl] = useState(null);
@@ -148,6 +164,8 @@ export function AccountInfoUpdatePanel() {
   const [emailCode, setEmailCode] = useState(null); // { confirmToken } while a code is pending
   const [code, setCode] = useState('');
   const [status, setStatus] = useState(null);
+  // Suite mode: the issuer owns this account (managed_by 'issuer', W6-CDX-42, K6). Read-only when true.
+  const [issuer, setIssuer] = useState({ managed: false, providerName: 'SSO', accountUrl: null });
 
   useEffect(() => {
     const loadUser = async () => {
@@ -167,6 +185,18 @@ export function AccountInfoUpdatePanel() {
         const oauth = await apiFetch('GET', '/api/oauth/status');
         setHasPassword(oauth.hasPassword !== false);
       } catch { /* unknown: keep asking for the password */ }
+      try {
+        const twoFactor = await apiFetch('GET', '/api/2fa/status');
+        const managed = twoFactor?.managed_by === 'issuer';
+        if (managed) {
+          const providers = await fetch('/api/oauth/providers').then(r => r.json()).catch(() => null);
+          setIssuer({
+            managed: true,
+            providerName: providers?.providers?.oidc?.name || 'SSO',
+            accountUrl: providers?.providers?.oidc?.accountUrl ?? null,
+          });
+        }
+      } catch { /* unknown: the account stays editable, and the server still refuses what the issuer owns */ }
     };
     loadUser();
   }, []);
@@ -252,6 +282,30 @@ export function AccountInfoUpdatePanel() {
     setStatus(null);
   };
 
+  if (issuer.managed) {
+    return (
+      <div className="settings-panel">
+        <h2 className="panel-title">Update Account Information</h2>
+        <div className="account-managed">
+          <div className="field">
+            <span className="field__label">Name</span>
+            <p className="field__value">{saved.name}</p>
+            <ManagedBy providerName={issuer.providerName} accountUrl={issuer.accountUrl} />
+          </div>
+          <div className="field">
+            <span className="field__label">Email</span>
+            <p className="field__value">{saved.email}</p>
+            <ManagedBy providerName={issuer.providerName} accountUrl={issuer.accountUrl} />
+          </div>
+          <div className="field">
+            <span className="field__label">Password</span>
+            <ManagedBy providerName={issuer.providerName} accountUrl={issuer.accountUrl} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="settings-panel">
       <h2 className="panel-title">Update Account Information</h2>
@@ -320,8 +374,9 @@ export function AccountInfoUpdatePanel() {
 
 export function AccountPreferencesPanel() {
   const [method, setMethod] = useState('none'); // 'none' | 'email' | 'totp'
-  const [managedBy, setManagedBy] = useState(null); // 'oidc' when an OIDC session governs sign-in
+  const [managedBy, setManagedBy] = useState(null); // 'oidc' when an OIDC session governs sign-in, 'issuer' in suite mode (W6-CDX-42)
   const [providerName, setProviderName] = useState('SSO');
+  const [accountUrl, setAccountUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [totpSetup, setTotpSetup] = useState(null); // { setupToken } when awaiting TOTP confirmation
@@ -343,7 +398,10 @@ export function AccountPreferencesPanel() {
     // The configured sign-in label (OIDC_PROVIDER_NAME), named only for an OIDC-managed account.
     fetch('/api/oauth/providers')
       .then(r => r.json())
-      .then(data => { if (data?.providers?.oidc?.name) setProviderName(data.providers.oidc.name); })
+      .then(data => {
+        if (data?.providers?.oidc?.name) setProviderName(data.providers.oidc.name);
+        setAccountUrl(data?.providers?.oidc?.accountUrl ?? null);
+      })
       .catch(() => {});
   }, []);
 
@@ -429,6 +487,16 @@ export function AccountPreferencesPanel() {
   };
 
   if (loading) return <div className="settings-panel"><p className="text-muted">Loading...</p></div>;
+
+  if (managedBy === 'issuer') {
+    return (
+      <div className="settings-panel">
+        <h2 className="panel-title">Two-Factor Authentication</h2>
+        <p className="field__value">{METHOD_LABELS[method] ?? METHOD_LABELS.none}</p>
+        <ManagedBy providerName={providerName} accountUrl={accountUrl} />
+      </div>
+    );
+  }
 
   return (
     <div className="settings-panel">
@@ -532,10 +600,6 @@ const FONT_SIZE_OPTIONS = Object.entries(FONT_SIZES).map(([id, value]) => ({
   id, value, label: id === 'sm' ? 'Small' : id === 'md' ? 'Medium' : 'Large',
 }));
 
-const DENSITY_OPTIONS = Object.entries(DENSITIES).map(([id, padScale]) => ({
-  id, padScale, label: id === 'compact' ? 'Compact' : id === 'comfortable' ? 'Comfortable' : 'Spacious',
-}));
-
 const EDITOR_MODE_OPTIONS = [
   { id: 'richtext', label: 'Rich Text' },
   { id: 'markdown', label: 'Markdown' },
@@ -547,7 +611,6 @@ export function UserPreferencesPanel() {
     return {
       accentColor: saved.accentColor || 'blue',
       fontSize: saved.fontSize || 'md',
-      density: saved.density || 'comfortable',
       preferredEditor: saved.preferredEditor === 'markdown' ? 'markdown' : 'richtext',
     };
   });
@@ -596,22 +659,6 @@ export function UserPreferencesPanel() {
               onClick={() => update('fontSize', f.id)}
             >
               {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* UI Density */}
-      <div className="pref-section">
-        <h3 className="pref-section__title">UI Density</h3>
-        <div className="pref-toggle-group">
-          {DENSITY_OPTIONS.map(d => (
-            <button
-              key={d.id}
-              className={`pref-toggle-btn${prefs.density === d.id ? ' active' : ''}`}
-              onClick={() => update('density', d.id)}
-            >
-              {d.label}
             </button>
           ))}
         </div>

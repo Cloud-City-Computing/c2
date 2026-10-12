@@ -1,9 +1,9 @@
 /**
  * Cloud Codex - User Preferences
  *
- * Manages user UI preferences (accent color, font size, density,
- * sidebar default, editor mode) in localStorage and applies
- * them as CSS custom properties on the document root.
+ * Manages user UI preferences (accent color, editor font size, preferred
+ * editor) in localStorage and applies them as CSS custom properties on the
+ * document root. Density and the sidebar default are gone (W6-CDX-42, K8).
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -32,6 +32,9 @@ export function loadUserPrefs() {
     if (isAccent(accent)) prefs.accentColor = accent;
     else delete prefs.accentColor;
   }
+  // Retired preferences (W6-CDX-42, K8): a value an earlier build stored is dropped, never applied.
+  delete prefs.density;
+  delete prefs.sidebarDefault;
   return prefs;
 }
 
@@ -53,15 +56,9 @@ export const FONT_SIZES = {
   lg: '17px',
 };
 
-export const DENSITIES = {
-  compact: 0.7,
-  comfortable: 1.0,
-  spacious: 1.3,
-};
-
 /**
  * Apply user preferences to the DOM by setting CSS custom properties
- * (accent color, font size, density). The sidebar has no collapse state (W6-CDX-40), so there is no sidebar attribute.
+ * (accent color, editor font size). There is no density scale and no sidebar attribute.
  * @param {Object} prefs
  */
 export function applyPrefsToDOM(prefs) {
@@ -87,13 +84,6 @@ export function applyPrefsToDOM(prefs) {
     root.style.setProperty('--editor-font-size', fontSize);
   } else {
     root.style.removeProperty('--editor-font-size');
-  }
-
-  const density = DENSITIES[prefs.density];
-  if (density) {
-    root.style.setProperty('--density-scale', String(density));
-  } else {
-    root.style.removeProperty('--density-scale');
   }
 }
 
