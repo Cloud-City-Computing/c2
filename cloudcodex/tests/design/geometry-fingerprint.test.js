@@ -20,7 +20,9 @@ const MESSAGE = 'A deferred surface changed geometry. This track may change colo
 
 describe('the deferred families change colour only', () => {
   it('reads the same non-colour declarations as the fingerprint written at the start of W6-CDX-43', () => {
-    const now = geometryFingerprint(read('src/index.css'));
+    // The definitions of the tokens these rules read come from the three stylesheets the page loads.
+    const sources = [read('vendor/cloud-city-design/core.css'), read('src/codex.css'), read('src/index.css')];
+    const now = geometryFingerprint(read('src/index.css'), sources);
     expect(now.declarations, MESSAGE).toBe(pinned.declarations);
     expect(now.sha256, MESSAGE).toBe(pinned.sha256);
   });
