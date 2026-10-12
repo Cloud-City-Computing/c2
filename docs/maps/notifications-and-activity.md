@@ -309,6 +309,21 @@ save latency with a subscriber that never answers.
 
 ---
 
+### Outbound events: deferred, not built
+
+These were out of scope for W6-CDX-12 to W6-CDX-16 and are not planned in Wave 6. Each would be its own spec:
+
+- **GitHub pull writes** (`github.js`, the three pull-request writes): emitting them means adding `logActivity`,
+  which emails watchers.
+- **Squad and workspace deletes:** they detach archives and delete no document, so they emit nothing today.
+- **Comment and membership events:** they carry people's data, so they would be a later additive event type.
+- **Cross-archive moves:** nothing user-reachable does one today.
+- **Encrypting admin-API subscription secrets at rest:** they are stored in MySQL, write-only through the API, and
+  a database dump lets its holder forge events to that one receiver. The suite's subscription avoids the issue
+  because its secret lives only in the environment.
+- **Delivery to more than one Cloud Command per instance, and moving an instance between workspaces:** the
+  provisioning era.
+
 ## 3. Watches (`routes/watches.js`)
 
 Four routes, all `requireAuth`. `resource_type` is allow-listed to `log` and

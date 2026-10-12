@@ -12,52 +12,15 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
-### Changed
-- **The theme switch and the suite preference (W6-CDX-44, A7).** An Appearance popover sits in every page header:
-  Theme (System, Light, Dark) and the accents, the same as Cloud Command's; the Account page's Appearance section shows
-  the same choices. The choice is stored in `cc_suite_theme` and the accent in
-  `cc_suite_accent`, as a cookie shared across a suite's hosts (`SUITE_PREFERENCE_DOMAIN`, optional, honoured in suite
-  mode only) and in localStorage, the suite preference contract that Cloud Command also implements. A stored Codex
-  accent moves into the contract once. A pre-paint script in `index.html` applies the theme and accent before first
-  paint; its SHA-256 is allowed in `script-src`. `GET /api/suite` answers `preferenceDomain`.
-- **Settings and admin (W6-CDX-42, A5).** In suite mode an account signed in through the issuer has its name, email,
-  password and two-factor read-only on the Account page, "Managed by" the provider with a link to `OIDC_ACCOUNT_URL` (a new
-  optional setting). The server refuses the same writes for that account with `403 managed_by_issuer`, so nothing changes.
-  Density and the sidebar default are removed; a stored value is dropped on load. The admin console is a tab row in the page
-  header with no emoji, member rows for users and invitations, and Revoke confirms first. Not found is a standalone card, and
-  the first-run list is left-aligned with accent links. The Workspaces page takes the shared page header.
-- **The suite shell is sidebar-led (W6-CDX-40, A3).** There is no top bar, no copyright footer and no bottom tab bar.
-  One sidebar holds the suite cluster (or the product mark outside suite mode), the workspace slot, a "Search or jump to"
-  palette on Ctrl K (documents and archives), the navigation with an unread count on Notifications, an Archives group and
-  the account footer (avatar, name menu, sign-out icon). On phones the sidebar is a two-row strip. Workspaces is hidden in
-  suite mode. Pages that were rebuilt take a shared header with a title, a primary action and a tab row.
-- **Controls on the suite pattern (W6-CDX-39, A2).** Buttons are 30 px high on `--radius-md`, 13 px at weight 500,
-  with no letter-spacing (the small size stays 26 px). The primary's hover steps to the lighter accent. One menu
-  primitive (`Menu.jsx`, a `role="menu"` popup with arrow-key, Home, End and Escape handling) replaces the native
-  selects of the Explore sort and the invite dialog's squad and role. The export and GitHub sync menus take its
-  look. Tabs on Activity and Notifications sit 24 px apart, with the active tab in the primary text and a 2 px
-  accent underline. Activity and notification placeholders are avatars on the suite tints. Badges and the role chip
-  are at least 12 px, and the role chip is a pill. Modal panels use a strong hairline and `--radius-lg`.
-  The menu's popup lives in its own node, so an account panel dismissed before it opens does not hide it; inside a
-  dialog it stays in the dialog. Its items are radio items with the visible choice in the trigger's name; a letter
-  jumps to the next match. Icon-only buttons are 30 px with a 44 px hit area, and the destructive confirmations name
-  what is lost and what stays (the workspace delete no longer says its archives go: they stay, with no squad).
+## [0.14.0] - 2026-10-12
 
-### Fixed
-- **The suite shell's review round (W6-CDX-40).** The signed-out landing has a Sign in control; the search palette is a
-  dialog in the stack, with Ctrl K off while a modal is open; the phone strip collapses the archives and names its
-  account button; the unread count follows the server after a read, and a `read` broadcast happens only for a change; the
-  Notifications list updates live; the sidebar keeps its last count and archives across a page change; the Sidebar
-  Default control is gone; the squad, invitation and workspace-delete actions are on the Admin page in suite mode.
-- **The first toast after a page load is shown (W6-CDX-39).** A toast raised before the container mounted was
-  dropped. It is now queued and drawn on mount.
-- **Admin error toasts keep the server's message (W6-CDX-39).** A failed invitation revoke, permission save or
-  member save shows the server's message when the error is an API error (it has a status); a network failure shows
-  the fallback copy. A 403 keeps its "Permission denied" prefix.
-- **The toast stack sits bottom right (W6-CDX-39)**, where no navigation can sit under it, and `.toast--info` has
-  a rule. The message is the primary text colour; the status is on the icon and the edge.
+The Wave 6 release. Cloud Codex can run as one instance beside others under a supervisor and behind a TLS
+proxy, signs people in through Cloud City ID (OIDC), signs them out of the issuer too, and sends outbound
+webhooks. It also brings the suite shell, the light theme and the suite preference contract. Upgrading from 0.13.0
+takes one step before the new image starts: run the migrations (see Migration below).
 
 ### Added
+
 - **Membership sync endpoints (W6-CDX-9).** `PUT /api/machine/members` (`{ email, role, reactivate? }`) and
   `DELETE /api/machine/members/:email`, machine-only, idempotent, rate-limited on their own 300-a-minute bucket
   (a `429` is retryable). An address with no account gets an invitation that names the seeded `General` squad
@@ -96,12 +59,12 @@ initialises an empty data directory.
   "Linked tasks" link to Cloud Command's page for that document. It is a same-tab link built from the
   Cloud Command workspace URL, and it is absent outside suite mode. `GET /api/suite/links` supplies
   the URL to a signed-in page.
-- **Suite mode: a suite cluster in the top bar.** Setting `SUITE_COMMAND_WORKSPACE_URL`
-  (with `SUITE_NAME`) turns it on. A signed-in user sees a disclosure in the brand slot that lists
+- **Suite mode: a suite cluster.** Setting `SUITE_COMMAND_WORKSPACE_URL`
+  (with `SUITE_NAME`) turns it on. A signed-in user sees a disclosure at the head of the sidebar that lists
   Cloud Codex, Cloud Command, and All workspaces. `GET /api/suite` answers the name, and
   `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot,
   and so does a URL that is not exactly an origin plus `/w/<workspace id>`.
-  With suite mode off the top bar is unchanged. The chrome sections are on the design tokens, and
+  With suite mode off the sidebar shows the product mark. The chrome sections are on the design tokens, and
   every `z-index` is on the shared scale.
 - **Machine JWTs from Cloud City ID (W6-CDX-7).** A client-credentials access token from the
   issuer now authenticates the machine routes (`GET /api/search`, `GET /api/browse`,
@@ -147,17 +110,6 @@ initialises an empty data directory.
   button of a confirmation now takes focus when it opens. The admin console stacks its sidebar above
   the content on a narrow screen. Its times are UTC whatever the server's zone. A failed action is toasted, not
   dropped, and a 404 reloads the list; create and rotate pause while a secret is on screen.
-- **Suite mode: Linked tasks from a document.** In suite mode a document's meta line has a
-  "Linked tasks" link to Cloud Command's page for that document. It is a same-tab link built from the
-  Cloud Command workspace URL, and it is absent outside suite mode. `GET /api/suite/links` supplies
-  the URL to a signed-in page.
-- **Suite mode: a suite cluster in the top bar.** Setting `SUITE_COMMAND_WORKSPACE_URL`
-  (with `SUITE_NAME`) turns it on. A signed-in user sees a disclosure in the brand slot that lists
-  Cloud Codex, Cloud Command, and All workspaces. `GET /api/suite` answers the name, and
-  `GET /api/suite/links` (session required) answers the Cloud Command URL. A bad pair stops the boot,
-  and so does a URL that is not exactly an origin plus `/w/<workspace id>`.
-  With suite mode off the top bar is unchanged. The chrome sections are on the design tokens, and
-  every `z-index` is on the shared scale.
 - **The shared Cloud City design package, vendored, and a design gate.**
   `cloudcodex/vendor/cloud-city-design/` is a byte copy of the public
   Apache-2.0 [cloud-city-design](https://github.com/Cloud-City-Computing/cloud-city-design)
@@ -234,6 +186,37 @@ initialises an empty data directory.
   the webhooks migration (see Migration).
 
 ### Changed
+
+- **The theme switch and the suite preference (W6-CDX-44, A7).** An Appearance popover sits in every page header:
+  Theme (System, Light, Dark) and the accents, the same as Cloud Command's; the Account page's Appearance section shows
+  the same choices. The choice is stored in `cc_suite_theme` and the accent in
+  `cc_suite_accent`, as a cookie shared across a suite's hosts (`SUITE_PREFERENCE_DOMAIN`, optional, honoured in suite
+  mode only) and in localStorage, the suite preference contract that Cloud Command also implements. A stored Codex
+  accent moves into the contract once. A pre-paint script in `index.html` applies the theme and accent before first
+  paint; its SHA-256 is allowed in `script-src`. `GET /api/suite` answers `preferenceDomain`.
+- **Settings and admin (W6-CDX-42, A5).** In suite mode an account signed in through the issuer has its name, email,
+  password and two-factor read-only on the Account page, "Managed by" the provider with a link to `OIDC_ACCOUNT_URL` (a new
+  optional setting). The server refuses the same writes for that account with `403 managed_by_issuer`, so nothing changes.
+  Density and the sidebar default are removed; a stored value is dropped on load. The admin console is a tab row in the page
+  header with no emoji, member rows for users and invitations, and Revoke confirms first. Not found is a standalone card, and
+  the first-run list is left-aligned with accent links. The Workspaces page takes the shared page header.
+- **The suite shell is sidebar-led (W6-CDX-40, A3).** There is no top bar, no copyright footer and no bottom tab bar.
+  One sidebar holds the suite cluster (or the product mark outside suite mode), the workspace slot, a "Search or jump to"
+  palette on Ctrl K (documents and archives), the navigation with an unread count on Notifications, an Archives group and
+  the account footer (avatar, name menu, sign-out icon). On phones the sidebar is a two-row strip. Workspaces is hidden in
+  suite mode. Pages that were rebuilt take a shared header with a title, a primary action and a tab row.
+- **Controls on the suite pattern (W6-CDX-39, A2).** Buttons are 30 px high on `--radius-md`, 13 px at weight 500,
+  with no letter-spacing (the small size stays 26 px). The primary's hover steps to the lighter accent. One menu
+  primitive (`Menu.jsx`, a `role="menu"` popup with arrow-key, Home, End and Escape handling) replaces the native
+  selects of the Explore sort and the invite dialog's squad and role. The export and GitHub sync menus take its
+  look. Tabs on Activity and Notifications sit 24 px apart, with the active tab in the primary text and a 2 px
+  accent underline. Activity and notification placeholders are avatars on the suite tints. Badges and the role chip
+  are at least 12 px, and the role chip is a pill. Modal panels use a strong hairline and `--radius-lg`.
+  The menu's popup lives in its own node, so an account panel dismissed before it opens does not hide it; inside a
+  dialog it stays in the dialog. Its items are radio items with the visible choice in the trigger's name; a letter
+  jumps to the next match. Icon-only buttons are 30 px with a 44 px hit area, and the destructive confirmations name
+  what is lost and what stays (the workspace delete no longer says its archives go: they stay, with no squad).
+
 - **The dark neutrals and the hover model follow the suite pattern (W6-CDX-38).** The dark surfaces, text tiers,
   accent, borders, scrim and shadows take the suite pattern's values, held to `tests/design/suite-theme.json`. The two
   hover fills retire: a hover is the panel surface on a sunken row, or a stronger hairline on a card. Core's radii
@@ -243,7 +226,6 @@ initialises an empty data directory.
 
 - **Node 22.** The image (`node:22-slim`), CI and the release workflow run Node 22, and
   `package.json` declares `engines` `>=22`. openid-client 6 and jose 6 need it.
-- **The content surfaces read the tokens.** The Log Tree, Explore, Page Tree, search, top-bar search, Error Boundary and 404 banners in `src/index.css` take their colours from the Codex tokens instead of literals, and the ledger goes from 631 findings to 510. Labels on a translucent tint are measured over every surface: where a tint would sink a label below 4.5:1, the label steps one shade lighter (a bright warning, success or danger step, or the accent-hover step on the Page Tree and Log Tree rows). The highlight.js comment and keyword hues lift one step for the same reason, measured on the code background.
 - **The bare root goes to the sign-in where Cloud City ID is the only sign-in (W6-CDX-29).** A signed-out visit to `/` on a hosted instance (OIDC the only provider) redirects once per tab to `/api/auth/oidc/start`, and a signed-out visit after a sign-out, or after an error return, still shows the landing. An instance with local sign-in, or no OIDC, keeps its sign-in screen on `/`. Deep links are unchanged.
 - **The admin, settings and social surfaces read the tokens (W6-CDX-29).** The admin dashboard, settings layout, notification bell and pages, activity item, watch toggle, archive access, squad members, export dropdown and preferences banners in `src/index.css` take their colours from the Codex tokens, and the Account swatches are drawn from `src/tokens/accents.js`. Most values are unchanged (the accent, the surfaces and the status colours land on the same token), and the translucent washes keep their exact alpha. The visible differences: the owner role badge is an accent fill with a dark label, where it was a white label on the pale accent (which read below 4.5:1); the archive access badges take the Codex info, warning, violet and muted labels, and their amber and blue washes take the warning and accent tints; a label on a wash that sank below 4.5:1 steps one shade lighter (the accent-hover step, or a bright success, warning or text step). Captured under `docs/research/w6-cdx-29-admin-surfaces-2026-10-11/`. The Google "G" and the swatch check mark move to tokens with no visible change.
 
@@ -316,6 +298,19 @@ initialises an empty data directory.
   `npm audit` ran nowhere. See `docs/maps/build-test-and-ops.md`, section 6.
 
 ### Fixed
+
+- **The suite shell's review round (W6-CDX-40).** The signed-out landing has a Sign in control; the search palette is a
+  dialog in the stack, with Ctrl K off while a modal is open; the phone strip collapses the archives and names its
+  account button; the unread count follows the server after a read, and a `read` broadcast happens only for a change; the
+  Notifications list updates live; the sidebar keeps its last count and archives across a page change; the Sidebar
+  Default control is gone; the squad, invitation and workspace-delete actions are on the Admin page in suite mode.
+- **The first toast after a page load is shown (W6-CDX-39).** A toast raised before the container mounted was
+  dropped. It is now queued and drawn on mount.
+- **Admin error toasts keep the server's message (W6-CDX-39).** A failed invitation revoke, permission save or
+  member save shows the server's message when the error is an API error (it has a status); a network failure shows
+  the fallback copy. A 403 keeps its "Permission denied" prefix.
+- **The toast stack sits bottom right (W6-CDX-39)**, where no navigation can sit under it, and `.toast--info` has
+  a rule. The message is the primary text colour; the status is on the icon and the edge.
 
 - **Outbound events: `occurred_at` follows the order of `sequence`.** `emitEvent` read the event's
   instant before it waited for the order lock, so two concurrent emits could commit with `occurred_at`
@@ -505,18 +500,68 @@ initialises an empty data directory.
 
 ### Migration
 
-**The webhooks migration,**
-[`migrations/2026-09-28-webhooks.sql`](migrations/2026-09-28-webhooks.sql),
-adds three tables, `webhook_subscriptions`, `webhook_events` and
-`webhook_deliveries`, and changes nothing that exists. Apply it with `npm run
-migrate` before starting the new image (in containers, `docker compose ... run
---rm app npm run migrate`); nothing else is run. Until it is applied the new
-image logs `webhook env subscription reconcile failed` at boot and `webhook
-subscriptions load failed` once a minute, and otherwise runs as before,
-emitting nothing. On an install `init.sql` builds fresh,
-`--adopt-fresh-install` checks that the three tables are there before it
-records the file. To undo it: `DROP TABLE webhook_deliveries, webhook_events,
-webhook_subscriptions;`.
+Upgrading from 0.13.0 takes one step before the new image starts: `npm run migrate` (in containers,
+`docker compose -f docker-compose-release.yml run --rm app npm run migrate`). Nine migrations are pending, all
+additive; none drops data. The runner applies them in this order. Undo them in reverse order, with the statement
+given for each (each file's header says the same).
+
+1. **[`2026-09-28-webhooks.sql`](migrations/2026-09-28-webhooks.sql)** adds `webhook_subscriptions`,
+   `webhook_events` and `webhook_deliveries`. Until it is applied the new image logs
+   `webhook env subscription reconcile failed` at boot and `webhook subscriptions load failed` once a minute, and
+   otherwise emits nothing. Undo: `DROP TABLE webhook_deliveries, webhook_events, webhook_subscriptions;`
+2. **[`2026-10-10-webhook-sequence-lock.sql`](migrations/2026-10-10-webhook-sequence-lock.sql)** adds the one-row
+   `webhook_sequence_lock` that orders outbound events; the first emit creates the row. Undo:
+   `DROP TABLE webhook_sequence_lock;`
+3. **[`2026-10-11-user-identities.sql`](migrations/2026-10-11-user-identities.sql)** adds the `user_identities`
+   table, `sessions.identity_id` and `sessions.provider_sid`, and accepts `auth_provider = 'oidc'`. Existing
+   sessions keep `local` or `google`. Undo, on an install with no OIDC sessions:
+   `ALTER TABLE sessions DROP FOREIGN KEY fk_sessions_identity, DROP INDEX idx_sessions_provider_sid, DROP COLUMN provider_sid, DROP COLUMN identity_id, DROP CHECK chk_sessions_identity_pairing, DROP CHECK chk_sessions_auth_provider, ADD CONSTRAINT chk_sessions_auth_provider CHECK (auth_provider IN ('local', 'google'));`
+   then `DROP TABLE user_identities;`
+4. **[`2026-10-12-identity-last-signin-email.sql`](migrations/2026-10-12-identity-last-signin-email.sql)** adds
+   `user_identities.email_at_last_signin`, which records the issuer's email and authorizes nothing. Undo:
+   `ALTER TABLE user_identities DROP COLUMN email_at_last_signin;`
+5. **[`2026-10-12-user-deactivation.sql`](migrations/2026-10-12-user-deactivation.sql)** adds `users.deactivated_at`;
+   NULL means active. Undo: `ALTER TABLE users DROP COLUMN deactivated_at;`
+6. **[`2026-10-13-session-id-token.sql`](migrations/2026-10-13-session-id-token.sql)** adds `sessions.oidc_id_token`,
+   the sealed ID token a sign-out sends back to the issuer. Undo:
+   `ALTER TABLE sessions DROP CHECK chk_sessions_id_token_oidc_only, DROP COLUMN oidc_id_token;`
+7. **[`2026-10-14-session-rotation.sql`](migrations/2026-10-14-session-rotation.sql)** adds `sessions.signed_in_at`
+   (backfilled from `created_at`) and `sessions.rotated_from`. Undo:
+   `ALTER TABLE sessions DROP INDEX idx_sessions_rotated_from, DROP COLUMN rotated_from, DROP COLUMN signed_in_at;`
+8. **[`2026-10-15-invitation-grants-admin.sql`](migrations/2026-10-15-invitation-grants-admin.sql)** adds
+   `user_invitations.grants_admin`, default false, so every existing invitation admits a plain member. Undo:
+   `ALTER TABLE user_invitations DROP COLUMN grants_admin;`
+9. **[`2026-10-16-invitation-revoked.sql`](migrations/2026-10-16-invitation-revoked.sql)** adds
+   `user_invitations.revoked_at`; NULL means not revoked. Undo: `ALTER TABLE user_invitations DROP COLUMN revoked_at;`
+
+The app refuses to start while `user_invitations.grants_admin`, `user_invitations.revoked_at`,
+`users.deactivated_at` or `user_identities.email_at_last_signin` is missing (`cloudcodex/services/release-schema.js`).
+The other migrations are not checked at boot, so run `npm run migrate` before starting the new image, never after.
+On an install that `init.sql` builds fresh, `npm run migrate -- --adopt-fresh-install` checks each file's objects
+against the schema before it records the file.
+
+### Breaking changes and upgrade notes
+
+- **Hosted mode is opt-in.** `AUTH_PROVIDERS` without `local` refuses every local sign-in, sign-up, password reset
+  and Google sign-in on the server, and the boot admin is then matched by `ADMIN_EMAIL` alone. A boot that sets
+  `AUTH_PROVIDERS` without `oidc`, or sets the Google variables, exits with a sentence naming the variable.
+- **Cookies.** On https the session cookie is `__Host-sessionToken` (see 0.13.0; `LEGACY_SESSION_COOKIE`, default 1,
+  keeps the older name working). A write authenticated by the session cookie alone must carry an accepted
+  `Origin`. The theme and accent preferences are `cc_suite_theme` and `cc_suite_accent`, and `SUITE_PREFERENCE_DOMAIN`
+  shares them across a suite's hosts, in suite mode only.
+- **Sidebar and layout.** The top bar, the copyright footer and the bottom tab bar are gone. The density control and
+  the sidebar default are removed, and a stored value is dropped on load.
+- **Suite-managed accounts.** In suite mode an account signed in through the issuer has its name, email, password and
+  two-factor managed by the issuer. The server refuses those writes for that account with `403 managed_by_issuer`.
+- **Sign-out** of an OIDC session returns an `endSessionUrl` for the issuer's logout.
+
+### Environment variables added
+
+`OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_PROVIDER_NAME`, `OIDC_LINK_BY_VERIFIED_EMAIL`,
+`OIDC_SESSION_TTL_HOURS`, `OIDC_ACCOUNT_URL`, `AUTH_PROVIDERS`, `MACHINE_OIDC_AUDIENCE`, `MACHINE_OIDC_SUBJECTS`,
+`SUITE_COMMAND_WORKSPACE_URL`, `SUITE_NAME`, `SUITE_PREFERENCE_DOMAIN`, `WEBHOOK_URL`, `WEBHOOK_SECRET`,
+`WEBHOOK_WORKSPACE_ID`, `WEBHOOK_ALLOW_PRIVATE_TARGETS`. `cloudcodex/env-contract.js` lists each one with its
+behaviour; `.env.example` has them.
 
 
 ## [0.13.0] - 2026-09-28
@@ -1529,7 +1574,8 @@ build toolchain.
 
 Initial public pre-release.
 
-[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/Cloud-City-Computing/c2/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Cloud-City-Computing/c2/compare/v0.10.0...v0.11.0

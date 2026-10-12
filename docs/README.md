@@ -74,8 +74,6 @@ describes what we intend to build next and why.
 |----------|---------|
 | [specs/roadmap.md](./specs/roadmap.md) | The tracks the project is decomposed into, the evidence behind each, and the order to do them in |
 | [specs/2026-09-24-suite-identity.md](./specs/2026-09-24-suite-identity.md) | Wave 6 identity: a generic OIDC relying party, hashed sessions, propagating sign-out |
-| [specs/2026-09-24-outbound-events.md](./specs/2026-09-24-outbound-events.md) | Wave 6 events: an outbound webhook subsystem, off by default |
-| [specs/2026-09-24-suite-hosting-readiness.md](./specs/2026-09-24-suite-hosting-readiness.md) | Wave 6 hosting: an instance that can be operated under a supervisor |
 
 
 ## Deep maps (`maps/`)
