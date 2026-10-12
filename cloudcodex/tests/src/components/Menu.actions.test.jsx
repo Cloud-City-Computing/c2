@@ -57,6 +57,16 @@ describe('Menu in actions mode', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('restores focus to the trigger before onSelect runs, so a dialog it opens records the trigger', async () => {
+    const seen = [];
+    const onSelect = vi.fn(() => seen.push(document.activeElement));
+    render(<Menu mode="actions" label="More actions for Row" items={ACTIONS} onSelect={onSelect} />);
+    const trigger = screen.getByRole('button', { name: 'More actions for Row' });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    expect(seen).toEqual([trigger]);
+  });
+
   it('moves between items with the arrow keys and closes on Escape, returning focus to the trigger', async () => {
     const { trigger, onSelect } = setup();
     await userEvent.click(trigger);

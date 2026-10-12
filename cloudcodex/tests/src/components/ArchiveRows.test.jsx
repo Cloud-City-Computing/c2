@@ -109,6 +109,24 @@ describe('the archive list (X9)', () => {
     expect(row.querySelector('.archive-row__count')).toHaveTextContent('4 documents');
   });
 
+  it('shows the created date on each row, as the card did', async () => {
+    const { container } = renderList();
+    await waitFor(() => expect(screen.getByText('Release Planning')).toBeInTheDocument());
+    const created = container.querySelector('.archive-row .archive-row__created');
+    expect(created).toHaveTextContent(new Date('2026-10-11T00:00:00Z').toLocaleDateString());
+  });
+
+  it('says a missing document count is unavailable, never zero', async () => {
+    utilMock.fetchArchives.mockResolvedValueOnce({
+      archives: [{ id: 3, name: 'Legacy', created_by: 'ada', created_at: '2026-10-01T00:00:00Z', squad_id: null, squad_name: null, workspace_id: null }],
+    });
+    const { container } = renderList();
+    await waitFor(() => expect(screen.getByText('Legacy')).toBeInTheDocument());
+    const count = container.querySelector('.archive-row__count');
+    expect(count).toHaveTextContent('Count unavailable');
+    expect(count).not.toHaveTextContent('0 documents');
+  });
+
   it('is the header primary: exactly one .btn-primary on the page header', async () => {
     const { container } = renderList();
     await waitFor(() => expect(screen.getByText('Release Planning')).toBeInTheDocument());
