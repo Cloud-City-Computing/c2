@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - The suite cluster in the top bar's brand slot (W6-CDX-25)
+ * Cloud Codex - The suite cluster, the top of the sidebar in suite mode (W6-CDX-25, moved by W6-CDX-40)
  *
  * A NON-MODAL DISCLOSURE, not role="menu": the toggle is a button with aria-expanded and
  * aria-controls; the panel is a short list of links reached with Tab, in this order: Cloud Codex
@@ -15,8 +15,8 @@
  * when that link is the page already shown. Any change of history entry closes the panel.
  *
  * The panel stays mounted with the `hidden` attribute, so aria-controls always names an element.
- * It is positioned under the toggle, inside this component's own box, with no portal: the top
- * bar does not clip, so the panel is not cut off.
+ * It opens inline, in the sidebar's flow under the toggle (W6-CDX-40), so nothing overlays the
+ * navigation below it and no stacking order is involved.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import transparent_logo from '../assets/ccc_brand/ccc_transparent.png';
+import ProductMark from './ProductMark.jsx';
 
 /** This product's name. Cloud Codex is the product's own name across src/, not a suite literal. */
 const PRODUCT_NAME = 'Cloud Codex';
@@ -148,7 +148,7 @@ export default function SuiteCluster({ suiteName, commandWorkspaceUrl }) {
           setOpen(!isOpen);
         }}
       >
-        <img src={transparent_logo} alt="" aria-hidden="true" className="cc-suite__logo" />
+        <ProductMark className="cc-suite__mark" />
         <span className="cc-suite__text">
           <span className="cc-suite__name">{PRODUCT_NAME}</span>
           <span className="cc-suite__eyebrow" title={suiteName}>{suiteName}</span>

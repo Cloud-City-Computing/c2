@@ -14,6 +14,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '../util';
+import PageHeader from '../components/PageHeader';
 
 const FILTERS = [
   { key: 'all', label: 'All', match: () => true },
@@ -79,17 +80,19 @@ export default function NotificationsPage() {
   return (
     <StdLayout>
       <div className="notifications-page">
-        <header className="notifications-page__header">
-          <h1>Notifications</h1>
-          <div className="notifications-page__actions">
-            <Link to="/notifications/preferences" className="btn btn-ghost">Preferences</Link>
-            {unreadCount > 0 && (
-              <button type="button" className="btn btn-ghost" onClick={handleMarkAll}>
-                Mark all read
-              </button>
-            )}
-          </div>
-        </header>
+        <PageHeader
+          title="Notifications"
+          primary={(
+            <div className="notifications-page__actions">
+              <Link to="/notifications/preferences" className="btn btn-ghost">Preferences</Link>
+              {unreadCount > 0 && (
+                <button type="button" className="btn btn-ghost" onClick={handleMarkAll}>
+                  Mark all read
+                </button>
+              )}
+            </div>
+          )}
+        />
 
         <nav className="tabs notifications-page__filters" aria-label="Filter">
           {FILTERS.map((f) => (

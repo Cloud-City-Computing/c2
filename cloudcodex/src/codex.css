@@ -50,10 +50,7 @@
   --cx-brand-google-red: #ea4335;
 
   /* Layout and motion, kept at Codex's values. */
-  --cx-topbar-height: 56px;
-  --cx-sidebar-width: 220px;
-  --cx-sidebar-collapsed: 56px;
-  --cx-footer-height: 44px;
+  --cx-sidebar-width: 248px;
   --cx-transition: all 0.2s ease;
 
   /* Codex's own radii (4, 8, 12px), kept for the deferred editor, comments and GitHub families until W6-CDX-43:

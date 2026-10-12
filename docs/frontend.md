@@ -77,8 +77,8 @@ in Tiptap, Yjs, lowlight, etc.).
 
 ### `HomePage`
 The initial landing page. Shows the login form (`Login` component) when
-unauthenticated, and the main dashboard (`ArchiveBrowser` + `SearchBox`)
-when logged in.
+unauthenticated, and the main dashboard (`ArchiveBrowser`) when logged in. Search is
+the sidebar's "Search or jump to" palette (`SearchPalette`, Ctrl K), on every signed-in page.
 
 ### `ArchivesPage`
 Displays the user's accessible archives. Selecting an archive shows its
@@ -182,7 +182,7 @@ Token validation and new-password entry for the password-reset email flow.
 ### Navigation & browse
 | Component                  | Purpose                                                      |
 |----------------------------|--------------------------------------------------------------|
-| `Std_Layout` (page-layout) | Main page wrapper (top nav + content area)                   |
+| `Std_Layout` (page-layout) | Main page wrapper (sidebar + content area)                   |
 | `ArchiveBrowser`           | Sidebar for browsing archives and their document trees       |
 | `PageTree`                 | Recursive tree view of logs within an archive                |
 | `ExploreBrowser`           | Browse mode (recent / favorited docs without a query)        |

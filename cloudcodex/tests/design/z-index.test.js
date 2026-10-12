@@ -57,9 +57,10 @@ describe('stacking order', () => {
   });
 });
 
-// The layering the editor and the shell depend on, read from the real rules in src/index.css. A
-// rule's z-index is the first one declared inside its own braces, so a bare `.mobile-nav { display: none }`
-// is skipped and the media-query override is the one read.
+// The layering the shell and its overlays depend on, read from the real rules in src/index.css. A rule's
+// z-index is the first one declared inside its own braces. W6-CDX-40 removed the top bar and the bottom tab
+// bar: the sidebar is a docked column at base, and the overlays it opens (the account menu, the search palette)
+// sit above it and above the editor's overlays (comment highlights and remote cursors).
 const INDEX = readFileSync(path.join(ROOT, 'src/index.css'), 'utf8');
 function ruleZ(selector) {
   const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -70,37 +71,24 @@ function ruleZ(selector) {
 const rank = (token) => SCALE.indexOf(token);
 
 describe('the shell layers that the editor overlays depend on', () => {
-  // The suite switcher's panel (.cc-suite__panel) lives inside .topbar and paints in the top bar's
-  // stacking context. The sidebar is a sibling in the app grid, so it wins any tie of the same token
-  // and covers a panel that hangs down over it. The top bar must be STRICTLY above the sidebar.
-  it('the top bar sits strictly above the sidebar and the mobile bottom nav, so its dropdowns (the suite switcher) paint over both', () => {
-    expect(rank(ruleZ('.topbar'))).toBeGreaterThan(rank(ruleZ('.mobile-nav')));
-    expect(rank(ruleZ('.topbar'))).toBeGreaterThan(rank(ruleZ('.sidebar')));
-  });
-
-  it('the sidebar sits at base, so no sibling of the top bar can tie it and paint over the top bar\'s dropdowns', () => {
+  it('the sidebar sits at base, in its own grid column, so nothing in the page ties it', () => {
     expect(ruleZ('.sidebar')).toBe('--z-base');
   });
 
-  it('the mobile bottom nav sits below the top bar, so a dropdown that reaches it stays on top', () => {
-    expect(ruleZ('.mobile-nav')).toBe('--z-base');
+  it('the account menu and the search palette sit above the sidebar and above the editor overlays', () => {
+    expect(rank(ruleZ('.sidebar__menu'))).toBeGreaterThan(rank(ruleZ('.sidebar')));
+    expect(rank(ruleZ('.palette-scrim'))).toBeGreaterThan(rank(ruleZ('.sidebar')));
+    expect(rank(ruleZ('.palette-scrim'))).toBeGreaterThan(rank(ruleZ('.comment-highlights')));
+    expect(rank(ruleZ('.palette-scrim'))).toBeGreaterThan(rank(ruleZ('.remote-cursors')));
+    expect(rank(ruleZ('.sidebar__menu'))).toBeGreaterThan(rank(ruleZ('.comment-highlights')));
   });
 
-  // The collapsed sidebar's hover panel overlays the editor, so it alone is raised above the editor
-  // overlays (comment highlights and remote cursors). The docked sidebar is in its own grid column.
-  it('the hover-expanded sidebar is above the editor overlays (comment highlights and remote cursors), so its panel is not painted under them', () => {
-    const hover = ruleZ('.sidebar-collapsed .sidebar:hover');
-    expect(hover).toBe('--z-sticky');
-    expect(rank(hover)).toBeGreaterThan(rank(ruleZ('.comment-highlights')));
-    expect(rank(hover)).toBeGreaterThan(rank(ruleZ('.remote-cursors')));
+  it('the suite switcher opens inline in the sidebar, so it needs no layer of its own', () => {
+    expect(INDEX).not.toMatch(/\.cc-suite__panel\s*\{[^}]*position:\s*absolute/);
   });
-});
 
-describe('the mobile bottom nav over the footer row it overlaps', () => {
-  it('the footer is not a positioned box in the phone block that shows the nav, so the nav at base paints over it', () => {
-    const phone = [...INDEX.matchAll(/@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n/g)]
-      .map((m) => m[1]).find((block) => /\.mobile-nav \{/.test(block));
-    expect(phone, 'the 768px block that shows .mobile-nav is in src/index.css').toBeDefined();
-    expect(phone).toMatch(/\.log-footer \{\s*position:\s*static;/);
+  it('the top bar, its dropdowns and the bottom tab bar are gone from the stylesheet', () => {
+    expect(INDEX).not.toMatch(/(?:^|\n)\s*\.(topbar|mobile-nav|log-footer|notification-bell|account-button)\b/);
+    expect(INDEX).not.toMatch(/#dropdown-backshadow/);
   });
 });

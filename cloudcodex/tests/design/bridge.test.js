@@ -35,14 +35,14 @@ const LEGACY_27 = [
   '--brand-blue', '--brand-blue-light', '--brand-blue-dark', '--brand-blue-hover',
   '--color-danger', '--color-danger-hover', '--color-success',
   '--shadow-sm', '--shadow-md', '--shadow-lg',
-  '--topbar-height', '--sidebar-width', '--sidebar-collapsed', '--footer-height',
+  '--sidebar-width',
   '--transition',
 ];
 // The undeclared names that carry the heaviest fallbacks, bridged so the fallback can go (PR 8).
 const FALLBACK_NAMES = ['--bg-secondary', '--color-accent', '--border', '--bg-tertiary', '--accent-color'];
 // The names whose target is a length, a shadow or a transition, not a colour.
 const NON_COLOUR = ['--shadow-sm', '--shadow-md', '--shadow-lg',
-  '--topbar-height', '--sidebar-width', '--sidebar-collapsed', '--footer-height', '--transition'];
+  '--sidebar-width', '--transition'];
 const COLOUR_NAMES = LEGACY_27.filter((name) => !NON_COLOUR.includes(name));
 
 describe('the bridge in index.css :root', () => {
@@ -85,10 +85,7 @@ describe('the bridge in index.css :root', () => {
   });
 
   it('keeps the layout sizes and transition it had before the bridge', () => {
-    expect(resolveTokenValue(dark, bridge.get('--topbar-height').slice(4, -1))).toBe('56px');
-    expect(resolveTokenValue(dark, bridge.get('--sidebar-width').slice(4, -1))).toBe('220px');
-    expect(resolveTokenValue(dark, bridge.get('--sidebar-collapsed').slice(4, -1))).toBe('56px');
-    expect(resolveTokenValue(dark, bridge.get('--footer-height').slice(4, -1))).toBe('44px');
+    expect(resolveTokenValue(dark, bridge.get('--sidebar-width').slice(4, -1))).toBe('248px');
     expect(resolveTokenValue(dark, bridge.get('--transition').slice(4, -1))).toBe('all 0.2s ease');
   });
 

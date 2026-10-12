@@ -1,14 +1,18 @@
 /**
- * Cloud Codex - Account Panel Component
+ * Cloud Codex - sign-out (W6-CDX-40: moved from the account panel, which the sidebar footer replaces)
+ *
+ * Sign-out deletes the server's session row, then clears the session cookie through the one client helper
+ * that knows both names (W6-CDX-3). For an OIDC session the server answers with the issuer's end-session URL,
+ * and the browser goes on there so the issuer ends its own session (W6-CDX-6).
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 
-import { removeSessStorage, apiFetch, clearSessionCookie } from '../util';
+import { removeSessStorage, apiFetch, clearSessionCookie } from '../util.jsx';
 
 /** How long a sign-out waits for the server's answer before it goes on without the issuer's URL. */
-const SIGN_OUT_WAIT_MS = 5000;
+export const SIGN_OUT_WAIT_MS = 5000;
 
 /**
  * Only an http or https URL is ever navigated to. The server builds the end-session URL, so this is
@@ -16,7 +20,7 @@ const SIGN_OUT_WAIT_MS = 5000;
  * @param {unknown} value
  * @returns {boolean}
  */
-function isHttpUrl(value) {
+export function isHttpUrl(value) {
   if (typeof value !== 'string') return false;
   try {
     const { protocol } = new URL(value);
@@ -27,12 +31,11 @@ function isHttpUrl(value) {
 }
 
 /**
- * Signs out here first, then, for an OIDC session, sends the browser on to the issuer's end-session
- * URL so the issuer ends its own session (W6-CDX-6). The request is started before the cookie is
- * cleared, so it already carries the session token; the local teardown never waits on the network.
- * A failed or slow request still ends locally and lands on /?signedOut=1.
+ * Starts the request before the cookie is cleared, so it already carries the session token; the local
+ * teardown never waits on the network. A failed or slow request still ends locally and lands on /?signedOut=1.
+ * @returns {Promise<void>}
  */
-async function performLogout() {
+export async function signOut() {
   const request = apiFetch('POST', '/api/logout', {}).catch(() => null);
   removeSessStorage('currentUser');
   clearSessionCookie();
@@ -46,18 +49,3 @@ async function performLogout() {
   // /?signedOut=1 is the landing that says so in suite mode (Std_Layout); outside suite mode it is the root.
   window.location.href = isHttpUrl(endSessionUrl) ? endSessionUrl : '/?signedOut=1';
 }
-
-function AccountPanel({ name, email }) {
-  return (
-    <div className="dropdown-menu">
-      <p className="text-center"><strong>{name}</strong> ({email})</p>
-      <hr />
-      <div className="button-group">
-        <button className="btn btn-ghost stretched-button" onClick={() => { window.location.href = '/account'; }}>Account Settings</button>
-        <button className="btn btn-ghost stretched-button" onClick={performLogout}>Logout</button>
-      </div>
-    </div>
-  );
-}
-
-export default AccountPanel;

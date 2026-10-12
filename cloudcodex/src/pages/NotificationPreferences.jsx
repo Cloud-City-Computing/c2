@@ -13,6 +13,7 @@ import {
   updateNotificationPreferences,
   getErrorMessage,
 } from '../util';
+import PageHeader from '../components/PageHeader';
 
 const TOGGLES = [
   { key: 'email_mention', label: 'When someone @mentions me', description: 'Document or comment mentions.' },
@@ -62,10 +63,7 @@ export default function NotificationPreferences() {
   return (
     <StdLayout>
       <div className="notification-prefs-page">
-        <header className="notification-prefs-page__header">
-          <h1>Notification preferences</h1>
-          <Link to="/notifications">&larr; Back to inbox</Link>
-        </header>
+        <PageHeader title="Notification preferences" primary={<Link to="/notifications">&larr; Back to inbox</Link>} />
 
         {error && <p className="form-error">{error}</p>}
 

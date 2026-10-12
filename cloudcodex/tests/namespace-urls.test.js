@@ -106,7 +106,10 @@ describe('the repository', () => {
     ]));
     const declared = files.flatMap((f) =>
       [...readFileSync(path.join(REPO, f), 'utf8').matchAll(/\bxmlns\s*=/g)]);
-    expect(declared.length).toBeGreaterThan(10);
+    // The floor was 10 before W6-CDX-40, when the top bar and the sidebar held most of the inline icons. The shell's
+    // icons are now the sidebar's own set (components/ShellIcons.jsx, which declares no xmlns). Five is what the
+    // remaining declarations give, and a scan that finds fewer has stopped reading the files.
+    expect(declared.length).toBeGreaterThanOrEqual(5);
   });
 
   it('declares only real XML namespaces', () => {

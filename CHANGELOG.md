@@ -13,6 +13,11 @@ initialises an empty data directory.
 ## [Unreleased]
 
 ### Changed
+- **The suite shell is sidebar-led (W6-CDX-40, A3).** There is no top bar, no copyright footer and no bottom tab bar.
+  One sidebar holds the suite cluster (or the product mark outside suite mode), the workspace slot, a "Search or jump to"
+  palette on Ctrl K (documents and archives), the navigation with an unread count on Notifications, an Archives group and
+  the account footer (avatar, name menu, sign-out icon). On phones the sidebar is a two-row strip. Workspaces is hidden in
+  suite mode. Pages that were rebuilt take a shared header with a title, a primary action and a tab row.
 - **Controls on the suite pattern (W6-CDX-39, A2).** Buttons are 30 px high on `--radius-md`, 13 px at weight 500,
   with no letter-spacing (the small size stays 26 px). The primary's hover steps to the lighter accent. One menu
   primitive (`Menu.jsx`, a `role="menu"` popup with arrow-key, Home, End and Escape handling) replaces the native

@@ -8,6 +8,8 @@ import { lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Routes, Route, Navigate } from "react-router-dom";
 import HomePage from './pages/HomePage'
+import WorkspacesGate from './components/WorkspacesGate';
+import ProductMark from './components/ProductMark';
 
 // Heavy pages are lazy-loaded so the initial bundle stays small.
 // Editor alone pulls in Tiptap, Yjs, lowlight, marked, turndown, etc.
@@ -30,6 +32,7 @@ function PageLoader() {
 function NotFound() {
   return (
     <div className="not-found-page">
+      <ProductMark className="not-found-page__mark" size={48} />
       <h1>404</h1>
       <p>Page not found</p>
       <a href="/" className="btn btn-primary">Go Home</a>
@@ -63,8 +66,8 @@ function App() {
       <Route path="/archives/:archiveId" element={<ArchivesPage />} />
       <Route path="/archives/:archiveId/doc/:logId" element={<ArchiveView />} />
       <Route path="/archives/:archiveId/doc" element={<ArchiveView />} />
-      <Route path="/workspaces" element={<WorkspacesPage />} />
-      <Route path="/workspaces/:workspaceId" element={<WorkspacesPage />} />
+      <Route path="/workspaces" element={<WorkspacesGate><WorkspacesPage /></WorkspacesGate>} />
+      <Route path="/workspaces/:workspaceId" element={<WorkspacesGate><WorkspacesPage /></WorkspacesGate>} />
       <Route path="/github" element={<GitHubPage />} />
       <Route path="/github/:owner/:repo" element={<GitHubPage />} />
       <Route path="/admin" element={<AdminPage />} />

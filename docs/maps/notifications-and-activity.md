@@ -455,8 +455,8 @@ distinction from `/collab`.
   error. Send failures are swallowed because the `close` handler untracks.
 - Frames sent: `connected`, `notification`, `read`, `read_all`.
 
-The client side is `src/hooks/useNotificationChannel.js`, feeding
-`NotificationBell.jsx`.
+The client side is `src/hooks/useNotificationChannel.js`, feeding the Notifications nav item's
+unread count in `src/components/Sidebar.jsx` (the top-bar bell it replaced went in W6-CDX-40).
 
 **Nothing is queued for offline users.** A missed push is recovered only by the
 REST poll on next load. The DB row is the source of truth; the socket is a

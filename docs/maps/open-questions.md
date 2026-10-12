@@ -501,7 +501,7 @@ or card keeps its own `onClick` so the mouse affordance is unchanged:
 | Browse grid, `ExploreBrowser.jsx` `ExploreCard` | `<h3>` inside a click-only card | `<h3>` wrapping `<Link className="explore-card__title-link">` |
 | Archives page, `ArchiveBrowser.jsx` `LogTreeItem` | `<span className="log-tree-title" onClick={navigate}>` | `<Link className="log-tree-title">` |
 | Editor page tree, `PageTree.jsx` `TreeItem` | `<span className="page-tree-label">` | `<button className="page-tree-label">` calling `onSelect` |
-| Topbar search dropdown, `SearchBox.jsx` | `<div onMouseDown>` | `<Link className="search-dropdown-item">` |
+| Topbar search dropdown, `SearchBox.jsx` (removed in W6-CDX-40; the palette, `SearchPalette.jsx`, lists its results as links) | `<div onMouseDown>` | `<Link className="search-dropdown-item">` |
 | `SearchResultItem.jsx` (no callers) | click-only `<div>` | `<button className="result-title-btn">` |
 
 **The topbar dropdown was the worst of the five and was nearly missed.** It is

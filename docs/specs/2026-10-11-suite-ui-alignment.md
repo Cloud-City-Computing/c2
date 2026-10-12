@@ -512,6 +512,13 @@ Every route renders in the new shell at 1280 and 390 with no overlap, dark; the 
 inline; a manual smoke of a document with two cursors and a comment shows highlights in place before
 and after, recorded with captures.
 
+*Decided at execution (W6-CDX-40, 2026-10-12):* the sidebar is 248 px with an 18 px inline main padding, so the
+document column keeps its 996 px at 1280; the footer menu is an action menu, not the radio `Menu`; the phone
+account is an avatar in the strip's second row; the workspace slot shows the user's first workspace (pending Kyle);
+the page header is adopted on Account, Notifications, Notification preferences and Activity, with the other pages
+in PR 4 and PR 5. The full list is in the plan's PR 3 section. Only the single-browser comment capture was taken;
+the two-cursor smoke is open.
+
 ---
 
 ## W6-CDX-41. Lists, home and the document header

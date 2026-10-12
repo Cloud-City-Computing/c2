@@ -438,7 +438,7 @@ manifest lists.
 |---|---|
 | `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy (run with the TAP reporter named and `NODE_OPTIONS` dropped, so the summary parses on Node 24, whose default reporter is spec) |
 | `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
-| `z-index.test.js` | every CSS `z-index` and React `zIndex` is a `var(--z-*)` that the vendored `core.css` declares, with a floor of 12 CSS declarations; the shell's layering (topbar strictly above the sidebar and the mobile nav, so the suite switcher paints over both; the nav and the docked sidebar at base; the hover-expanded sidebar above editor overlays; the footer static on phones) is read from the real rules (W6-CDX-25, the suite-switcher fix) |
+| `z-index.test.js` | every CSS `z-index` and React `zIndex` is a `var(--z-*)` that the vendored `core.css` declares, with a floor of 12 CSS declarations; the shell layers (W6-CDX-40: the sidebar at base, the account menu and the search palette above it and the editor overlays) is read from the real rules (W6-CDX-25, the suite-switcher fix) |
 | `suite-name.test.js` | no application source (`src`, `routes`, `services`, `middleware`, `scripts`, the root files) spells the suite name outside a `Cloud City Computing` header (W6-CDX-25, Decision 8) |
 | `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
 | `contrast.test.js` | every pair in `pairs.json` clears its minimum in the dark theme, and every colour binding in `src/codex.css` is in a pair or named decorative |
@@ -455,7 +455,7 @@ manifest lists.
 | `fallbacks.test.js` | no `var()` fallback under `src` is a colour literal, and no undeclared name carries a fallback except `--density-scale` and `--editor-font-size`, which script sets (W6-CDX-38) |
 | `control-font.test.js` | `.btn`, `button`, `input`, `select` and `textarea` declare `font-family: inherit` on the shell (X4), and the rule excludes the deferred families (comments, the editor and its toolbars, Markdown, Draw.io, Version History, GitHub), which keep the browser font until W6-CDX-43 (K3). The family only: the `font` shorthand also reset size and line height, which grew the top-bar search field (W6-CDX-38) |
 | `ghost-hover.test.js` | a ghost button's hover background differs from the page's and from a dialog panel's (`.modal-content`), resolved through the dark theme (declaration-level; the live hover is checked in the browser captures) (W6-CDX-38 review) |
-| `topbar.test.js` | the top bar's background is an opaque token (`--bg-elevated`, `--cx-surface-1`), with no translucent literal and no opacity (W6-CDX-38 review) |
+| `sidebar.test.js` | the sidebar's background is an opaque token (`--cx-surface-1`), with no translucent literal and no opacity (W6-CDX-40; this file was `topbar.test.js`, the top bar being gone) |
 | `deferred-radius.test.js` | the deferred families read `--cx-deferred-radius-*` (4, 8, 12px) in their banners, never a core radius, until W6-CDX-43 (W6-CDX-38 review) |
 
 **The ledger is exact, not a ceiling.** `ledger.json` holds a count per file,

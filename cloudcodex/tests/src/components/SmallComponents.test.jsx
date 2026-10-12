@@ -1,6 +1,6 @@
 /**
  * Cloud Codex — Tests for the under-80-LOC reusable components:
- *   AccountPanel, SearchResultItem, NewLogModal, ExportMenu,
+ *   SearchResultItem, NewLogModal, ExportMenu,
  *   CollabPresence
  *
  * Each component gets a focused render + interaction smoke test rather than
@@ -32,7 +32,6 @@ vi.mock('../../../src/hooks/useGitHubStatus.jsx', () => ({
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import AccountPanel from '../../../src/components/AccountPanel.jsx';
 import SearchResultItem from '../../../src/components/SearchResultItem.jsx';
 import NewLogModal from '../../../src/components/NewLogModal.jsx';
 import ExportMenu from '../../../src/components/ExportMenu.jsx';
@@ -46,20 +45,6 @@ beforeEach(() => {
   utilMock.createLog.mockResolvedValue({ logId: 99 });
   utilMock.docUrl.mockImplementation((doc) => `/editor/${doc.id}`);
   ghStatus.connected = true;
-});
-
-describe('AccountPanel', () => {
-  it('renders name and email', () => {
-    render(<AccountPanel name="Alice" email="a@b.c" />);
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.getByText(/a@b\.c/)).toBeInTheDocument();
-  });
-
-  it('renders Account Settings and Logout buttons', () => {
-    render(<AccountPanel name="A" email="a@b" />);
-    expect(screen.getByRole('button', { name: /account settings/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /logout/i })).toBeInTheDocument();
-  });
 });
 
 describe('SearchResultItem', () => {
