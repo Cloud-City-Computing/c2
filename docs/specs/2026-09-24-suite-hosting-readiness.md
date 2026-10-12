@@ -332,8 +332,8 @@ document's HTML is intact, and its image is served to its reader.
 
 - Precondition: this track's deploy-path sessions have merged (W6-CDX-31, W6-CDX-32, W6-CDX-34
   and W6-CDX-35; W6-CDX-33 is not one, per D-O), and so have the other tracks' (identity
-  W6-CDX-10 and W6-CDX-2 to W6-CDX-9, events W6-CDX-12 to W6-CDX-14, and UI W6-CDX-21 to
-  W6-CDX-29).
+  W6-CDX-10 and W6-CDX-2 to W6-CDX-9, events W6-CDX-12 to W6-CDX-14, UI W6-CDX-21 to
+  W6-CDX-29, and, added 2026-10-11, UI alignment W6-CDX-37 to W6-CDX-44).
 - Retire this spec and its plan, or, if W6-CDX-33 is still open (it is not a precondition),
   trim both to W6-CDX-33 alone and leave its PR to retire them; update the roadmap.
 - Move the changelog's `[Unreleased]` into a version, bump `cloudcodex/package.json`, and move the

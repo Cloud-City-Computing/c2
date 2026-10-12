@@ -63,7 +63,7 @@ constraint right now.
 | **D** | Trust signals (**mostly shipped**) | Real releases, changelog, screenshots. Classifiable license declined | A |
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
 | **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token, C2-5 a workspace reader check for the suite | nothing; C2-0 gates the rest |
-| **W** | Wave 6, the suite (**specced 2026-09-24**) | Four sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36). The shared live-MySQL test project W6-CDX-10 comes before every session that changes schema or needs a real database; W6-CDX-4 and W6-CDX-21 need neither and do not wait for it | S; named Cloud Command and Cloud City ID sessions per sub-track |
+| **W** | Wave 6, the suite (**specced 2026-09-24**) | Five sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36), and UI alignment (W6-CDX-37 to 44, added 2026-10-11), which the release W6-CDX-36 now waits on. The shared live-MySQL test project W6-CDX-10 comes before every session that changes schema or needs a real database; W6-CDX-4 and W6-CDX-21 need neither and do not wait for it | S; named Cloud Command and Cloud City ID sessions per sub-track |
 
 ### A. Evaluation path (shipped)
 
@@ -370,6 +370,9 @@ held open. The decisions that bind this repository:
 - **The Toast and the theme (D-V).** Codex's Toast is the suite's shared toast
   primitive, and light mode stays deferred for Codex through Wave 6; Cloud Command
   keeps its existing light theme and toggle (W6-CDX-23, and decision D-V of the suite UI spec, retired with W6-CDX-29).
+  **Superseded in part on 2026-10-11:** Codex gains a light theme before the release, switched by
+  one suite-wide preference both products honour (the UI alignment track, below). The Toast half of
+  D-V stands.
 
 The other two decisions in that round change nothing in this repository.
 
@@ -391,6 +394,13 @@ C2-AUTH, F and CC numbers are retired.
 | Outbound events | [outbound events](2026-09-24-outbound-events.md) | [plan](../plans/2026-09-24-outbound-events.md) | W6-CDX-12 to W6-CDX-16 |
 | UI and tokens (**shipped 2026-10-11**, PRs 1 to 9 of the suite UI plan, this PR is 9 and the last; the deferred editor, comments and GitHub surface is the row UI-later) | retired with W6-CDX-29; the record is [`docs/maps/`](../maps/) | retired with W6-CDX-29 | W6-CDX-21 to W6-CDX-29 |
 | Hosting readiness | [suite hosting readiness](2026-09-24-suite-hosting-readiness.md) | [plan](../plans/2026-09-24-suite-hosting-readiness.md) | W6-CDX-31 to W6-CDX-36 |
+| UI alignment (**specced 2026-10-11**; the release waits on it) | [suite UI alignment](2026-10-11-suite-ui-alignment.md) | [plan](../plans/2026-10-11-suite-ui-alignment.md) | W6-CDX-37 (the spec and plan), W6-CDX-38 to W6-CDX-44 |
+
+**The UI alignment track (added 2026-10-11).** Kyle decided that day, after an audit of both
+products' interfaces, that Codex aligns its shell, controls and content surfaces with the suite
+shell pattern and gains a light theme **before** W6-CDX-36, with one theme and accent preference
+shared by both products through a parent-domain cookie whose contract both repositories implement.
+Its spec records the ten decisions (K1 to K10). It supersedes the light-mode half of D-V.
 
 W6-CDX-1, W6-CDX-11 and W6-CDX-20 (the three "write the spec" sessions) and the
 documents half of W6-CDX-30 are the PR that added this section. W6-CDX-30's
@@ -425,13 +435,21 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-27 | Deep links out: Linked tasks (**done 2026-10-11** on `track/w6-cdx-27-linked-tasks`, PR #88, PR 7 of the suite UI plan; a same-tab "Linked tasks" link in the document meta line goes to Cloud Command's page for the document, and renders nothing outside suite mode) | W6-CDX-25, W6-CMD-25 | yes |
 | W6-CDX-28 | Content surfaces on the tokens (**done 2026-10-11** on `track/w6-cdx-28-content-surfaces`, PR #82, PR 8 of the suite UI plan; the eight content banners are on the tokens, ledger 631 to 510, and every label on a tint is measured over every surface) | W6-CDX-22 | yes |
 | W6-CDX-29 | Admin, settings, social and leftover surfaces on the tokens, and the UI track retires (**done 2026-10-11** on `track/w6-cdx-29-admin-surfaces`, this PR, PR 9 of the suite UI plan, the last of the track; every index.css banner outside the editor canvas, the comments and GitHub is on the tokens, the ledger is 399 and holds only the deferred families below, and the spec and plan are deleted) | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
-| UI-later | Editor canvas, comments and the GitHub surface on the tokens (**deferred 2026-10-11** by the suite UI plan's Task 9.1, which leaves them in place, and by the spec's deferred list; the orchestrator confirmed the deferral per that plan; changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage; the ledger holds them with `_later` notes that point here) | W6-CDX-29 (the track's last PR); no session yet, to be specced when the editor work is scheduled | no |
+| UI-later | Editor canvas, comments and the GitHub surface on the tokens (**deferred 2026-10-11** by the suite UI plan's Task 9.1, which leaves them in place, and by the spec's deferred list; the orchestrator confirmed the deferral per that plan; changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage; from 2026-10-11 their **colours** get light values in W6-CDX-43 behind a geometry fingerprint, so what stays here is geometry only; the ledger holds them with `_later` notes that point here) | W6-CDX-29 (the track's last PR); no session yet, to be specced when the editor work is scheduled | no |
+| W6-CDX-37 | The UI alignment spec and plan (**this PR**, docs only) | nothing | yes |
+| W6-CDX-38 | Neutrals, base and the hover model: the suite pattern's dark values, core radii, `color-scheme`, `font: inherit` on controls, the hover fills retired | W6-CDX-37 | yes |
+| W6-CDX-39 | Controls, the Toast and dialog panels: buttons, fields, one menu primitive, tabs, chips, avatars, icons; the first-toast drop and the lost admin messages fixed | W6-CDX-38 | yes |
+| W6-CDX-40 | The suite shell: sidebar-led, no top bar or footer, page headers, Notifications as a nav item with a count, a search palette, the page glyph, the two-row phone strip, Workspaces hidden in suite mode | W6-CDX-39; `fix/suite-switcher-and-dead-session` | yes |
+| W6-CDX-41 | Lists, home and the document header: rows with a More actions menu, one empty state, the doc header without emoji | W6-CDX-40 | yes |
+| W6-CDX-42 | Settings, admin, not-found and first run: identity read-only in suite mode and refused by the server, density and the sidebar default removed, admin as tabs, Revoke confirms | W6-CDX-40 | yes |
+| W6-CDX-43 | The light theme and the hue-based picker, including a colour-only pass over the deferred families; every gate in both themes | W6-CDX-41, W6-CDX-42 | yes |
+| W6-CDX-44 | The theme switch and the suite preference contract (`cc_suite_theme`, `cc_suite_accent`, `SUITE_PREFERENCE_DOMAIN`), the pre-paint script and its CSP hash; the track retires | W6-CDX-43; the sibling implements the same contract in W6-CMD-43 | yes |
 | W6-CDX-31 | Signals, health, readiness, the single-writer lock (**shipped 2026-09-27** in #65; `node server.js` as the process, a bounded SIGTERM flush, `/healthz` and `/readyz`, and a per-schema `GET_LOCK`) | W6-CDX-10 | yes |
 | W6-CDX-32 | Production configuration and the per-instance contract (**shipped 2026-09-27** in #66: `cloudcodex/env-contract.js` and its test, `APP_URL` required in production, `TRUST_PROXY` and `DB_POOL_SIZE`, `mysql:8.4.11` everywhere, and in production the security headers on the whole app. Task 2.4, the admin sync never promotes, landed early 2026-09-25 in #58 and was released in 0.11.0 with GHSA-w8q3-r34w-3pjh) | W6-CDX-10 | yes |
 | W6-CDX-33 | The grant recipe and the isolation proof (**shipped 2026-09-28** in #73: the "Several instances on one MySQL server" recipe in `docs/deployment.md`, with opaque letters-and-digits schema names, per-account connection caps and a `shared-mysql.yml` compose override that points the app at the shared server; `tenancy.test.js` runs it as written and 54 statements reaching for the other instance, the server or DDL all fail with MySQL's privilege errors, and the one system view that still lists other schemas' names is pinned and documented; `grants-sufficient.test.js` runs the app on the DML-only account; the comments router gets its error handler) | W6-CDX-32 | no: before a fourth instance |
 | W6-CDX-34 | Document images for readers only (**shipped 2026-09-27** in #67) | W6-CDX-10 | yes |
 | W6-CDX-35 | Backup and restore, with a drill (**shipped 2026-09-28** in #72: `scripts/backup.sh` and `scripts/restore.sh`, `make backup` and `make restore`, the live-MySQL drill in `tests/integration/backup-restore.test.js`, and the Compose drill by hand) | W6-CDX-31 | yes |
-| W6-CDX-36 | The Wave 6 Codex release the test box pins | every session marked yes above | yes |
+| W6-CDX-36 | The Wave 6 Codex release the test box pins | every session marked yes above, **including W6-CDX-44**, the last of the UI alignment track (added 2026-10-11) | yes |
 
 Two releases, deliberately separate: **0.10.0** carries C2-0 to C2-5 and
 exists so the published image stops predating the security fixes; **W6-CDX-36**
@@ -465,7 +483,8 @@ now         A ──────────────────────
             W ◄───────────────────────────────────┘  specced 2026-09-24
                 W6-CDX-10 first for every session that needs a real
                 database (W6-CDX-4 and W6-CDX-21 do not), then identity,
-                events, UI and hosting in parallel, then W6-CDX-36, the
+                events, UI and hosting in parallel, then UI alignment
+                (W6-CDX-37 to 44, added 2026-10-11), then W6-CDX-36, the
                 release the test box pins
 ```
 
