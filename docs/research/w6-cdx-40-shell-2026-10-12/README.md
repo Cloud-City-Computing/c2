@@ -53,3 +53,26 @@ Remote cursors were not in any capture.
 - **Notifications pill with a count**: the seeded account has no unread items; the unit tests cover 3, 150 and 0.
 - **The first-visit state of the document's toolbar**: one "after" capture shows the H1 button active from the caret's
   position at settle. The probe does not move the caret; the before capture was taken with the caret elsewhere.
+
+## Review round: the captures in `review-after/`
+
+Taken after the review fixes, against the same seeded database with 14 archives (the seed's eight plus six added for the
+phone check). `raw/capture-review.mjs` produced every PNG and JSON; every PNG was opened and read.
+
+- `signed-out-landing-dark-1280x860.png`, `…-390x844.png`: the landing after a sign-out, with no cookie. The "Sign in"
+  button is on it (`signed-out-landing-probe-*.json`). The instance is local-login, so the button opens the Login modal.
+- `palette-over-modal-dark-*.png`: Admin's Invite User dialog open, Ctrl K pressed. The palette did not open, and the page
+  behind is inert (`palette-over-modal-probe-*.json`).
+- `switcher-open-phone-dark-390x844.png`: the suite switcher open at 390. The panel hangs over the navigation; the
+  workspace slot (36 px) and the search trigger (30 px) keep their heights (`switcher-open-phone-probe.json`).
+- `strip-archives-phone-dark-390x844.png`: the phone strip with 14 archives. 14 of 15 archive items are hidden; the
+  navigation scrolls sideways behind its fade (`strip-archives-phone-probe.json`).
+
+Not in these captures: the Admin squad actions and the live Notifications list. Both are covered by the tests named in the
+plan's review-round section, not by a screenshot.
+
+## Integration in the container
+
+The integration project ran inside the image the backup tests need (MySQL 8.4 clients, Node 22), on a private network, with
+the worktree copied in. The image has Node but no npm, so the run used the host's npm CLI under the container's Node. Result:
+29 files and 309 tests passed, including the 22 backup-restore tests that failed under the host's MariaDB `mysqldump`.

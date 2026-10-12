@@ -267,6 +267,14 @@ describe('the archives group and the account footer', () => {
     expect(within(sidebar()).queryByRole('link', { name: 'Admin' })).toBeNull();
   });
 
+  it('names the menu button by the person, so its name survives the phone strip hiding the text', async () => {
+    world({ suite: SUITE_ON });
+    renderAt('/');
+    await screen.findByText('page body');
+    const name = await waitFor(() => within(sidebar()).getByRole('button', { name: 'Alice Example' }));
+    expect(name.getAttribute('aria-label')).toBe('Alice Example');
+  });
+
   it('has a sign-out icon button with an accessible name', async () => {
     world({ suite: SUITE_ON });
     renderAt('/');

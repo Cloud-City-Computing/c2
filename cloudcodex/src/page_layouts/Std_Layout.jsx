@@ -19,7 +19,7 @@ import {
   validateInviteToken,
 } from '../util';
 import { GitHubStatusProvider } from '../hooks/useGitHubStatus';
-import { useSignedOutTarget, clearOidcBounce } from '../hooks/useSignedOutTarget';
+import { useSignedOutTarget, clearOidcBounce, fetchProviders, signInFrom } from '../hooks/useSignedOutTarget';
 import { onSessionEnded } from '../lib/session-ended.js';
 import { hasUnsavedChanges, unsavedCopyText } from '../lib/unsaved-changes.js';
 // The one sentence after a sign-out, the same as Cloud Command's (W6-CMD-22). Suite mode only.
@@ -27,7 +27,7 @@ const signedOutSentence = (suiteName) => `You're signed out of ${suiteName}.`;
 
 // --- No Login ---
 
-function NoLoginMessage({ suiteName, signedOut }) {
+function NoLoginMessage({ suiteName, signedOut, onSignIn }) {
   return (
     <div className="welcome-message">
       <div className="logo-container">
@@ -35,6 +35,7 @@ function NoLoginMessage({ suiteName, signedOut }) {
         <h2>Welcome to Cloud Codex</h2>
         {signedOut && suiteName && <p className="signed-out-sentence">{signedOutSentence(suiteName)}</p>}
         <p>Please log in to get started.</p>
+        <button type="button" className="btn btn-primary" onClick={onSignIn}>Sign in</button>
       </div>
     </div>
   );
@@ -142,12 +143,24 @@ function StdLayout({ children }) {
     if (!signedInRef.current) return;
     signedInRef.current = false;
     if (hasUnsavedChanges()) {
+      // Overlays of the shell (the search palette) close first, so the notice's own focus is not taken back.
+      window.dispatchEvent(new Event('c2:close-overlays'));
       setSessionNotice(true);
       return;
     }
     setUser(false);
     frontDoor();
   }), [frontDoor]);
+
+  // The landing's Sign in: the front door's rules (signInFrom). A providers answer that cannot be read opens the modal.
+  const signIn = useCallback(async () => {
+    const providers = await fetchProviders();
+    signInFrom({
+      providers,
+      assign: (url) => window.location.assign(url),
+      openLogin: () => showModal(<Login />, 'modal-md'),
+    });
+  }, []);
 
   // Sign in again, in a new tab: the current page there goes through the signed-out front door, and this tab keeps
   // its content.
@@ -258,7 +271,7 @@ function StdLayout({ children }) {
       <div className={`app-shell ${!user ? 'no-sidebar' : ''}`}>
         {user && <Sidebar user={user} suite={suite} isAdmin={isAdmin} />}
         <main className="main-content">
-          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage suiteName={suite.enabled ? suite.name : null} signedOut={signedOut} />)}
+          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage suiteName={suite.enabled ? suite.name : null} signedOut={signedOut} onSignIn={signIn} />)}
         </main>
       </div>
     </GitHubStatusProvider>

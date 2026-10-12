@@ -83,8 +83,18 @@ describe('the shell layers that the editor overlays depend on', () => {
     expect(rank(ruleZ('.sidebar__menu'))).toBeGreaterThan(rank(ruleZ('.comment-highlights')));
   });
 
-  it('the suite switcher opens inline in the sidebar, so it needs no layer of its own', () => {
-    expect(INDEX).not.toMatch(/\.cc-suite__panel\s*\{[^}]*position:\s*absolute/);
+  // The switcher opens inline on desktop, so it needs no layer there. On a phone the first row keeps its three cells
+  // (W6-CDX-40 review), so the panel overlays the navigation at --z-menu, and its strip sits at --z-sticky to paint
+  // above the page content that follows it.
+  it('the suite switcher is inline on desktop, and on the phone strip an overlay at --z-menu above the page', () => {
+    const top = [...INDEX.matchAll(/(?:^|\n)\.cc-suite__panel\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    expect(top.some((body) => /position:\s*absolute/.test(body))).toBe(false);
+    const phone = INDEX.slice(INDEX.indexOf('@media (max-width: 599px) {'));
+    const panel = /\.cc-suite__panel\s*\{([^}]*)\}/.exec(phone)?.[1] ?? '';
+    expect(panel).toMatch(/position:\s*absolute/);
+    expect(panel).toMatch(/z-index:\s*var\(--z-menu\)/);
+    expect(ruleZ('.sidebar')).toBe('--z-base');
+    expect(phone).toMatch(/\.sidebar \{\s*position:\s*relative;\s*z-index:\s*var\(--z-sticky\)/);
   });
 
   it('the top bar, its dropdowns and the bottom tab bar are gone from the stylesheet', () => {

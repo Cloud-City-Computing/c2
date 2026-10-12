@@ -1,11 +1,12 @@
 /**
- * Cloud Codex - the search palette (W6-CDX-40, X13)
+ * Cloud Codex - the search palette (W6-CDX-40, X13; on the dialog stack, W6-CDX-40 review item 2)
  *
  * The sidebar's "Search or jump to" trigger, with a Ctrl K hint, and a centred dialog it opens. The dialog lists
- * documents from the existing search API and archives by name, and is reachable at every width. Ctrl K (and Meta K)
- * opens and closes it from anywhere in the app. It is a modal dialog: it takes focus on open, keeps Tab inside
- * itself, closes on Escape and gives focus back to the trigger. It is portalled into its own node, #palette-root,
- * which nothing else writes to, so the sidebar's stacking and overflow cannot clip it.
+ * documents from the existing search API and archives by name. It is registered with openDialog (lib/dialog.js), so
+ * Escape and Tab stay inside it and the page behind is inert, exactly as for any other modal. Ctrl K (Meta K) opens
+ * it from anywhere, but is a no-op while another modal is open, and is left to the browser inside an editable field.
+ * A result click sends focus to the page's main region once the new page is in place. The palette closes when the
+ * session notice is about to appear (the c2:close-overlays event), so two dialogs never stack.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -13,12 +14,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { apiFetch, docUrl } from '../util.jsx';
 import { SearchIcon } from './ShellIcons.jsx';
+import { openDialog, closeDialog } from '../lib/dialog.js';
+import { openOverlayCount } from '../lib/overlay.js';
 
 const DEBOUNCE_MS = 200;
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
 /** The node the palette is portalled into. Created once; nothing else writes to it. */
 function paletteRoot() {
@@ -31,41 +34,93 @@ function paletteRoot() {
   return el;
 }
 
+/** The page's main region, which takes focus after a result is opened. */
+function mainRegion() {
+  const main = document.querySelector('.main-content');
+  if (main && !main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1');
+  return main;
+}
+
 export default function SearchPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [documents, setDocuments] = useState([]);
   const [archives, setArchives] = useState(null);
+  const location = useLocation();
   const triggerRef = useRef(null);
   const dialogRef = useRef(null);
   const inputRef = useRef(null);
+  const entryRef = useRef(null);
   const openRef = useRef(open);
   openRef.current = open;
+  // Set by a result click: the next location change moves focus to the page.
+  const focusPageNext = useRef(false);
 
   const close = useCallback((returnFocus = true) => {
+    const entry = entryRef.current;
+    entryRef.current = null;
     setOpen(false);
     setQuery('');
     setDocuments([]);
-    if (returnFocus) triggerRef.current?.focus();
+    if (entry) {
+      // closeDialog puts focus back on the opener (the trigger) and releases the inert page.
+      closeDialog(entry);
+    }
+    if (!returnFocus) return;
+    triggerRef.current?.focus();
   }, []);
 
-  // Ctrl K and Meta K toggle the palette from anywhere. Registered once for the life of the sidebar.
+  // Ctrl K and Meta K: toggle the palette, unless it is another modal's turn or the key belongs to an editable field.
   useEffect(() => {
     function onKeyDown(event) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      if (!((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k')) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(EDITABLE)) return;
+      if (openRef.current) {
         event.preventDefault();
-        if (openRef.current) close(true);
-        else setOpen(true);
+        close(true);
+        return;
       }
+      if (openOverlayCount() > 0) return;
+      event.preventDefault();
+      setOpen(true);
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [close]);
 
-  // Focus the input on open; load the archives once per open, so the archive matches are current.
+  // The session notice is about to appear: close the palette first, so the notice gets the focus.
+  useEffect(() => {
+    const onNotice = () => { if (openRef.current) close(false); };
+    window.addEventListener('c2:close-overlays', onNotice);
+    return () => window.removeEventListener('c2:close-overlays', onNotice);
+  }, [close]);
+
+  // Register the open palette with the dialog stack: Escape, Tab, focus in and the inert page are the stack's.
+  // The cleanup closes the entry too, so an unmount while open never leaves the page inert.
+  useEffect(() => {
+    if (!open || !dialogRef.current) return undefined;
+    const entry = openDialog(dialogRef.current, {
+      onEscape: () => close(true),
+      opener: triggerRef.current,
+    });
+    entryRef.current = entry;
+    return () => {
+      closeDialog(entry);
+      if (entryRef.current === entry) entryRef.current = null;
+    };
+  }, [open, close]);
+
+  // A result click has navigated: once the page has changed, focus its main region.
+  useEffect(() => {
+    if (!focusPageNext.current) return;
+    focusPageNext.current = false;
+    mainRegion()?.focus({ preventScroll: false });
+  }, [location.key]);
+
+  // Load the archives once per open, so the archive matches are current.
   useEffect(() => {
     if (!open) return undefined;
-    inputRef.current?.focus();
     let live = true;
     apiFetch('GET', '/api/archives').then(
       (body) => { if (live) setArchives(Array.isArray(body?.archives) ? body.archives : []); },
@@ -88,39 +143,16 @@ export default function SearchPalette() {
     return () => { live = false; clearTimeout(timer); };
   }, [query, open]);
 
-  // Escape closes from anywhere while the palette is open, so it works whichever element holds focus.
-  useEffect(() => {
-    if (!open) return undefined;
-    function onEscape(event) {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      close(true);
-    }
-    document.addEventListener('keydown', onEscape);
-    return () => document.removeEventListener('keydown', onEscape);
-  }, [open, close]);
-
-  function onDialogKeyDown(event) {
-    if (event.key !== 'Tab') return;
-    // Keep Tab inside the dialog: wrap from the last focusable to the first, and back.
-    const items = [...(dialogRef.current?.querySelectorAll(FOCUSABLE) ?? [])];
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
   const needle = query.trim().toLowerCase();
   const shownDocuments = needle === '' ? [] : documents;
   const matchingArchives = needle === ''
     ? []
     : (archives ?? []).filter((a) => String(a.name ?? '').toLowerCase().includes(needle));
+
+  const opened = () => {
+    focusPageNext.current = true;
+    close(false);
+  };
 
   return (
     <>
@@ -144,7 +176,6 @@ export default function SearchPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="Search or jump to"
-            onKeyDown={onDialogKeyDown}
           >
             <input
               ref={inputRef}
@@ -164,7 +195,7 @@ export default function SearchPalette() {
                   <ul className="palette__list">
                     {shownDocuments.map((doc) => (
                       <li key={`doc-${doc.id}`}>
-                        <Link className="palette__result" to={docUrl(doc)} onClick={() => close(false)}>
+                        <Link className="palette__result" to={docUrl(doc)} onClick={opened}>
                           <span className="palette__result-title">{doc.title}</span>
                           {doc.author && <span className="palette__result-meta">{doc.author}</span>}
                         </Link>
@@ -179,7 +210,7 @@ export default function SearchPalette() {
                   <ul className="palette__list">
                     {matchingArchives.map((a) => (
                       <li key={`archive-${a.id}`}>
-                        <Link className="palette__result" to={`/archives/${a.id}`} onClick={() => close(false)}>
+                        <Link className="palette__result" to={`/archives/${a.id}`} onClick={opened}>
                           <span className="palette__result-title">{a.name}</span>
                         </Link>
                       </li>

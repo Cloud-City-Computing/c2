@@ -31,6 +31,11 @@ initialises an empty data directory.
   what is lost and what stays (the workspace delete no longer says its archives go: they stay, with no squad).
 
 ### Fixed
+- **The suite shell's review round (W6-CDX-40).** The signed-out landing has a Sign in control; the search palette is a
+  dialog in the stack, with Ctrl K off while a modal is open; the phone strip collapses the archives and names its
+  account button; the unread count follows the server after a read, and a `read` broadcast happens only for a change; the
+  Notifications list updates live; the sidebar keeps its last count and archives across a page change; the Sidebar
+  Default control is gone; the squad, invitation and workspace-delete actions are on the Admin page in suite mode.
 - **The first toast after a page load is shown (W6-CDX-39).** A toast raised before the container mounted was
   dropped. It is now queued and drawn on mount.
 - **Admin error toasts keep the server's message (W6-CDX-39).** A failed invitation revoke, permission save or

@@ -29,7 +29,8 @@ import {
   markAllNotificationsRead,
   getSessionTokenFromCookie,
 } from '../../../src/util.jsx';
-import useNotificationChannel from '../../../src/hooks/useNotificationChannel.js';
+import useNotificationChannel, { subscribeInboxFrames } from '../../../src/hooks/useNotificationChannel.js';
+import { readInboxCache, clearInboxCache } from '../../../src/lib/inbox-cache.js';
 
 class FakeWebSocket {
   static instances = [];
@@ -133,8 +134,9 @@ describe('useNotificationChannel', () => {
     expect(result.current.unreadCount).toBe(0);
   });
 
-  it('handles read messages: marks the matching item as read and decrements count', async () => {
-    fetchUnreadNotificationCount.mockResolvedValueOnce({ count: 2 });
+  // W6-CDX-40 review, item 7: the count is the server's answer after a `read`, not a local subtraction.
+  it('handles read messages: marks the matching item read and takes the count from the server', async () => {
+    fetchUnreadNotificationCount.mockResolvedValueOnce({ count: 2 }).mockResolvedValueOnce({ count: 1 });
     fetchNotifications.mockResolvedValueOnce({
       results: [{ id: 1, read_at: null }, { id: 2, read_at: null }],
     });
@@ -148,6 +150,7 @@ describe('useNotificationChannel', () => {
 
     expect(result.current.recent.find((n) => n.id === 1).read_at).toBeTruthy();
     expect(result.current.unreadCount).toBe(1);
+    expect(fetchUnreadNotificationCount).toHaveBeenCalledTimes(2);
   });
 
   it('handles read_all messages: zeroes count and marks all read', async () => {
@@ -180,8 +183,69 @@ describe('useNotificationChannel', () => {
     expect(result.current.unreadCount).toBe(5); // unchanged
   });
 
-  it('markRead optimistically updates state and calls the API', async () => {
-    fetchUnreadNotificationCount.mockResolvedValueOnce({ count: 2 });
+  // The drift: markRead used to subtract locally and the server's `read` frame subtracted again.
+  it('does not count one read twice when the API call and its read frame both arrive', async () => {
+    fetchUnreadNotificationCount
+      .mockResolvedValueOnce({ count: 2 })
+      .mockResolvedValue({ count: 1 });
+    fetchNotifications.mockResolvedValueOnce({
+      results: [{ id: 1, read_at: null }, { id: 2, read_at: null }],
+    });
+    const { result } = renderHook(() => useNotificationChannel(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    const ws = FakeWebSocket.instances[0];
+
+    await act(async () => { await result.current.markRead(1); });
+    await act(async () => { ws.dispatch('message', { data: JSON.stringify({ type: 'read', id: 1 }) }); });
+
+    expect(result.current.unreadCount).toBe(1);
+  });
+
+  it('notifies page subscribers of every inbox frame, so a list can reload live', async () => {
+    const seen = [];
+    const unsubscribe = subscribeInboxFrames((type) => seen.push(type));
+    const { result } = renderHook(() => useNotificationChannel(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    const ws = FakeWebSocket.instances[0];
+    await act(async () => {
+      ws.dispatch('message', { data: JSON.stringify({ type: 'notification', notification: { id: 9, read_at: null } }) });
+      ws.dispatch('message', { data: JSON.stringify({ type: 'read_all' }) });
+    });
+    unsubscribe();
+    expect(seen).toEqual(['notification', 'read_all']);
+  });
+
+  it('a remount for the same user shows the cached count and recent list before its fetch answers', async () => {
+    clearInboxCache();
+    fetchUnreadNotificationCount.mockResolvedValueOnce({ count: 4 });
+    fetchNotifications.mockResolvedValueOnce({ results: [{ id: 5, read_at: null }] });
+    const first = renderHook(() => useNotificationChannel(true, 7));
+    await waitFor(() => expect(first.result.current.loaded).toBe(true));
+    first.unmount();
+    expect(readInboxCache(7).unreadCount).toBe(4);
+
+    fetchUnreadNotificationCount.mockReturnValueOnce(new Promise(() => {}));
+    fetchNotifications.mockReturnValueOnce(new Promise(() => {}));
+    const second = renderHook(() => useNotificationChannel(true, 7));
+    expect(second.result.current.unreadCount).toBe(4);
+    expect(second.result.current.recent).toEqual([{ id: 5, read_at: null }]);
+    expect(second.result.current.loaded).toBe(true);
+  });
+
+  it("never shows another user's cached inbox", async () => {
+    clearInboxCache();
+    fetchUnreadNotificationCount.mockResolvedValueOnce({ count: 4 });
+    const first = renderHook(() => useNotificationChannel(true, 7));
+    await waitFor(() => expect(first.result.current.loaded).toBe(true));
+    first.unmount();
+    fetchUnreadNotificationCount.mockReturnValueOnce(new Promise(() => {}));
+    const other = renderHook(() => useNotificationChannel(true, 8));
+    expect(other.result.current.unreadCount).toBe(0);
+    expect(other.result.current.loaded).toBe(false);
+  });
+
+  it('markRead marks the item at once, then takes the count from the server', async () => {
+    fetchUnreadNotificationCount.mockResolvedValueOnce({ count: 2 }).mockResolvedValueOnce({ count: 1 });
     fetchNotifications.mockResolvedValueOnce({
       results: [{ id: 1, read_at: null }, { id: 2, read_at: null }],
     });

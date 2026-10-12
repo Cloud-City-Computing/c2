@@ -17,13 +17,29 @@ import {
   markAllNotificationsRead,
   getSessionTokenFromCookie,
 } from '../util';
+import { readInboxCache, writeInboxCache } from '../lib/inbox-cache.js';
 
 const RECENT_LIMIT = 10;
 
-export default function useNotificationChannel(enabled) {
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [recent, setRecent] = useState([]);
-  const [loaded, setLoaded] = useState(false);
+// Page subscribers (the Notifications list) hear every inbox frame, so they reload when one arrives. A Set, not a
+// callback prop, because the list lives in another part of the same layout's tree.
+const frameListeners = new Set();
+
+/** Calls `listener(type)` for each `notification`, `read` or `read_all` frame. Returns the unsubscribe. */
+export function subscribeInboxFrames(listener) {
+  frameListeners.add(listener);
+  return () => frameListeners.delete(listener);
+}
+
+/**
+ * @param {boolean} enabled   whether someone is signed in
+ * @param {number} [userId]   the signed-in user, so the last inbox is shown at once on a remount (inbox-cache.js)
+ */
+export default function useNotificationChannel(enabled, userId) {
+  const cached = readInboxCache(userId);
+  const [unreadCount, setUnreadCount] = useState(() => cached?.unreadCount ?? 0);
+  const [recent, setRecent] = useState(() => cached?.recent ?? []);
+  const [loaded, setLoaded] = useState(() => cached !== null);
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
   const reconnectAttempt = useRef(0);
@@ -46,6 +62,21 @@ export default function useNotificationChannel(enabled) {
     if (!enabled) return undefined;
     loadInitial();
   }, [enabled, loadInitial]);
+
+  useEffect(() => {
+    if (loaded) writeInboxCache(userId, { unreadCount, recent });
+  }, [loaded, userId, unreadCount, recent]);
+
+  // The server's count is the truth after a read, so a read frame asks for it rather than subtracting. A local
+  // subtraction plus the echo of the same read counted it twice.
+  const refreshCount = useCallback(async () => {
+    try {
+      const countRes = await fetchUnreadNotificationCount();
+      setUnreadCount(countRes?.count || 0);
+    } catch {
+      // The next frame or reconnect corrects it.
+    }
+  }, []);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -88,11 +119,14 @@ export default function useNotificationChannel(enabled) {
           setRecent((prev) => prev.map((n) =>
             n.id === msg.id ? { ...n, read_at: n.read_at || new Date().toISOString() } : n,
           ));
-          setUnreadCount((c) => Math.max(0, c - 1));
+          refreshCount();
         } else if (msg.type === 'read_all') {
           setRecent((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
           setUnreadCount(0);
+        } else {
+          return;
         }
+        for (const listener of frameListeners) listener(msg.type);
       });
 
       ws.addEventListener('close', () => {
@@ -116,19 +150,20 @@ export default function useNotificationChannel(enabled) {
         try { wsRef.current.close(); } catch { /* ignore */ }
       }
     };
-  }, [enabled, loadInitial]);
+  }, [enabled, loadInitial, refreshCount]);
 
   const markRead = useCallback(async (id) => {
     setRecent((prev) => prev.map((n) =>
       n.id === id ? { ...n, read_at: n.read_at || new Date().toISOString() } : n,
     ));
-    setUnreadCount((c) => Math.max(0, c - 1));
     try {
       await markNotificationRead(id);
     } catch {
-      // Server-side WS push will reconcile on reconnect.
+      // The count is re-read below only on success; the next frame or reconnect corrects a missed one.
+      return;
     }
-  }, []);
+    refreshCount();
+  }, [refreshCount]);
 
   const markAllRead = useCallback(async () => {
     setRecent((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })));

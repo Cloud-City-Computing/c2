@@ -10,6 +10,7 @@
  */
 
 import { removeSessStorage, apiFetch, clearSessionCookie } from '../util.jsx';
+import { clearInboxCache } from './inbox-cache.js';
 
 /** How long a sign-out waits for the server's answer before it goes on without the issuer's URL. */
 export const SIGN_OUT_WAIT_MS = 5000;
@@ -37,6 +38,7 @@ export function isHttpUrl(value) {
  */
 export async function signOut() {
   const request = apiFetch('POST', '/api/logout', {}).catch(() => null);
+  clearInboxCache();
   removeSessStorage('currentUser');
   clearSessionCookie();
 

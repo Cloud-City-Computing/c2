@@ -84,6 +84,7 @@ export default function AccountFooter({ user, isAdmin = false }) {
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={menuId}
+          aria-label={name}
           onClick={() => setOpen((o) => !o)}
         >
           <Avatar id={user.id} name={name} src={user.avatar_url || undefined} size={28} className="sidebar__avatar" />

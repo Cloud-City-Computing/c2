@@ -192,13 +192,10 @@ describe('userPrefs', () => {
       expect(document.documentElement.style.getPropertyValue('--density-scale')).toBe('');
     });
 
-    it('sets data-sidebar-default attribute when sidebarDefault is "collapsed"', () => {
+    // W6-CDX-40: the sidebar has no collapse state, so no preference writes the attribute any more.
+    it('never sets data-sidebar-default, whatever sidebarDefault holds', () => {
       applyPrefsToDOM({ sidebarDefault: 'collapsed' });
-      expect(document.body.getAttribute('data-sidebar-default')).toBe('collapsed');
-    });
-
-    it('removes data-sidebar-default attribute when sidebarDefault is anything else', () => {
-      applyPrefsToDOM({ sidebarDefault: 'collapsed' });
+      expect(document.body.hasAttribute('data-sidebar-default')).toBe(false);
       applyPrefsToDOM({ sidebarDefault: 'expanded' });
       expect(document.body.hasAttribute('data-sidebar-default')).toBe(false);
     });

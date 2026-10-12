@@ -516,7 +516,8 @@ and after, recorded with captures.
 document column keeps its 996 px at 1280; the footer menu is an action menu, not the radio `Menu`; the phone
 account is an avatar in the strip's second row; the workspace slot shows the user's first workspace (pending Kyle);
 the page header is adopted on Account, Notifications, Notification preferences and Activity, with the other pages
-in PR 4 and PR 5. The full list is in the plan's PR 3 section. Only the single-browser comment capture was taken;
+in PR 4 and PR 5. **Known deviation, decided pending Kyle:** the workspace slot shows the first workspace the user can
+see, because the code has no "current workspace" state outside suite mode. The full list is in the plan's PR 3 section. Only the single-browser comment capture was taken;
 the two-cursor smoke is open.
 
 ---

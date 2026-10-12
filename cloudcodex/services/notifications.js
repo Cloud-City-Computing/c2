@@ -182,11 +182,14 @@ async function deliverEmail(recipientId, type, emailData) {
  * owned by the calling user.
  */
 export async function markRead(notificationId, userId) {
-  await c2_query(
+  const result = await c2_query(
     `UPDATE notifications SET read_at = NOW()
       WHERE id = ? AND user_id = ? AND read_at IS NULL`,
     [notificationId, userId]
   );
+  // Only a change is broadcast: a repeat or a foreign id changes no row, and a second `read` would make each
+  // open client subtract the same notification from its unread count twice.
+  if (!(result?.affectedRows > 0)) return;
   try {
     broadcastToUser(userId, { type: 'read', id: Number(notificationId) });
   } catch {
@@ -196,11 +199,12 @@ export async function markRead(notificationId, userId) {
 
 /** Mark all of a user's unread notifications read. */
 export async function markAllRead(userId) {
-  await c2_query(
+  const result = await c2_query(
     `UPDATE notifications SET read_at = NOW()
       WHERE user_id = ? AND read_at IS NULL`,
     [userId]
   );
+  if (!(result?.affectedRows > 0)) return;
   try {
     broadcastToUser(userId, { type: 'read_all' });
   } catch {

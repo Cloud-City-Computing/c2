@@ -15,6 +15,7 @@ import { apiFetch } from '../util.jsx';
 import useGitHubStatus from '../hooks/useGitHubStatus';
 import useNotificationChannel from '../hooks/useNotificationChannel';
 import SuiteCluster from './SuiteCluster.jsx';
+import { readInboxCache, writeInboxCache } from '../lib/inbox-cache.js';
 import ProductMark from './ProductMark.jsx';
 import SearchPalette from './SearchPalette.jsx';
 import AccountFooter from './AccountFooter.jsx';
@@ -37,14 +38,18 @@ function useWorkspace(user) {
   return workspace;
 }
 
-/** The archives the user can read, for the Archives group: [{ id, name }]. */
+/** The archives the user can read, for the Archives group: [{ id, name }]. Shown from the cache at once on a remount. */
 function useArchives(user) {
-  const [archives, setArchives] = useState([]);
+  const [archives, setArchives] = useState(() => readInboxCache(user?.id)?.archives ?? []);
   useEffect(() => {
     if (!user) return undefined;
     let live = true;
     apiFetch('GET', '/api/archives').then(
-      (body) => { if (live && Array.isArray(body?.archives)) setArchives(body.archives); },
+      (body) => {
+        if (!live || !Array.isArray(body?.archives)) return;
+        setArchives(body.archives);
+        writeInboxCache(user.id, { archives: body.archives });
+      },
       () => {},
     );
     return () => { live = false; };
@@ -77,7 +82,7 @@ function NavItem({ to, label, Icon, pill, ariaLabel, exact = false }) {
 
 export default function Sidebar({ user, suite, isAdmin }) {
   const { connected: githubConnected } = useGitHubStatus();
-  const { unreadCount } = useNotificationChannel(Boolean(user));
+  const { unreadCount } = useNotificationChannel(Boolean(user), user?.id);
   const workspace = useWorkspace(user);
   const archives = useArchives(user);
   const location = useLocation();

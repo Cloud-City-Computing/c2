@@ -549,8 +549,7 @@ h1, h2, h3, h4, h5, h6 {
    Suite cluster (W6-CDX-25)
 ========================= */
 
-/* A disclosure in the brand slot, shown only in suite mode. The panel is positioned under the
-   toggle inside this box, so the top bar (which does not clip) shows all of it. */
+/* A disclosure at the top of the sidebar, shown only in suite mode. The panel opens inline under the toggle. */
 .cc-suite {
   position: relative;
 }
@@ -5455,7 +5454,8 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .sidebar {
-    position: static;
+    position: relative;
+    z-index: var(--z-sticky);
     height: auto;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -5478,6 +5478,16 @@ h1, h2, h3, h4, h5, h6 {
   .search-trigger__text,
   .search-trigger__key { display: none; }
   .cc-suite__text { max-width: 150px; }
+  /* The switcher opens over the navigation rather than in the first row, so row one keeps its three cells (W6-CDX-40
+     review): the panel hangs under the cluster and is at least as wide as its links. */
+  .cc-suite__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: var(--z-menu);
+    min-width: 220px;
+    box-shadow: var(--shadow-lg);
+  }
   .cc-suite__eyebrow { display: none; }
   .sidebar__nav {
     grid-area: nav;
@@ -5495,7 +5505,7 @@ h1, h2, h3, h4, h5, h6 {
   .sidebar__link { min-height: 30px; padding: 5px 9px; white-space: nowrap; }
   .sidebar__group { display: contents; }
   .sidebar__group-title { display: none; }
-  .sidebar__link--archive:not(:first-child) { display: none; }
+  .sidebar__group li:nth-child(n + 2) { display: none; }
   .sidebar__link--archive { padding-left: 9px; }
   .sidebar__footer {
     grid-area: foot;
@@ -6935,8 +6945,7 @@ textarea:focus-visible {
    Toast Notifications
 ========================= */
 
-/* X2/X10 and the placement (W6-CDX-39): the stack sits bottom right, where no navigation can be under it now
-   that the top bar is gone. The message is the primary text; the status is carried by the icon and the edge. */
+/* X2/X10 and the placement (W6-CDX-39): the stack sits bottom right, where no navigation can sit under it. The message is the primary text; the status is carried by the icon and the edge. */
 .toast-container {
   position: fixed;
   bottom: 16px;
@@ -9129,59 +9138,10 @@ textarea:focus-visible {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* =========================
-   Mobile Bottom Navigation
-========================= */
-
-/* Hidden by default — shown only in the mobile media query below */
-
-.mobile-nav__item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 10px;
-  font-weight: 500;
-  transition: color 0.2s;
-  padding: 8px 2px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  min-width: 0;
-}
-
-.mobile-nav__item.active {
-  color: var(--cx-accent);
-}
-
-.mobile-nav__item svg {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-}
-
-.mobile-nav__item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-/* =========================
    Mobile Layout Overrides
 ========================= */
 
 @media (max-width: 768px) {
-
-  /* The footer row sits under the fixed bottom nav. The footer is a static box here, so the nav (a
-     positioned box at --z-base) paints over it: a positioned footer would win the DOM-order tie. */
-
-  /* Show bottom nav */
-
-  /* Push content above the fixed bottom nav */
 
   /* Archive view: tree panel stacks on top of document */
   .archive-view {
@@ -9260,7 +9220,6 @@ textarea:focus-visible {
     flex-wrap: wrap;
   }
 
-  /* Topbar: hide brand text to gain space */
 }
 
 ::-webkit-scrollbar-thumb:hover { background: var(--cx-text-faint); }

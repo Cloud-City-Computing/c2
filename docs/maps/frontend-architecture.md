@@ -327,13 +327,17 @@ one:
   admin console (W6-CDX-42) and the document header (W6-CDX-41).
 - `.btn-icon` (W6-CDX-39) is the 30 px icon button with a 44 px hit area; the dialog close buttons, the toast dismiss and the
   search clear carry it. `.chip` is the pill at the 12 px floor; `.tabs` and `.tabs__tab` are the one tab row.
+- `src/lib/inbox-cache.js` keeps the signed-in user's unread count, recent list and archives for the page's life, so the
+  sidebar, which remounts on every navigation, shows them at once. Sign-out clears it. `subscribeInboxFrames`
+  (`useNotificationChannel.js`) is how a page hears the live channel; the Notifications list reloads on it.
 - `<PresenceAvatars>` pairs with `usePresence`.
 - `<PageTree>` renders the `logs.parent_id` tree.
 - `<WebhooksPanel>` is the admin console's Webhooks panel (W6-CDX-15). Its confirmations go through
   `<ConfirmDialog>`, and it renders a subscription's secret only in its one-time reveal box.
 - The shell (W6-CDX-40): `<Sidebar>` (`src/components/Sidebar.jsx`) is the one navigation column; `<SearchPalette>`
   is its "Search or jump to" trigger and the Ctrl K dialog (documents from `/api/search`, archives by name, portalled
-  into `#palette-root`); `<AccountFooter>` is the avatar, the name's non-modal menu and the sign-out icon button;
+  into `#palette-root`, registered with `openDialog` so Escape and Tab are the stack's; Ctrl K is a no-op while another
+  modal is open); `<AccountFooter>` is the avatar, the name's non-modal menu and the sign-out icon button;
   `<WorkspacesGate>` sends `/workspaces` to `/` in suite mode (K9); `<PageHeader>` is the page title, meta, primary
   action, toolbar slot and tab row; `<ProductMark>` is the page glyph on the accent tile (K10). `<NotificationItem>`,
   `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`

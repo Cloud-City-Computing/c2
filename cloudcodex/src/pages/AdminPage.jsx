@@ -30,15 +30,21 @@ import {
   updateAdminSquadMember,
   removeAdminSquadMember,
   fetchAdminPresence,
+  deleteSquad,
+  fetchSquadInvitations,
+  cancelInvitation,
   showModal,
   destroyModal,
   timeAgo,
 } from '../util';
+// In suite mode the Workspaces page is hidden, so the Admin console reaches its squad and workspace dialogs
+// directly (W6-CDX-40 review, item 12). The same dialogs, the same routes.
+import { NewSquadModal, RenameOrgModal, RenameSquadModal, InviteMemberModal } from './WorkspacesPage.jsx';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WebhooksPanel from '../components/WebhooksPanel';
 import { showToast, toastError } from '../components/Toast';
 import Menu from '../components/Menu';
-import { squadMemberRemove, workspaceDelete, userDelete } from '../lib/destructive-copy.js';
+import { squadMemberRemove, squadDelete, workspaceDelete, userDelete } from '../lib/destructive-copy.js';
 
 /**
  * An admin action's failure. An API error (one with a status) shows the server's message; anything else, a network
@@ -508,7 +514,11 @@ function WorkspacesPanel() {
                   <td>{workspace.member_count}</td>
                   <td>{timeAgo(workspace.created_at)}</td>
                   <td>
-                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(workspace)}>Delete</button>
+                    <div className="admin-cell-actions">
+                      <button className="btn btn-ghost btn-sm" onClick={() => showModal(<RenameOrgModal workspace={workspace} onRenamed={load} />, 'modal-md')}>Rename</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => showModal(<NewSquadModal workspaceId={workspace.id} onCreated={load} />, 'modal-md')}>New squad</button>
+                      <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDelete(workspace)}>Delete</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -664,6 +674,7 @@ function SquadsPanel() {
   const [expandedSquad, setExpandedSquad] = useState(null);
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [invitations, setInvitations] = useState([]);
 
   const load = useCallback(async () => {
     try {
@@ -675,19 +686,50 @@ function SquadsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
+  // The members and the pending invitations of one squad, read together, so both stay in step after any change.
+  const loadDetail = useCallback(async (squadId) => {
+    const [memberRes, inviteRes] = await Promise.all([
+      fetchAdminSquadMembers(squadId).catch(() => ({ members: [] })),
+      fetchSquadInvitations(squadId).catch(() => ({ invitations: [] })),
+    ]);
+    setMembers(memberRes.members || []);
+    setInvitations(inviteRes.invitations || []);
+  }, []);
+
   const toggleExpand = async (squad) => {
     if (expandedSquad === squad.id) {
       setExpandedSquad(null);
       setMembers([]);
+      setInvitations([]);
       return;
     }
     setExpandedSquad(squad.id);
     setMembersLoading(true);
-    try {
-      const res = await fetchAdminSquadMembers(squad.id);
-      setMembers(res.members || []);
-    } catch { /* ignore */ }
+    await loadDetail(squad.id);
     setMembersLoading(false);
+  };
+
+  const handleCancelInvitation = async (squadId, invitation) => {
+    try {
+      await cancelInvitation(invitation.id);
+      await loadDetail(squadId);
+    } catch (e) { toastError(e); }
+  };
+
+  const handleDeleteSquad = (squad) => {
+    showModal(
+      <ConfirmDialog
+        {...squadDelete(squad.name)}
+        confirmLabel="Delete"
+        danger
+        onConfirm={async () => {
+          await deleteSquad(squad.id);
+          destroyModal();
+          setExpandedSquad(null);
+          load();
+        }}
+      />
+    );
   };
 
   const handleRemoveMember = (squadId, member) => {
@@ -749,6 +791,33 @@ function SquadsPanel() {
 
               {expandedSquad === squad.id && (
                 <div className="admin-squad-card__members">
+                  <div className="admin-cell-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => showModal(<InviteMemberModal squadId={squad.id} onInvited={() => loadDetail(squad.id)} />, 'modal-md')}>Invite member</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => showModal(<RenameSquadModal squad={squad} onRenamed={load} />, 'modal-md')}>Rename squad</button>
+                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDeleteSquad(squad)}>Delete squad</button>
+                  </div>
+                  {invitations.length > 0 && (
+                    <table className="admin-table admin-table--compact">
+                      <thead>
+                        <tr>
+                          <th>Pending invitation</th>
+                          <th>Role</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invitations.map(inv => (
+                          <tr key={inv.id}>
+                            <td>{inv.email || inv.name}</td>
+                            <td>{inv.role}</td>
+                            <td>
+                              <button className="btn btn-ghost btn-sm" onClick={() => handleCancelInvitation(squad.id, inv)}>Cancel invitation</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                   {membersLoading ? (
                     <p className="text-muted">Loading members…</p>
                   ) : members.length === 0 ? (

@@ -15,6 +15,7 @@ import {
   markAllNotificationsRead,
 } from '../util';
 import PageHeader from '../components/PageHeader';
+import { subscribeInboxFrames } from '../hooks/useNotificationChannel.js';
 
 const FILTERS = [
   { key: 'all', label: 'All', match: () => true },
@@ -47,6 +48,18 @@ export default function NotificationsPage() {
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
+
+  // The live channel (the sidebar's socket) says a notification arrived or was read: reload the first page without
+  // the loading state, so the list updates in place. A page reload is not needed.
+  useEffect(() => subscribeInboxFrames(() => {
+    fetchNotifications({ limit: PAGE_SIZE })
+      .then((res) => {
+        const results = res?.results || [];
+        setItems(results);
+        setHasMore(results.length === PAGE_SIZE);
+      })
+      .catch(() => {});
+  }), []);
 
   const loadMore = async () => {
     if (!hasMore || items.length === 0) return;

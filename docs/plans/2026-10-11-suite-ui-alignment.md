@@ -361,8 +361,10 @@ or Kyle's binding decisions, required a choice the plan did not spell out.
 4. **The phone strip is two rows (Kyle's brief).** The account row the spec names is the avatar at the end of row two,
    which opens the same menu; the sign-out icon is hidden on a phone and Sign out is in that menu. The Archives group shows
    as one "Archives" item on a phone, because a row cannot hold every archive.
-5. **The workspace slot shows the first workspace the user can see** (`GET /api/workspaces`). The code has no "current
-   workspace" state outside suite mode. **Decided pending Kyle.** In suite mode the slot is read-only, as the spec says.
+5. **Known deviation, decided pending Kyle (review round, 2026-10-12): the workspace slot shows the first workspace the
+   user can see** (`GET /api/workspaces`, `body.workspaces[0]`). The code has no "current workspace" state outside suite
+   mode, so "current" is not defined yet. In suite mode the slot is read-only, as the spec says. Kyle decides in the
+   morning whether the slot should name the instance's one workspace, a chosen workspace, or something else.
 6. **The page header is adopted on four pages only:** Account, Notifications, Notification preferences and Activity. The
    plan's "every page renders it" waits for the pages that PR 4 (home, the archive list, the archive view, the document) and
    PR 5 (Admin, Workspaces) rebuild anyway; GitHub is a deferred family. The header's toolbar slot is empty until PR 7.
@@ -434,6 +436,43 @@ or Kyle's binding decisions, required a choice the plan did not spell out.
       390 and 320. `docs/maps/frontend-architecture.md` (the shell, sections 3b and 4).
 
 ---
+
+**Review round (W6-CDX-40, 2026-10-12): the fixes, each tested first.** Every item is in `cloudcodex/`; the file and
+line are the place to read.
+
+- **Sign-in on the signed-out landing.** `NoLoginMessage` has a Sign in button (`src/page_layouts/Std_Layout.jsx:38`); it
+  calls `signInFrom` (`src/hooks/useSignedOutTarget.js:155`): OIDC-only instances start `/api/auth/oidc/start`, anything
+  else opens the Login modal. Tests: `tests/src/page_layouts/Std_Layout.signin.test.jsx`.
+- **The palette joins the dialog stack.** `src/components/SearchPalette.jsx:103` registers it with `openDialog`; Escape and
+  Tab are the stack's; Ctrl K is a no-op while `openOverlayCount()` is positive (`:84`) and is left to the browser in
+  editable fields (`:78`); a result click moves focus to `.main-content`; the session notice dispatches
+  `c2:close-overlays` first (`src/page_layouts/Std_Layout.jsx:147`). Tests: `tests/src/components/SearchPalette.test.jsx`,
+  `tests/src/page_layouts/Std_Layout.palette-notice.test.jsx`.
+- **The Workspaces gate, through the App's routes.** `tests/src/app-workspaces-gate.test.jsx` renders `App`: suite on
+  redirects `/workspaces` and `/workspaces/:id`; suite off renders the page.
+- **Sidebar Default removed.** The control (`src/components/AccountMenu.jsx`), its read in the preferences state, and the
+  `data-sidebar-default` write (`src/userPrefs.js`) are gone; `tests/src/userPrefs.test.js` pins that nothing writes it.
+- **The phone archive collapse.** `src/index.css` hides `.sidebar__group li:nth-child(n + 2)` (`:5508`); the rule is
+  matched against the rendered sidebar with twelve or more archives in `tests/src/page_layouts/phone-strip.test.jsx`.
+- **The phone account button has a name** (`src/components/AccountFooter.jsx:87`, `aria-label={name}`).
+- **The unread pill no longer drifts.** The server broadcasts `read` and `read_all` only when the UPDATE changed a row
+  (`services/notifications.js:192`, `:207`); the client takes the count from the server after a read instead of
+  subtracting (`src/hooks/useNotificationChannel.js`). Tests: `tests/services/notifications.test.js`,
+  `tests/src/hooks/useNotificationChannel.test.jsx`.
+- **No flicker on navigation.** The unread count, the recent list and the archives are kept per user in
+  `src/lib/inbox-cache.js` and shown at once on a remount; sign-out clears them. Tests:
+  `tests/src/components/Sidebar.cache.test.jsx`, `tests/src/hooks/useNotificationChannel.test.jsx`.
+- **The Notifications list is live.** It reloads on every inbox frame through `subscribeInboxFrames`
+  (`src/pages/NotificationsPage.jsx:54`). Test: `tests/src/pages/NotificationsPage.live.test.jsx`.
+- **Stale references removed:** the bottom-nav block and its comments, the unused `--cx-shadow-bar` and `--cx-shadow-nav`
+  tokens, and the top-bar comments in `src/index.css` and `src/codex.css`.
+- **Squads, invitations and workspace delete have a home in suite mode.** Admin's workspace row has Rename, New squad and
+  Delete (`src/pages/AdminPage.jsx`, `WorkspacesPanel`); the expanded squad has Invite member, Rename squad, Delete squad
+  and its pending invitations with Cancel invitation (`SquadsPanel`). They reuse the dialogs `WorkspacesPage.jsx` exports,
+  and the server already lets an admin pass each route's check. Tests: `tests/src/pages/AdminPage.suiteWorkspace.test.jsx`.
+- **The phone switcher overlays the navigation** (`src/index.css`, the 599 px block), so row one keeps its cells. The
+  design pin is in `tests/design/z-index.test.js`.
+- **Known deviation, decided pending Kyle:** the workspace slot shows the first workspace the user can see (deviation 5 above).
 
 ## PR 4: W6-CDX-41, lists, home and the document header
 

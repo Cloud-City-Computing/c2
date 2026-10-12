@@ -21,6 +21,7 @@ const { utilMock } = vi.hoisted(() => ({
 vi.mock('../../../src/util.jsx', () => utilMock);
 
 import { signOut, isHttpUrl } from '../../../src/lib/sign-out.js';
+import { writeInboxCache, readInboxCache } from '../../../src/lib/inbox-cache.js';
 
 const realLocation = window.location;
 let location;
@@ -37,6 +38,13 @@ afterEach(() => {
 });
 
 describe('signOut', () => {
+  it('forgets the cached inbox, so the next signed-in person never sees it', async () => {
+    writeInboxCache(7, { unreadCount: 2, recent: [], archives: [] });
+    utilMock.apiFetch.mockResolvedValueOnce({ success: true });
+    await signOut();
+    expect(readInboxCache(7)).toBeNull();
+  });
+
   it('deletes the session, forgets the cached user, clears the cookie', async () => {
     utilMock.apiFetch.mockResolvedValueOnce({ success: true });
     await signOut();
