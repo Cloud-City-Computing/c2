@@ -8073,7 +8073,6 @@ textarea:focus-visible {
 .admin-main {
   flex: 1;
   padding: 24px 0;
-  overflow-x: auto;
   min-width: 0;
 }
 
@@ -8135,13 +8134,14 @@ textarea:focus-visible {
     overflow: visible;
   }
 
-  .admin-tabs {
+  .admin-page .admin-tabs {
+    width: 100%;
     flex-wrap: wrap;
     min-width: 0;
     gap: 6px 18px;
   }
 
-  .admin-tabs .tabs__tab {
+  .admin-page .admin-tabs .tabs__tab {
     padding-bottom: 6px;
   }
 

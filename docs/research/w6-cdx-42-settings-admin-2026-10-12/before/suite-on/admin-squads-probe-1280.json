@@ -2,7 +2,7 @@
   "tabs": [
     {
       "label": "📊Overview",
-      "current": "admin-sidebar__item active"
+      "current": "admin-sidebar__item "
     },
     {
       "label": "👤Users",
@@ -14,7 +14,7 @@
     },
     {
       "label": "👥Squads",
-      "current": "admin-sidebar__item "
+      "current": "admin-sidebar__item active"
     },
     {
       "label": "✉Invitations",
@@ -32,15 +32,7 @@
     "🏢",
     "👥",
     "✉",
-    "🔗",
-    "👤",
-    "🏢",
-    "👥",
-    "📁",
-    "📄",
-    "✉",
-    "🟢",
-    "✏"
+    "🔗"
   ],
   "cellsWithDigits": []
 }

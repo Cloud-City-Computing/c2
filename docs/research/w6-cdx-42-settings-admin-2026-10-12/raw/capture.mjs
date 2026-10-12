@@ -2,7 +2,8 @@
 // through headless Chrome over CDP. Each PNG is written beside a small DOM probe (JSON) for the state.
 // Usage: node capture.mjs <outDir> <baseUrl> [states...]
 // Environment (nothing machine-specific or secret is committed):
-//   CDX_USERNAME, CDX_PASSWORD        the seeded admin account (required; passed at run time, never written here)
+//   CDX_USERNAME, CDX_PASSWORD        the seeded admin account (passed at run time, never written here), or
+//   CDX_SESSION_TOKEN                 a session minted for it, when password sign-in is refused
 //   CDX_FIRSTRUN_USERNAME, CDX_FIRSTRUN_PASSWORD   an account whose first run is open (only for the first-run state)
 //   CHROME_BIN                        a headless shell; else the Playwright cache under the home directory
 // Sizes: 1280x860 and 390x844. Every PNG is opened and read by the author after capture.
@@ -26,7 +27,7 @@ const OUT = process.argv[2];
 const BASE = process.argv[3];
 const ONLY = process.argv.slice(4);
 if (!OUT || !BASE) throw new Error('usage: node capture.mjs <outDir> <baseUrl> [states...]');
-if (!process.env.CDX_USERNAME || !process.env.CDX_PASSWORD) throw new Error('set CDX_USERNAME and CDX_PASSWORD');
+if (!process.env.CDX_SESSION_TOKEN && (!process.env.CDX_USERNAME || !process.env.CDX_PASSWORD)) throw new Error('set CDX_USERNAME and CDX_PASSWORD, or CDX_SESSION_TOKEN');
 mkdirSync(OUT, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -41,7 +42,8 @@ async function loginToken(username, password) {
   return res.token;
 }
 
-const token = await loginToken(process.env.CDX_USERNAME, process.env.CDX_PASSWORD);
+// A pre-minted session (CDX_SESSION_TOKEN) is used when the account cannot sign in by password (suite mode, issuer-linked).
+const token = process.env.CDX_SESSION_TOKEN || await loginToken(process.env.CDX_USERNAME, process.env.CDX_PASSWORD);
 // The seeded admin has seen its first run; the first-run state uses its own account, and only that one is reset.
 await fetch(BASE + '/api/first-run/complete', {
   method: 'POST',
@@ -135,7 +137,7 @@ const states = {
 for (const tab of ['users', 'workspaces', 'squads', 'invitations', 'webhooks']) {
   states[`admin-${tab}`] = async (w, h) => {
     await open('/admin', w, h); await waitFor(`!!document.querySelector('.admin-page, .admin-dashboard')`);
-    await evalJs(`[...document.querySelectorAll('.admin-tabs__tab, .admin-sidebar__item')].find(b => b.textContent.trim() === ${JSON.stringify(tab[0].toUpperCase() + tab.slice(1))}).click()`);
+    await evalJs(`[...document.querySelectorAll('.admin-tabs__tab, .admin-sidebar__item')].find(b => b.textContent.includes(${JSON.stringify(tab[0].toUpperCase() + tab.slice(1))})).click()`);
     await sleep(1200);
     await probe(`admin-${tab}`, w, ADMIN_PROBE);
     await shot(`admin-${tab}`, w, h);
@@ -143,7 +145,8 @@ for (const tab of ['users', 'workspaces', 'squads', 'invitations', 'webhooks']) 
 }
 
 await setSession(token);
-const names = ONLY.length ? ONLY : Object.keys(states);
+// first-run runs last: its account's cached name would otherwise stay in the footer of the states after it.
+const names = (ONLY.length ? ONLY : Object.keys(states)).filter((n) => n !== 'first-run').concat(ONLY.length && !ONLY.includes('first-run') ? [] : ['first-run']);
 for (const name of names) {
   if (!states[name]) throw new Error(`unknown state ${name}`);
   for (const [w, h] of SIZES) {

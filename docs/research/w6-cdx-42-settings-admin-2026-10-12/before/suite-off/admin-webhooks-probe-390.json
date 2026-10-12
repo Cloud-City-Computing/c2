@@ -2,7 +2,7 @@
   "tabs": [
     {
       "label": "📊Overview",
-      "current": "admin-sidebar__item active"
+      "current": "admin-sidebar__item "
     },
     {
       "label": "👤Users",
@@ -22,7 +22,7 @@
     },
     {
       "label": "🔗Webhooks",
-      "current": "admin-sidebar__item "
+      "current": "admin-sidebar__item active"
     }
   ],
   "sidebar": true,
@@ -32,15 +32,7 @@
     "🏢",
     "👥",
     "✉",
-    "🔗",
-    "👤",
-    "🏢",
-    "👥",
-    "📁",
-    "📄",
-    "✉",
-    "🟢",
-    "✏"
+    "🔗"
   ],
   "cellsWithDigits": []
 }
