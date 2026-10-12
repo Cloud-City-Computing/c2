@@ -13,6 +13,13 @@ initialises an empty data directory.
 ## [Unreleased]
 
 ### Changed
+- **The theme switch and the suite preference (W6-CDX-44, A7).** An Appearance popover sits in every page header:
+  Theme (System, Light, Dark) and the accents, the same as Cloud Command's; the Account page's Appearance section shows
+  the same choices. The choice is stored in `cc_suite_theme` and the accent in
+  `cc_suite_accent`, as a cookie shared across a suite's hosts (`SUITE_PREFERENCE_DOMAIN`, optional, honoured in suite
+  mode only) and in localStorage, the suite preference contract that Cloud Command also implements. A stored Codex
+  accent moves into the contract once. A pre-paint script in `index.html` applies the theme and accent before first
+  paint; its SHA-256 is allowed in `script-src`. `GET /api/suite` answers `preferenceDomain`.
 - **Settings and admin (W6-CDX-42, A5).** In suite mode an account signed in through the issuer has its name, email,
   password and two-factor read-only on the Account page, "Managed by" the provider with a link to `OIDC_ACCOUNT_URL` (a new
   optional setting). The server refuses the same writes for that account with `403 managed_by_issuer`, so nothing changes.

@@ -9,7 +9,8 @@ import { useState, useEffect, useRef } from 'react';
 import {
   getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie, uploadAvatar,
 } from '../util';
-import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES } from '../userPrefs';
+import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, FONT_SIZES } from '../userPrefs';
+import { AccentOptions, ThemeOptions } from './AppearanceOptions.jsx';
 import { WarningIcon } from './icons.jsx';
 
 // ===========================
@@ -590,12 +591,6 @@ export function AccountPreferencesPanel() {
 //  User Preferences Panel
 // ===========================
 
-const COLOR_LABELS = {
-  blue: 'Ocean Blue', cyan: 'Cyan', pink: 'Fuchsia', lime: 'Lime',
-  nova: 'Nova', solar: 'Solar', aurora: 'Aurora', nebula: 'Nebula',
-};
-const ACCENT_COLOR_LIST = Object.entries(ACCENT_COLORS).map(([id, c]) => ({ id, label: COLOR_LABELS[id], ...c }));
-
 const FONT_SIZE_OPTIONS = Object.entries(FONT_SIZES).map(([id, value]) => ({
   id, value, label: id === 'sm' ? 'Small' : id === 'md' ? 'Medium' : 'Large',
 }));
@@ -609,16 +604,15 @@ export function UserPreferencesPanel() {
   const [prefs, setPrefs] = useState(() => {
     const saved = loadUserPrefs();
     return {
-      accentColor: saved.accentColor || 'blue',
       fontSize: saved.fontSize || 'md',
       preferredEditor: saved.preferredEditor === 'markdown' ? 'markdown' : 'richtext',
     };
   });
-
+  // Merges into the stored prefs, so a key this panel does not own (a legacy accent not yet migrated) survives.
   const update = (key, value) => {
     const next = { ...prefs, [key]: value };
     setPrefs(next);
-    saveUserPrefs(next);
+    saveUserPrefs({ ...loadUserPrefs(), [key]: value });
     applyPrefsToDOM(next);
   };
 
@@ -626,26 +620,17 @@ export function UserPreferencesPanel() {
     <div className="settings-panel">
       <h2 className="panel-title">Appearance</h2>
 
-      {/* Accent Color */}
+      {/* Theme and Accent: the same groups as the header's Appearance popover (suite-prefs.js) */}
+      <div className="pref-section" role="group" aria-label="Theme">
+        <h3 className="pref-section__title">Theme</h3>
+        <p className="text-muted text-sm">Match system follows your operating system.</p>
+        <ThemeOptions />
+      </div>
+
       <div className="pref-section">
         <h3 className="pref-section__title">Accent Color</h3>
         <p className="text-muted text-sm">Personalize the interface with your favorite color.</p>
-        <div className="color-swatch-row">
-          {ACCENT_COLOR_LIST.map(c => (
-            <button
-              key={c.id}
-              className={`color-swatch${prefs.accentColor === c.id ? ' active' : ''}`}
-              style={{ '--swatch-color': c.swatch }}
-              onClick={() => update('accentColor', c.id)}
-              title={c.label}
-              aria-label={c.label}
-            >
-              {prefs.accentColor === c.id && (
-                <svg viewBox="0 0 24 24" fill="none" style={{ stroke: 'var(--cx-white)' }} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              )}
-            </button>
-          ))}
-        </div>
+        <AccentOptions />
       </div>
 
       {/* Editor Font Size */}

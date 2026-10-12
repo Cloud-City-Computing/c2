@@ -134,6 +134,9 @@ export const ENV_CONTRACT = [
     why: 'turns suite mode on: the paired workspace this instance belongs to' },
   { name: 'SUITE_NAME', kind: 'optional', requiredWith: 'SUITE_COMMAND_WORKSPACE_URL', perInstance: true,
     why: "the suite's display name, shown only in suite mode" },
+  { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'optional', perInstance: true,
+    why: 'the parent domain the theme and accent cookies are shared on, honoured only in suite mode; must be '
+      + "APP_URL's host or a parent of it" },
 
   // Outbound webhooks
   { name: 'WEBHOOK_URL', kind: 'optional', perInstance: true,

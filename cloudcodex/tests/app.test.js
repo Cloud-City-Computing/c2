@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import app, { parseTrustProxy, isAllowedOrigin, requireOriginForCookieWrites } from '../app.js';
 import { c2_query, validateAndAutoLogin } from '../mysql_connect.js';
 import { contractDefault } from './contract-default.js';
+import { THEME_BOOT_HASH } from '../theme-boot-hash.js';
 import { resetMocks } from './helpers.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -460,6 +461,15 @@ describe('app.js — Express configuration', () => {
       const res = await request(prod).get('/spa-stand-in');
       expect(res.status).toBe(200);
       expectProtected(res);
+    });
+
+    // The pre-paint theme script (index.html) is inline; script-src allows it by hash, and nothing broader.
+    it('production: script-src allows the pre-paint script by its hash, and no unsafe-inline', async () => {
+      const prod = withSpaHandler(await importAppWith({ NODE_ENV: 'production' }));
+      const res = await request(prod).get('/spa-stand-in');
+      const scriptSrc = res.headers['content-security-policy'].split(';').map((d) => d.trim())
+        .find((d) => d.startsWith('script-src '));
+      expect(scriptSrc, 'update theme-boot-hash.js and index.html together').toBe(`script-src 'self' ${THEME_BOOT_HASH}`);
     });
 
     // Express's final handler replaces the CSP on its own 404 page with

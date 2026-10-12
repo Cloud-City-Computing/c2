@@ -427,7 +427,7 @@
 }
 
 /*
- * The picked accent. The picker writes a hue, --cx-accent-h, and an attribute, data-accent, on the root (userPrefs.js);
+ * The picked accent. The picker writes a hue, --cx-accent-h, and an attribute, data-accent, on the root (src/lib/suite-prefs.js);
  * each theme derives its four steps from that hue here. The steps are the contract's (docs/specs/...): text, hover,
  * fill and selection wash, plus the dark step behind a white label. Without data-accent the default bindings above
  * apply. tests/design/accents.test.js substitutes H and measures every hue on every surface of each theme.

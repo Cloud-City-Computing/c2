@@ -1,0 +1,500 @@
+[
+  {
+    "shot": "home-light-1280",
+    "route": "/",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/"
+  },
+  {
+    "shot": "archives-light-1280",
+    "route": "/archives",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/archives"
+  },
+  {
+    "shot": "archive-light-1280",
+    "route": "/archives/1",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/archives/1"
+  },
+  {
+    "shot": "doc-read-light-1280",
+    "route": "/archives/1/doc/1",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/archives/1/doc/1"
+  },
+  {
+    "shot": "doc-edit-light-1280",
+    "route": "/editor/1",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/editor/1"
+  },
+  {
+    "shot": "account-light-1280",
+    "route": "/account",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/account"
+  },
+  {
+    "shot": "admin-light-1280",
+    "route": "/admin",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/admin"
+  },
+  {
+    "shot": "notifications-light-1280",
+    "route": "/notifications",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/notifications"
+  },
+  {
+    "shot": "activity-light-1280",
+    "route": "/activity",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/activity"
+  },
+  {
+    "shot": "workspaces-light-1280",
+    "route": "/workspaces",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/workspaces"
+  },
+  {
+    "shot": "not-found-light-1280",
+    "route": "/404",
+    "vp": "1280",
+    "theme": "light",
+    "url": "/404"
+  },
+  {
+    "vp": "1280",
+    "theme": "light",
+    "problems": []
+  },
+  {
+    "shot": "home-dark-1280",
+    "route": "/",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/"
+  },
+  {
+    "shot": "archives-dark-1280",
+    "route": "/archives",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/archives"
+  },
+  {
+    "shot": "archive-dark-1280",
+    "route": "/archives/1",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/archives/1"
+  },
+  {
+    "shot": "doc-read-dark-1280",
+    "route": "/archives/1/doc/1",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/archives/1/doc/1"
+  },
+  {
+    "shot": "doc-edit-dark-1280",
+    "route": "/editor/1",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/editor/1"
+  },
+  {
+    "shot": "account-dark-1280",
+    "route": "/account",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/account"
+  },
+  {
+    "shot": "admin-dark-1280",
+    "route": "/admin",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/admin"
+  },
+  {
+    "shot": "notifications-dark-1280",
+    "route": "/notifications",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/notifications"
+  },
+  {
+    "shot": "activity-dark-1280",
+    "route": "/activity",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/activity"
+  },
+  {
+    "shot": "workspaces-dark-1280",
+    "route": "/workspaces",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/workspaces"
+  },
+  {
+    "shot": "not-found-dark-1280",
+    "route": "/404",
+    "vp": "1280",
+    "theme": "dark",
+    "url": "/404"
+  },
+  {
+    "vp": "1280",
+    "theme": "dark",
+    "problems": []
+  },
+  {
+    "shot": "signed-out-light-1280",
+    "route": "/",
+    "vp": "1280",
+    "theme": "light",
+    "problems": []
+  },
+  {
+    "shot": "signed-out-dark-1280",
+    "route": "/",
+    "vp": "1280",
+    "theme": "dark",
+    "problems": []
+  },
+  {
+    "shot": "home-light-390",
+    "route": "/",
+    "vp": "390",
+    "theme": "light",
+    "url": "/"
+  },
+  {
+    "shot": "archives-light-390",
+    "route": "/archives",
+    "vp": "390",
+    "theme": "light",
+    "url": "/archives"
+  },
+  {
+    "shot": "archive-light-390",
+    "route": "/archives/1",
+    "vp": "390",
+    "theme": "light",
+    "url": "/archives/1"
+  },
+  {
+    "shot": "doc-read-light-390",
+    "route": "/archives/1/doc/1",
+    "vp": "390",
+    "theme": "light",
+    "url": "/archives/1/doc/1"
+  },
+  {
+    "shot": "doc-edit-light-390",
+    "route": "/editor/1",
+    "vp": "390",
+    "theme": "light",
+    "url": "/"
+  },
+  {
+    "shot": "account-light-390",
+    "route": "/account",
+    "vp": "390",
+    "theme": "light",
+    "url": "/account"
+  },
+  {
+    "shot": "admin-light-390",
+    "route": "/admin",
+    "vp": "390",
+    "theme": "light",
+    "url": "/admin"
+  },
+  {
+    "shot": "notifications-light-390",
+    "route": "/notifications",
+    "vp": "390",
+    "theme": "light",
+    "url": "/notifications"
+  },
+  {
+    "shot": "activity-light-390",
+    "route": "/activity",
+    "vp": "390",
+    "theme": "light",
+    "url": "/activity"
+  },
+  {
+    "shot": "workspaces-light-390",
+    "route": "/workspaces",
+    "vp": "390",
+    "theme": "light",
+    "url": "/workspaces"
+  },
+  {
+    "shot": "not-found-light-390",
+    "route": "/404",
+    "vp": "390",
+    "theme": "light",
+    "url": "/404"
+  },
+  {
+    "vp": "390",
+    "theme": "light",
+    "problems": []
+  },
+  {
+    "shot": "home-dark-390",
+    "route": "/",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/"
+  },
+  {
+    "shot": "archives-dark-390",
+    "route": "/archives",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/archives"
+  },
+  {
+    "shot": "archive-dark-390",
+    "route": "/archives/1",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/archives/1"
+  },
+  {
+    "shot": "doc-read-dark-390",
+    "route": "/archives/1/doc/1",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/archives/1/doc/1"
+  },
+  {
+    "shot": "doc-edit-dark-390",
+    "route": "/editor/1",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/"
+  },
+  {
+    "shot": "account-dark-390",
+    "route": "/account",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/account"
+  },
+  {
+    "shot": "admin-dark-390",
+    "route": "/admin",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/admin"
+  },
+  {
+    "shot": "notifications-dark-390",
+    "route": "/notifications",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/notifications"
+  },
+  {
+    "shot": "activity-dark-390",
+    "route": "/activity",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/activity"
+  },
+  {
+    "shot": "workspaces-dark-390",
+    "route": "/workspaces",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/workspaces"
+  },
+  {
+    "shot": "not-found-dark-390",
+    "route": "/404",
+    "vp": "390",
+    "theme": "dark",
+    "url": "/404"
+  },
+  {
+    "vp": "390",
+    "theme": "dark",
+    "problems": []
+  },
+  {
+    "shot": "signed-out-light-390",
+    "route": "/",
+    "vp": "390",
+    "theme": "light",
+    "problems": []
+  },
+  {
+    "shot": "signed-out-dark-390",
+    "route": "/",
+    "vp": "390",
+    "theme": "dark",
+    "problems": []
+  },
+  {
+    "shot": "popover-open-light-1280",
+    "vp": "1280",
+    "theme": "light",
+    "checkedTheme": "Light",
+    "focusOnOpen": "Light",
+    "problems": []
+  },
+  {
+    "shot": "keyboard-focus-light-1280",
+    "vp": "1280",
+    "theme": "light",
+    "focusAfterTab": "Dark"
+  },
+  {
+    "step": "escape",
+    "focusAfterEscape": "Appearance"
+  },
+  {
+    "shot": "popover-open-dark-1280",
+    "vp": "1280",
+    "theme": "dark",
+    "checkedTheme": "Dark",
+    "focusOnOpen": "Dark",
+    "problems": []
+  },
+  {
+    "shot": "keyboard-focus-dark-1280",
+    "vp": "1280",
+    "theme": "dark",
+    "focusAfterTab": "Ocean Blue"
+  },
+  {
+    "step": "escape",
+    "focusAfterEscape": "Appearance"
+  },
+  {
+    "shot": "popover-open-light-390",
+    "vp": "390",
+    "theme": "light",
+    "checkedTheme": "Light",
+    "focusOnOpen": "Light",
+    "problems": []
+  },
+  {
+    "shot": "keyboard-focus-light-390",
+    "vp": "390",
+    "theme": "light",
+    "focusAfterTab": "Dark"
+  },
+  {
+    "step": "escape",
+    "focusAfterEscape": "Appearance"
+  },
+  {
+    "shot": "popover-open-dark-390",
+    "vp": "390",
+    "theme": "dark",
+    "checkedTheme": "Dark",
+    "focusOnOpen": "Dark",
+    "problems": []
+  },
+  {
+    "shot": "keyboard-focus-dark-390",
+    "vp": "390",
+    "theme": "dark",
+    "focusAfterTab": "Ocean Blue"
+  },
+  {
+    "step": "escape",
+    "focusAfterEscape": "Appearance"
+  },
+  {
+    "shot": "popover-open-light-320",
+    "vp": "320",
+    "theme": "light",
+    "checkedTheme": "Light",
+    "focusOnOpen": "Light",
+    "problems": []
+  },
+  {
+    "shot": "popover-open-dark-320",
+    "vp": "320",
+    "theme": "dark",
+    "checkedTheme": "Dark",
+    "focusOnOpen": "Dark",
+    "problems": []
+  },
+  {
+    "step": "first-paint-stored-light-os-dark-normal",
+    "stored": "light",
+    "os": "dark",
+    "throttle": false,
+    "bootScriptRemoved": false,
+    "theme": "light",
+    "htmlBackground": "oklch(0.985 0.002 230)",
+    "stylesheetsApplied": 1,
+    "reactMounted": false,
+    "canvasRgb": [
+      249,
+      250,
+      251
+    ],
+    "lightCanvas": true,
+    "problems": []
+  },
+  {
+    "step": "first-paint-stored-light-os-dark-throttled",
+    "stored": "light",
+    "os": "dark",
+    "throttle": true,
+    "bootScriptRemoved": false,
+    "theme": "light",
+    "htmlBackground": "oklch(0.985 0.002 230)",
+    "stylesheetsApplied": 1,
+    "reactMounted": false,
+    "canvasRgb": [
+      249,
+      250,
+      251
+    ],
+    "lightCanvas": true,
+    "problems": []
+  },
+  {
+    "step": "first-paint-control-no-script-stored-light-os-dark",
+    "stored": "light",
+    "os": "dark",
+    "throttle": false,
+    "bootScriptRemoved": true,
+    "theme": "dark",
+    "htmlBackground": "oklch(0.17 0.012 240)",
+    "stylesheetsApplied": 1,
+    "reactMounted": false,
+    "canvasRgb": [
+      11,
+      16,
+      20
+    ],
+    "lightCanvas": false,
+    "problems": []
+  }
+]

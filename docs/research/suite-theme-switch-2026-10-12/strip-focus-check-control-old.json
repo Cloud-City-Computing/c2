@@ -1,0 +1,218 @@
+{
+  "control": true,
+  "failed": true,
+  "outside": [
+    {
+      "theme": "light",
+      "item": "Home"
+    },
+    {
+      "theme": "light",
+      "item": "Workspaces"
+    },
+    {
+      "theme": "light",
+      "item": "Activity"
+    },
+    {
+      "theme": "light",
+      "item": "Notifications"
+    },
+    {
+      "theme": "light",
+      "item": "All archives"
+    },
+    {
+      "theme": "dark",
+      "item": "Home"
+    },
+    {
+      "theme": "dark",
+      "item": "Workspaces"
+    },
+    {
+      "theme": "dark",
+      "item": "Activity"
+    },
+    {
+      "theme": "dark",
+      "item": "Notifications"
+    },
+    {
+      "theme": "dark",
+      "item": "All archives"
+    }
+  ],
+  "results": [
+    {
+      "theme": "light",
+      "item": "Home",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 6,
+        "right": 95.234375,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "light",
+      "item": "Workspaces",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 89.234375,
+        "right": 221.40625,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "light",
+      "item": "Activity",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 215.40625,
+        "right": 315.015625,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "light",
+      "item": "Notifications",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 309.015625,
+        "right": 442.53125,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "light",
+      "item": "All archives",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 227.53125,
+        "right": 353.625,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "dark",
+      "item": "Home",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 6,
+        "right": 95.234375,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "dark",
+      "item": "Workspaces",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 89.234375,
+        "right": 221.40625,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "dark",
+      "item": "Activity",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 215.40625,
+        "right": 315.015625,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "dark",
+      "item": "Notifications",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 309.015625,
+        "right": 442.53125,
+        "top": 46,
+        "bottom": 85
+      }
+    },
+    {
+      "theme": "dark",
+      "item": "All archives",
+      "inside": false,
+      "nav": {
+        "left": 0,
+        "right": 350,
+        "top": 50,
+        "bottom": 89
+      },
+      "outline": {
+        "left": 227.53125,
+        "right": 353.625,
+        "top": 46,
+        "bottom": 85
+      }
+    }
+  ]
+}

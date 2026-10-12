@@ -80,7 +80,7 @@ describe('index.css and core.css', () => {
 });
 
 describe('the page', () => {
-  it('pins the dark theme on the root element', () => {
+  it('carries data-theme="dark" as the no-script default; the pre-paint script sets the rest (W6-CDX-44)', () => {
     expect(read('index.html')).toMatch(/<html lang="en" data-theme="dark">/);
   });
 

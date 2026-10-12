@@ -134,35 +134,15 @@ describe('userPrefs', () => {
   // ── applyPrefsToDOM ────────────────────────────────────
 
   describe('applyPrefsToDOM', () => {
-    it('writes the picked hue as --cx-accent-h and the accent name as data-accent (K7), never a finished colour', () => {
+    it('never writes the accent: the contract applies it (W6-CDX-44), whatever accentColor holds', () => {
       applyPrefsToDOM({ accentColor: 'nova' });
+      applyPrefsToDOM({ accentColor: 'constructor' });
       const root = document.documentElement;
-      expect(root.style.getPropertyValue('--cx-accent-h')).toBe('355');
-      expect(root.dataset.accent).toBe('nova');
+      expect(root.style.getPropertyValue('--cx-accent-h')).toBe('');
+      expect(root.hasAttribute('data-accent')).toBe(false);
       for (const name of ['--cx-accent', '--cx-accent-hover', '--cx-accent-fill', '--cx-accent-dark', '--cx-select-wash']) {
         expect(root.style.getPropertyValue(name), name).toBe('');
       }
-      for (const name of ['--brand-blue', '--brand-blue-light', '--brand-blue-dark', '--brand-blue-hover']) {
-        expect(root.style.getPropertyValue(name)).toBe('');
-      }
-    });
-
-    it('takes the hue of every offered accent from the one table', () => {
-      for (const [name, hue] of Object.entries(ACCENTS)) {
-        applyPrefsToDOM({ accentColor: name });
-        expect(document.documentElement.style.getPropertyValue('--cx-accent-h'), name).toBe(String(hue));
-      }
-    });
-
-    it('removes --cx-accent-h and data-accent for the default, an unknown accent, or a prototype name', () => {
-      applyPrefsToDOM({ accentColor: 'cyan' });
-      applyPrefsToDOM({ accentColor: 'no-such-color' });
-      expect(document.documentElement.style.getPropertyValue('--cx-accent-h')).toBe('');
-      expect(document.documentElement.dataset.accent).toBeUndefined();
-      applyPrefsToDOM({ accentColor: 'constructor' });
-      applyPrefsToDOM({ accentColor: '__proto__' });
-      expect(document.documentElement.style.getPropertyValue('--cx-accent-h')).toBe('');
-      expect(document.documentElement.dataset.accent).toBeUndefined();
     });
 
     it('sets --editor-font-size for a known fontSize key', () => {

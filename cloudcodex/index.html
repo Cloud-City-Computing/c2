@@ -8,9 +8,55 @@
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
+    <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cloud Codex</title>
+    <!--
+      The pre-paint theme and accent (W6-CDX-44). It implements the reading and precedence of the suite
+      preference contract (src/lib/suite-prefs.js). Its SHA-256 is THEME_BOOT_HASH in theme-boot-hash.js,
+      which app.js allows in script-src: edit this script and that constant together.
+    -->
+    <script>
+      (function () {
+        var THEMES = { light: 1, dark: 1 };
+        var HUES = { '232': 1, '200': 1, '325': 1, '131': 1, '355': 1, '50': 1, '175': 1, '275': 1 };
+        var LEGACY = { blue: '232', cyan: '200', pink: '325', lime: '131', nova: '355', solar: '50',
+          aurora: '175', nebula: '275', rose: '355', amber: '50', emerald: '175', violet: '275',
+          coral: '355', apricot: '50', jade: '175', iris: '275' };
+        function own(map, key) { return Object.prototype.hasOwnProperty.call(map, key); }
+        function cookie(name, ok) {
+          try {
+            var parts = document.cookie ? document.cookie.split(';') : [];
+            for (var i = 0; i < parts.length; i++) {
+              var part = parts[i].replace(/^[ \t]+/, '');
+              var eq = part.indexOf('=');
+              if (eq > 0 && part.slice(0, eq) === name && own(ok, part.slice(eq + 1))) return part.slice(eq + 1);
+            }
+          } catch (e) { /* a blocked cookie store reads as no cookie: this step is skipped */ }
+          return null;
+        }
+        function stored(name, ok) {
+          try { var v = localStorage.getItem(name); return v !== null && own(ok, v) ? v : null; } catch (e) { return null; }
+        }
+        function legacyHue() {
+          try {
+            var key = JSON.parse(localStorage.getItem('c2-user-prefs') || '{}').accentColor;
+            return typeof key === 'string' && own(LEGACY, key) ? LEGACY[key] : null;
+          } catch (e) { return null; }
+        }
+        var root = document.documentElement;
+        var theme = cookie('cc_suite_theme', THEMES) || stored('cc_suite_theme', THEMES);
+        if (!theme) {
+          try { theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; } catch (e) { theme = 'dark'; }
+        }
+        root.setAttribute('data-theme', theme);
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if (meta) meta.setAttribute('content', theme);
+        var hue = cookie('cc_suite_accent', HUES) || stored('cc_suite_accent', HUES) || legacyHue();
+        if (hue) { root.style.setProperty('--cx-accent-h', hue); root.setAttribute('data-accent', ''); }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

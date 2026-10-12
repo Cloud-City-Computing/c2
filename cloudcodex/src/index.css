@@ -5700,16 +5700,22 @@ h1, h2, h3, h4, h5, h6 {
   .cc-suite__eyebrow { display: none; }
   .sidebar__nav {
     grid-area: nav;
-    margin: 0 -10px;
-    padding: 0 10px 8px;
+    /* The padding holds a focused item's ring (2 px wide, 2 px out) inside the strip's visible area, at either
+       end; scroll-padding keeps a scrolled-to item clear of the edge by the same room (W6-CDX-44 review). */
+    margin: 0 -18px;
+    padding: 6px 18px 8px;
+    scroll-padding-inline: 18px;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
-    -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 28px), transparent);
-    mask-image: linear-gradient(to right, currentColor calc(100% - 28px), transparent);
+    -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 16px), transparent);
+    mask-image: linear-gradient(to right, currentColor calc(100% - 16px), transparent);
   }
   .sidebar__nav::-webkit-scrollbar { display: none; }
-  .sidebar__scroll { flex-direction: row; gap: 2px; align-items: center; }
+  /* The row is as wide as its items and ends with room for a ring, so the strip can scroll the last item's ring
+     clear of its end. The lists overflow their own boxes, so a spacer beside them would not reach the scroll
+     extent (W6-CDX-44 review). */
+  .sidebar__scroll { flex-direction: row; gap: 2px; align-items: center; width: max-content; padding-right: 18px; }
   .sidebar__list { flex-direction: row; gap: 2px; }
   .sidebar__link { min-height: 30px; padding: 5px 9px; white-space: nowrap; }
   .sidebar__group { display: contents; }
@@ -9594,4 +9600,101 @@ textarea:focus-visible {
   gap: 0.75rem;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+/* The header's Appearance popover (W6-CDX-44). A non-modal panel in the body, under the toggle, so a scrolling
+   header row cannot clip it. Eight swatches share one row in a grid, so the panel holds at 320 px. */
+.appearance-control {
+  display: inline-flex;
+}
+.appearance-panel {
+  position: fixed;
+  z-index: var(--z-menu);
+  box-sizing: border-box;
+  width: min(288px, calc(100vw - 16px));
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--cx-shadow-lg);
+}
+.appearance-section {
+  display: grid;
+  gap: 8px;
+}
+.appearance-section__title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.appearance-panel .pref-toggle-btn {
+  padding: 6px 8px;
+}
+.appearance-panel .color-swatch-row {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  margin-top: 0;
+}
+.appearance-panel .color-swatch {
+  width: 100%;
+  height: auto;
+  max-width: 28px;
+  aspect-ratio: 1;
+  justify-self: center;
+}
+
+/* The Appearance toggle in the document header (W6-CDX-44) takes the square of the favourite and watch icons beside it
+   and drops the ghost border. Kept here, outside the deferred families the geometry fingerprint pins. */
+.document-header .appearance-toggle {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--cx-text-secondary);
+}
+
+/* The Default accent (W6-CDX-44 review): a compact outlined pill sized to its label, as Cloud Command shows it. Its
+   selected state is a ring, the same as the swatches', never a fill. */
+.appearance-default-row {
+  display: flex;
+  margin-top: 0;
+}
+.appearance-default {
+  justify-self: start;
+  padding: 4px 14px;
+  border: 1px solid var(--cx-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.appearance-default:hover {
+  color: var(--text-primary);
+  background: var(--cx-surface-1);
+}
+.appearance-default[aria-pressed='true'] {
+  color: var(--text-primary);
+  border-color: transparent;
+  box-shadow: 0 0 0 3px var(--cx-accent);
+}
+
+/* A segment's focus ring (W6-CDX-44 review): drawn inside the segment and lifted above its neighbour, so the ring
+   is whole on every segment, in both themes, and never hides under the adjacent segment's border or fill. */
+.pref-toggle-btn:focus-visible {
+  position: relative;
+  z-index: var(--z-sticky);
+  outline: 2px solid var(--text-primary);
+  outline-offset: -3px;
+}
+/* A pressed segment is filled with the accent; its ring takes the on-accent ink, which reads on that fill in both themes. */
+.pref-toggle-btn.active:focus-visible {
+  outline-color: var(--cx-on-accent);
 }
