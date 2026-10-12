@@ -23,11 +23,10 @@ import ReadOnlyContent from '../components/editor/ReadOnlyContent';
 import VersionHistory from '../components/editor/VersionHistory';
 import DrawioBlock from '../components/DrawioBlock';
 import { getPreferredEditorMode } from '../userPrefs';
-import SuiteDocLink from '../components/SuiteDocLink';
+import DocumentHeader from '../components/DocumentHeader';
 import useCollab from '../hooks/useCollab';
 import { setUnsaved } from '../lib/unsaved-changes.js';
 import Collaboration from '@tiptap/extension-collaboration';
-import CollabPresence from '../components/CollabPresence';
 import { RichTextCursors, MarkdownCursors } from '../components/RemoteCursors';
 import { RichTextHighlights, MarkdownHighlights } from '../components/CommentHighlights';
 import {
@@ -57,6 +56,7 @@ import {
 } from '../util';
 import PublishModal from '../components/PublishModal';
 import ExportMenu from '../components/ExportMenu';
+import { PencilIcon, EyeIcon, SaveIcon, PackageIcon, CommentIcon, ListIcon, HistoryIcon } from '../components/icons.jsx';
 import { toastError } from '../components/Toast';
 import CommentSidebar from '../components/CommentSidebar';
 import CommentForm from '../components/CommentForm';
@@ -1115,85 +1115,28 @@ function EditorView({ embedded = false } = {}) {
 
   const editorContent = (
       <div className="editor-log">
-        <div className="editor-header">
-          <div className="editor-breadcrumb">
-            {documentData?.archive_name && (
-              <span
-                className="breadcrumb-item breadcrumb-item--link"
-                onClick={() => navigate(`/archives/${documentData.archive_id}/doc/${logId}`)}
-              >
-                {documentData.archive_name}
-              </span>
-            )}
-          </div>
-          {viewMode === 'edit' && editingTitle ? (
-            <div className="editor-title-edit">
-              <input
-                type="text" value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()}
-                onBlur={handleTitleSave}
-                autoFocus
-              />
-            </div>
-          ) : (
-            <h2
-              className={`editor-title${viewMode === 'edit' ? '' : ' editor-title--readonly'}`}
-              onClick={viewMode === 'edit' ? () => setEditingTitle(true) : undefined}
-              title={viewMode === 'edit' ? 'Click to rename' : undefined}
-            >
-              {documentData?.title ?? 'Loading Document...'}
-            </h2>
-          )}
-          <div className="document-meta">
-            {documentData && (
-              <>
-                <span>Created by: {documentData.name} ({documentData.email})</span>
-                <span>v{documentData.version ?? 1} &middot; {new Date(documentData.created_at).toLocaleString()}</span>
-              </>
-            )}
-            <SuiteDocLink archiveId={String(documentData?.id) === String(logId) ? documentData.archive_id : undefined} logId={logId} />
-            {viewMode === 'edit' && <CollabPresence users={collabUsers} connected={collabConnected} />}
-            {documentData && (
-              <button
-                className={`btn-favorite${isFavorited ? ' btn-favorite--active' : ''}`}
-                onClick={toggleFavorite}
-                disabled={favLoading}
-                title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
-              >
-                {isFavorited ? '★' : '☆'}
-              </button>
-            )}
-            {documentData && (
-              <button
-                className={`btn-watch${watching ? ' btn-watch--active' : ''}`}
-                onClick={toggleWatch}
-                disabled={watchLoading}
-                title={watching ? 'Stop watching this document' : 'Watch for updates and comments'}
-                aria-pressed={watching}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                  fill={watching ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"
-                  strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-              </button>
-            )}
-            {documentData?.gh_owner && (
-              <a
-                className="gh-doc-link"
-                href={`https://github.com/${documentData.gh_owner}/${documentData.gh_repo}/blob/${documentData.gh_branch}/${documentData.gh_path}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`${documentData.gh_owner}/${documentData.gh_repo}/${documentData.gh_path}`}
-              >
-                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
-                <span>View on GitHub</span>
-              </a>
-            )}
-          </div>
-        </div>
+        <DocumentHeader
+          doc={documentData}
+          logId={logId}
+          viewMode={viewMode}
+          canEdit={!isMobileDevice()}
+          editingTitle={editingTitle}
+          titleDraft={title}
+          onTitleChange={setTitle}
+          onTitleSave={handleTitleSave}
+          onStartTitleEdit={() => setEditingTitle(true)}
+          onOpenArchive={() => navigate(`/archives/${documentData.archive_id}/doc/${logId}`)}
+          suiteArchiveId={String(documentData?.id) === String(logId) ? documentData.archive_id : undefined}
+          collabUsers={collabUsers}
+          collabConnected={collabConnected}
+          isFavorited={isFavorited}
+          favLoading={favLoading}
+          onToggleFavorite={toggleFavorite}
+          watching={watching}
+          watchLoading={watchLoading}
+          onToggleWatch={toggleWatch}
+          onEdit={() => setViewMode('edit')}
+        />
 
         {ghSync.link && (
           <GitHubSyncBanner
@@ -1218,7 +1161,7 @@ function EditorView({ embedded = false } = {}) {
               <div className="toolbar-group">
                 {!isMobileDevice() && (
                   <button className="btn btn-primary btn-sm" onClick={() => setViewMode('edit')}>
-                    ✏️ Edit
+                    <PencilIcon /> Edit
                   </button>
                 )}
               </div>
@@ -1241,15 +1184,15 @@ function EditorView({ embedded = false } = {}) {
           <div className="toolbar-group">
             {embedded && (
               <button className="btn btn-ghost btn-sm" onClick={() => setViewMode('read')}>
-                👁 Read
+                <EyeIcon /> Read
               </button>
             )}
             <button className="btn btn-primary btn-sm" onClick={() => handleSave()} disabled={saving}>
-              {saving ? 'Saving...' : '💾 Save'}
+              {saving ? 'Saving...' : <><SaveIcon /> Save</>}
             </button>
             {autoSaveLabel && <span className="auto-save-label">{autoSaveLabel}</span>}
             <button className="btn btn-ghost btn-sm" onClick={openPublishModal} disabled={publishing}>
-              {publishing ? 'Publishing...' : '📦 Publish'}
+              {publishing ? 'Publishing...' : <><PackageIcon /> Publish</>}
             </button>
           </div>
 
@@ -1274,13 +1217,13 @@ function EditorView({ embedded = false } = {}) {
 
           <div className="toolbar-group">
             <button className="btn btn-ghost btn-sm" onMouseDown={(e) => { e.preventDefault(); handleStartComment(); }} title="Add a comment on selected text">
-              💬 Comment
+              <CommentIcon /> Comment
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowComments(v => !v)}>
-              {showComments ? '💬 Hide' : `💬 ${comments.filter(c => c.status === 'open').length || ''}`}
+              {showComments ? <><CommentIcon /> Hide</> : <><CommentIcon /> {comments.filter(c => c.status === 'open').length || ''}</>}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={openCommentManager} title="Manage all comments">
-              📋
+            <button className="btn btn-ghost btn-sm" onClick={openCommentManager} title="Manage all comments" aria-label="Manage all comments">
+              <ListIcon />
             </button>
           </div>
 
@@ -1288,7 +1231,7 @@ function EditorView({ embedded = false } = {}) {
 
           <div className="toolbar-group">
             <button className="btn btn-ghost btn-sm" onClick={() => setShowVersions(v => !v)}>
-              {showVersions ? '🕓 Hide History' : '🕓 History'}
+              {showVersions ? <><HistoryIcon /> Hide History</> : <><HistoryIcon /> History</>}
             </button>
             <ExportMenu onExport={handleExport} />
           </div>
