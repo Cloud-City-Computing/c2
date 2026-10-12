@@ -64,3 +64,85 @@ export function CommentIcon() {
 export function CircleIcon() {
   return <Stroke><circle cx="12" cy="12" r="9" /></Stroke>;
 }
+
+/** The "More actions" trigger on a list row: three dots, filled so they read at 15 px. */
+export function MoreIcon() {
+  return (
+    <Stroke>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </Stroke>
+  );
+}
+
+export function PencilIcon() {
+  return (
+    <Stroke>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </Stroke>
+  );
+}
+
+export function EyeIcon() {
+  return (
+    <Stroke>
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </Stroke>
+  );
+}
+
+export function SaveIcon() {
+  return (
+    <Stroke>
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
+    </Stroke>
+  );
+}
+
+export function PackageIcon() {
+  return (
+    <Stroke>
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+    </Stroke>
+  );
+}
+
+export function HistoryIcon() {
+  return (
+    <Stroke>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <polyline points="3 3 3 8 8 8" />
+      <polyline points="12 7 12 12 15 14" />
+    </Stroke>
+  );
+}
+
+export function ListIcon() {
+  return (
+    <Stroke>
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </Stroke>
+  );
+}
+
+export function TrayIcon() {
+  return (
+    <Stroke>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </Stroke>
+  );
+}

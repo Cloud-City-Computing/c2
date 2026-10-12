@@ -9,13 +9,17 @@
  * scroll and resize. Keyboard: arrows wrap, Home and End jump, a letter jumps to the next item starting with
  * it, Escape and Tab close it and return focus to the trigger. An outside pointer press closes it. No scrim.
  *
+ * mode="actions" (W6-CDX-41) is the More actions menu on a list row: the trigger is an icon, named by `label`, with
+ * no choice shown; the items are role="menuitem" with no aria-checked, and an item flagged `danger` takes the
+ * danger text colour (never a solid button). The popup, the keys and the close paths are the same.
+ *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDownIcon } from './icons.jsx';
+import { ChevronDownIcon, MoreIcon } from './icons.jsx';
 
 const TYPEAHEAD_MS = 500;
 
@@ -40,30 +44,35 @@ function containerFor(trigger) {
  * which is a containing block for it (the dialog's transform makes it one), so the trigger's rectangle is taken
  * relative to the dialog's border box.
  */
-function placeFor(trigger, container) {
+function placeFor(trigger, container, end = false) {
   const r = trigger.getBoundingClientRect();
+  // An end-aligned popup (an icon trigger on a row's right edge) grows leftward from the trigger's right edge,
+  // so a 160 px menu cannot run off a 390 px screen.
+  const transform = end ? 'translateX(-100%)' : undefined;
   if (container === menuRoot()) {
-    return { position: 'fixed', top: r.bottom + 4, left: r.left, minWidth: r.width };
+    return end
+      ? { position: 'fixed', top: r.bottom + 4, left: r.right, transform }
+      : { position: 'fixed', top: r.bottom + 4, left: r.left, minWidth: r.width };
   }
   const c = container.getBoundingClientRect();
-  return {
-    position: 'absolute',
-    top: r.bottom - c.top - container.clientTop + 4,
-    left: r.left - c.left - container.clientLeft,
-    minWidth: r.width,
-  };
+  const top = r.bottom - c.top - container.clientTop + 4;
+  if (end) return { position: 'absolute', top, left: r.right - c.left - container.clientLeft, transform };
+  return { position: 'absolute', top, left: r.left - c.left - container.clientLeft, minWidth: r.width };
 }
 
 /**
  * @param {object} props
  * @param {string} props.label           the menu's name; the trigger is named "label: current choice"
  * @param {string} [props.value]         key of the current item
- * @param {Array<{key: string, label: string, disabled?: boolean}>} props.items
+ * @param {Array<{key: string, label: string, disabled?: boolean, danger?: boolean}>} props.items
  * @param {(key: string) => void} props.onSelect
  * @param {string} [props.id]            id of the trigger, so a <label htmlFor> can name it
  * @param {string} [props.className]     extra class on the trigger
+ * @param {'radio'|'actions'} [props.mode] radio (default) for a single choice; actions for a More actions menu
  */
-export default function Menu({ label, value, items, onSelect, id: triggerId, className = '' }) {
+export default function Menu({ label, value, items, onSelect, id: triggerId, className = '', mode = 'radio' }) {
+  const actions = mode === 'actions';
+  const itemRole = actions ? 'menuitem' : 'menuitemradio';
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [container, setContainer] = useState(null);
@@ -80,7 +89,7 @@ export default function Menu({ label, value, items, onSelect, id: triggerId, cla
     if (!open) return undefined;
     const place = () => {
       const trig = triggerRef.current;
-      if (trig) setPos(placeFor(trig, containerFor(trig)));
+      if (trig) setPos(placeFor(trig, containerFor(trig), actions));
     };
     const trig = triggerRef.current;
     setContainer(containerFor(trig));
@@ -91,14 +100,14 @@ export default function Menu({ label, value, items, onSelect, id: triggerId, cla
       window.removeEventListener('scroll', place, true);
       window.removeEventListener('resize', place);
     };
-  }, [open]);
+  }, [open, actions]);
 
   // Focus the current item (or the first) once the popup is mounted: it mounts on the render after `pos` is set.
   useEffect(() => {
     if (!open || !pos) return;
     const list = popRef.current;
     if (!list) return;
-    const first = list.querySelector('[aria-checked="true"]') || list.querySelector('[role="menuitemradio"]');
+    const first = list.querySelector('[aria-checked="true"]') || list.querySelector('[role^="menuitem"]');
     first?.focus();
   }, [open, pos]);
 
@@ -144,7 +153,7 @@ export default function Menu({ label, value, items, onSelect, id: triggerId, cla
   const onKeyDown = (e) => {
     const list = popRef.current;
     if (!list) return;
-    const enabled = [...list.querySelectorAll('[role="menuitemradio"]:not(:disabled)')];
+    const enabled = [...list.querySelectorAll('[role^="menuitem"]:not(:disabled)')];
     const at = enabled.indexOf(document.activeElement);
     if (e.key === 'Escape' || e.key === 'Tab') {
       // Stopped here so the dialog's own Escape and Tab handling never sees the key that closed the menu.
@@ -180,15 +189,21 @@ export default function Menu({ label, value, items, onSelect, id: triggerId, cla
         ref={triggerRef}
         id={triggerId}
         type="button"
-        className={`menu-trigger ${className}`.trim()}
+        className={`menu-trigger${actions ? ' menu-trigger--actions' : ''} ${className}`.trim()}
         aria-haspopup="menu"
         aria-expanded={open ? 'true' : 'false'}
         aria-controls={open ? id : undefined}
-        aria-label={choice ? `${label}: ${choice}` : label}
+        aria-label={actions || !choice ? label : `${label}: ${choice}`}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="menu-trigger__value">{choice}</span>
-        <span className="menu-trigger__chevron"><ChevronDownIcon /></span>
+        {actions ? (
+          <span className="menu-trigger__icon"><MoreIcon /></span>
+        ) : (
+          <>
+            <span className="menu-trigger__value">{choice}</span>
+            <span className="menu-trigger__chevron"><ChevronDownIcon /></span>
+          </>
+        )}
       </button>
       {open && pos && container && createPortal(
         <div
@@ -197,16 +212,16 @@ export default function Menu({ label, value, items, onSelect, id: triggerId, cla
           role="menu"
           aria-label={label}
           className="menu"
-          style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, position: pos.position }}
+          style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, position: pos.position, transform: pos.transform }}
           onKeyDown={onKeyDown}
         >
           {items.map((item) => (
             <button
               key={item.key}
               type="button"
-              role="menuitemradio"
-              aria-checked={item.key === value ? 'true' : 'false'}
-              className="menu__item"
+              role={itemRole}
+              {...(actions ? {} : { 'aria-checked': item.key === value ? 'true' : 'false' })}
+              className={`menu__item${item.danger ? ' menu__item--danger' : ''}`}
               disabled={item.disabled}
               onClick={() => choose(item.key)}
             >
