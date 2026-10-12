@@ -188,7 +188,7 @@ describe('the label and fill on the buttons and the toast are read from their ow
   });
 
   it('keeps the primary hover on the accent text step, with the on-accent label at 4.5:1 or more on every hue', () => {
-    expect(declared('.btn-primary:hover:not(:disabled)', 'background')).toBe('var(--brand-blue)');
+    expect(declared('.btn-primary:hover:not(:disabled)', 'background')).toBe('var(--cx-accent-hover)');
     expect(declared('.btn-primary', 'color')).toBe('var(--cx-on-accent)');
     for (const [name, tokens] of ACCENT_TOKENS) {
       const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
