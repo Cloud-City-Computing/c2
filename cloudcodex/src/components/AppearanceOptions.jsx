@@ -90,10 +90,10 @@ export function AccentOptions() {
           </button>
         ))}
       </div>
-      <div className="pref-toggle-group">
+      <div className="appearance-default-row">
         <button
           type="button"
-          className={`pref-toggle-btn${hue === null ? ' active' : ''}`}
+          className="appearance-default"
           aria-pressed={hue === null}
           onClick={() => choose(null)}
         >

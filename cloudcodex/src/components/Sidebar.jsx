@@ -15,6 +15,7 @@ import { apiFetch } from '../util.jsx';
 import useGitHubStatus from '../hooks/useGitHubStatus';
 import useNotificationChannel from '../hooks/useNotificationChannel';
 import SuiteCluster from './SuiteCluster.jsx';
+import { revealInStrip } from '../lib/strip-focus.js';
 import { readInboxCache, writeInboxCache } from '../lib/inbox-cache.js';
 import ProductMark from './ProductMark.jsx';
 import SearchPalette from './SearchPalette.jsx';
@@ -118,7 +119,7 @@ export default function Sidebar({ user, suite, isAdmin }) {
         <Link to="/workspaces" className="workspace-slot workspace-slot--link">{slotBody}</Link>
       )}
       <SearchPalette />
-      <nav className="sidebar__nav" aria-label="Primary">
+      <nav className="sidebar__nav" aria-label="Primary" onFocus={(event) => revealInStrip(event.currentTarget, event.target)}>
         <div className="sidebar__scroll">
           <ul className="sidebar__list">
             <li><NavItem to="/" label="Home" Icon={HomeNavIcon} /></li>

@@ -152,6 +152,14 @@ describe('AppearanceControl: the accent swatches', () => {
     expect(within(p).getByRole('button', { name: 'Default' })).toBeTruthy();
   });
 
+  it('draws Default as a compact pill outside the segmented groups', async () => {
+    render(<AppearanceControl />);
+    const p = await open();
+    const button = within(p).getByRole('button', { name: 'Default' });
+    expect(button.classList.contains('appearance-default')).toBe(true);
+    expect(button.closest('.pref-toggle-group')).toBeNull();
+  });
+
   it('a picked swatch sets its hue on the page and is pressed; Default clears it', async () => {
     render(<AppearanceControl />);
     const p = await open();

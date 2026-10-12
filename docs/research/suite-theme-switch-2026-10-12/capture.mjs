@@ -152,8 +152,8 @@ for (const vp of POPOVER_VIEWPORTS) {
     const focused = await page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
     note({ shot: `popover-open-${theme}-${vp.name}`, vp: vp.name, theme: await themeOf(page), checkedTheme: checked, focusOnOpen: focused, problems });
     await page.screenshot({ path: path.join(OUT, `popover-open-${theme}-${vp.name}.png`) });
-    if (vp.name === '1280') {
-      // Keyboard only: focus the toggle with Tab, open it with Enter, then Tab once inside the panel.
+    if (vp.name !== '320') {
+      // Keyboard only (1280 and the phone width): focus the toggle with Tab, open it with Enter, then Tab once inside the panel.
       await page.locator('body').click({ position: { x: 1, y: 1 } }).catch(() => {});
       await page.keyboard.press('Escape');
       await page.waitForSelector('.appearance-panel', { state: 'detached' });

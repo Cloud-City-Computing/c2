@@ -400,12 +400,32 @@
     "problems": []
   },
   {
+    "shot": "keyboard-focus-light-390",
+    "vp": "390",
+    "theme": "light",
+    "focusAfterTab": "Dark"
+  },
+  {
+    "step": "escape",
+    "focusAfterEscape": "Appearance"
+  },
+  {
     "shot": "popover-open-dark-390",
     "vp": "390",
     "theme": "dark",
     "checkedTheme": "Dark",
     "focusOnOpen": "Dark",
     "problems": []
+  },
+  {
+    "shot": "keyboard-focus-dark-390",
+    "vp": "390",
+    "theme": "dark",
+    "focusAfterTab": "Ocean Blue"
+  },
+  {
+    "step": "escape",
+    "focusAfterEscape": "Appearance"
   },
   {
     "shot": "popover-open-light-320",
