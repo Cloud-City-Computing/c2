@@ -14,7 +14,7 @@ import request from 'supertest';
 import app from '../../app.js';
 import { mockAuthenticated, mockUnauthenticated, resetMocks } from '../helpers.js';
 
-const KEYS = ['SUITE_COMMAND_WORKSPACE_URL', 'SUITE_NAME', 'NODE_ENV', 'OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_PROVIDER_NAME', 'APP_URL'];
+const KEYS = ['SUITE_COMMAND_WORKSPACE_URL', 'SUITE_NAME', 'SUITE_PREFERENCE_DOMAIN', 'NODE_ENV', 'OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_PROVIDER_NAME', 'APP_URL'];
 const URL_OK = 'https://command.example.test/w/1';
 let saved;
 
@@ -41,15 +41,29 @@ describe('GET /api/suite', () => {
   it('answers enabled false and a null name when suite mode is off', async () => {
     const res = await request(app).get('/api/suite');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ enabled: false, name: null });
+    expect(res.body).toEqual({ enabled: false, name: null, preferenceDomain: null });
   });
 
   it('answers the name, never the URL, when suite mode is on', async () => {
     suiteOn();
     const res = await request(app).get('/api/suite');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ enabled: true, name: 'Example Suite' });
+    expect(res.body).toEqual({ enabled: true, name: 'Example Suite', preferenceDomain: null });
     expect(JSON.stringify(res.body)).not.toContain('command.example.test');
+  });
+
+  it('answers the preference domain when suite mode is on and the variable is set', async () => {
+    suiteOn();
+    process.env.SUITE_PREFERENCE_DOMAIN = 'example.test';
+    process.env.APP_URL = 'https://codex.example.test';
+    const res = await request(app).get('/api/suite');
+    expect(res.body).toEqual({ enabled: true, name: 'Example Suite', preferenceDomain: 'example.test' });
+  });
+
+  it('answers a null preference domain when suite mode is off, whatever the variable holds', async () => {
+    process.env.SUITE_PREFERENCE_DOMAIN = 'example.test';
+    const res = await request(app).get('/api/suite');
+    expect(res.body).toEqual({ enabled: false, name: null, preferenceDomain: null });
   });
 
   it('needs no session', async () => {

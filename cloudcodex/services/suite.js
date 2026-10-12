@@ -16,7 +16,7 @@ const NAME_MAX = 40;
  */
 export function readSuiteConfig() {
   const raw = process.env.SUITE_COMMAND_WORKSPACE_URL?.trim();
-  if (!raw) return { enabled: false, name: null, commandWorkspaceUrl: null };
+  if (!raw) return { enabled: false, name: null, commandWorkspaceUrl: null, preferenceDomain: null };
 
   let url;
   try {
@@ -43,5 +43,34 @@ export function readSuiteConfig() {
   if (!name || name.length > NAME_MAX || /[\u0000-\u001f\u007f]/.test(name)) {
     throw new Error(`SUITE_NAME is required in suite mode: 1 to ${NAME_MAX} characters, no control characters.`);
   }
-  return { enabled: true, name, commandWorkspaceUrl: url.href };
+  return { enabled: true, name, commandWorkspaceUrl: url.href, preferenceDomain: readPreferenceDomain() };
+}
+
+// SUITE_PREFERENCE_DOMAIN: the parent domain the theme and accent cookies are shared on (the suite
+// preference contract, docs/maps/suite-ui-alignment-record.md). Read only in suite mode. Each
+// refusal throws the sentence boot prints, and the APP_URL check never skips: an unset APP_URL is
+// checked against the default the server itself uses (routes/helpers/shared.js).
+const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const APP_URL_DEFAULT = 'http://localhost:3000';
+
+function readPreferenceDomain() {
+  const raw = process.env.SUITE_PREFERENCE_DOMAIN?.trim();
+  if (!raw) return null;
+  const labels = raw.split('.');
+  const top = labels[labels.length - 1];
+  if (labels.length < 2 || !labels.every((l) => LABEL.test(l)) || /^\d+$/.test(top) || top === 'localhost') {
+    throw new Error('SUITE_PREFERENCE_DOMAIN must be a lowercase domain of two or more labels, '
+      + 'with no scheme, port or dots at either end, and not an IP address or localhost.');
+  }
+  const appUrl = process.env.APP_URL?.trim() || APP_URL_DEFAULT;
+  let host;
+  try {
+    host = new URL(appUrl).hostname;
+  } catch {
+    throw new Error(`SUITE_PREFERENCE_DOMAIN (${raw}) cannot be checked: APP_URL is not a URL.`);
+  }
+  if (host !== raw && !host.endsWith(`.${raw}`)) {
+    throw new Error(`SUITE_PREFERENCE_DOMAIN (${raw}) must be APP_URL's host or a parent of it.`);
+  }
+  return raw;
 }

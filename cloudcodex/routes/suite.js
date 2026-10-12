@@ -19,7 +19,7 @@ const router = express.Router();
 // Synchronous: the config is read from the environment, so there is nothing to await.
 router.get('/suite', (req, res) => {
   const suite = readSuiteConfig();
-  res.json({ enabled: suite.enabled, name: suite.name });
+  res.json({ enabled: suite.enabled, name: suite.name, preferenceDomain: suite.preferenceDomain });
 });
 
 router.get('/suite/links', requireAuth, (req, res) => {
