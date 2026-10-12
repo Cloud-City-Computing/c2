@@ -216,7 +216,7 @@ of the application.
 
 Suite mode is off unless the server reads `SUITE_COMMAND_WORKSPACE_URL` (`services/suite.js:17`,
 `readSuiteConfig`). Boot calls it once and exits 1 with its sentence on a refusal (`server.js:199`).
-`routes/suite.js` mounts `GET /api/suite` (public, `enabled` and `name` only) and
+`routes/suite.js` mounts `GET /api/suite` (public, `enabled`, `name` and `preferenceDomain`, the parent domain the theme cookie is shared on, W6-CDX-44) and
 `GET /api/suite/links` (`requireAuth`, 404 when off), registered in `app.js` beside the other
 `/api` routers. In the client, `useSuite(user)` (`src/hooks/useSuite.js:40`) feeds
 `StdLayout`, which passes `suite` to `Sidebar` (`src/components/Sidebar.jsx`). `Sidebar` renders
@@ -352,7 +352,7 @@ one:
   into `#palette-root`, registered with `openDialog` so Escape and Tab are the stack's; Ctrl K is a no-op while another
   modal is open); `<AccountFooter>` is the avatar, the name's non-modal menu and the sign-out icon button;
   `<WorkspacesGate>` sends `/workspaces` to `/` in suite mode (K9); `<PageHeader>` is the page title, meta, primary
-  action, toolbar slot and tab row; `<ProductMark>` is the page glyph on the accent tile (K10). `<NotificationItem>`,
+  action, toolbar slot and tab row, and the header's `<ThemeToggle>` after them on every page (W6-CDX-44); `<ProductMark>` is the page glyph on the accent tile (K10). `<NotificationItem>`,
   `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`
   has no callers**: search results reach the user through `ExploreCard`, so it
   is dead code (see `open-questions.md` B13).
@@ -427,34 +427,62 @@ exports breaks the server, not just the client.
 
 ## 5. Preferences
 
-`src/userPrefs.js`. One localStorage key, `c2-user-prefs`
-(`userPrefs.js:16`). Three exported option maps that are the single source of
-truth: `ACCENT_COLORS` (8 colours, each with value/hover/fill, a view over
-`ACCENTS` in `src/tokens/accents.js`, the one data file for the picker's hues; each
-choice stores a hue, and the steps are derived in CSS, W6-CDX-43 K7), `FONT_SIZES` (sm/md/lg). `DENSITIES` and the sidebar default were removed (W6-CDX-42, K8); `loadUserPrefs()` drops a stored `density` or `sidebarDefault`.
+Two stores, one per concern, and the seam between them.
 
-`loadUserPrefs()` (`userPrefs.js:23`) maps a renamed accent key through
-`LEGACY_ACCENT` (rose to Nova, amber to Solar, emerald to Aurora, violet to
-Nebula; the placeholder keys coral, apricot, jade and iris map to the same names) and drops an accent key this build does not offer, so the default
-palette applies.
+**The suite preference contract (theme and accent), W6-CDX-44.** `src/lib/suite-prefs.js` is the one module
+that reads, writes, clears, migrates and keeps open pages in step for `cc_suite_theme` and `cc_suite_accent`.
+The contract (version 2, with `fillHover`) is recorded in full in
+[`suite-ui-alignment-record.md`](suite-ui-alignment-record.md), section 1; the code cites its text.
 
-`applyPrefsToDOM(prefs)` (`userPrefs.js:67`) writes the picked hue as
-`--cx-accent-h` and the accent's name as `data-accent` on
-`document.documentElement`, and never a finished colour (W6-CDX-43). `codex.css`
-derives the four steps per theme under `[data-theme][data-accent]` from that
-hue; the index.css bridge points `--brand-blue*` at the derived names. It also
-writes `--editor-font-size`. There is no density scale and no sidebar attribute (W6-CDX-42). Crucially it **removes** each
-property when the preference is unset rather than writing a default, so the
-stylesheet's own defaults win.
+- Reads (`resolveTheme` `:73`, `resolveAccent` `:94`, `storedThemeChoice` `:68`): the first valid cookie entry, then
+  localStorage, then (accent only) the legacy `c2-user-prefs.accentColor` mapped through `successorOf`, then the system
+  (theme: `prefers-color-scheme`, dark when no `matchMedia`) or the package's default ramp (accent: unset).
+- Writes (`setTheme` `:195`, `clearTheme` `:203`, `setAccent` `:210`, `clearAccent` `:219`): the shared cookie
+  (`Path=/; Max-Age=34560000; SameSite=Lax`, `Secure` on https, `Domain=` only when `domainInUse` `:103` says the
+  host is under the preference domain), a host-only expiry beside it when the domain is in use, then localStorage.
+  A write waits for the preference domain (`knowDomain`, `whenDomainKnown`). A failed read drops the write; nothing
+  is ever written host-only by guess. The page changes at once, and `subscribe` (`:186`) listeners hear each change,
+  again once a held write lands.
+- Keeping pages in step: `applyPreferences` (`:228`) re-reads both, and mirrors a cookie value into localStorage (the
+  cookie wins). `watch` (`:252`) runs it at boot, on `visibilitychange` to visible, and on a `storage` event for either
+  key. `main.jsx:26-27` calls `watch()` and `migrateLegacy()`.
+- Migration: `migrateLegacy` (`suite-prefs.js:278`) moves `c2-user-prefs.accentColor` into
+  the contract once, writes it before deleting the legacy key, and does nothing when the domain cannot be read.
+- The domain: `useSuite.js` `suitePreferenceDomain` (`:52`) reads `preferenceDomain` from the one cached
+  `GET /api/suite` (`fetchSuiteBody`, shared with `useSuite`). The server side is `services/suite.js`
+  (`readPreferenceDomain`, the boot validation, `SUITE_PREFERENCE_DOMAIN` in `env-contract.js`) and `routes/suite.js:22`.
 
-`getPreferredEditorMode()` (`userPrefs.js:105`) returns `'markdown'` or
+**The pre-paint script, W6-CDX-44.** `index.html:20-57` is an inline script in the head, after
+`<meta name="color-scheme">` (`:11`), that applies the theme (`data-theme`, the meta's content) and the accent
+(`--cx-accent-h` and an empty `data-accent`) before first paint, with the same precedence as `suite-prefs.js`. Its
+SHA-256 is `THEME_BOOT_HASH` in `theme-boot-hash.js`, which `app.js:312` puts in `script-src`. Edit the script and
+the constant together: `tests/theme-boot-hash.test.js` checks `index.html` and the built `dist/index.html` byte for
+byte, and `tests/src/theme-boot.test.js` runs the script's own text against each precedence case.
+
+**`src/userPrefs.js`: the editor preferences.** One localStorage key, `c2-user-prefs` (`userPrefs.js:17`), now
+holding the font size and the preferred editor. `ACCENT_COLORS` (`:51`) is a view over `ACCENTS` in
+`src/tokens/accents.js`, the one data file for the eight hues and the contract's steps; `FONT_SIZES` (`:55`).
+`loadUserPrefs()` (`:24`) maps a renamed accent key through `LEGACY_ACCENT` and drops a density or sidebar default.
+`applyPrefsToDOM(prefs)` (`:66`) writes `--editor-font-size` only; it never touches the accent (W6-CDX-44 moved that
+to `suite-prefs.js`), and it removes the property when the preference is unset. `codex.css` derives the four steps
+per theme under `[data-theme][data-accent]` from `--cx-accent-h`.
+
+**The header toggle and Appearance.** `ThemeToggle` (`src/components/ThemeToggle.jsx:37`) is a native button in
+every `PageHeader`'s action row, after the primary and the toolbar (`PageHeader.jsx:22-25`). Its accessible name is
+"Switch to light theme" or "Switch to dark theme" and it calls `setTheme`. `UserPreferencesPanel`
+(`src/components/AccountMenu.jsx:618`) is the Appearance panel: a Theme group (Match system, Light, Dark, each
+`aria-pressed`, Match system calls `clearTheme`), the accent swatches (`setAccent`), a Default button beside them
+(`clearAccent`), then the font size and the preferred editor. Its saves merge into the stored prefs so a legacy key
+not yet migrated survives.
+
+`getPreferredEditorMode()` (`userPrefs.js:78`) returns `'markdown'` or
 `'richtext'`, defaulting to rich text.
 
 **Never write to `localStorage` directly from a component.** Go through
-`loadUserPrefs` / `saveUserPrefs` / `applyPrefsToDOM`. A new preference means
-adding its option map here, handling it in `applyPrefsToDOM`, and extending
-`tests/src/userPrefs.test.js`, which carries a 95% line threshold
-(`vitest.config.js`, the `src/userPrefs.js` entry).
+`loadUserPrefs` / `saveUserPrefs` / `applyPrefsToDOM` for the editor preferences, and through `suite-prefs.js` for
+the theme and the accent. A new editor preference means adding its option map here, handling it in
+`applyPrefsToDOM`, and extending `tests/src/userPrefs.test.js`, which carries a 95% line threshold
+(`vitest.config.js`, the `src/userPrefs.js` entry). A new suite preference belongs in `suite-prefs.js` and in the contract.
 
 ## 6. Styling
 
@@ -475,8 +503,8 @@ load-bearing:
    blocks. A bare `[data-theme]` holds what both themes share (`--cx-white`, the
    Google colours, the layout sizes and the transition); `[data-theme='dark']` and
    `[data-theme='light']` hold the rest, each with its `color-scheme` (W6-CDX-43
-   added the light block). `index.html` sets the attribute on `<html>` to dark; the
-   switch that changes it lands in W6-CDX-44. Two `[data-theme][data-accent]`
+   added the light block). `index.html` sets the attribute on `<html>` to dark as the no-script
+   default; the pre-paint script (section 5) sets the stored or system theme before first paint (W6-CDX-44). Two `[data-theme][data-accent]`
    blocks derive the picked accent's steps from `--cx-accent-h`. The deferred
    families' literals are `--cx-deferred-*` bindings, one per literal, and
    `--cx-code-wash` and `--cx-syntax-*` carry the code block (W6-CDX-43, colour

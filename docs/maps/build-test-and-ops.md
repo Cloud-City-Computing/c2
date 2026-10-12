@@ -502,6 +502,19 @@ declared `www.w3.workspace` as their namespace until 2026-09-28, and React
 rendered them regardless, so no page looked wrong. The file leaves itself out,
 because its fixtures are the broken spellings.
 
+**The suite preference contract (W6-CDX-44).** `tests/src/lib/suite-prefs.test.js` covers every rule of the
+contract (precedence, the cookie attributes and write order, the domain rule, held writes, clearing, the reconcile,
+the migration, and both re-apply paths) against a `document.cookie` jar that records each write verbatim.
+`tests/src/theme-boot.test.js` runs `index.html`'s own script in each precedence case, and the accent cases cover every
+legacy key. `tests/theme-boot-hash.test.js` (backend project) holds the CSP hash to the script's bytes in `index.html`
+and in a fresh `vite build`'s `dist/index.html`; `tests/app.test.js` checks the production `script-src` carries it.
+`tests/services/suite.test.js` and `tests/routes/suite.test.js` pin the `SUITE_PREFERENCE_DOMAIN` boot refusals and the
+`preferenceDomain` shape. `tests/src/components/` covers the header toggle, the Appearance panel and the header slot.
+The design gates run in both themes as before; the deferred-families geometry fingerprint stayed unchanged.
+
+Measured 2026-10-12 on `track/w6-cdx-44-theme-contract`: `npm run lint` clean on the changed files; the default run
+(`backend`, `frontend`, `design`) **209 files, 4745 tests, all passing** (the start of the session: 203 files, 4632).
+
 ### The live-MySQL project (`tests/setup.integration.js`)
 
 The only tests in the repo that touch a real database. The per-file setup runs

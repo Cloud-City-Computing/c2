@@ -1,0 +1,162 @@
+[
+  {
+    "step": "home-start",
+    "vp": "1280",
+    "stored": "light",
+    "theme": "light"
+  },
+  {
+    "step": "home-after-toggle",
+    "vp": "1280",
+    "theme": "dark",
+    "toggleName": "Switch to light theme"
+  },
+  {
+    "vp": "1280",
+    "start": "light",
+    "problems": []
+  },
+  {
+    "step": "home-start",
+    "vp": "1280",
+    "stored": "dark",
+    "theme": "dark"
+  },
+  {
+    "step": "home-after-toggle",
+    "vp": "1280",
+    "theme": "light",
+    "toggleName": "Switch to dark theme"
+  },
+  {
+    "vp": "1280",
+    "start": "dark",
+    "problems": []
+  },
+  {
+    "step": "appearance-light",
+    "vp": "1280",
+    "theme": "light",
+    "pressed": [
+      "Light"
+    ]
+  },
+  {
+    "step": "appearance-dark",
+    "vp": "1280",
+    "theme": "dark",
+    "pressed": [
+      "Dark"
+    ]
+  },
+  {
+    "step": "appearance-system-os-light",
+    "vp": "1280",
+    "theme": "light",
+    "pressed": [
+      "Match system"
+    ]
+  },
+  {
+    "step": "accent-nova-on-light",
+    "vp": "1280",
+    "theme": "light",
+    "hue": "355"
+  },
+  {
+    "vp": "1280",
+    "problems": []
+  },
+  {
+    "step": "home-start",
+    "vp": "390",
+    "stored": "light",
+    "theme": "light"
+  },
+  {
+    "step": "home-after-toggle",
+    "vp": "390",
+    "theme": "dark",
+    "toggleName": "Switch to light theme"
+  },
+  {
+    "vp": "390",
+    "start": "light",
+    "problems": []
+  },
+  {
+    "step": "home-start",
+    "vp": "390",
+    "stored": "dark",
+    "theme": "dark"
+  },
+  {
+    "step": "home-after-toggle",
+    "vp": "390",
+    "theme": "light",
+    "toggleName": "Switch to dark theme"
+  },
+  {
+    "vp": "390",
+    "start": "dark",
+    "problems": []
+  },
+  {
+    "step": "appearance-light",
+    "vp": "390",
+    "theme": "light",
+    "pressed": [
+      "Light"
+    ]
+  },
+  {
+    "step": "appearance-dark",
+    "vp": "390",
+    "theme": "dark",
+    "pressed": [
+      "Dark"
+    ]
+  },
+  {
+    "step": "appearance-system-os-light",
+    "vp": "390",
+    "theme": "light",
+    "pressed": [
+      "Match system"
+    ]
+  },
+  {
+    "step": "accent-nova-on-light",
+    "vp": "390",
+    "theme": "light",
+    "hue": "355"
+  },
+  {
+    "vp": "390",
+    "problems": []
+  },
+  {
+    "step": "first-paint-stored-light-dark-os-normal",
+    "theme": "light",
+    "stored": "light",
+    "os": "dark",
+    "bundleHeld": true,
+    "problems": []
+  },
+  {
+    "step": "first-paint-stored-light-dark-os-normal-after-boot",
+    "theme": "light"
+  },
+  {
+    "step": "first-paint-stored-light-dark-os-throttled",
+    "theme": "light",
+    "stored": "light",
+    "os": "dark",
+    "bundleHeld": true,
+    "problems": []
+  },
+  {
+    "step": "first-paint-stored-light-dark-os-throttled-after-boot",
+    "theme": "light"
+  }
+]

@@ -76,7 +76,6 @@ describes what we intend to build next and why.
 | [specs/2026-09-24-suite-identity.md](./specs/2026-09-24-suite-identity.md) | Wave 6 identity: a generic OIDC relying party, hashed sessions, propagating sign-out |
 | [specs/2026-09-24-outbound-events.md](./specs/2026-09-24-outbound-events.md) | Wave 6 events: an outbound webhook subsystem, off by default |
 | [specs/2026-09-24-suite-hosting-readiness.md](./specs/2026-09-24-suite-hosting-readiness.md) | Wave 6 hosting: an instance that can be operated under a supervisor |
-| [specs/2026-10-11-suite-ui-alignment.md](./specs/2026-10-11-suite-ui-alignment.md) | Wave 6 UI alignment: the suite shell, a light theme, one suite-wide theme preference |
 
 
 ## Deep maps (`maps/`)
