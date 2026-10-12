@@ -655,6 +655,33 @@ document with two cursors and a comment in light.
 
 ---
 
+### Recorded at execution (W6-CDX-43, 2026-10-12)
+
+**Open item: gamut (contract version 1, not changed here).** The contract steps are not all inside sRGB. Measured
+by converting each `oklch(L C H)` to linear sRGB and flagging any channel outside 0 to 1 before clipping (the
+browser clips; the vendored gate clips too, and every pair still passes on the clipped colour). Of the four
+contract steps (text, hover, fill, wash) per theme, 19 of 64 hue-theme-step combinations fall outside sRGB. Per hue:
+232 has 4 (dark wash; light text, hover, wash), 200 has 6 and 175 has 6 (dark text, fill, wash; light text, hover,
+fill), 355, 275 and 50 have one each (the light wash). Counting the dark avatar step as well gives 29 of 80. The sibling product's count of 17 for the same three hues is not reconciled
+here, since its script is not in this repository. Any change to a step is contract version 2 and lands in both
+products together; no step was changed in this PR.
+
+**Deviations from the contract, each decided pending Kyle:**
+1. `--cx-accent-fill-hover` is a sixth binding. The primary button's hover on a filled accent cannot be the light
+   theme's text hover (`--cx-accent-hover`, the deep step): the dark ink measures 2.2:1 on it. The fill hover is
+   `oklch(0.78 0.1 H)` in both themes (the dark hover step), and the light fill is `--accent-400` as before.
+2. `--cx-accent-dark` (the white avatar label's dark step) is derived per hue in the picked-accent blocks, as the
+   prior picker wrote it, so the avatar follows the pick. It is `oklch(0.45 0.13 H)` in both themes.
+3. The light `--cx-on-accent` is `oklch(0.14 0.03 240)`, the dark value, not the table's `0.16`. The presence
+   avatar label is pinned to one ink luminance (`src/lib/avatar-label.js`), and a second value would need a second
+   constant.
+4. The suite-theme fixture's light column is the table's, except the on-accent row (item 3).
+5. Dark values changed where the new per-theme gate found a dark failure that predates this track (the deferred
+   families were not gated in dark before): labels on the accent fill and on the comment kind fills take the ink
+   (`--cx-on-accent`), the note kind fill is lightened from `#ab47bc` to `#b860cc` so the ink clears 4.5:1, and
+   text on tinted washes takes the bright tint-label steps. Each changed site is listed in the PR report.
+6. The picked accent's steps are derived in CSS (K7). `data-accent` carries the key; `--cx-accent-h` carries the hue.
+
 ## W6-CDX-44. The theme switch, and the suite preference contract
 
 ### In scope

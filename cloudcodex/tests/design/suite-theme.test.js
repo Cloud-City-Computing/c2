@@ -26,15 +26,18 @@ function declarationsOf(css, selector) {
   }));
 }
 
-describe('the suite theme table, dark column', () => {
+describe.each([
+  ['dark', "[data-theme='dark']"],
+  ['light', "[data-theme='light']"],
+])('the suite theme table, %s column', (column, selector) => {
   const css = read('src/codex.css');
-  const dark = declarationsOf(css, "[data-theme='dark']");
+  const block = declarationsOf(css, selector);
 
-  it.each(Object.entries(fixture.dark))('%s equals the fixture', (name, value) => {
-    expect(dark.get(name), `${name} in codex.css`).toBe(value);
+  it.each(Object.entries(fixture[column]))('%s equals the fixture', (name, value) => {
+    expect(block.get(name), `${name} in codex.css`).toBe(value);
   });
 
   it('is not a stale copy: the fixture names no retired token', () => {
-    expect(Object.keys(fixture.dark).filter((name) => /surface-[34]$/.test(name))).toEqual([]);
+    expect(Object.keys(fixture[column]).filter((name) => /surface-[34]$/.test(name))).toEqual([]);
   });
 });

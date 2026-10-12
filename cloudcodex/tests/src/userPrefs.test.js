@@ -10,6 +10,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as userPrefsModule from '../../src/userPrefs.js';
+import { ACCENTS } from '../../src/tokens/accents.js';
 import {
   loadUserPrefs,
   saveUserPrefs,
@@ -33,15 +34,13 @@ describe('userPrefs', () => {
   // ── Constants ──────────────────────────────────────────
 
   describe('exported constants', () => {
-    it('ACCENT_COLORS has exactly the eight picker hues, each with value, hover and fill oklch strings', () => {
+    it('ACCENT_COLORS has exactly the eight picker hues, each with its hue and a fill swatch', () => {
       expect(Object.keys(ACCENT_COLORS).sort())
         .toEqual(['aurora', 'blue', 'cyan', 'lime', 'nebula', 'nova', 'pink', 'solar']);
       for (const key of Object.keys(ACCENT_COLORS)) {
         const c = ACCENT_COLORS[key];
-        expect(c.value).toMatch(/^oklch\(0\.78 0\.12 [\d.]+\)$/);
-        expect(c.hover).toMatch(/^oklch\(0\.88 0\.06 [\d.]+\)$/);
-        expect(c.fill).toMatch(/^oklch\(0\.68 0\.13 [\d.]+\)$/);
-        expect(c.dark).toMatch(/^oklch\(0\.45 0\.13 [\d.]+\)$/);
+        expect(c.hue).toBe(ACCENTS[key]);
+        expect(c.swatch).toBe(`oklch(0.68 0.13 ${c.hue})`);
       }
     });
 
@@ -135,41 +134,35 @@ describe('userPrefs', () => {
   // ── applyPrefsToDOM ────────────────────────────────────
 
   describe('applyPrefsToDOM', () => {
-    it('sets the three --cx-accent custom properties for a known accent, never --brand-blue*', () => {
+    it('writes the picked hue as --cx-accent-h and the accent name as data-accent (K7), never a finished colour', () => {
       applyPrefsToDOM({ accentColor: 'nova' });
-      const style = document.documentElement.style;
-      expect(style.getPropertyValue('--cx-accent')).toBe(ACCENT_COLORS.nova.value);
-      expect(style.getPropertyValue('--cx-accent-hover')).toBe(ACCENT_COLORS.nova.hover);
-      expect(style.getPropertyValue('--cx-accent-fill')).toBe(ACCENT_COLORS.nova.fill);
-      expect(style.getPropertyValue('--cx-accent-dark')).toBe(ACCENT_COLORS.nova.dark);
+      const root = document.documentElement;
+      expect(root.style.getPropertyValue('--cx-accent-h')).toBe('355');
+      expect(root.dataset.accent).toBe('nova');
+      for (const name of ['--cx-accent', '--cx-accent-hover', '--cx-accent-fill', '--cx-accent-dark', '--cx-select-wash']) {
+        expect(root.style.getPropertyValue(name), name).toBe('');
+      }
       for (const name of ['--brand-blue', '--brand-blue-light', '--brand-blue-dark', '--brand-blue-hover']) {
-        expect(style.getPropertyValue(name)).toBe('');
+        expect(root.style.getPropertyValue(name)).toBe('');
       }
     });
 
-    it('writes --cx-accent-dark for a picked accent and removes it for the default', () => {
-      applyPrefsToDOM({ accentColor: 'nova' });
-      expect(document.documentElement.style.getPropertyValue('--cx-accent-dark')).toBe(ACCENT_COLORS.nova.dark);
-      applyPrefsToDOM({});
-      expect(document.documentElement.style.getPropertyValue('--cx-accent-dark')).toBe('');
+    it('takes the hue of every offered accent from the one table', () => {
+      for (const [name, hue] of Object.entries(ACCENTS)) {
+        applyPrefsToDOM({ accentColor: name });
+        expect(document.documentElement.style.getPropertyValue('--cx-accent-h'), name).toBe(String(hue));
+      }
     });
 
-    it('treats a prototype name as the default: no throw, and the --cx-accent properties stay unset', () => {
-      applyPrefsToDOM({ accentColor: 'constructor' });
-      applyPrefsToDOM({ accentColor: '__proto__' });
-      const style = document.documentElement.style;
-      expect(style.getPropertyValue('--cx-accent')).toBe('');
-      expect(style.getPropertyValue('--cx-accent-dark')).toBe('');
-    });
-
-    it('removes the --cx-accent properties when accent is unknown or the default', () => {
-      // First set, then clear by passing an unknown accent
+    it('removes --cx-accent-h and data-accent for the default, an unknown accent, or a prototype name', () => {
       applyPrefsToDOM({ accentColor: 'cyan' });
       applyPrefsToDOM({ accentColor: 'no-such-color' });
-      const style = document.documentElement.style;
-      expect(style.getPropertyValue('--cx-accent')).toBe('');
-      expect(style.getPropertyValue('--cx-accent-hover')).toBe('');
-      expect(style.getPropertyValue('--cx-accent-fill')).toBe('');
+      expect(document.documentElement.style.getPropertyValue('--cx-accent-h')).toBe('');
+      expect(document.documentElement.dataset.accent).toBeUndefined();
+      applyPrefsToDOM({ accentColor: 'constructor' });
+      applyPrefsToDOM({ accentColor: '__proto__' });
+      expect(document.documentElement.style.getPropertyValue('--cx-accent-h')).toBe('');
+      expect(document.documentElement.dataset.accent).toBeUndefined();
     });
 
     it('sets --editor-font-size for a known fontSize key', () => {

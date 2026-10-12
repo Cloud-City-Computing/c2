@@ -23,14 +23,54 @@ export const LEGACY_ACCENT = {
   coral: 'nova', apricot: 'solar', jade: 'aurora', iris: 'nebula',
 };
 
-// invariant-exempt: the accent ramp is token data, measured pair by pair in tests/design/accents.test.js
-export const accentValue = (hue) => `oklch(0.78 0.12 ${hue})`;
-// invariant-exempt: the hover step, lighter than the text step (the package's accent-200 shape)
-export const accentHover = (hue) => `oklch(0.88 0.06 ${hue})`;
-// invariant-exempt: the fill step, a background only (the package's accent-400 shape)
-export const accentFill = (hue) => `oklch(0.68 0.13 ${hue})`;
-// invariant-exempt: the dark step, behind a white avatar label (white on it measures >= 4.5:1, tests/design/painted.test.js)
-export const accentDark = (hue) => `oklch(0.45 0.13 ${hue})`;
+// The picker stores a hue (K7, W6-CDX-43). codex.css derives each theme's steps from --cx-accent-h, so the steps
+// live in CSS, and this table is the one copy of them that tests read (tests/design/accents.test.js and the
+// gates that measure a picked accent). H is the hue. Each theme's text step, hover and selection wash are the
+// contract's values (docs/specs/2026-10-11-suite-ui-alignment.md, "Applying"). `fillHover` is the primary
+// button's hover on a filled accent: the light theme's hover step is the deep text step, which cannot be a fill
+// under the dark ink, so the fill's hover is a lighter step in both themes (a Codex addition, see the spec).
+// `dark` is the step behind a white avatar label, which tests/design/painted.test.js measures.
+export const STEP_HUE_PLACEHOLDER = 'H';
+export const STEPS = Object.freeze({
+  dark: Object.freeze({
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    text: 'oklch(0.68 0.13 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    hover: 'oklch(0.78 0.1 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    fill: 'oklch(0.68 0.13 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    fillHover: 'oklch(0.78 0.1 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    wash: 'oklch(0.21 0.055 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    dark: 'oklch(0.45 0.13 H)',
+  }),
+  daylight: Object.freeze({
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    text: 'oklch(0.47 0.12 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    hover: 'oklch(0.41 0.1 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    fill: 'oklch(0.68 0.13 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    fillHover: 'oklch(0.78 0.1 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    wash: 'oklch(0.97 0.025 H)',
+    // invariant-exempt: a contract step, measured in tests/design/accents.test.js
+    dark: 'oklch(0.45 0.13 H)',
+  }),
+});
+
+/** One theme's steps for a hue, as the CSS strings codex.css derives. */
+export const stepsFor = (theme, hue) => Object.fromEntries(
+  Object.entries(STEPS[theme]).map(([step, value]) => [step, value.replaceAll(STEP_HUE_PLACEHOLDER, String(hue))]),
+);
+
+// The fill swatch of a hue in the picker: the fill step, the same in both themes.
+// invariant-exempt: a swatch is the picker's preview of the fill step, not a token
+// invariant-exempt: a picker swatch preview, not a token
+export const swatchValue = (hue) => `oklch(0.68 0.13 ${hue})`;
 
 // Keys are looked up as OWN properties only: a name such as "constructor" or
 // "__proto__" is a property of every object, and must never read as a hue.

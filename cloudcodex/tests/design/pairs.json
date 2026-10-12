@@ -88,10 +88,11 @@
     {
       "text": "--cx-on-accent",
       "on": [
-        "--cx-accent-fill"
+        "--cx-accent-fill",
+        "--cx-accent-fill-hover"
       ],
       "min": 4.5,
-      "reason": "A label on a filled accent control."
+      "reason": "A label on a filled accent control, at rest and on the fill hover."
     },
     {
       "text": "--cx-on-danger",
@@ -157,6 +158,15 @@
     "--cx-presence": "The presence dot on the archive and explore pages, a status mark rather than text, so it has no contrast minimum.",
     "--cx-presence-glow": "The soft glow around the presence dot; a shadow falls on a surface and carries no text.",
     "--cx-ink-deep": "A solid black, the last label a presence avatar falls back to on the two cursor colours (#e91e63, #607d8b) that clear 4.5:1 with neither white nor the ink; measured on every cursor colour in tests/design/presence-palette.test.js.",
-    "--cx-border-strong": "A control's hairline; the control's label carries the contrast, and the hairline is the edge a border draws, so it has no text minimum."
+    "--cx-border-strong": "A control's hairline; the control's label carries the contrast, and the hairline is the edge a border draws, so it has no text minimum.",
+    "--cx-code-wash": "A translucent wash behind a block of code; the token colours on it are measured over it and every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-plain": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-comment": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-keyword": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-string": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-title": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-type": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-builtin": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js.",
+    "--cx-syntax-formula": "A highlight.js token colour on the code wash, measured over every surface in tests/design/code-blocks.test.js."
   }
 }

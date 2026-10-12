@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stepsFor } from '../../src/tokens/accents.js';
 import {
   collectScanTargets, maskComments, scanRawColorLiterals, scanAccentRampPositions, scanSuppressedOutlines,
 } from '../../vendor/cloud-city-design/gates/token-discipline.mjs';
@@ -16,8 +17,17 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 // The bare [data-theme] block holds what both themes share (W6-CDX-38). The vendored parser files only :root
 // selectors as base, so this tells it the same: the shared block is the base map under the dark overlay.
+// Codex has two themes, each a block of codex.css. The vendored parser reserves the name `light` for the base map (the
+// :root and the shared [data-theme] values), so Codex's light theme is `daylight`. The anchored patterns match the bare
+// theme blocks only: a [data-theme][data-accent] block is the picked accent, measured with its hue substituted by
+// tests/design/accents.test.js, and it must not overlay the default steps here.
+export const THEME_NAMES = Object.freeze(['dark', 'daylight']);
 export const THEME_OPTIONS = Object.freeze({
   isBase: (selector) => selector.includes(':root') || selector === '[data-theme]',
+  themes: Object.freeze({
+    dark: /^\[data-theme=['"]dark['"]\]$/,
+    daylight: /^\[data-theme=['"]light['"]\]$/,
+  }),
 });
 
 // Codex is plain JavaScript: the package's default walk (.ts, .tsx, .css,
@@ -118,4 +128,20 @@ export function total(buckets) {
   return Object.entries(buckets)
     .filter(([file]) => !file.startsWith('_'))
     .reduce((sum, [, sections]) => sum + Object.values(sections).reduce((a, b) => a + b, 0), 0);
+}
+
+/**
+ * The tokens a picked accent writes over a theme's map, from the contract table (src/tokens/accents.js): the
+ * same six names codex.css declares under [data-accent], with H the hue. A gate overlays these on the base map.
+ */
+export function pickedTokens(theme, hue) {
+  const steps = stepsFor(theme, hue);
+  return {
+    '--cx-accent': steps.text,
+    '--cx-accent-hover': steps.hover,
+    '--cx-accent-fill': steps.fill,
+    '--cx-accent-fill-hover': steps.fillHover,
+    '--cx-accent-dark': steps.dark,
+    '--cx-select-wash': steps.wash,
+  };
 }

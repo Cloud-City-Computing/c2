@@ -690,6 +690,15 @@ const STEPS = {
 
 ---
 
+**Deviations, recorded at execution (W6-CDX-43, 2026-10-12).** Full list and reasons in the spec's "Recorded at
+execution" section. In short: the picker's steps are CSS-derived from `--cx-accent-h` (K7); a sixth binding,
+`--cx-accent-fill-hover`, carries the primary button's hover (the light text hover cannot be a fill); the light
+on-accent is the dark ink (presence label); dark values changed where the new per-theme gate found a dark failure
+that predates the track; the geometry fingerprint was written before the colour pass and is green after it; and the
+tests for `userPrefs` and the accent swatch were rewritten after the code, not before (the picker's behaviour changed
+in the same commit). The daylight theme is named `daylight` in the gates, because the vendored parser reserves
+`light` for its base map.
+
 ## PR 7: W6-CDX-44, the theme switch and the suite preference contract
 
 ### Task 7.1 The domain, server side

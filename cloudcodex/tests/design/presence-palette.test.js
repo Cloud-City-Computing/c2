@@ -19,33 +19,37 @@ import {
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { CURSOR_COLORS } from '../../services/cursor-colors.js';
 import { avatarLabel, INK_LUMINANCE } from '../../src/lib/avatar-label.js';
-import { ROOT, THEME_OPTIONS } from './buckets.js';
+import { ROOT, THEME_OPTIONS, THEME_NAMES } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
-const tokens = parseThemeTokens(`${read('vendor/cloud-city-design/core.css')}\n${read('src/codex.css')}`, THEME_OPTIONS).dark;
+const themed = parseThemeTokens(`${read('vendor/cloud-city-design/core.css')}\n${read('src/codex.css')}`, THEME_OPTIONS);
+describe.each(THEME_NAMES)('%s theme', (theme) => {
+  const tokens = themed[theme];
 
-/** The colour a label variable paints, resolved through the tokens. */
-function paintOf(value) {
-  const v = /^var\((--[\w-]+)\)$/.exec(value);
-  if (!v) return parseColor(value);
-  const colour = parseColor(resolveTokenValue(tokens, v[1]));
-  if (colour === undefined) throw new Error(`${value} does not resolve to a colour`);
-  return colour;
-}
 
-describe('the presence palette', () => {
-  it('is the ten cursor colours the server hands out, each a six-digit hex', () => {
-    expect(CURSOR_COLORS).toHaveLength(10);
-    for (const c of CURSOR_COLORS) expect(c).toMatch(/^#[0-9a-f]{6}$/i);
-  });
+  /** The colour a label variable paints, resolved through the tokens. */
+  function paintOf(value) {
+    const v = /^var\((--[\w-]+)\)$/.exec(value);
+    if (!v) return parseColor(value);
+    const colour = parseColor(resolveTokenValue(tokens, v[1]));
+    if (colour === undefined) throw new Error(`${value} does not resolve to a colour`);
+    return colour;
+  }
 
-  it('pins the ink luminance to the --cx-on-accent token it stands for', () => {
-    expect(relativeLuminance(paintOf('var(--cx-on-accent)'))).toBeCloseTo(INK_LUMINANCE, 9);
-  });
+  describe('the presence palette', () => {
+    it('is the ten cursor colours the server hands out, each a six-digit hex', () => {
+      expect(CURSOR_COLORS).toHaveLength(10);
+      for (const c of CURSOR_COLORS) expect(c).toMatch(/^#[0-9a-f]{6}$/i);
+    });
 
-  it.each(CURSOR_COLORS)('%s: the chosen label clears 4.5:1 on it', (bg) => {
-    const { color } = avatarLabel(bg);
-    const ratio = contrastRatio(paintOf(color), parseColor(bg));
-    expect(ratio, `${bg} with ${color} measures ${round(ratio, 2)}:1`).toBeGreaterThanOrEqual(4.5);
+    it('pins the ink luminance to the --cx-on-accent token it stands for', () => {
+      expect(relativeLuminance(paintOf('var(--cx-on-accent)'))).toBeCloseTo(INK_LUMINANCE, 9);
+    });
+
+    it.each(CURSOR_COLORS)('%s: the chosen label clears 4.5:1 on it', (bg) => {
+      const { color } = avatarLabel(bg);
+      const ratio = contrastRatio(paintOf(color), parseColor(bg));
+      expect(ratio, `${bg} with ${color} measures ${round(ratio, 2)}:1`).toBeGreaterThanOrEqual(4.5);
+    });
   });
 });

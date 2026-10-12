@@ -1,0 +1,49 @@
+{
+ "total": 80,
+ "outOfGamut": 29,
+ "byHue": {
+  "blue": [
+   "dark:wash",
+   "dark:dark",
+   "daylight:text",
+   "daylight:hover",
+   "daylight:wash",
+   "daylight:dark"
+  ],
+  "cyan": [
+   "dark:text",
+   "dark:fill",
+   "dark:wash",
+   "dark:dark",
+   "daylight:text",
+   "daylight:hover",
+   "daylight:fill",
+   "daylight:dark"
+  ],
+  "lime": [
+   "dark:dark",
+   "daylight:dark"
+  ],
+  "solar": [
+   "dark:dark",
+   "daylight:wash",
+   "daylight:dark"
+  ],
+  "aurora": [
+   "dark:text",
+   "dark:fill",
+   "dark:wash",
+   "dark:dark",
+   "daylight:text",
+   "daylight:hover",
+   "daylight:fill",
+   "daylight:dark"
+  ],
+  "nova": [
+   "daylight:wash"
+  ],
+  "nebula": [
+   "daylight:wash"
+  ]
+ }
+}

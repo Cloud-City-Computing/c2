@@ -10,7 +10,7 @@
  */
 
 import {
-  ACCENTS, accentValue, accentHover, accentFill, accentDark, isAccent, successorOf,
+  ACCENTS, isAccent, successorOf, swatchValue,
 } from './tokens/accents.js';
 
 const PREFS_KEY = 'c2-user-prefs';
@@ -45,9 +45,10 @@ export function saveUserPrefs(prefs) {
 
 // --- Preference option constants (single source of truth) ---
 
-// A view over ACCENTS (src/tokens/accents.js): the three steps Codex's picker writes.
+// A view over ACCENTS (src/tokens/accents.js): the hue each choice stores, and the fill swatch the picker paints.
+// The steps for a theme are derived in CSS from the hue (K7), so no finished colour is stored or written here.
 export const ACCENT_COLORS = Object.fromEntries(Object.entries(ACCENTS).map(([id, hue]) => [id, {
-  value: accentValue(hue), hover: accentHover(hue), fill: accentFill(hue), dark: accentDark(hue),
+  hue, swatch: swatchValue(hue),
 }]));
 
 export const FONT_SIZES = {
@@ -64,19 +65,14 @@ export const FONT_SIZES = {
 export function applyPrefsToDOM(prefs) {
   const root = document.documentElement;
 
-  // Codex's own alias tokens, never a shared primitive: the bridge in index.css
-  // points --brand-blue* at these, so the focus ring follows the picked accent.
-  const color = isAccent(prefs.accentColor) ? ACCENT_COLORS[prefs.accentColor] : undefined;
-  if (color) {
-    root.style.setProperty('--cx-accent', color.value);
-    root.style.setProperty('--cx-accent-hover', color.hover);
-    root.style.setProperty('--cx-accent-fill', color.fill);
-    root.style.setProperty('--cx-accent-dark', color.dark);
+  // The picked accent is a hue (K7). codex.css derives each theme's steps from --cx-accent-h under
+  // [data-accent], so the page follows the theme and never a finished colour written here.
+  if (isAccent(prefs.accentColor)) {
+    root.style.setProperty('--cx-accent-h', String(ACCENTS[prefs.accentColor]));
+    root.dataset.accent = prefs.accentColor;
   } else {
-    root.style.removeProperty('--cx-accent');
-    root.style.removeProperty('--cx-accent-hover');
-    root.style.removeProperty('--cx-accent-fill');
-    root.style.removeProperty('--cx-accent-dark');
+    root.style.removeProperty('--cx-accent-h');
+    delete root.dataset.accent;
   }
 
   const fontSize = FONT_SIZES[prefs.fontSize];

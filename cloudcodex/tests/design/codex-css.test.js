@@ -31,16 +31,22 @@ describe('src/codex.css', () => {
   it('declares custom properties and nothing else', () => {
     // A plain property here would paint the page from the one file whose
     // custom-property literals the token-discipline ledger reads as definitions.
-    // color-scheme is the one plain property allowed: it tells native controls and scrollbars to paint dark (X11).
+    // color-scheme is the one plain property allowed, once per theme: it tells native controls and scrollbars which
+    // theme to paint (X11, W6-CDX-43 adds the light one).
     const declarations = blocks(codex).flatMap((b) => b.body.split(';'))
       .map((d) => d.trim()).filter(Boolean);
-    expect(declarations.length).toBe(declaredNames(codex).length + 1);
-    expect(declarations.filter((d) => !/^--cx-[\w-]+\s*:/.test(d))).toEqual(['color-scheme: dark']);
+    expect(declarations.filter((d) => !/^--cx-[\w-]+\s*:/.test(d))).toEqual(['color-scheme: dark', 'color-scheme: light']);
   });
 
-  it('declares under exactly [data-theme] and [data-theme=\'dark\'], and nothing on :root', () => {
+  it('declares under exactly the shared block, the two themes and the two picked-accent forms, and nothing on :root', () => {
     const selectors = blocks(codex).map((b) => b.selector);
-    expect(selectors).toEqual(['[data-theme]', "[data-theme='dark']"]);
+    expect(selectors).toEqual([
+      '[data-theme]',
+      "[data-theme='dark']",
+      "[data-theme='light']",
+      "[data-theme='dark'][data-accent]",
+      "[data-theme='light'][data-accent]",
+    ]);
   });
 
   it('declares no radius, no third or fourth surface step (W6-CDX-38: the hover fills retire)', () => {
@@ -49,9 +55,11 @@ describe('src/codex.css', () => {
     expect(names.filter((n) => /^--cx-surface-[34]$/.test(n))).toEqual([]);
   });
 
-  it('sets color-scheme dark on the dark block, where native controls read it', () => {
+  it('sets color-scheme on each theme block, where native controls read it', () => {
     const dark = blocks(codex).find((b) => b.selector === "[data-theme='dark']");
+    const light = blocks(codex).find((b) => b.selector === "[data-theme='light']");
     expect(dark.body).toMatch(/color-scheme:\s*dark/);
+    expect(light.body).toMatch(/color-scheme:\s*light/);
   });
 
   it('never redeclares a core.css primitive', () => {

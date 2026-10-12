@@ -635,7 +635,7 @@ export function UserPreferencesPanel() {
             <button
               key={c.id}
               className={`color-swatch${prefs.accentColor === c.id ? ' active' : ''}`}
-              style={{ '--swatch-color': c.value }}
+              style={{ '--swatch-color': c.swatch }}
               onClick={() => update('accentColor', c.id)}
               title={c.label}
               aria-label={c.label}
