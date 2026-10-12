@@ -1,0 +1,13 @@
+{
+  "before": {
+    "workspace": 36,
+    "search": 30
+  },
+  "after": {
+    "panelTop": 52,
+    "panelHeight": 138,
+    "workspaceHeight": 36,
+    "search": 30,
+    "navTop": 50
+  }
+}

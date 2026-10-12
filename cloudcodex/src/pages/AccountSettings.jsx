@@ -7,12 +7,13 @@
 
 import StdLayout from '../page_layouts/Std_Layout';
 import { AvatarUploadPanel, AccountInfoUpdatePanel, AccountPreferencesPanel, UserPreferencesPanel, LinkedAccountsPanel } from '../components/AccountMenu';
+import PageHeader from '../components/PageHeader';
 
 function AccountSettings() {
   return (
     <StdLayout>
       <div className="account-log">
-        <h1 className="log-heading">Account</h1>
+        <PageHeader title="Account" />
         <div className="account-log__panels">
           <AvatarUploadPanel />
           <AccountInfoUpdatePanel />

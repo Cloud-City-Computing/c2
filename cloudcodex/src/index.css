@@ -49,10 +49,7 @@
   --shadow-lg: var(--cx-shadow-lg);
 
   /* Layout */
-  --topbar-height: var(--cx-topbar-height);
   --sidebar-width: var(--cx-sidebar-width);
-  --sidebar-collapsed: var(--cx-sidebar-collapsed);
-  --footer-height: var(--cx-footer-height);
 
   /* Shared transition */
   --transition: var(--cx-transition);
@@ -108,115 +105,451 @@ h1, h2, h3, h4, h5, h6 {
 .text-center { text-align: center; }
 .text-muted { color: var(--text-muted); margin: 0; }
 
+
 /* =========================
-   App Shell (CSS Grid)
+   App Shell (W6-CDX-40): one sidebar, no top bar
 ========================= */
 
 .app-shell {
   display: grid;
-  grid-template-areas:
-    "topbar  topbar"
-    "sidebar main"
-    "sidebar footer";
-  grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-rows: var(--topbar-height) 1fr var(--footer-height);
+  grid-template-areas: "sidebar main";
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
 }
 
-/* No sidebar (logged out) */
-.app-shell:not(:has(.sidebar)),
+/* Logged out: no sidebar, the work area takes the full width. */
 .app-shell.no-sidebar {
-  grid-template-areas:
-    "topbar"
-    "main"
-    "footer";
-  grid-template-columns: 1fr;
-}
-
-.app-shell.sidebar-collapsed {
-  grid-template-columns: var(--sidebar-collapsed) 1fr;
+  grid-template-areas: "main";
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* =========================
-   Top Bar
+   Sidebar (K1): cluster, workspace slot, search, nav, account footer
 ========================= */
 
-.topbar {
-  grid-area: topbar;
+.sidebar {
+  grid-area: sidebar;
   position: sticky;
   top: 0;
-  z-index: var(--z-sticky);
+  align-self: start;
+  height: 100vh;
+  z-index: var(--z-base);
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 20px;
-  height: var(--topbar-height);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-color);
-  box-shadow: var(--cx-shadow-bar);
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 12px 12px;
+  background: var(--cx-surface-1);
+  border-right: 1px solid var(--border-color);
 }
 
-.topbar::after {
-  content: "";
-  position: absolute;
-  left: 0; bottom: 0;
-  width: 100%; height: 2px;
-  background: linear-gradient(90deg, transparent, var(--brand-blue), transparent);
-  opacity: 0.5;
-}
-
-.topbar__left {
+.sidebar__brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-shrink: 0;
-}
-
-.topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  color: inherit;
-}
-
-.topbar__brand-logo {
-  height: 30px;
-  width: auto;
-}
-
-.topbar__brand-title {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
+  min-width: 0;
+  padding: 4px 8px 8px;
   color: var(--text-primary);
   text-decoration: none;
+}
+.sidebar__brand-name {
+  overflow: hidden;
+  font-family: var(--font-brand);
+  font-size: 16px;
+  font-weight: 600;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.2s;
 }
-.topbar__brand-title:hover { color: var(--cx-accent); }
 
-.topbar__center {
-  flex: 1;
+/* The product mark: the page glyph on the accent tile (K10). Colours come from the tokens. */
+.product-mark {
+  display: block;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--cx-accent-fill);
+}
+.product-mark__glyph { stroke: var(--cx-on-accent); }
+
+/* The workspace slot: an initials tile, the workspace name and a secondary line. */
+.workspace-slot {
   display: flex;
-  justify-content: center;
-  max-width: 480px;
-  margin: 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  text-decoration: none;
 }
+.workspace-slot--link:hover { background: var(--cx-surface-2); }
+.workspace-slot svg { color: var(--text-muted); flex-shrink: 0; }
+.workspace-slot__tile {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--cx-border);
+  border-radius: 6px;
+  background: var(--cx-surface-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.workspace-slot__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.workspace-slot__name,
+.workspace-slot__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-slot__name { font-size: 14px; font-weight: 500; }
+.workspace-slot__meta { font-size: 12px; color: var(--text-muted); }
 
-.topbar__right {
+/* The search trigger: "Search or jump to" with a Ctrl K hint. It opens the palette. */
+.search-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-1);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.search-trigger:hover { border-color: var(--cx-border-strong); color: var(--text-primary); }
+.search-trigger svg { flex-shrink: 0; }
+.search-trigger__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-trigger__key {
+  padding: 2px 5px;
+  border: 1px solid var(--cx-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: 500 11px/1.4 var(--font-ui);
+}
+
+/* Navigation: the primary items, then the Archives group. The region scrolls on its own. */
+.sidebar__nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 4px;
+}
+.sidebar__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sidebar__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-decoration: none;
+}
+.sidebar__link:hover {
+  background: var(--cx-surface-2);
+  color: var(--text-primary);
+}
+/* The active item: the selection wash plus a 1 px inset accent ring. */
+.sidebar__link.active {
+  background: var(--cx-tint-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--cx-accent);
+  color: var(--text-primary);
+}
+.sidebar__icon { flex-shrink: 0; }
+.sidebar__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar__link--archive { padding-left: 32px; font-size: 13px; }
+.sidebar__pill {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--cx-accent-fill);
+  color: var(--cx-on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+.sidebar__group-title {
+  margin: 0 8px 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The account footer: an avatar and the name (a menu button), and a sign-out icon button. */
+.sidebar__footer {
+  position: relative;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+.sidebar__account {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sidebar__who {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.sidebar__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 6px 4px 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar__name:hover .sidebar__name-text { color: var(--cx-accent); }
+.sidebar__name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar__signout {
   flex-shrink: 0;
+  border-color: transparent;
+  background: none;
+  color: var(--text-muted);
+}
+.sidebar__signout:hover {
+  background: var(--cx-surface-2);
+  color: var(--text-primary);
+}
+.sidebar__menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: var(--z-menu);
+  min-width: 100%;
+  padding: 6px;
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-2);
+  box-shadow: var(--shadow-lg);
+}
+.sidebar__menu[hidden] { display: none; }
+.sidebar__menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sidebar__menu-item:hover,
+.sidebar__menu-item:focus-visible {
+  background: var(--cx-tint-accent-soft);
+  color: var(--text-primary);
+}
+
+/* =========================
+   Search palette (X13): a centred dialog over the page
+========================= */
+
+.palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: var(--cx-scrim);
+}
+.palette {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: 70vh;
+  overflow: hidden;
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--cx-surface-2);
+  box-shadow: var(--shadow-lg);
+}
+.palette__input {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+}
+.palette__results {
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.palette__hint {
+  margin: 12px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.palette__group-title {
+  margin: 10px 16px 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.palette__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.palette__result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-decoration: none;
+}
+.palette__result:hover,
+.palette__result:focus-visible {
+  background: var(--cx-tint-accent-soft);
+  color: var(--text-primary);
+}
+.palette__result-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette__result-meta {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* =========================
+   Main Content and the page header (W6-CDX-40)
+========================= */
+
+.main-content {
+  grid-area: main;
+  min-width: 0;
+  padding: 28px 18px;
+  overflow-y: auto;
+}
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 20px;
+}
+.page-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.page-header__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-brand);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.page-header__meta {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.page-header__actions a {
+  color: var(--cx-accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+.page-header__actions a:hover { text-decoration: underline; }
+.page-header__tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 /* =========================
    Suite cluster (W6-CDX-25)
 ========================= */
 
-/* A disclosure in the brand slot, shown only in suite mode. The panel is positioned under the
-   toggle inside this box, so the top bar (which does not clip) shows all of it. */
+/* A disclosure at the top of the sidebar, shown only in suite mode. The panel opens inline under the toggle. */
 .cc-suite {
   position: relative;
 }
@@ -226,6 +559,7 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  width: 100%;
   max-width: 100%;
   padding: 4px 8px 4px 0;
   background: none;
@@ -236,21 +570,37 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
 }
 
-.cc-suite__logo {
-  height: 30px;
-  width: auto;
+.cc-suite {
+  min-width: 0;
+  max-width: 100%;
 }
 
-/* A suite name is up to 40 characters. The text column takes at most 180px and cuts a longer
-   name with an ellipsis, so the top bar's right-hand controls stay in the viewport at 390 wide.
-   The full name is the toggle's accessible name and the eyebrow's title. */
+.cc-suite__mark {
+  width: 24px;
+  height: 24px;
+}
+
+/* A suite name is up to 40 characters. The text column takes the room the sidebar leaves and cuts a
+   longer name with an ellipsis. The full name is the toggle's accessible name and the eyebrow's title. */
 .cc-suite__text {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
-  max-width: 180px;
   line-height: 1.2;
+}
+
+/* The switcher opens inline, in the sidebar's flow, under the toggle (W6-CDX-40). */
+.cc-suite__panel {
+  margin-top: 4px;
+  padding: 6px 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+.cc-suite__panel[hidden] {
+  display: none;
 }
 
 .cc-suite__name,
@@ -286,22 +636,6 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--cx-accent);
 }
 
-.cc-suite__panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: var(--z-menu);
-  min-width: 240px;
-  padding: 6px 0;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-}
-
-.cc-suite__panel[hidden] {
-  display: none;
-}
 
 .cc-suite__list {
   list-style: none;
@@ -386,173 +720,6 @@ h1, h2, h3, h4, h5, h6 {
   gap: 8px;
 }
 
-/* =========================
-   Sidebar
-========================= */
-
-.sidebar {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-elevated);
-  border-right: 1px solid var(--border-color);
-  padding: calc(12px * var(--density-scale, 1)) 0;
-  overflow: hidden;
-  /* Docked in its own grid column, so it needs no layer of its own. At --z-sticky it tied the top bar, and
-     the top bar's dropdowns (the suite switcher) paint inside the top bar's stacking context, so the sidebar,
-     later in the DOM, covered them. The top bar is --z-sticky and sits above it. */
-  z-index: var(--z-base);
-}
-
-.sidebar__toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 16px;
-  margin-bottom: 8px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 18px;
-  transition: color 0.2s;
-}
-.sidebar__toggle:hover { color: var(--cx-accent); }
-
-.sidebar__nav {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebar__link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: calc(10px * var(--density-scale, 1)) 20px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 0;
-  transition: var(--transition);
-  white-space: nowrap;
-}
-
-.sidebar__link:hover {
-  background: var(--cx-surface-2);
-  color: var(--text-primary);
-}
-
-.sidebar__link.active {
-  color: var(--cx-accent-hover);
-  background: var(--cx-tint-accent-soft);
-  border-left: 3px solid var(--cx-accent);
-}
-
-.sidebar__link svg {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-/* Collapsed sidebar: icon-only by default */
-.sidebar-collapsed .sidebar__link span {
-  display: none;
-}
-
-.sidebar-collapsed .sidebar__link {
-  justify-content: center;
-  padding: 10px;
-}
-
-.sidebar-collapsed .sidebar__link.active {
-  border-left: none;
-  border-bottom: 2px solid var(--brand-blue);
-}
-
-.sidebar-collapsed .sidebar__toggle {
-  padding: 8px;
-}
-
-/* Hover-to-expand: sidebar overlays as a wider panel, over the editor's overlays */
-.sidebar-collapsed .sidebar:hover {
-  position: fixed;
-  top: var(--topbar-height);
-  left: 0;
-  bottom: 0;
-  width: var(--sidebar-width);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  z-index: var(--z-sticky);
-}
-
-.sidebar-collapsed .sidebar:hover .sidebar__link span {
-  display: inline;
-}
-
-.sidebar-collapsed .sidebar:hover .sidebar__link {
-  justify-content: flex-start;
-  gap: 12px;
-  padding: 10px 20px;
-}
-
-.sidebar-collapsed .sidebar:hover .sidebar__link.active {
-  border-left: 3px solid var(--brand-blue);
-  border-bottom: none;
-}
-
-/* =========================
-   Main Content
-========================= */
-
-.main-content {
-  grid-area: main;
-  padding: 28px 32px;
-  overflow-y: auto;
-  min-width: 0;
-}
-
-/* =========================
-   Footer
-========================= */
-
-.log-footer {
-  grid-area: footer;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 20px;
-  background: var(--bg-elevated);
-  border-top: 1px solid var(--border-color);
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.log-footer p {
-  margin: 0;
-}
-
-.log-footer::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 0;
-  width: 100%; height: 2px;
-  background: linear-gradient(90deg, transparent, var(--brand-blue), transparent);
-  opacity: 0.3;
-}
-
-.log-footer a {
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-weight: 600;
-  transition: color 0.2s;
-}
-.log-footer a:hover { color: var(--cx-accent); }
 
 /* =========================
    Buttons
@@ -643,37 +810,6 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* =========================
-   Account Button (Top Bar)
-========================= */
-
-.account-button {
-  cursor: pointer;
-  color: var(--text-primary);
-  background: none;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  transition: var(--transition);
-}
-.account-button:hover {
-  color: var(--cx-accent-hover);
-  background: var(--cx-tint-accent);
-}
-.account-button svg {
-  width: 22px; height: 22px;
-}
-.account-button__avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-/* =========================
    Mentions (inline @user chips)
 ========================= */
 
@@ -743,114 +879,6 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 140px;
 }
 
-/* =========================
-   Notification bell
-========================= */
-
-.notification-bell {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-.notification-bell__button {
-  cursor: pointer;
-  color: var(--text-primary);
-  background: none;
-  border: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  transition: var(--transition);
-  position: relative;
-  padding: 0;
-}
-.notification-bell__button:hover,
-.notification-bell__button.has-unread {
-  color: var(--cx-accent-hover);
-  background: var(--cx-tint-accent);
-}
-.notification-bell__button svg { width: 20px; height: 20px; }
-.notification-bell__badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  background: var(--cx-danger-fill);
-  color: var(--cx-on-danger);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-  border-radius: 8px;
-  text-align: center;
-  pointer-events: none;
-  border: 1.5px solid var(--bg-elevated);
-}
-.notification-bell__dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  width: 380px;
-  max-width: calc(100vw - 32px);
-  max-height: 480px;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-panel);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  z-index: var(--z-menu);
-  overflow: hidden;
-}
-.notification-bell__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-}
-.notification-bell__action {
-  background: none;
-  border: none;
-  color: var(--cx-accent-hover);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  transition: background 0.15s;
-}
-.notification-bell__action:hover { background: var(--cx-tint-accent); }
-.notification-bell__list { flex: 1; overflow-y: auto; }
-.notification-bell__empty {
-  padding: 36px 16px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-.notification-bell__footer {
-  padding: 10px 16px;
-  border-top: 1px solid var(--border-color);
-  text-align: center;
-  font-size: 13px;
-  background: var(--bg-elevated);
-}
-.notification-bell__footer a {
-  color: var(--cx-accent);
-  text-decoration: none;
-  font-weight: 500;
-}
-.notification-bell__footer a:hover { text-decoration: underline; }
-
 /* Notification item — used by both the dropdown and the full inbox page */
 .notification-item {
   display: flex;
@@ -915,24 +943,6 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 760px;
   margin: 0 auto;
   padding: 32px 24px;
-  color: var(--text-primary);
-}
-.notifications-page__header,
-.notification-prefs-page__header,
-.activity-page__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-.notifications-page__header h1,
-.notification-prefs-page__header h1,
-.activity-page__header h1 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
   color: var(--text-primary);
 }
 .notifications-page__actions {
@@ -1016,12 +1026,6 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Notification preferences page */
-.notification-prefs-page__header a {
-  color: var(--cx-accent);
-  text-decoration: none;
-  font-size: 13px;
-}
-.notification-prefs-page__header a:hover { text-decoration: underline; }
 .notification-prefs-page__list {
   list-style: none;
   margin: 0;
@@ -1139,14 +1143,6 @@ h1, h2, h3, h4, h5, h6 {
 ========================= */
 
 @media (max-width: 768px) {
-  .notification-bell__dropdown {
-    position: fixed;
-    top: var(--topbar-height);
-    right: 8px;
-    left: 8px;
-    width: auto;
-    max-height: calc(100vh - var(--topbar-height) - 16px);
-  }
   .notifications-page,
   .notification-prefs-page,
   .activity-page {
@@ -1233,113 +1229,6 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
 }
 
-/* =========================
-   Search (Inline - Top Bar)
-========================= */
-
-.search-inline {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.search-inline .search-input {
-  width: 100%;
-  padding: 7px 36px 7px 12px;
-  font-size: 13px;
-  border: 1px solid var(--cx-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-  color: var(--text-primary);
-  transition: var(--transition);
-}
-.search-inline .search-input::placeholder { color: var(--text-muted); }
-.search-inline .search-input:focus {
-  border-color: var(--cx-accent);
-}
-
-.search-inline .search-icon-btn {
-  position: absolute;
-  right: 4px;
-  background: none;
-  border: none;
-  padding: 4px;
-  cursor: pointer;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-}
-.search-inline .search-icon-btn:hover { color: var(--cx-accent); }
-.search-inline .search-icon-btn svg { width: 16px; height: 16px; }
-
-.search-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 4px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  max-height: 320px;
-  overflow-y: auto;
-  z-index: var(--z-menu);
-}
-
-/* A real <a> so a result can be reached and opened by keyboard. */
-.search-dropdown-item {
-  display: block;
-  padding: 10px 14px;
-  cursor: pointer;
-  transition: background 0.15s;
-  border-bottom: 1px solid var(--border-color);
-  color: inherit;
-  text-decoration: none;
-}
-.search-dropdown-item:last-child { border-bottom: none; }
-.search-dropdown-item:hover { background: var(--cx-surface-1); }
-.search-dropdown-item h4 { margin: 0; font-size: 14px; font-weight: 600; }
-.search-dropdown-item p { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
-
-/* Full-log search (SearchBox default mode) */
-.search-section { width: 100%; }
-
-.search-card {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 24px;
-  box-shadow: var(--shadow-sm);
-}
-
-.search-label {
-  display: block;
-  margin-bottom: 10px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.search-box {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.search-box .search-input {
-  flex: 1;
-  padding: 10px 12px;
-  font-size: 14px;
-  border: 1px solid var(--cx-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  transition: var(--transition);
-}
-.search-box .search-input:focus {
-  border-color: var(--cx-accent);
-}
 
 /* =========================
    Search Results
@@ -1400,14 +1289,6 @@ h1, h2, h3, h4, h5, h6 {
   animation: fadeIn 0.15s ease;
 }
 
-#dropdown-backshadow {
-  position: fixed;
-  inset: 0;
-  background: var(--cx-scrim);
-  backdrop-filter: blur(4px);
-  z-index: var(--z-scrim);
-  animation: fadeIn 0.15s ease;
-}
 
 .modal-content-wrapper {
   position: fixed;
@@ -3695,31 +3576,6 @@ h1, h2, h3, h4, h5, h6 {
 .rule--fail { color: var(--text-muted); }
 
 /* =========================
-   Dropdown Menu (Account)
-========================= */
-
-.dropdown-menu {
-  min-width: 220px;
-}
-
-.dropdown-menu p {
-  margin: 0 0 8px;
-  font-size: 14px;
-}
-
-.dropdown-menu hr {
-  border: none;
-  border-top: 1px solid var(--border-color);
-  margin: 12px 0;
-}
-
-.button-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* =========================
    Account Log (standalone)
 ========================= */
 
@@ -3727,11 +3583,7 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 640px;
 }
 
-.account-log .log-heading {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0 0 24px;
-}
+.account-log .page-header { margin-bottom: 24px; }
 
 .account-log__panels {
   display: flex;
@@ -5567,19 +5419,7 @@ h1, h2, h3, h4, h5, h6 {
 ========================= */
 
 @media (max-width: 768px) {
-  .app-shell {
-    grid-template-areas:
-      "topbar"
-      "main"
-      "footer";
-    grid-template-columns: 1fr;
-  }
 
-  .sidebar { display: none; }
-
-  .main-content { padding: 16px; }
-
-  .topbar__center { display: none; }
 
   .archive-list-cards .card__actions {
     flex-wrap: wrap;
@@ -5596,11 +5436,94 @@ h1, h2, h3, h4, h5, h6 {
   .modal-lg { width: 95vw; }
 }
 
-@media (min-width: 769px) and (max-width: 1024px) {
+@media (min-width: 600px) and (max-width: 1024px) {
   :root {
     --sidebar-width: 180px;
   }
-  .main-content { padding: 20px 24px; }
+}
+
+/* Phones (K2): the sidebar becomes a two-row top strip, and the bottom tab bar is gone. Row one: the suite
+   cluster (or the product mark), the workspace slot and the search trigger. Row two: the navigation from the
+   left edge, scrolling sideways behind a fade with its scrollbar hidden, then the account. The Archives group
+   shows as one "Archives" item, because a list of every archive would not fit a row. */
+@media (max-width: 599px) {
+  .app-shell,
+  .app-shell.no-sidebar {
+    grid-template-areas: "sidebar" "main";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: relative;
+    z-index: var(--z-sticky);
+    height: auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand ws search"
+      "nav   nav  foot";
+    align-items: center;
+    gap: 6px 8px;
+    padding: 8px 10px 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .sidebar__brand,
+  .cc-suite { grid-area: brand; }
+  .sidebar__brand-name { display: none; }
+  .workspace-slot { grid-area: ws; padding: 6px 4px; }
+  .workspace-slot__meta,
+  .workspace-slot > svg { display: none; }
+  .search-trigger { grid-area: search; width: auto; min-height: 30px; padding: 5px 7px; }
+  .search-trigger__text,
+  .search-trigger__key { display: none; }
+  .cc-suite__text { max-width: 150px; }
+  /* The switcher opens over the navigation rather than in the first row, so row one keeps its three cells (W6-CDX-40
+     review): the panel hangs under the cluster and is at least as wide as its links. */
+  .cc-suite__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: var(--z-menu);
+    min-width: 220px;
+    box-shadow: var(--shadow-lg);
+  }
+  .cc-suite__eyebrow { display: none; }
+  .sidebar__nav {
+    grid-area: nav;
+    margin: 0 -10px;
+    padding: 0 10px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, currentColor calc(100% - 28px), transparent);
+  }
+  .sidebar__nav::-webkit-scrollbar { display: none; }
+  .sidebar__scroll { flex-direction: row; gap: 2px; align-items: center; }
+  .sidebar__list { flex-direction: row; gap: 2px; }
+  .sidebar__link { min-height: 30px; padding: 5px 9px; white-space: nowrap; }
+  .sidebar__group { display: contents; }
+  .sidebar__group-title { display: none; }
+  .sidebar__group li:nth-child(n + 2) { display: none; }
+  .sidebar__link--archive { padding-left: 9px; }
+  .sidebar__footer {
+    grid-area: foot;
+    padding: 0;
+    border-top: none;
+  }
+  .sidebar__signout,
+  .sidebar__name-text { display: none; }
+  .sidebar__name { padding: 2px; }
+  .sidebar__menu {
+    bottom: auto;
+    top: calc(100% + 8px);
+    left: auto;
+    right: 0;
+    min-width: 200px;
+  }
+
+  .main-content { padding: 16px; }
 }
 
 /* =========================
@@ -5622,9 +5545,6 @@ textarea:focus-visible {
   outline-offset: -2px;
 }
 .markdown-editor__textarea-wrapper :focus-visible {
-  outline-offset: -2px;
-}
-.sidebar :focus-visible {
   outline-offset: -2px;
 }
 .gh-browser__sidebar :focus-visible {
@@ -7025,8 +6945,7 @@ textarea:focus-visible {
    Toast Notifications
 ========================= */
 
-/* X2/X10 and the placement (W6-CDX-39): the stack sits bottom right, where no navigation can be under it now
-   that the top bar is gone. The message is the primary text; the status is carried by the icon and the edge. */
+/* X2/X10 and the placement (W6-CDX-39): the stack sits bottom right, where no navigation can sit under it. The message is the primary text; the status is carried by the icon and the edge. */
 .toast-container {
   position: fixed;
   bottom: 16px;
@@ -8603,8 +8522,8 @@ textarea:focus-visible {
 .archive-view {
   display: flex;
   gap: 0;
-  min-height: calc(100vh - var(--topbar-height) - 60px);
-  margin: -28px;
+  min-height: calc(100vh - 60px);
+  margin: 0 -18px;
 }
 
 .archive-view__sidebar {
@@ -9219,81 +9138,10 @@ textarea:focus-visible {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* =========================
-   Mobile Bottom Navigation
-========================= */
-
-/* Hidden by default — shown only in the mobile media query below */
-.mobile-nav {
-  display: none;
-}
-
-.mobile-nav__item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 10px;
-  font-weight: 500;
-  transition: color 0.2s;
-  padding: 8px 2px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  min-width: 0;
-}
-
-.mobile-nav__item.active {
-  color: var(--cx-accent);
-}
-
-.mobile-nav__item svg {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-}
-
-.mobile-nav__item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-/* =========================
    Mobile Layout Overrides
 ========================= */
 
 @media (max-width: 768px) {
-
-  /* The footer row sits under the fixed bottom nav. The footer is a static box here, so the nav (a
-     positioned box at --z-base) paints over it: a positioned footer would win the DOM-order tie. */
-  .log-footer {
-    position: static;
-  }
-
-  /* Show bottom nav */
-  .mobile-nav {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 56px;
-    background: var(--bg-elevated);
-    border-top: 1px solid var(--border-color);
-    z-index: var(--z-base);
-    align-items: stretch;
-    box-shadow: var(--cx-shadow-nav);
-  }
-
-  /* Push content above the fixed bottom nav */
-  .main-content {
-    padding-bottom: calc(16px + 56px);
-  }
 
   /* Archive view: tree panel stacks on top of document */
   .archive-view {
@@ -9372,10 +9220,6 @@ textarea:focus-visible {
     flex-wrap: wrap;
   }
 
-  /* Topbar: hide brand text to gain space */
-  .topbar__brand-title {
-    display: none;
-  }
 }
 
 ::-webkit-scrollbar-thumb:hover { background: var(--cx-text-faint); }

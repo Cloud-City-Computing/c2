@@ -20,9 +20,6 @@ vi.mock('../../../src/util.jsx', () => ({
 
 // The layout's children are out of scope here; each would make requests of its own.
 vi.mock('../../../src/components/Login.jsx', () => ({ default: () => null }));
-vi.mock('../../../src/components/AccountPanel.jsx', () => ({ default: () => null }));
-vi.mock('../../../src/components/SearchBox.jsx', () => ({ default: () => null }));
-vi.mock('../../../src/components/NotificationBell.jsx', () => ({ default: () => null }));
 vi.mock('../../../src/components/FirstRunGate.jsx', () => ({ default: () => null }));
 
 import { render, screen, waitFor } from '@testing-library/react';

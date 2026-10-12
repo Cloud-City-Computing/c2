@@ -82,7 +82,7 @@ const ACCENT_DARK_SITES = [
   '.mention-picker__avatar--placeholder',
 ];
 // Sites where a white label sits on a danger background, at rest and on hover.
-const DANGER_REST_SITES = ['.btn-danger', '.notification-bell__badge', '.btn-ghost.btn-danger:hover'];
+const DANGER_REST_SITES = ['.btn-danger', '.btn-ghost.btn-danger:hover'];
 const DANGER_HOVER_SITES = ['.btn-danger:hover:not(:disabled)', '.drawio-block__delete-btn:hover'];
 
 describe('a label on the accent fill is measured in the colour the page paints', () => {
@@ -264,7 +264,6 @@ describe('a container that clips its contents draws the ring inside the control'
   const CLIPPING = [
     '.editor-container',
     '.markdown-editor__textarea-wrapper',
-    '.sidebar',
     '.gh-browser__sidebar',
     '.gh-modal',
     '.gh-sync-menu',
@@ -337,11 +336,12 @@ describe('the toast dismiss target', () => {
 });
 
 describe('the suite cluster labels (W6-CDX-25) are measured on the surface that paints them', () => {
-  const TOPBAR = '.topbar';
+  // W6-CDX-40: the cluster sits at the top of the sidebar, which paints the surface its labels sit on.
+  const SIDEBAR = '.sidebar';
   const PANEL = '.cc-suite__panel';
 
   it('reads each label, its surface and the current-product state from the real declarations', () => {
-    expect(declared(TOPBAR, 'background')).toBe('var(--bg-elevated)');
+    expect(declared(SIDEBAR, 'background')).toBe('var(--cx-surface-1)');
     expect(declared('.cc-suite__name', 'color')).toBe('var(--text-primary)');
     expect(declared('.cc-suite__eyebrow', 'color')).toBe('var(--text-muted)');
     expect(declared(PANEL, 'background')).toBe('var(--bg-secondary)');
@@ -352,9 +352,9 @@ describe('the suite cluster labels (W6-CDX-25) are measured on the surface that 
   });
 
   it('measures the name, the eyebrow and the panel links at 4.5:1 or more on their surfaces', () => {
-    const topbar = paint(declared(TOPBAR, 'background'), base);
+    const sidebar = paint(declared(SIDEBAR, 'background'), base);
     const panel = paint(declared(PANEL, 'background'), base);
-    for (const [site, surface] of [['.cc-suite__name', topbar], ['.cc-suite__eyebrow', topbar], ['.cc-suite__link', panel]]) {
+    for (const [site, surface] of [['.cc-suite__name', sidebar], ['.cc-suite__eyebrow', sidebar], ['.cc-suite__link', panel]]) {
       const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
       expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
     }

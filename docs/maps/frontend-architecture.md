@@ -89,7 +89,7 @@ paths) and the account panel's session rotation both call it, so a token
 rotated after an email or password change lives exactly as long as a fresh
 sign-in's. Write the cookie any other way and the two drift.
 `clearSessionCookie()` (`util.jsx:688`) expires both names, and sign-out
-(`AccountPanel.jsx`) goes through it.
+(`src/lib/sign-out.js`, `signOut()`, moved from the account panel in W6-CDX-40) goes through it.
 
 `getSessionTokenFromCookie()` prefers the prefixed name and, on an https page,
 does not read a lone legacy `sessionToken` at all, since a sibling host could
@@ -169,7 +169,7 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 |---|---|
 | `useCollab.js` | the `/collab` WebSocket and the shared `Y.Doc`; returns connection state, presence, cursors, and five senders |
 | `usePresence.js` | polls `/api/presence` for who is in which document, for browse/archive views |
-| `useNotificationChannel.js` | the `/notifications-ws` socket, feeding `NotificationBell` |
+| `useNotificationChannel.js` | the `/notifications-ws` socket, feeding the Notifications nav item's unread count in `Sidebar.jsx` |
 | `useSuite.js` | suite mode: `GET /api/suite` once per page load, and `GET /api/suite/links` only for a signed-in user while suite mode is on. Any failure reads as off. `__resetSuiteCache` is the test seam |
 | `useSuiteLinks(signedIn)` (`src/hooks/useSuite.js:80`) | the same two requests for a page outside the layout's user state (the editor), made only when `signedIn` (a signed-out viewer makes no request): `{ commandWorkspaceUrl }` in suite mode, `null` otherwise or on any failure |
 | `src/lib/sign-in-target.js` | the kept deep link under `c2-sign-in-target`; `getStorage()` returns null when sessionStorage throws, which every caller treats as refused (fail closed) |
@@ -212,21 +212,21 @@ the next load). A fetch failure on mount leaves `firstRun` `null`, which
 renders nothing, on purpose: onboarding must never be able to gate the rest
 of the application.
 
-## 3b. Suite mode (W6-CDX-25)
+## 3b. Suite mode (W6-CDX-25; the shell moved in W6-CDX-40)
 
 Suite mode is off unless the server reads `SUITE_COMMAND_WORKSPACE_URL` (`services/suite.js:17`,
 `readSuiteConfig`). Boot calls it once and exits 1 with its sentence on a refusal (`server.js:199`).
 `routes/suite.js` mounts `GET /api/suite` (public, `enabled` and `name` only) and
 `GET /api/suite/links` (`requireAuth`, 404 when off), registered in `app.js` beside the other
 `/api` routers. In the client, `useSuite(user)` (`src/hooks/useSuite.js:40`) feeds
-`StdLayout` (`Std_Layout.jsx:263`), which passes `suite` to `TopBar` (`Std_Layout.jsx:170`).
-`TopBar` renders `SuiteCluster` in place of the plain brand link only when the user is signed in
-and suite mode is on with a URL; otherwise the brand slot is the old markup, which
-`tests/src/page_layouts/top-bar.test.jsx` snapshots. `SuiteCluster`
-(`src/components/SuiteCluster.jsx:35`) is a non-modal disclosure, not `role="menu"`: this product
+`StdLayout`, which passes `suite` to `Sidebar` (`src/components/Sidebar.jsx`). `Sidebar` renders
+`SuiteCluster` at the top of the column only when the user is signed in and suite mode is on with a
+URL; otherwise the top is the product mark (`ProductMark`) and the name. `SuiteCluster`
+(`src/components/SuiteCluster.jsx`) is a non-modal disclosure, not `role="menu"`: this product
 (`aria-current="true"`), Cloud Command, a separator, All workspaces (`/?switch=1`, Cloud Command's
-choice). Its panel is absolutely positioned under the toggle inside `.cc-suite`, unclipped
-because `.topbar` does not clip. Open state resets on every history entry (`location.key`).
+choice). Its mark is an SVG (`svg.cc-suite__mark`, K10), and its panel opens inline in the sidebar's
+flow under the toggle. Open state resets on every history entry (`location.key`). In suite mode
+Workspaces is absent from the nav and `/workspaces` redirects home (`WorkspacesGate`, K9).
 
 `SuiteDocLink` (`src/components/SuiteDocLink.jsx:18`, W6-CDX-27) is the link out to Cloud
 Command's Linked tasks page for a document (W6-CMD-25), `<workspace URL>/docs/<archiveId>/<logId>`,
@@ -275,7 +275,7 @@ is a separate flag in the Command repo, and this change does not touch it.
 
 - **The landing after a sign-out.** `?signedOut=1` on `/` shows "You're signed out of <name>." in
   suite mode only (`NoLoginMessage`, `Std_Layout.jsx:247`; the name is `useSuite`'s, never a literal).
-  Outside suite mode the landing is unchanged. `AccountPanel.jsx` sends a local sign-out to
+  Outside suite mode the landing is unchanged. The sidebar footer's sign-out (`src/lib/sign-out.js`) sends a local sign-out to
   `/?signedOut=1` (the OIDC path sends the issuer's end-session URL, which returns there too).
 - **The OIDC button's name.** `GET /api/oauth/providers` names the button `OIDC_PROVIDER_NAME` when it
   is set, else the suite's name in suite mode, else `SSO` (`oidcButtonName`, `routes/oauth.js:190`).
@@ -327,12 +327,20 @@ one:
   admin console (W6-CDX-42) and the document header (W6-CDX-41).
 - `.btn-icon` (W6-CDX-39) is the 30 px icon button with a 44 px hit area; the dialog close buttons, the toast dismiss and the
   search clear carry it. `.chip` is the pill at the 12 px floor; `.tabs` and `.tabs__tab` are the one tab row.
+- `src/lib/inbox-cache.js` keeps the signed-in user's unread count, recent list and archives for the page's life, so the
+  sidebar, which remounts on every navigation, shows them at once. Sign-out clears it. `subscribeInboxFrames`
+  (`useNotificationChannel.js`) is how a page hears the live channel; the Notifications list reloads on it.
 - `<PresenceAvatars>` pairs with `usePresence`.
 - `<PageTree>` renders the `logs.parent_id` tree.
 - `<WebhooksPanel>` is the admin console's Webhooks panel (W6-CDX-15). Its confirmations go through
   `<ConfirmDialog>`, and it renders a subscription's secret only in its one-time reveal box.
-- `<SearchBox>` / `<SearchResultItem>`, `<NotificationBell>` /
-  `<NotificationItem>`, `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`
+- The shell (W6-CDX-40): `<Sidebar>` (`src/components/Sidebar.jsx`) is the one navigation column; `<SearchPalette>`
+  is its "Search or jump to" trigger and the Ctrl K dialog (documents from `/api/search`, archives by name, portalled
+  into `#palette-root`, registered with `openDialog` so Escape and Tab are the stack's; Ctrl K is a no-op while another
+  modal is open); `<AccountFooter>` is the avatar, the name's non-modal menu and the sign-out icon button;
+  `<WorkspacesGate>` sends `/workspaces` to `/` in suite mode (K9); `<PageHeader>` is the page title, meta, primary
+  action, toolbar slot and tab row; `<ProductMark>` is the page glyph on the accent tile (K10). `<NotificationItem>`,
+  `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`
   has no callers**: search results reach the user through `ExploreCard`, so it
   is dead code (see `open-questions.md` B13).
 - **A document's title is a real `<Link>` or `<button>` in every list view**
@@ -341,12 +349,10 @@ one:
   mouse. The title stops propagation so one activation is not counted twice.
   Adding a new list of documents means carrying that pattern, not a bare
   `<div onClick>`: see `open-questions.md` B13 for why.
-- **`SearchBox`'s dropdown is the fiddly one.** Its results are links, so it
-  cannot dismiss on the input's blur; it closes when focus leaves the container
-  (`relatedTarget` containment) or on Escape, and the results container
-  `preventDefault`s `mousedown` because Firefox and Safari do not focus a link
-  on click. Removing that one line silently breaks mouse users on those
-  browsers and no jsdom test can see it.
+- **The palette and the account menu are the overlays to keep in step.** `SearchPalette` is a modal dialog: it
+  takes focus on open, keeps Tab inside itself, closes on Escape from anywhere and returns focus to its trigger.
+  `AccountFooter`'s menu is non-modal (no scrim): it closes on an outside press, on Tab out and on Escape, which
+  returns focus to the name. Neither uses `Menu.jsx`, whose items are single-choice radios; the footer's are actions.
 - Some inner components are exported purely so they can be unit-tested without
   mounting their data-fetching parent: `ExploreCard` and `Pagination` from
   `ExploreBrowser.jsx`, and `LogTreeItem` plus `ManageArchiveAccessModal` from
@@ -371,9 +377,11 @@ one:
 - `RemoteCursors.jsx` exports `RichTextCursors` and `MarkdownCursors`, two
   renderers over the same collab cursor data.
 
-`src/page_layouts/Std_Layout.jsx` is the shell (nav, sidebar, content slot) that
-every page composes, and the home of `GitHubStatusProvider` (section 3); its
-`Sidebar` and `MobileNav` read the status from it. Because `children` render
+`src/page_layouts/Std_Layout.jsx` is the shell (the sidebar beside the content slot) that
+every page composes, and the home of `GitHubStatusProvider` (section 3); the sidebar
+(`src/components/Sidebar.jsx`) reads the status from it. There is no top bar, no bottom tab bar
+and no footer (W6-CDX-40): on a phone (at most 599 px) the sidebar is the two-row top strip in
+`index.css`. Because `children` render
 only once the auth check has found a user, the standalone editor route wraps
 `EditorView` in it rather than the other way round, which puts the view's hooks
 inside the provider exactly as `ArchiveView`'s embedded editor already was. Its

@@ -10,6 +10,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import StdLayout from '../page_layouts/Std_Layout';
 import ActivityItem from '../components/ActivityItem';
 import { fetchWorkspaceActivity, fetchWorkspaces, getErrorMessage } from '../util';
+import PageHeader from '../components/PageHeader';
 
 const FILTERS = [
   { key: 'all', label: 'All', prefix: '' },
@@ -78,9 +79,7 @@ export default function WorkspaceActivity() {
   return (
     <StdLayout>
       <div className="activity-page">
-        <header className="activity-page__header">
-          <h1>Activity</h1>
-          {workspaces.length > 1 && (
+        <PageHeader title="Activity" toolbar={workspaces.length > 1 ? (
             <select
               value={workspaceId || ''}
               onChange={(e) => setWorkspaceId(e.target.value)}
@@ -90,8 +89,7 @@ export default function WorkspaceActivity() {
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
-          )}
-        </header>
+          ) : null} />
 
         <nav className="tabs activity-page__filters" aria-label="Filter activity">
           {FILTERS.map((f) => (

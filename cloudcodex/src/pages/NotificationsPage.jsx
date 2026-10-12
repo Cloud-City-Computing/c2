@@ -14,6 +14,8 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '../util';
+import PageHeader from '../components/PageHeader';
+import { subscribeInboxFrames } from '../hooks/useNotificationChannel.js';
 
 const FILTERS = [
   { key: 'all', label: 'All', match: () => true },
@@ -47,6 +49,18 @@ export default function NotificationsPage() {
     loadInitial();
   }, [loadInitial]);
 
+  // The live channel (the sidebar's socket) says a notification arrived or was read: reload the first page without
+  // the loading state, so the list updates in place. A page reload is not needed.
+  useEffect(() => subscribeInboxFrames(() => {
+    fetchNotifications({ limit: PAGE_SIZE })
+      .then((res) => {
+        const results = res?.results || [];
+        setItems(results);
+        setHasMore(results.length === PAGE_SIZE);
+      })
+      .catch(() => {});
+  }), []);
+
   const loadMore = async () => {
     if (!hasMore || items.length === 0) return;
     const before = items[items.length - 1].created_at;
@@ -79,17 +93,19 @@ export default function NotificationsPage() {
   return (
     <StdLayout>
       <div className="notifications-page">
-        <header className="notifications-page__header">
-          <h1>Notifications</h1>
-          <div className="notifications-page__actions">
-            <Link to="/notifications/preferences" className="btn btn-ghost">Preferences</Link>
-            {unreadCount > 0 && (
-              <button type="button" className="btn btn-ghost" onClick={handleMarkAll}>
-                Mark all read
-              </button>
-            )}
-          </div>
-        </header>
+        <PageHeader
+          title="Notifications"
+          primary={(
+            <div className="notifications-page__actions">
+              <Link to="/notifications/preferences" className="btn btn-ghost">Preferences</Link>
+              {unreadCount > 0 && (
+                <button type="button" className="btn btn-ghost" onClick={handleMarkAll}>
+                  Mark all read
+                </button>
+              )}
+            </div>
+          )}
+        />
 
         <nav className="tabs notifications-page__filters" aria-label="Filter">
           {FILTERS.map((f) => (

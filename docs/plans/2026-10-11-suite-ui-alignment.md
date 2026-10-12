@@ -346,54 +346,133 @@ it('shows a string passed to toastError as the message', async () => {
 
 ## PR 3: W6-CDX-40, the suite shell
 
+
+**Deviations, recorded at execution (W6-CDX-40, 2026-10-12).** The plan is the approval; each is a place where the code,
+or Kyle's binding decisions, required a choice the plan did not spell out.
+
+1. **The sidebar is 248 px (K1), and the main column's inline padding is 18 px (was 32 px).** At 1280 the document's
+   content column must keep its 996 px width, and 248 px of sidebar would take 28 px of it; the padding gives back exactly
+   that. The 600 to 1024 px band keeps its 180 px sidebar.
+2. **The account footer's menu is its own non-modal menu, not `Menu.jsx`.** `Menu.jsx` is single-choice (radio items); the
+   footer's items are actions (Account settings, Admin for an admin, Sign out). It has no scrim and closes on an outside
+   press, on Tab out and on Escape, which returns focus to the name.
+3. **The suite switcher opens inline in the sidebar's flow** (the spec's word), not as an overlay. So nothing overlays the
+   navigation and the switcher needs no stacking order.
+4. **The phone strip is two rows (Kyle's brief).** The account row the spec names is the avatar at the end of row two,
+   which opens the same menu; the sign-out icon is hidden on a phone and Sign out is in that menu. The Archives group shows
+   as one "Archives" item on a phone, because a row cannot hold every archive.
+5. **Known deviation, decided pending Kyle (review round, 2026-10-12): the workspace slot shows the first workspace the
+   user can see** (`GET /api/workspaces`, `body.workspaces[0]`). The code has no "current workspace" state outside suite
+   mode, so "current" is not defined yet. In suite mode the slot is read-only, as the spec says. Kyle decides in the
+   morning whether the slot should name the instance's one workspace, a chosen workspace, or something else.
+6. **The page header is adopted on four pages only:** Account, Notifications, Notification preferences and Activity. The
+   plan's "every page renders it" waits for the pages that PR 4 (home, the archive list, the archive view, the document) and
+   PR 5 (Admin, Workspaces) rebuild anyway; GitHub is a deferred family. The header's toolbar slot is empty until PR 7.
+7. **Removed, with their tests:** `NotificationBell` (the Notifications nav item replaces it), `SearchBox` (the palette
+   replaces its only caller, and its non-inline mode had none), and `AccountPanel`, whose sign-out moved unchanged to
+   `src/lib/sign-out.js` (its eight tests moved with it, same assertions). The top bar's snapshot test is gone; the suite-off
+   render test is `Shell.test.jsx`, which asserts the product mark, no `.cc-suite` and no cluster.
+8. **The palette lists archives by name from the client** (`GET /api/archives`, filtered as the user types), because the
+   search API returns documents only. Documents come from `GET /api/search`, debounced 200 ms, and an empty query asks nothing.
+9. **Dead CSS and tokens are removed:** `.topbar*`, `.mobile-nav`, `.log-footer`, `.account-button`, `.notification-bell*`,
+   `.search-inline*`, `.search-dropdown*`, the non-inline `.search-box` family, the collapsed-sidebar hover rules and
+   `#dropdown-backshadow`, with its pin in `leftover-burndown.test.js`. The bridge names `--topbar-height`,
+   `--sidebar-collapsed` and `--footer-height` are retired (`bridge.test.js` updated); `--sidebar-width` is 248 px.
+10. **`topbar.test.js` became `sidebar.test.js`** (the opacity pin, now on `--cx-surface-1`); `z-index.test.js`'s shell section is
+    rewritten for a shell with no top bar (the sidebar at base; the account menu and the palette above it and the editor
+    overlays), with its non-vacuity floor kept. `painted.test.js` and `tints.test.js` follow the new surfaces.
+11. **Tests first, honestly stated:** `Shell.test.jsx` and `SearchPalette.test.jsx` were written before their components,
+    but I did not capture their red run before implementing; they were run green after. The sign-out tests moved from
+    `AccountPanel.test.jsx` with the same assertions.
+12. **Not verified:** the two-cursor smoke (it needs two signed-in browsers). The editor's comment highlights were compared in
+    one browser before and after and sit on the same text; remote cursors were not in the capture. See the research folder's
+    README.
+
 ### Task 3.1 Rebase, and keep the dead-session path
 
-- [ ] After `fix/suite-switcher-and-dead-session` merges: rebase. `git grep -n "session-ended" --
+- [x] After `fix/suite-switcher-and-dead-session` merges: rebase. `git grep -n "session-ended" --
       cloudcodex/src` lists the wiring the new layout must keep; its tests stay green, unedited.
 
 ### Task 3.2 The new layout's tests, red first
 
-- [ ] `tests/src/page_layouts/Std_Layout.test.jsx`: signed in, no `header.topbar`, no
+- [x] `tests/src/page_layouts/Std_Layout.test.jsx`: signed in, no `header.topbar`, no
       `footer.log-footer`, no `nav.mobile-nav`; one `aside.sidebar` whose children are, in order, the
       cluster (suite on) or product mark (suite off), `.workspace-slot`, `button.search-trigger`,
       `nav.sidebar__nav`, `.sidebar__footer`.
-- [ ] Suite on: no Workspaces link, and rendering `/workspaces` lands on `/`. Suite off: the link
+- [x] Suite on: no Workspaces link, and rendering `/workspaces` lands on `/`. Suite off: the link
       exists.
-- [ ] The Notifications link's accessible name is `Notifications, 3 unread` with a count of 3, and its
+- [x] The Notifications link's accessible name is `Notifications, 3 unread` with a count of 3, and its
       pill reads `99+` at 150.
-- [ ] The footer menu: clicking the name opens a menu with Account settings and Sign out; Escape
+- [x] The footer menu: clicking the name opens a menu with Account settings and Sign out; Escape
       closes it and focus returns to the name; `#modal-dimmer` stays hidden.
-- [ ] `SearchPalette.test.jsx`: Ctrl K (and Meta K) opens it, Escape closes it, typing lists
+- [x] `SearchPalette.test.jsx`: Ctrl K (and Meta K) opens it, Escape closes it, typing lists
       documents and archives from the existing search API (mocked through `util.jsx`).
-- [ ] `SuiteCluster.test.jsx`: the toggle contains an `svg.cc-suite__mark`, not an `img`.
-- [ ] **Expected:** all red.
+- [x] `SuiteCluster.test.jsx`: the toggle contains an `svg.cc-suite__mark`, not an `img`.
+- [x] **Expected:** all red.
 
 ### Task 3.3 Build it
 
-- [ ] `src/components/PageHeader.jsx`: `title`, `meta`, `primary` (one element), `toolbar` (the theme
+- [x] `src/components/PageHeader.jsx`: `title`, `meta`, `primary` (one element), `toolbar` (the theme
       toggle slot, empty until PR 7), `tabs`. Every page renders it.
-- [ ] `Std_Layout.jsx`: the sidebar as the spec describes; delete `TopBar`, `MobileNav`, the footer,
+- [x] `Std_Layout.jsx`: the sidebar as the spec describes; delete `TopBar`, `MobileNav`, the footer,
       `CollapseIcon`, `ExpandIcon`, the collapse state and the `sidebarDefault` read; the bell dropdown
       is replaced by the nav item; the account dropdown by the footer `Menu` (PR 2's primitive).
-- [ ] `App.jsx`: in suite mode `/workspaces` and `/workspaces/:workspaceId` render
+- [x] `App.jsx`: in suite mode `/workspaces` and `/workspaces/:workspaceId` render
       `<Navigate to="/" replace />`.
-- [ ] `index.css`: delete the top bar, footer, mobile-nav and `#dropdown-backshadow` rules (and the
+- [x] `index.css`: delete the top bar, footer, mobile-nav and `#dropdown-backshadow` rules (and the
       pin in `leftover-burndown.test.js`); the sidebar at 248 px on `--cx-surface-1`, full height,
       sticky; nav items per the spec; at `max-width: 599px` the two-row strip.
-- [ ] `z-index.test.js`: the layering for a shell with no top bar, with its non-vacuity floor.
+- [x] `z-index.test.js`: the layering for a shell with no top bar, with its non-vacuity floor.
 
 ### Task 3.4 The document page keeps its width
 
-- [ ] Measure the document content column's width at 1280 before and after (a Playwright
+- [x] Measure the document content column's width at 1280 before and after (a Playwright
       `boundingBox()` of `.editor-container`); **expected** equal widths, a changed `x` allowed.
       Record both numbers in the PR body. The two-cursor smoke.
 
 ### Task 3.5 Look
 
-- [ ] Every route at 1280 and 390, dark, suite on and off; the switcher open inline; the strip at
+- [x] Every route at 1280 and 390, dark, suite on and off; the switcher open inline; the strip at
       390 and 320. `docs/maps/frontend-architecture.md` (the shell, sections 3b and 4).
 
 ---
+
+**Review round (W6-CDX-40, 2026-10-12): the fixes, each tested first.** Every item is in `cloudcodex/`; the file and
+line are the place to read.
+
+- **Sign-in on the signed-out landing.** `NoLoginMessage` has a Sign in button (`src/page_layouts/Std_Layout.jsx:38`); it
+  calls `signInFrom` (`src/hooks/useSignedOutTarget.js:155`): OIDC-only instances start `/api/auth/oidc/start`, anything
+  else opens the Login modal. Tests: `tests/src/page_layouts/Std_Layout.signin.test.jsx`.
+- **The palette joins the dialog stack.** `src/components/SearchPalette.jsx:103` registers it with `openDialog`; Escape and
+  Tab are the stack's; Ctrl K is a no-op while `openOverlayCount()` is positive (`:84`) and is left to the browser in
+  editable fields (`:78`); a result click moves focus to `.main-content`; the session notice dispatches
+  `c2:close-overlays` first (`src/page_layouts/Std_Layout.jsx:147`). Tests: `tests/src/components/SearchPalette.test.jsx`,
+  `tests/src/page_layouts/Std_Layout.palette-notice.test.jsx`.
+- **The Workspaces gate, through the App's routes.** `tests/src/app-workspaces-gate.test.jsx` renders `App`: suite on
+  redirects `/workspaces` and `/workspaces/:id`; suite off renders the page.
+- **Sidebar Default removed.** The control (`src/components/AccountMenu.jsx`), its read in the preferences state, and the
+  `data-sidebar-default` write (`src/userPrefs.js`) are gone; `tests/src/userPrefs.test.js` pins that nothing writes it.
+- **The phone archive collapse.** `src/index.css` hides `.sidebar__group li:nth-child(n + 2)` (`:5508`); the rule is
+  matched against the rendered sidebar with twelve or more archives in `tests/src/page_layouts/phone-strip.test.jsx`.
+- **The phone account button has a name** (`src/components/AccountFooter.jsx:87`, `aria-label={name}`).
+- **The unread pill no longer drifts.** The server broadcasts `read` and `read_all` only when the UPDATE changed a row
+  (`services/notifications.js:192`, `:207`); the client takes the count from the server after a read instead of
+  subtracting (`src/hooks/useNotificationChannel.js`). Tests: `tests/services/notifications.test.js`,
+  `tests/src/hooks/useNotificationChannel.test.jsx`.
+- **No flicker on navigation.** The unread count, the recent list and the archives are kept per user in
+  `src/lib/inbox-cache.js` and shown at once on a remount; sign-out clears them. Tests:
+  `tests/src/components/Sidebar.cache.test.jsx`, `tests/src/hooks/useNotificationChannel.test.jsx`.
+- **The Notifications list is live.** It reloads on every inbox frame through `subscribeInboxFrames`
+  (`src/pages/NotificationsPage.jsx:54`). Test: `tests/src/pages/NotificationsPage.live.test.jsx`.
+- **Stale references removed:** the bottom-nav block and its comments, the unused `--cx-shadow-bar` and `--cx-shadow-nav`
+  tokens, and the top-bar comments in `src/index.css` and `src/codex.css`.
+- **Squads, invitations and workspace delete have a home in suite mode.** Admin's workspace row has Rename, New squad and
+  Delete (`src/pages/AdminPage.jsx`, `WorkspacesPanel`); the expanded squad has Invite member, Rename squad, Delete squad
+  and its pending invitations with Cancel invitation (`SquadsPanel`). They reuse the dialogs `WorkspacesPage.jsx` exports,
+  and the server already lets an admin pass each route's check. Tests: `tests/src/pages/AdminPage.suiteWorkspace.test.jsx`.
+- **The phone switcher overlays the navigation** (`src/index.css`, the 599 px block), so row one keeps its cells. The
+  design pin is in `tests/design/z-index.test.js`.
+- **Known deviation, decided pending Kyle:** the workspace slot shows the first workspace the user can see (deviation 5 above).
 
 ## PR 4: W6-CDX-41, lists, home and the document header
 

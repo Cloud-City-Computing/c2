@@ -61,7 +61,7 @@ export const DENSITIES = {
 
 /**
  * Apply user preferences to the DOM by setting CSS custom properties
- * (accent color, font size, density) and data attributes (sidebar default).
+ * (accent color, font size, density). The sidebar has no collapse state (W6-CDX-40), so there is no sidebar attribute.
  * @param {Object} prefs
  */
 export function applyPrefsToDOM(prefs) {
@@ -94,12 +94,6 @@ export function applyPrefsToDOM(prefs) {
     root.style.setProperty('--density-scale', String(density));
   } else {
     root.style.removeProperty('--density-scale');
-  }
-
-  if (prefs.sidebarDefault === 'collapsed') {
-    document.body.setAttribute('data-sidebar-default', 'collapsed');
-  } else {
-    document.body.removeAttribute('data-sidebar-default');
   }
 }
 

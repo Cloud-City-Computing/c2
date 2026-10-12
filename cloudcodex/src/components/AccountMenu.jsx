@@ -548,7 +548,6 @@ export function UserPreferencesPanel() {
       accentColor: saved.accentColor || 'blue',
       fontSize: saved.fontSize || 'md',
       density: saved.density || 'comfortable',
-      sidebarDefault: saved.sidebarDefault || 'expanded',
       preferredEditor: saved.preferredEditor === 'markdown' ? 'markdown' : 'richtext',
     };
   });
@@ -615,26 +614,6 @@ export function UserPreferencesPanel() {
               {d.label}
             </button>
           ))}
-        </div>
-      </div>
-
-      {/* Sidebar Default */}
-      <div className="pref-section">
-        <h3 className="pref-section__title">Sidebar Default</h3>
-        <p className="text-muted text-sm">Choose how the sidebar appears when you load the app.</p>
-        <div className="pref-toggle-group">
-          <button
-            className={`pref-toggle-btn${prefs.sidebarDefault === 'expanded' ? ' active' : ''}`}
-            onClick={() => update('sidebarDefault', 'expanded')}
-          >
-            Expanded
-          </button>
-          <button
-            className={`pref-toggle-btn${prefs.sidebarDefault === 'collapsed' ? ' active' : ''}`}
-            onClick={() => update('sidebarDefault', 'collapsed')}
-          >
-            Collapsed
-          </button>
         </div>
       </div>
 

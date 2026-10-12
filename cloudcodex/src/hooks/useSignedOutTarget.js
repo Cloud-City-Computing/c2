@@ -146,8 +146,23 @@ export function clearOidcBounce(storage = getStorage()) {
   }
 }
 
+/**
+ * What the landing's Sign in button does, by the front door's rules: where OIDC is the only sign-in it starts the
+ * OIDC flow (the root is the return); anywhere else, or when the providers answer cannot be read, it opens the
+ * Login modal, which offers whatever sign-ins the instance has.
+ * @returns {'oidc' | 'login'}
+ */
+export function signInFrom({ providers, assign, openLogin }) {
+  if (isOidcOnly(providers)) {
+    assign(`/api/auth/oidc/start?returnTo=${encodeURIComponent('/')}`);
+    return 'oidc';
+  }
+  openLogin();
+  return 'login';
+}
+
 /** The providers object from the public providers route, or null when it cannot be read. */
-async function fetchProviders() {
+export async function fetchProviders() {
   try {
     const res = await fetch('/api/oauth/providers');
     const body = await res.json();

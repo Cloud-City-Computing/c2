@@ -139,6 +139,29 @@ describe('services/notifications', () => {
     });
   });
 
+  describe('markRead / markAllRead broadcast only a change', () => {
+    it('markRead broadcasts read when the UPDATE changed a row', async () => {
+      c2_query.mockResolvedValueOnce({ affectedRows: 1 });
+      await markRead(7, 1);
+      expect(broadcastToUser).toHaveBeenCalledWith(1, { type: 'read', id: 7 });
+    });
+
+    it('markRead does not broadcast when the row was already read or is not this user\'s', async () => {
+      c2_query.mockResolvedValueOnce({ affectedRows: 0 });
+      await markRead(7, 1);
+      expect(broadcastToUser).not.toHaveBeenCalled();
+    });
+
+    it('markAllRead broadcasts read_all only when rows changed', async () => {
+      c2_query.mockResolvedValueOnce({ affectedRows: 0 });
+      await markAllRead(1);
+      expect(broadcastToUser).not.toHaveBeenCalled();
+      c2_query.mockResolvedValueOnce({ affectedRows: 2 });
+      await markAllRead(1);
+      expect(broadcastToUser).toHaveBeenCalledWith(1, { type: 'read_all' });
+    });
+  });
+
   describe('markRead / markAllRead', () => {
     it('markRead scopes update to user_id', async () => {
       c2_query.mockResolvedValueOnce({ affectedRows: 1 });
