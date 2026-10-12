@@ -1,16 +1,27 @@
 # Suite theme switch: captures and first paint (W6-CDX-44)
 
-Run on 2026-10-12 against a production build (`NODE_ENV=production`) of track/w6-cdx-44-theme-contract, on a
-throwaway MySQL 8.4 container on a private Docker network (no host port), signed in as the boot admin.
+Captured 2026-10-12 against a production build (`NODE_ENV=production`) of `track/w6-cdx-44-theme-contract`, on a
+throwaway MySQL 8.4 container on a private Docker network (no host port), signed in as the boot admin with the
+seeded "Getting Started" archive and its one document.
 
 - `capture.mjs` takes every shot here. Its inputs are environment variables only (`BASE_URL`, `CDX_USER`,
-  `CDX_PASSWORD`, `PW_MODULE`, `CHROME_PATH`); `results.json` is its log.
-- `shots/` holds 24 PNGs at 1280 x 860 and 390 x 844: the header toggle at rest and on hover, before and after a
-  switch, from a stored light and a stored dark choice; the Appearance panel with Light, Dark, Match system (with the
-  OS emulated light), and the Nova accent in both themes.
-- The toggle is a direct switch (the plan's design), so it has no open state. Match system is in Appearance.
-- First paint: `first-paint-stored-light-dark-os-normal.png` and `...-throttled.png` hold the main bundle until the
-  page is parsed (the throttled run at 6x CPU). The stored choice is light and the OS is dark; both frames are light.
-  The page is blank at that point because React has not mounted, which is the intent of the check.
-- Console check: no Content Security Policy violation in any run (`results.json`, `problems` arrays).
+  `CDX_PASSWORD`, `CDX_ARCHIVE`, `CDX_LOG`, `PW_MODULE`, `CHROME_PATH`). `results.json` is its log: the route,
+  theme, width, final URL and console problems of every shot (no credentials, no machine paths).
+- `shots/` holds 59 PNGs, every one of them looked at:
+  - Routes, light and dark, at 1280 x 860 and 390 x 844: home, archives, archive view, document read, document edit,
+    Account, Admin, Notifications, Activity, Workspaces (non-suite), not found. Plus the signed-out front door.
+  - The Appearance popover open at 1280, 390 and 320, in both themes; the keyboard-focus capture at 1280 in both
+    themes (the checked option takes focus on open; one Tab moves to the next control inside the panel).
+  - First paint, with the stylesheet applied and the React bundle held (a held stylesheet paints nothing, so it
+    cannot be measured): `first-paint-stored-light-os-dark-normal.png` and `...-throttled.png` (6x CPU) for a stored
+    light choice with the OS dark. `results.json` records the html computed background and the canvas pixel:
+    `oklch(0.985 0.002 230)` and rgb(249,250,251), both light. The control,
+    `first-paint-control-no-script-stored-light-os-dark.png`, serves the same HTML with the boot script removed:
+    `oklch(0.17 0.012 240)` and rgb(11,16,20), dark. So the check can see the flash it guards against.
+- Known gaps, by design or by existing layout:
+  - Document edit at 390 px redirects to Home: the mobile editor guard (`MobileEditorGuard`) refuses the editor on a
+    phone, so there is no 390 edit state to capture.
+  - Not Found and the signed-out front door have no page header, so they have no Appearance control.
+  - On the 390 px phone strip the Notifications bell's focus ring is clipped by the avatar when the strip is
+    scrolled; the strip is existing layout, not changed here.
 - Not verified here: the round trip to Cloud Command on a shared parent domain (the sibling was not run).

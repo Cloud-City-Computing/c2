@@ -509,7 +509,7 @@ the migration, and both re-apply paths) against a `document.cookie` jar that rec
 legacy key. `tests/theme-boot-hash.test.js` (backend project) holds the CSP hash to the script's bytes in `index.html`
 and in a fresh `vite build`'s `dist/index.html`; `tests/app.test.js` checks the production `script-src` carries it.
 `tests/services/suite.test.js` and `tests/routes/suite.test.js` pin the `SUITE_PREFERENCE_DOMAIN` boot refusals and the
-`preferenceDomain` shape. `tests/src/components/` covers the header toggle, the Appearance panel and the header slot.
+`preferenceDomain` shape. `tests/src/components/` covers the header's Appearance popover (focus, Tab, Escape, outside press), the shared Appearance groups and the header slot.
 The design gates run in both themes as before; the deferred-families geometry fingerprint stayed unchanged.
 
 Measured 2026-10-12 on `track/w6-cdx-44-theme-contract`: `npm run lint` clean on the changed files; the default run

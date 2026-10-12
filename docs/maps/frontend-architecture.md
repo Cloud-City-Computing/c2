@@ -352,7 +352,7 @@ one:
   into `#palette-root`, registered with `openDialog` so Escape and Tab are the stack's; Ctrl K is a no-op while another
   modal is open); `<AccountFooter>` is the avatar, the name's non-modal menu and the sign-out icon button;
   `<WorkspacesGate>` sends `/workspaces` to `/` in suite mode (K9); `<PageHeader>` is the page title, meta, primary
-  action, toolbar slot and tab row, and the header's `<ThemeToggle>` after them on every page (W6-CDX-44); `<ProductMark>` is the page glyph on the accent tile (K10). `<NotificationItem>`,
+  action, toolbar slot and tab row, and the header's `<AppearanceControl>` (the Appearance popover) after them on every page (W6-CDX-44); `<ProductMark>` is the page glyph on the accent tile (K10). `<NotificationItem>`,
   `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`
   has no callers**: search results reach the user through `ExploreCard`, so it
   is dead code (see `open-questions.md` B13).
@@ -467,22 +467,15 @@ holding the font size and the preferred editor. `ACCENT_COLORS` (`:51`) is a vie
 to `suite-prefs.js`), and it removes the property when the preference is unset. `codex.css` derives the four steps
 per theme under `[data-theme][data-accent]` from `--cx-accent-h`.
 
-**The header toggle and Appearance.** `ThemeToggle` (`src/components/ThemeToggle.jsx:37`) is a native button in
-every `PageHeader`'s action row, after the primary and the toolbar (`PageHeader.jsx:22-25`). Its accessible name is
-"Switch to light theme" or "Switch to dark theme" and it calls `setTheme`. `UserPreferencesPanel`
-(`src/components/AccountMenu.jsx:618`) is the Appearance panel: a Theme group (Match system, Light, Dark, each
-`aria-pressed`, Match system calls `clearTheme`), the accent swatches (`setAccent`), a Default button beside them
-(`clearAccent`), then the font size and the preferred editor. Its saves merge into the stored prefs so a legacy key
-not yet migrated survives.
-
-`getPreferredEditorMode()` (`userPrefs.js:78`) returns `'markdown'` or
-`'richtext'`, defaulting to rich text.
-
-**Never write to `localStorage` directly from a component.** Go through
-`loadUserPrefs` / `saveUserPrefs` / `applyPrefsToDOM` for the editor preferences, and through `suite-prefs.js` for
-the theme and the accent. A new editor preference means adding its option map here, handling it in
-`applyPrefsToDOM`, and extending `tests/src/userPrefs.test.js`, which carries a 95% line threshold
-(`vitest.config.js`, the `src/userPrefs.js` entry). A new suite preference belongs in `suite-prefs.js` and in the contract.
+**The header's Appearance popover and the Account section.** `AppearanceControl`
+(`src/components/AppearanceControl.jsx`) is a native "Appearance" button in every `PageHeader`'s action row, after
+the primary and the toolbar (`PageHeader.jsx`). It opens a non-modal panel portalled to the body: a Theme group and an
+accent group, the same groups as the Account page. Its focus contract is Cloud Command's: the checked Theme option takes
+focus on open, `trapTab` (`src/lib/focus-trap.js`) keeps Tab inside, Escape and an outside press return focus to the
+toggle. `AppearanceOptions.jsx` holds `ThemeOptions` (System, shown as "System" and named "Match system"; Light; Dark)
+and `AccentOptions` (eight swatches and Default). Each group subscribes to `suite-prefs.js` itself, so the popover and
+`UserPreferencesPanel` (`src/components/AccountMenu.jsx`) cannot disagree. Their saves in that panel merge into the
+stored prefs, so a legacy key not yet migrated survives.
 
 ## 6. Styling
 

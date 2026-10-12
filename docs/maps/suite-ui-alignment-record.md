@@ -184,7 +184,7 @@ products together; no step was changed in this PR.
 5. Dark values changed only where the original dark value fails its gate (W6-CDX-43 review, item 5). The list, with the
    original and the new value and the measured contrast, is in the plan's PR 6 deviation list; `deferred-dark.test.js`
    pins every other colour declaration of the deferred families to its original dark value.
-6. The picked accent's steps are derived in CSS (K7). `data-accent` carries the key; `--cx-accent-h` carries the hue.
+6. The picked accent's steps are derived in CSS (K7). `data-accent` carried the key; `--cx-accent-h` carries the hue. (Superseded by W6-CDX-44: `data-accent` is now presence only, see section 4.)
 7. The light hover washes of the deferred families are raised to a floor, so each hover steps at least 0.025 (oklab L)
    from the surface beneath it (`deferred-hover.test.js`). The light black washes under 0.4 (the inline code, the code
    header) become a 0.06 to 0.15 ink wash, so a code span is not a grey slab on the light page. Dark is unchanged.
@@ -536,26 +536,25 @@ second is from W6-CDX-44, the session that retired the track.
 
 ### From W6-CDX-44 (2026-10-12)
 
-- **The header's theme control is a direct switch, not a popover.** The spec and plan name an icon button whose
-  accessible name says the theme it switches to. Cloud Command's Appearance control is a popover that also holds
-  Match system and the accents (its W6-CMD-43, itself decided pending Kyle). Codex keeps the plan's shape: Match
-  system and the accent picker live in Appearance on the Account page. Parity of the control is open.
-- **The header toggle appears on every page that renders a page header, and on no signed-out page.** The sign-in
-  front door has no page header, so a visitor who has not signed in cannot switch the theme before signing in. The
-  preference still applies there from the stored value.
+- **Alignment recorded: the header's control is Cloud Command's Appearance popover.** It was first a direct
+  light/dark switch, as the plan described. Kyle directed the two products to match, so Codex's header control now
+  opens a non-modal popover: Theme (System, Light, Dark) and the eight accents with Default, the same groups as the
+  Account page's Appearance section (`src/components/AppearanceOptions.jsx`). Keyboard behaviour follows Command's: the
+  checked option takes focus on open, Tab stays inside, and Escape or an outside press returns focus to the toggle.
+- **The Appearance control appears on every page that renders a page header, and on no signed-out page.** The sign-in
+  front door has no page header, so a visitor who has not signed in cannot change the appearance before signing in.
+  The stored choice still applies there.
 - **`data-accent` carries presence only, not the accent name.** The pre-paint script sets an empty value, and the
   CSS tests only for the attribute. W6-CDX-43 had written the name; the change keeps the pre-paint script and the
   module identical.
 - **Held writes still apply to the page at once.** The spec's order puts the document last, after the stores. The
   module applies the choice to the page immediately and holds the cookie and localStorage writes until the preference
-  domain is known. A failed domain read drops the write (nothing is written host-only), and the page reverts on the
-  next load.
+  domain is known. A failed domain read drops the write (nothing is written host-only); the page keeps the choice
+  until the next `visibilitychange` or `storage` event re-applies the stores, and a reload also reverts it.
 - **The APP_URL check defaults to `http://localhost:3000` when APP_URL is unset,** the same default the server uses
   (`routes/helpers/shared.js`), so the domain check is never skipped.
-- **The light hover on the header toggle is a small step.** Measured on the local stack: the ghost hover is 0.023
-  OKLab L off the page surface in light and 0.025 in dark. Both differ; the light step is subtle.
-- **"Match system" wraps to two lines in the Theme group at 390 px.** The label is the spec's. Cloud Command shortens
-  its visible label to "System" and keeps "Match system" as the accessible name. Kyle may prefer the shorter label.
+- **"System" is the visible label, and "Match system" the accessible name and title.** The spec's words are kept for
+  assistive tech; the short word keeps the three options on one line at 320 px and 390 px, as Cloud Command's does.
 - **The round trip to the sibling product was not run.** The Codex captures are in
   `docs/research/suite-theme-switch-2026-10-12/`. A theme chosen in Codex has not been seen applied in Cloud Command
   on a shared parent domain; that check waits for both products on the test box.
