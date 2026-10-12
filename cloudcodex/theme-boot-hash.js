@@ -9,4 +9,4 @@
  * https://cloudcitycomputing.com
  */
 
-export const THEME_BOOT_HASH = "'sha256-6JYFxiXiFjILuFU6VNGUJCvIqHs/SDy8BEOL8poNya0='";
+export const THEME_BOOT_HASH = "'sha256-sffxHsaon1w2Xnc3F6Nn190SVrOhZwitKPd+dDsbJOA='";

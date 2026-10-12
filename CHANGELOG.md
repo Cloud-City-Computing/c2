@@ -13,8 +13,9 @@ initialises an empty data directory.
 ## [Unreleased]
 
 ### Changed
-- **The theme switch and the suite preference (W6-CDX-44, A7).** A light and dark switch sits in every page header,
-  and Appearance gains Theme (Match system, Light, Dark). The choice is stored in `cc_suite_theme` and the accent in
+- **The theme switch and the suite preference (W6-CDX-44, A7).** An Appearance popover sits in every page header:
+  Theme (System, Light, Dark) and the accents, the same as Cloud Command's; the Account page's Appearance section shows
+  the same choices. The choice is stored in `cc_suite_theme` and the accent in
   `cc_suite_accent`, as a cookie shared across a suite's hosts (`SUITE_PREFERENCE_DOMAIN`, optional, honoured in suite
   mode only) and in localStorage, the suite preference contract that Cloud Command also implements. A stored Codex
   accent moves into the contract once. A pre-paint script in `index.html` applies the theme and accent before first

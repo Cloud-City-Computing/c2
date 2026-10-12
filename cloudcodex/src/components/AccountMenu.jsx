@@ -9,10 +9,8 @@ import { useState, useEffect, useRef } from 'react';
 import {
   getSessStorage, apiFetch, getSessionTokenFromCookie, setSessionCookie, uploadAvatar,
 } from '../util';
-import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, ACCENT_COLORS, FONT_SIZES } from '../userPrefs';
-import {
-  clearAccent, clearTheme, resolveAccent, setAccent, setTheme, storedThemeChoice, subscribe,
-} from '../lib/suite-prefs';
+import { applyPrefsToDOM, loadUserPrefs, saveUserPrefs, FONT_SIZES } from '../userPrefs';
+import { AccentOptions, ThemeOptions } from './AppearanceOptions.jsx';
 import { WarningIcon } from './icons.jsx';
 
 // ===========================
@@ -593,12 +591,6 @@ export function AccountPreferencesPanel() {
 //  User Preferences Panel
 // ===========================
 
-const COLOR_LABELS = {
-  blue: 'Ocean Blue', cyan: 'Cyan', pink: 'Fuchsia', lime: 'Lime',
-  nova: 'Nova', solar: 'Solar', aurora: 'Aurora', nebula: 'Nebula',
-};
-const ACCENT_COLOR_LIST = Object.entries(ACCENT_COLORS).map(([id, c]) => ({ id, label: COLOR_LABELS[id], ...c }));
-
 const FONT_SIZE_OPTIONS = Object.entries(FONT_SIZES).map(([id, value]) => ({
   id, value, label: id === 'sm' ? 'Small' : id === 'md' ? 'Medium' : 'Large',
 }));
@@ -606,13 +598,6 @@ const FONT_SIZE_OPTIONS = Object.entries(FONT_SIZES).map(([id, value]) => ({
 const EDITOR_MODE_OPTIONS = [
   { id: 'richtext', label: 'Rich Text' },
   { id: 'markdown', label: 'Markdown' },
-];
-
-// The Theme options: the stored choice, or Match system when nothing is stored (suite-prefs.js).
-const THEME_OPTIONS = [
-  { id: 'system', label: 'Match system' },
-  { id: 'light', label: 'Light' },
-  { id: 'dark', label: 'Dark' },
 ];
 
 export function UserPreferencesPanel() {
@@ -623,15 +608,6 @@ export function UserPreferencesPanel() {
       preferredEditor: saved.preferredEditor === 'markdown' ? 'markdown' : 'richtext',
     };
   });
-  // The theme and the accent are the suite preference contract's (suite-prefs.js), read and written there.
-  const [theme, setThemeChoice] = useState(() => storedThemeChoice() ?? 'system');
-  const [hue, setHue] = useState(() => resolveAccent());
-
-  useEffect(() => subscribe(() => {
-    setThemeChoice(storedThemeChoice() ?? 'system');
-    setHue(resolveAccent());
-  }), []);
-
   // Merges into the stored prefs, so a key this panel does not own (a legacy accent not yet migrated) survives.
   const update = (key, value) => {
     const next = { ...prefs, [key]: value };
@@ -640,71 +616,21 @@ export function UserPreferencesPanel() {
     applyPrefsToDOM(next);
   };
 
-  const chooseTheme = (id) => {
-    setThemeChoice(id);
-    void (id === 'system' ? clearTheme() : setTheme(id));
-  };
-
-  const chooseAccent = (accentHue) => {
-    setHue(accentHue);
-    void (accentHue === null ? clearAccent() : setAccent(accentHue));
-  };
-
   return (
     <div className="settings-panel">
       <h2 className="panel-title">Appearance</h2>
 
-      {/* Theme */}
+      {/* Theme and Accent: the same groups as the header's Appearance popover (suite-prefs.js) */}
       <div className="pref-section" role="group" aria-label="Theme">
         <h3 className="pref-section__title">Theme</h3>
         <p className="text-muted text-sm">Match system follows your operating system.</p>
-        <div className="pref-toggle-group">
-          {THEME_OPTIONS.map(option => (
-            <button
-              key={option.id}
-              type="button"
-              className={`pref-toggle-btn${theme === option.id ? ' active' : ''}`}
-              aria-pressed={theme === option.id}
-              onClick={() => chooseTheme(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <ThemeOptions />
       </div>
 
-      {/* Accent Color */}
       <div className="pref-section">
         <h3 className="pref-section__title">Accent Color</h3>
         <p className="text-muted text-sm">Personalize the interface with your favorite color.</p>
-        <div className="color-swatch-row">
-          {ACCENT_COLOR_LIST.map(c => (
-            <button
-              key={c.id}
-              type="button"
-              className={`color-swatch${hue === c.hue ? ' active' : ''}`}
-              style={{ '--swatch-color': c.swatch }}
-              onClick={() => chooseAccent(c.hue)}
-              title={c.label}
-              aria-label={c.label}
-              aria-pressed={hue === c.hue}
-            >
-              {hue === c.hue && (
-                <svg viewBox="0 0 24 24" fill="none" style={{ stroke: 'var(--cx-white)' }} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              )}
-            </button>
-          ))}
-        </div>
-        <div className="pref-toggle-group">
-          <button
-            type="button"
-            className={`pref-toggle-btn${hue === null ? ' active' : ''}`}
-            aria-pressed={hue === null}
-            onClick={() => chooseAccent(null)}
-          >
-            Default
-          </button>
-        </div>
+        <AccentOptions />
       </div>
 
       {/* Editor Font Size */}

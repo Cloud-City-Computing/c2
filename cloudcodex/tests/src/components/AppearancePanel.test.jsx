@@ -54,7 +54,8 @@ describe('Appearance: Theme', () => {
   it('offers Match system, Light and Dark, with Match system pressed when nothing is stored', () => {
     render(<UserPreferencesPanel />);
     expect(pressedIn(themeGroup())).toEqual(['Match system']);
-    expect(within(themeGroup()).getAllByRole('button').map((b) => b.textContent)).toEqual(['Match system', 'Light', 'Dark']);
+    expect(within(themeGroup()).getAllByRole('button').map((b) => b.textContent)).toEqual(['System', 'Light', 'Dark']);
+    expect(within(themeGroup()).getByRole('button', { name: 'Match system' }).textContent).toBe('System');
   });
 
   it('presses the stored choice, and it matches the page', () => {

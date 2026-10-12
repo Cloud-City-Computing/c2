@@ -47,11 +47,21 @@ export function suiteEnabled() {
 
 /**
  * The suite preference domain (SUITE_PREFERENCE_DOMAIN), or null when suite mode is off or it is unset.
- * It rejects when the request fails: a caller must then hold its cookie writes, never guess a domain.
+ * It rejects when the request fails or the body does not carry preferenceDomain as null or a string: a
+ * caller must then hold its cookie writes, never guess a domain. Neither a failure nor a malformed body is
+ * kept for the page's life.
  */
 export async function suitePreferenceDomain() {
   const body = await fetchSuiteBody();
-  return body?.preferenceDomain ?? null;
+  const domain = body !== null && typeof body === 'object' && Object.hasOwn(body, 'preferenceDomain')
+    ? body.preferenceDomain
+    : undefined;
+  if (domain !== null && typeof domain !== 'string') {
+    // A malformed answer is not kept: the next asker asks again, and the caller holds its write meanwhile.
+    suiteBody = null;
+    throw new Error('GET /api/suite did not carry preferenceDomain as null or a string');
+  }
+  return domain;
 }
 
 /** Test seam: forget the cached answer so the next render asks again. */

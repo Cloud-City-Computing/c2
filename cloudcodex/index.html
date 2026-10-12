@@ -26,12 +26,14 @@
           coral: '355', apricot: '50', jade: '175', iris: '275' };
         function own(map, key) { return Object.prototype.hasOwnProperty.call(map, key); }
         function cookie(name, ok) {
-          var parts = document.cookie ? document.cookie.split(';') : [];
-          for (var i = 0; i < parts.length; i++) {
-            var part = parts[i].replace(/^[ \t]+/, '');
-            var eq = part.indexOf('=');
-            if (eq > 0 && part.slice(0, eq) === name && own(ok, part.slice(eq + 1))) return part.slice(eq + 1);
-          }
+          try {
+            var parts = document.cookie ? document.cookie.split(';') : [];
+            for (var i = 0; i < parts.length; i++) {
+              var part = parts[i].replace(/^[ \t]+/, '');
+              var eq = part.indexOf('=');
+              if (eq > 0 && part.slice(0, eq) === name && own(ok, part.slice(eq + 1))) return part.slice(eq + 1);
+            }
+          } catch (e) { /* a blocked cookie store reads as no cookie: this step is skipped */ }
           return null;
         }
         function stored(name, ok) {

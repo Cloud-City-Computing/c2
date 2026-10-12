@@ -21,7 +21,7 @@ const script = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
 
 let cookieText;
 
-function boot({ cookie = '', stored = {}, system = 'dark' } = {}) {
+function boot({ cookie = '', stored = {}, system = 'dark', cookieThrows = false } = {}) {
   const root = document.documentElement;
   root.setAttribute('data-theme', 'dark');
   root.removeAttribute('data-accent');
@@ -29,7 +29,13 @@ function boot({ cookie = '', stored = {}, system = 'dark' } = {}) {
   localStorage.clear();
   for (const [k, v] of Object.entries(stored)) localStorage.setItem(k, v);
   cookieText = cookie;
-  Object.defineProperty(document, 'cookie', { configurable: true, get: () => cookieText });
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => {
+      if (cookieThrows) throw new Error('cookies blocked');
+      return cookieText;
+    },
+  });
   if (system === 'none') {
     Reflect.deleteProperty(window, 'matchMedia');
   } else {
@@ -87,6 +93,22 @@ describe('index.html: the pre-paint theme', () => {
   it('keeps the meta color-scheme in step with the theme', () => {
     expect(boot({ cookie: 'cc_suite_theme=light' }).meta).toBe('light');
     expect(boot({ system: 'dark' }).meta).toBe('dark');
+  });
+
+  it('a throwing cookie getter skips the cookie step, and the stored choice still applies', () => {
+    const r = boot({ cookieThrows: true, stored: { cc_suite_theme: 'light' }, system: 'dark' });
+    expect(r.theme).toBe('light');
+  });
+
+  it('a throwing cookie getter with nothing stored falls through to the system, not to an error', () => {
+    expect(boot({ cookieThrows: true, system: 'light' }).theme).toBe('light');
+    expect(boot({ cookieThrows: true, system: 'dark' }).theme).toBe('dark');
+  });
+
+  it('a throwing cookie getter still lets the legacy accent apply', () => {
+    const r = boot({ cookieThrows: true, stored: { 'c2-user-prefs': JSON.stringify({ accentColor: 'rose' }) } });
+    expect(r.hue).toBe('355');
+    expect(r.accent).toBe(true);
   });
 
   it('an invalid value at every step falls through to the system', () => {

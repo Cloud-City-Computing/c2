@@ -22,7 +22,7 @@ describe('PageHeader and the theme toggle', () => {
     const { container } = render(<PageHeader title="Home" />);
     const actions = container.querySelector('.page-header__actions');
     expect(actions).not.toBeNull();
-    expect(actions.querySelector('button')).toBe(screen.getByRole('button', { name: 'Switch to light theme' }));
+    expect(actions.querySelector('button')).toBe(screen.getByRole('button', { name: 'Appearance' }));
   });
 
   it('puts the toggle after the primary action and the toolbar', () => {
@@ -30,6 +30,6 @@ describe('PageHeader and the theme toggle', () => {
       <PageHeader title="Lists" primary={<button type="button">New</button>} toolbar={<button type="button">Sort</button>} />,
     );
     const names = [...container.querySelectorAll('.page-header__actions button')].map((b) => b.textContent || b.getAttribute('aria-label'));
-    expect(names).toEqual(['New', 'Sort', 'Switch to light theme']);
+    expect(names).toEqual(['New', 'Sort', 'Appearance']);
   });
 });
