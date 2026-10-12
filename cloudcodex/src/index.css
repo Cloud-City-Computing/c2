@@ -940,7 +940,7 @@ h1, h2, h3, h4, h5, h6 {
 .notifications-page,
 .notification-prefs-page,
 .activity-page {
-  max-width: 760px;
+  max-width: none;
   margin: 0 auto;
   padding: 32px 24px;
   color: var(--text-primary);
@@ -990,15 +990,6 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow: hidden;
-}
-.notifications-page__empty,
-.activity-page__empty {
-  padding: 64px 16px;
-  text-align: center;
-  color: var(--text-muted);
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
 }
 .notifications-page__load-more,
 .activity-page__load-more {
@@ -1108,8 +1099,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 .activity-item__line a:hover { text-decoration: underline; }
 .activity-item__meta {
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 12px;
+  color: var(--cx-text-faint);
   margin-top: 3px;
 }
 
@@ -1223,10 +1214,31 @@ h1, h2, h3, h4, h5, h6 {
    Empty State
 ========================= */
 
+/* W6-CDX-41: the one empty state (EmptyState.jsx): a Poppins title, one line, an optional action. */
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: var(--text-muted);
+  color: var(--cx-text-secondary);
+}
+
+.empty-state__title {
+  margin: 0 0 6px;
+  font-family: var(--font-brand);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--cx-text-primary);
+}
+
+.empty-state__body {
+  margin: 0 auto;
+  max-width: 52ch;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.empty-state__action {
+  margin-top: 16px;
 }
 
 
@@ -3924,32 +3936,94 @@ h1, h2, h3, h4, h5, h6 {
   width: 100%;
 }
 
-.archive-list-cards {
+/* W6-CDX-41: the archive list is rows in one panel (X9). Each row's actions are a More actions menu. */
+.archive-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
-.archive-list-cards .card {
-  padding: 0;
-  gap: 0;
+.archive-row + .archive-row {
+  border-top: 1px solid var(--cx-border);
 }
 
-.archive-list-cards .card:hover {
-  transform: none;
+.archive-row__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) minmax(0, 150px) 96px 30px;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 0 12px 0 16px;
 }
 
-.archive-list-cards .card__body {
-  padding: 16px;
+.archive-row__main:hover {
+  background: var(--cx-surface-1);
 }
 
-.archive-list-cards .card__actions {
-  padding: 10px 16px;
+.archive-row__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 0;
+  border: none;
+  background: none;
+  color: var(--cx-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.archive-card__expanded {
-  padding-top: 12px;
+.archive-row__chevron {
+  flex-shrink: 0;
+  width: 12px;
+  color: var(--cx-text-faint);
+  font-size: 11px;
 }
+
+.archive-row__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.archive-row__meta {
+  display: contents;
+}
+
+.archive-row__squad,
+.archive-row__owner,
+.archive-row__count {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--cx-text-secondary);
+}
+
+.archive-row__count {
+  color: var(--cx-text-faint);
+  text-align: right;
+}
+
+.archive-row__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.archive-row__expanded {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--cx-border);
+}
+
 
 /* =========================
    Log Tree
@@ -4520,6 +4594,108 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 12px;
   color: var(--text-muted);
   align-items: center;
+}
+
+/* W6-CDX-41: the toolbar's stroke icons replace its emoji. They sit on the text line at the emoji's size, so a
+   button keeps the height it had (26 px at the small size) and the canvas below it does not move in height. */
+.editor-toolbar .btn svg,
+.editor-toolbar .export-dropdown svg {
+  width: 13px;
+  height: 13px;
+  vertical-align: middle;
+}
+
+/* W6-CDX-41: the document header (DocumentHeader.jsx) is the shared page header above the editor canvas. It owns
+   its own type and icon buttons; the editor canvas and toolbar below it keep their geometry (K3). */
+.document-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--cx-border);
+}
+.document-header .page-header {
+  margin: 0;
+}
+.document-header .page-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--cx-text-faint);
+}
+.document-header .editor-title {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.document-header .editor-title:hover {
+  color: var(--cx-accent-hover);
+}
+.document-header .editor-title--readonly {
+  cursor: default;
+}
+.document-header .editor-title-edit input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--cx-accent);
+  border-radius: var(--cx-deferred-radius-sm);
+  background: var(--cx-surface-2);
+  color: var(--cx-text-primary);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 600;
+}
+.document-header .editor-breadcrumb {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--cx-text-faint);
+}
+.document-header .editor-breadcrumb__link {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--cx-accent);
+  font: inherit;
+  cursor: pointer;
+}
+.document-header .editor-breadcrumb__link:hover {
+  text-decoration: underline;
+}
+.document-header .page-header__actions {
+  gap: 4px;
+}
+.document-header .btn-favorite,
+.document-header .btn-watch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: var(--cx-deferred-radius-md);
+  font-size: inherit;
+  color: var(--cx-text-secondary);
+  transform: none;
+}
+.document-header .btn-favorite:hover:not(:disabled),
+.document-header .btn-watch:hover:not(:disabled) {
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
+  transform: none;
+}
+.document-header .btn-favorite--active {
+  color: var(--cx-warning);
+}
+.document-header .btn-watch--active {
+  color: var(--cx-accent);
 }
 
 /* Linked tasks: suite mode's link from a document to its tasks in Cloud Command (W6-CDX-27). The
@@ -5341,15 +5517,6 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0 auto;
 }
 
-.home-hero {
-  text-align: center;
-  padding: 40px 0 32px;
-}
-.home-hero h1 {
-  margin: 0 0 8px;
-  font-size: 32px;
-  font-weight: 700;
-}
 
 /* =========================
    Welcome / No-Login Message
@@ -5421,10 +5588,6 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 768px) {
 
 
-  .archive-list-cards .card__actions {
-    flex-wrap: wrap;
-  }
-
   
   
   
@@ -5447,10 +5610,31 @@ h1, h2, h3, h4, h5, h6 {
    left edge, scrolling sideways behind a fade with its scrollbar hidden, then the account. The Archives group
    shows as one "Archives" item, because a list of every archive would not fit a row. */
 @media (max-width: 599px) {
+  /* W6-CDX-41: the archive rows on a phone */
+    .archive-row__main {
+      grid-template-columns: minmax(0, 1fr) 30px;
+      gap: 2px 8px;
+      padding: 4px 8px 6px 12px;
+    }
+
+    .archive-row__meta {
+      grid-column: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px 10px;
+      padding-left: 20px;
+    }
+
+    .archive-row__count {
+      text-align: left;
+    }
+
+  /* W6-CDX-41: a short page must not stretch the phone strip's row (the shell is 100vh tall) */
   .app-shell,
   .app-shell.no-sidebar {
     grid-template-areas: "sidebar" "main";
     grid-template-columns: minmax(0, 1fr);
+    align-content: start;
   }
 
   .sidebar {
@@ -6577,6 +6761,38 @@ textarea:focus-visible {
   cursor: not-allowed;
 }
 
+/* W6-CDX-41: the More actions menu. The trigger is an icon; a danger item is the danger text, and its hover is
+   the sunken step like every other item, never a solid red fill (X9). */
+.menu-trigger--actions {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  justify-content: center;
+  border-color: transparent;
+  background: transparent;
+  color: var(--cx-text-secondary);
+}
+.menu-trigger--actions:hover:not(:disabled) {
+  background: var(--cx-surface-2);
+  border-color: var(--cx-border-strong);
+  color: var(--cx-text-primary);
+}
+.menu-trigger--actions[aria-expanded='true'] {
+  background: var(--cx-surface-2);
+  border-color: var(--cx-accent);
+}
+.menu-trigger__icon {
+  display: inline-flex;
+}
+.menu__item--danger {
+  color: var(--cx-danger);
+}
+.menu__item--danger:hover:not(:disabled),
+.menu__item--danger:focus-visible {
+  background: var(--cx-surface-1);
+  color: var(--cx-danger);
+}
+
 /* ── The avatar (W6-CDX-39, Task 2.4): a disc on one of --avatar-1..8, the initial in the dark ink ── */
 .avatar {
   display: inline-flex;
@@ -6787,9 +7003,7 @@ textarea:focus-visible {
 }
 
 .explore-card:hover {
-  border-color: var(--cx-accent);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  border-color: var(--cx-border-strong);
 }
 
 .explore-card__header {
@@ -6866,14 +7080,6 @@ textarea:focus-visible {
   padding: 0 2px;
 }
 
-/* Empty state */
-
-.explore-empty {
-  text-align: center;
-  padding: 48px 20px;
-  color: var(--text-muted);
-  font-size: 15px;
-}
 
 /* Pagination */
 
@@ -8526,6 +8732,12 @@ textarea:focus-visible {
   margin: 0 -18px;
 }
 
+/* W6-CDX-41: with the archive's page header above the grid (no document open), the grid is shorter by the header,
+   so the page does not scroll at 860 px. */
+.archive-view--headed {
+  min-height: calc(100vh - 128px);
+}
+
 .archive-view__sidebar {
   position: relative;
   width: 260px;
@@ -8681,26 +8893,38 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 8px;
+  min-height: 30px;
+  padding: 4px 8px;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: background 0.15s;
-  font-size: 13px;
-  color: var(--text-primary);
+  font-size: 14px;
+  color: var(--cx-text-secondary);
 }
 .page-tree-row:hover {
-  background: var(--cx-surface-2);
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
 }
 .page-tree-row:hover .page-tree-row-add {
   opacity: 1;
 }
 .page-tree-row--active {
-  background: var(--cx-tint-accent-mid);
-  color: var(--cx-accent-hover);
+  background: var(--cx-select-wash);
+  box-shadow: inset 0 0 0 1px var(--cx-accent);
+  color: var(--cx-text-primary);
   font-weight: 500;
 }
 .page-tree-row--active:hover {
-  background: var(--cx-tint-accent-strong);
+  background: var(--cx-select-wash);
+}
+
+.empty-state.page-tree-empty {
+  padding: 16px;
+  text-align: left;
+}
+
+.empty-state.page-tree-empty .empty-state__title {
+  font-size: 15px;
 }
 
 .page-tree-toggle {
@@ -8757,8 +8981,7 @@ textarea:focus-visible {
   background: var(--cx-tint-accent);
 }
 
-.page-tree-loading,
-.page-tree-empty {
+.page-tree-loading {
   padding: 12px 16px;
   color: var(--text-muted);
   font-size: 13px;
@@ -9186,15 +9409,6 @@ textarea:focus-visible {
   .document-meta {
     gap: 6px;
     font-size: 11px;
-  }
-
-  /* Tighten home hero */
-  .home-hero {
-    padding: 20px 0 12px;
-  }
-
-  .home-hero h1 {
-    font-size: 22px;
   }
 
   /* Toolbar: tighter on small screens */
