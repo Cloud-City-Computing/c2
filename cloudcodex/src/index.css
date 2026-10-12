@@ -3952,7 +3952,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .archive-row__main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) minmax(0, 150px) 96px 30px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 140px) minmax(0, 130px) 100px 116px 30px;
   align-items: center;
   gap: 16px;
   min-height: 52px;
@@ -4000,6 +4000,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .archive-row__squad,
 .archive-row__owner,
+.archive-row__created,
 .archive-row__count {
   min-width: 0;
   overflow: hidden;
@@ -4608,9 +4609,15 @@ h1, h2, h3, h4, h5, h6 {
 /* W6-CDX-41: the document header (DocumentHeader.jsx) is the shared page header above the editor canvas. It owns
    its own type and icon buttons; the editor canvas and toolbar below it keep their geometry (K3). */
 .document-header {
-  margin-bottom: 16px;
+  /* The header keeps the vertical rhythm the page had before W6-CDX-41, so the toolbar sits where it did (read 177 px,
+     edit 183 px). Edit mode is 6 px taller, which keeps that page a little over the 860 px viewport as it was: its
+     content column stays at the 708 px the plan fixes. A shorter header fit the page and widened the column. */
+  margin-bottom: 30px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--cx-border);
+}
+.document-header--editing {
+  margin-bottom: 36px;
 }
 .document-header .page-header {
   margin: 0;
@@ -5629,12 +5636,14 @@ h1, h2, h3, h4, h5, h6 {
       text-align: left;
     }
 
-  /* W6-CDX-41: a short page must not stretch the phone strip's row (the shell is 100vh tall) */
+  /* W6-CDX-41: the strip keeps its own height and the work area takes the rest of the 100vh shell. The rows used to
+     stretch evenly (a short page grew the strip to 283 px and centred GitHub's connect card in the gap), so this
+     row template is the phone shell's only change; desktop and the no-sidebar shell are untouched. */
   .app-shell,
   .app-shell.no-sidebar {
     grid-template-areas: "sidebar" "main";
     grid-template-columns: minmax(0, 1fr);
-    align-content: start;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .sidebar {

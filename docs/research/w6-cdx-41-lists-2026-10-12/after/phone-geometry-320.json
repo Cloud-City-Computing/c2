@@ -1,0 +1,132 @@
+{
+  "/github": {
+    "docScrollHeight": 740,
+    "shellRows": "90px 650px",
+    "sidebar": {
+      "y": 0,
+      "h": 90,
+      "w": 320
+    },
+    "main": {
+      "y": 90,
+      "h": 650,
+      "w": 320
+    },
+    "ghPage": {
+      "y": 106,
+      "h": 618,
+      "w": 288
+    },
+    "ghTextarea": null,
+    "lastChild": {
+      "y": 106,
+      "h": 618,
+      "w": 288
+    }
+  },
+  "/account": {
+    "docScrollHeight": 1890,
+    "shellRows": "90px 1799.8px",
+    "sidebar": {
+      "y": 0,
+      "h": 90,
+      "w": 320
+    },
+    "main": {
+      "y": 90,
+      "h": 1800,
+      "w": 320
+    },
+    "ghPage": null,
+    "ghTextarea": null,
+    "lastChild": {
+      "y": 106,
+      "h": 1768,
+      "w": 288
+    }
+  },
+  "/archives": {
+    "docScrollHeight": 1283,
+    "shellRows": "90px 1193.19px",
+    "sidebar": {
+      "y": 0,
+      "h": 90,
+      "w": 320
+    },
+    "main": {
+      "y": 90,
+      "h": 1193,
+      "w": 320
+    },
+    "ghPage": null,
+    "ghTextarea": null,
+    "lastChild": {
+      "y": 106,
+      "h": 1161,
+      "w": 288
+    }
+  },
+  "/archives/1/doc": {
+    "docScrollHeight": 740,
+    "shellRows": "90px 650px",
+    "sidebar": {
+      "y": 0,
+      "h": 90,
+      "w": 320
+    },
+    "main": {
+      "y": 90,
+      "h": 650,
+      "w": 320
+    },
+    "ghPage": null,
+    "ghTextarea": null,
+    "lastChild": {
+      "y": 162,
+      "h": 552,
+      "w": 320
+    }
+  },
+  "/notifications": {
+    "docScrollHeight": 740,
+    "shellRows": "90px 650px",
+    "sidebar": {
+      "y": 0,
+      "h": 90,
+      "w": 320
+    },
+    "main": {
+      "y": 90,
+      "h": 650,
+      "w": 320
+    },
+    "ghPage": null,
+    "ghTextarea": null,
+    "lastChild": {
+      "y": 106,
+      "h": 414,
+      "w": 288
+    }
+  },
+  "/activity": {
+    "docScrollHeight": 740,
+    "shellRows": "90px 650px",
+    "sidebar": {
+      "y": 0,
+      "h": 90,
+      "w": 320
+    },
+    "main": {
+      "y": 90,
+      "h": 650,
+      "w": 320
+    },
+    "ghPage": null,
+    "ghTextarea": null,
+    "lastChild": {
+      "y": 106,
+      "h": 425,
+      "w": 288
+    }
+  }
+}

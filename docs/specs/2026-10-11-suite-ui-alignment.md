@@ -557,10 +557,10 @@ passes.
 
 *Decided at execution (W6-CDX-41, 2026-10-12):* the archive list's count comes from a new `log_count` field on
 `GET /api/archives`; the page's primary is New Archive (New Log is per archive, and the expanded tree keeps its own);
-Home keeps its one in-page search field (the shell's trigger is global); the toolbar keeps its own read-mode Edit beside the
-header's primary (**decided pending Kyle**); the archive header shows only with no document open. The edit-mode content
-column is 8 px wider than before because the old page overflowed the viewport: flagged for Kyle, with the measurements in
-the research folder's README. The phone shell gained `align-content: start`. Full list: the plan's PR 4 section.
+Home keeps its one in-page search field (the shell's trigger is global) (**decided pending Kyle**); read mode has one Edit
+control, the header's primary; the archive header shows only with no document open. The edit-mode column stays at 708 px and
+the canvas and editor keep their sizes, measured in the research folder's README. The phone shell's rows are
+`auto minmax(0, 1fr)`. Full list: the plan's PR 4 section.
 
 ---
 

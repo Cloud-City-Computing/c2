@@ -56,7 +56,7 @@ import {
 } from '../util';
 import PublishModal from '../components/PublishModal';
 import ExportMenu from '../components/ExportMenu';
-import { PencilIcon, EyeIcon, SaveIcon, PackageIcon, CommentIcon, ListIcon, HistoryIcon } from '../components/icons.jsx';
+import { EyeIcon, SaveIcon, PackageIcon, CommentIcon, ListIcon, HistoryIcon } from '../components/icons.jsx';
 import { toastError } from '../components/Toast';
 import CommentSidebar from '../components/CommentSidebar';
 import CommentForm from '../components/CommentForm';
@@ -1158,16 +1158,7 @@ function EditorView({ embedded = false } = {}) {
         {viewMode === 'read' ? (
           <>
             <div className="editor-toolbar">
-              <div className="toolbar-group">
-                {!isMobileDevice() && (
-                  <button className="btn btn-primary btn-sm" onClick={() => setViewMode('edit')}>
-                    <PencilIcon /> Edit
-                  </button>
-                )}
-              </div>
-
-              <span className="toolbar-divider" />
-
+              {/* Read mode's one Edit is the document header's primary (W6-CDX-41, momus 3). */}
               <div className="toolbar-group">
                 <ExportMenu onExport={handleExport} />
               </div>

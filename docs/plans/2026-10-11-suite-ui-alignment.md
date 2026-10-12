@@ -494,21 +494,24 @@ measurements are in `docs/research/w6-cdx-41-lists-2026-10-12/`.
    jump to" trigger is on every route, so it is not counted as a second field on Home. **Decided pending Kyle.**
 4. **The Home header's meta is a fixed line,** not the count: the browse status line already shows the filtered count.
 5. **The Archives "← Squad" control is the first More actions item, "Go to squad".** Its function is unchanged.
-6. **Two Edit controls in read mode.** The document header's Edit is the page primary. The editor toolbar keeps its own Edit,
-   because the toolbar is in the deferred family (removing it would change the toolbar's width and its neighbours). **Decided
-   pending Kyle:** drop one of the two.
+6. **One Edit control in read mode.** The document header's Edit is the page primary, and the editor toolbar's own read-mode
+   Edit is removed (momus round one, item 3; a page test pins exactly one control named Edit). The toolbar's other controls
+   are unchanged.
 7. **The toolbar's emoji became stroke icons at 13 px** (the plan's moved list: edit, read, save, publish, comment, history,
    the comment manager and export). Buttons keep their height (26 px at the small size). The Export button is 9 px wider,
    and the read toolbar 4 px shorter, because the emoji no longer set a 30 px line box. The canvas keeps its size.
-8. **The edit-mode content column is 8 px wider than before, and this breaks the plan's width rule in that mode.** The
-   before build's page overflowed the 860 px viewport in edit mode (scrollHeight 868) and showed a scrollbar; the header
-   is 14 px shorter here, so the page fits and the column is 716 px, the read-mode width. Recorded for Kyle; the canvas's
-   own height is unchanged.
+8. **The edit-mode column stays 708 px, as before.** A shorter header had let the edit page fit the 860 px viewport, which
+   widened the column to 716 px and broke the plan's width rule. The header keeps the vertical rhythm the page had (read
+   toolbar at 177 px, edit at 183 px, as before), and edit mode carries 6 px more header below it, so the page overflows as
+   it did and `.tiptap` measures 706 px. Trimming the header instead, as the review suggested, removes that overflow and
+   widens the column, so it was not done. Measured in `docs/research/w6-cdx-41-lists-2026-10-12/README.md`.
 9. **The archive's page header is shown only with no document open.** With a document open, the document header's crumb
    names the archive, so the two headers do not repeat it. The tree is headed "Documents" (the archive's name is the page
    header's title and the crumb's text).
-10. **The shell's phone rule gained `align-content: start`** (shared, in the phone block). A page shorter than the 100 vh
-    shell stretched the strip's row to 155 px. Found on the archive placeholder at 390; no other route changes.
+10. **The phone shell's rows are `auto minmax(0, 1fr)`** (in the phone block only). The shell's rows used to stretch evenly
+    when a page was shorter than the 100 vh shell: the strip grew to 283 px on GitHub and centred its connect card in the
+    gap. Now the strip keeps its height and the work area fills the rest; `align-content: start` was tried first and
+    collapsed nothing, but moved GitHub's card to the top, so it was not kept. Desktop and the no-sidebar shell are untouched.
 11. **`.archive-view--headed` takes the header's height off the grid's minimum,** so the placeholder does not scroll at 1280.
 12. **The Activity page is full width** (`max-width: 760px` removed), and its meta line is 12 px faint text. Its rows already
     had primary names and accent links. Workspaces (suite off) is not touched: it is W6-CDX-42's page.

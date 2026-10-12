@@ -5,39 +5,31 @@
   },
   "toolbar": {
     "x": 536,
-    "y": 163,
+    "y": 177,
     "w": 716,
     "h": 44
   },
   "toolbarButtons": [
     {
-      "cls": "btn btn-primary btn-sm",
-      "text": "Edit",
-      "x": 549,
-      "y": 172,
-      "w": 69,
-      "h": 26
-    },
-    {
       "cls": "export-dropdown",
       "text": "Export",
-      "x": 631,
-      "y": 172,
+      "x": 549,
+      "y": 186,
       "w": 104,
       "h": 26
     },
     {
       "cls": "btn btn-ghost btn-sm",
       "text": "Export",
-      "x": 631,
-      "y": 172,
+      "x": 549,
+      "y": 186,
       "w": 104,
       "h": 26
     }
   ],
   "canvas": {
     "x": 536,
-    "y": 223,
+    "y": 237,
     "w": 716,
     "h": 458
   },
@@ -46,7 +38,7 @@
     "x": 536,
     "y": 56,
     "w": 716,
-    "h": 625
+    "h": 639
   },
   "header": {
     "x": 536,

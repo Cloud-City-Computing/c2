@@ -492,7 +492,7 @@ load-bearing:
    `--cx-accent-hover` or a bright step, as W6-CDX-28 did.
 4. `src/index.css`, about 9,200 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
-   `:focus-visible` rule (`index.css:5806`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
+   `:focus-visible` rule (`index.css:5756`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips
    (`.editor-container`, `.markdown-editor__textarea-wrapper`, `.sidebar`,
    `.gh-browser__sidebar`, `.gh-modal`, `.gh-merge-dialog__pane`, `.gh-sync-menu`) draws its controls' rings

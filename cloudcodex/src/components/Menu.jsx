@@ -178,9 +178,11 @@ export default function Menu({ label, value, items, onSelect, id: triggerId, cla
     }
   };
 
+  // The menu closes and the trigger takes focus BEFORE the choice runs: an action that opens a dialog then records
+  // the trigger as its opener (dialog.js), so Escape returns focus to the row's control, not to a removed menu item.
   const choose = (key) => {
-    onSelect(key);
     close();
+    onSelect(key);
   };
 
   return (

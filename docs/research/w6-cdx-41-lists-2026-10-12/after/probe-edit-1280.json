@@ -5,8 +5,8 @@
   },
   "toolbar": {
     "x": 536,
-    "y": 163,
-    "w": 716,
+    "y": 183,
+    "w": 708,
     "h": 82
   },
   "toolbarButtons": [
@@ -14,7 +14,7 @@
       "cls": "btn btn-ghost btn-sm",
       "text": "Read",
       "x": 549,
-      "y": 175,
+      "y": 195,
       "w": 76,
       "h": 26
     },
@@ -22,7 +22,7 @@
       "cls": "btn btn-primary btn-sm",
       "text": "Save",
       "x": 629,
-      "y": 175,
+      "y": 195,
       "w": 74,
       "h": 26
     },
@@ -30,7 +30,7 @@
       "cls": "btn btn-ghost btn-sm",
       "text": "Publish",
       "x": 707,
-      "y": 175,
+      "y": 195,
       "w": 90,
       "h": 26
     },
@@ -38,7 +38,7 @@
       "cls": "btn btn-sm btn-primary",
       "text": "Rich Text",
       "x": 813,
-      "y": 175,
+      "y": 195,
       "w": 82,
       "h": 26
     },
@@ -46,7 +46,7 @@
       "cls": "btn btn-sm btn-ghost",
       "text": "Markdown",
       "x": 899,
-      "y": 175,
+      "y": 195,
       "w": 88,
       "h": 26
     },
@@ -54,7 +54,7 @@
       "cls": "btn btn-ghost btn-sm",
       "text": "Comment",
       "x": 1003,
-      "y": 175,
+      "y": 195,
       "w": 102,
       "h": 26
     },
@@ -62,7 +62,7 @@
       "cls": "btn btn-ghost btn-sm",
       "text": "2",
       "x": 1109,
-      "y": 175,
+      "y": 195,
       "w": 52,
       "h": 26
     },
@@ -70,7 +70,7 @@
       "cls": "btn btn-ghost btn-sm",
       "text": "",
       "x": 1165,
-      "y": 176,
+      "y": 196,
       "w": 39,
       "h": 25
     },
@@ -78,7 +78,7 @@
       "cls": "btn btn-ghost btn-sm",
       "text": "History",
       "x": 549,
-      "y": 210,
+      "y": 230,
       "w": 88,
       "h": 26
     },
@@ -86,7 +86,7 @@
       "cls": "export-dropdown",
       "text": "Export",
       "x": 641,
-      "y": 210,
+      "y": 230,
       "w": 104,
       "h": 26
     },
@@ -94,33 +94,33 @@
       "cls": "btn btn-ghost btn-sm",
       "text": "Export",
       "x": 641,
-      "y": 210,
+      "y": 230,
       "w": 104,
       "h": 26
     }
   ],
   "canvas": {
     "x": 536,
-    "y": 261,
-    "w": 716,
+    "y": 281,
+    "w": 708,
     "h": 527
   },
   "tiptap": {
     "x": 537,
-    "y": 337,
-    "w": 714,
+    "y": 357,
+    "w": 706,
     "h": 450
   },
   "contentColumn": {
     "x": 536,
     "y": 56,
-    "w": 716,
-    "h": 732
+    "w": 708,
+    "h": 752
   },
   "header": {
     "x": 536,
     "y": 56,
-    "w": 716,
+    "w": 708,
     "h": 91
   },
   "headerParts": [
@@ -128,14 +128,14 @@
       "sel": ".editor-breadcrumb",
       "x": 536,
       "y": 56,
-      "w": 716,
+      "w": 708,
       "h": 18
     },
     {
       "sel": ".page-header__row",
       "x": 536,
       "y": 80,
-      "w": 716,
+      "w": 708,
       "h": 54
     },
     {
@@ -161,7 +161,7 @@
     },
     {
       "sel": ".page-header__actions",
-      "x": 1124,
+      "x": 1116,
       "y": 98,
       "w": 128,
       "h": 36
@@ -170,23 +170,23 @@
   "mainContent": {
     "x": 248,
     "y": 0,
-    "w": 1032,
-    "h": 860
+    "w": 1024,
+    "h": 864
   },
   "archiveMain": {
     "x": 508,
     "y": 28,
-    "w": 772,
-    "h": 800
+    "w": 764,
+    "h": 808
   },
   "archiveView": {
     "x": 248,
     "y": 28,
-    "w": 1032,
-    "h": 800
+    "w": 1024,
+    "h": 808
   },
   "scrollHeights": {
-    "mainContent": 860,
-    "mainContentClient": 860
+    "mainContent": 864,
+    "mainContentClient": 864
   }
 }

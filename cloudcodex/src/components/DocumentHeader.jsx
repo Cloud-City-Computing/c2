@@ -144,7 +144,7 @@ export default function DocumentHeader({
   );
 
   return (
-    <div className="editor-header document-header">
+    <div className={`editor-header document-header${editing ? ' document-header--editing' : ''}`}>
       {crumb}
       <PageHeader title={title} meta={meta} primary={primary} toolbar={toolbar} />
     </div>

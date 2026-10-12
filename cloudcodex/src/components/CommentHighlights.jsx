@@ -125,12 +125,23 @@ export function RichTextHighlights({ editorRef, comments, activeCommentId, conta
     setHighlights(items);
   }, [editorRef, comments, containerRef]);
 
-  // Recompute on comments change and periodically (content may reflow)
+  // Recompute on comments change, when the editor or its container resizes (a reflow is seen at once, not on the
+  // next tick), and on a 2 s backstop for a change that moves text without resizing either element (W6-CDX-41).
   useEffect(() => {
     computeHighlights();
     const interval = setInterval(computeHighlights, 2000);
     return () => clearInterval(interval);
   }, [computeHighlights, activeCommentId]);
+
+  useEffect(() => {
+    const editorEl = editorRef.current?.view?.dom;
+    if (!editorEl || typeof ResizeObserver === 'undefined') return undefined;
+    const container = containerRef?.current || editorEl.parentElement;
+    const observer = new ResizeObserver(() => computeHighlights());
+    observer.observe(editorEl);
+    if (container) observer.observe(container);
+    return () => observer.disconnect();
+  }, [editorRef, containerRef, computeHighlights]);
 
   if (highlights.length === 0) return null;
 

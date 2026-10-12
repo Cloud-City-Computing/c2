@@ -71,7 +71,8 @@ const waitFor = async (expression, ms = 8000) => {
 };
 
 const problems = [];
-const SIZES = [[1280, 860], [390, 844]];
+// CDX_SIZES overrides the sizes, as WIDTHxHEIGHT pairs separated by commas (the phone states add 320).
+const SIZES = (process.env.CDX_SIZES || '1280x860,390x844').split(',').map((z) => z.split('x').map(Number));
 async function open(route, w, h) {
   await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: w < 600 });
   await send('Page.navigate', { url: BASE + route });
@@ -97,6 +98,34 @@ const states = {
   async 'archive-view'(w, h) { await open('/archives/1/doc', w, h); await waitFor(`!!document.querySelector('.page-tree-list, .page-tree-empty')`); await sleep(800); await shot('archive-view', w, h); },
   async document(w, h) { await open('/archives/1/doc/1', w, h); await waitFor(`!!document.querySelector('.editor-header')`); await sleep(1500); await shot('document', w, h); },
   async empty(w, h) { await open('/archives/9', w, h); await waitFor(`!!document.querySelector('.log-tree .empty-state')`); await sleep(800); await shot('empty', w, h); },
+  // The long-form and list pages at the phone widths: the shell rows and the page's own boxes, for before and after.
+  async 'phone-pages'(w, h) {
+    if (w >= 600) return;
+    const routes = ['/github', '/account', '/archives', '/archives/1/doc', '/notifications', '/activity'];
+    const geo = {};
+    for (const route of routes) {
+      await open(route, w, h); await sleep(1500);
+      const slug = route.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'home';
+      geo[route] = await evalJs(`(() => {
+        const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { y: Math.round(r.y), h: Math.round(r.height), w: Math.round(r.width) }; };
+        const shell = document.querySelector('.app-shell');
+        return {
+          docScrollHeight: document.documentElement.scrollHeight,
+          shellRows: shell ? getComputedStyle(shell).gridTemplateRows : null,
+          sidebar: box(document.querySelector('.sidebar')),
+          main: box(document.querySelector('.main-content')),
+          ghPage: box(document.querySelector('.gh-page')),
+          ghTextarea: box(document.querySelector('.gh-editor-textarea')),
+          lastChild: box(document.querySelector('.main-content')?.lastElementChild),
+        };
+      })()`);
+      await shot(`phone-${slug}`, w, h);
+    }
+    writeFileSync(path.join(OUT, `phone-geometry-${w}.json`), JSON.stringify(geo, null, 2));
+    console.log('wrote phone-geometry', w);
+  },
+  async notifications(w, h) { await open('/notifications', w, h); await waitFor(`!!document.querySelector('.empty-state, .notifications-page__list')`); await sleep(600); await shot('notifications', w, h); },
+  async activity(w, h) { await open('/activity', w, h); await waitFor(`!!document.querySelector('.empty-state, .activity-page__list')`); await sleep(600); await shot('activity', w, h); },
   // The app shell's own rows at the phone width, on home and on the archive placeholder (why main may sit lower).
   async 'layout-probe'(w, h) {
     for (const route of ['/', '/archives/1/doc']) {

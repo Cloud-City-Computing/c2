@@ -1358,7 +1358,11 @@ export default function ArchiveBrowser() {
         <div className="archive-list">
           {visibleArchives.map((archive) => {
             const expanded = expandedArchive === archive.id;
-            const count = archive.log_count ?? 0;
+            // A missing count is said to be missing, never shown as zero.
+            const countLabel = typeof archive.log_count === 'number'
+              ? `${archive.log_count} document${archive.log_count !== 1 ? 's' : ''}`
+              : 'Count unavailable';
+            const createdLabel = archive.created_at ? new Date(archive.created_at).toLocaleDateString() : '';
             const actions = rowActions(archive);
             return (
               <div key={archive.id}
@@ -1378,7 +1382,8 @@ export default function ArchiveBrowser() {
                   <span className="archive-row__meta">
                     <span className="archive-row__squad">{archive.squad_name || 'No squad'}</span>
                     <span className="archive-row__owner">{archive.created_by}</span>
-                    <span className="archive-row__count">{count} document{count !== 1 ? 's' : ''}</span>
+                    <span className="archive-row__created">{createdLabel}</span>
+                    <span className="archive-row__count">{countLabel}</span>
                   </span>
                   <span className="archive-row__actions">
                     <Menu
