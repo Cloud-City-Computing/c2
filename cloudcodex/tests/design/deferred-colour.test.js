@@ -30,8 +30,14 @@ const MIN = 4.5;
 
 /** A colour value (a var() chain, an rgba() literal, or a parsed colour), as the gate's colour; undefined if none. */
 function colourOf(value, tokens) {
-  const v = /^var\((--[\w-]+)\)$/.exec(value.trim());
-  const raw = v ? resolveTokenValue(tokens, v[1]) : value.trim();
+  // A token may name another token (a light binding that reads --cx-on-accent): follow the chain to a colour.
+  let raw = value.trim();
+  for (let i = 0; i < 8; i += 1) {
+    const v = /^var\((--[\w-]+)\)$/.exec(raw);
+    if (!v) break;
+    raw = resolveTokenValue(tokens, v[1]);
+    if (raw === undefined) return undefined;
+  }
   if (raw === undefined) return undefined;
   const rgba = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/.exec(raw);
   if (rgba) return { r: rgba[1] / 255, g: rgba[2] / 255, b: rgba[3] / 255, alpha: Number(rgba[4]) };
@@ -49,10 +55,9 @@ function declarationsOf(body) {
   return map;
 }
 
-// A label whose background comes from elsewhere is measured where that background is set, not here: a presence
-// avatar's and a remote cursor's colour is the user's (presence-palette.test.js measures every cursor colour), and a
-// comment tag's colour comes from its kind modifier (the kind test below measures each kind).
-const PAINTED_ELSEWHERE = ['.collab-avatar', '.remote-cursor__label', '.comment-tag', '.comment-tag-btn--active'];
+// A comment tag's label comes from its kind modifier, which sets the fill, so it is measured where the fill is set (the
+// kind test below). A presence label takes its colour from avatarLabel() inline, measured in presence-label.test.js.
+const PAINTED_ELSEWHERE = ['.comment-tag', '.comment-tag-btn--active'];
 const RULES = rulesOf(index).filter(isDeferredRule).map((rule) => ({ ...rule, decl: declarationsOf(rule.body) }));
 const TEXT_RULES = RULES.filter((rule) => rule.decl.has('color') && /var\(--|rgba?\(|#/.test(rule.decl.get('color')))
   .filter((rule) => !PAINTED_ELSEWHERE.includes(rule.selector));
@@ -89,14 +94,16 @@ describe.each(THEME_NAMES)('deferred families, measured in use, %s theme', (them
 
 describe.each(THEME_NAMES)('a comment tag label on each kind, %s theme', (theme) => {
   const tokens = themed[theme];
-  // The kind's own fill, read from its modifier rule, carries the ink label (.comment-tag and .comment-tag-btn--active).
+  // The kind's own fill, read from its modifier rule, carries its label: the ink, or the note's own white, which
+  // measures higher on the note's fill in dark (W6-CDX-43 review, item 5).
   const KINDS = ['comment', 'suggestion', 'question', 'issue', 'note'];
-  it.each(KINDS)('%s: the ink label clears 4.5:1 on the kind fill', (kind) => {
+  it.each(KINDS)('%s: its label clears 4.5:1 on the kind fill', (kind) => {
     const fill = RULES.find((rule) => rule.selector === `.comment-tag--${kind}`);
     const bg = fill?.decl.get('background');
     expect(bg, `.comment-tag--${kind} background`).toBeDefined();
-    const ratio = contrastRatio(colourOf('var(--cx-on-accent)', tokens), colourOf(bg, tokens));
-    expect(ratio, `${kind} fill ${bg} with the ink measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(MIN);
+    const label = kind === 'note' ? 'var(--cx-deferred-note-label)' : 'var(--cx-deferred-tag-label)';
+    const ratio = contrastRatio(colourOf(label, tokens), colourOf(bg, tokens));
+    expect(ratio, `${kind} fill ${bg} with ${label} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(MIN);
   });
 });
 

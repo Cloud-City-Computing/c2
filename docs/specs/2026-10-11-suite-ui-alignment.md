@@ -240,14 +240,21 @@ For each preference, the first step that yields a valid value wins:
   | Text, links, icons | `oklch(0.68 0.13 H)` | `oklch(0.47 0.12 H)` |
   | Hover | `oklch(0.78 0.1 H)` | `oklch(0.41 0.1 H)` |
   | Fill (a background; its label is the product's on-accent ink) | `oklch(0.68 0.13 H)` | `oklch(0.68 0.13 H)` |
+  | Fill hover (a background on hover; v2, below) | `oklch(0.78 0.1 H)` | `oklch(0.78 0.1 H)` |
   | Selection wash | `oklch(0.21 0.055 H)` | `oklch(0.97 0.025 H)` |
 
-  These are the package ramp's own shapes (`--accent-400`, `-300`, the light text step the audit
-  measured at L 0.47, `--accent-700`'s shape) with the hue swapped, so the default and a picked hue
-  differ only in hue. Computed: the light text step measures at least 4.81:1 on every proposed light
+  **v2, 2026-10-12: adds fillHover; Command adopts it in a follow-up PR.**
+  The primary button's hover on a filled accent cannot be the light theme's text hover (the deep step, which the dark
+  ink measures 2.2:1 on as a fill), so the fill has its own hover, lighter than the fill in both themes. Until Command
+  adopts it, its primary hover is not the contract's.
+
+  The default bindings are the package ramp's own shapes: dark uses `--accent-400` and `-300`, and light uses
+  `--accent-600` for the text step (`oklch(0.49 0.12 240)`), `--accent-700` for the hover and `--accent-400` for the
+  fill. A picked hue swaps the hue into the contract's values above, so the picked light text step (`0.47`) is the
+  formula, not the default light text colour. The default and a picked hue differ only in hue. Computed: the light text step measures at least 4.81:1 on every proposed light
   surface for all eight hues, and the fill carries the dark ink at about 6.9:1. **Each product's
   gates must prove, for all eight hues and both themes:** the text step at 4.5:1 or more on every
-  surface it paints, the fill's label at 4.5:1 or more, and the focus ring at 3:1 or more. If either
+  surface it paints, the fill's label at 4.5:1 or more on the fill and on the fill hover, and the focus ring at 3:1 or more. If either
   product's gate finds a failing pair, the step changes in this table and in both products together,
   as contract version 2.
 - With no accent set, each product keeps its own default bindings onto the package ramp.

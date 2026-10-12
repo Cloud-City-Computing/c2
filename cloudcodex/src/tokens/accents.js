@@ -28,7 +28,7 @@ export const LEGACY_ACCENT = {
 // gates that measure a picked accent). H is the hue. Each theme's text step, hover and selection wash are the
 // contract's values (docs/specs/2026-10-11-suite-ui-alignment.md, "Applying"). `fillHover` is the primary
 // button's hover on a filled accent: the light theme's hover step is the deep text step, which cannot be a fill
-// under the dark ink, so the fill's hover is a lighter step in both themes (a Codex addition, see the spec).
+// under the dark ink, so the fill's hover is a lighter step in both themes (contract v2, 2026-10-12; see the spec).
 // `dark` is the step behind a white avatar label, which tests/design/painted.test.js measures.
 export const STEP_HUE_PLACEHOLDER = 'H';
 export const STEPS = Object.freeze({

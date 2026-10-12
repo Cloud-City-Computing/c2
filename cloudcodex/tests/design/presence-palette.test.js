@@ -42,8 +42,11 @@ describe.each(THEME_NAMES)('%s theme', (theme) => {
       for (const c of CURSOR_COLORS) expect(c).toMatch(/^#[0-9a-f]{6}$/i);
     });
 
-    it('pins the ink luminance to the --cx-on-accent token it stands for', () => {
-      expect(relativeLuminance(paintOf('var(--cx-on-accent)'))).toBeCloseTo(INK_LUMINANCE, 9);
+    it('pins the ink luminance to the contract ink: exact for the light --cx-on-accent, the one the constant names', () => {
+      // The constant is the light ink (W6-CDX-43 review, item 2). The dark ink is 0.0014 away; the real label each cursor
+      // colour receives is measured with each theme's own token in presence-label.test.js, so this pin is the light one.
+      const exact = theme === 'daylight' ? 9 : 2;
+      expect(relativeLuminance(paintOf('var(--cx-on-accent)'))).toBeCloseTo(INK_LUMINANCE, exact);
     });
 
     it.each(CURSOR_COLORS)('%s: the chosen label clears 4.5:1 on it', (bg) => {

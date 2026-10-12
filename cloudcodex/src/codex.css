@@ -171,6 +171,7 @@
   --cx-deferred-000000-a60: rgba(0, 0, 0, 0.6);
   --cx-deferred-000000-a70: rgba(0, 0, 0, 0.7);
   --cx-deferred-1a1a2e: #1a1a2e;
+  --cx-deferred-222: #222;
   --cx-deferred-2ca7db-a05: rgba(44, 167, 219, 0.05);
   --cx-deferred-2ca7db-a06: rgba(44, 167, 219, 0.06);
   --cx-deferred-2ca7db-a08: rgba(44, 167, 219, 0.08);
@@ -193,17 +194,20 @@
   --cx-deferred-50c878-a50: rgba(80, 200, 120, 0.5);
   --cx-deferred-66bb6a: #66bb6a;
   --cx-deferred-66bb6a-a15: rgba(102, 187, 106, 0.15);
+  --cx-deferred-66bb6a-text: #66bb6a;
   --cx-deferred-8282dc-a15: rgba(130, 130, 220, 0.15);
   --cx-deferred-888: #888;
   --cx-deferred-a371f7-a15: rgba(163, 113, 247, 0.15);
   --cx-deferred-aaffaa: #aaffaa;
-  --cx-deferred-b860cc: #b860cc;
+  --cx-deferred-ab47bc: #ab47bc;
+  --cx-deferred-active-text: var(--color-accent);
   --cx-deferred-d29922: #d29922;
   --cx-deferred-d29922-a15: rgba(210, 153, 34, 0.15);
   --cx-deferred-d4d4d4: #d4d4d4;
   --cx-deferred-e54545-a15: rgba(229, 69, 69, 0.15);
   --cx-deferred-ef5350: #ef5350;
   --cx-deferred-ef5350-a15: rgba(239, 83, 80, 0.15);
+  --cx-deferred-ef5350-text: #ef5350;
   --cx-deferred-f44336-a10: rgba(244, 67, 54, 0.1);
   --cx-deferred-f5a623: #f5a623;
   --cx-deferred-f85149: #f85149;
@@ -225,6 +229,8 @@
   --cx-deferred-ffffff-a10: rgba(255, 255, 255, 0.1);
   --cx-deferred-ffffff-a12: rgba(255, 255, 255, 0.12);
   --cx-deferred-ffffff-a30: rgba(255,255,255,0.3);
+  --cx-deferred-note-label: #fff;
+  --cx-deferred-tag-label: var(--cx-on-accent);
 
   /* The code block: the wash behind a block of code (the editor's pre, a translucent black), and the highlight.js
      token colours that paint on it (W6-CDX-43, colour only: the dark values are the literals they replace). Each
@@ -266,8 +272,8 @@
   --cx-accent-hover: var(--accent-700);
   --cx-accent-fill: var(--accent-400);
   --cx-accent-fill-hover: var(--accent-300);
-  /* The same ink as dark: the presence avatar's label is pinned to one luminance in both themes (avatar-label.js). */
-  --cx-on-accent: oklch(0.14 0.03 240);
+  /* The contract's light ink (suite-theme.json; a change is made in both products). avatar-label.js pins INK_LUMINANCE to it. */
+  --cx-on-accent: oklch(0.16 0.03 240);
   /* The dark step behind a white avatar label: white clears 4.5:1 on it in either theme. */
   --cx-accent-dark: oklch(0.45 0.13 240);
   /* Danger is the same fill and ink as dark: the package's bright step with the dark ink, and an inset ring on hover. */
@@ -341,21 +347,22 @@
   --cx-deferred-000000-a60: oklch(0 0 0 / 0.6);
   --cx-deferred-000000-a70: oklch(0 0 0 / 0.7);
   --cx-deferred-1a1a2e: var(--cx-surface-1);
-  --cx-deferred-2ca7db-a05: oklch(0.49 0.12 240 / 0.025);
-  --cx-deferred-2ca7db-a06: oklch(0.49 0.12 240 / 0.03);
-  --cx-deferred-2ca7db-a08: oklch(0.49 0.12 240 / 0.04);
-  --cx-deferred-2ca7db-a10: oklch(0.49 0.12 240 / 0.05);
-  --cx-deferred-2ca7db-a12: oklch(0.49 0.12 240 / 0.06);
+  --cx-deferred-222: oklch(0.2 0.01 240);
+  --cx-deferred-2ca7db-a05: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a06: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a08: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a10: oklch(0.49 0.12 240 / 0.07);
+  --cx-deferred-2ca7db-a12: oklch(0.49 0.12 240 / 0.07);
   --cx-deferred-2ca7db-a15: oklch(0.49 0.12 240 / 0.075);
   --cx-deferred-2ca7db-a18: oklch(0.49 0.12 240 / 0.09);
   --cx-deferred-2ca7db-a25: oklch(0.49 0.12 240 / 0.125);
   --cx-deferred-2ca7db-a30: oklch(0.49 0.12 240 / 0.15);
   --cx-deferred-333: var(--cx-border-strong);
-  --cx-deferred-34a853-a10: oklch(0.55 0.14 150 / 0.05);
+  --cx-deferred-34a853-a10: oklch(0.55 0.14 150 / 0.06);
   --cx-deferred-34a853-a30: oklch(0.55 0.14 150 / 0.15);
   --cx-deferred-3a3a3a: var(--cx-border-strong);
-  --cx-deferred-3fb950: oklch(0.5 0.13 146);
-  --cx-deferred-3fb950-a10: oklch(0.55 0.14 150 / 0.05);
+  --cx-deferred-3fb950: oklch(0.46 0.13 146);
+  --cx-deferred-3fb950-a10: oklch(0.55 0.14 150 / 0.06);
   --cx-deferred-3fb950-a15: oklch(0.55 0.14 150 / 0.075);
   --cx-deferred-4a9eff: oklch(0.72 0.14 254);
   --cx-deferred-4caf50-a15: oklch(0.55 0.14 150 / 0.075);
@@ -363,21 +370,24 @@
   --cx-deferred-50c878-a50: oklch(0.55 0.14 150 / 0.25);
   --cx-deferred-66bb6a: oklch(0.74 0.14 145);
   --cx-deferred-66bb6a-a15: oklch(0.55 0.14 150 / 0.075);
+  --cx-deferred-66bb6a-text: oklch(0.45 0.13 150);
   --cx-deferred-8282dc-a15: oklch(0.55 0.15 290 / 0.075);
   --cx-deferred-888: oklch(0.5 0.01 240);
   --cx-deferred-a371f7-a15: oklch(0.55 0.15 290 / 0.075);
   --cx-deferred-aaffaa: oklch(0.45 0.13 145);
-  --cx-deferred-b860cc: oklch(0.7 0.16 322);
+  --cx-deferred-ab47bc: oklch(0.7 0.16 322);
+  --cx-deferred-active-text: var(--cx-accent-hover);
   --cx-deferred-d29922: oklch(0.5 0.11 80);
   --cx-deferred-d29922-a15: oklch(0.6 0.13 78 / 0.075);
   --cx-deferred-d4d4d4: var(--cx-text-primary);
   --cx-deferred-e54545-a15: oklch(0.55 0.19 25 / 0.075);
   --cx-deferred-ef5350: oklch(0.72 0.16 25);
   --cx-deferred-ef5350-a15: oklch(0.55 0.19 25 / 0.075);
-  --cx-deferred-f44336-a10: oklch(0.55 0.19 25 / 0.05);
+  --cx-deferred-ef5350-text: oklch(0.5 0.19 25);
+  --cx-deferred-f44336-a10: oklch(0.55 0.19 25 / 0.075);
   --cx-deferred-f5a623: oklch(0.5 0.13 73);
   --cx-deferred-f85149: oklch(0.5 0.19 27);
-  --cx-deferred-f85149-a10: oklch(0.55 0.19 25 / 0.05);
+  --cx-deferred-f85149-a10: oklch(0.55 0.19 25 / 0.075);
   --cx-deferred-f85149-a15: oklch(0.55 0.19 25 / 0.075);
   --cx-deferred-ff6b6b: oklch(0.5 0.19 23);
   --cx-deferred-ffa726: oklch(0.8 0.15 70);
@@ -386,15 +396,17 @@
   --cx-deferred-ffeb3b-a10: oklch(0.9 0.16 98 / 0.1);
   --cx-deferred-ffeb3b-a40: oklch(0.9 0.16 98 / 0.4);
   --cx-deferred-fff: #fff;
-  --cx-deferred-ffffff-a02: oklch(0.2 0.02 240 / 0.01);
-  --cx-deferred-ffffff-a03: oklch(0.2 0.02 240 / 0.015);
-  --cx-deferred-ffffff-a04: oklch(0.2 0.02 240 / 0.02);
-  --cx-deferred-ffffff-a05: oklch(0.2 0.02 240 / 0.025);
-  --cx-deferred-ffffff-a06: oklch(0.2 0.02 240 / 0.03);
-  --cx-deferred-ffffff-a08: oklch(0.2 0.02 240 / 0.04);
+  --cx-deferred-ffffff-a02: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a03: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a04: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a05: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a06: oklch(0.2 0.02 240 / 0.045);
+  --cx-deferred-ffffff-a08: oklch(0.2 0.02 240 / 0.045);
   --cx-deferred-ffffff-a10: oklch(0.2 0.02 240 / 0.05);
   --cx-deferred-ffffff-a12: oklch(0.2 0.02 240 / 0.06);
   --cx-deferred-ffffff-a30: oklch(0.2 0.02 240 / 0.15);
+  --cx-deferred-note-label: var(--cx-on-accent);
+  --cx-deferred-tag-label: var(--cx-on-accent);
 
   /* The code block: a light wash behind code, and deep token colours that clear 4.6:1 on it and on every surface
      (tests/design/code-blocks.test.js). Each keeps its dark twin's hue; the light step is chosen per token. */

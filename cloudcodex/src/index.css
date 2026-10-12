@@ -2767,7 +2767,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .gh-history__file-status--added {
   background: var(--cx-deferred-3fb950-a15);
-  color: var(--cx-success-bright);
+  color: var(--cx-deferred-3fb950);
 }
 
 .gh-history__file-status--modified {
@@ -2810,7 +2810,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Active history button state */
 .gh-file-actions .btn.active {
   background: var(--cx-deferred-2ca7db-a15);
-  color: var(--cx-accent-hover);
+  color: var(--cx-deferred-active-text);
 }
 
 /* ── Full-width History Mode ── */
@@ -2991,7 +2991,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .gh-pr-badge--open {
   background: var(--cx-deferred-3fb950-a15);
-  color: var(--cx-success-bright);
+  color: var(--cx-deferred-3fb950);
 }
 
 .gh-pr-badge--closed {
@@ -3324,7 +3324,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Active diff toggle button */
 .gh-history__detail-actions .btn.active {
   background: var(--cx-deferred-2ca7db-a15);
-  color: var(--cx-accent-hover);
+  color: var(--cx-deferred-active-text);
 }
 
 /* ── Responsive ── */
@@ -4864,7 +4864,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .tiptap-toolbar__btn--active {
   background: var(--cx-deferred-2ca7db-a18);
-  color: var(--cx-accent-hover);
+  color: var(--cx-deferred-active-text);
 }
 
 .tiptap-toolbar__btn:disabled {
@@ -6413,7 +6413,6 @@ textarea:focus-visible {
   justify-content: center;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--cx-deferred-fff);
   border: 2px solid var(--cx-surface-0);
   margin-left: -6px;
   flex-shrink: 0;
@@ -6519,7 +6518,6 @@ textarea:focus-visible {
   border-radius: 4px 4px 4px 0;
   font-size: 0.65rem;
   font-weight: 600;
-  color: var(--cx-deferred-fff);
   white-space: nowrap;
   line-height: 1.4;
   opacity: 0.92;
@@ -7576,7 +7574,7 @@ textarea:focus-visible {
 .comment-thread--suggestion { border-left-color: var(--cx-deferred-66bb6a); }
 .comment-thread--question   { border-left-color: var(--cx-deferred-ffa726); }
 .comment-thread--issue      { border-left-color: var(--cx-deferred-ef5350); }
-.comment-thread--note       { border-left-color: var(--cx-deferred-b860cc); }
+.comment-thread--note       { border-left-color: var(--cx-deferred-ab47bc); }
 
 .comment-thread__header {
   display: flex;
@@ -7681,13 +7679,13 @@ textarea:focus-visible {
   letter-spacing: 0.5px;
   padding: 1px 6px;
   border-radius: 3px;
-  color: var(--cx-on-accent);
+  color: var(--cx-deferred-tag-label);
 }
 .comment-tag--comment    { background: var(--cx-deferred-4a9eff); }
 .comment-tag--suggestion { background: var(--cx-deferred-66bb6a); }
-.comment-tag--question   { background: var(--cx-deferred-ffa726); color: var(--cx-on-accent); }
+.comment-tag--question   { background: var(--cx-deferred-ffa726); color: var(--cx-deferred-222); }
 .comment-tag--issue      { background: var(--cx-deferred-ef5350); }
-.comment-tag--note       { background: var(--cx-deferred-b860cc); }
+.comment-tag--note       { background: var(--cx-deferred-ab47bc); color: var(--cx-deferred-note-label); }
 
 /* --- Comment buttons --- */
 .comment-btn {
@@ -7712,10 +7710,10 @@ textarea:focus-visible {
   color: var(--cx-on-accent);
   border-color: var(--cx-accent);
 }
-.comment-btn--resolve { color: var(--cx-success); border-color: var(--cx-deferred-66bb6a); }
+.comment-btn--resolve { color: var(--cx-deferred-66bb6a-text); border-color: var(--cx-deferred-66bb6a); }
 .comment-btn--resolve:hover { background: var(--cx-deferred-66bb6a-a15); }
 .comment-btn--dismiss { color: var(--text-secondary); }
-.comment-btn--delete { color: var(--cx-danger); border-color: var(--cx-deferred-ef5350); }
+.comment-btn--delete { color: var(--cx-deferred-ef5350-text); border-color: var(--cx-deferred-ef5350); }
 .comment-btn--delete:hover { background: var(--cx-deferred-ef5350-a15); }
 .comment-btn--sm { padding: 2px 6px; font-size: 0.72rem; }
 .comment-btn--icon {
@@ -7726,7 +7724,7 @@ textarea:focus-visible {
   color: var(--text-secondary);
   cursor: pointer;
 }
-.comment-btn--icon:hover { color: var(--cx-danger); }
+.comment-btn--icon:hover { color: var(--cx-deferred-ef5350-text); }
 
 /* --- Comment textarea --- */
 .comment-textarea {
@@ -7795,13 +7793,13 @@ textarea:focus-visible {
   transition: all 0.15s;
 }
 .comment-tag-btn--active {
-  color: var(--cx-on-accent);
+  color: var(--cx-deferred-tag-label);
 }
 .comment-tag-btn--comment.comment-tag-btn--active    { background: var(--cx-deferred-4a9eff); border-color: var(--cx-deferred-4a9eff); }
 .comment-tag-btn--suggestion.comment-tag-btn--active { background: var(--cx-deferred-66bb6a); border-color: var(--cx-deferred-66bb6a); }
-.comment-tag-btn--question.comment-tag-btn--active   { background: var(--cx-deferred-ffa726); border-color: var(--cx-deferred-ffa726); color: var(--cx-on-accent); }
+.comment-tag-btn--question.comment-tag-btn--active   { background: var(--cx-deferred-ffa726); border-color: var(--cx-deferred-ffa726); color: var(--cx-deferred-222); }
 .comment-tag-btn--issue.comment-tag-btn--active      { background: var(--cx-deferred-ef5350); border-color: var(--cx-deferred-ef5350); }
-.comment-tag-btn--note.comment-tag-btn--active       { background: var(--cx-deferred-b860cc); border-color: var(--cx-deferred-b860cc); }
+.comment-tag-btn--note.comment-tag-btn--active       { background: var(--cx-deferred-ab47bc); border-color: var(--cx-deferred-ab47bc); color: var(--cx-deferred-note-label); }
 
 /* --- Comment Manager Modal --- */
 .comment-manager {
@@ -7873,7 +7871,7 @@ textarea:focus-visible {
 .comment-manager__item--suggestion { border-left-color: var(--cx-deferred-66bb6a); }
 .comment-manager__item--question   { border-left-color: var(--cx-deferred-ffa726); }
 .comment-manager__item--issue      { border-left-color: var(--cx-deferred-ef5350); }
-.comment-manager__item--note       { border-left-color: var(--cx-deferred-b860cc); }
+.comment-manager__item--note       { border-left-color: var(--cx-deferred-ab47bc); }
 .comment-manager__item--closed     { opacity: 0.6; }
 
 .comment-manager__item-header {

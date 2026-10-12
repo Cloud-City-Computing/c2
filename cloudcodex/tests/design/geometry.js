@@ -131,7 +131,7 @@ export function geometryLines(css, sources = [css]) {
       lines.push(`token ${name} <undeclared>`);
       continue;
     }
-    for (const { selector, value } of found) {
+    for (const { value } of found) {
       // A definition is geometry when a number is left once its colour and its token names are stripped. A colour
       // alias or a colour definition has none, so the colour pass adds no line for it; the tokens it reads are still followed.
       const stripped = stripColour(value);

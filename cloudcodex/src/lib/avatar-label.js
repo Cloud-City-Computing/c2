@@ -11,8 +11,9 @@
  * https://cloudcitycomputing.com
  */
 
-// The WCAG relative luminance of --cx-on-accent (oklch(0.14 0.03 240)), as the vendored gate measures it.
-export const INK_LUMINANCE = 0.002799639880542578;
+// The WCAG relative luminance of the light --cx-on-accent, oklch(0.16 0.03 240), the contract's light ink. The dark ink
+// (oklch(0.14 0.03 240)) differs by 0.0014; presence-label.test.js measures each cursor colour with the real token of each theme.
+export const INK_LUMINANCE = 0.004175134234249585;
 
 const CANDIDATES = [
   { color: 'var(--cx-white)', luminance: 1 },
@@ -47,4 +48,12 @@ export function avatarLabel(bg) {
   const bgLum = luminance(bg);
   const measured = CANDIDATES.map((c) => ({ color: c.color, ratio: contrastOf(c.luminance, bgLum) }));
   return measured.find((m) => m.ratio >= 4.5) ?? [...measured].sort((x, y) => y.ratio - x.ratio)[0];
+}
+
+/**
+ * The paint of a presence surface painted `bg` (a cursor colour): its background, and the label avatarLabel() chooses.
+ * Every presence label goes through here, so no surface keeps a fixed white (W6-CDX-43 review, item 1).
+ */
+export function labelStyle(bg) {
+  return { backgroundColor: bg, color: avatarLabel(bg).color };
 }

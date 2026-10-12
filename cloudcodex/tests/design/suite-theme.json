@@ -36,7 +36,7 @@
     "--cx-accent": "var(--accent-600)",
     "--cx-accent-hover": "var(--accent-700)",
     "--cx-accent-fill": "var(--accent-400)",
-    "--cx-on-accent": "oklch(0.14 0.03 240)",
+    "--cx-on-accent": "oklch(0.16 0.03 240)",
     "--cx-select-wash": "oklch(0.97 0.025 230)",
     "--cx-danger": "var(--danger-deep)",
     "--cx-success": "oklch(0.5 0.13 150)",
