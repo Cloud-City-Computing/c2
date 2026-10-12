@@ -121,9 +121,9 @@ describe('getOidcConfig', () => {
   });
 
   it('reads the label, the switch and the lifetime when set', () => {
-    setOidcEnv({ OIDC_PROVIDER_NAME: 'Cloud City ID', OIDC_LINK_BY_VERIFIED_EMAIL: '0', OIDC_SESSION_TTL_HOURS: '8' });
+    setOidcEnv({ OIDC_PROVIDER_NAME: 'Example ID', OIDC_LINK_BY_VERIFIED_EMAIL: '0', OIDC_SESSION_TTL_HOURS: '8' });
     const config = getOidcConfig();
-    expect(config.providerName).toBe('Cloud City ID');
+    expect(config.providerName).toBe('Example ID');
     expect(config.linkByVerifiedEmail).toBe(false);
     expect(config.sessionTtlHours).toBe(8);
   });

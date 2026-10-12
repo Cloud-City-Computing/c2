@@ -492,7 +492,7 @@ export function AccountPreferencesPanel() {
     return (
       <div className="settings-panel">
         <h2 className="panel-title">Two-Factor Authentication</h2>
-        <p className="field__value">{METHOD_LABELS[method] ?? METHOD_LABELS.none}</p>
+        {method !== 'none' && <p className="field__value">{METHOD_LABELS[method]}</p>}
         <ManagedBy providerName={providerName} accountUrl={accountUrl} />
       </div>
     );

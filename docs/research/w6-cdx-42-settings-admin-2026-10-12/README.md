@@ -10,7 +10,7 @@ Sizes 1280x860 and 390x844. Dark is the only theme until W6-CDX-43.
 
 ## What to look at
 
-- **Account, suite on** (`after/suite-on/account-*`): name, email and password are text, each "Managed by Cloud City ID"
+- **Account, suite on** (`after/suite-on/account-*`): name, email and password are text, each "Managed by Example ID"
   with a link to the configured account page; two-factor is text with the same line (probe: four managed lines, four links,
   no text box, no radio, no submit). `before/suite-on/account-*` shows the editable fields the server now refuses.
 - **Account, suite off** (`after/suite-off/account-*`): editable as before; the Workspaces nav item is present.

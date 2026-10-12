@@ -34,10 +34,10 @@ describe('Login: the OIDC sign-in button', () => {
   });
 
   it('links to the OIDC start route, labelled with the configured name', async () => {
-    fetch.mockImplementation(() => providersResponse({ google: false, github: false, oidc: { enabled: true, name: 'Cloud City ID' } }));
+    fetch.mockImplementation(() => providersResponse({ google: false, github: false, oidc: { enabled: true, name: 'Example ID' } }));
     render(<Login />);
 
-    const link = await screen.findByRole('link', { name: 'Sign in with Cloud City ID' });
+    const link = await screen.findByRole('link', { name: 'Sign in with Example ID' });
     expect(link.getAttribute('href')).toBe('/api/auth/oidc/start');
   });
 

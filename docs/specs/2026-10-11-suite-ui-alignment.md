@@ -577,6 +577,16 @@ the canvas and editor keep their sizes, measured in the research folder's README
   `POST /api/update-account`, `POST /api/update-account/confirm-email` and the `/api/2fa/*` writes for
   the same accounts with a named refusal, `managed_by_issuer`. Accounts with no issuer identity (a
   local boot admin) stay editable.
+- **K6 coverage of the local routes (W6-CDX-42 review, security).** Read-only panels alone left a local route open: an
+  email-controlled reset could set a local password, and that password signed the account in without the issuer's
+  second factor. In suite mode, for an issuer-linked account: `POST /api/forgot-password` answers the generic response and
+  sends no mail (the same response as for an unknown address); `POST /api/reset-password` refuses with `managed_by_issuer`
+  and writes nothing; `POST /api/login` refuses with `managed_by_issuer`, even with the right password and an old local hash
+  still on the row, and mints no session or two-factor challenge; `POST /api/admin/users/:id/2fa/reset` refuses for an
+  issuer-linked target. Suite mode off, and accounts with no identity row, are unchanged. Tests:
+  `tests/integration/suite-issuer-local-sign-in.test.js` (live MySQL, real rows, each with a local control).
+  **Decided pending Kyle:** login refuses before the 2FA step, which is the security-first reading of K6; Kyle may
+  choose to let a locally-held second factor complete a sign-in instead.
 - **Appearance (K8):** density and the sidebar default are removed from the panel, from
   `userPrefs.js` (`DENSITIES`, `applyPrefsToDOM`'s density and sidebar branches) and from the three
   `--density-scale` reads; a stored `density` or `sidebarDefault` key is dropped on load. The editor

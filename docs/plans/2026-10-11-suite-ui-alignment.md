@@ -623,6 +623,11 @@ code or Kyle's binding decisions required a choice the plan did not spell out.
 10. **Tests first, unevenly.** The userPrefs, OIDC config, env contract, issuer refusal, AccountMenu, first-run and destructive
     copy tests were written red first. The Admin tab tests were written after the page and then run against the previous
     `AdminPage.jsx`, where all eleven failed. The not-found and Workspaces header tests were written alongside their code.
+11. **The local password routes and the admin 2FA reset refuse an issuer-linked account (review round, security).** The plan
+    named the account writes only. Login with a password is refused as well (decided pending Kyle, security-first: the login
+    would otherwise skip the issuer's second factor on an account whose local hash is still set). Forgot-password answers
+    generically and sends no mail; reset-password refuses without writing; the admin 2FA reset refuses. Covered by
+    `tests/integration/suite-issuer-local-sign-in.test.js`, mutation-checked one route at a time.
 
 ## PR 6: W6-CDX-43, the light theme and the hue-based picker
 

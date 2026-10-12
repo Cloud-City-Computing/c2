@@ -107,9 +107,9 @@ describe('GET /api/oauth/providers, the OIDC button name in suite mode (W6-CDX-2
   it('keeps OIDC_PROVIDER_NAME when it is set, even in suite mode', async () => {
     oidcOn();
     suiteOn();
-    process.env.OIDC_PROVIDER_NAME = 'Cloud City ID';
+    process.env.OIDC_PROVIDER_NAME = 'Example ID';
     const res = await request(app).get('/api/oauth/providers');
-    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Cloud City ID', accountUrl: null });
+    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Example ID', accountUrl: null });
   });
 
   it('keeps the default SSO name outside suite mode', async () => {

@@ -27,7 +27,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { apiFetch } from '../../../src/util.jsx';
 import { AccountPreferencesPanel } from '../../../src/components/AccountMenu.jsx';
 
-const MANAGED = /Sign-in to this account is managed by Cloud City ID\. Two-factor set here applies only when you sign in with a password\./;
+const MANAGED = /Sign-in to this account is managed by Example ID\. Two-factor set here applies only when you sign in with a password\./;
 
 function providersResponse(oidc) {
   return Promise.resolve({ json: () => Promise.resolve({ success: true, providers: { google: false, github: false, oidc } }) });
@@ -45,7 +45,7 @@ describe('AccountPreferencesPanel, for an OIDC-linked account', () => {
 
   it('says sign-in is managed by the configured provider, and keeps local two-factor available', async () => {
     apiFetch.mockResolvedValue({ success: true, method: 'none', managed_by: 'oidc' });
-    fetch.mockImplementation(() => providersResponse({ enabled: true, name: 'Cloud City ID' }));
+    fetch.mockImplementation(() => providersResponse({ enabled: true, name: 'Example ID' }));
 
     render(<AccountPreferencesPanel />);
 
@@ -65,7 +65,7 @@ describe('AccountPreferencesPanel, for an OIDC-linked account', () => {
 
   it('says nothing about a provider for a local or Google account', async () => {
     apiFetch.mockResolvedValue({ success: true, method: 'none', managed_by: null });
-    fetch.mockImplementation(() => providersResponse({ enabled: true, name: 'Cloud City ID' }));
+    fetch.mockImplementation(() => providersResponse({ enabled: true, name: 'Example ID' }));
 
     render(<AccountPreferencesPanel />);
 

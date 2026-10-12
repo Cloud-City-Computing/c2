@@ -1,7 +1,7 @@
 -- Cloud Codex - Seed Data
 --
 -- Generates ~60 documents across multiple archives and users
--- for testing search, browse, pagination, and UI density.
+-- for testing search, browse and pagination.
 --
 -- All passwords resolve to "password"
 --

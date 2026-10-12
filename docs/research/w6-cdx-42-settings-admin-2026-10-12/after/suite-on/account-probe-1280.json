@@ -2,10 +2,10 @@
   "textboxes": 0,
   "radios": 0,
   "managedBy": [
-    "Managed by Cloud City ID",
-    "Managed by Cloud City ID",
-    "Managed by Cloud City ID",
-    "Managed by Cloud City ID"
+    "Managed by Example ID",
+    "Managed by Example ID",
+    "Managed by Example ID",
+    "Managed by Example ID"
   ],
   "managedLinks": [
     "https://id.example.test/ui/console/users/me",

@@ -36,9 +36,9 @@ describe('GET /api/oauth/providers, the oidc entry', () => {
     process.env.OIDC_CLIENT_ID = 'codex-web';
     process.env.OIDC_CLIENT_SECRET = 'a-secret-for-the-surface-tests';
     process.env.APP_URL = 'https://codex.example.test';
-    process.env.OIDC_PROVIDER_NAME = 'Cloud City ID';
+    process.env.OIDC_PROVIDER_NAME = 'Example ID';
     const res = await request(app).get('/api/oauth/providers');
-    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Cloud City ID', accountUrl: null });
+    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Example ID', accountUrl: null });
   });
 
   it('serves OIDC_ACCOUNT_URL beside the name, for the account page link (W6-CDX-42)', async () => {

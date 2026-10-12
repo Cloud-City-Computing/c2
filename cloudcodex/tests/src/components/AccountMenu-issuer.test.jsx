@@ -62,7 +62,7 @@ describe('AccountInfoUpdatePanel, an issuer-managed account in suite mode', () =
 
   it('renders name, email and password read-only, with no field to edit and no submit', async () => {
     stubAccount({ managedBy: 'issuer' });
-    stubProviders({ enabled: true, name: 'Cloud City ID', accountUrl: ACCOUNT_URL });
+    stubProviders({ enabled: true, name: 'Example ID', accountUrl: ACCOUNT_URL });
 
     render(<AccountInfoUpdatePanel />);
 
@@ -76,22 +76,22 @@ describe('AccountInfoUpdatePanel, an issuer-managed account in suite mode', () =
 
   it('says each field is managed by the provider, and links the configured account page', async () => {
     stubAccount({ managedBy: 'issuer' });
-    stubProviders({ enabled: true, name: 'Cloud City ID', accountUrl: ACCOUNT_URL });
+    stubProviders({ enabled: true, name: 'Example ID', accountUrl: ACCOUNT_URL });
 
     render(<AccountInfoUpdatePanel />);
 
-    await waitFor(() => expect(screen.getAllByText('Managed by Cloud City ID').length).toBe(3));
-    const link = screen.getAllByRole('link', { name: /cloud city id/i })[0];
+    await waitFor(() => expect(screen.getAllByText('Managed by Example ID').length).toBe(3));
+    const link = screen.getAllByRole('link', { name: /example id/i })[0];
     expect(link).toHaveAttribute('href', ACCOUNT_URL);
   });
 
   it('shows no link when the account page is not configured', async () => {
     stubAccount({ managedBy: 'issuer' });
-    stubProviders({ enabled: true, name: 'Cloud City ID', accountUrl: null });
+    stubProviders({ enabled: true, name: 'Example ID', accountUrl: null });
 
     render(<AccountInfoUpdatePanel />);
 
-    await waitFor(() => expect(screen.getAllByText('Managed by Cloud City ID').length).toBe(3));
+    await waitFor(() => expect(screen.getAllByText('Managed by Example ID').length).toBe(3));
     expect(screen.queryByRole('link')).toBeNull();
   });
 
@@ -120,14 +120,25 @@ describe('AccountPreferencesPanel, an issuer-managed account in suite mode', () 
 
   it('renders two-factor read-only: no radio, the current method as text, and the account link', async () => {
     stubAccount({ managedBy: 'issuer', method: 'totp' });
-    stubProviders({ enabled: true, name: 'Cloud City ID', accountUrl: ACCOUNT_URL });
+    stubProviders({ enabled: true, name: 'Example ID', accountUrl: ACCOUNT_URL });
 
     render(<AccountPreferencesPanel />);
 
-    expect(await screen.findByText('Managed by Cloud City ID')).toBeInTheDocument();
+    expect(await screen.findByText('Managed by Example ID')).toBeInTheDocument();
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
     expect(screen.getByText('Authenticator app')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /cloud city id/i })).toHaveAttribute('href', ACCOUNT_URL);
+    expect(screen.getByRole('link', { name: /example id/i })).toHaveAttribute('href', ACCOUNT_URL);
+  });
+
+  it('shows only "Managed by" when two-factor is off: no local "Disabled" label', async () => {
+    stubAccount({ managedBy: 'issuer', method: 'none' });
+    stubProviders({ enabled: true, name: 'Example ID', accountUrl: ACCOUNT_URL });
+
+    render(<AccountPreferencesPanel />);
+
+    expect(await screen.findByText('Managed by Example ID')).toBeInTheDocument();
+    expect(screen.queryByText('Disabled')).toBeNull();
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
   });
 
   it('keeps the radio choices for an issuer-linked account with suite mode off', async () => {
