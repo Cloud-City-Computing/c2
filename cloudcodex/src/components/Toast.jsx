@@ -15,9 +15,13 @@
 
 import { createRoot } from 'react-dom/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { CheckIcon, XIcon, InfoIcon } from './icons.jsx';
 
 let addToastFn = null;
 let toastRoot = null;
+// Toasts raised before the container's effect has assigned addToastFn. The container drains them on mount (X2):
+// a root.render is asynchronous, so the first call after a fresh load used to find no dispatcher and was dropped.
+const pendingToasts = [];
 
 /**
  * Show a toast notification.
@@ -27,15 +31,26 @@ let toastRoot = null;
  */
 /* eslint-disable react-refresh/only-export-components */
 export function showToast(message, type = 'info', duration = 4000) {
-  if (!addToastFn) mountContainer();
-  addToastFn?.({ message, type, duration, id: Date.now() + Math.random() });
+  const toast = { message, type, duration, id: Date.now() + Math.random() };
+  if (addToastFn) {
+    addToastFn(toast);
+    return;
+  }
+  pendingToasts.push(toast);
+  mountContainer();
 }
 
 /**
- * Build a user-friendly toast message from an API error.
+ * Build a user-friendly toast message from an API error. A plain string is the message itself (X3): an
+ * admin action that has only its own fallback text passes the string, and a caller that has the error passes
+ * the error, so a server message (`body.message`) is never replaced by the generic line.
  */
-export function toastError(err) {
-  const msg = err?.body?.message || err?.message || 'An unexpected error occurred.';
+export function toastError(err, fallback = 'An unexpected error occurred.') {
+  if (typeof err === 'string') {
+    showToast(err, 'error', 5000);
+    return;
+  }
+  const msg = err?.body?.message || err?.message || fallback;
   if (err?.status === 403) {
     showToast(`Permission denied: ${msg}`, 'error', 5000);
   } else {
@@ -52,6 +67,7 @@ function ToastContainer() {
 
   useEffect(() => {
     addToastFn = addToast;
+    while (pendingToasts.length) addToast(pendingToasts.shift());
     return () => { addToastFn = null; };
   }, [addToast]);
 
@@ -122,11 +138,11 @@ function ToastItem({ toast, onDismiss }) {
         if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
       }}
     >
-      <span className="toast__icon">
-        {toast.type === 'error' ? '✕' : toast.type === 'success' ? '✓' : 'ℹ'}
+      <span className="toast__icon" aria-hidden="true">
+        {toast.type === 'error' ? <XIcon /> : toast.type === 'success' ? <CheckIcon /> : <InfoIcon />}
       </span>
       <span className="toast__message">{toast.message}</span>
-      <button type="button" className="toast__dismiss" aria-label="Dismiss notification"
+      <button type="button" className="toast__dismiss btn-icon" aria-label="Dismiss notification"
               onClick={dismissFromHere}>
         ×
       </button>

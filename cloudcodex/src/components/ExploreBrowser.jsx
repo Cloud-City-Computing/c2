@@ -13,6 +13,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { browseLogs, searchLogs, fetchFavorites, addFavorite, removeFavorite, fetchSearchFilters, docUrl } from '../util';
 import usePresence from '../hooks/usePresence';
 import PresenceAvatars from './PresenceAvatars';
+import Menu from './Menu';
+import { StarIcon } from './icons.jsx';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -59,7 +61,7 @@ function ExploreCard({ item, isSearch, onClick, activeUsers, isFavorited, onTogg
               aria-label={`Favorite ${item.title}`}
               aria-pressed={isFavorited}
             >
-              {isFavorited ? '★' : '☆'}
+              <StarIcon filled={isFavorited} />
             </button>
           )}
           <PresenceAvatars users={activeUsers} />
@@ -277,8 +279,8 @@ export default function ExploreBrowser() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSortChange = (e) => {
-    setSort(e.target.value);
+  const handleSortChange = (value) => {
+    setSort(value);
     setPage(1);
   };
 
@@ -319,13 +321,13 @@ export default function ExploreBrowser() {
           <input
             ref={inputRef}
             type="text"
-            className="explore-search-input"
+            className="explore-search-input field__control"
             placeholder="Search all documents..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           {query && (
-            <button className="explore-clear-btn" onClick={clearSearch} aria-label="Clear search">
+            <button className="explore-clear-btn btn-icon" onClick={clearSearch} aria-label="Clear search">
               &times;
             </button>
           )}
@@ -343,12 +345,13 @@ export default function ExploreBrowser() {
             Filters
             {hasActiveFilters && <span className="filter-active-dot" />}
           </button>
-          <select className="explore-sort" value={sort} onChange={handleSortChange} aria-label="Sort documents">
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="title">By title</option>
-            <option value="archive">By archive</option>
-          </select>
+          <Menu className="explore-sort field__control" label="Sort documents" value={sort} onSelect={handleSortChange}
+            items={[
+              { key: 'newest', label: 'Newest first' },
+              { key: 'oldest', label: 'Oldest first' },
+              { key: 'title', label: 'By title' },
+              { key: 'archive', label: 'By archive' },
+            ]} />
         </div>
       </div>
 
@@ -359,7 +362,7 @@ export default function ExploreBrowser() {
             onClick={() => setFavoritesOnly(v => !v)}
             title={favoritesOnly ? 'Show all documents' : 'Show favorites only'}
           >
-            {favoritesOnly ? '★' : '☆'} Favorites
+            <StarIcon filled={favoritesOnly} /> Favorites
           </button>
           <select
             className="explore-filter-select"

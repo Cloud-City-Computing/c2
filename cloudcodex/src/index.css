@@ -575,17 +575,35 @@ h1, h2, h3, h4, h5, h6 {
   white-space: nowrap;
 }
 
+/* The suite pattern's anatomy (W6-CDX-39, A2): 30 px high, --radius-md, 13 px at weight 500, no letter-spacing.
+   Scoped with the same exclusion as the X4 font rule above, so a button inside a deferred family (comments, the
+   editor and its toolbars, Markdown, Draw.io, Version History, GitHub) keeps the metrics it had (K3). */
+.btn:not([class*="gh-"], .comment-textarea, .markdown-editor__textarea, .comment-manager *, .comment-thread *, .editor-log *, .editor-with-comments *, .editor-container *, .tiptap-toolbar *, .editor-toolbar *, .markdown-editor *, .version-history *, .drawio-block *, .document-readonly *, [class*="gh-"] *) {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: normal;
+  border-radius: var(--radius-md);
+}
+
+.btn.btn-sm:not([class*="gh-"], .comment-textarea, .markdown-editor__textarea, .comment-manager *, .comment-thread *, .editor-log *, .editor-with-comments *, .editor-container *, .tiptap-toolbar *, .editor-toolbar *, .markdown-editor *, .version-history *, .drawio-block *, .document-readonly *, [class*="gh-"] *) {
+  min-height: 26px;
+  font-size: 12px;
+}
+
 .btn-primary {
   background: var(--brand-blue-hover);
   color: var(--cx-on-accent);
   border-color: var(--cx-border);
 }
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--brand-blue);
+  background: var(--cx-accent-hover);
 }
 .btn-primary:active:not(:disabled) {
   background: var(--cx-accent-hover);
@@ -855,15 +873,6 @@ h1, h2, h3, h4, h5, h6 {
   flex-shrink: 0;
   object-fit: cover;
 }
-.notification-item__avatar--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--brand-blue-dark);
-  color: var(--cx-white);
-  font-weight: 600;
-  font-size: 13px;
-}
 .notification-item__body { flex: 1; min-width: 0; }
 .notification-item__title {
   font-weight: 500;
@@ -931,33 +940,39 @@ h1, h2, h3, h4, h5, h6 {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* The one tab row (W6-CDX-39, Task 2.4): a 24 px gap, the active tab in the primary text at weight 500 with a
+   2 px accent underline inside its own box (so it moves no geometry), the others in the secondary text. */
+.tabs,
 .notifications-page__filters,
 .activity-page__filters {
   display: flex;
-  gap: 2px;
+  gap: 24px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--cx-border);
   flex-wrap: wrap;
 }
+.tabs__tab,
 .notifications-page__filter,
 .activity-page__filter {
-  padding: 8px 14px;
+  padding: 8px 0;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--cx-text-secondary);
   transition: color 0.15s;
   margin-bottom: -1px;
 }
+.tabs__tab:hover,
 .notifications-page__filter:hover,
-.activity-page__filter:hover { color: var(--text-secondary); }
+.activity-page__filter:hover { color: var(--cx-text-primary); }
+.tabs__tab.active,
 .notifications-page__filter.active,
 .activity-page__filter.active {
-  color: var(--cx-accent);
-  border-bottom-color: var(--brand-blue);
+  color: var(--cx-text-primary);
+  border-bottom-color: var(--cx-accent);
 }
 .notifications-page__list,
 .activity-page__list {
@@ -1072,15 +1087,6 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 50%;
   flex-shrink: 0;
   object-fit: cover;
-}
-.activity-item__avatar--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--brand-blue-dark);
-  color: var(--cx-white);
-  font-weight: 600;
-  font-size: 12px;
 }
 .activity-item__body { flex: 1; min-width: 0; }
 .activity-item__line {
@@ -1422,8 +1428,8 @@ h1, h2, h3, h4, h5, h6 {
 .dropdown-menu,
 .modal-content {
   background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 24px;
   color: var(--text-primary);
@@ -1446,12 +1452,29 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
   cursor: pointer;
   position: absolute;
-  top: 14px;
-  right: 16px;
+  top: 10px;
+  right: 10px;
   transition: color 0.2s;
   line-height: 1;
 }
 .close-button:hover { color: var(--cx-accent); }
+
+/* The icon button (W6-CDX-39, Task 2.2): a 30 px square visually, a 44 px hit area. The ::before inset is the
+   target; the glyph and the box stay 30 px. Used by the dialog close buttons, the toast dismiss and the search clear. */
+.btn-icon {
+  min-width: 30px;
+  min-height: 30px;
+}
+/* A dialog's close button is already absolutely placed in its corner; it keeps that placement, and its hit area is
+   drawn from it. Every other icon button is its own containing block for the ::before. */
+.btn-icon:not(.close-button) {
+  position: relative;
+}
+.btn-icon::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
 
 .modal-content h2 {
   margin: 0 0 12px;
@@ -4222,8 +4245,8 @@ h1, h2, h3, h4, h5, h6 {
   right: 0;
   margin-top: 4px;
   min-width: 240px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border-strong);
   border-radius: 6px;
   box-shadow: var(--cx-shadow-popover);
   z-index: var(--z-menu);
@@ -4241,7 +4264,7 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
 }
 .gh-sync-menu__item:hover:not(:disabled) {
-  background: var(--bg-tertiary);
+  background: var(--cx-surface-1);
 }
 .gh-sync-menu__item:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -5690,12 +5713,32 @@ textarea:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+/* The chip (W6-CDX-39, Task 2.4): a pill at the 12 px floor. Roles and statuses in the admin and the archive
+   access lists use it; a state dot, when a row needs one, is a child span with class chip__dot. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .role-badge {
   display: inline-block;
-  padding: 3px 10px;
-  font-size: 11px;
+  padding: 2px 10px;
+  font-size: 12px;
   font-weight: 600;
-  border-radius: 12px;
+  border-radius: 999px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -5902,7 +5945,7 @@ textarea:focus-visible {
 /* Badges */
 .badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
@@ -6415,8 +6458,8 @@ textarea:focus-visible {
   left: 0;
   z-index: var(--z-menu);
   min-width: 180px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   padding: 4px 0;
@@ -6540,6 +6583,136 @@ textarea:focus-visible {
 
 .explore-sort:focus {
   border-color: var(--cx-accent);
+}
+
+/* ── The menu primitive (W6-CDX-39, Task 2.3) ──────────────────
+   The trigger is a field-height button on the sunken step with a strong hairline. Its hover changes the
+   border, never the fill, so it reads on the page and inside a dialog panel alike. The popup is a raised
+   panel (surface-2) with no scrim; an item's hover is the sunken step (surface-1), which differs from the
+   panel it sits on, and the current choice takes the selection wash with a 1 px accent ring. */
+.menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.menu-trigger:hover:not(:disabled) {
+  border-color: var(--cx-text-faint);
+}
+.menu-trigger[aria-expanded='true'] {
+  border-color: var(--cx-accent);
+}
+.menu-trigger__chevron {
+  color: var(--cx-text-faint);
+  font-size: 12px;
+}
+
+.menu {
+  z-index: var(--z-menu);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-2);
+  box-shadow: var(--cx-shadow-md);
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--cx-text-secondary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.menu__item:hover:not(:disabled),
+.menu__item:focus-visible {
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
+}
+.menu__item[aria-checked='true'] {
+  background: var(--cx-select-wash);
+  border-color: var(--cx-accent);
+  color: var(--cx-text-primary);
+}
+.menu__item:disabled {
+  color: var(--cx-text-faint);
+  cursor: not-allowed;
+}
+
+/* ── The avatar (W6-CDX-39, Task 2.4): a disc on one of --avatar-1..8, the initial in the dark ink ── */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--cx-on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  object-fit: cover;
+}
+
+/* ── The field primitive (W6-CDX-39, Task 2.3): an uppercase faint label over the control, a hint or an error ── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field__label {
+  color: var(--cx-text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* The control of a field: a sunken well with a 1 px strong hairline. Its hover moves the border, never the fill,
+   and its focus is the accent hairline. Used by the search, the sort and the Account panels. A search field keeps its
+   icon insets through `.explore-search-input.field__control` below. */
+.field__control {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--cx-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--cx-surface-1);
+  color: var(--cx-text-primary);
+  font-size: var(--text-sm);
+}
+.field__control:hover:not(:disabled) {
+  border-color: var(--cx-text-faint);
+}
+.field__control:focus {
+  border-color: var(--cx-accent);
+}
+/* The Explore search keeps the insets for its magnifier (left) and clear button (right). */
+.explore-search-input.field__control {
+  padding: 10px 36px 10px 40px;
+}
+.field__hint {
+  color: var(--cx-text-faint);
+  font-size: 12px;
+}
+.field__error {
+  color: var(--cx-danger-bright);
+  font-size: 12px;
 }
 
 /* Filter toggle button */
@@ -6852,9 +7025,11 @@ textarea:focus-visible {
    Toast Notifications
 ========================= */
 
+/* X2/X10 and the placement (W6-CDX-39): the stack sits bottom right, where no navigation can be under it now
+   that the top bar is gone. The message is the primary text; the status is carried by the icon and the edge. */
 .toast-container {
   position: fixed;
-  top: 16px;
+  bottom: 16px;
   right: 16px;
   z-index: var(--z-toast);
   display: flex;
@@ -6875,23 +7050,34 @@ textarea:focus-visible {
   pointer-events: auto;
   animation: toast-slide-in 0.25s ease-out;
   box-shadow: var(--shadow-md);
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  background: var(--cx-surface-2);
+  border: 1px solid var(--cx-border-strong);
+  color: var(--cx-text-primary);
 }
 
 .toast--exit {
   animation: toast-fade-out 0.3s ease-in forwards;
 }
 
-/* The status is carried by the edge and the text, both on the package's pale steps. */
+/* The status is carried by the icon and the edge; the message stays the primary text colour. */
+.toast--info {
+  border-color: var(--cx-border-strong);
+}
+.toast--info .toast__icon {
+  color: var(--cx-info);
+}
+
 .toast--success {
   border-color: var(--cx-success);
+}
+.toast--success .toast__icon {
   color: var(--cx-success);
 }
 
 .toast--error {
   border-color: var(--cx-danger);
+}
+.toast--error .toast__icon {
   color: var(--cx-danger);
 }
 

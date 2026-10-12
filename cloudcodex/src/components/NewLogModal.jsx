@@ -23,7 +23,7 @@ export default function NewLogModal({ archiveId, parentId, onCreated, heading = 
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>{heading}</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">

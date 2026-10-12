@@ -7,6 +7,7 @@
 
 import { Link } from 'react-router-dom';
 import { timeAgo } from '../util';
+import Avatar from './Avatar';
 
 function safeMetadata(meta) {
   if (!meta) return {};
@@ -55,17 +56,16 @@ function ResourceLink({ entry, meta }) {
   return <span>{entry.resource_type} #{entry.resource_id}</span>;
 }
 
-function ActorAvatar({ name, url }) {
+function ActorAvatar({ id, name, url }) {
   if (url) return <img src={url} alt="" className="activity-item__avatar" />;
-  const ch = (name || '?').charAt(0).toUpperCase();
-  return <div className="activity-item__avatar activity-item__avatar--placeholder">{ch}</div>;
+  return <Avatar id={id} name={name} size={28} className="activity-item__avatar" />;
 }
 
 export default function ActivityItem({ entry }) {
   const meta = safeMetadata(entry.metadata);
   return (
     <div className="activity-item">
-      <ActorAvatar name={entry.actor_name} url={entry.actor_avatar} />
+      <ActorAvatar id={entry.user_id} name={entry.actor_name} url={entry.actor_avatar} />
       <div className="activity-item__body">
         <div className="activity-item__line">
           <span className="activity-item__actor">{entry.actor_name || 'Someone'}</span>{' '}

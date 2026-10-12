@@ -76,10 +76,10 @@ const ACCENT_FILL_SITES = [
   '.drawio-block__edit-btn:hover:not(:disabled)',
 ];
 // Sites where a white label sits on the accent dark (avatar initials).
+// The notification and activity placeholders moved to the --avatar-1..8 tints (W6-CDX-39, Task 2.4); their ink
+// is measured in controls.test.js.
 const ACCENT_DARK_SITES = [
   '.mention-picker__avatar--placeholder',
-  '.notification-item__avatar--placeholder',
-  '.activity-item__avatar--placeholder',
 ];
 // Sites where a white label sits on a danger background, at rest and on hover.
 const DANGER_REST_SITES = ['.btn-danger', '.notification-bell__badge', '.btn-ghost.btn-danger:hover'];
@@ -114,7 +114,7 @@ describe('a white label on the accent dark is measured on the avatar that paints
     // avatar (editor-adjacent, deferred) still carries the literal, and both measure the same white.
     for (const site of ACCENT_DARK_SITES) {
       expect(declared(site, 'background'), site).toBe('var(--brand-blue-dark)');
-      const white = site === '.mention-picker__avatar--placeholder' ? '#fff' : 'var(--cx-white)';
+      const white = '#fff';
       expect(declared(site, 'color'), site).toBe(white);
     }
   });
@@ -188,7 +188,7 @@ describe('the label and fill on the buttons and the toast are read from their ow
   });
 
   it('keeps the primary hover on the accent text step, with the on-accent label at 4.5:1 or more on every hue', () => {
-    expect(declared('.btn-primary:hover:not(:disabled)', 'background')).toBe('var(--brand-blue)');
+    expect(declared('.btn-primary:hover:not(:disabled)', 'background')).toBe('var(--cx-accent-hover)');
     expect(declared('.btn-primary', 'color')).toBe('var(--cx-on-accent)');
     for (const [name, tokens] of ACCENT_TOKENS) {
       const ratio = contrastRatio(paint(declared('.btn-primary', 'color'), tokens),
@@ -198,8 +198,10 @@ describe('the label and fill on the buttons and the toast are read from their ow
   });
 
   it('measures each toast label on the toast surface at 4.5:1 or more, at rest and on the dismiss hover', () => {
+    // W6-CDX-39: the message is the primary text; the status is the icon's colour, not the message's.
     const surface = paint(declared('.toast', 'background'), base);
-    for (const site of ['.toast', '.toast--success', '.toast--error', '.toast__dismiss']) {
+    for (const site of ['.toast', '.toast--info .toast__icon', '.toast--success .toast__icon',
+      '.toast--error .toast__icon', '.toast__dismiss']) {
       const ratio = contrastRatio(paint(declared(site, 'color'), base), surface);
       expect(ratio, `${site} measures ${round(ratio)}:1`).toBeGreaterThanOrEqual(4.5);
     }

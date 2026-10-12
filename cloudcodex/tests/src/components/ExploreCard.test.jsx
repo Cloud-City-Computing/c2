@@ -118,6 +118,20 @@ describe('ExploreCard', () => {
   it('names the sort control', async () => {
     const { default: ExploreBrowser } = await import('../../../src/components/ExploreBrowser.jsx');
     wrap(<ExploreBrowser />);
-    expect(await screen.findByRole('combobox', { name: 'Sort documents' })).toBeInTheDocument();
+    const sort = await screen.findByRole('button', { name: /Sort documents/ });
+    expect(sort.getAttribute('aria-haspopup')).toBe('menu');
+    expect(sort.textContent).toContain('Newest first');
+  });
+
+  // W6-CDX-39: the sort is a menu, so choosing an option is a click on an item, and the trigger names the choice.
+  it('sorts by the option chosen in the sort menu', async () => {
+    const userEvent = (await import('@testing-library/user-event')).default;
+    const user = userEvent.setup();
+    const { default: ExploreBrowser } = await import('../../../src/components/ExploreBrowser.jsx');
+    wrap(<ExploreBrowser />);
+    const sort = await screen.findByRole('button', { name: /Sort documents/ });
+    await user.click(sort);
+    await user.click(screen.getByRole('menuitemradio', { name: 'By title' }));
+    expect(sort.textContent).toContain('By title');
   });
 });

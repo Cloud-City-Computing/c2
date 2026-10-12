@@ -26,6 +26,8 @@ import PresenceAvatars from './PresenceAvatars';
 import ExportMenu from './ExportMenu';
 import NewLogModal from './NewLogModal';
 import CommentManager from './CommentManager';
+import { CommentIcon } from './icons.jsx';
+import { logDelete, repoRemove, archiveDelete } from '../lib/destructive-copy.js';
 
 // --- New Archive Form ---
 
@@ -47,7 +49,7 @@ export function NewArchiveModal({ onCreated, squadId }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -79,7 +81,7 @@ export function RenameArchiveModal({ archive, onRenamed }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Rename Archive</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -387,7 +389,7 @@ export function ManageArchiveAccessModal({ archive, onAccessUpdated, onAccessSav
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Manage Archive Access</h2>
       <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
         Archive: <strong>{archive.name}</strong>
@@ -644,7 +646,7 @@ export function UploadDocumentModal({ archiveId, parentId, onUploaded }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Upload Document</h2>
       <p className="text-muted text-sm" style={{ marginBottom: 10 }}>
         Supported formats: HTML, Markdown, Plain Text, PDF, Word (DOCX)
@@ -730,8 +732,7 @@ export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDele
   const handleDelete = () => {
     showModal(
       <ConfirmDialog
-        title="Delete Log"
-        message={`Delete "${log.title}"? This cannot be undone.`}
+        {...logDelete(log.title)}
         onConfirm={async () => {
           await deleteLog(archiveId, log.id);
           destroyModal();
@@ -782,7 +783,7 @@ export function LogTreeItem({ log, archiveId, depth = 0, onLogCreated, onLogDele
             aria-label={commentCount > 0
               ? `Manage comments on ${log.title}, ${commentCount} open`
               : `Manage comments on ${log.title}`}>
-            💬{commentCount > 0 && <span className="comment-count-badge">{commentCount}</span>}
+            <CommentIcon />{commentCount > 0 && <span className="comment-count-badge">{commentCount}</span>}
           </button>
           <button className="log-tree-delete" onClick={handleDelete}
             title="Delete log" aria-label={`Delete ${log.title}`}>&times;</button>
@@ -905,7 +906,7 @@ export function LinkRepoModal({ archiveId, onLinked }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Link GitHub Repo</h2>
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="text-muted">Loading your GitHub repos...</p>}
@@ -956,8 +957,7 @@ function LinkedRepos({ archiveId }) {
   const handleUnlink = (repo) => {
     showModal(
       <ConfirmDialog
-        title="Unlink Repo"
-        message={`Remove "${repo.repo_full_name}" from this archive?`}
+        {...repoRemove(repo.repo_full_name)}
         onConfirm={async () => {
           await unlinkArchiveRepo(archiveId, repo.id);
           destroyModal();
@@ -1278,8 +1278,7 @@ export default function ArchiveBrowser() {
   const handleDeleteArchive = (archive) => {
     showModal(
       <ConfirmDialog
-        title="Delete Archive"
-        message={`Delete "${archive.name}" and all its logs? This cannot be undone.`}
+        {...archiveDelete(archive.name)}
         onConfirm={async () => {
           await deleteArchive(archive.id);
           destroyModal();

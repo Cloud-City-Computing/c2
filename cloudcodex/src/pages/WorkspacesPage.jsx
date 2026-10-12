@@ -30,6 +30,7 @@ import {
 } from '../util';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { toastError } from '../components/Toast';
+import { squadMemberRemove, squadDelete, workspaceDelete } from '../lib/destructive-copy.js';
 
 export function NewOrgModal({ onCreated }) {
   const [name, setName] = useState('');
@@ -56,7 +57,7 @@ export function NewOrgModal({ onCreated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -121,7 +122,7 @@ export function RenameOrgModal({ workspace, onRenamed }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Rename Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -159,7 +160,7 @@ export function NewSquadModal({ workspaceId, onCreated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Squad</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -203,7 +204,7 @@ export function RenameSquadModal({ squad, onRenamed }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Rename Squad</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -255,7 +256,7 @@ export function InviteMemberModal({ squadId, onInvited }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Invite Member</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -364,8 +365,7 @@ function SquadMembersPanel({ squadId }) {
   const handleRemove = (member) => {
     showModal(
       <ConfirmDialog
-        title="Remove Member"
-        message={`Remove ${member.name} from this squad?`}
+        {...squadMemberRemove(member.name)}
         onConfirm={async () => {
           await removeSquadMember(squadId, member.user_id);
           destroyModal();
@@ -410,7 +410,7 @@ function SquadMembersPanel({ squadId }) {
           </div>
           <div className="member-row__role">
             {member.role === 'owner' ? (
-              <span className="role-badge role-badge--owner">Owner</span>
+              <span className="chip role-badge role-badge--owner">Owner</span>
             ) : (
               <select
                 value={member.role}
@@ -483,8 +483,7 @@ function OrgSquads({ workspaceId, highlightSquadId }) {
   const handleDeleteSquad = (squad) => {
     showModal(
       <ConfirmDialog
-        title="Delete Squad"
-        message={`Are you sure you want to delete "${squad.name}"? All archives in this squad will lose their squad association.`}
+        {...squadDelete(squad.name)}
         onConfirm={async () => {
           await deleteSquad(squad.id);
           destroyModal();
@@ -592,8 +591,7 @@ export default function WorkspacesPage() {
   const handleDelete = (workspace) => {
     showModal(
       <ConfirmDialog
-        title="Delete Workspace"
-        message={`Are you sure you want to delete "${workspace.name}"? This will delete all squads, archives, and logs within it.`}
+        {...workspaceDelete(workspace.name)}
         onConfirm={async () => {
           await deleteWorkspace(workspace.id);
           destroyModal();

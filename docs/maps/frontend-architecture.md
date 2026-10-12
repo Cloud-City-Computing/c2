@@ -301,9 +301,32 @@ one:
   it, and resumes with the time it had left; a dismiss that drops focus sends it
   back to where focus came from, or to the container. These are pinned in
   `tests/src/components/Toast.test.jsx` with fake timers. The toast CSS is on tokens
-  at `src/index.css` (the `.toast` block, after `Toast Notifications`). **`no-alert` is an ESLint error**
+  at `src/index.css` (the `.toast` block, after `Toast Notifications`). The stack sits bottom right
+  (`.toast-container`, W6-CDX-39). A `showToast` before the container's effect has registered is queued
+  and drained on mount (X2), and `toastError` takes a string or an error, with an optional fallback second
+  argument (X3); the admin revoke, permission and member saves pass the error itself, so a refusal keeps its
+  "Permission denied" prefix. **`no-alert` is an ESLint error**
   (`eslint.config.js:45`); there are two legacy disables in `Editor.jsx` and
   `GitHubPage.jsx` and no more should be added.
+- `<Menu>` (`src/components/Menu.jsx`, W6-CDX-39) is the one menu primitive: a `button` trigger with
+  `aria-haspopup="menu"` and `aria-expanded`, named "label: visible choice" (WCAG 2.5.3), and a `role="menu"` popup of
+  `role="menuitemradio"` buttons with `aria-checked` (every Menu is single-choice). The popup is portalled into its own
+  `#menu-root` (never `#dropdown-root`, which `showDropdownMenu` hides and clears), or into the aria-modal dialog the trigger
+  sits in, so the dialog's focus trap and the accessibility tree reach it. It follows the trigger on scroll (capture phase)
+  and resize. Arrow keys wrap, Home and End jump, a letter jumps to the next match, Escape and Tab close it and return focus to
+  the trigger; an outside press closes it. No scrim. The Explore sort and the invite dialog's squad and role use it; the export
+  and GitHub sync menus take its look (colour only) and keep their own markup. Tests: `tests/src/components/Menu.test.jsx`,
+  `tests/src/pages/invite-menu-focus.test.jsx`.
+- `<Avatar>` (`src/components/Avatar.jsx`, W6-CDX-39) draws a photo or the initial on one of the package's
+  `--avatar-1..8` tints; the tint is `avatarTint(id)` in `src/lib/avatar-tint.js`, a stable hash of the actor's id
+  (`user_id`, `actor_id`), so two users with one name keep their own tints.
+- `src/lib/destructive-copy.js` (W6-CDX-39) holds the title and message of each destructive `ConfirmDialog`; each sentence
+  names what is lost and what stays, checked against the FK actions in `init.sql` and the route's delete.
+- `src/components/icons.jsx` is the stroke icon set (15 px, `currentColor`, decorative): the menu chevron, the toast's
+  status marks, the favourite star, the Account warning, the comment count and Login's marks. Emoji still stand in the
+  admin console (W6-CDX-42) and the document header (W6-CDX-41).
+- `.btn-icon` (W6-CDX-39) is the 30 px icon button with a 44 px hit area; the dialog close buttons, the toast dismiss and the
+  search clear carry it. `.chip` is the pill at the 12 px floor; `.tabs` and `.tabs__tab` are the one tab row.
 - `<PresenceAvatars>` pairs with `usePresence`.
 - `<PageTree>` renders the `logs.parent_id` tree.
 - `<WebhooksPanel>` is the admin console's Webhooks panel (W6-CDX-15). Its confirmations go through
@@ -448,7 +471,7 @@ load-bearing:
    `--cx-accent-hover` or a bright step, as W6-CDX-28 did.
 4. `src/index.css`, about 9,200 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
-   `:focus-visible` rule (`index.css:5422`), on `--cx-focus-ring`; no source under
+   `:focus-visible` rule (`index.css:5622`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips
    (`.editor-container`, `.markdown-editor__textarea-wrapper`, `.sidebar`,
    `.gh-browser__sidebar`, `.gh-modal`, `.gh-merge-dialog__pane`, `.gh-sync-menu`) draws its controls' rings

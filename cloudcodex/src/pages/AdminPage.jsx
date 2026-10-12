@@ -37,6 +37,17 @@ import {
 import ConfirmDialog from '../components/ConfirmDialog';
 import WebhooksPanel from '../components/WebhooksPanel';
 import { showToast, toastError } from '../components/Toast';
+import Menu from '../components/Menu';
+import { squadMemberRemove, workspaceDelete, userDelete } from '../lib/destructive-copy.js';
+
+/**
+ * An admin action's failure. An API error (one with a status) shows the server's message; anything else, a network
+ * failure or a thrown TypeError, shows the fallback copy, never the raw text of the exception (momus 7).
+ */
+function adminToast(e, fallback) {
+  if (e?.status !== undefined) toastError(e, fallback);
+  else toastError(fallback);
+}
 
 // ─── Overview Panel ─────────────────────────────────────────
 
@@ -153,7 +164,7 @@ export function NewWorkspaceModal({ onCreated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>New Workspace</h2>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-form">
@@ -252,7 +263,7 @@ export function InviteUserModal({ onInvited }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Invite User</h2>
       {error && <p className="form-error">{error}</p>}
       {success && <p className="form-success">{success}</p>}
@@ -262,27 +273,27 @@ export function InviteUserModal({ onInvited }) {
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="newuser@example.com" />
-        <label htmlFor="invite-squad">Squad (optional):</label>
-        <select id="invite-squad" value={squadId} onChange={(e) => setSquadId(e.target.value)}>
-          <option value="">No squad, assign later</option>
-          {squads.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.workspace_name ? `${s.workspace_name} / ${s.name}` : s.name}
-            </option>
-          ))}
-        </select>
+        <div className="field">
+          <label htmlFor="invite-squad" className="field__label">Squad (optional):</label>
+          <Menu id="invite-squad" label="Squad (optional)" value={squadId} onSelect={setSquadId}
+            items={[
+              { key: '', label: 'No squad, assign later' },
+              ...squads.map(s => ({
+                key: String(s.id),
+                label: s.workspace_name ? `${s.workspace_name} / ${s.name}` : s.name,
+              })),
+            ]} />
+        </div>
+        {/* No "Admin" option here on purpose: nothing in the access-control
+            code (ownership.js, canManageSquad) distinguishes squad role
+            'admin' from 'member', so it would grant nothing extra while
+            looking like it does. Owner genuinely differs. */}
         {squadId && (
-          <>
-            <label htmlFor="invite-role">Role:</label>
-            {/* No "Admin" option here on purpose: nothing in the access-control
-                code (ownership.js, canManageSquad) distinguishes squad role
-                'admin' from 'member', so it would grant nothing extra while
-                looking like it does. Owner genuinely differs. */}
-            <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="member">Member</option>
-              <option value="owner">Owner</option>
-            </select>
-          </>
+          <div className="field">
+            <label htmlFor="invite-role" className="field__label">Role:</label>
+            <Menu id="invite-role" label="Role:" value={role} onSelect={setRole}
+              items={[{ key: 'member', label: 'Member' }, { key: 'owner', label: 'Owner' }]} />
+          </div>
         )}
         <button className="btn btn-primary stretched-button" onClick={handleSubmit}>Send Invitation</button>
       </div>
@@ -326,7 +337,7 @@ export function UserPermissionsModal({ user, onUpdated }) {
       destroyModal();
       onUpdated?.();
     } catch (e) {
-      toastError(e.body?.message ?? 'Error saving permissions.');
+      adminToast(e, 'Error saving permissions.');
     }
     setSaving(false);
   };
@@ -335,7 +346,7 @@ export function UserPermissionsModal({ user, onUpdated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Permissions — {user.name}</h2>
       <div className="modal-form admin-perms-form">
         <label className="setup-checkbox">
@@ -382,7 +393,7 @@ export function EditMemberModal({ squadId, member, onUpdated }) {
       destroyModal();
       onUpdated?.();
     } catch (e) {
-      toastError(e.body?.message ?? 'Error updating member.');
+      adminToast(e, 'Error updating member.');
     }
     setSaving(false);
   };
@@ -395,7 +406,7 @@ export function EditMemberModal({ squadId, member, onUpdated }) {
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       <h2>Edit Member — {member.name}</h2>
       <div className="modal-form admin-perms-form">
         <label htmlFor="member-role">Role:</label>
@@ -442,8 +453,7 @@ function WorkspacesPanel() {
   const handleDelete = (workspace) => {
     showModal(
       <ConfirmDialog
-        title={`Delete "${workspace.name}"?`}
-        message="This will permanently delete the workspace and all its squads, archives, and logs."
+        {...workspaceDelete(workspace.name)}
         confirmLabel="Delete"
         danger
         onConfirm={async () => {
@@ -530,8 +540,7 @@ function UsersPanel() {
   const handleDelete = (user) => {
     showModal(
       <ConfirmDialog
-        title={`Delete user "${user.name}"?`}
-        message="This will permanently delete the user and all their sessions, comments, and data."
+        {...userDelete(user.name)}
         confirmLabel="Delete"
         danger
         onConfirm={async () => {
@@ -684,8 +693,7 @@ function SquadsPanel() {
   const handleRemoveMember = (squadId, member) => {
     showModal(
       <ConfirmDialog
-        title={`Remove "${member.name}" from squad?`}
-        message="They will lose access to all squad archives."
+        {...squadMemberRemove(member.name)}
         confirmLabel="Remove"
         danger
         onConfirm={async () => {
@@ -769,7 +777,7 @@ function SquadsPanel() {
                               {m.name}
                             </td>
                             <td>
-                              <span className={`admin-role-badge admin-role-badge--${m.role}`}>{m.role}</span>
+                              <span className={`chip admin-role-badge admin-role-badge--${m.role}`}>{m.role}</span>
                             </td>
                             <td>{m.can_read ? '✓' : '—'}</td>
                             <td>{m.can_write ? '✓' : '—'}</td>
@@ -820,7 +828,7 @@ function InvitationsPanel() {
       await deleteAdminInvitation(inv.id);
       load();
     } catch (e) {
-      toastError(e.body?.message ?? 'Error revoking invitation.');
+      adminToast(e, 'Error revoking invitation.');
     }
   };
 
@@ -857,7 +865,7 @@ function InvitationsPanel() {
                   <tr key={inv.id}>
                     <td>{inv.email}</td>
                     <td>
-                      <span className={`status-badge status-badge--${status.toLowerCase()}`}>{status}</span>
+                      <span className={`chip status-badge status-badge--${status.toLowerCase()}`}>{status}</span>
                     </td>
                     <td>{inv.invited_by_name}</td>
                     <td>{timeAgo(inv.created_at)}</td>

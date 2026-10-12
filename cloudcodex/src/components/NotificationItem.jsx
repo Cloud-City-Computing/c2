@@ -7,13 +7,13 @@
 
 import { Link } from 'react-router-dom';
 import { timeAgo } from '../util';
+import Avatar from './Avatar';
 
-function ActorAvatar({ name, url }) {
+function ActorAvatar({ id, name, url }) {
   if (url) {
     return <img src={url} alt={name || ''} className="notification-item__avatar" />;
   }
-  const initial = (name || '?').trim().charAt(0).toUpperCase();
-  return <div className="notification-item__avatar notification-item__avatar--placeholder">{initial}</div>;
+  return <Avatar id={id} name={name} size={32} className="notification-item__avatar" />;
 }
 
 export default function NotificationItem({ notification, onActivate }) {
@@ -27,7 +27,7 @@ export default function NotificationItem({ notification, onActivate }) {
 
   const inner = (
     <>
-      <ActorAvatar name={notification.actor_name} url={notification.actor_avatar} />
+      <ActorAvatar id={notification.actor_id} name={notification.actor_name} url={notification.actor_avatar} />
       <div className="notification-item__body">
         <div className="notification-item__title">{notification.title}</div>
         {notification.body && (

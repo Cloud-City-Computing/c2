@@ -9,6 +9,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { destroyModal, serverReq, setSessionCookie } from '../util';
 import useSuite from '../hooks/useSuite';
 import { takeSignInTarget } from '../hooks/useSignedOutTarget';
+import { CheckIcon, XIcon, CircleIcon } from './icons.jsx';
 
 /* ─── Password rules (mirrored from server) ─── */
 const PASSWORD_RULES = [
@@ -249,7 +250,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
 
   return (
     <div className="modal-content">
-      <button type="button" className="close-button" aria-label="Close" onClick={destroyModal}>&times;</button>
+      <button type="button" className="close-button btn-icon" aria-label="Close" onClick={destroyModal}>&times;</button>
       {tab === '2fa' ? (
         <>
           <h2 className="forgot-password-title">Two-Factor Verification</h2>
@@ -304,9 +305,9 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
               {tab === 'signup' && usernameStatus && (
                 <span className={`input-hint input-hint--${usernameStatus}`}>
                   {usernameStatus === 'checking' && '⏳ '}
-                  {usernameStatus === 'available' && '✓ '}
-                  {usernameStatus === 'taken' && '✗ '}
-                  {usernameStatus === 'invalid' && '✗ '}
+                  {usernameStatus === 'available' && <CheckIcon />}
+                  {usernameStatus === 'taken' && <XIcon />}
+                  {usernameStatus === 'invalid' && <XIcon />}
                   {usernameMsg}
                 </span>
               )}
@@ -358,7 +359,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
                   const passed = fields.password && r.test(fields.password);
                   return (
                     <li key={r.key} className={passed ? 'rule--pass' : 'rule--fail'}>
-                      <span className="rule-icon">{passed ? '✓' : '○'}</span> {r.label}
+                      <span className="rule-icon">{passed ? <CheckIcon /> : <CircleIcon />}</span> {r.label}
                     </li>
                   );
                 })}

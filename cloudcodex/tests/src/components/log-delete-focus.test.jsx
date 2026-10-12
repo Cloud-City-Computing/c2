@@ -85,7 +85,7 @@ describe('deleting a log', () => {
     await tabTo(user, 'Delete Alpha');
     await user.keyboard('{Enter}');
 
-    expect(screen.getByRole('dialog', { name: /delete log/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /delete document/i })).toBeInTheDocument();
     // The dialog starts on Cancel, so one Tab reaches Delete.
     await user.tab();
     expect(document.activeElement).toHaveTextContent('Delete');
