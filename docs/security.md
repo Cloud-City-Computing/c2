@@ -214,7 +214,7 @@ An instance can sign people in through one OIDC issuer (`OIDC_ISSUER_URL`, for
 example Cloud City ID). The issuer is trusted for **two facts and nothing else**:
 
 - **a stable `sub`**, which, with the issuer's own `iss`, names one person; and
-- **a verified email**, read from the ID token and overridden by USERINFO where it returns one, which must be exactly `email_verified: true`.
+- **a verified email**: the address and its `email_verified` come from one source (USERINFO when it returns an address, else the ID token), and must be exactly `email_verified: true`.
 
 The issuer does not decide what a person may do here. Which local account a
 verified identity is, and whether it may be linked, is decided by the local

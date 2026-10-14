@@ -370,15 +370,31 @@ export async function completeLogin(config, currentUrl, flowCookieValue) {
   if (userInfo !== undefined && userInfo.sub !== rawSubject) {
     throw new OidcLoginError('userinfo_subject', 'The userinfo subject does not match the ID token subject.');
   }
-  // Per field: the ID token's validated claims, with userinfo overriding only the fields it actually
-  // returns. A provider whose userinfo omits email_verified still signs in on the ID token's own claim.
-  const source = userInfo === undefined ? claims : { ...claims, ...definedFields(userInfo) };
-  const email = typeof source.email === 'string' ? source.email : '';
-  if (email === '' || source.email_verified !== true) {
+  // The profile merges per field: the ID token's validated claims, with userinfo overriding the fields it
+  // returns. The email and its verification are one unit and never merge (see the pair below).
+  const profileFromUserInfo = definedFields(userInfo ?? {});
+  delete profileFromUserInfo.email;
+  delete profileFromUserInfo.email_verified;
+  const source = { ...claims, ...profileFromUserInfo };
+  const name = typeof source.name === 'string' ? source.name : null;
+
+  // email and email_verified are one unit, taken from one source. When userinfo returns an email, that email
+  // and its verification come from userinfo: a missing email_verified there means unverified. If the ID
+  // token carries the same address (case-insensitive), the result is verified only when both sources say
+  // true. Otherwise the ID token's verification covers a different address, so it never applies. Without a
+  // userinfo email, the ID token pair is used whole.
+  const idEmail = typeof claims.email === 'string' ? claims.email : '';
+  const idVerified = claims.email_verified === true;
+  let email = idEmail;
+  let emailVerified = idVerified;
+  if (userInfo !== undefined && typeof userInfo.email === 'string' && userInfo.email !== '') {
+    email = userInfo.email;
+    const sameAddress = idEmail !== '' && idEmail.toLowerCase() === email.toLowerCase();
+    emailVerified = userInfo.email_verified === true && (sameAddress ? idVerified : true);
+  }
+  if (email === '' || !emailVerified) {
     throw new OidcLoginError('email_not_verified', 'The issuer did not return a verified email address.');
   }
-
-  const name = typeof source.name === 'string' ? source.name : null;
   // An empty sid is no sid; the column's length rule would refuse it as a constraint error.
   const sid = typeof claims.sid === 'string' && claims.sid !== '' ? claims.sid : null;
   // provider_sid is VARCHAR(255). An oversize sid is refused here, before the identity is resolved
