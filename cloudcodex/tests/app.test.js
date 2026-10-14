@@ -970,6 +970,41 @@ describe('app.js: Origin-required cookie writes', () => {
   });
 });
 
+describe('the sibling connection is removed (CDX-SA-3)', () => {
+  const SERVICE = 'a'.repeat(40);
+  let savedServiceToken;
+  beforeEach(() => {
+    resetMocks();
+    savedServiceToken = process.env.SERVICE_TOKEN;
+    process.env.SERVICE_TOKEN = SERVICE;
+  });
+  afterEach(() => {
+    if (savedServiceToken === undefined) delete process.env.SERVICE_TOKEN;
+    else process.env.SERVICE_TOKEN = savedServiceToken;
+  });
+
+  // The membership sync is removed: unknown /api paths, whoever calls them and with whatever the former
+  // service token holds.
+  it.each([
+    ['PUT', '/api/machine/members'],
+    ['DELETE', '/api/machine/members'],
+    ['DELETE', '/api/machine/members/x@example.test'],
+  ])('answers %s %s with a 404 to a signed-in caller', async (method, url) => {
+    mockAuthenticated();
+    const res = await request(app)[method.toLowerCase()](url).set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(404);
+  });
+
+  it.each([
+    ['PUT', '/api/machine/members'],
+    ['DELETE', '/api/machine/members'],
+    ['DELETE', '/api/machine/members/x@example.test'],
+  ])('answers %s %s with a 404 to the former service token', async (method, url) => {
+    const res = await request(app)[method.toLowerCase()](url).set('Authorization', `Bearer ${SERVICE}`);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('app.js: suite mode is removed', () => {
   // The suite routes were mounted only with SUITE_COMMAND_WORKSPACE_URL set, and answered 200 for the
   // public probe either way. Removed, both are unknown /api paths and answer 404 whatever the suite
