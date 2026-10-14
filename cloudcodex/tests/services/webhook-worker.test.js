@@ -260,14 +260,6 @@ describe('one send', () => {
     expect(pause.sql).toMatch(/DATE_ADD\(UTC_TIMESTAMP\(3\)/);
   });
 
-  it('a signing secret that is missing at send time is a failure, and nothing is sent', async () => {
-    delete process.env.WEBHOOK_SECRET;
-    const db = tickDb({ subs: [sub({ source: 'env', secret: null })] });
-    const send = vi.fn(async () => ({ status: 200 }));
-    await worker(db, { send }).tick();
-    expect(send).not.toHaveBeenCalled();
-    expect(db.writes(FAILED)).toHaveLength(1);
-  });
 });
 
 describe('the lease and the head', () => {

@@ -197,7 +197,7 @@ function DeliveriesTable({ webhook, entry, onRedeliver }) {
               <td data-label="Last answer">{d.last_error ?? '-'}</td>
               <td data-label="When">{timeAgo(d.created_at)}</td>
               <td className="webhook-deliveries__action">
-                {!webhook.managed && canRedeliver(d) && (
+                {canRedeliver(d) && (
                   <button className="btn btn-ghost btn-sm" onClick={() => onRedeliver(webhook, d)}>Redeliver</button>
                 )}
               </td>
@@ -211,7 +211,6 @@ function DeliveriesTable({ webhook, entry, onRedeliver }) {
 
 function WebhookCard({ webhook, entry, expanded, revealOpen, onToggle, onRedeliver, onToggleEnabled, onRotate, onDelete }) {
   const state = stateOf(webhook);
-  const managed = webhook.managed;
   const urlId = `webhook-${webhook.id}-url`;
   const deliveriesId = `webhook-${webhook.id}-deliveries`;
 
@@ -222,8 +221,6 @@ function WebhookCard({ webhook, entry, expanded, revealOpen, onToggle, onRedeliv
         <span className={`status-badge webhook-state webhook-state--${state}`}>{STATE_LABELS[state]}</span>
       </header>
 
-      {managed && <p className="webhook-card__source">Configured in the server environment</p>}
-      {managed && <p className="text-muted webhook-card__note">Change it in the environment and restart to alter it.</p>}
       {state === 'off' && webhook.disabled_reason && <p className="webhook-card__reason">{webhook.disabled_reason}</p>}
       {state === 'stalled' && <StalledNotice webhook={webhook} deliveries={entry?.rows} />}
 
@@ -236,24 +233,18 @@ function WebhookCard({ webhook, entry, expanded, revealOpen, onToggle, onRedeliv
           <dt>Workspace</dt>
           <dd>{webhook.workspace_id ? `Workspace ${webhook.workspace_id}` : 'All workspaces'}</dd>
         </div>
-        {!managed && (
-          <div>
-            <dt>Secret fingerprint</dt>
-            <dd><code>{webhook.secret_fingerprint}</code></dd>
-          </div>
-        )}
+        <div>
+          <dt>Secret fingerprint</dt>
+          <dd><code>{webhook.secret_fingerprint}</code></dd>
+        </div>
       </dl>
 
       <div className="webhook-card__actions">
-        {!managed && (
-          <>
-            <button className="btn btn-ghost btn-sm" onClick={() => onToggleEnabled(webhook)}>
-              {webhook.enabled ? 'Turn off' : 'Turn on'}
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => onRotate(webhook)} disabled={revealOpen}>Rotate secret</button>
-            <button className="btn btn-ghost btn-sm btn-danger" onClick={() => onDelete(webhook)}>Delete</button>
-          </>
-        )}
+        <button className="btn btn-ghost btn-sm" onClick={() => onToggleEnabled(webhook)}>
+          {webhook.enabled ? 'Turn off' : 'Turn on'}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => onRotate(webhook)} disabled={revealOpen}>Rotate secret</button>
+        <button className="btn btn-ghost btn-sm btn-danger" onClick={() => onDelete(webhook)}>Delete</button>
         <button
           className="btn btn-ghost btn-sm"
           aria-expanded={expanded}

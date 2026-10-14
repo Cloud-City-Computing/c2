@@ -13,10 +13,8 @@ import {
   boundText,
   serializeEnvelope,
   loadSubscriptions,
-  reconcileEnvSubscription,
   emitEvent,
   webhookTargetOptions,
-  ENV_UNSET_REASON,
 } from '../../services/webhooks.js';
 import { resetMocks, TEST_USER } from '../helpers.js';
 
@@ -466,121 +464,4 @@ describe('services/webhooks', () => {
     });
   });
 
-  describe('reconcileEnvSubscription', () => {
-    const SECRET = 's'.repeat(40);
-    const publicResolver = vi.fn(async () => [{ address: '93.184.215.14', family: 4 }]);
-
-    function configure({ url, secret, workspace } = {}) {
-      for (const [name, value] of [['WEBHOOK_URL', url], ['WEBHOOK_SECRET', secret], ['WEBHOOK_WORKSPACE_ID', workspace]]) {
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-    }
-
-    /** No param any reconcile query binds may be the secret. */
-    const expectSecretNeverBound = () => {
-      for (const { params } of calls()) expect(params ?? []).not.toContain(SECRET);
-    };
-
-    it('does nothing, and says nothing, on an install with no webhook configured', async () => {
-      configure();
-      c2_query.mockResolvedValueOnce([]);
-      expect(await reconcileEnvSubscription({ resolve: publicResolver })).toBe('none');
-      expect(calls()).toHaveLength(1);
-      expect(calls()[0].sql).toMatch(/WHERE source = 'env'[\s\S]*FOR UPDATE/);
-      expect(errorSpy).not.toHaveBeenCalled();
-    });
-
-    it('creates the env row with no stored secret', async () => {
-      configure({ url: 'https://command.example/codex/events/abc', secret: SECRET, workspace: '3' });
-      c2_query.mockResolvedValueOnce([]).mockResolvedValueOnce({ insertId: 9 });
-      expect(await reconcileEnvSubscription({ resolve: publicResolver })).toBe('created');
-      const insert = calls()[1];
-      expect(insert.sql).toMatch(/INSERT INTO webhook_subscriptions \(url, secret, source, enabled, workspace_id\)\s+VALUES \(\?, NULL, 'env', TRUE, \?\)/);
-      expect(insert.params).toEqual(['https://command.example/codex/events/abc', 3]);
-      expectSecretNeverBound();
-      expect(withTransaction).toHaveBeenCalledTimes(1);
-    });
-
-    it('re-enables an unchanged env row and keeps its queue', async () => {
-      configure({ url: 'https://command.example/hook', secret: SECRET });
-      c2_query
-        .mockResolvedValueOnce([{ id: 9, url: 'https://command.example/hook', workspace_id: null }])
-        .mockResolvedValueOnce({ affectedRows: 1 });
-      expect(await reconcileEnvSubscription({ resolve: publicResolver })).toBe('updated');
-      expect(calls()).toHaveLength(2);
-      expect(calls()[1].sql).toMatch(/UPDATE webhook_subscriptions\s+SET url = \?, workspace_id = \?, enabled = TRUE, disabled_reason = NULL\s+WHERE id = \?/);
-      expect(calls()[1].params).toEqual(['https://command.example/hook', null, 9]);
-      expectSecretNeverBound();
-    });
-
-    it.each([
-      ['a new URL', { url: 'https://other.example/hook', secret: SECRET }],
-      ['a new workspace', { url: 'https://command.example/hook', secret: SECRET, workspace: '4' }],
-    ])('drops what was queued for the old receiver on %s', async (_name, env) => {
-      configure(env);
-      c2_query
-        .mockResolvedValueOnce([{ id: 9, url: 'https://command.example/hook', workspace_id: null }])
-        .mockResolvedValueOnce({ affectedRows: 5 })
-        .mockResolvedValueOnce({ affectedRows: 1 });
-      expect(await reconcileEnvSubscription({ resolve: publicResolver })).toBe('retargeted');
-      expect(calls()[1].sql).toMatch(/DELETE FROM webhook_deliveries WHERE subscription_id = \? AND status = 'pending'/);
-      expect(calls()[1].params).toEqual([9]);
-      expect(calls()[2].sql).toMatch(/consecutive_failures = 0, paused_until = NULL/);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/5 undelivered/));
-    });
-
-    it.each([
-      ['WEBHOOK_URL unset', { secret: SECRET }, ENV_UNSET_REASON],
-      ['WEBHOOK_SECRET unset', { url: 'https://command.example/hook' }, ENV_UNSET_REASON],
-      ['both unset', {}, ENV_UNSET_REASON],
-      ['a short secret', { url: 'https://command.example/hook', secret: 'short' }, 'WEBHOOK_SECRET is shorter than 32 characters'],
-      ['a bad workspace', { url: 'https://command.example/hook', secret: SECRET, workspace: 'three' }, 'WEBHOOK_WORKSPACE_ID is not a positive whole number'],
-      ['a negative workspace', { url: 'https://command.example/hook', secret: SECRET, workspace: '-3' }, 'WEBHOOK_WORKSPACE_ID is not a positive whole number'],
-    ])('disables an existing env row with %s', async (_name, env, reason) => {
-      configure(env);
-      c2_query
-        .mockResolvedValueOnce([{ id: 9, url: 'https://command.example/hook', workspace_id: null }])
-        .mockResolvedValueOnce({ affectedRows: 1 });
-      expect(await reconcileEnvSubscription({ resolve: publicResolver })).toBe('disabled');
-      expect(calls()[1].sql).toMatch(/UPDATE webhook_subscriptions SET enabled = FALSE, disabled_reason = \? WHERE id = \?/);
-      expect(calls()[1].params).toEqual([reason, 9]);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(reason));
-      expectSecretNeverBound();
-    });
-
-    it('says why a half-configured webhook is off even when there is no row yet', async () => {
-      configure({ url: 'https://command.example/hook' });
-      c2_query.mockResolvedValueOnce([]);
-      expect(await reconcileEnvSubscription({ resolve: publicResolver })).toBe('none');
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(ENV_UNSET_REASON));
-    });
-
-    it('disables the row, with the guard\'s sentence, for a URL the guard refuses', async () => {
-      configure({ url: 'https://command.example/hook', secret: SECRET });
-      c2_query
-        .mockResolvedValueOnce([{ id: 9, url: 'https://command.example/hook', workspace_id: null }])
-        .mockResolvedValueOnce({ affectedRows: 1 });
-      const resolve = vi.fn(async () => [{ address: '169.254.169.254', family: 4 }]);
-      expect(await reconcileEnvSubscription({ resolve })).toBe('disabled');
-      expect(calls()[1].params[0]).toMatch(/^The webhook URL resolves to 169\.254\.169\.254/);
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('keeps the row enabled when the name only fails to resolve, since the send re-checks it', async () => {
-      configure({ url: 'https://command.example/hook', secret: SECRET });
-      c2_query.mockResolvedValueOnce([]).mockResolvedValueOnce({ insertId: 9 });
-      const resolve = vi.fn(async () => { throw Object.assign(new Error('EAI_AGAIN'), { code: 'EAI_AGAIN' }); });
-      expect(await reconcileEnvSubscription({ resolve })).toBe('created');
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/could not be resolved/));
-    });
-
-    it('never logs the secret', async () => {
-      configure({ url: 'https://command.example/hook', secret: 'tooshort-but-secret' });
-      c2_query.mockResolvedValueOnce([{ id: 9, url: 'https://command.example/hook', workspace_id: null }]).mockResolvedValueOnce({});
-      await reconcileEnvSubscription({ resolve: publicResolver });
-      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('tooshort-but-secret');
-    });
-  });
 });

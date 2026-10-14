@@ -137,16 +137,15 @@ export const ENV_CONTRACT = [
   { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'removed', perInstance: true,
     why: 'the theme and accent preference is per host now; unset it' },
 
+  // Removed in 0.15.0 (the env-declared webhook subscription). Read for nothing; boot names each one that is set.
+  { name: 'WEBHOOK_URL', kind: 'removed', perInstance: true,
+    why: 'the environment-declared webhook subscription was removed in 0.15.0; create it in Admin, Webhooks, then unset it' },
+  { name: 'WEBHOOK_SECRET', kind: 'removed', perInstance: true,
+    why: 'the environment-declared webhook subscription was removed in 0.15.0; the console shows its new secret once; unset this' },
+  { name: 'WEBHOOK_WORKSPACE_ID', kind: 'removed', perInstance: true,
+    why: 'the environment-declared webhook subscription was removed in 0.15.0; set the workspace filter in Admin, Webhooks; unset it' },
+
   // Outbound webhooks
-  { name: 'WEBHOOK_URL', kind: 'optional', perInstance: true,
-    why: 'with WEBHOOK_SECRET, the receiver the env-declared subscription sends events to; either unset '
-      + 'disables that subscription at boot' },
-  { name: 'WEBHOOK_SECRET', kind: 'optional', perInstance: true,
-    why: 'the env subscription\'s signing secret, at least 32 characters, read from the environment '
-      + 'and never stored' },
-  { name: 'WEBHOOK_WORKSPACE_ID', kind: 'optional', perInstance: true,
-    why: 'limits the env subscription to one workspace\'s events; unset sends every workspace\'s, '
-      + 'a value that is not a whole number disables it, and one that names no workspace matches nothing' },
   { name: 'WEBHOOK_ALLOW_PRIVATE_TARGETS', kind: 'optional', perInstance: false,
     why: 'exactly 1 lets any webhook, the env one and admin-created ones, reach loopback and private '
       + 'addresses; link-local and metadata addresses stay refused' },

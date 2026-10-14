@@ -31,32 +31,21 @@ const CREATED = '2026-10-01T00:00:00.000Z';
 const SECRET_A = 'a'.repeat(64);
 const SECRET_B = 'b'.repeat(64);
 
-const ENV_ROW = {
-  id: 1, url: 'https://env.example/hook', source: 'env', managed: true, enabled: true,
-  event_types: null, workspace_id: null, disabled_reason: null, consecutive_failures: 0,
-  paused_until: null, created_by: null, created_at: CREATED, secret_fingerprint: null,
-};
 const HEALTHY = {
-  id: 2, url: 'https://healthy.example/hook', source: 'admin', managed: false, enabled: true,
+  id: 2, url: 'https://healthy.example/hook', source: 'admin', enabled: true,
   event_types: ['log.rename'], workspace_id: null, disabled_reason: null, consecutive_failures: 0,
   paused_until: null, created_by: 5, created_at: CREATED, secret_fingerprint: '1a2b3c4d',
 };
 const STALLED = {
-  id: 3, url: 'https://stalled.example/hook', source: 'admin', managed: false, enabled: true,
+  id: 3, url: 'https://stalled.example/hook', source: 'admin', enabled: true,
   event_types: null, workspace_id: 4, disabled_reason: null, consecutive_failures: 4,
   paused_until: FUTURE, created_by: 5, created_at: CREATED, secret_fingerprint: '9f8e7d6c',
 };
 const DISABLED = {
-  id: 4, url: 'https://off.example/hook', source: 'admin', managed: false, enabled: false,
+  id: 4, url: 'https://off.example/hook', source: 'admin', enabled: false,
   event_types: null, workspace_id: null, disabled_reason: 'Disabled by an administrator',
   consecutive_failures: 0, paused_until: null, created_by: 5, created_at: CREATED,
   secret_fingerprint: '00ff00ff',
-};
-
-// A dead delivery of the env-declared subscription: no Redeliver, the server refuses it too.
-const ENV_DEAD_DELIVERY = {
-  id: 77, event_id: 990, type: 'log.update', status: 'dead', attempts: 0, last_status: 422,
-  last_error: 'receiver answered 422', delivered_at: null, created_at: CREATED, occurred_at: CREATED, expired: false,
 };
 
 const STALLED_DELIVERIES = {
@@ -79,28 +68,27 @@ function renderLastModal() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.fetchWebhooks.mockResolvedValue({ success: true, webhooks: [ENV_ROW, HEALTHY, STALLED, DISABLED] });
+  api.fetchWebhooks.mockResolvedValue({ success: true, webhooks: [HEALTHY, STALLED, DISABLED] });
   api.fetchWebhookDeliveries.mockImplementation(async (id) => {
     if (id === STALLED.id) return STALLED_DELIVERIES;
-    if (id === ENV_ROW.id) return { success: true, deliveries: [ENV_DEAD_DELIVERY] };
     return { success: true, deliveries: [] };
   });
 });
 
 describe('WebhooksPanel: rendering', () => {
-  it('lists every subscription by its URL, with the env row read-only and labelled', async () => {
+  it('lists every subscription by its URL, each with its actions, and no environment label', async () => {
     render(<WebhooksPanel />);
-    expect(await screen.findByText('https://env.example/hook')).toBeInTheDocument();
-    expect(screen.getByText('Configured in the server environment')).toBeInTheDocument();
-    const envCard = screen.getByText('https://env.example/hook').closest('article');
-    expect(within(envCard).queryByRole('button', { name: /rotate|delete|turn off|turn on/i })).toBeNull();
+    expect(await screen.findByText('https://healthy.example/hook')).toBeInTheDocument();
+    expect(screen.queryByText('Configured in the server environment')).toBeNull();
+    const card = screen.getByText('https://healthy.example/hook').closest('article');
+    expect(within(card).getByRole('button', { name: /rotate secret/i })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: /delete/i })).toBeInTheDocument();
   });
 
   it('shows a healthy, a stalled and an off subscription as three readable states', async () => {
     render(<WebhooksPanel />);
     await screen.findByText('https://healthy.example/hook');
-    // The env row and the healthy row are both delivering.
-    expect(screen.getAllByText('Delivering')).toHaveLength(2);
+    expect(screen.getAllByText('Delivering')).toHaveLength(1);
     expect(screen.getByText('Stalled')).toBeInTheDocument();
     expect(screen.getByText('Off')).toBeInTheDocument();
   });
@@ -307,16 +295,7 @@ describe('WebhooksPanel: deliveries and redeliver', () => {
   });
 });
 
-describe('WebhooksPanel: the env subscription, the server-decided expiry and the 404 path (W6-CDX-15 review)', () => {
-  it('shows no Redeliver on the env-declared subscription, even for a dead delivery', async () => {
-    const user = userEvent.setup();
-    render(<WebhooksPanel />);
-    const card = (await screen.findByText('https://env.example/hook')).closest('article');
-    await user.click(within(card).getByRole('button', { name: /recent deliveries/i }));
-    expect(await within(card).findByText('receiver answered 422')).toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: /redeliver/i })).toBeNull();
-  });
-
+describe('WebhooksPanel: the server-decided expiry and the 404 path (W6-CDX-15 review)', () => {
   it('decides expiry from the server flag, not from the text of the error', async () => {
     const user = userEvent.setup();
     api.fetchWebhookDeliveries.mockImplementation(async (id) => (id === STALLED.id

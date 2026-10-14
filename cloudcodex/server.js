@@ -17,7 +17,7 @@ import { missingReleaseColumns } from './services/release-schema.js';
 import { parseAuthProviders } from './services/identity.js';
 import { localSignInEnabled } from './services/auth-providers.js';
 import { acquireInstanceLock } from './services/instance-lock.js';
-import { reconcileEnvSubscription, loadSubscriptions } from './services/webhooks.js';
+import { loadSubscriptions } from './services/webhooks.js';
 import { startWebhookWorker, pruneWebhookRows } from './services/webhook-worker.js';
 import { createShutdown } from './services/shutdown.js';
 import { warnRemovedVariables, logLinkedIdentities } from './services/removed-env.js';
@@ -228,16 +228,9 @@ try {
   console.error(`[${new Date().toISOString()}] hosted session purge failed:`, err);
 }
 
-// Outbound webhooks (services/webhooks.js): make the env subscription match
-// WEBHOOK_URL / WEBHOOK_SECRET / WEBHOOK_WORKSPACE_ID, then fill the cache
-// emitEvent matches against, and refresh it every minute. Neither may stop
-// the boot: without them no event is emitted, and nothing else changes.
-// loadSubscriptions logs its own failure and never throws.
-try {
-  await reconcileEnvSubscription();
-} catch (err) {
-  console.error(`[${new Date().toISOString()}] webhook env subscription reconcile failed:`, err);
-}
+// Outbound webhooks (services/webhooks.js): fill the cache emitEvent matches
+// against, and refresh it every minute. loadSubscriptions logs its own failure
+// and never throws, so the boot is not stopped by it.
 await loadSubscriptions();
 setInterval(loadSubscriptions, 60 * 1000).unref();
 

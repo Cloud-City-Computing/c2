@@ -3,9 +3,8 @@
  *
  * Every route is admin-only. A subscription's secret is generated here and
  * returned once, on creation or rotation; a list or an error never carries it,
- * only an 8-hex fingerprint. The env-declared subscription (source 'env') is
- * reconciled from the environment at boot, so it is listed but cannot be
- * rotated, toggled or deleted here.
+ * only an 8-hex fingerprint. Only admin subscriptions are managed here; the
+ * environment-declared subscription was removed in CDX-SA-3.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -55,8 +54,7 @@ const newSecret = () => randomBytes(32).toString('hex');
 const fingerprint = (secret) => createHash('sha256').update(secret, 'utf8').digest('hex').slice(0, 8);
 
 /**
- * A subscription row as the API shows it: never the secret. The env row's
- * secret lives in the environment and is not fingerprinted.
+ * A subscription row as the API shows it: never the secret.
  * @param { object } row
  */
 function toView(row) {
@@ -66,7 +64,6 @@ function toView(row) {
     id: row.id,
     url: row.url,
     source: row.source,
-    managed: row.source === 'env',
     enabled: Boolean(row.enabled),
     event_types: eventTypes,
     workspace_id: row.workspace_id ?? null,
@@ -86,21 +83,20 @@ async function readView(id) {
 }
 
 /**
- * The subscription's id and source, or an answer already sent: 400 for a bad
- * id, 404 for none, 409 for the env row with `envMessage`.
+ * The admin subscription's id and source, or an answer already sent: 400 for a
+ * bad id, 404 for no admin subscription with that id.
  */
-async function adminSubscription(req, res, envMessage) {
+async function adminSubscription(req, res) {
   if (!isValidId(req.params.id)) {
     res.status(400).json({ success: false, message: 'Invalid webhook id' });
     return null;
   }
-  const [row] = await c2_query('SELECT id, source FROM webhook_subscriptions WHERE id = ?', [Number(req.params.id)]);
+  const [row] = await c2_query(
+    "SELECT id, source FROM webhook_subscriptions WHERE id = ? AND source = 'admin'",
+    [Number(req.params.id)]
+  );
   if (!row) {
     res.status(404).json({ success: false, message: 'Webhook not found' });
-    return null;
-  }
-  if (row.source === 'env') {
-    res.status(409).json({ success: false, message: envMessage });
     return null;
   }
   return row;
@@ -174,12 +170,10 @@ router.post('/admin/webhooks', requireAuth, requireAdmin, asyncHandler(async (re
 
 /**
  * POST /api/admin/webhooks/:id/rotate
- * A new signing secret, returned once. Refused for the env row.
+ * A new signing secret, returned once.
  */
 router.post('/admin/webhooks/:id/rotate', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const row = await adminSubscription(
-    req, res, 'This webhook is configured in the server environment; change WEBHOOK_SECRET there to rotate it'
-  );
+  const row = await adminSubscription(req, res);
   if (!row) return;
 
   const secret = newSecret();
@@ -191,16 +185,14 @@ router.post('/admin/webhooks/:id/rotate', requireAuth, requireAdmin, asyncHandle
 /**
  * PATCH /api/admin/webhooks/:id
  * Body: { enabled: boolean }. Re-enabling clears the failure count, the pause
- * and the reason. Refused for the env row.
+ * and the reason.
  */
 router.patch('/admin/webhooks/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const { enabled } = req.body || {};
   if (typeof enabled !== 'boolean') {
     return res.status(400).json({ success: false, message: 'enabled must be true or false' });
   }
-  const row = await adminSubscription(
-    req, res, 'This webhook is configured in the server environment; change WEBHOOK_URL and WEBHOOK_SECRET there'
-  );
+  const row = await adminSubscription(req, res);
   if (!row) return;
 
   if (enabled) {
@@ -222,13 +214,10 @@ router.patch('/admin/webhooks/:id', requireAuth, requireAdmin, asyncHandler(asyn
 
 /**
  * DELETE /api/admin/webhooks/:id
- * Deletes the subscription and, by cascade, its deliveries. Refused for the
- * env row.
+ * Deletes the subscription and, by cascade, its deliveries.
  */
 router.delete('/admin/webhooks/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const row = await adminSubscription(
-    req, res, 'This webhook is configured in the server environment; unset WEBHOOK_URL there to remove it'
-  );
+  const row = await adminSubscription(req, res);
   if (!row) return;
 
   await c2_query(`DELETE FROM webhook_subscriptions WHERE id = ? AND source = 'admin'`, [row.id]);
@@ -294,22 +283,14 @@ router.post('/admin/webhooks/deliveries/:id/redeliver', requireAuth, requireAdmi
     return res.status(400).json({ success: false, message: 'Invalid delivery id' });
   }
   const [delivery] = await c2_query(
-    `SELECT d.id, d.status, s.source, (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
+    `SELECT d.id, d.status, (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
        FROM webhook_deliveries d
        JOIN webhook_events e ON e.id = d.event_id
        JOIN webhook_subscriptions s ON s.id = d.subscription_id
-      WHERE d.id = ?`,
+      WHERE d.id = ? AND s.source = 'admin'`,
     [Number(req.params.id)]
   );
   if (!delivery) return res.status(404).json({ success: false, message: 'Delivery not found' });
-  // The env subscription is changed in the environment, so its deliveries are not
-  // redelivered from here; the console hides the button, and this refuses the call.
-  if (delivery.source === 'env') {
-    return res.status(409).json({
-      success: false,
-      message: 'This delivery belongs to a webhook configured in the server environment; it cannot be redelivered here',
-    });
-  }
   if (delivery.status !== 'dead') {
     return res.status(409).json({ success: false, message: 'Only a dead-lettered delivery can be redelivered' });
   }
