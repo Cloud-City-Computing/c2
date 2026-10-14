@@ -170,6 +170,27 @@ describe('server.js: removed variables', () => {
     expect(listenMock).toHaveBeenCalled();
   });
 
+  it('names a removed variable before the admin gate exits on a missing ADMIN_EMAIL', async () => {
+    const original = { ...process.env };
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    delete process.env.ADMIN_EMAIL;
+    delete process.env.PORT;
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test/w/1';
+    try {
+      await import('../server.js');
+    } finally {
+      process.env = original;
+    }
+    const lines = errorSpy.mock.calls.flat().filter((line) => typeof line === 'string');
+    const named = lines.findIndex((l) => l.includes('SUITE_COMMAND_WORKSPACE_URL is set but was removed'));
+    const gate = lines.findIndex((l) => l.includes('Missing required admin configuration'));
+    expect(gate).toBeGreaterThan(-1);
+    expect(named).toBeGreaterThan(-1);
+    expect(named).toBeLessThan(gate);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
   it('prints nothing about removed variables when none is set', async () => {
     await bootWith({});
     const lines = errorSpy.mock.calls.flat().filter((line) => typeof line === 'string' && line.includes('was removed'));
