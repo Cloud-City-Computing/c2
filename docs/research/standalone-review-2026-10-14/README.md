@@ -146,12 +146,13 @@ Host, from `cloudcodex/` on the branch after the fixes:
 - `npm test`: 205 files and 4546 tests passed (includes the design and standalone gates).
 - `npm run test:coverage`: passed.
 - `npm run build`: passed.
-- `npm run test:integration`: see below.
-
-The integration project uses port 3306 (`mysql2` default, no port option), and the brief forbids a throwaway on 3306.
-It ran against a throwaway `mysql:8.4.11` container on a private Docker network with no host port, and the tests ran
-in a `node:22-slim` container on that network (`IT_DB_HOST` set to the container name). The result is in the Checks
-section of the report.
+- `npm run test:integration`: **289 tests, 268 passed, 21 failed**; the 21 are all in `tests/integration/backup-restore.test.js`
+  (26 of 27 files passed). Run against a throwaway `mysql:8.4.11` container on a private Docker network with no host
+  port, from a `node:22-slim` container on that network (`IT_DB_HOST` set to the container name). The integration
+  project connects on the mysql2 default port 3306, so a host port would have meant 3306 on the box; the private network avoids that.
+  The 21 failures are the backup and restore tests. In that container there is no `mysqldump` at all, so this is an
+  environment gap, not evidence about the scripts. The box's own `mysqldump` is MariaDB's, which the brief already names as a
+  local failure. Neither run is a clean MySQL 8 dump run, so `backup-restore.test.js` is **not verified** here.
 
 ## Could not verify
 
