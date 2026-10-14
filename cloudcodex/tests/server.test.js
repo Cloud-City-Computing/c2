@@ -189,6 +189,47 @@ describe('server.js: suite mode', () => {
   });
 });
 
+describe('server.js: removed variables', () => {
+  const bootWith = async (env) => {
+    const original = { ...process.env };
+    process.env.ADMIN_USERNAME = 'admin';
+    process.env.ADMIN_PASSWORD = 'pw';
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    delete process.env.SUITE_COMMAND_WORKSPACE_URL;
+    delete process.env.SUITE_NAME;
+    delete process.env.PORT;
+    Object.assign(process.env, env);
+    try {
+      await import('../server.js');
+    } finally {
+      process.env = original;
+    }
+  };
+
+  it('prints one line per set removed variable, naming it and the word removed, and still listens', async () => {
+    await bootWith({ SUITE_COMMAND_WORKSPACE_URL: 'https://command.example.test/w/1', SUITE_NAME: 'Example' });
+    const lines = errorSpy.mock.calls.flat().filter((line) => typeof line === 'string' && line.includes('was removed'));
+    expect(lines).toHaveLength(2);
+    expect(lines.some((l) => l.includes('SUITE_COMMAND_WORKSPACE_URL is set but was removed'))).toBe(true);
+    expect(lines.some((l) => l.includes('SUITE_NAME is set but was removed'))).toBe(true);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(listenMock).toHaveBeenCalled();
+  });
+
+  it('prints nothing about removed variables when none is set', async () => {
+    await bootWith({});
+    const lines = errorSpy.mock.calls.flat().filter((line) => typeof line === 'string' && line.includes('was removed'));
+    expect(lines).toEqual([]);
+    expect(listenMock).toHaveBeenCalled();
+  });
+
+  it('never exits on a removed variable, even one whose value is no longer valid', async () => {
+    await bootWith({ SUITE_COMMAND_WORKSPACE_URL: 'not a url at all' });
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(listenMock).toHaveBeenCalled();
+  });
+});
+
 describe('server.js: PORT', () => {
   const withEnv = async (env, assertions) => {
     const original = { ...process.env };
