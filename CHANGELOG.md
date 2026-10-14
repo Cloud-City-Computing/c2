@@ -12,6 +12,12 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-14
+
+Codex becomes a standalone product: suite mode, the connection to a sibling product and the issuer-specific
+behaviour are removed, and sign-in works with any standard OIDC issuer. Upgrading from 0.14.0 runs one migration;
+read the upgrade notes below (and docs/deployment.md#upgrades) before you upgrade, especially if you ran Codex beside another product.
+
 ### Added
 
 - **Provider-neutral OIDC (CDX-SA-4).** Codex signs in through any standard OIDC issuer. Its sign-in, sign-out and
