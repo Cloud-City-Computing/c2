@@ -44,6 +44,9 @@ const REMOVED_IN_0_15 = Object.freeze([
   'SERVICE_TOKEN_USER',
   'MACHINE_OIDC_AUDIENCE',
   'MACHINE_OIDC_SUBJECTS',
+  'WEBHOOK_URL',
+  'WEBHOOK_SECRET',
+  'WEBHOOK_WORKSPACE_ID',
 ]);
 
 function sourceFiles(dir, rel = '') {

@@ -72,7 +72,7 @@ describe('/api/admin/webhooks', () => {
   });
 
   describe('GET', () => {
-    it('lists subscriptions with a fingerprint and never the secret, the env row marked managed', async () => {
+    it('lists subscriptions with a fingerprint and never the secret, and no row carries a managed flag', async () => {
       mockAuthenticated(ADMIN_USER);
       c2_query.mockResolvedValueOnce([
         row(),
@@ -83,14 +83,15 @@ describe('/api/admin/webhooks', () => {
       expect(JSON.stringify(res.body)).not.toContain(STORED_SECRET);
       expect(res.body.webhooks).toEqual([
         {
-          id: 4, url: 'https://93.184.215.14/hook', source: 'admin', managed: false, enabled: true,
+          id: 4, url: 'https://93.184.215.14/hook', source: 'admin', enabled: true,
           event_types: null, workspace_id: null, disabled_reason: null, consecutive_failures: 0,
           paused_until: null, created_by: 1, created_at: '2026-09-28T00:00:00.000Z',
           secret_fingerprint: fingerprint(STORED_SECRET),
         },
-        expect.objectContaining({ id: 5, source: 'env', managed: true, secret_fingerprint: null, event_types: ['log.rename'] }),
+        expect.objectContaining({ id: 5, source: 'env', secret_fingerprint: null, event_types: ['log.rename'] }),
       ]);
       expect(res.body.webhooks[0]).not.toHaveProperty('secret');
+      for (const hook of res.body.webhooks) expect(hook).not.toHaveProperty('managed');
     });
   });
 
@@ -115,7 +116,8 @@ describe('/api/admin/webhooks', () => {
       expect(insert[0]).toMatch(/\(url, secret, source, event_types, workspace_id, created_by\)\s+SELECT \?, \?, 'admin', \?, \?, \? FROM DUAL/);
       expect(insert[1]).toEqual(['https://93.184.215.14/hook', res.body.secret, '["log.rename","log.delete"]', 3, ADMIN_USER.id, 50]);
       expect(sqls().some((sql) => /FROM webhook_subscriptions\s+WHERE enabled = TRUE/.test(sql))).toBe(true);
-      expect(res.body.webhook).toMatchObject({ id: 6, managed: false });
+      expect(res.body.webhook).toMatchObject({ id: 6 });
+      expect(res.body.webhook).not.toHaveProperty('managed');
       expect(res.body.webhook).not.toHaveProperty('secret');
     });
 
@@ -212,13 +214,13 @@ describe('/api/admin/webhooks', () => {
       expect(update[1]).toEqual([res.body.secret, 4]);
     });
 
-    it('refuses the env row, whose secret lives in the environment', async () => {
+    it('answers 404 for a row that is not an admin subscription, and writes nothing', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([{ id: 4, source: 'env' }]);
+      c2_query.mockResolvedValueOnce([]);
       const res = await request(app).post('/api/admin/webhooks/4/rotate').set('Authorization', 'Bearer t');
-      expect(res.status).toBe(409);
-      expect(res.body.message).toMatch(/WEBHOOK_SECRET/);
+      expect(res.status).toBe(404);
       expect(sqls()).toHaveLength(1);
+      expect(sqls()[0]).toMatch(/source = 'admin'/);
     });
 
     it('answers 404 for no such subscription and 400 for a bad id', async () => {
@@ -268,12 +270,13 @@ describe('/api/admin/webhooks', () => {
       expect(c2_query).not.toHaveBeenCalled();
     });
 
-    it('refuses the env row, which the environment manages', async () => {
+    it('answers 404 for a row that is not an admin subscription, and writes nothing', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([{ id: 4, source: 'env' }]);
+      c2_query.mockResolvedValueOnce([]);
       const res = await request(app).patch('/api/admin/webhooks/4').set('Authorization', 'Bearer t').send({ enabled: false });
-      expect(res.status).toBe(409);
+      expect(res.status).toBe(404);
       expect(sqls()).toHaveLength(1);
+      expect(sqls()[0]).toMatch(/source = 'admin'/);
     });
 
     it('answers 404 for no such subscription', async () => {
@@ -294,13 +297,13 @@ describe('/api/admin/webhooks', () => {
       expect(sqls()[2]).toMatch(/WHERE enabled = TRUE/);
     });
 
-    it('refuses the env row', async () => {
+    it('answers 404 for a row that is not an admin subscription, and deletes nothing', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([{ id: 4, source: 'env' }]);
+      c2_query.mockResolvedValueOnce([]);
       const res = await request(app).delete('/api/admin/webhooks/4').set('Authorization', 'Bearer t');
-      expect(res.status).toBe(409);
-      expect(res.body.message).toMatch(/WEBHOOK_URL/);
+      expect(res.status).toBe(404);
       expect(sqls()).toHaveLength(1);
+      expect(sqls()[0]).toMatch(/source = 'admin'/);
     });
 
     it('answers 404 for no such subscription', async () => {
@@ -480,13 +483,13 @@ describe('the console read in UTC, and the environment delivery refusal (W6-CDX-
     expect(list).toMatch(/\(e\.occurred_at < UTC_TIMESTAMP\(3\) - INTERVAL 72 HOUR\) AS expired/);
   });
 
-  it('refuses to redeliver a delivery of the environment subscription, and writes nothing', async () => {
+  it('answers 404 to a redelivery that is not of an admin subscription, and writes nothing', async () => {
     mockAuthenticated(ADMIN_USER);
-    c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead', source: 'env', expired: 0 }]);
+    c2_query.mockResolvedValueOnce([]);
     const res = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
 
-    expect(res.status).toBe(409);
-    expect(res.body.message).toMatch(/server environment/);
+    expect(res.status).toBe(404);
     expect(sqls()).toHaveLength(1);
+    expect(sqls()[0]).toMatch(/s\.source = 'admin'/);
   });
 });

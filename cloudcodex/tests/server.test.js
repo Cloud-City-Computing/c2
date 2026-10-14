@@ -968,19 +968,17 @@ describe('server.js: the webhook boot steps', () => {
     process.env.ADMIN_EMAIL = 'admin@test.com';
   };
 
-  it('reconciles the env subscription, then loads the cache, before listening, and refreshes it every minute', async () => {
+  it('loads the cache before listening, and refreshes it every minute', async () => {
     const original = { ...process.env };
     const intervalSpy = vi.spyOn(globalThis, 'setInterval');
     try {
       bootEnv();
       const { bootstrapInstance } = await import('../routes/admin.js');
-      const { reconcileEnvSubscription, loadSubscriptions } = await import('../services/webhooks.js');
+      const { loadSubscriptions } = await import('../services/webhooks.js');
       await import('../server.js');
 
-      const reconciled = reconcileEnvSubscription.mock.invocationCallOrder[0];
       const loaded = loadSubscriptions.mock.invocationCallOrder[0];
-      expect(bootstrapInstance.mock.invocationCallOrder[0]).toBeLessThan(reconciled);
-      expect(reconciled).toBeLessThan(loaded);
+      expect(bootstrapInstance.mock.invocationCallOrder[0]).toBeLessThan(loaded);
       expect(loaded).toBeLessThan(listenMock.mock.invocationCallOrder[0]);
       expect(intervalSpy.mock.calls.filter(([fn]) => fn === loadSubscriptions).map(([, ms]) => ms)).toEqual([60 * 1000]);
     } finally {
@@ -989,20 +987,26 @@ describe('server.js: the webhook boot steps', () => {
     }
   });
 
-  it('logs and keeps booting when the reconcile throws', async () => {
+  // The env subscription is removed (CDX-SA-3): its variables are removed entries that boot names, and boot
+  // writes no subscription from them.
+  it('names WEBHOOK_URL and WEBHOOK_SECRET as removed, reconciles nothing, and writes no subscription', async () => {
     const original = { ...process.env };
     try {
       bootEnv();
+      process.env.WEBHOOK_URL = 'https://receiver.example.test/hook';
+      process.env.WEBHOOK_SECRET = 'e'.repeat(40);
       const { reconcileEnvSubscription, loadSubscriptions } = await import('../services/webhooks.js');
-      reconcileEnvSubscription.mockRejectedValueOnce(new Error('table missing'));
+      const { c2_query } = await import('../mysql_connect.js');
       await import('../server.js');
 
+      const allLogs = errorSpy.mock.calls.flat().map(String).join(' ');
+      expect(allLogs).toMatch(/WEBHOOK_URL is set but was removed/);
+      expect(allLogs).toMatch(/WEBHOOK_SECRET is set but was removed/);
+      expect(reconcileEnvSubscription).not.toHaveBeenCalled();
+      expect(c2_query.mock.calls.some(([sql]) => /INSERT INTO webhook_subscriptions/.test(String(sql)))).toBe(false);
       expect(loadSubscriptions).toHaveBeenCalled();
       expect(listenMock).toHaveBeenCalledTimes(1);
       expect(exitSpy).not.toHaveBeenCalled();
-      const allLogs = errorSpy.mock.calls.flat().map(String).join(' ');
-      expect(allLogs).toMatch(/webhook env subscription reconcile failed/);
-      expect(allLogs).toMatch(/table missing/);
     } finally {
       process.env = original;
     }

@@ -162,11 +162,23 @@ describe('one send', () => {
     expect(req.addresses).toEqual([{ address: '203.0.113.10', family: 4 }]);
   });
 
-  it('signs an env row with WEBHOOK_SECRET, which is never stored', async () => {
+  // The env subscription is removed (CDX-SA-3): only an admin row is ever sent, whatever WEBHOOK_SECRET holds,
+  // and its deliveries stay pending for an admin to see.
+  it('never sends a row whose source is not admin, whatever WEBHOOK_SECRET holds, and leaves its deliveries pending', async () => {
     const db = tickDb({ subs: [sub({ source: 'env', secret: null })] });
     const send = vi.fn(async () => ({ status: 204 }));
-    await worker(db, { send }).tick();
-    expect(send.mock.calls[0][0].headers['X-Codex-Signature-256']).toBe(signBody('e'.repeat(40), BODY));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const w = worker(db, { send });
+      await w.tick();
+      await w.tick();
+      expect(send).not.toHaveBeenCalled();
+      expect(db.writes(LEASE)).toEqual([]);
+      // One line per skip window, not one per tick.
+      expect(logged.mock.calls.filter(([line]) => /has source "env", which is not sent/.test(line))).toHaveLength(1);
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it('a 2xx marks the delivery delivered, releasing its lease, and resets the subscription', async () => {
