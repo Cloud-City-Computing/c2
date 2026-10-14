@@ -52,7 +52,8 @@ export function defaultFrom() {
   if (explicit) return explicit;
   let host = 'localhost';
   try {
-    const hostname = new URL(process.env.APP_URL).hostname.toLowerCase();
+    // A trailing dot marks a fully qualified name; it is not part of the domain, so one is stripped.
+    const hostname = new URL(process.env.APP_URL).hostname.toLowerCase().replace(/\.$/, '');
     if (hostname && !hostname.includes(':') && !hostname.startsWith('[')) host = hostname;
   } catch {
     // APP_URL is validated at boot; an unparseable value here keeps the localhost fallback.
