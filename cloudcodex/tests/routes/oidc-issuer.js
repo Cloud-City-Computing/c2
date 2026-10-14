@@ -41,7 +41,6 @@ export async function startIssuer(options) {
   const codes = new Map();
   const accessTokens = new Map();
   const state = { person: null, lastIdToken: null };
-  let origin;
 
   async function handle(req, res) {
     const url = new URL(req.url, origin);
@@ -151,7 +150,7 @@ export async function startIssuer(options) {
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  origin = `http://127.0.0.1:${server.address().port}`;
+  const origin = `http://127.0.0.1:${server.address().port}`;
 
   return {
     origin,

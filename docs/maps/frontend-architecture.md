@@ -92,7 +92,7 @@ sign-in's. Write the cookie any other way and the two drift.
 (`src/lib/sign-out.js`, `signOut()`, moved from the account panel in W6-CDX-40) goes through it.
 
 `getSessionTokenFromCookie()` prefers the prefixed name and, on an https page,
-does not read a lone legacy `sessionToken` at all, since a sibling host could
+does not read a lone legacy `sessionToken` at all, since another host could
 have planted it. `upgradeLegacySessionCookie()` (`util.jsx:706`) moves a real
 one across: `main.jsx` awaits it before the first render, it asks
 `POST /api/validate-session` with `legacyCookie: true`, and it rewrites the
@@ -239,7 +239,7 @@ The target is `safeReturnTo(pathname + search + hash)` on the client too (the fr
 anywhere in the path) falls back to `/` and the bounce still happens, as Cloud Command does.
 
 The bare `/` (decided by Kyle, 2026-10-11) bounces to the sign-in only where OIDC is the only sign-in
-(hosted: `isOidcOnly`). It goes to `/api/auth/oidc/start?returnTo=%2F`, under the same once-per-tab marker.
+(OIDC-only: `isOidcOnly`). It goes to `/api/auth/oidc/start?returnTo=%2F`, under the same once-per-tab marker.
 It does not bounce when the marker is set, when an `oauth_error` came back, or when the query carries
 `?signedOut=1` (the sign-out landing must show its message). A local-sign-in instance, or one with no
 OIDC, keeps its sign-in screen on `/`, so self-hosters are not stranded. Command's `BOUNCE_BARE_ROOT`

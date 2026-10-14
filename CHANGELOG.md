@@ -14,6 +14,10 @@ initialises an empty data directory.
 
 ### Added
 
+- **Provider-neutral OIDC (CDX-SA-4).** Codex signs in through any standard OIDC issuer. Its sign-in, sign-out and
+  back-channel paths are tested against a second issuer shape (identity claims in the ID token, no `sid`, no
+  end-session endpoint). Setup for the redirect and logout URIs, the settings, OIDC-only mode and the provider notes
+  is in [`docs/sign-in.md`](docs/sign-in.md).
 - **Removed variables are named at boot (CDX-SA-2).** A variable the server no longer reads prints one line at
   startup, naming it and what to do, and the server starts as it would without it.
 - **Migration `2026-10-17-remove-sibling-connection.sql` (CDX-SA-3)**, with its undo in the file header. The
@@ -22,6 +26,12 @@ initialises an empty data directory.
 
 ### Changed
 
+- **"Hosted mode" is "OIDC-only mode" (CDX-SA-4).** The name changes in logs, comments and docs. The behaviour does
+  not: with `AUTH_PROVIDERS` set and no `local`, local sign-in, Google and the email or password change are refused as
+  before. The boot log line reads `OIDC-only boot:`, and the purge-failure line reads `OIDC-only session purge failed`.
+  An administrator's two-factor reset still works on an OIDC-only instance.
+- **Refusal wording (CDX-SA-4).** The `AUTH_PROVIDERS` refusals say "OIDC-only mode" where they said "hosted mode".
+  Scripts that match the text should match `OIDC-only mode` instead.
 - **`GET /api/search` and `GET /api/browse` require a session (CDX-SA-3).** A bearer token must be a signed-in
   session; the former service token answers `401` like any unknown token.
 - **The admin webhook routes manage admin subscriptions only (CDX-SA-3).** An id that is not an admin
@@ -33,6 +43,8 @@ initialises an empty data directory.
 
 ### Removed
 
+- **The identity spec and plan (CDX-SA-4).** `docs/specs/2026-09-24-suite-identity.md` and its plan are retired; the
+  identity track is recorded in the roadmap. Nothing in the running product changes.
 - **The sibling-product connection (CDX-SA-3).** Codex no longer has a machine credential or a connection to a
   sibling product.
   - `SERVICE_TOKEN`, `SERVICE_TOKEN_USER`, `MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS` are read for

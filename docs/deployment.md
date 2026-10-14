@@ -284,7 +284,7 @@ conditions come with it:
   the default does not name, so until you list it every client behind it
   shares its one rate-limit bucket. See [Rate limiters](#rate-limiters).
 - **Every container on the host can then reach the port, and arrives as the
-  gateway.** A sibling on the compose network going to `172.29.0.1:PORT`, and a
+  gateway.** Another container on the compose network going to `172.29.0.1:PORT`, and a
   container on another Docker network going to the host's own address, are
   presented as `172.29.0.1`, so each is trusted and can name its own address.
   On a box that also runs Cloud Command, its containers are such peers. With
@@ -511,9 +511,9 @@ changes.
                                                  +------------------------+
 ```
 
-### Upgrading to 0.15.0 (the sibling connection is removed)
+### Upgrading to 0.15.0 (the suite connection is removed)
 
-0.15.0 removes the connection to the sibling product, so it changes what an install may set and what it
+0.15.0 removes the connection to the other product, so it changes what an install may set and what it
 deletes. Read this before the upgrade; the full list of removed variables and routes is in
 [getting-started.md](getting-started.md#environment-variables) and the CHANGELOG.
 
@@ -1063,7 +1063,7 @@ range, since a range believes every client inside it too.
   the container as the pinned network's gateway, `172.29.0.1`. Anyone else is
   counted by the address that connected, whatever `X-Forwarded-For` it sends: a
   public client, a machine on the same LAN, VPN or VPC (AWS's default VPC is
-  `172.31.0.0/16`), and a sibling container on the compose network. The
+  `172.31.0.0/16`), and another container on the compose network. The
   default bridge's gateway, `172.17.0.1`, is deliberately not in it; see
   `docker run` below. **An install run without Docker** (`npm run start` on the
   host) sets `TRUST_PROXY=127.0.0.1/32, ::1/128`: `172.29.0.1` means nothing

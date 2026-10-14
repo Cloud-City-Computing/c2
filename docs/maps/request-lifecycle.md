@@ -23,12 +23,12 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 | Trust proxy gate | `app.js:187-198`, `parseTrustProxy()` (`app.js:148`) | Importing `app.js` sets Express's `trust proxy` from `TRUST_PROXY`. Unset or blank is `'127.0.0.1/32, ::1/128, 172.29.0.1/32'` (`DEFAULT_TRUST_PROXY`, `app.js:61`): the proxies **by address**, loopback as a /32 plus the gateway of the network both production compose files pin, which is where Docker presents a proxy on the host that reaches their loopback publish. Every other peer is keyed on its socket, IPv4-mapped forms included (GHSA-9fmx-frrf-xxmq). Not the default bridge's gateway, `172.17.0.1`: `docker run -p PORT:PORT` publishes on `[::]` too, the default bridge is IPv4-only, so every IPv6 client arrives as that gateway, and a re-review measured each one choosing a fresh key with no proxy at all. An earlier cut trusted `loopback, linklocal, uniquelocal`, and a review showed why a range is wrong: a client inside it (a LAN, VPN or VPC neighbour; AWS's default VPC is `172.31.0.0/16`) was itself trusted, so behind a proxy that appends it named its own key with the left entry. `false` is a boolean and anything else is a list whose every entry `trustProxyEntryRefusal()` (`app.js:95`) reads the way proxy-addr will. An entry that is not a subnet name or an address in standard notation exits 1 (`is not valid: "<entry>" is not a subnet name ...`), with or without the opt-in, because proxy-addr's parser reads `0/1` as half of IPv4 and `010.0.0.0/8` as octal 8.0.0.0/8. A range past the width thresholds exits 1 (`✖ TRUST_PROXY "<value>" trusts <entry>, ...`); the thresholds, not "anything public", since a public /8 or an IPv6 /16 to /31 is accepted: wider than an IPv4 /8, wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or an IPv6 range holding `::ffff:0:0/96` or more than an IPv4 /8 of it, since proxy-addr matches an IPv4 client against an IPv6 range in mapped form. proxy-addr itself only refuses a /0. **A hop count (0 included) or `true` exits 1** with `✖ TRUST_PROXY "<value>" is a hop count` (or `trusts every hop`) naming `TRUST_PROXY_ALLOW_HOP_COUNT=true`, the opt-in that accepts it and an over-wide range; the opt-in itself exits on anything but `true`, `false` or blank. Express compiles the value at `app.js:190` and throws on one it cannot parse, which becomes `✖ TRUST_PROXY "<value>" is not valid` and exit 1. |
 | Admin config gate | `server.js`, top-level | Missing `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_EMAIL` exits 1. With the gates around it (pool size, trust proxy, `APP_URL`, the provider list, and an invalid `PORT`), these are the only boot-fatal config gates besides the DB one above; there is no SMTP gate. |
 | `APP_URL` gate | `server.js:64-90` | **Production only** (`NODE_ENV=production`): `APP_URL` unset or blank prints `✖ APP_URL is required in production: set it to the address people use to reach this instance.`, and one that is not an `http:`/`https:` URL prints `✖ APP_URL "<value>" is not an http or https URL`, both exit 1. A valid one whose host is `localhost`, `127.x.x.x`, `[::1]` or a `.localhost` name boots but prints `⚠ APP_URL "<value>" points at this machine`, since `.env.example` ships `http://localhost:3000` and the release compose file's one-machine evaluation is legitimate. Invitation, reset and notification links are built from it, and the fallback (`http://localhost:3000`, `routes/helpers/shared.js`) would point every one at the reader's own machine. Development keeps the fallback. |
-| Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/auth-providers.js:86`, re-exported by `services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set: `local`, plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, plus `oidc` when `OIDC_ISSUER_URL` is set. A set value is a comma list of `local`, `google` and `oidc`. A list **without `local` is hosted mode** (W6-CDX-8): it must name `oidc`, must not name `google`, and the Google variables must be unset. An unknown name, an empty list, a listed provider that is not configured, a configured one the list leaves out, or a broken hosted rule exits 1 with a sentence naming the variable. The request path reads the same set without validating it: `offeredProviders()` (`auth-providers.js:47`), `localSignInEnabled()` (`:76`) and `providerListed()` (`:66`). `requireLocalSignIn` (`middleware/auth.js:175`) and `requireProviderOffered` (`middleware/auth.js:187`) turn those answers into 404s. |
+| Sign-in provider gate | `server.js`, top-level | `parseAuthProviders()` (`services/auth-providers.js:86`, re-exported by `services/identity.js`) validates `AUTH_PROVIDERS`. Unset or blank is today's set: `local`, plus `google` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are both set, plus `oidc` when `OIDC_ISSUER_URL` is set. A set value is a comma list of `local`, `google` and `oidc`. A list **without `local` is OIDC-only mode** (W6-CDX-8): it must name `oidc`, must not name `google`, and the Google variables must be unset. An unknown name, an empty list, a listed provider that is not configured, a configured one the list leaves out, or a broken hosted rule exits 1 with a sentence naming the variable. The request path reads the same set without validating it: `offeredProviders()` (`auth-providers.js:47`), `localSignInEnabled()` (`:76`) and `providerListed()` (`:66`). `requireLocalSignIn` (`middleware/auth.js:175`) and `requireProviderOffered` (`middleware/auth.js:187`) turn those answers into 404s. |
 | Instance lock | `server.js:103-127`, top-level `await` | `acquireInstanceLock()` (`services/instance-lock.js`) runs `SELECT GET_LOCK(<name>, 0)` on a connection of its own (`openConnection()`, `mysql_connect.js:80-82`), never the pool, and holds it for the life of the process. **Before anything writes**, so a second process on the same schema refuses before its admin sync or seed can race the first's. A refusal exits 1 with `Another Cloud Codex process (MySQL connection <id>) already serves this database.`, naming the holder and the escape; so does a failure to open the connection at all, which under a supervisor is a restart rather than an outage. `C2_INSTANCE_LOCK=0`, and only `0`, takes no lock and logs that a second process will diverge. The lock object is handed to `/readyz` (`readiness.lock`, `routes/health.js`). The name, built server side as `INSTANCE_LOCK_NAME_SQL`, is `cloudcodex-instance:<db>`, or `cloudcodex-instance#` and the first 40 hex characters of the schema's SHA-256 when the schema name is longer than 44 characters, since MySQL refuses a lock name over 64 (ER 4163). It differs from the migration runner's `cloudcodex_migrate:<db>` (`scripts/migrate.js`, capped the same way past 45), so `npm run migrate` in a one-off container never contends with the running app, and it carries the schema, so instances sharing one MySQL server never contend with each other. `server.js` passes `onSuperseded`, which stops the process if another one takes the lock after this one lost it (section 7). |
 | Mail capability | `server.js`, top-level `await` | `initMail()` (`services/email.js`) decides once, at boot, whether mail is usable: SMTP configured **and** the connection verifies. It never exits. Enabled logs `✔ SMTP connection verified`. SMTP left unset (`configured: false` from `initMail()`) is a supported mode and logs the report line `✔ Email off (<reason>): invitations show a copyable link; ...` on stderr, styled like the trusted-proxy line; SMTP set but failing verification logs `✖ Email disabled: <reason>. Invites will show copyable links; password reset is unavailable.` on stderr. Either way `sendEmail()` becomes a silent no-op (`{skipped: true}`) for the rest of the process, so fire-and-forget callers needed no changes. The transport sets `connectionTimeout`/`greetingTimeout` of 10s and `socketTimeout` of 20s (`services/email.js`), so an unreachable host costs seconds here, not nodemailer's default two minutes. |
-| Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` (`routes/admin.js:56`) creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`. On a hosted instance (no `local`) it matches `ADMIN_EMAIL` alone, creates the admin with no password, takes a name derived from `ADMIN_EMAIL` when `ADMIN_USERNAME` is unset or taken, and writes no password. It **never promotes**: when an account matching is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
-| Hosted session purge | `server.js:197` | `endSessionsOutsideOidc()` (`services/sessions-hosted.js:18`) deletes every `sessions` row whose `auth_provider` is not `oidc` on a hosted instance, and logs the count when it ended any. Off a hosted instance it returns before its query. A failure is logged and the boot goes on, since validation refuses those rows regardless. |
-| Socket re-check | `server.js:293` | `startSocketSweep()` (`services/socket-sweep.js:67`) runs every 60 s (`SWEEP_INTERVAL_MS`, `:11`, unref'd). Each pass collects the digests the open sockets carry (`openSessionDigests()`, `collab.js:196` and `user-channel.js:87`), asks `liveSessionDigests()` (`socket-sweep.js:30`, batched 500 at a time, OIDC only on a hosted instance) which still hold a live session for an active user, and closes the rest with 4004 through `closeSocketsForSessions`. A failed pass is logged, never thrown. |
+| Admin sync | `server.js`, top-level `await` | `ensureAdminUser()` (`routes/admin.js:56`) creates the `.env` admin, or syncs an account that is already an admin (its email and password reset from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), and returns its `id`. On an OIDC-only instance (no `local`) it matches `ADMIN_EMAIL` alone, creates the admin with no password, takes a name derived from `ADMIN_EMAIL` when `ADMIN_USERNAME` is unset or taken, and writes no password. It **never promotes**: when an account matching is not an admin it writes nothing and returns `null` (`Promise<number\|null>`). It logs one `admin sync:` line, created, synced or refusing, never the password. The rule and its table are in `access-control.md` section 6. Wrapped in `try/catch`: a DB blip logs `admin user sync failed` and boot continues with `adminId = null` rather than never listening. |
+| OIDC-only session purge | `server.js:226` | `endSessionsOutsideOidc()` (`services/sessions-oidc-only.js:18`) deletes every `sessions` row whose `auth_provider` is not `oidc` on an OIDC-only instance, and logs the count when it ended any. Off an OIDC-only instance it returns before its query. A failure is logged and the boot goes on, since validation refuses those rows regardless. |
+| Socket re-check | `server.js:293` | `startSocketSweep()` (`services/socket-sweep.js:67`) runs every 60 s (`SWEEP_INTERVAL_MS`, `:11`, unref'd). Each pass collects the digests the open sockets carry (`openSessionDigests()`, `collab.js:196` and `user-channel.js:87`), asks `liveSessionDigests()` (`socket-sweep.js:30`, batched 500 at a time, OIDC only on an OIDC-only instance) which still hold a live session for an active user, and closes the rest with 4004 through `closeSocketsForSessions`. A failed pass is logged, never thrown. |
 | Bootstrap instance | `server.js`, top-level `await` | `bootstrapInstance(adminId)` from `routes/admin.js` seeds a starter workspace, squad, squad-ownership row, archive and welcome document the first time the database holds **no workspaces, archives or logs at all** (one `SELECT` of three `COUNT(*)` sub-selects). Workspaces alone would not do: `DELETE /api/workspaces/:id` plus `archives.squad_id ON DELETE SET NULL` (`init.sql:264`) can leave orphaned archives and logs behind an empty `workspaces` table. All five writes share one transaction via `withTransaction()` in `mysql_connect.js`. Also `try/catch`-wrapped: a failed seed logs `instance bootstrap failed` and leaves the instance empty but usable, and the next restart retries. |
 | Webhook cache | `server.js`, top-level `await` | `loadSubscriptions()` (`services/webhooks.js`) fills the in-process cache `emitEvent` matches against (it logs its own failure and never throws), and a `setInterval` of 60 seconds, `.unref()`ed, refreshes it. There is no env subscription (removed in 0.15.0). See `notifications-and-activity.md` section 2a. |
 | Listen | `server.js`, `ViteExpress.listen(app, port)` | Port is `PORT` if set, else 3000; a non-numeric or out-of-range `PORT` exits rather than falling back. **Last, deliberately.** `ViteExpress.listen` binds the socket and starts accepting requests *before* running its callback, so anything awaited in there would serve traffic with the answer undecided: a configured instance reporting `isMailEnabled() === false` for the length of the SMTP verify, and an empty app on a first boot. All three steps above therefore run as top-level `await`s before it. **The success line is guarded on `server.listening`**, because Express 5 aliases `listen`'s callback onto the socket's `'error'` event and so runs it on a failed bind too (see `open-questions.md` B8); a sibling `'error'` handler names the port and exits non-zero. After the success line it prints `✔ Trusting proxies (the default): <value>`, or `(from TRUST_PROXY)` when that is set and not blank, with `none, X-Forwarded-For is ignored` for `false`: the resolved `app.get('trust proxy')`, printed after the bind so a crash loop cannot scroll it away (`tests/server.test.js`, `the trust proxy boot line`). The `'listening'` event is deliberately *not* used: `vite-express` injects its middleware asynchronously, so that event fires about twelve seconds before the dev server can serve. |
@@ -240,7 +240,7 @@ handler the way `vite-express` does.
 
 **Origin-required cookie writes** (`requireOriginForCookieWrites`,
 `app.js:332-352`, W6-CDX-3). CORS admits a request with no `Origin` at all, and
-`SameSite=Strict` stops nothing between sibling hosts under one registrable
+`SameSite=Strict` stops nothing between hosts under one registrable
 domain, which is how the suite is hosted. So after Helmet, on `/api`: a `POST`,
 `PUT`, `PATCH` or `DELETE` that carries no bearer token (`bearerToken(req)` in
 `middleware/auth.js`, the same test `extractSessionToken` makes first) but does
@@ -265,7 +265,7 @@ saves fine over WS can 413 over REST.
 
 | Limiter | Window / max | Applied to |
 |---|---|---|
-| `authLimiter` (`app.js:359-366`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm` (each behind `requireLocalSignIn`, so a hosted instance answers 404 before the bucket is spent, `app.js:371-377`); `/api/oauth/google/callback` and `/api/auth/oidc/callback` (`app.js:378-379`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:385`); |
+| `authLimiter` (`app.js:359-366`) | 15 min / 20, one bucket per IP across every mount | `/api/login`, `/api/create-account`, `/api/forgot-password`, `/api/reset-password`, `/api/2fa/verify`, `/api/2fa/totp/confirm`, `/api/2fa/disable/confirm` (each behind `requireLocalSignIn`, so an OIDC-only instance answers 404 before the bucket is spent, `app.js:371-377`); `/api/oauth/google/callback` and `/api/auth/oidc/callback` (`app.js:378-379`); `/api/update-account`, whose path mount also covers `/api/update-account/confirm-email` (`app.js:385`); |
 | `searchLimiter` (`app.js:388-396`) | 15 min / 60 | `/api/users/search` only (`app.js:396`), to blunt user enumeration |
 | `backchannelLimiter` (`routes/oidc.js:50`) | 1 min / 300 **refused deliveries** | `POST /api/auth/oidc/backchannel-logout` only, mounted only with OIDC. Its own bucket, never `authLimiter`: every logout token comes from the issuer's one address. `skipSuccessfulRequests` with `requestWasSuccessful` true for anything but a 400, so a verified delivery, a 503 the issuer retries and a 429 never spend it. Keyed on `req.ip`, which is trust-proxy-aware |
 
@@ -279,19 +279,19 @@ real loopback socket and replaces the connection's `remoteAddress` before
 Express sees it, because
 Supertest always connects from 127.0.0.1, which the default trusts. A public
 peer (`203.0.113.9`, and its IPv4-mapped form) sending a new `X-Forwarded-For`
-on every `/api/login` gets 429 on the 21st, and so does a sibling container
+on every `/api/login` gets 429 on the 21st, and so does another container
 inside the pinned subnet that is not its gateway (`172.29.0.5`), whose chain
 changes in every entry, the rightmost included, so the case fails if the
-sibling is trusted at all. The review's
+another container is trusted at all. The review's
 repro: the gateway (`172.29.0.1`) forwarding a chain it appended, with the
 client (`10.0.5.7`, `172.31.44.9`, `192.168.1.50` or `203.0.113.9`) injecting a
 new left entry on each of 40 attempts, gets 429 on attempt 21 and every one
 after. A trusted proxy (`172.29.0.1`, its mapped form, `127.0.0.1`) has its
 `X-Forwarded-For` believed, so a second client behind it keeps its own bucket,
 and the real app logs the warning once for a public peer. Setting `trust proxy`
-back to 1 reddens the public-peer and sibling cases; widening the default to
-`172.29.0.0/16` reddens the sibling cases; restoring
-`loopback, linklocal, uniquelocal` reddens the sibling and the three private
+back to 1 reddens the public-peer and other-container cases; widening the default to
+`172.29.0.0/16` reddens the other-container cases; restoring
+`loopback, linklocal, uniquelocal` reddens the other container and the three private
 repro cases; putting `172.17.0.1/32` back reddens its two trust-table rows;
 setting it to `false` reddens the trusted-proxy case. The other mounts are not
 exercised.
@@ -465,7 +465,7 @@ component that consume it.
    up by primary key, **by the digest of the token** (`hashSessionToken`, see
    "Session tokens" below), rejects if `expires_at <= now`, then loads the user
    row. Anything that is not a non-empty string is no session, answered without
-   a query. On a hosted instance (no `local` in `AUTH_PROVIDERS`, W6-CDX-8) a session
+   a query. On an OIDC-only instance (no `local` in `AUTH_PROVIDERS`, W6-CDX-8) a session
    whose `auth_provider` is not `oidc` is refused here, so a pre-switch local or
    Google session ends at the switch. The user row is read `AND deactivated_at IS NULL`,
    so a deactivated user's sessions end with it.
@@ -650,7 +650,7 @@ Expired rows are removed by the daily session prune (section 1).
 **On https it is `__Host-sessionToken`** (W6-CDX-3). A browser stores a
 `__Host-` cookie only with `Secure`, `Path=/` and no `Domain`, so no other host
 under the same registrable domain can plant one. The old name, `sessionToken`,
-could be: script on any sibling can set `sessionToken=<its own>;
+could be: script on any other host under the domain can set `sessionToken=<its own>;
 Domain=<parent>; Path=/api`, a browser sends the longer path first, and a
 reader taking the first match would sign the victim in as the tosser.
 `services/session-cookie.js` holds the names (`SESSION_COOKIE`,
@@ -670,7 +670,7 @@ name) and `tests/routes/oauth-google-host-cookie.test.js`.
 
 The fallback is `legacyCookieAllowed()`: on unless `LEGACY_SESSION_COOKIE` is
 exactly `0`. Default on, so a self-hoster's sessions from before the rename
-survive the upgrade; a hosted instance on https sets `0`. Over plain http the
+survive the upgrade; an OIDC-only instance on https sets `0`. Over plain http the
 legacy name is the only one a browser can hold, so `0` belongs only on https.
 
 Writers. The server writes the cookie in one place, the Google callback in
@@ -684,7 +684,7 @@ No writer sets `Domain`.
 
 Readers. The server reads through `extractSessionToken`. The client's
 `getSessionTokenFromCookie` prefers the prefixed cookie and, **on an https page,
-never reads a lone legacy cookie**, since a sibling could have planted it:
+never reads a lone legacy cookie**, since another host could have planted it:
 `upgradeLegacySessionCookie`, run once in `main.jsx` before the first render,
 posts it to `POST /api/validate-session` with `legacyCookie: true`. The route
 answers `{ valid: false }` without a lookup when `LEGACY_SESSION_COOKIE=0`;
@@ -693,7 +693,7 @@ the prefixed name; either answer expires the legacy cookie; an unreachable
 server, or one silent for `LEGACY_UPGRADE_TIMEOUT_MS` (5 s, since the first
 render waits on this), leaves it for the next visit. A refusal is remembered
 in session storage (`legacySessionCookieRefused`) for the tab, because a legacy
-cookie a sibling set with a `Domain` survives this host's host-only clear and
+cookie another host set with a `Domain` survives this host's host-only clear and
 would otherwise cost a round-trip on every page load. Without that step the
 flag would be server-side only: the client would send a planted legacy cookie
 as a bearer header, which authenticates whatever the flag says.
@@ -775,7 +775,7 @@ it signs out only the device that presented it.
 The cookie fallback does not open a cross-site logout: every writer of the
 session cookie sets `SameSite=Strict` (`routes/oauth.js` server-side,
 `setSessionCookie` in `src/util.jsx` client-side), so a cross-site POST carries
-no cookie and lands in the 400 branch, and a same-site one from a sibling host
+no cookie and lands in the 400 branch, and a same-site one from another host
 that carries it has no accepted `Origin`, so `requireOriginForCookieWrites`
 refuses it with 403 before the route runs (section 2).
 
@@ -838,7 +838,7 @@ not its own, letting the next listener try.
 
 **Origin handling is strict in both:** a *missing* `Origin` header is rejected
 with a raw `403` on the socket (`collab.js:345-349`), as is any origin whose
-host differs from the request `Host`, a sibling host under the same domain
+host differs from the request `Host`, another host under the same domain
 included. This is CSWSH protection, and it means a non-browser client must send
 an `Origin` matching the host. Both sockets authenticate from a token the page
 reads out of the session cookie, so this check is their whole cross-site

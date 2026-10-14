@@ -192,7 +192,7 @@ message, so a session ended later (a deactivation, a row deleted by hand) would 
 (`services/socket-sweep.js`, started at `server.js:293`) runs every 60 s, collects the digests of the
 authenticated sockets on both servers (`openSessionDigests`, `collab.js:196`, `user-channel.js:87`),
 asks `liveSessionDigests` (`socket-sweep.js:30`) which of them still hold a live session for an active user
-(OIDC only on a hosted instance, batched 500 at a time), and closes the rest with 4004 through
+(OIDC only on an OIDC-only instance, batched 500 at a time), and closes the rest with 4004 through
 `closeSocketsForSessions` (`collab.js:212`). A failed pass is logged and the timer keeps running.
 
 **All of this is per-process, in-memory. Restarting the server drops every
