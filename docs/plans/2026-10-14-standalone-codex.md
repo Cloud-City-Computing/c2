@@ -640,7 +640,7 @@ look alive.
 - [ ] `cloudcodex/package.json` and `cloudcodex/package-lock.json` versions, and the
       `CLOUDCODEX_VERSION` default in `docker-compose-release.yml`, become `0.15.0` (the three values
       `release.yml` checks).
-- [ ] Nothing else in the diff. CI green; the tag waits for Kyle.
+- [ ] Nothing else in the diff. CI green; the maintainer authorized cutting the 0.15.0 tag once CI is green.
 
 **Files touched (expected):** `tests/design/{suite-name.test.js (deleted),standalone.test.js (new),
 theme.json,theme.test.js}`, `src/lib/appearance-prefs.js` (renamed), `env-contract.js`, `.env.example`,
