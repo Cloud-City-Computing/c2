@@ -1,7 +1,7 @@
 /**
- * Tests for services/auth-providers.js: which sign-in methods an instance offers, and the hosted rule
+ * Tests for services/auth-providers.js: which sign-in methods an instance offers, and the OIDC-only rule
  *
- * An unset AUTH_PROVIDERS keeps today's derived set. A list without local is hosted mode: OIDC is the
+ * An unset AUTH_PROVIDERS keeps today's derived set. A list without local is OIDC-only mode: OIDC is the
  * only human sign-in, so the list must name oidc, must not name google, and the Google variables must be
  * unset. Every refusal is a sentence that opens with the variable.
  *
@@ -69,7 +69,7 @@ describe('auth-providers', () => {
     });
   });
 
-  describe('parseAuthProviders in hosted mode (no local)', () => {
+  describe('parseAuthProviders in OIDC-only mode (no local)', () => {
     it('accepts oidc alone when an issuer is configured', () => {
       process.env.OIDC_ISSUER_URL = ISSUER;
       process.env.AUTH_PROVIDERS = 'oidc';
@@ -81,20 +81,20 @@ describe('auth-providers', () => {
       expect(() => parseAuthProviders()).toThrow(/^AUTH_PROVIDERS lists oidc, but OIDC_ISSUER_URL is not set/);
     });
 
-    it('refuses a list without oidc, since a hosted instance has no other sign-in', () => {
+    it('refuses a list without oidc, since an OIDC-only instance has no other sign-in', () => {
       process.env.AUTH_PROVIDERS = 'google';
       configureGoogle();
-      expect(() => parseAuthProviders()).toThrow(/^AUTH_PROVIDERS .*hosted mode.*oidc/);
+      expect(() => parseAuthProviders()).toThrow(/^AUTH_PROVIDERS .*OIDC-only mode.*oidc/);
     });
 
-    it('refuses google in the list, because hosted sign-in is OIDC only', () => {
+    it('refuses google in the list, because OIDC-only sign-in is OIDC only', () => {
       process.env.OIDC_ISSUER_URL = ISSUER;
       process.env.AUTH_PROVIDERS = 'oidc,google';
       configureGoogle();
       expect(() => parseAuthProviders()).toThrow(/^AUTH_PROVIDERS lists google.*OIDC only/);
     });
 
-    it('refuses configured Google variables on a hosted instance, naming them to unset', () => {
+    it('refuses configured Google variables on an OIDC-only instance, naming them to unset', () => {
       process.env.OIDC_ISSUER_URL = ISSUER;
       process.env.AUTH_PROVIDERS = 'oidc';
       configureGoogle();

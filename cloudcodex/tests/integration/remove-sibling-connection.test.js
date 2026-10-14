@@ -1,5 +1,5 @@
 /**
- * The sibling connection's schema removal, against a live MySQL server
+ * The suite connection's schema removal, against a live MySQL server
  *
  * 2026-10-17-remove-sibling-connection.sql expires revoked invitations, deletes the env-declared webhook
  * subscriptions and drops user_invitations.grants_admin and revoked_at. This file proves four things on a
@@ -63,7 +63,7 @@ async function toPreMigrationState(query) {
   );
 }
 
-describe('removing the sibling connection, on a real server', () => {
+describe('removing the suite connection, on a real server', () => {
   it('ships the migration file this test applies', () => {
     expect(readdirSync(MIGRATIONS_DIR)).toContain(FILE);
   });

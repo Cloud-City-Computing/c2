@@ -251,7 +251,7 @@ describe('the session cookie on an https page', () => {
 
   // A browser stores a cookie whose name starts with Unicode whitespace
   // (U+2000, U+3000, U+FEFF, U+00A0) as a different cookie, so none of the
-  // __Host- rules apply to it and a sibling host can set it for the whole
+  // __Host- rules apply to it and another host can set it for the whole
   // domain. jsdom's jar never produces such a name, so these read a Cookie
   // string as a browser would hand it over.
   const PLANTS = ['\u2000', '\u3000', '\ufeff', '\u00a0'];
@@ -282,7 +282,7 @@ describe('the session cookie on an https page', () => {
       expect(getSessionTokenFromCookie()).toBe('host-token');
     });
 
-    // A lone legacy cookie on https may have been tossed by a sibling host.
+    // A lone legacy cookie on https may have been tossed by another host.
     // It is promoted only after the server agrees (upgradeLegacySessionCookie),
     // never read straight into a bearer header.
     it('reads the real prefixed cookie past a planted name that starts with Unicode whitespace', () => {
@@ -385,7 +385,7 @@ describe('the session cookie on an https page', () => {
       expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ token: 'old-token', legacyCookie: true });
     });
 
-    // A legacy cookie a sibling set with a Domain cannot be expired by this
+    // A legacy cookie another host set with a Domain cannot be expired by this
     // host's clear, so it would come back on every page load.
     it('asks once per tab: a refused legacy cookie that survives the clear is not asked about again', async () => {
       fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ valid: false }) });

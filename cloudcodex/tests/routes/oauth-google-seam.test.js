@@ -99,7 +99,7 @@ describe('Google callback through the identity seam (no domain restriction)', ()
     expect(generateSessionToken.mock.calls[0][3]).toEqual({ provider: 'google' });
   });
 
-  // The session cookie is host-only: no writer sets Domain, so a sibling
+  // The session cookie is host-only: no writer sets Domain, so another host
   // subdomain can neither read it nor plant one this host would accept as its
   // own. Pinned on the one server-side writer.
   it('sets the session cookie host-only, with no Domain attribute on any Set-Cookie', async () => {

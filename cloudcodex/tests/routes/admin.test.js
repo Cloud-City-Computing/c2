@@ -1252,7 +1252,7 @@ describe('Admin Routes', () => {
 
 // --- bootstrapInstance ---
 // Not a route handler, so it's exercised directly rather than over HTTP.
-// This describe block owns its own env/mock lifecycle (it's a sibling of
+// This describe block owns its own env/mock lifecycle (it's a peer of
 // `describe('Admin Routes', ...)`, so that block's beforeEach does not
 // cascade here) to keep ADMIN_EMAIL/ADMIN_USERNAME explicit rather than
 // inherited from whatever the machine's .env happens to hold — CI has none.

@@ -991,12 +991,12 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
   and produced B8 through B10 above; the rest of this document is still
   static-read-only.
 
-## F. Open questions from W6-CDX-8 (hosted mode), not defects yet
+## F. Open questions from W6-CDX-8 (OIDC-only mode), not defects yet
 
 - **F1. (Closed: the machine credential was removed in CDX-SA-3, 0.15.0.)** `SERVICE_TOKEN` and the machine
-  JWT variables no longer exist, so a hosted instance has no machine path to refuse.
-- **F2. GitHub linking is open on a hosted instance.** It links an account already signed in, so it is not a
-  sign-in, but a hosted operator may expect it off. Not changed.
+  JWT variables no longer exist, so an OIDC-only instance has no machine path to refuse.
+- **F2. GitHub linking is open on an OIDC-only instance.** It links an account already signed in, so it is not a
+  sign-in, but a OIDC-only operator may expect it off. Not changed.
 - **F3. Migration order on instances that already ran `2026-10-14-session-rotation.sql`.** `2026-10-12-user-deactivation.sql`
   sorts before it. The runner's handling of an out-of-order pending file on such an instance is not verified here.
 - **F4. The socket sweep's latency is one minute, by design.** A socket authenticated before a deactivation stays
@@ -1023,7 +1023,7 @@ described. Its live items are here; its closed decisions are not carried, becaus
 - **H1. The colour gamut is open.** The contract's colour steps are not all inside sRGB. Measured by converting each
   `oklch(L C H)` to linear sRGB, 19 of 64 hue-theme-step combinations fall outside it (dark wash for 232; the dark text,
   fill and wash for 200 and 175; the light wash for 355, 275 and 50), and 29 of 80 once the dark avatar step counts.
-  The browser and the vendored gate both clip, and every pair still passes on the clipped colour. The sibling product's
+  The browser and the vendored gate both clip, and every pair still passes on the clipped colour. The upstream product's
   count for the same three hues (17) is not reconciled, since its script is not in this repository. A change to a step
   is a versioned change to the table in `tests/design/suite-theme.json`.
 - **H2. Decisions taken without sign-off that still concern Codex's own interface.** Each was recorded as "decided

@@ -106,9 +106,10 @@ Most "new feature" work is extension, not greenfield.
 ### Auth & accounts: `routes/auth.js`, `routes/oauth.js`, `routes/oidc.js`, `middleware/auth.js`
 Email+password login, signup via invite token, password reset, two-factor (email
 OTP and TOTP with QR), session tokens (DB-backed, one row per sign-in, stored
-only as a SHA-256 digest), Google Workspace SSO, OIDC sign-in through one issuer
-per instance (`services/oidc.js`, `OIDC_*`, keyed on `(issuer, subject)` in
-`user_identities`, `returnTo` by `services/return-to.js`), GitHub OAuth (token
+only as a SHA-256 digest), Google Workspace SSO, OIDC sign-in with any standard
+issuer, one per instance (`services/oidc.js`, `OIDC_*`, keyed on `(issuer, subject)` in
+`user_identities`, `returnTo` by `services/return-to.js`; setup and provider notes in
+`docs/sign-in.md`; `AUTH_PROVIDERS=oidc` is OIDC-only mode), GitHub OAuth (token
 AES-256-GCM encrypted at rest). Use `requireAuth` and `requireAdmin` from
 `middleware/auth.js` on any new protected route. **Never bind a raw session
 token into a `sessions` query**: hash it with `hashSessionToken` in

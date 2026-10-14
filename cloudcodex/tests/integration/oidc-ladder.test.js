@@ -120,11 +120,11 @@ describe('the OIDC ladder, end to end on real rows', () => {
     const token = await generateSessionToken({ id: user.id }, null, null, {
       provider: 'oidc',
       identityId: linked.identityId,
-      providerSid: 'zitadel-session-live',
+      providerSid: 'issuer-session-live',
       ttlHours: 8,
     });
     const minted = await getSessionProvenance(token);
-    expect(minted).toMatchObject({ provider: 'oidc', identityId: linked.identityId, providerSid: 'zitadel-session-live' });
+    expect(minted).toMatchObject({ provider: 'oidc', identityId: linked.identityId, providerSid: 'issuer-session-live' });
     const eightHours = Date.now() + 8 * 60 * 60 * 1000;
     expect(Math.abs(minted.expiresAt.getTime() - eightHours)).toBeLessThan(120_000);
     expect(await validateAndAutoLogin(token)).toMatchObject({ id: user.id });

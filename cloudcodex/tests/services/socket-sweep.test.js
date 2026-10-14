@@ -3,7 +3,7 @@
  *
  * Auth is read once, on a socket's first message, so a session ended afterwards, by a deactivation or a
  * hand-run delete, would keep its socket. The sweep reads the digests the open sockets carry, asks the
- * database which of them still hold a live session for an active user (and, on a hosted instance, an OIDC
+ * database which of them still hold a live session for an active user (and, on an OIDC-only instance, an OIDC
  * session), and closes the rest with 4004. The lookup is batched, and a failed sweep is logged, never thrown.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
@@ -56,7 +56,7 @@ describe('liveSessionDigests', () => {
     expect(c2_query.mock.calls[2][1]).toHaveLength(200);
   });
 
-  it('keeps only OIDC sessions on a hosted instance', async () => {
+  it('keeps only OIDC sessions on an OIDC-only instance', async () => {
     process.env.AUTH_PROVIDERS = 'oidc';
     process.env.OIDC_ISSUER_URL = 'https://id.example.test';
     c2_query.mockResolvedValueOnce([]);

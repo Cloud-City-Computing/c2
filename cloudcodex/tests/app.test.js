@@ -120,7 +120,7 @@ describe('app.js — Express configuration', () => {
         ['127.0.0.2', 'loopback, but not the one address a proxy on this host uses'],
         ['172.17.0.1', 'the default bridge\'s gateway, which every IPv6 client of `docker run -p` arrives as'],
         ['::ffff:172.17.0.1', 'the same on a dual-stack socket'],
-        ['172.29.0.5', 'a sibling container on the pinned network, not its gateway'],
+        ['172.29.0.5', 'another container on the pinned network, not its gateway'],
         ['::ffff:172.29.0.5', 'the same on a dual-stack socket'],
         ['172.31.44.9', 'a neighbour in AWS\'s default VPC'],
         ['172.18.0.1', 'the gateway of a compose network nobody pinned'],
@@ -350,10 +350,10 @@ describe('app.js — Express configuration', () => {
       },
     );
 
-    // A peer inside the pinned subnet that is not its gateway is a sibling
-    // container, and a sibling is not a proxy: it is keyed on its own address
+    // A peer inside the pinned subnet that is not its gateway is another
+    // container, and another container is not a proxy: it is keyed on its own address
     // whatever chain it sends. Every entry changes on every request, the
-    // rightmost included, so trusting the sibling at all (a hop count, or the
+    // rightmost included, so trusting the other container at all (a hop count, or the
     // whole subnet) hands out a fresh key each time and this goes red.
     it.each(['172.29.0.5', '::ffff:172.29.0.5'])(
       'counts a non-gateway peer inside the pinned subnet (%s) by its own address',
@@ -762,7 +762,7 @@ describe('app.js — Express configuration', () => {
 // A browser attaches a cookie on its own; it attaches a bearer header only when
 // the page's own script does. So only a write authenticated by the cookie
 // ALONE can be forged, and only that must carry an Origin the CORS rule
-// accepts. SameSite=Strict adds nothing between sibling hosts under one
+// accepts. SameSite=Strict adds nothing between hosts under one
 // registrable domain, which is how the suite is hosted (W6-CDX-3).
 describe('app.js: Origin-required cookie writes', () => {
   beforeEach(() => resetMocks());
@@ -855,7 +855,7 @@ describe('app.js: Origin-required cookie writes', () => {
     // so the rule's own Origin check is reached directly here.
     it.each([
       ['null', 'null'],
-      ['a sibling host', 'https://command.example.com'],
+      ['another host', 'https://command.example.com'],
       ['a malformed value', '://nope'],
     ])('refuses a cookie-only write whose Origin is %s', (_label, origin) => {
       const { res, next } = run({
@@ -927,7 +927,7 @@ describe('app.js: Origin-required cookie writes', () => {
   });
 });
 
-describe('the sibling connection is removed (CDX-SA-3)', () => {
+describe('the suite connection is removed (CDX-SA-3)', () => {
   const SERVICE = 'a'.repeat(40);
   let savedServiceToken;
   beforeEach(() => {

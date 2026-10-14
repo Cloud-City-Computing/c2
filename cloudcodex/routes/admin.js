@@ -73,11 +73,11 @@ export async function ensureAdminUser({ retried = false } = {}) {
   const password = process.env.ADMIN_PASSWORD;
   const email = process.env.ADMIN_EMAIL;
 
-  // Hosted (no local sign-in): the operator's address is the only key, and no password is read or written.
+  // OIDC-only (no local sign-in): the operator's address is the only key, and no password is read or written.
   // A name match is what let a member who took the admin's old name be promoted (GHSA-w8q3-r34w-3pjh), and an
   // OIDC-only instance has no password for the admin to need, so the name is never consulted there.
-  const hosted = !localSignInEnabled();
-  const matches = hosted
+  const oidcOnly = !localSignInEnabled();
+  const matches = oidcOnly
     // Binary, as every other address comparison here: users.email's default collation would read an accent variant
     // (josé@ for jose@) as this admin, and the sync would rename that account's address to the operator's (W6-CDX-9).
     ? await c2_query(`SELECT id, is_admin FROM users WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin ORDER BY id`, [email])
@@ -89,7 +89,7 @@ export async function ensureAdminUser({ retried = false } = {}) {
   const nonAdmin = matches.find((row) => !row.is_admin);
   if (nonAdmin) {
     console.error(
-      `[${new Date().toISOString()}] admin sync: ${hosted ? email : `${username} / ${email}`} matches an existing ` +
+      `[${new Date().toISOString()}] admin sync: ${oidcOnly ? email : `${username} / ${email}`} matches an existing ` +
       `non-admin account (user ${nonAdmin.id}), refusing to promote it. ` +
       'Promote it in the admin console if that is intended.'
     );
@@ -99,7 +99,7 @@ export async function ensureAdminUser({ retried = false } = {}) {
   const [existing] = matches;
   if (existing) {
     // Already an admin, so the flag is not written: this UPDATE cannot promote.
-    if (hosted) {
+    if (oidcOnly) {
       await c2_query(`UPDATE users SET email = ? WHERE id = ?`, [email, existing.id]);
       console.error(
         `[${new Date().toISOString()}] admin sync: synced ${email} (user ${existing.id}), its email reset from ADMIN_EMAIL.`
@@ -118,8 +118,8 @@ export async function ensureAdminUser({ retried = false } = {}) {
     return existing.id;
   }
 
-  // Create the admin user. Hosted: no password, and a name derived from the address when ADMIN_USERNAME is unset.
-  if (hosted) {
+  // Create the admin user. OIDC-only: no password, and a name derived from the address when ADMIN_USERNAME is unset.
+  if (oidcOnly) {
     // ADMIN_USERNAME when no account holds it, else the derived name: a member who already holds the name
     // must not turn the admin's create into a UNIQUE failure, and must never be the one promoted by it.
     const taken = username
@@ -160,7 +160,7 @@ export async function ensureAdminUser({ retried = false } = {}) {
       [username, passwordHash, email]
     );
   } catch (err) {
-    // The same race as the hosted branch: read again once, and adopt or refuse what the other boot left.
+    // The same race as the OIDC-only branch: read again once, and adopt or refuse what the other boot left.
     if (err.code === 'ER_DUP_ENTRY' && !retried) return ensureAdminUser({ retried: true });
     throw err;
   }
@@ -208,7 +208,7 @@ const WELCOME_HTML = `
 export async function bootstrapInstance(adminId) {
   if (!adminId) return false;
 
-  // The admin's own name, read from its row: ADMIN_USERNAME may be unset on a hosted instance, and the row
+  // The admin's own name, read from its row: ADMIN_USERNAME may be unset on an OIDC-only instance, and the row
   // is what the admin is called. It rides on the content guard so the seed costs no extra query.
   const [row] = await c2_query(
     `SELECT (SELECT COUNT(*) FROM workspaces) AS workspaces,

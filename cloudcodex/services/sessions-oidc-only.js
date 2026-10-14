@@ -1,9 +1,9 @@
 /**
- * The boot purge of sessions a hosted instance no longer accepts
+ * The boot purge of sessions an OIDC-only instance no longer accepts
  *
- * On a hosted instance (no local sign-in) validateAndAutoLogin already refuses a local or Google session, so
+ * On an OIDC-only instance (no local sign-in) validateAndAutoLogin already refuses a local or Google session, so
  * the switch ends them. The boot also deletes those rows, so the table holds only what the instance will
- * accept, and logs how many it ended. Off a hosted instance it changes nothing.
+ * accept, and logs how many it ended. Off an OIDC-only instance it changes nothing.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -21,7 +21,7 @@ export async function endSessionsOutsideOidc() {
   const ended = Number(result?.affectedRows ?? 0);
   if (ended > 0) {
     console.error(
-      `[${new Date().toISOString()}] hosted boot: ended ${ended} sessions that are not OIDC sessions; ` +
+      `[${new Date().toISOString()}] OIDC-only boot: ended ${ended} sessions that are not OIDC sessions; ` +
       'those users sign in through OIDC.'
     );
   }

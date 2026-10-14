@@ -649,10 +649,10 @@ describe('parseAuthProviders', () => {
       expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS lists oidc.*OIDC_ISSUER_URL/);
     });
 
-    it('refuses a list without local that does not name oidc: hosted mode is OIDC only', () => {
+    it('refuses a list without local that does not name oidc: OIDC-only mode is OIDC only', () => {
       process.env.AUTH_PROVIDERS = 'google';
       configureGoogle();
-      expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS without local is hosted mode.*list oidc/);
+      expect(() => parseAuthProviders()).toThrow(/AUTH_PROVIDERS without local is OIDC-only mode.*list oidc/);
     });
 
     it('refuses google when Google is not configured, naming the missing variables', () => {
@@ -669,7 +669,7 @@ describe('parseAuthProviders', () => {
 
     it.each([
       ['an unknown provider', 'nope', false],
-      ['a hosted list without oidc', 'google', true],
+      ['an OIDC-only list without oidc', 'google', true],
       ['an unconfigured google', 'local,google', false],
       ['a configured google left out', 'local', true],
     ])('phrases the refusal for %s as a sentence that opens with the variable', (_label, value, google) => {

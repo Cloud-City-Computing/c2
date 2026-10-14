@@ -1,5 +1,5 @@
 /**
- * The boot admin on a hosted instance (AUTH_PROVIDERS without local): created without a password, found by email only
+ * The boot admin on an OIDC-only instance (AUTH_PROVIDERS without local): created without a password, found by email only
  *
  * With local sign-in off, ensureAdminUser matches ADMIN_EMAIL alone (never the name), creates the admin
  * with no password_hash when none matches, takes a derived username when ADMIN_USERNAME is unset, and never
@@ -19,7 +19,7 @@ import { resetMocks } from '../helpers.js';
 const KEYS = ['AUTH_PROVIDERS', 'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'ADMIN_EMAIL', 'OIDC_ISSUER_URL', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
 const EMAIL = 'operator@example.com';
 
-describe('ensureAdminUser on a hosted instance', () => {
+describe('ensureAdminUser on an OIDC-only instance', () => {
   let saved;
   let errorSpy;
 
@@ -165,7 +165,7 @@ describe('ensureAdminUser on a hosted instance', () => {
 
   it('does not promote a member who holds ADMIN_USERNAME under another address, and derives the admin a free name', async () => {
     process.env.ADMIN_USERNAME = 'opsadmin';
-    // The name clause is gone on a hosted instance, so the match finds no row for this member.
+    // The name clause is gone on an OIDC-only instance, so the match finds no row for this member.
     c2_query.mockResolvedValueOnce([]);                  // no account matches the email
     c2_query.mockResolvedValueOnce([{ id: 9 }]);         // ADMIN_USERNAME is held by a member
     c2_query.mockResolvedValueOnce([]);                  // deriveUniqueUsername: the derived name is free
@@ -180,13 +180,13 @@ describe('ensureAdminUser on a hosted instance', () => {
   });
 
   it('never logs a password, even the hashed one', async () => {
-    process.env.ADMIN_PASSWORD = 'Hosted-Never-Logged-1!';
+    process.env.ADMIN_PASSWORD = 'OidcOnly-Never-Logged-1!';
     c2_query.mockResolvedValueOnce([{ id: 7, is_admin: 1 }]);
     c2_query.mockResolvedValueOnce({ affectedRows: 1 });
 
     await ensureAdminUser();
 
-    expect(logLines().join('\n')).not.toMatch(/Hosted-Never-Logged/);
+    expect(logLines().join('\n')).not.toMatch(/OidcOnly-Never-Logged/);
   });
 });
 

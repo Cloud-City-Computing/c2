@@ -66,10 +66,10 @@ export const ENV_CONTRACT = [
   // The boot admin
   { name: 'ADMIN_USERNAME', kind: 'required-with-local', perInstance: false,
     why: 'the boot admin\'s name: created, or an existing admin synced, never a non-admin promoted; required '
-      + 'while local sign-in is on, and on a hosted instance (no local) unset means a name derived from ADMIN_EMAIL' },
+      + 'while local sign-in is on, and on an instance without local sign-in unset means a name derived from ADMIN_EMAIL' },
   { name: 'ADMIN_PASSWORD', kind: 'required-with-local', perInstance: false,
-    why: 'the boot admin\'s password, reset at every boot; required while local sign-in is on, and never read on a '
-      + 'hosted instance' },
+    why: 'the boot admin\'s password, reset at every boot; required while local sign-in is on, and never read on an '
+      + 'instance without local sign-in' },
   { name: 'ADMIN_EMAIL', kind: 'required', perInstance: false,
     why: 'the boot admin\'s email, reset at every boot; the operator\'s address' },
 
@@ -111,7 +111,7 @@ export const ENV_CONTRACT = [
     why: 'how long an OIDC sign-in lasts, in whole hours; a value that is not a positive whole number exits at boot' },
   { name: 'LEGACY_SESSION_COOKIE', kind: 'default', default: '1', perInstance: false,
     why: 'whether a lone sessionToken cookie from before __Host-sessionToken still signs its '
-      + 'holder in; only 0 turns it off, which a hosted instance on https sets' },
+      + 'holder in; only 0 turns it off, which an instance without local sign-in on https sets' },
   { name: 'GITHUB_CLIENT_ID', kind: 'optional', perInstance: false,
     why: 'with GITHUB_CLIENT_SECRET, turns the GitHub integration on' },
   { name: 'GITHUB_CLIENT_SECRET', kind: 'optional', perInstance: false,

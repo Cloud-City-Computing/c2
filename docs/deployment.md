@@ -136,18 +136,18 @@ Production-specific notes:
 | `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
 | `SMTP_*`                   | Optional; the server starts without them. Without them invitations show a copyable link, and password reset, email two-factor codes and notification emails are unavailable |
-| `ADMIN_*`                  | `ADMIN_EMAIL` is always required. `ADMIN_USERNAME` and `ADMIN_PASSWORD` are required while local sign-in is on, and a [hosted instance](#hosted-mode) sets neither. **On a local instance they reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
+| `ADMIN_*`                  | `ADMIN_EMAIL` is always required. `ADMIN_USERNAME` and `ADMIN_PASSWORD` are required while local sign-in is on, and a [OIDC-only instance](#oidc-only-mode) sets neither. **On a local instance they reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
 | `GITHUB_CLIENT_SECRET`     | Doubles as the AES-256-GCM seed for stored OAuth tokens. **Never rotate without re-encrypting** existing rows or all linked GitHub accounts go invalid |
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
-| `AUTH_PROVIDERS`           | Leave unset for a self-hosted instance. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which. Without `local` it is a [hosted instance](#hosted-mode): `oidc` alone, with the Google variables unset |
+| `AUTH_PROVIDERS`           | Leave unset for a self-hosted instance. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which. Without `local` it is a [OIDC-only instance](#oidc-only-mode): `oidc` alone, with the Google variables unset |
 | `LEGACY_SESSION_COOKIE`    | Leave unset. On https the session cookie is `__Host-sessionToken`; unset keeps a browser that still holds the older `sessionToken` signed in and moves it across on its next visit. `0` (https only) makes a lone `sessionToken` sign nobody in: set it when hosts you do not control share your domain. See [security.md](./security.md#the-session-cookie) |
 | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | Optional. `1` lets a webhook receiver sit on a loopback or private address. Subscriptions are created in Admin, Webhooks ([api/webhooks.md](./api/webhooks.md)) |
 
 Add new env vars to `.env.example` (with a comment) when introducing them.
 
-### Hosted mode
+### OIDC-only mode
 
-A hosted instance signs people in through one OIDC issuer and nothing else. Set
+An OIDC-only instance signs people in through one OIDC issuer and nothing else. Set
 `AUTH_PROVIDERS=oidc`, with `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`
 (and `APP_URL`, which OIDC needs). Leave `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
 unset. The server then refuses, on the server and not only in the page:
@@ -164,7 +164,9 @@ account holds it, and otherwise a name derived from `ADMIN_EMAIL`. Its starter w
 named from that account, and it has the `General` squad that synced members join. A boot
 that sets `AUTH_PROVIDERS` without `oidc`, or sets Google's variables, exits with a sentence
 naming the variable. There is no machine credential on any instance (removed in 0.15.0), so a
-hosted instance has nothing to configure for machine callers.
+OIDC-only instance has nothing to configure for machine callers.
+
+An administrator's two-factor reset (`POST /api/admin/users/:id/2fa/reset`) still works on an OIDC-only instance, so a local two-factor setting can be cleared before the instance switches back to local accounts. Provider setup is in [sign-in.md](./sign-in.md).
 
 **Invitations bind on verified email.** An OIDC sign-in whose verified email matches an open
 invitation creates the account with that invitation's squad and flags, once. With no
@@ -178,13 +180,13 @@ any socket whose session is no longer live for an active user, so a deactivation
 about a minute. Their authorship stays.
 
 **Existing sessions at the switch.** A session minted by local or Google sign-in ends when an
-instance switches to hosted mode. Validation refuses it, and the next boot on the hosted instance
+instance switches to OIDC-only mode. Validation refuses it, and the next boot on the OIDC-only instance
 deletes every session that is not an OIDC session, logging how many it ended, so none can be used
 again. Those users sign in through OIDC. Sessions minted by OIDC keep their own expiry
 (`OIDC_SESSION_TTL_HOURS`).
 
-**Local credentials on a hosted instance are kept.** A password hash and a local two-factor secret that
-were set before the switch stay in their rows. Nothing on a hosted instance reads them: local login,
+**Local credentials on an OIDC-only instance are kept.** A password hash and a local two-factor secret that
+were set before the switch stay in their rows. Nothing on an OIDC-only instance reads them: local login,
 password reset, two-factor and the local email change answer 404, and `validateAndAutoLogin` refuses any
 session that is not OIDC. The rows are kept on purpose: clearing them is destructive, and switching the
 instance back to local sign-in restores the same passwords without a reset. Clearing them is a product
@@ -282,7 +284,7 @@ conditions come with it:
   the default does not name, so until you list it every client behind it
   shares its one rate-limit bucket. See [Rate limiters](#rate-limiters).
 - **Every container on the host can then reach the port, and arrives as the
-  gateway.** A sibling on the compose network going to `172.29.0.1:PORT`, and a
+  gateway.** Another container on the compose network going to `172.29.0.1:PORT`, and a
   container on another Docker network going to the host's own address, are
   presented as `172.29.0.1`, so each is trusted and can name its own address.
   On a box that also runs Cloud Command, its containers are such peers. With
@@ -509,9 +511,9 @@ changes.
                                                  +------------------------+
 ```
 
-### Upgrading to 0.15.0 (the sibling connection is removed)
+### Upgrading to 0.15.0 (the suite connection is removed)
 
-0.15.0 removes the connection to the sibling product, so it changes what an install may set and what it
+0.15.0 removes the connection to the other product, so it changes what an install may set and what it
 deletes. Read this before the upgrade; the full list of removed variables and routes is in
 [getting-started.md](getting-started.md#environment-variables) and the CHANGELOG.
 
@@ -1061,7 +1063,7 @@ range, since a range believes every client inside it too.
   the container as the pinned network's gateway, `172.29.0.1`. Anyone else is
   counted by the address that connected, whatever `X-Forwarded-For` it sends: a
   public client, a machine on the same LAN, VPN or VPC (AWS's default VPC is
-  `172.31.0.0/16`), and a sibling container on the compose network. The
+  `172.31.0.0/16`), and another container on the compose network. The
   default bridge's gateway, `172.17.0.1`, is deliberately not in it; see
   `docker run` below. **An install run without Docker** (`npm run start` on the
   host) sets `TRUST_PROXY=127.0.0.1/32, ::1/128`: `172.29.0.1` means nothing

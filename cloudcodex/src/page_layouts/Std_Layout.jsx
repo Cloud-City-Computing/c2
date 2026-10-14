@@ -214,6 +214,7 @@ function StdLayout({ children }) {
       two_factor_enabled: 'This account has two-factor authentication on, so it cannot be linked to single sign-on by email. Sign in with your password and code instead.',
       flow_expired: 'Sign-in session expired. Please try again.',
       account_deactivated: 'This account has been deactivated. Ask your administrator.',
+      userinfo_subject: 'Your sign-in provider returned details for a different account. Please try again.',
     };
 
     const messages = {

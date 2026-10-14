@@ -557,25 +557,25 @@ The admin user is reconciled from `.env` on every boot by `ensureAdminUser()`
 (`server.js`, the "Require Admin credentials" block; the rule is `localSignInEnabled()`
 in `services/auth-providers.js`, and the contract kind is `required-with-local`).
 
-**The hosted-mode rules, in one place (W6-CDX-8).** A list without `local` is hosted mode
+**The OIDC-only-mode rules, in one place (W6-CDX-8).** A list without `local` is OIDC-only mode
 (`services/auth-providers.js`, `parseAuthProviders` at `:86`). Local sign-in is refused by `requireLocalSignIn`
 (`middleware/auth.js:175`) on every route that is a local human sign-in, with 404 before any read. Google
 sign-in is refused by `requireProviderOffered` (`middleware/auth.js:187`). The account update refuses an email or
 password change with 403. A session whose `auth_provider` is not `oidc` is refused by `validateAndAutoLogin`
-(`mysql_connect.js`), and the boot purges those rows (`services/sessions-hosted.js:18`). An invitation admits a
+(`mysql_connect.js`), and the boot purges those rows (`services/sessions-oidc-only.js:18`). An invitation admits a
 verified email in one transaction (`services/identity.js:214`, `createFromInvitation`, reached from step 3 of the
 oidc ladder at `:71`), matched with a binary collation so an accented address never matches its unaccented twin.
 A deactivated user (`users.deactivated_at`) is refused on every rung (`HIT_SQL` at `identity.js:106` joins the
 user row), by `validateAndAutoLogin`, by local password login, by `POST /api/2fa/verify`, and by the 60-second socket re-check
 (`documents-and-collab.md`, section 2).
 
-**On a hosted instance (no `local` in `AUTH_PROVIDERS`, W6-CDX-8) the match is
+**On an OIDC-only instance (no `local` in `AUTH_PROVIDERS`, W6-CDX-8) the match is
 `LOWER(email) = LOWER(ADMIN_EMAIL)` alone**, never the name. A new admin is created with
 no `password_hash`, under `ADMIN_USERNAME` when no account holds that name and under
 `deriveUniqueUsername(ADMIN_EMAIL)` otherwise. An existing admin is synced by email only
 (`UPDATE users SET email = ?`), and no password is written or read. A non-admin holding
 the address is refused as below. The starter workspace is named from the admin's row
-(`bootstrapInstance`, `routes/admin.js:170`, `admin_name`), so a hosted instance with no `ADMIN_USERNAME` still
+(`bootstrapInstance`, `routes/admin.js:170`, `admin_name`), so an OIDC-only instance with no `ADMIN_USERNAME` still
 seeds its `General` squad. The OIDC rungs can create users, but only through an
 invitation (`resolveIdentity`, `createFromInvitation`), never through the admin sync, and
 no path promotes a user by email or name collision.

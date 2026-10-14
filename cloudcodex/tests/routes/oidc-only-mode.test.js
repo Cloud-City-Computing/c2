@@ -1,5 +1,5 @@
 /**
- * Hosted mode refuses every local human sign-in on the server, route by route
+ * OIDC-only mode refuses every local human sign-in on the server, route by route
  *
  * With AUTH_PROVIDERS=oidc (no local) the local sign-in routes answer 404 before they touch the
  * database: sign-up, password login, reset, 2FA, the username check, and the local email change. The
@@ -35,7 +35,7 @@ const LOCAL_ROUTES = [
   ['post', '/api/update-account/confirm-email', { confirmToken: 't', code: '123456' }],
 ];
 
-describe('hosted mode (AUTH_PROVIDERS without local)', () => {
+describe('OIDC-only mode (AUTH_PROVIDERS without local)', () => {
   let saved;
 
   beforeEach(() => {

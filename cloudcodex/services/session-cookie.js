@@ -7,7 +7,7 @@
 
 /*
  * WHY __Host-. Hosts under one registrable domain can set cookies for each
- * other: script on any sibling can set `sessionToken=<its own>;
+ * other: script on any other host under the domain can set `sessionToken=<its own>;
  * Domain=<parent>; Path=/api`, a browser sends the longer path first, and a
  * reader taking the first match signs the victim in as the tosser. A browser
  * refuses to store a __Host- cookie that carries a Domain, lacks Secure or has
@@ -37,7 +37,7 @@ export function sessionCookieName({ secure }) {
 /**
  * Whether a lone legacy `sessionToken` cookie still authenticates. On unless
  * LEGACY_SESSION_COOKIE is exactly 0, so a self-hoster's existing sessions
- * survive the upgrade; a hosted instance sets 0. Read by literal name, so the
+ * survive the upgrade; an OIDC-only instance sets 0. Read by literal name, so the
  * configuration contract's scan sees it.
  * @returns {boolean}
  */

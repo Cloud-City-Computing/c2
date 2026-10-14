@@ -53,7 +53,7 @@ const app = express();
 // host that reaches them through the loopback publish. Any other peer is
 // counted by its own socket address, whatever X-Forwarded-For it sends
 // (GHSA-9fmx-frrf-xxmq). Not a range: the old default, 1, believed that
-// header from anyone, and trusting 172.16.0.0/12 believed every sibling
+// header from anyone, and trusting 172.16.0.0/12 believed every neighbouring container
 // container and every LAN, VPN or VPC neighbour, so a client behind a proxy
 // that appends named its own key with the left entry. Loopback is a /32
 // rather than the /8 for the same reason. Not the default bridge's gateway,
@@ -341,7 +341,7 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * script does. So only a write authenticated by the cookie ALONE can be forged
  * cross-site, and only that must carry an Origin isAllowedOrigin accepts.
  * The CORS layer admits a request with no Origin at all, and SameSite=Strict
- * adds nothing between sibling hosts under one registrable domain, which is
+ * adds nothing between hosts under one registrable domain, which is
  * how the suite is hosted; this closes that gap without a CSRF token. A
  * browser sends Origin on every same-origin fetch that is not a GET or HEAD.
  */

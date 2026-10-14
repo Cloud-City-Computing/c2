@@ -10,7 +10,7 @@ import { initMail } from './services/email.js';
 import { setupCollabServer, flushPendingSaves, closeAll as closeCollabSockets, closeSocketsForSessions as closeCollabSessions, openSessionDigests as openCollabDigests } from './services/collab.js';
 import { setupUserChannelServer, closeAll as closeUserChannelSockets, closeSocketsForSessions as closeUserChannelSessions, openSessionDigests as openUserChannelDigests } from './services/user-channel.js';
 import { sweepSocketSessions, startSocketSweep } from './services/socket-sweep.js';
-import { endSessionsOutsideOidc } from './services/sessions-hosted.js';
+import { endSessionsOutsideOidc } from './services/sessions-oidc-only.js';
 import { c2_query, openConnection, endPool } from './mysql_connect.js';
 import { ensureAdminUser, bootstrapInstance } from './routes/admin.js';
 import { missingReleaseColumns } from './services/release-schema.js';
@@ -66,7 +66,7 @@ warnRemovedVariables();
 //
 // ADMIN_EMAIL is always required: it is the operator's address, the key the boot admin sync matches on.
 // ADMIN_USERNAME and ADMIN_PASSWORD are required only while local sign-in is on (services/auth-providers.js).
-// A hosted instance signs in through OIDC and has no password, and its ADMIN_USERNAME may be unset: the admin
+// An OIDC-only instance signs in through OIDC and has no password, and its ADMIN_USERNAME may be unset: the admin
 // then takes a name derived from ADMIN_EMAIL.
 const localSignIn = localSignInEnabled();
 const missingAdmin = [
@@ -220,12 +220,12 @@ try {
   console.error(`[${new Date().toISOString()}] instance bootstrap failed:`, err);
 }
 
-// A hosted instance ends the sessions it no longer accepts (services/sessions-hosted.js). A failure here is
+// An OIDC-only instance ends the sessions it no longer accepts (services/sessions-oidc-only.js). A failure here is
 // logged and the boot goes on: validation refuses those sessions regardless.
 try {
   await endSessionsOutsideOidc();
 } catch (err) {
-  console.error(`[${new Date().toISOString()}] hosted session purge failed:`, err);
+  console.error(`[${new Date().toISOString()}] OIDC-only session purge failed:`, err);
 }
 
 // Outbound webhooks (services/webhooks.js): fill the cache emitEvent matches

@@ -1,8 +1,8 @@
 /**
- * Which sign-in methods this instance offers, and the hosted rule that a list without local enforces
+ * Which sign-in methods this instance offers, and the OIDC-only rule that a list without local enforces
  *
  * AUTH_PROVIDERS decides the human sign-in methods. Unset keeps today's derived set: local always,
- * google when its two variables are set, oidc when an issuer is set. A list without local is hosted
+ * google when its two variables are set, oidc when an issuer is set. A list without local is OIDC-only
  * mode: OIDC is then the only human sign-in, so the list must name oidc, must not name google, and the
  * Google variables must be unset. The non-throwing readers below are called on every request
  * (validateAndAutoLogin, the local route guards), so they never validate: parseAuthProviders() does,
@@ -69,7 +69,7 @@ export function providerListed(name) {
 }
 
 /**
- * Whether local sign-in (password, sign-up, reset, 2FA, local email change) is on. False is hosted
+ * Whether local sign-in (password, sign-up, reset, 2FA, local email change) is on. False is OIDC-only
  * mode: AUTH_PROVIDERS is set and does not list local.
  * @returns {boolean}
  */
@@ -81,7 +81,7 @@ export function localSignInEnabled() {
  * The boot-time check of AUTH_PROVIDERS. Each refusal is a sentence that opens with the variable.
  * @returns {Set<string>} the offered providers
  * @throws {Error} on an unknown name, an empty list, a listed provider that is not configured, a
- *   configured one the list leaves out, or a hosted list that breaks the OIDC-only rule
+ *   configured one the list leaves out, or a list without local that breaks the OIDC-only rule
  */
 export function parseAuthProviders() {
   const googleConfigured = isGoogleConfigured();
@@ -108,21 +108,21 @@ export function parseAuthProviders() {
   const providers = new Set(names);
 
   if (!providers.has('local')) {
-    // Hosted mode. OIDC is the only human sign-in, so the list must be oidc and nothing else that signs
+    // OIDC-only mode. OIDC is the only human sign-in, so the list must be oidc and nothing else that signs
     // people in, and the Google variables must not offer a second door.
     if (!providers.has('oidc')) {
       throw new Error(
-        'AUTH_PROVIDERS without local is hosted mode, which is OIDC only: list oidc, or add local.'
+        'AUTH_PROVIDERS without local is OIDC-only mode, which is OIDC only: list oidc, or add local.'
       );
     }
     if (providers.has('google')) {
       throw new Error(
-        'AUTH_PROVIDERS lists google, but a hosted instance (no local) is OIDC only; remove google.'
+        'AUTH_PROVIDERS lists google, but an OIDC-only instance (no local) is OIDC only; remove google.'
       );
     }
     if (googleConfigured) {
       throw new Error(
-        'AUTH_PROVIDERS is hosted (no local), so the Google variables GOOGLE_CLIENT_ID and ' +
+        'AUTH_PROVIDERS is OIDC-only (no local), so the Google variables GOOGLE_CLIENT_ID and ' +
         'GOOGLE_CLIENT_SECRET must be unset.'
       );
     }

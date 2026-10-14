@@ -44,6 +44,7 @@
 ## Start Here
 
 → **[Getting Started](./getting-started.md)** — Prerequisites, environment setup, running the application, and seed data.
+→ **[Sign-in](./sign-in.md)** — Local accounts, Google, and OIDC, with the redirect URIs and provider notes.
 
 → **[Architecture Overview](./architecture.md)** — System design, project structure, key design decisions, full tech stack.
 
@@ -53,6 +54,7 @@
 | Document | Summary |
 |----------|---------|
 | [getting-started.md](./getting-started.md) | Prerequisites, setup, environment variables, NPM scripts, Makefile targets, seed data |
+| [sign-in.md](./sign-in.md) | Local accounts, Google, and OIDC: the redirect URIs, the settings, and provider notes |
 | [features.md](./features.md) | Detailed descriptions of every feature |
 | [architecture.md](./architecture.md) | System overview, design decisions, project structure, tech stack |
 | [database.md](./database.md) | Complete MySQL schema reference — 25 tables, columns, indexes, relationships, migrations list |
@@ -73,7 +75,6 @@ describes what we intend to build next and why.
 | Document | What it is |
 |----------|---------|
 | [specs/roadmap.md](./specs/roadmap.md) | The tracks the project is decomposed into, the evidence behind each, and the order to do them in |
-| [specs/2026-09-24-suite-identity.md](./specs/2026-09-24-suite-identity.md) | Wave 6 identity: a generic OIDC relying party, hashed sessions, propagating sign-out |
 | [specs/2026-10-14-standalone-codex.md](./specs/2026-10-14-standalone-codex.md) | The standalone track: Codex becomes a standalone product, the suite integration is removed, toward 1.0 |
 
 

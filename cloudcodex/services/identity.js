@@ -12,7 +12,7 @@
  * Google callback used to carry inline, in the same order, plus two checks
  * before linking by email: the matched account must not have two-factor
  * authentication on (read by the same email lookup), and it must not already
- * hold another Google subject (the query spec Decision 3 requires). Route
+ * hold another Google subject. Route
  * tests queue c2_query mocks in call order, so moving or adding a query is a
  * behaviour change even when the result looks the same.
  *
@@ -53,7 +53,7 @@ import { createDefaultPermissions, addSquadMember } from '../routes/helpers/shar
  * The Google branch answers identity_conflict when the user matched by
  * verified email already holds a Google account under another subject (a
  * recycled Workspace address, or a deleted and recreated Google account), and
- * writes nothing: spec Decision 3's rule, applied to Google
+ * writes nothing: the rule that an account already holding another subject is refused, applied to Google
  * (docs/maps/open-questions.md C7). Relinking is by hand: the account's owner
  * unlinks Google (POST /api/oauth/google/unlink), or an operator deletes the
  * old oauth_accounts row. The same answer comes back when the link INSERT hits
@@ -77,7 +77,7 @@ export async function resolveIdentity(claims, policy) {
 }
 
 /**
- * The oidc ladder (W6-CDX-5, spec Decision 3), for a verified (issuer, subject).
+ * The oidc ladder (W6-CDX-5), for a verified (issuer, subject).
  *
  * 1. An identity already linked: the user signs in with no local second factor, whatever
  *    two_factor_method holds, because the issuer's own MFA governs a linked identity. If the verified
