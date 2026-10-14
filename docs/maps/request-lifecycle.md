@@ -16,6 +16,7 @@ stop signal reaches Node rather than npm; see section 7 for what it does then.
 | Step | Location | Behaviour |
 |---|---|---|
 | Load `.env` | `mysql_connect.js:17` | `dotenv` reads `../.env`, i.e. the **repo root**, not `cloudcodex/`. Importing `mysql_connect.js` is what loads env for the whole process. `services/email.js` loads the same file again. Both pass `quiet: true`: the image has no `.env`, and dotenv 17 otherwise logs `injecting env (0)` with an advert for each call on every boot. |
+| Removed variables | `server.js`, top-level, `warnRemovedVariables()` (`services/removed-env.js`) | Prints one line per variable the contract marks `removed` (`env-contract.js`) that is still set to a non-blank value, naming it and what to do; never exits. Runs before the first check that can exit, so the line always prints. |
 | Pool size gate | `mysql_connect.js:29-48`, `poolSize()` | `DB_POOL_SIZE` unset or blank is 10; anything but a whole number from 1 to 100 prints `✖ DB_POOL_SIZE "<value>" is not a whole number from 1 to 100.` and exits 1, at import. |
 | DB pool | `mysql_connect.js:50-65` | `mysql2/promise` pool, `connectionLimit` from `DB_POOL_SIZE` (default 10), no queue limit. A blank `DB_HOST` or `DB_NAME` behaves as unset (`localhost`, `c2`), as in `scripts/migrate.js`. Host, user, password and schema are one `connectionOptions` object, which `openConnection()` reuses for the instance lock's own connection. |
 | DB credential gate | `mysql_connect.js:67-71` | Missing `DB_USER`/`DB_PASS` calls `process.exit(1)`. |
@@ -634,10 +635,8 @@ only, as before. The sealed ID token travels with the rotation too
 (`getSessionOidcIdToken`, `mysql_connect.js:302`, read before the delete); a session
 that has none, one signed in before W6-CDX-6, gets the options it always got, with
 no `oidcIdToken` key. `GET /api/2fa/status` answers `managed_by: 'oidc'` for an OIDC
-session, and `'issuer'` for an account the issuer manages in suite mode (a `user_identities` row; W6-CDX-42).
-Suite mode refuses the writes that account owns: `POST /api/update-account` (checked in the handler, since it reads its
-session from the body), `POST /api/update-account/confirm-email` and the four `/api/2fa/*` writes, mounted with
-`refuseIssuerManaged` (`middleware/auth.js`) after `requireAuth`. The refusal is `403 { code: 'managed_by_issuer' }`.
+session, and `null` otherwise. A linked account (a `user_identities` row) is editable like any other: the issuer-managed
+refusals of suite mode (`refuseIssuerManaged`, `managed_by_issuer`) were removed in CDX-SA-2.
 
 The query order is load-bearing for tests, not only for behaviour: route tests
 queue `c2_query` mocks in call order, which is why

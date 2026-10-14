@@ -1,9 +1,8 @@
 /**
  * Cloud Codex - the suite preference contract, as src/lib/suite-prefs.js implements it (W6-CDX-44)
  *
- * Each rule of the contract (docs/maps/suite-ui-alignment-record.md, "The suite preference
- * contract") has a case here: the precedence steps, the cookie's attributes and write order, the
- * host-only writes, clearing, the reconcile that makes the cookie win, the legacy migration,
+ * Each rule of the preference (src/lib/suite-prefs.js) has a case here: the precedence steps, the cookie's
+ * attributes and write order, the host-only writes and their parent-domain expiry, clearing, the reconcile that makes the cookie win, the legacy migration,
  * and the two re-apply paths. document.cookie is replaced by a small jar that records every write,
  * so a test can assert the exact strings a browser would be sent.
  *

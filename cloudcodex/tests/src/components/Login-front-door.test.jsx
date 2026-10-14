@@ -17,7 +17,6 @@ vi.mock('../../../src/util.jsx', () => ({
 }));
 
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { apiFetch } from '../../../src/util.jsx';
 import Login from '../../../src/components/Login.jsx';
 
 const OIDC_ON = { google: false, github: false, local: true, oidc: { enabled: true, name: 'SSO' } };
@@ -29,11 +28,6 @@ function providersAnswer(providers) {
 
 function stubProviders(providers) {
   fetch.mockImplementation(() => providersAnswer(providers));
-}
-
-/** The modal's submit: the Login button that is not the Login tab. */
-function submitButton() {
-  return screen.getAllByRole('button', { name: 'Login' }).find((b) => b.classList.contains('stretched-button'));
 }
 
 describe('Login: the markup is unchanged', () => {

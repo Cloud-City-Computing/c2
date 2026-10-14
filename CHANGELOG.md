@@ -12,6 +12,27 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Added
+
+- **Removed variables are named at boot (CDX-SA-2).** A variable the server no longer reads prints one line at
+  startup, naming it and what to do, and the server starts as it would without it.
+
+### Removed
+
+- **Suite mode (CDX-SA-2).** Codex no longer has a suite mode: the suite cluster in the sidebar, the Linked tasks
+  link on a document, the hidden Workspaces page and the suite copy on the sign-in screen are gone. Workspaces is
+  always in the sidebar, and `/workspaces` always renders its page.
+  - `SUITE_COMMAND_WORKSPACE_URL`, `SUITE_NAME` and `SUITE_PREFERENCE_DOMAIN` are read for nothing. Unset them.
+  - `GET /api/suite` and `GET /api/suite/links` answer 404.
+- **The issuer's account link (CDX-SA-2).** `OIDC_ACCOUNT_URL` is read for nothing. Unset it. An account that signs
+  in through an OIDC issuer is editable in Codex: its name, email, password and two-factor are not read-only, and
+  `GET /api/2fa/status` no longer answers `managed_by: 'issuer'` (it answers `'oidc'` for an OIDC session, `null`
+  otherwise). The `managed_by_issuer` refusal is gone. Where local sign-in is on, such an account keeps its
+  password and two-factor routes; to make the issuer the only sign-in door, set `AUTH_PROVIDERS=oidc`.
+- **The shared theme cookie (CDX-SA-2).** The theme and the accent are per host. A choice is written host-only and
+  no longer shared across a parent domain. On each parent domain the cookie name is expired on the next change, so an
+  older shared choice cannot shadow the new one.
+
 ## [0.14.0] - 2026-10-12
 
 The Wave 6 release. Cloud Codex can run as one instance beside others under a supervisor and behind a TLS

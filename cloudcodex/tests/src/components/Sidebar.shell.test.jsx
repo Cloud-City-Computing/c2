@@ -18,7 +18,7 @@ vi.mock('../../../src/util.jsx', () => ({
   getSessionTokenFromCookie: vi.fn(() => 'tok'),
 }));
 
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, cleanup, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Sidebar from '../../../src/components/Sidebar.jsx';
 import { clearInboxCache } from '../../../src/lib/inbox-cache.js';

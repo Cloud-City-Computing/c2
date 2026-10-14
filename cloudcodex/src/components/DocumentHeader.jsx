@@ -29,7 +29,6 @@ function WatchIcon({ watching }) {
 
 export default function DocumentHeader({
   doc,
-  logId,
   viewMode,
   canEdit,
   editingTitle,

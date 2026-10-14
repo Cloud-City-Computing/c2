@@ -484,7 +484,7 @@ session:
 | ID | Session | Depends on |
 |---|---|---|
 | CDX-SA-1 | The spec and the plan (docs only) | nothing |
-| CDX-SA-2 | Remove suite mode: the shell cluster, Linked tasks, the hidden Workspaces page, the front door's suite branches, the shared theme cookie, issuer-managed accounts and `OIDC_ACCOUNT_URL`; removed variables warn at boot | CDX-SA-1 |
+| CDX-SA-2 | **Done on branch `track/cdx-sa-2-remove-suite-mode` (PR not yet opened).** Remove suite mode: the shell cluster, Linked tasks, the hidden Workspaces page, the front door's suite branches, the shared theme cookie, issuer-managed accounts and `OIDC_ACCOUNT_URL`; removed variables warn at boot | CDX-SA-1 |
 | CDX-SA-3 | Remove the sibling-product connection: the machine credential (static and JWT), the reader check, the reconciliation read, the membership sync, the env-declared webhook subscription; one reversible migration, and the runner learns drop claims | CDX-SA-2 |
 | CDX-SA-4 | Remove issuer-specific behaviour while keeping generic OIDC: OIDC-only mode named as such, provider-neutral wording, a second issuer shape proved, setup docs for common providers; the identity spec and plan retire | CDX-SA-3 |
 | CDX-SA-5 | Clean up and harden: the standalone gate, dead code, the configuration contract, an `/api` JSON 404, docs and maps; then the 0.15.0 release PR | CDX-SA-4 |

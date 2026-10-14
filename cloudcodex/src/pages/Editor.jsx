@@ -1117,7 +1117,6 @@ function EditorView({ embedded = false } = {}) {
       <div className="editor-log">
         <DocumentHeader
           doc={documentData}
-          logId={logId}
           viewMode={viewMode}
           canEdit={!isMobileDevice()}
           editingTitle={editingTitle}

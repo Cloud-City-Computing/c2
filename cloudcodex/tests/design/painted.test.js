@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
-  compositeOver, contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
+  contrastRatio, parseColor, parseThemeTokens, resolveTokenValue, round,
 } from '../../vendor/cloud-city-design/gates/contrast.mjs';
 import { ACCENTS } from '../../src/tokens/accents.js';
 import {
