@@ -558,7 +558,7 @@ client value or `APP_URL`, a non-numeric lifetime). The callback is on
   reads `sub` (1 to 255 printable ASCII) and `sid` (an empty one is null), and
   reads `name` from the ID token, with USERINFO overriding the fields it returns, and reads `email` and
   `email_verified` as one pair from one source: USERINFO when it returns an email (a missing `email_verified`
-  there is unverified; the same address in the ID token must also be verified), else the ID token. A userinfo
+  there is unverified, but for the ID token's own address its attestation stands unless userinfo says false), else the ID token. A userinfo
   `sub` other than the ID token's is refused as `userinfo_subject`. `emailVerified` must be exactly
   `true`, because Cloud City ID omits the claim for an unverified address. Every
   refusal is an `OidcLoginError` code (`flow_expired`, `exchange_failed`,

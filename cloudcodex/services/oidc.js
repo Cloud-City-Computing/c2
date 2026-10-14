@@ -390,7 +390,11 @@ export async function completeLogin(config, currentUrl, flowCookieValue) {
   if (userInfo !== undefined && typeof userInfo.email === 'string' && userInfo.email !== '') {
     email = userInfo.email;
     const sameAddress = idEmail !== '' && idEmail.toLowerCase() === email.toLowerCase();
-    emailVerified = userInfo.email_verified === true && (sameAddress ? idVerified : true);
+    // The same address: the ID token's attestation stands unless userinfo explicitly denies it. A different
+    // address: the ID token attests another address, so only userinfo's own true counts.
+    emailVerified = sameAddress
+      ? idVerified && userInfo.email_verified !== false
+      : userInfo.email_verified === true;
   }
   if (email === '' || !emailVerified) {
     throw new OidcLoginError('email_not_verified', 'The issuer did not return a verified email address.');

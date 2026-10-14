@@ -20,7 +20,7 @@ two-factor on is refused rather than linked by email.
 ## OIDC
 
 Codex is an OIDC relying party: it runs the authorization code flow with PKCE, verifies the ID token,
-and reads identity claims from the ID token, with the userinfo endpoint overriding the profile fields it returns. It works with any standard OIDC issuer that returns a verified email (`email_verified` true): the email and its verification are always taken from the same source, never mixed.
+and reads identity claims from the ID token, with the userinfo endpoint overriding the profile fields it returns. It works with any standard OIDC issuer that returns a verified email (`email_verified` true): the email and its verification are always taken from the same source, never mixed. For the same address, the ID token's verification stands unless userinfo says `email_verified: false`; for a different address, userinfo must say `email_verified: true`.
 
 ### Configure the instance
 
