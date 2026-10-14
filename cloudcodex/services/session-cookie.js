@@ -7,7 +7,7 @@
 
 /*
  * WHY __Host-. Hosts under one registrable domain can set cookies for each
- * other: script on any sibling can set `sessionToken=<its own>;
+ * other: script on any other host under the domain can set `sessionToken=<its own>;
  * Domain=<parent>; Path=/api`, a browser sends the longer path first, and a
  * reader taking the first match signs the victim in as the tosser. A browser
  * refuses to store a __Host- cookie that carries a Domain, lacks Secure or has

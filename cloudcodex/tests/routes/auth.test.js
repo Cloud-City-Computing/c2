@@ -356,7 +356,7 @@ describe('Auth Routes', () => {
 
     // The client promotes a legacy `sessionToken` cookie to __Host- only after
     // asking here with legacyCookie: true. With the fallback off, a lone legacy
-    // cookie (possibly tossed by a sibling host) must not become a session.
+    // cookie (possibly tossed by another host) must not become a session.
     describe('legacyCookie (W6-CDX-3)', () => {
       const prior = process.env.LEGACY_SESSION_COOKIE;
       afterEach(() => {

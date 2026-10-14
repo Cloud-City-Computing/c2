@@ -92,7 +92,7 @@ describe('services/user-channel: closeAll', () => {
 
 // Pinned for W6-CDX-3: the inbox socket authenticates from a token the page
 // reads out of the cookie, so the Origin rule is the whole cross-site defence.
-// A sibling host under the same registrable domain is cross-origin here.
+// Another host under the same registrable domain is cross-origin here.
 describe('services/user-channel: the Origin rule, pinned', () => {
   let server;
   let port;
@@ -124,12 +124,12 @@ describe('services/user-channel: the Origin rule, pinned', () => {
     expect(await refusal(connect({}))).toEqual({ status: 403, destroyed: true });
   });
 
-  it('refuses a sibling host\'s Origin: 403, socket destroyed', async () => {
+  it('refuses another host\'s Origin: 403, socket destroyed', async () => {
     const ws = connect({ Host: 'codex.example.com', Origin: 'https://command.example.com' });
     expect(await refusal(ws)).toEqual({ status: 403, destroyed: true });
   });
 
-  it('accepts the same Host with its own Origin (the control for the sibling case)', async () => {
+  it('accepts the same Host with its own Origin (the control for the other-host case)', async () => {
     const ws = connect({ Host: 'codex.example.com', Origin: 'https://codex.example.com' });
     await new Promise((resolve, reject) => {
       ws.once('open', resolve);

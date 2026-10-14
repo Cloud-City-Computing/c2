@@ -1,12 +1,9 @@
 /**
  * Tests for services/return-to.js, the one validator for where a sign-in returns to
  *
- * tests/fixtures/return-to-corpus.json is Cloud Command's hostile-input corpus
- * (W6-CMD-24), copied byte for byte from Cloud-City-Computing/command at commit
- * 86710ee (cloudcommand/tests/fixtures/return-to-corpus.json). Every case in it
- * is the contract: the validator must answer each `expected` value exactly. A
- * refresh of the copy re-runs this file, and the source commit is recorded in
- * docs/plans/2026-09-24-suite-identity.md, Task 5.5.
+ * tests/fixtures/return-to-corpus.json is this repository's own hostile-input set for the validator,
+ * first imported 2026-10-11. Every case in it is the contract: the validator must answer each `expected`
+ * value exactly. A change to an answer is a behaviour change, and the corpus changes in the same PR.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com

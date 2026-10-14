@@ -72,7 +72,7 @@ describe('readSessionCookie', () => {
     expect(readSessionCookie('__Host-sessionToken=good', off)).toBe('good');
   });
 
-  // A sibling host can toss `sessionToken=...; Domain=<parent>; Path=/api`,
+  // Another host can toss `sessionToken=...; Domain=<parent>; Path=/api`,
   // and a browser sends the longer path first. It cannot set a __Host- cookie.
   it('prefers the prefixed cookie over a legacy one, in either order', () => {
     expect(readSessionCookie('sessionToken=tossed; __Host-sessionToken=good', on)).toBe('good');

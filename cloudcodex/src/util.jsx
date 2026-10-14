@@ -704,7 +704,7 @@ export function removeSessStorage(key) {
 // --- Auth ---
 
 // The session cookie's names. On https it is __Host-sessionToken, which a
-// browser stores only with Secure, Path=/ and no Domain, so no sibling host
+// browser stores only with Secure, Path=/ and no Domain, so no other host
 // under the same domain can plant one. A plain-http page cannot hold a Secure
 // cookie, so there the name stays sessionToken. services/session-cookie.js is
 // the server's copy of the same rule.
@@ -721,7 +721,7 @@ const secureContext = () => window.location.protocol === 'https:';
  * A cookie's value by exact name, or null when absent or empty. Strips only
  * the ASCII space and tab between pairs: trim() would also strip Unicode
  * whitespace, and a browser stores a name that starts with U+2000, say, as a
- * different cookie, free of the __Host- rules, that a sibling host can set.
+ * different cookie, free of the __Host- rules, that another host can set.
  */
 function readCookie(name) {
   const hit = document.cookie
@@ -733,7 +733,7 @@ function readCookie(name) {
 
 /**
  * The session token from the session cookie. The prefixed cookie wins; on
- * https a lone legacy `sessionToken` is NOT read, because a sibling host could
+ * https a lone legacy `sessionToken` is NOT read, because another host could
  * have set it: upgradeLegacySessionCookie moves a real one across at startup,
  * once the server agrees. Clears the cached user from session storage if no
  * token is found.
@@ -776,10 +776,10 @@ export function clearSessionCookie() {
  * (from a release before __Host-sessionToken) to the prefixed name, once the
  * server confirms it: POST /api/validate-session with legacyCookie: true, which
  * an OIDC-only instance (LEGACY_SESSION_COOKIE=0) always answers invalid, because
- * a sibling host could have planted that cookie. Either answer expires the
+ * another host could have planted that cookie. Either answer expires the
  * legacy cookie; an unreachable or silent server (given up on after
  * LEGACY_UPGRADE_TIMEOUT_MS) leaves it for the next visit. A refusal is
- * remembered for the tab: a legacy cookie a sibling set with a Domain survives
+ * remembered for the tab: a legacy cookie another host set with a Domain survives
  * this host's clear, and must not cost a round-trip on every page load. Run
  * once at startup, before anything reads the token (main.jsx).
  * @returns {Promise<void>}

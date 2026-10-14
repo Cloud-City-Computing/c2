@@ -716,7 +716,7 @@ router.post('/logout', asyncHandler(async (req, res) => {
  *
  * legacyCookie: true says the token came from a lone legacy `sessionToken`
  * cookie that the client wants to move to __Host-sessionToken. With
- * LEGACY_SESSION_COOKIE=0 that cookie authenticates nobody, since a sibling
+ * LEGACY_SESSION_COOKIE=0 that cookie authenticates nobody, since another host
  * host could have planted it, so the answer is invalid without a lookup.
  */
 router.post('/validate-session', asyncHandler(async (req, res) => {

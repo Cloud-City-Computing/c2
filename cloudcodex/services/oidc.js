@@ -152,7 +152,7 @@ export function getOidcConfig() {
 
 /**
  * The flow cookie's name and attributes. On https it is __Host-oidcFlow at Path=/ (a browser keeps
- * a __Host- cookie only with Secure, Path=/ and no Domain, so a sibling host cannot plant one). Over
+ * a __Host- cookie only with Secure, Path=/ and no Domain, so another host cannot plant one). Over
  * plain http it is oidcFlow at /api/auth/oidc, the same rule as the OAuth state cookie.
  * SameSite=Lax, because the callback is a cross-site top-level navigation from the issuer.
  * @param {{ secure: boolean }} config

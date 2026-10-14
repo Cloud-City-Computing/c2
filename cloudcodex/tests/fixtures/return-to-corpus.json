@@ -1,5 +1,5 @@
 {
-  "_source": "Cloud-City-Computing/command:cloudcommand/tests/fixtures/return-to-corpus.json (W6-CMD-24)",
+  "_source": "this repository: tests/fixtures/return-to-corpus.json, the hostile-input set for services/return-to.js, first imported 2026-10-11",
   "cases": [
     {
       "input": "/",

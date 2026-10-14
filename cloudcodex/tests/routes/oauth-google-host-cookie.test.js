@@ -6,7 +6,7 @@
  * Google callback sets __Host-sessionToken, and both providers' state cookies
  * are __Host-oauth_state_<provider>: Secure, Path=/ and no Domain, the three
  * things a browser requires before it stores a __Host- cookie, and the reason
- * a sibling host cannot plant one. A callback reads the state only under that
+ * another host cannot plant one. A callback reads the state only under that
  * exact name.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
@@ -107,7 +107,7 @@ describe('Google callback on an https instance', () => {
 });
 
 // The state cookie binds a callback to the browser that started the flow. A
-// sibling host could plant a plain `oauth_state_<provider>` holding a state it
+// another host could plant a plain `oauth_state_<provider>` holding a state it
 // minted itself, so on https the state lives only under the __Host- name.
 describe('the OAuth state cookies on an https instance', () => {
   beforeEach(() => {

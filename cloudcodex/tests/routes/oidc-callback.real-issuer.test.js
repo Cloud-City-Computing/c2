@@ -4,11 +4,10 @@
  * An HTTP issuer built with jose serves discovery, JWKS, the authorization endpoint, the token
  * endpoint and userinfo, on a loopback port. It checks PKCE, client authentication and the
  * redirect URI like a real one, and it puts identity claims (email, email_verified, name) ONLY at
- * userinfo, the way Example ID does. The route is driven with Supertest: /start, then the
+ * userinfo, a shape OIDC Core permits and some providers use. The route is driven with Supertest: /start, then the
  * issuer's redirect followed by hand, then /callback. Every refusal is checked to mint no session.
  *
- * What this cannot show is a real Example ID stack: that is recorded separately under
- * docs/research/ when someone runs it.
+ * What this cannot show is a live provider: the setup docs (docs/sign-in.md) say which providers were tested live.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -61,7 +60,7 @@ const codes = new Map();
 const accessTokens = new Map();
 
 function resetPerson() {
-  person = { sub: 'zitadel-user-0192', email: 'ada@example.com', email_verified: true, name: 'Ada Lovelace' };
+  person = { sub: 'issuer-user-0192', email: 'ada@example.com', email_verified: true, name: 'Ada Lovelace' };
   faults = {};
 }
 
@@ -135,7 +134,7 @@ async function handleIssuer(req, res) {
     const now = Math.floor(Date.now() / 1000);
     const idClaims = {
       sub: grant.claims.sub,
-      sid: faults.emptySid ? '' : faults.longSid ? 'x'.repeat(300) : 'zitadel-session-7',
+      sid: faults.emptySid ? '' : faults.longSid ? 'x'.repeat(300) : 'issuer-session-7',
       nonce: faults.wrongNonce ? 'a-different-nonce' : grant.nonce,
       auth_time: now,
       azp: CLIENT_ID,
@@ -162,7 +161,7 @@ async function handleIssuer(req, res) {
   if (url.pathname === '/userinfo') {
     const claims = accessTokens.get((req.headers.authorization ?? '').replace(/^Bearer /, ''));
     if (!claims) return send(401, { error: 'invalid_token' });
-    // Identity claims here only, as Example ID does; email_verified is omitted when false.
+    // Identity claims here only, as some providers do; email_verified is omitted when false.
     const out = { sub: claims.sub, name: claims.name };
     if (claims.email !== undefined) out.email = claims.email;
     if (claims.email_verified === true) out.email_verified = true;
@@ -285,7 +284,7 @@ describe('OIDC sign-in, end to end against an issuer that speaks the protocol', 
     expect(options).toEqual({
       provider: 'oidc',
       identityId: 7,
-      providerSid: 'zitadel-session-7',
+      providerSid: 'issuer-session-7',
       ttlHours: 24,
       oidcIdToken: expect.any(String),
     });
@@ -331,7 +330,7 @@ describe('OIDC sign-in, end to end against an issuer that speaks the protocol', 
     expect(generateSessionToken.mock.calls[0][3]).toEqual({
       provider: 'oidc',
       identityId: 88,
-      providerSid: 'zitadel-session-7',
+      providerSid: 'issuer-session-7',
       ttlHours: 24,
       oidcIdToken: expect.any(String),
     });
@@ -472,7 +471,7 @@ async function logoutToken(overrides = {}, { key = signingKey, kid = jwk.kid, al
     exp: now + 900,
     jti: randomBytes(12).toString('hex'),
     events: { [LOGOUT_EVENT]: {} },
-    sid: 'zitadel-session-7',
+    sid: 'issuer-session-7',
     sub: person.sub,
     ...overrides,
   };
@@ -623,7 +622,7 @@ describe('POST /api/auth/oidc/backchannel-logout (W6-CDX-6)', () => {
     expect(selectSql).toMatch(/provider_sid = \?/);
     expect(selectSql).toMatch(/auth_provider = 'oidc'/);
     expect(selectSql).toMatch(/UNIX_TIMESTAMP\(COALESCE\(s\.signed_in_at, s\.created_at\)\) <= \?/);
-    expect(selectParams).toEqual(['zitadel-session-7', issuerOrigin, iat + 60]);
+    expect(selectParams).toEqual(['issuer-session-7', issuerOrigin, iat + 60]);
     const [delSql, delParams] = c2_query.mock.calls[1];
     expect(delSql).toMatch(/DELETE FROM sessions/);
     expect(delSql).toMatch(/auth_provider = 'oidc'/);
