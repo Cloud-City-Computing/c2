@@ -64,7 +64,6 @@ Applied in:
 |---|---|
 | `routes/archives.js` | listing, log listing, rename, ACL read and write, log create/update/delete, repos |
 | `routes/search.js` | search, browse, filters |
-| `routes/documents.js` | `GET /documents/state`, the reconciliation read (a document in a system archive is absent) |
 | `routes/upload.js` | `POST /archives/:archiveId/logs/upload` |
 | `routes/github.js` | `POST /github/import-to-codex` |
 
@@ -567,8 +566,7 @@ password change with 403. A session whose `auth_provider` is not `oidc` is refus
 verified email in one transaction (`services/identity.js:214`, `createFromInvitation`, reached from step 3 of the
 oidc ladder at `:71`), matched with a binary collation so an accented address never matches its unaccented twin.
 A deactivated user (`users.deactivated_at`) is refused on every rung (`HIT_SQL` at `identity.js:106` joins the
-user row), by `validateAndAutoLogin`, by local password login, by `POST /api/2fa/verify`, by the machine
-principal (`principalFor`, `services/machine-auth.js:183`), and by the 60-second socket re-check
+user row), by `validateAndAutoLogin`, by local password login, by `POST /api/2fa/verify`, and by the 60-second socket re-check
 (`documents-and-collab.md`, section 2).
 
 **On a hosted instance (no `local` in `AUTH_PROVIDERS`, W6-CDX-8) the match is
@@ -610,240 +608,11 @@ on the unique key, which `server.js` logs as `admin user sync failed` and boots
 on. The refusal is proved on MySQL, in both row orders, by
 `tests/integration/admin-sync.test.js`.
 
-## 7. Machine principals: the service token
+## 7. Checklist for adding a protected route
 
-A non-human caller authenticates through one seam, `services/machine-auth.js`,
-which exports exactly one function:
-
-```js
-export async function verifyMachineCredential(token)
-```
-
-It returns a principal, or `null` when the credential is refused, or when the
-configured user does not resolve. It has two paths, and no call site knows
-which one ran:
-
-- **The static path** (`SERVICE_TOKEN`), described below.
-- **The JWT path** (W6-CDX-7), for a client-credentials access token from the
-  issuer (`verifyMachineJwt`, `machine-auth.js:242`, further down). It is taken only for a
-  JWS-shaped token, and only when `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE`
-  and `MACHINE_OIDC_SUBJECTS` are all set. It is reached only after the static
-  digest has missed, so a dotted `SERVICE_TOKEN` is matched as the secret it is.
-
-A **key set that cannot be read** is not a `null`. It throws
-`MachineAuthUnavailable`, which `machineOrAuth` and `requireMachine` answer as
-**503** (`machineFailure`, `middleware/auth.js:17`). A caller must read an outage as
-"retry", never as "revoked".
-
-| Variable | Path | Meaning |
-|---|---|---|
-| `SERVICE_TOKEN` | static | the shared secret. Under 32 characters the feature stays off and logs why. |
-| `SERVICE_TOKEN_USER` | both | the email of an existing, non-admin user whose access the token acts with. |
-| `OIDC_ISSUER_URL` | JWT | the issuer; `iss` must equal it exactly. Shared with the browser sign-in. |
-| `MACHINE_OIDC_AUDIENCE` | JWT | this instance's own Zitadel project id; `aud` must include it. |
-| `MACHINE_OIDC_SUBJECTS` | JWT | a comma list of this instance's service-user ids; `sub` must be on it. |
-
-With the three JWT variables unset, the static path is exactly what it was.
-
-The credential has **no ACL of its own**. It acts as a real user, so every
-fragment in section 1 applies unchanged and there is no machine-specific
-access-control SQL to get wrong. Grant a machine what it should see the
-ordinary way: squad membership, or an archive grant, on that user.
-
-The comparison is `crypto.timingSafeEqual` over two SHA-256 digests, never
-`===`, so a wrong-length token is rejected without throwing and without the
-comparison leaking the configured length. The `users` lookup runs only after
-the token matches, so a wrong token costs no query.
-
-### The JWT path (W6-CDX-7): verify, then the allowlist, then the same principal
-
-`verifyMachineJwt` (`services/machine-auth.js:242`) runs
-in this order, and the first refusal returns `null` (nothing is deleted or
-logged with the token):
-
-1. `jose.jwtVerify` against the issuer's key set, with `issuer` (exact),
-   `audience` (`MACHINE_OIDC_AUDIENCE`, the instance's own project), an
-   asymmetric-only `algorithms` list (HS256 absent on purpose), a 60-second
-   `clockTolerance`, and `requiredClaims` `exp`, `iat`, `sub`.
-2. `iat` may not sit more than 60 seconds in the future (jose does not check it).
-3. `sub` must be in `MACHINE_OIDC_SUBJECTS`.
-4. `principalFor(SERVICE_TOKEN_USER)` (`machine-auth.js:196`): the same row, admin refusal and literal
-   `is_admin: false` as the static path. Both paths share the one function.
-
-The **audience is not the tenant boundary**. Zitadel lets any client request
-any project's audience (W6-CCID-3's P7 minted instance B's `aud` for instance A's
-service user), so the subject allowlist is the control. Each instance's service
-user is one client, so the allowlist also pins the client.
-
-**Refusal and outage are separate, and an outage is marked where it happens.**
-An outage is a discovery or key-set fetch that fails: a connection error, a
-timeout, a non-200, a document naming another issuer, or an unusable key set
-URL. `discoverJwksUri` and `guardedKeys` throw it as `MachineAuthUnavailable`
-through `markOutage`, which opens a 30-second window (`OUTAGE_COOLDOWN_MS`).
-Inside the window `verifyMachineJwt` answers 503 from memory, with no fetch and
-no log line. Every other error jose reports about the token is a refusal (a
-`null`, a 401 from `requireMachine`), whatever its code: an unknown `crit`
-header, a bad signature, a claim, a key miss. A key miss (`KEY_MISS_CODES`)
-passes through `guardedKeys` untouched. The key set itself is jose's
-`createRemoteJWKSet`, cached for 10 minutes with no stale fallback (a deliberate
-choice, see `docs/security.md`), and refetched for an unknown `kid` after a
-30-second cooldown.
-
-Routing: `verifyMachineCredential` compares the static digest first. A JWS-shaped
-token that misses it goes to jose, if the branch is configured. A 64-character
-session token has no dots, so it never reaches jose.
-
-### The never-admin rule
-
-`is_admin` is the **first bound parameter** of both fragments (`? = TRUE OR
-...`), so a principal carrying it true matches every archive in the install.
-That is guarded twice inside `verifyMachineCredential`:
-
-1. a configured user whose row is admin is refused outright, with a
-   `console.error`, and no principal is issued;
-2. the principal is built with the literal `is_admin: false`, never the column.
-
-Copying `row.is_admin` into the principal to "be faithful to the row" turns a
-scoped read credential into a full-install read credential silently: no error,
-no failing assertion outside `tests/services/machine-auth.test.js`.
-
-### The scope is a scope
-
-`machineOrAuth` (`middleware/auth.js`) tries the credential and otherwise falls
-through to `requireAuth` unchanged. It is applied to exactly three routes:
-
-| Route | Middleware |
-|---|---|
-| `GET /api/search` | `machineOrAuth` |
-| `GET /api/browse` | `machineOrAuth` |
-| `GET /api/documents/state` | `machineOrAuth` (`routes/documents.js`), W6-CDX-16 |
-| `GET /api/workspaces/:workspaceId/reader-check` | **`requireMachine`** |
-| `PUT /api/machine/members`, `DELETE /api/machine/members`, `DELETE /api/machine/members/:email` | **`requireMachine`**, the membership sync (`routes/machine-members.js`, W6-CDX-9). The only machine routes that write, and the only ones that can set `is_admin` |
-| `GET /api/search/filters` | `requireAuth` |
-| `GET /api/presence` | `requireAuth` |
-| everything else in the app | `requireAuth` |
-
-### `requireMachine` is not `machineOrAuth`, and the difference is the point (C2-5)
-
-`machineOrAuth` guards routes that answer **"what may YOU read?"** — the caller asks about
-themselves, so falling through to a session is the natural other half.
-
-`requireMachine` guards the one route that answers **"what may SOMEBODY ELSE read?"**. It refuses a
-session outright, whatever the role, with the same 401 and body an anonymous caller gets.
-
-That asymmetry exists because the reader check is an **oracle about third parties**. Behind a
-session, any logged-in user could enumerate which colleagues belong to which workspaces, and —
-because an unknown address answers exactly as an unauthorised one does — probe which email addresses
-have accounts on this install at all. Behind the machine credential the exposure is bounded to a
-compromised Cloud Command server, which is a system we operate.
-
-**The endpoint answers `{ canRead }` and nothing else.** A missing user, an unauthorised user and a
-workspace that does not exist all produce the identical `{ canRead: false }`: any difference in
-status or body would turn it into an account-existence or id-space oracle.
-
-**What it means by "can read a workspace"** is derived from rules this product already has, not
-invented — an admin, the workspace owner (`workspaces.owner_id`), or a member of any squad in that
-workspace, which is exactly what `ownership.js`'s `read_access_workspace` clause already means. It is
-deliberately NOT "has read access to at least one archive here": a person who belongs to a workspace
-but holds no archive grants yet should still be able to connect it, and every search that follows
-still applies the per-archive grants unchanged. **This gates the MAPPING, not the reads.**
-
-**Why it exists at all** is a suite problem rather than a Cloud Codex one: Cloud Command's
-`c2_workspace_id` was caller-asserted, so any account that could create a Cloud Command workspace
-could point it at any workspace here and read document titles out of it. Cloud Command can only ask;
-the answer has to come from the system that owns the rules. Its consuming half is `S5.1b-f` in that
-repo.
-
-**The subject path (W6-CDX-5, `routes/workspaces.js`).** The reader check takes an optional
-`subject`, the OIDC `sub` a Cloud Command person signed in with. When a subject is sent, the answer comes
-from the subject alone: the person is resolved through `user_identities` at this instance's configured
-issuer (`JOIN user_identities ui ON ui.user_id = u.id WHERE ui.issuer = ? AND ui.subject = ?`). An unknown
-subject answers `{ canRead: false }` even when an email matches it, because the sign-in ladder refuses an
-identity it cannot find by subject, and without OIDC configured a subject answers `false`. Email decides
-only when no subject is sent. The subject is at most 255 characters. The principal is still
-the machine credential, so the subject path is an oracle about a third party exactly as the email path
-is, and it is no wider.
-
-**The test that proves the machine-only property only proves it because it queues a principal row it
-does not use** (`tests/routes/reader-check.test.js`).
-
-**The membership sync (W6-CDX-9) is the one machine path that writes `is_admin`.** `routes/machine-members.js:97` (`PUT`) sets `users.is_admin` on the user an address resolves to, or grants it through `user_invitations.grants_admin` to an invitation that creates a new user (`services/identity.js`, the invitation rung, `INSERT INTO users ... is_admin`). It never writes the boot admin's row (`ADMIN_EMAIL`, 409 `managed_by_configuration`) or the machine principal's own (409 `machine_account`), and it never promotes through `ensureAdminUser`'s name or address match, so the GHSA-w8q3-r34w-3pjh refusal stands. An address resolves through `users.email` and `user_identities.email_at_last_signin`, binary-collated, and two accounts matching one address are refused (`ambiguous_address`). Removal (`DELETE`, `:158`) deactivates, clears admin, deletes sessions and closes sockets with exactly those session digests. Tests: `tests/routes/machine-members.test.js`, `tests/integration/machine-members.test.js`, `tests/integration/invitation-grants-admin.test.js`. Without that row the credential lookup finds
-nothing and the request is refused anyway, so the 401 would pass even if the route had been written
-with `machineOrAuth` — the same false-green shape the `search.test.js` 401s were written to avoid.
-
-All three `machineOrAuth` routes are reads, and they consume the principal only
-through `readAccessParams(req.user)` and, for search and browse,
-`buildFilters(req.query, req.user)`. None calls `logActivity` nor
-`createNotification`, so nothing is attributed to the machine principal and no
-watcher is enrolled.
-
-### The reconciliation read is safe for the same reason (W6-CDX-16)
-
-`GET /api/documents/state?workspaceId=<id>&ids=<1..100 ids>` exists because the
-outbound event stream captures after the mutation and does not await it, so a
-crash between the two loses an event; Cloud Command sweeps its linked documents
-through this route to repair that. For each id it returns
-`{ id, title, archive_id, updated_at }` only when the caller can read it. The
-existing route it is closest to is `GET /api/browse`: the same
-`readAccessWhere`, `excludeSystemArchives` and workspace join, and like browse
-it keeps a document whose creator was deleted (browse's join on `users` is a
-`LEFT JOIN`). The one field it adds for the machine principal is `updated_at`,
-which browse does not select:
-
-- **Who may call it.** The machine principal or any session, like search and
-  browse: it answers "which of these may YOU read?", never a question about a
-  third party, so it is `machineOrAuth` and not `requireMachine`. Its set is
-  the set `GET /api/browse` already lists for that caller, narrowed to one
-  workspace, so neither a session nor the machine principal can reach a
-  document it could not already list; the only new fact is `updated_at`.
-  (`GET /api/document` is not the comparison: it joins `users` with an
-  `INNER JOIN`, so a document whose creator was deleted answers 404 there and
-  appears here.)
-- **What it can enumerate.** Nothing beyond the caller's own reach. The access
-  check is `readAccessWhere('p')` with the caller's own seven params, plus
-  `excludeSystemArchives('p')`, narrowed to the workspace by the same
-  `INNER JOIN squads _fs ON _fs.id = p.squad_id AND _fs.workspace_id = ?` that
-  search's `buildFilters` uses. An id that is deleted, unreadable, in another
-  workspace, in a system archive or never existed is **absent**, and those
-  cases answer byte-identically, so the route is not an existence oracle. The
-  machine principal's `is_admin` is forced false (above), so an archive only an
-  admin could read is absent too.
-- **How fast.** `stateLimiter` (`app.js`, 120 requests per 15 minutes, mounted
-  before the routers) bounds it per client address, authenticated or not; at
-  100 ids a request that is 12,000 ids per window. The bucket is keyed on
-  `req.ip` alone, so every caller that resolves to one address, anonymous or
-  not, spends the same budget as Cloud Command's sweep there. A caller of this
-  route (W6-CMD-17) must read a 429 as "retry later", never as absence: only
-  a 200 whose `documents` omits an id says that id is unavailable.
-- **The SQL.** The `IN (...)` placeholders are generated from the id count
-  only, never from the values, and every id is bound. `title` is
-  `LEFT(l.title, 255)`, the event envelope's bound, so a reconciler compares
-  the same string the stream carried.
-
-`tests/integration/documents-state.test.js` proves the narrowing, the ACL, the
-system-archive exclusion and the byte-identical absence on a real server, with
-a non-vacuity anchor (an admin session does see the admin-only document).
-
-Widening the credential to a route that writes, logs activity, or notifies is a
-decision to take on purpose, not a tidy-up: the principal carries a real user
-id, so an `activity_log` row or a notification would name that user as the
-actor with nothing to tell a reader a machine did it. The principal carries
-`is_machine: true` for any caller that needs to distinguish them.
-
-The refusal paths and the comparison are covered in
-`tests/services/machine-auth.test.js`. The tests that prove the scope is a
-scope are the 401s on `GET /api/search/filters` and `GET /api/presence` in
-`tests/routes/search.test.js`, and they only prove it because each one queues
-the principal row first: without that row a widened route would refuse the
-credential for the wrong reason and the 401 would assert nothing. Mounting
-`machineOrAuth` on either route turns both into `expected 200 to be 401`.
-
-## 8. Checklist for adding a protected route
-
-1. `requireAuth` first, always. There are no internal endpoints; the only
-   surfaces are public HTTP and the two WebSockets. The single alternative is
-   `machineOrAuth` (7), which wraps `requireAuth` rather than replacing it, and
-   which is deliberately mounted on three read routes and nothing else.
+1. `requireAuth` first, always. There are no internal endpoints and no machine
+   credential (removed in 0.15.0); the only surfaces are public HTTP and the two
+   WebSockets, and every one of them is reached by a session.
 2. Creation verb, add `requirePermission('<flag>')`. If the route takes a
    workspace or squad id from the caller rather than deriving it from a row the
    caller already reaches, gate it with `isWorkspaceMember` /
@@ -865,7 +634,7 @@ credential for the wrong reason and the 401 would assert nothing. Mounting
 
 ---
 
-## 9. Between instances: the MySQL grant (W6-CDX-33)
+## 8. Between instances: the MySQL grant (W6-CDX-33)
 
 Everything above runs **inside** one instance, where the tenant boundary is the
 workspace (3e: `isWorkspaceMember` in `ownership.js`). Several instances can
@@ -957,4 +726,4 @@ too.
 - [../security.md](../security.md) for the tenant-boundary summary and the three
   read-only queries that enumerate cross-tenant rows predating 3e.
 - [../deployment.md](../deployment.md), "Several instances on one MySQL
-  server", for the recipe section 9 proves.
+  server", for the recipe section 8 proves.

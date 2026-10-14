@@ -42,7 +42,6 @@ tests/
 │   ├── admin-sync.test.js  ← the boot admin sync never promotes a member, in either row order
 │   ├── app-process.js      ← (not a test file) the backup drill's child processes and sign-in
 │   ├── backup-restore.test.js ← scripts/backup.sh and restore.sh for real: every refusal, and a byte-identical restore
-│   ├── documents-state.test.js ← the reconciliation read: workspace narrowing, the ACL, absence that is no oracle
 │   ├── global-setup.js     ← teardown: fails the run if a c2_it_ or c2itrecipe<hex> schema, or a c2_it_ account, leaked
 │   ├── grants-sufficient.test.js ← server.js runs on the shared-server recipe's DML-only account
 │   ├── instance-recipe.js  ← (not a test file) runs docs/deployment.md's shared-server SQL block as written
@@ -58,9 +57,9 @@ tests/
 │   ├── server-child.js     ← (not a test file) fork server.js or the lock holder, sign in, open /collab
 │   ├── tenancy.test.js     ← two instances on one server: every cross-schema statement is denied
 │   ├── update-account-sessions.test.js ← an email or password change leaves one session, the caller's new one
+│   ├── remove-sibling-connection.test.js ← the 0.15.0 removal migration: applied, undone, adopted on a fresh build, refused on the old schema
 │   ├── upgrade-path.test.js ← every post-baseline migration's SQL, run for real
 │   ├── webhooks-emit.test.js ← the outbound-event emit hook, driven through the HTTP routes, read from the outbox tables
-│   ├── webhooks-env.test.js ← the env-declared webhook subscription across boots
 │   ├── webhooks-schema.test.js ← the webhook tables' CHECKs, unique keys and cascade, written directly
 │   ├── webhooks-worker.test.js ← the delivery worker against a real receiver: order, leases, outcomes, the send-time guard
 │   ├── webhooks-order.test.js ← outbox ids allocated in commit order: an emit waits for the order lock

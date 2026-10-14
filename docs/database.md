@@ -544,17 +544,17 @@ entries older than 365 days are removed.
 
 ### `webhook_subscriptions`
 
-Who receives outbound events ([api/webhooks.md](api/webhooks.md)). One row may
-come from the environment (`source = 'env'`, reconciled at every boot from
-`WEBHOOK_URL`, `WEBHOOK_SECRET` and `WEBHOOK_WORKSPACE_ID`); the rest are made
-by an instance admin through `/api/admin/webhooks` (`source = 'admin'`).
+Who receives outbound events ([api/webhooks.md](api/webhooks.md)). Rows are made
+by an instance admin through `/api/admin/webhooks` (`source = 'admin'`). The
+`source = 'env'` rows that the environment once declared were deleted by the
+0.15.0 migration, and the worker never sends a row that is not `admin`.
 
 | Column                 | Type                  | Notes                                       |
 |------------------------|-----------------------|---------------------------------------------|
 | `id`                   | INT AUTO_INCREMENT PK |                                             |
 | `url`                  | VARCHAR(2048)         | The receiver, checked by the SSRF guard     |
-| `secret`               | VARCHAR(255)          | Admin rows only, never returned by the API; `NULL` for the env row, whose secret stays in the environment |
-| `source`               | VARCHAR(8)            | `env` or `admin` (CHECK)                    |
+| `secret`               | VARCHAR(255)          | Admin rows only, never returned by the API |
+| `source`               | VARCHAR(8)            | `env` (legacy, unsent) or `admin` (CHECK)   |
 | `enabled`              | BOOLEAN               | Default TRUE                                |
 | `event_types`          | JSON                  | `NULL` = every emitted type, else an array  |
 | `workspace_id`         | INT                   | `NULL` = every workspace. No FK, on purpose |

@@ -476,69 +476,6 @@ falls back to the session cookie (for OAuth browser redirects):
 Must be used after `requireAuth`. Returns `403` if `req.user.is_admin` is
 not true.
 
-### `machineOrAuth`
-
-Tries a machine credential first and otherwise falls through to `requireAuth`
-unchanged, so a human session is unaffected. On a match it attaches a machine
-principal (`{ id, name, email, is_admin: false, is_machine: true }`) and sets no
-`req.sessionToken`, because a machine caller holds no session row.
-
-Mounted on exactly three routes, `GET /api/search`, `GET /api/browse` and
-`GET /api/documents/state` (the reconciliation read). It is
-not a drop-in replacement for `requireAuth`: the value of the credential is
-that its reach stays enumerable by reading the routers.
-
----
-
-## Machine Authentication Service
-
-**File:** `cloudcodex/services/machine-auth.js`
-
-### `verifyMachineCredential(token)`
-
-The single seam for non-human authentication, with two paths behind one call
-site. Returns the principal the credential acts as, or `null` when the
-credential is refused or the configured user does not resolve.
-
-A JWS-shaped token takes the JWT path (W6-CDX-7) when `OIDC_ISSUER_URL`,
-`MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS` are all set. It is verified
-with `jose` against the issuer's key set, pinned to this instance's own project
-as `aud`, and its `sub` must be on the allowlist. A key set that cannot be read
-throws `MachineAuthUnavailable`, which the middleware answers as 503. It is never
-`null`, so an outage cannot read as a revoked credential.
-
-The static path is configured by `SERVICE_TOKEN` (the shared secret, minimum 32
-characters) and `SERVICE_TOKEN_USER` (the email of an existing non-admin user),
-both required.
-The token is compared with `crypto.timingSafeEqual` over SHA-256 digests, and
-the users lookup only runs after that comparison passes. An admin
-`SERVICE_TOKEN_USER` is refused outright and logged, and the principal is built
-with a literal `is_admin: false`: `is_admin` is the first bound parameter of
-every fragment in `routes/helpers/ownership.js`, so an admin principal would
-reach every archive in the install.
-
----
-
-**File:** `cloudcodex/middleware/permissions.js`
-
-### `loadPermissions`
-
-Fetches the user's global permission flags from the `permissions` table and
-attaches them to `req.permissions`. Used in routes that need to make
-multiple permission decisions without repeated DB queries.
-
-### `requirePermission(permission)`
-
-Returns Express middleware that:
-1. Returns `next()` immediately for admins.
-2. Checks the user's global `permissions` row.
-3. If global permission is missing, falls back to checking squad-level
-   permissions (`squad_members` flags) when a `squad_id` can be inferred
-   from the request context.
-4. Returns `403` if no grant is found.
-
----
-
 ## Route Helpers
 
 **File:** `cloudcodex/routes/helpers/shared.js`

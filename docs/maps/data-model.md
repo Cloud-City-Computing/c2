@@ -336,7 +336,7 @@ saw an onboarding flow at all. `routes/first-run.js` is the only writer.
 W6-CDX-8) is set by hand until the sync and an admin control arrive. `NULL` is an active user. A set value
 is refused by every sign-in: `validateAndAutoLogin` reads the user `AND deactivated_at IS NULL`,
 `resolveIdentity` answers `account_deactivated` on each oidc and Google rung before any write, `POST /api/login`
-and `POST /api/2fa/verify` refuse after the password or the challenge is proven, the machine principal is `NULL`, and
+and `POST /api/2fa/verify` refuse after the password or the challenge is proven, and
 the 60-second socket re-check (`services/socket-sweep.js:30`) closes open sockets with no live session. The user keeps their authorship; `DELETE` is not
 involved.
 

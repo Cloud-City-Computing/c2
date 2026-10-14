@@ -715,24 +715,11 @@ run again to change zero rows. Mutation-checked on 2026-09-27: dropping the
 `UPDATE`, the `'c'` flag or the `DROP DEFAULT`, or the CHECK from `init.sql`,
 each turns a live test red.
 
-`tests/integration/documents-state.test.js` proves the reconciliation read,
-`GET /api/documents/state` (W6-CDX-16), on a real server: two workspaces, a
-machine principal (`SERVICE_TOKEN`, a non-admin `SERVICE_TOKEN_USER`) in a squad
-of the first only, and archives it can and cannot read. It asserts the answer
-for each workspace, that a document readable through a per-user grant appears
-only under its own workspace, that the admin-only and system-archive documents
-are absent (with an admin session seeing the admin-only one, so the absence is
-not vacuous), that a deleted id and an unreadable id answer byte-identically
-(body, length and ETag), that a title is bounded to 255 code points with a
-trailing astral character kept whole, and that an id past the `INT` range is a
-200 with no row, and that the answer is in ascending id order read unsorted.
-Mutation-checked on 2026-09-27: making the workspace join a no-op
-(`_fs.workspace_id = ? OR TRUE`, which keeps the bound param), dropping the
-system-archive predicate or the title bound, binding `is_admin` true, mounting
-`requireAuth` instead of `machineOrAuth`, or ordering `DESC` each turn a live
-test red. Dropping `ORDER BY l.id` does not: MySQL returns id order on this
-data anyway, so that mutation is caught only by the SQL-shape pin in
-`tests/routes/documents.test.js`.
+`tests/integration/remove-sibling-connection.test.js` proves the 0.15.0 removal migration on a real server:
+it applies to the pre-migration schema (expiring revoked invitations, deleting the env webhook rows, dropping
+the two columns), its undo returns them, a fresh build adopts it, and the adoption is refused on a schema that
+still has the columns. The reconciliation read it replaced has no integration test any more.
+
 
 Three files prove the outbound-events outbox (W6-CDX-13).
 `tests/integration/webhooks-schema.test.js` proves the tables' constraints: the
@@ -751,11 +738,7 @@ byte-stable and is the envelope its row describes (its `occurred_at` read back
 in UTC); a stored 30,000-character title is emitted as 255 code points; and with
 a test-created trigger that `SIGNAL`s on every outbox insert, a save still
 answers 200, writes its activity row and notifies its watcher.
-`tests/integration/webhooks-env.test.js` boots the env subscription through
-nothing configured, create, keep, a workspace change and a receiver change
-(each dropping the old queue), a missing secret, a mistyped workspace and a
-metadata address (each disabling it) and re-enable, with one row throughout and
-its secret never stored or logged. Mutation-checked on 2026-09-28: letting the
+The env-subscription integration file (`webhooks-env.test.js`, boots through each env state) was removed in CDX-SA-3 with the env subscription. Mutation-checked on 2026-09-28: letting the
 emit throw out of `doLogActivity` turns the trigger test red (no watcher
 notification); the unit suites catch dropping the title bound, the workspace
 match, the no-subscription early return, the SQL re-check, the queue drop on a

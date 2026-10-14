@@ -64,7 +64,7 @@ constraint right now.
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
 | **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token, C2-5 a workspace reader check for the suite | nothing; C2-0 gates the rest |
 | **W** | Wave 6, the suite (**specced 2026-09-24**) | Five sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36), and UI alignment (W6-CDX-37 to 44, added 2026-10-11), which the release W6-CDX-36 now waits on. The shared live-MySQL test project W6-CDX-10 comes before every session that changes schema or needs a real database; W6-CDX-4 and W6-CDX-21 need neither and do not wait for it | S; named Cloud Command and Cloud City ID sessions per sub-track |
-| **SA** | Standalone, toward 1.0 (**specced 2026-10-14**) | Codex becomes a standalone product; the suite integration is removed. Suite mode, the machine connection to the sibling product and issuer-specific behaviour go; local accounts, generic OIDC and admin webhooks stay. 0.15.0 after the removals, 1.0.0 after the pre-1.0 standalone review. Spec [standalone Codex](2026-10-14-standalone-codex.md), plan [standalone Codex](../plans/2026-10-14-standalone-codex.md), sessions CDX-SA-1 to CDX-SA-7 | W (it removes what W added for the suite) |
+| **SA** | Standalone, toward 1.0 (**specced 2026-10-14**) | Codex becomes a standalone product; the suite integration is removed. Suite mode, the machine connection to the sibling product and issuer-specific behaviour go; local accounts, generic OIDC and admin webhooks stay. 0.15.0 after the removals; 1.0.0 is handed to c2's maintainers and is not part of this track. Spec [standalone Codex](2026-10-14-standalone-codex.md), plan [standalone Codex](../plans/2026-10-14-standalone-codex.md), sessions CDX-SA-1 to CDX-SA-7 | W (it removes what W added for the suite) |
 
 ### A. Evaluation path (shipped)
 
@@ -473,7 +473,7 @@ Nova, amber is Solar, emerald is Aurora, violet is Nebula); no Wave 6 open quest
 off by default, so an install that sets none of it already behaves as a standalone product. This track
 removes those pieces from the public image instead of leaving them dormant, keeps everything a self-hoster
 can use with local accounts or any OIDC provider, and takes the product to 1.0 through the pre-1.0
-standalone review recorded in the row above.
+standalone review recorded in the row above. 1.0.0 itself is handed to c2's maintainers: this track ends with that review, and the 0.15.0 release stays on this side.
 
 The spec, [`2026-10-14-standalone-codex.md`](2026-10-14-standalone-codex.md), holds the inventory (each
 suite-specific item with its files, generic or suite-only, and the decision), the upgrade impact for
@@ -485,11 +485,11 @@ session:
 |---|---|---|
 | CDX-SA-1 | The spec and the plan (docs only) | nothing |
 | CDX-SA-2 | **Done on branch `track/cdx-sa-2-remove-suite-mode` (PR not yet opened).** Remove suite mode: the shell cluster, Linked tasks, the hidden Workspaces page, the front door's suite branches, the shared theme cookie, issuer-managed accounts and `OIDC_ACCOUNT_URL`; removed variables warn at boot | CDX-SA-1 |
-| CDX-SA-3 | Remove the sibling-product connection: the machine credential (static and JWT), the reader check, the reconciliation read, the membership sync, the env-declared webhook subscription; one reversible migration, and the runner learns drop claims | CDX-SA-2 |
+| CDX-SA-3 | **Done on branch `track/cdx-sa-3-remove-sibling-connection` (PR not yet opened).** Remove the sibling-product connection: the machine credential (static and JWT), the reader check, the reconciliation read, the membership sync, the env-declared webhook subscription; one reversible migration, and the runner learns drop claims | CDX-SA-2 |
 | CDX-SA-4 | Remove issuer-specific behaviour while keeping generic OIDC: OIDC-only mode named as such, provider-neutral wording, a second issuer shape proved, setup docs for common providers; the identity spec and plan retire | CDX-SA-3 |
 | CDX-SA-5 | Clean up and harden: the standalone gate, dead code, the configuration contract, an `/api` JSON 404, docs and maps; then the 0.15.0 release PR | CDX-SA-4 |
 | CDX-SA-6 | The pre-1.0 standalone review, with its findings fixed: a clean-clone boot with local accounts and with a non-default OIDC provider in a container | CDX-SA-5 |
-| CDX-SA-7 | The 1.0.0 release; the spec and plan retire | CDX-SA-6 |
+| CDX-SA-7 | The 1.0.0 release; the spec and plan retire. **Handed to c2's maintainers (decided 2026-10-14): not part of this track.** | CDX-SA-6 |
 
 ## Sequencing
 

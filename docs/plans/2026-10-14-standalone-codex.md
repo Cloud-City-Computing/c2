@@ -768,6 +768,8 @@ measured; the IS8 and IS10 decisions are recorded; CI green.
 
 ## PR 7: CDX-SA-7, the 1.0.0 release
 
+> Handed to c2's maintainers (decided 2026-10-14): 1.0.0 is not part of this track. The steps below are the maintainers' to take.
+
 - [ ] `git switch -c release/1.0.0 origin/main` (after PR 6 merges).
 - [ ] **The legacy cookie.** If PR 6 confirmed the premise: tests first (`tests/services/session-cookie*.test.js`,
       `tests/middleware/auth*.test.js`, the client's `util` tests: on https a lone `sessionToken` signs

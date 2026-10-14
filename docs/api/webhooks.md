@@ -91,15 +91,15 @@ Delivery is at least once and in order per subscription. `sequence` (the envelop
 
 ## Configuration
 
-The server environment can declare one subscription, reconciled at every boot:
+Subscriptions are created by an admin, in the admin console (Webhooks) or the admin API. The one variable
+that governs them is:
 
 | Variable | Meaning |
 |---|---|
-| `WEBHOOK_URL` | the receiver. `https` in production |
-| `WEBHOOK_SECRET` | the signing secret, at least 32 characters. It stays in the environment and is never written to the database |
-| `WEBHOOK_WORKSPACE_ID` | optional: send only this workspace's events. A value that is not a whole number switches the subscription off rather than widen it; one that names no workspace is accepted and matches nothing |
 | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `1` lets any subscription reach a loopback or private address. Instance-wide |
 
-With `WEBHOOK_URL` or `WEBHOOK_SECRET` unset the subscription is switched off. Changing `WEBHOOK_URL` or `WEBHOOK_WORKSPACE_ID` drops the events still queued for the old receiver or workspace. See [.env.example](../../.env.example).
+Subscriptions declared in the server environment (`WEBHOOK_URL`, `WEBHOOK_SECRET`, `WEBHOOK_WORKSPACE_ID`) were
+removed in 0.15.0. To keep one, create the same subscription in the admin console, give its receiver the new
+secret the console shows once, and unset the three variables. See [.env.example](../../.env.example).
 
-**Receiver addresses.** Every receiver URL, from the environment or the admin API, passes a guard: `https` (plain `http` only outside production), no user name or password, and every address its host resolves to must be public. Loopback and private ranges need `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`; link-local and cloud-metadata addresses (including AWS's IPv6 metadata endpoint `fd00:ec2::254`, which is unique-local, not link-local), and the IPv6 transition prefixes (6to4, Teredo, local-use NAT64), are refused always. The URL is at most 2,048 characters once normalised.
+**Receiver addresses.** Every receiver URL, from the admin API, passes a guard: `https` (plain `http` only outside production), no user name or password, and every address its host resolves to must be public. Loopback and private ranges need `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`; link-local and cloud-metadata addresses (including AWS's IPv6 metadata endpoint `fd00:ec2::254`, which is unique-local, not link-local), and the IPv6 transition prefixes (6to4, Teredo, local-use NAT64), are refused always. The URL is at most 2,048 characters once normalised.
