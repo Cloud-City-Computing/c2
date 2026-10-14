@@ -1,5 +1,5 @@
 /**
- * The boot purge of sessions a hosted instance no longer accepts (services/sessions-hosted.js)
+ * The boot purge of sessions a hosted instance no longer accepts (services/sessions-oidc-only.js)
  *
  * Validation already refuses a local or Google session on a hosted instance. The boot also deletes those rows,
  * so the table holds only what the instance will accept, and logs how many it ended. Off a hosted instance it
@@ -42,7 +42,7 @@ describe('endSessionsOutsideOidc', () => {
 
     expect(await endSessionsOutsideOidc()).toBe(3);
     expect(c2_query.mock.calls[0][0]).toMatch(/DELETE FROM sessions WHERE auth_provider <> 'oidc'/);
-    expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/ended 3 sessions/);
+    expect(errorSpy.mock.calls.flat().join(' ')).toMatch(/OIDC-only boot: ended 3 sessions/);
   });
 
   it('logs nothing when there was nothing to end', async () => {
