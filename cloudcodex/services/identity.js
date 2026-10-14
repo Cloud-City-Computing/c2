@@ -27,7 +27,6 @@
 
 import crypto from 'crypto';
 import { c2_query, withTransaction } from '../mysql_connect.js';
-import { readSuiteConfig } from './suite.js';
 import { createDefaultPermissions, addSquadMember } from '../routes/helpers/shared.js';
 
 /**
@@ -305,29 +304,6 @@ async function createFromInvitation(claims, invitation, attempt = 0) {
  * names it in a duplicate-entry message: `for key 'oauth_accounts.<name>'`.
  */
 const ONE_LINK_PER_PROVIDER_KEY = "'oauth_accounts.uq_oauth_user_provider'";
-
-/**
- * Whether a local user is signed in through the issuer, that is holds a user_identities row. Suite mode
- * refuses the account writes for such an account (middleware/auth.js refuseIssuerManaged, W6-CDX-42, K6), and
- * GET /api/2fa/status reports it.
- * @param {number} userId
- * @returns {Promise<boolean>}
- */
-export async function isIssuerManaged(userId) {
-  const [row] = await c2_query('SELECT 1 FROM user_identities WHERE user_id = ? LIMIT 1', [userId]);
-  return Boolean(row);
-}
-
-/**
- * Whether a local password route must leave this account to its issuer: suite mode is on and the user is
- * issuer-linked (W6-CDX-42, K6). The password routes (forgot, reset, login) and the admin 2FA reset use it, so
- * a local password cannot take an issuer-linked account around the issuer's own second factor.
- * @param {number} userId
- * @returns {Promise<boolean>}
- */
-export async function isManagedByIssuerHere(userId) {
-  return readSuiteConfig().enabled && (await isIssuerManaged(userId));
-}
 
 /**
  * Whether an INSERT failed on the one-link-per-provider key, and not on the

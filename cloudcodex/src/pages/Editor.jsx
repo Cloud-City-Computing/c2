@@ -1117,7 +1117,6 @@ function EditorView({ embedded = false } = {}) {
       <div className="editor-log">
         <DocumentHeader
           doc={documentData}
-          logId={logId}
           viewMode={viewMode}
           canEdit={!isMobileDevice()}
           editingTitle={editingTitle}
@@ -1126,7 +1125,6 @@ function EditorView({ embedded = false } = {}) {
           onTitleSave={handleTitleSave}
           onStartTitleEdit={() => setEditingTitle(true)}
           onOpenArchive={() => navigate(`/archives/${documentData.archive_id}/doc/${logId}`)}
-          suiteArchiveId={String(documentData?.id) === String(logId) ? documentData.archive_id : undefined}
           collabUsers={collabUsers}
           collabConnected={collabConnected}
           isFavorited={isFavorited}

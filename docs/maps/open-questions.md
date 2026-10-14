@@ -1002,15 +1002,36 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
 - **F4. The socket sweep's latency is one minute, by design.** A socket authenticated before a deactivation stays
   open for up to 60 s. Closing sooner would need a push from the deactivation path, which does not exist yet.
 
-## G. Open questions from W6-CDX-26 (the suite front door), not defects yet
+## G. Open questions from W6-CDX-26 (the suite front door): G1 and G2 closed by CDX-SA-2, G3 stands
 
-- **G1. The live run against the Cloud City ID stack is not recorded.** The plan's Task 6.3 wants a signed-out
+- **G1. (Closed: the suite front door was removed in CDX-SA-2.)** The live run against the Cloud City ID stack is not recorded. The plan's Task 6.3 wants a signed-out
   deep link to `/archives/:a/doc/:l` to land on the document after the bounce, with Cloud Command signed in, and
   with no Cloud City session to land on the issuer's login first. That needs the cloud-city-id stack and a
   Cloud Command instance on the same domain. Checked here only by the unit and route tests and the captures.
-- **G2. The silent-return path is not exercised end to end.** On a live issuer session, the bounce should return
+- **G2. (Closed with G1.)** The silent-return path is not exercised end to end. On a live issuer session, the bounce should return
   the person silently to the document. The tests pin the URL and the loop guard, not the issuer's answer.
-- **G3. The bare root (resolved 2026-10-11).** Kyle chose that a signed-out bare `/` goes straight to Cloud City
+- **G3. The bare root (resolved 2026-10-11, still in force for an OIDC-only instance).** Kyle chose that a signed-out bare `/` goes straight to Cloud City
   ID. Codex now does this where OIDC is the only sign-in (`decideSignedOut`, `src/hooks/useSignedOutTarget.js`),
   and keeps the screen for a local-sign-in instance. Command's `BOUNCE_BARE_ROOT` is in the Command repo and is
   not changed by this branch; whether Command follows is for its own session.
+
+## H. Carried from the retired suite UI record (CDX-SA-2), not defects
+
+The record `suite-ui-alignment-record.md` was retired by CDX-SA-2, along with the shared preference cookie it
+described. Its live items are here; its closed decisions are not carried, because the code no longer has them.
+
+- **H1. The colour gamut is open.** The contract's colour steps are not all inside sRGB. Measured by converting each
+  `oklch(L C H)` to linear sRGB, 19 of 64 hue-theme-step combinations fall outside it (dark wash for 232; the dark text,
+  fill and wash for 200 and 175; the light wash for 355, 275 and 50), and 29 of 80 once the dark avatar step counts.
+  The browser and the vendored gate both clip, and every pair still passes on the clipped colour. The sibling product's
+  count for the same three hues (17) is not reconciled, since its script is not in this repository. A change to a step
+  is a versioned change to the table in `tests/design/suite-theme.json`.
+- **H2. Decisions taken without sign-off that still concern Codex's own interface.** Each was recorded as "decided
+  pending Kyle" and stands until Kyle confirms or reverses it: the sixth binding `--cx-accent-fill-hover` (the primary
+  button's hover on a filled accent is the dark hover step in both themes); `--cx-accent-dark`, derived per hue so the
+  white avatar label follows the pick; the light `--cx-on-accent` is the table's `oklch(0.16 0.03 240)`, and the
+  presence label constant `INK_LUMINANCE` is pinned to it; the light hover washes of the deferred families raised to a
+  0.025 floor, and the light black code washes moved to a 0.06 to 0.15 ink wash; the PageHeader on GitHub settings
+  (Codex has no GitHub settings page; the connection lives on the GitHub page).
+- **H3. Not yet run.** A theme chosen in Codex has not been seen applied in Cloud Command on a shared parent domain.
+  That check is void now: the preference is per host, so there is nothing to share.

@@ -30,7 +30,6 @@ import {
   clearOidcBounce,
   useSignedOutTarget,
 } from '../../../src/hooks/useSignedOutTarget.js';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { safeReturnTo } from '../../../services/return-to.js';
 
 const corpus = JSON.parse(
@@ -106,7 +105,6 @@ describe('decideSignedOut', () => {
 
   it('keeps the sign-in screen on a bare root where local sign-in is offered, or OIDC is not', () => {
     expect(decideSignedOut({ ...deepLink, pathname: '/', oidcOnly: false })).toEqual({ action: 'landing' });
-    expect(decideSignedOut({ ...deepLink, pathname: '/', oidcOnly: false, suiteOn: true })).toEqual({ action: 'landing' });
     expect(decideSignedOut({ ...deepLink, pathname: '/', oidcOffered: false, oidcOnly: false })).toEqual({ action: 'landing' });
   });
 
@@ -124,10 +122,12 @@ describe('decideSignedOut', () => {
     expect(decideSignedOut({ ...deepLink, oauthError: true })).toEqual({ action: 'landing' });
   });
 
-  it('bounces in suite mode even when local login is also enabled (oidc offered, not oidc-only)', () => {
-    const decision = decideSignedOut({ ...deepLink, oidcOnly: false, suiteOn: true });
-    expect(decision.action).toBe('bounce');
-    expect(returnToOf(decision.url)).toBe('/doc/9');
+  it('opens the Login modal when OIDC is offered beside local login, whatever a suite flag says (CDX-SA-2)', () => {
+    // The suite flag is gone: with OIDC beside local login the modal answers, and nothing bounces.
+    expect(decideSignedOut({ ...deepLink, oidcOnly: false, suiteOn: true, search: '?x=1' })).toEqual({
+      action: 'login',
+      target: '/doc/9?x=1',
+    });
   });
 
   it('opens the Login modal, keeping the target, when OIDC is offered beside local login outside suite mode', () => {
@@ -226,12 +226,6 @@ describe('resolveSignedOut and startOidcBounce', () => {
     expect(assign).toHaveBeenCalledWith('/api/auth/oidc/start?returnTo=' + encodeURIComponent('/doc/9'));
   });
 
-  it('bounces in suite mode with local login also enabled', async () => {
-    const storage = fakeStorage();
-    expect(await startOidcBounce({ pathname: '/doc/9', search: '', providers: OIDC_AND_LOCAL, suiteOn: true, storage, assign })).toBe(true);
-    expect(assign).toHaveBeenCalledOnce();
-  });
-
   it('does not bounce a second time in the same tab (the loop guard)', async () => {
     const storage = fakeStorage({ [OIDC_BOUNCE_MARKER]: '1' });
     expect(await resolveSignedOut({ pathname: '/doc/9', search: '', providers: ONLY_OIDC, suiteOn: false, storage, assign })).toBe('landing');
@@ -311,7 +305,6 @@ describe('useSignedOutTarget', () => {
   }
 
   beforeEach(() => {
-    __resetSuiteCache();
     fetchMock.mockReset();
     fetchMock.mockImplementation((url) => Promise.resolve({ json: () => Promise.resolve(answer(url)) }));
     vi.stubGlobal('fetch', fetchMock);
@@ -368,12 +361,12 @@ describe('useSignedOutTarget', () => {
     expect(window.sessionStorage.getItem(OIDC_BOUNCE_MARKER)).toBeNull();
   });
 
-  it('asks the providers route and the suite route, then bounces a deep link', async () => {
+  it('asks only the providers route, then bounces a deep link (no suite route, CDX-SA-2)', async () => {
     window.history.replaceState({}, '', '/doc/9');
     const { result } = renderHook(() => useSignedOutTarget());
     expect(await result.current()).toBe('bounced');
     expect(fetchMock).toHaveBeenCalledWith('/api/oauth/providers');
-    expect(fetchMock).toHaveBeenCalledWith('/api/suite', expect.anything());
+    expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain('/api/suite');
     window.history.replaceState({}, '', '/');
   });
 });

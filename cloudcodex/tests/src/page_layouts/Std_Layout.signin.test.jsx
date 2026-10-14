@@ -27,7 +27,6 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { apiFetch, showModal } from '../../../src/util.jsx';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { clearOidcBounce } from '../../../src/hooks/useSignedOutTarget.js';
 
 const ONLY_OIDC = { google: false, github: false, local: false, oidc: { enabled: true, name: 'SSO' } };
@@ -53,7 +52,6 @@ function landingAt(search) {
 }
 
 beforeEach(() => {
-  __resetSuiteCache();
   clearOidcBounce();
   window.sessionStorage.clear();
   showModal.mockClear();
@@ -84,11 +82,12 @@ describe('the signed-out landing offers a sign-in', () => {
     expect(showModal).not.toHaveBeenCalled();
   });
 
-  it('shows the Sign in button on the landing after a sign-out in suite mode too', async () => {
+  it('shows the Sign in button, and no suite sentence, on the landing after a sign-out (CDX-SA-2)', async () => {
+    // The server's suite answer is ignored: the landing names no suite, whatever /api/suite says.
     world({ providers: ONLY_OIDC, suiteOn: true });
     landingAt('?signedOut=1');
-    expect(await screen.findByText("You're signed out of Example Suite.")).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy();
+    expect(screen.queryByText(/signed out of/i)).toBeNull();
   });
 
   it('falls back to the Login modal when the providers answer cannot be read', async () => {

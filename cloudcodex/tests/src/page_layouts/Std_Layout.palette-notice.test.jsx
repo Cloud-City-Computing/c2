@@ -37,10 +37,8 @@ vi.mock('../../../src/hooks/useNotificationChannel.js', () => ({
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 
 beforeEach(() => {
-  __resetSuiteCache();
   sessionHandlers.length = 0;
 });
 

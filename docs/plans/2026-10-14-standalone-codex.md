@@ -114,6 +114,28 @@ Docs only.
 Spec rows SM1 to SM12. After this PR nothing reads `SUITE_COMMAND_WORKSPACE_URL`, `SUITE_NAME`,
 `SUITE_PREFERENCE_DOMAIN` or `OIDC_ACCOUNT_URL` except the boot warning.
 
+**Corrections, recorded by CDX-SA-2 where the code proved this section wrong** (each is also noted at its task):
+
+- Task 2.2 deletes `services/suite.js` with the suite routes. Its readers are `middleware/auth.js` and
+  `services/identity.js`, which Task 2.3 removes, so the file is deleted in Task 2.3 with its last importer.
+  Its test and its coverage threshold go in the same commit.
+- Task 2.3 says the admin two-factor reset is "404 on an OIDC-only instance, as `requireLocalSignIn` already makes
+  them". It is not: `POST /api/admin/users/:id/2fa/reset` is an admin route with no `requireLocalSignIn`, so it
+  answers as before on an OIDC-only instance. The integration test pins that, and the question of whether an admin
+  reset should be refused there is left for Kyle.
+- Task 2.5 says `useSuite.js` goes once Task 2.5 removes its last importer. `services/suite.js` is not the only
+  reader of the preference domain: `src/lib/suite-prefs.js` read `suitePreferenceDomain`, so `useSuite.js` goes in
+  Task 2.6.
+- Task 2.6 says no cookie string written carries `Domain=`. A parent-domain expiry has to carry `Domain=` to reach the
+  parent at all. The value-bearing write never does, and the expiry writes carry `Max-Age=0` only.
+- Task 2.7 names `docs/maps/suite-ui-alignment-record.md` as retired. The code pointed at it from three places
+  (`src/tokens/accents.js`, `tests/design/suite-theme.json` `_rule`, the header of `tests/src/lib/suite-prefs.test.js`);
+  each now points at its own source, and the record's open items are carried into `docs/maps/open-questions.md`
+  section H.
+- Task 2.7 says the design blocks and thresholds move with the code. `tests/design/geometry-fingerprint.json` is re-taken
+  for the removed `.suite-doc-link` rule (its two non-colour declarations); its `_taken` note says so, and the
+  deferred-dark ledger loses the two entries for that rule.
+
 ### Task 2.1 The contract learns `removed`, and boot warns (tests first)
 
 The mechanism every later removal uses. `cloudcodex/env-contract.js` gains a fifth kind:

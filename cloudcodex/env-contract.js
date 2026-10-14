@@ -10,9 +10,11 @@
 // kind: 'required' (boot exits without it), 'required-in-production' (boot
 // exits without it when NODE_ENV=production), 'required-with-local' (boot exits without it
 // while local sign-in is on, which AUTH_PROVIDERS decides), 'default' (unset or blank behaves as
-// `default`) or 'optional' (unset turns something off, or keeps a documented
-// behaviour). requiredWith, on an optional entry: boot requires it whenever
-// the variable it names is set.
+// `default`), 'optional' (unset turns something off, or keeps a documented
+// behaviour) or 'removed' (no longer read for any behaviour: boot prints one line naming the
+// variable and `why` when it is set, then starts; it stays listed for at least one minor release,
+// and out of .env.example and the Environment Variables table). requiredWith, on an optional
+// entry: boot requires it whenever the variable it names is set.
 //
 // perInstance: linking the instance to its workspace supplies the value (its host,
 // credentials, issuer application, webhook subscription and suite link), not the
@@ -100,9 +102,8 @@ export const ENV_CONTRACT = [
     why: 'that application\'s client secret, which also keys the signature on the sign-in flow cookie' },
   { name: 'OIDC_PROVIDER_NAME', kind: 'default', default: 'SSO', perInstance: false,
     why: 'the label on the sign-in button, "Sign in with <name>"' },
-  { name: 'OIDC_ACCOUNT_URL', kind: 'optional', perInstance: true,
-    why: 'the issuer\'s account page, linked from a suite member\'s read-only account settings; https, or plain http '
-      + 'outside production' },
+  { name: 'OIDC_ACCOUNT_URL', kind: 'removed', perInstance: true,
+    why: 'accounts are editable in Codex now; unset it' },
   { name: 'OIDC_LINK_BY_VERIFIED_EMAIL', kind: 'default', default: '1', perInstance: false,
     why: '1 links an existing account to the issuer identity by its verified email when that account has '
       + 'two-factor off; 0 never links by email; any other value exits at boot' },
@@ -129,14 +130,14 @@ export const ENV_CONTRACT = [
     why: 'a comma list of this instance\'s allowlisted service-user ids (the token sub); with the two above, '
       + 'turns on machine JWTs, and a token from any other subject is refused' },
 
-  // Suite mode (the shell's suite cluster and the links it offers)
-  { name: 'SUITE_COMMAND_WORKSPACE_URL', kind: 'optional', perInstance: true,
-    why: 'turns suite mode on: the paired workspace this instance belongs to' },
-  { name: 'SUITE_NAME', kind: 'optional', requiredWith: 'SUITE_COMMAND_WORKSPACE_URL', perInstance: true,
-    why: "the suite's display name, shown only in suite mode" },
-  { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'optional', perInstance: true,
-    why: 'the parent domain the theme and accent cookies are shared on, honoured only in suite mode; must be '
-      + "APP_URL's host or a parent of it" },
+  // Removed in 0.15.0 (the suite integration). Read for nothing; boot names each one that is still set.
+  { name: 'SUITE_COMMAND_WORKSPACE_URL', kind: 'removed', perInstance: true,
+    why: 'suite mode was removed in 0.15.0. Accounts linked to an identity provider now accept a local password '
+      + 'and local two-factor; set AUTH_PROVIDERS=oidc to keep sign-in provider-only. Unset it' },
+  { name: 'SUITE_NAME', kind: 'removed', perInstance: true,
+    why: 'suite mode was removed in 0.15.0; unset it' },
+  { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'removed', perInstance: true,
+    why: 'the theme and accent preference is per host now; unset it' },
 
   // Outbound webhooks
   { name: 'WEBHOOK_URL', kind: 'optional', perInstance: true,

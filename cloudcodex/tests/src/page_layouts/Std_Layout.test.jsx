@@ -31,7 +31,6 @@ import {
   fetchAdminStatus,
 } from '../../../src/util.jsx';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { showModal, standardRedirect, getSessionTokenFromCookie as cookieToken } from '../../../src/util.jsx';
 
 const USER = { id: 1, name: 'Alice', email: 'alice@example.com' };
@@ -103,7 +102,6 @@ describe('Std_Layout, the signed-out front door (W6-CDX-26)', () => {
   }
 
   beforeEach(() => {
-    __resetSuiteCache();
     window.sessionStorage.clear();
     cookieToken.mockReturnValue(null);
     showModal.mockClear();
@@ -115,16 +113,7 @@ describe('Std_Layout, the signed-out front door (W6-CDX-26)', () => {
     window.history.replaceState({}, '', '/');
   });
 
-  it('says so in suite mode after ?signedOut=1, with the suite name, and does not bounce', async () => {
-    stubWorld({ suiteOn: true, providers: ONLY_OIDC });
-    window.history.replaceState({}, '', '/?signedOut=1');
-    renderLayout();
-    expect(await screen.findByText("You're signed out of Example Suite.")).toBeTruthy();
-    expect(standardRedirect).not.toHaveBeenCalled();
-    expect(window.sessionStorage.getItem('c2-oidc-bounce')).toBeNull();
-  });
-
-  it('shows no signed-out sentence outside suite mode, and the welcome as before', async () => {
+  it('shows no signed-out sentence, and the welcome as before', async () => {
     stubWorld({ suiteOn: false, providers: ONLY_OIDC });
     window.history.replaceState({}, '', '/?signedOut=1');
     renderLayout();
@@ -141,7 +130,7 @@ describe('Std_Layout, the signed-out front door (W6-CDX-26)', () => {
     expect(window.sessionStorage.getItem('c2-sign-in-target')).toBe('/doc/9');
   });
 
-  it('opens the modal, and does not redirect to "/", on a deep link with OIDC beside local login outside suite mode', async () => {
+  it('opens the modal, and does not redirect to "/", on a deep link with OIDC beside local login', async () => {
     stubWorld({ suiteOn: false, providers: OIDC_AND_LOCAL });
     window.history.replaceState({}, '', '/doc/9');
     renderLayout();

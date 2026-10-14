@@ -20,7 +20,7 @@ import { acquireInstanceLock } from './services/instance-lock.js';
 import { reconcileEnvSubscription, loadSubscriptions } from './services/webhooks.js';
 import { startWebhookWorker, pruneWebhookRows } from './services/webhook-worker.js';
 import { createShutdown } from './services/shutdown.js';
-import { readSuiteConfig } from './services/suite.js';
+import { warnRemovedVariables, logLinkedIdentities } from './services/removed-env.js';
 import { readiness } from './routes/health.js';
 import app from './app.js';
 
@@ -53,6 +53,14 @@ function onStopSignal(signal) {
 }
 process.on('SIGTERM', () => onStopSignal('SIGTERM'));
 process.on('SIGINT', () => onStopSignal('SIGINT'));
+
+// ─── Name the removed variables that are still set ──────────
+//
+// A variable the server no longer reads is named once, with what to do instead, and boot goes on:
+// silently ignoring it would leave the operator believing a removed behaviour is still on
+// (services/removed-env.js). It runs before every check in this file that can exit (the admin gate, the APP_URL
+// gate, the provider gate, the instance lock). The checks in imported modules run at import, before this line.
+warnRemovedVariables();
 
 // ─── Require Admin credentials before starting ──────────────
 //
@@ -197,6 +205,9 @@ try {
   console.error(`[${new Date().toISOString()}] release schema check failed, continuing:`, err);
 }
 
+// Named once, while the suite variable is still set: how many accounts it leaves with a local password door.
+await logLinkedIdentities(c2_query);
+
 let adminId = null;
 try {
   adminId = await ensureAdminUser();
@@ -234,18 +245,6 @@ setInterval(loadSubscriptions, 60 * 1000).unref();
 // holds, every two seconds. It never throws, and an install with no
 // subscription runs a query per tick that finds nothing.
 const webhookWorker = startWebhookWorker();
-// ─── Validate suite mode ────────────────────────────────────
-//
-// SUITE_COMMAND_WORKSPACE_URL turns suite mode on and SUITE_NAME names it. A
-// bad pair refuses to boot with the sentence that says which rule it broke,
-// rather than starting with a link the switcher would send people to.
-try {
-  readSuiteConfig();
-} catch (err) {
-  console.error(`✖ ${err.message}`);
-  process.exit(1);
-}
-
 // ─── Resolve the port ───────────────────────────────────────
 //
 // PORT is honoured so an instance can run somewhere other than 3000, which a

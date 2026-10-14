@@ -13,7 +13,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, cleanup, within } from '@testing-library/react';
 
-vi.mock('../../../src/hooks/useSuite.js', () => ({ suitePreferenceDomain: vi.fn(() => Promise.resolve(null)) }));
 
 import AppearanceControl from '../../../src/components/AppearanceControl.jsx';
 import * as prefs from '../../../src/lib/suite-prefs.js';
@@ -43,7 +42,6 @@ async function open() {
 
 beforeEach(() => {
   localStorage.clear();
-  prefs.__resetSuitePrefs();
   document.documentElement.removeAttribute('data-accent');
   document.documentElement.style.removeProperty('--cx-accent-h');
   page('dark');

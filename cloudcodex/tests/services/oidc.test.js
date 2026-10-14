@@ -147,37 +147,15 @@ describe('getOidcConfig', () => {
   });
 });
 
-describe('getOidcConfig, accountUrl (OIDC_ACCOUNT_URL, W6-CDX-42)', () => {
-  it('is null when unset and when blank', () => {
-    setOidcEnv();
-    expect(getOidcConfig().accountUrl).toBeNull();
-    process.env.OIDC_ACCOUNT_URL = '  ';
-    expect(getOidcConfig().accountUrl).toBeNull();
-  });
-
-  it('returns the https account page, as given', () => {
+describe('getOidcConfig has no account URL (OIDC_ACCOUNT_URL is removed, CDX-SA-2)', () => {
+  it('carries no accountUrl key, whatever OIDC_ACCOUNT_URL holds', () => {
     setOidcEnv({ OIDC_ACCOUNT_URL: 'https://id.example.test/ui/console/users/me' });
-    expect(getOidcConfig().accountUrl).toBe('https://id.example.test/ui/console/users/me');
+    expect(getOidcConfig()).not.toHaveProperty('accountUrl');
   });
 
-  it('accepts plain http outside production', () => {
-    setOidcEnv({ OIDC_ACCOUNT_URL: 'http://id.localhost:8080/account' });
-    expect(getOidcConfig().accountUrl).toBe('http://id.localhost:8080/account');
-  });
-
-  it('refuses plain http in production', () => {
+  it('does not read OIDC_ACCOUNT_URL, so a value that used to refuse the boot no longer does', () => {
     setOidcEnv({ OIDC_ACCOUNT_URL: 'http://id.example.test/account', NODE_ENV: 'production' });
-    expect(() => getOidcConfig()).toThrow(/OIDC_ACCOUNT_URL must be https/);
-  });
-
-  it('refuses a value that is not a URL', () => {
-    setOidcEnv({ OIDC_ACCOUNT_URL: 'id.example.test/account' });
-    expect(() => getOidcConfig()).toThrow(/OIDC_ACCOUNT_URL is not a URL/);
-  });
-
-  it('refuses a URL with credentials', () => {
-    setOidcEnv({ OIDC_ACCOUNT_URL: 'https://user:pass@id.example.test/account' });
-    expect(() => getOidcConfig()).toThrow(/OIDC_ACCOUNT_URL must be https/);
+    expect(() => getOidcConfig()).not.toThrow();
   });
 });
 

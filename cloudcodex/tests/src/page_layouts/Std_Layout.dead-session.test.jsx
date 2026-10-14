@@ -30,7 +30,6 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { fetchDocument, setSessStorage, showModal } from '../../../src/util.jsx';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { SIGN_IN_TARGET_KEY } from '../../../src/hooks/useSignedOutTarget.js';
 import { setUnsaved, __resetUnsaved } from '../../../src/lib/unsaved-changes.js';
 
@@ -90,7 +89,6 @@ let realLocation;
 beforeEach(() => {
   realLocation = window.location;
   __resetUnsaved();
-  __resetSuiteCache();
   window.sessionStorage.clear();
   document.cookie = 'sessionToken=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
   showModal.mockClear();

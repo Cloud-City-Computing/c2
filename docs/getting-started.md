@@ -203,7 +203,6 @@ All seed accounts use the password **`password`**.
 | `OIDC_CLIENT_ID` | This instance's application client ID at the issuer. Set it with `OIDC_ISSUER_URL` | — |
 | `OIDC_CLIENT_SECRET` | That application's client secret. Set it with `OIDC_ISSUER_URL` | — |
 | `OIDC_PROVIDER_NAME` | The label on the sign-in button, "Sign in with <name>" | `SSO` |
-| `OIDC_ACCOUNT_URL` | The issuer's account page. In suite mode a signed-in-through-the-issuer account reads its name, email, password and two-factor as managed by the provider, linked here (no link when unset). `https`, or plain `http` outside production | — |
 | `OIDC_LINK_BY_VERIFIED_EMAIL` | `1` links an existing account by its verified email when that account has two-factor off; `0` never links by email | `1` (on) |
 | `OIDC_SESSION_TTL_HOURS` | How long an OIDC sign-in lasts, in whole hours | `24` |
 | `LEGACY_SESSION_COOKIE` | Whether a lone `sessionToken` cookie from before the https session cookie became `__Host-sessionToken` still signs its holder in. Only `0` turns it off (for an https instance sharing its domain with hosts you do not control) | `1` (on) |
@@ -219,11 +218,20 @@ All seed accounts use the password **`password`**.
 | `WEBHOOK_SECRET` | That subscription's signing secret, at least 32 characters, never stored in the database | unset (optional) |
 | `WEBHOOK_WORKSPACE_ID` | Send only this workspace's events to it; unset sends every workspace's | unset (optional) |
 | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `1` lets any webhook reach loopback and private addresses; link-local and metadata addresses are always refused | unset (optional) |
-| `SUITE_COMMAND_WORKSPACE_URL` | The Cloud Command workspace this instance belongs to. Setting it turns suite mode on: the shell shows the suite cluster and its switcher. The workspace's Cloud Command URL: an origin plus `/w/<workspace id>`, with no query, fragment or further path; `https` (plain `http` only outside production) and no user or password; a bad value stops the boot | unset (off) |
-| `SUITE_NAME` | The suite's display name, shown only in suite mode. Required when `SUITE_COMMAND_WORKSPACE_URL` is set: 1 to 40 characters, no control characters | unset |
-| `SUITE_PREFERENCE_DOMAIN` | The parent domain the theme and accent cookies are shared on, so a choice applies across the suite's products. Honoured only in suite mode. Lowercase, two or more labels, no scheme, port, path or dots at either end, not an IP address or `localhost`; `APP_URL`'s host must be it or end with `.` plus it, or the boot stops | unset (per-product, in localStorage) |
 
 ---
+
+## Removed variables
+
+These variables were read by an earlier release and are no longer read for any behaviour. Setting one
+prints a line at boot naming it, then the server starts as it would without it. Unset them.
+
+| Variable | What to do |
+|---|---|
+| `SUITE_COMMAND_WORKSPACE_URL` | suite mode was removed in 0.15.0. Accounts linked to an identity provider now accept a local password and local two-factor; set AUTH_PROVIDERS=oidc to keep sign-in provider-only. Unset it |
+| `SUITE_NAME` | suite mode was removed in 0.15.0; unset it |
+| `SUITE_PREFERENCE_DOMAIN` | the theme and accent preference is per host now; unset it |
+| `OIDC_ACCOUNT_URL` | accounts are editable in Codex now; unset it |
 
 ## NPM Scripts
 

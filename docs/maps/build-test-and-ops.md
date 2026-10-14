@@ -438,12 +438,12 @@ manifest lists.
 |---|---|
 | `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy (run with the TAP reporter named and `NODE_OPTIONS` dropped, so the summary parses on Node 24, whose default reporter is spec) |
 | `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
-| `z-index.test.js` | every CSS `z-index` and React `zIndex` is a `var(--z-*)` that the vendored `core.css` declares, with a floor of 12 CSS declarations; the shell layers (W6-CDX-40: the sidebar at base, the account menu and the search palette above it and the editor overlays) is read from the real rules (W6-CDX-25, the suite-switcher fix) |
+| `z-index.test.js` | every CSS `z-index` and React `zIndex` is a `var(--z-*)` that the vendored `core.css` declares, with a floor of 12 CSS declarations; the shell layers (W6-CDX-40: the sidebar at base, the account menu and the search palette above it and the editor overlays) is read from the real rules |
 | `suite-name.test.js` | no application source (`src`, `routes`, `services`, `middleware`, `scripts`, the root files) spells the suite name outside a `Cloud City Computing` header (W6-CDX-25, Decision 8) |
 | `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
 | `contrast.test.js` | every pair in `pairs.json` clears its minimum in each theme (dark and daylight, W6-CDX-43), and every colour binding in `src/codex.css` is in a pair, named decorative, or a `--cx-deferred-` binding that `deferred-colour.test.js` measures |
 | `deferred-colour.test.js` | every text colour in the editor, comments, GitHub and read-only sections, measured where it paints (over its own background, composited, or over each surface), at 4.5:1 in both themes; every `--cx-deferred-` binding is declared in both themes and read |
-| `geometry-fingerprint.test.js` | the SHA-256 of every non-colour declaration in the deferred families, against `geometry-fingerprint.json` (taken before the W6-CDX-43 colour pass); a layout change there fails (K3) |
+| `geometry-fingerprint.test.js` | the SHA-256 of every non-colour declaration in the deferred families, against `geometry-fingerprint.json` (taken before the W6-CDX-43 colour pass; re-taken by CDX-SA-2 when the `.suite-doc-link` rule left, see that file's `_taken`); a layout change there fails (K3) |
 | `bridge.test.js` | the 22 legacy names (W6-CDX-38 retired the two hover names and the three radius names, which core's values now serve) and the five fallback names in `index.css`'s `:root` are each one `var()` into `codex.css` or `core.css`, resolve through the vendored resolver, and hold no literal (the colour ones resolve to a colour) |
 | `painted.test.js` | the labels the page actually paints, read from the real `src/index.css` declarations and resolved through the bridge: ink (`--cx-on-accent`) on the accent fill for the default and all eight hues at 4.5:1 or more; white on the accent dark (avatars) at 4.5:1 or more; the danger fill (`--cx-danger-fill`) with the dark ink (`--cx-on-danger`) at 4.5:1 or more at rest, pressed and on the delete hover, and the button hover an inset ring on the same fill with no background declared (W6-CDX-38); the primary hover at 4.5:1 on every hue; the focus ring (`:focus-visible`) at 3:1 on all four surfaces (the two hover steps retired in W6-CDX-38) for the default and eight hues, and no rule in `index.css` removes an outline; each toast label at 4.5:1 on the toast surface; a dialog close control at 4.5:1 on the dialog panel at rest and on hover, on the default and eight hues; the `.gh-merge-dialog__pane` clip draws its ring inside the control |
 | `presence-palette.test.js` | every presence cursor colour in `services/cursor-colors.js` has a label (white, the ink or black, chosen by `src/lib/avatar-label.js`) that clears 4.5:1, measured through the real tokens |
@@ -845,7 +845,7 @@ empties `document.body`.
 lines 43   statements 40   branches 33   functions 26
 ```
 
-Above that sit **40 per-glob thresholds** (this map and the root `CLAUDE.md`
+Above that sit **48 per-glob thresholds** (this map and the root `CLAUDE.md`
 both used to say 26, which was a miscount). The 30th, `services/identity.js`,
 arrived with the identity seam; the 31st, `services/session-token.js` (95 on
 all four), with hashed sessions; the 32nd, `routes/doc-images-serve.js` (95
@@ -996,7 +996,7 @@ reports blocks a merge permanently rather than failing it.
    post-baseline migrations do not upgrade a pre-runner schema to exactly what
    `init.sql` builds (section 5). A tag is not evidence the commit is green, because
    tags can point at any commit and `ci.yml` only runs on `main`. The coverage
-   run is not optional padding: the 40 per-glob thresholds are CI's real gate,
+   run is not optional padding: the 48 per-glob thresholds are CI's real gate,
    so omitting it would make the release path weaker than the thing it claims
    to be re-proving.
 2. **publish** needs `verify`, then builds `./cloudcodex` with buildx and

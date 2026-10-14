@@ -31,7 +31,16 @@ const BARE_ENV_ALLOWED = {
   'scripts/migrate.js': ['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME'],
 };
 
-const KINDS = ['required', 'required-in-production', 'required-with-local', 'default', 'optional'];
+const KINDS = ['required', 'required-in-production', 'required-with-local', 'default', 'optional', 'removed'];
+
+// Variables removed from the code, grown by each PR of the standalone track. Each stays a `removed`
+// entry (never deleted) so that a removed variable cannot quietly come back as `optional`.
+const REMOVED_IN_0_15 = Object.freeze([
+  'SUITE_COMMAND_WORKSPACE_URL',
+  'SUITE_NAME',
+  'SUITE_PREFERENCE_DOMAIN',
+  'OIDC_ACCOUNT_URL',
+]);
 
 function sourceFiles(dir, rel = '') {
   const out = [];
@@ -144,6 +153,9 @@ function contractProblems(contract) {
     if (typeof e.perInstance !== 'boolean') problems.push(`${e.name} has no boolean perInstance`);
     if (typeof e.why !== 'string' || e.why.trim() === '') problems.push(`${e.name} has no why`);
     if (e.kind === 'default' && typeof e.default !== 'string') problems.push(`${e.name} is a default with no default string`);
+    if (e.kind === 'removed' && ('default' in e || 'requiredWith' in e)) {
+      problems.push(`${e.name} is removed but carries a default or requiredWith`);
+    }
     if (e.kind !== 'default' && 'default' in e) problems.push(`${e.name} carries a default but is ${e.kind}`);
     if ('requiredWith' in e) {
       if (e.kind !== 'optional') problems.push(`${e.name} has requiredWith but is ${e.kind}`);
@@ -175,6 +187,37 @@ function envTableRows(markdown) {
 }
 
 /**
+ * The rows of the Removed variables table in docs/getting-started.md, as name -> the row's text, for
+ * every row whose first cell is one backticked name.
+ */
+function removedTableRows(markdown) {
+  const section = markdown.split(/^## /m).find((s) => s.startsWith('Removed variables'));
+  const rows = new Map();
+  if (!section) return rows;
+  for (const line of section.split('\n')) {
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    const name = cells[0]?.match(/^`([A-Z][A-Z0-9_]*)`$/);
+    if (name) rows.set(name[1], line);
+  }
+  return rows;
+}
+
+/**
+ * Every way the Removed variables table disagrees with the removed entries: a removed entry with no
+ * row, or a row that does not repeat the entry's `why`, which says what to do instead.
+ */
+function removedTableProblems(contract, markdown) {
+  const rows = removedTableRows(markdown);
+  const problems = [];
+  for (const e of contract.filter((x) => x.kind === 'removed')) {
+    const row = rows.get(e.name);
+    if (!row) { problems.push(`${e.name} has no Removed variables row`); continue; }
+    if (!row.includes(e.why)) problems.push(`${e.name} is removed but its row does not repeat its why`);
+  }
+  return problems;
+}
+
+/**
  * Every way the table disagrees with a contract, as sentences: an entry with
  * no row, and a row whose Default column contradicts the entry's kind.
  */
@@ -182,6 +225,10 @@ function envTableProblems(contract, markdown) {
   const rows = envTableRows(markdown);
   const problems = [];
   for (const e of contract) {
+    if (e.kind === 'removed') {
+      if (rows.has(e.name)) problems.push(`${e.name} is removed but still has an Environment Variables row`);
+      continue;
+    }
     const row = rows.get(e.name);
     if (!row) { problems.push(`${e.name} has no row`); continue; }
     if (e.kind === 'required' && !/required/i.test(row.value)) {
@@ -343,12 +390,17 @@ describe('env-contract.js', () => {
     }
   });
 
-  it('documents every variable in the repository .env.example', () => {
+  it('documents every variable in the repository .env.example, and no removed one', () => {
     const example = readFileSync(path.join(REPO, '.env.example'), 'utf8');
     const undocumented = ENV_CONTRACT
+      .filter((e) => e.kind !== 'removed')
       .map((e) => e.name)
       .filter((name) => !new RegExp(`^#?\\s*${name}=`, 'm').test(example));
     expect(undocumented).toEqual([]);
+    const listed = ENV_CONTRACT.filter((e) => e.kind === 'removed')
+      .filter((e) => new RegExp(`^#?\\s*${e.name}=`, 'm').test(example))
+      .map((e) => e.name);
+    expect(listed).toEqual([]);
   });
 
   // The table is where an operator reads what to set, so an entry the table
@@ -358,6 +410,18 @@ describe('env-contract.js', () => {
     const markdown = readFileSync(path.join(REPO, 'docs', 'getting-started.md'), 'utf8');
     expect(envTableRows(markdown).get('DB_USER')).toBeDefined();
     expect(envTableProblems(ENV_CONTRACT, markdown)).toEqual([]);
+  });
+
+  it('lists every removed variable under Removed variables, repeating its why, and nowhere else', () => {
+    const markdown = readFileSync(path.join(REPO, 'docs', 'getting-started.md'), 'utf8');
+    expect(removedTableProblems(ENV_CONTRACT, markdown)).toEqual([]);
+    expect(removedTableRows(markdown).size).toBe(ENV_CONTRACT.filter((e) => e.kind === 'removed').length);
+  });
+
+  it('keeps every variable removed in 0.15 a removed entry, so it cannot come back as optional', () => {
+    const kinds = Object.fromEntries(ENV_CONTRACT.map((e) => [e.name, e.kind]));
+    const notRemoved = REMOVED_IN_0_15.filter((name) => kinds[name] !== 'removed');
+    expect(notRemoved).toEqual([]);
   });
 
   it('is data only: no import, no export but ENV_CONTRACT, no require', () => {

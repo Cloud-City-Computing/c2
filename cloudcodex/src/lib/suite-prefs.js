@@ -1,14 +1,15 @@
 /**
- * Cloud Codex - the suite preference contract (W6-CDX-44)
+ * Cloud Codex - the theme and accent preference (W6-CDX-44, host-only since CDX-SA-2)
  *
  * The one module that reads, writes, clears, migrates and keeps open pages in step for the theme and
- * the accent, exactly as docs/maps/suite-ui-alignment-record.md's "suite preference contract"
- * states it. Cloud Command implements the same contract; a change to it lands in both products.
+ * the accent. The cookie names (cc_suite_theme, cc_suite_accent) are kept from the shared-cookie era, so
+ * a choice made before the change still reads back.
  *
  * Reads: a valid cookie, then localStorage, then (accent only) the legacy Codex key, then the system
- * (theme) or the package's fixed ramp (accent). Writes: the shared cookie when the preference domain
- * is in use, a host-only expiry beside it, then localStorage. No write happens before the domain is
- * known (suitePreferenceDomain), and a failed read holds the write rather than guessing host-only.
+ * (theme) or the package's fixed ramp (accent). Writes happen at once and are host-only: the value-bearing
+ * cookie has no Domain, then the name is expired on each parent domain of this host (so a cookie an older
+ * build shared across the parent cannot shadow the new choice), then localStorage. On localhost there is
+ * no parent to expire on.
  * The pre-paint script in index.html applies the same precedence before first paint; the test in
  * tests/src/theme-boot.test.js runs that script against these cases.
  *
@@ -16,7 +17,6 @@
  * https://cloudcitycomputing.com
  */
 
-import { suitePreferenceDomain } from '../hooks/useSuite.js';
 import { ACCENTS, isAccent, successorOf } from '../tokens/accents.js';
 
 export const THEME_NAME = 'cc_suite_theme';
@@ -96,63 +96,42 @@ export function resolveAccent() {
   return stored !== null ? Number(stored) : legacyAccentHue();
 }
 
-/**
- * The preference domain when the host is under it (the dot boundary: the host equals it or ends with
- * "." plus it), else null. A null domain means every write is host-only.
- */
-export function domainInUse(hostname, domain) {
-  if (!domain) return null;
-  return hostname === domain || hostname.endsWith(`.${domain}`) ? domain : null;
-}
-
-// --- The domain, and held writes ---------------------------------------------
-
-let domainPromise = null;
-let domainKnown = false;
-let domainValue = null;
-
-function knowDomain() {
-  domainPromise ??= suitePreferenceDomain().then(
-    (domain) => {
-      domainKnown = true;
-      domainValue = domain;
-      return domain;
-    },
-    (error) => {
-      domainPromise = null; // the next write asks again
-      throw error;
-    },
-  );
-  return domainPromise;
-}
-
-/** Runs `write(domain)` now when the domain is known, else once it is; a failed read drops the write. */
-function whenDomainKnown(write) {
-  if (domainKnown) {
-    write(domainValue);
-    return Promise.resolve();
-  }
-  return knowDomain().then((domain) => write(domain), () => {});
-}
-
 // --- Writing -----------------------------------------------------------------
 
-function writeChoice(name, value, domain) {
-  const shared = domainInUse(location.hostname, domain);
+/**
+ * The domains a cookie of this host may have been scoped to, nearest first: the host itself (an old build
+ * set Domain=<host> when the preference domain was the host), then its parents. a.b.example.test gives
+ * a.b.example.test, b.example.test and example.test, never test. An address or localhost has none.
+ */
+function scopeDomains() {
+  const host = location.hostname;
+  // An address has no domain, and a browser refuses a Domain attribute that names one.
+  if (host.includes(':') || /^[\d.]+$/.test(host) || !host.includes('.')) return [];
+  const labels = host.split('.');
+  const domains = [host];
+  for (let i = 1; i < labels.length - 1; i += 1) domains.push(labels.slice(i).join('.'));
+  return domains;
+}
+
+/** Writes the value host-only, then expires the name on each domain this host could have scoped it to. */
+function writeChoice(name, value) {
   const secure = location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${name}=${value}; Path=/; Max-Age=${MAX_AGE}; SameSite=Lax${secure}${shared ? `; Domain=${shared}` : ''}`;
-  if (shared) document.cookie = `${name}=; Path=/; Max-Age=0`;
+  document.cookie = `${name}=${value}; Path=/; Max-Age=${MAX_AGE}; SameSite=Lax${secure}`;
+  expireOnScopes(name);
   try {
     localStorage.setItem(name, value);
   } catch {
-    // Storage blocked: the cookie (when written) still carries the choice.
+    // Storage blocked: the cookie still carries the choice.
   }
 }
 
-function expireChoice(name, domain) {
-  const shared = domainInUse(location.hostname, domain);
-  if (shared) document.cookie = `${name}=; Path=/; Max-Age=0; Domain=${shared}`;
+function expireOnScopes(name) {
+  for (const domain of scopeDomains()) document.cookie = `${name}=; Path=/; Max-Age=0; Domain=${domain}`;
+}
+
+function expireChoice(name) {
   document.cookie = `${name}=; Path=/; Max-Age=0`;
+  expireOnScopes(name);
   try {
     localStorage.removeItem(name);
   } catch {
@@ -188,38 +167,35 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-/**
- * Chooses light or dark. The page changes at once and subscribers hear it; the stores follow when the domain
- * is known, and subscribers hear that too, so none is left reading a store the held write has not reached yet.
- */
+/** Chooses light or dark: the page and the stores change at once, and subscribers hear it. */
 export function setTheme(value) {
-  if (!isTheme(value)) return Promise.resolve();
+  if (!isTheme(value)) return;
   applyTheme(value);
+  writeChoice(THEME_NAME, value);
   notify();
-  return whenDomainKnown((domain) => writeChoice(THEME_NAME, value, domain)).then(notify);
 }
 
 /** Match system: expires the stored choice, and the page follows the operating system. */
 export function clearTheme() {
   applyTheme(systemTheme());
+  expireChoice(THEME_NAME);
   notify();
-  return whenDomainKnown((domain) => expireChoice(THEME_NAME, domain)).then(notify);
 }
 
 /** Chooses one of the eight picker hues. */
 export function setAccent(hue) {
   const value = String(hue);
-  if (!isHue(value)) return Promise.resolve();
+  if (!isHue(value)) return;
   applyAccent(Number(value));
+  writeChoice(ACCENT_NAME, value);
   notify();
-  return whenDomainKnown((domain) => writeChoice(ACCENT_NAME, value, domain)).then(notify);
 }
 
 /** Default: expires the stored accent, and the package's own ramp returns. */
 export function clearAccent() {
   applyAccent(null);
+  expireChoice(ACCENT_NAME);
   notify();
-  return whenDomainKnown((domain) => expireChoice(ACCENT_NAME, domain)).then(notify);
 }
 
 // --- Keeping open pages in step ----------------------------------------------
@@ -273,9 +249,9 @@ export function watch() {
 /**
  * Moves a stored Codex accent (c2-user-prefs.accentColor) into the contract, once, then removes it from
  * the prefs object. The contract write lands before the legacy key is deleted, and a stored contract
- * accent wins over the legacy one. If the domain cannot be read, nothing moves and nothing is deleted.
+ * accent wins over the legacy one.
  */
-export async function migrateLegacy() {
+export function migrateLegacy() {
   let prefs;
   try {
     prefs = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
@@ -283,11 +259,6 @@ export async function migrateLegacy() {
     return;
   }
   if (prefs === null || typeof prefs !== 'object' || !Object.hasOwn(prefs, 'accentColor')) return;
-  try {
-    await knowDomain();
-  } catch {
-    return;
-  }
   const hue = legacyAccentHue();
   if (hue !== null && storedAccentValue() === null) void setAccent(hue);
   delete prefs.accentColor;
@@ -299,9 +270,3 @@ export async function migrateLegacy() {
   applyPreferences();
 }
 
-/** Test seam: forget the domain so the next write asks for it again. */
-export function __resetSuitePrefs() {
-  domainPromise = null;
-  domainKnown = false;
-  domainValue = null;
-}

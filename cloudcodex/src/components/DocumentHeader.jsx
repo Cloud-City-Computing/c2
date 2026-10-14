@@ -14,7 +14,6 @@
 
 import PageHeader from './PageHeader';
 import CollabPresence from './CollabPresence';
-import SuiteDocLink from './SuiteDocLink';
 import { PencilIcon, StarIcon } from './icons.jsx';
 
 function WatchIcon({ watching }) {
@@ -30,7 +29,6 @@ function WatchIcon({ watching }) {
 
 export default function DocumentHeader({
   doc,
-  logId,
   viewMode,
   canEdit,
   editingTitle,
@@ -39,7 +37,6 @@ export default function DocumentHeader({
   onTitleSave,
   onStartTitleEdit,
   onOpenArchive,
-  suiteArchiveId,
   collabUsers,
   collabConnected,
   isFavorited,
@@ -88,7 +85,6 @@ export default function DocumentHeader({
     <>
       <span className="document-meta__author">Created by {doc.name || 'Unknown'}</span>
       <span className="document-meta__version">v{doc.version ?? 1} &middot; {new Date(doc.created_at).toLocaleString()}</span>
-      <SuiteDocLink archiveId={suiteArchiveId} logId={logId} />
     </>
   );
 

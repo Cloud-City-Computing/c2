@@ -338,9 +338,9 @@ update their name, email, and password, and customize appearance preferences
 including accent color, editor font size, and default editor mode. Density and the sidebar
 default were removed (W6-CDX-42); a value an earlier build stored is dropped on load.
 
-In suite mode an account that signs in through the issuer has its name, email, password and
-two-factor managed there: the Account page shows those as read-only with a link to the issuer's account page
-(`OIDC_ACCOUNT_URL`), and the server refuses the same writes with `managed_by_issuer`.
+An account that signs in through an OIDC issuer keeps its own name, email, password and two-factor in
+Codex: the Account page edits them like any other account. The two-factor panel says that sign-in is managed by
+the issuer when the account's session came through it.
 
 ---
 

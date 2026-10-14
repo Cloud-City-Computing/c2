@@ -1,7 +1,7 @@
 /**
  * Cloud Codex - the Workspaces page renders the shared page header (W6-CDX-42, A5)
  *
- * Outside suite mode the Workspaces page is still reachable. Its title is the page's h1 inside the shared
+ * The Workspaces page is reachable. Its title is the page's h1 inside the shared
  * PageHeader, and an admin's one primary action sits in the header's action slot.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026

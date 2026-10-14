@@ -74,34 +74,12 @@ function isAcceptableIssuer(url) {
 }
 
 /**
- * OIDC_ACCOUNT_URL: the issuer's own account page, where a suite member changes what the issuer owns
- * (W6-CDX-42, K6). Optional and per instance; null when unset or blank. https, or plain http outside production
- * (the rule for the suite's own links), with no user or password in it.
- * @returns {string | null}
- */
-function readAccountUrl() {
-  const raw = process.env.OIDC_ACCOUNT_URL?.trim();
-  if (!raw) return null;
-  let url;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error('OIDC_ACCOUNT_URL is not a URL; use the issuer\'s account page address.');
-  }
-  const production = process.env.NODE_ENV === 'production';
-  if (!(url.protocol === 'https:' || (url.protocol === 'http:' && !production)) || url.username || url.password) {
-    throw new Error('OIDC_ACCOUNT_URL must be https (http only outside production), with no user or password.');
-  }
-  return url.href;
-}
-
-/**
  * Reads and checks the OIDC settings, each by its literal variable name (the configuration
  * contract's scan sees only those). Returns null when no issuer is set, which turns OIDC off.
  * Throws, naming the variable, on any setting that would make a sign-in fail or be insecure.
  * @returns {null | {
  *   issuer: string, clientId: string, clientSecret: string, redirectUri: string,
- *   appUrl: string, secure: boolean, providerName: string, accountUrl: string | null, linkByVerifiedEmail: boolean,
+ *   appUrl: string, secure: boolean, providerName: string, linkByVerifiedEmail: boolean,
  *   sessionTtlHours: number
  * }}
  */
@@ -143,7 +121,6 @@ export function getOidcConfig() {
   }
 
   const providerName = process.env.OIDC_PROVIDER_NAME || 'SSO';
-  const accountUrl = readAccountUrl();
 
   const linkSetting = process.env.OIDC_LINK_BY_VERIFIED_EMAIL;
   if (linkSetting !== undefined && linkSetting !== '' && linkSetting !== '0' && linkSetting !== '1') {
@@ -168,7 +145,6 @@ export function getOidcConfig() {
     appUrl: appUrl.origin,
     secure: appUrl.protocol === 'https:',
     providerName,
-    accountUrl,
     linkByVerifiedEmail,
     sessionTtlHours,
   };

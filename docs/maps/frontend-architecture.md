@@ -170,10 +170,8 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 | `useCollab.js` | the `/collab` WebSocket and the shared `Y.Doc`; returns connection state, presence, cursors, and five senders |
 | `usePresence.js` | polls `/api/presence` for who is in which document, for browse/archive views |
 | `useNotificationChannel.js` | the `/notifications-ws` socket, feeding the Notifications nav item's unread count in `Sidebar.jsx` |
-| `useSuite.js` | suite mode: `GET /api/suite` once per page load, and `GET /api/suite/links` only for a signed-in user while suite mode is on. Any failure reads as off. `__resetSuiteCache` is the test seam |
-| `useSuiteLinks(signedIn)` (`src/hooks/useSuite.js:80`) | the same two requests for a page outside the layout's user state (the editor), made only when `signedIn` (a signed-out viewer makes no request): `{ commandWorkspaceUrl }` in suite mode, `null` otherwise or on any failure |
 | `src/lib/sign-in-target.js` | the kept deep link under `c2-sign-in-target`; `getStorage()` returns null when sessionStorage throws, which every caller treats as refused (fail closed) |
-| `useSignedOutTarget.js` | the signed-out deep-link decision (W6-CDX-8, W6-CDX-26). `useSignedOutTarget()` (`:164`) asks `/api/oauth/providers` and `suiteEnabled()`, then `resolveSignedOut` (`:107`) returns `bounced`, `login` or `landing`. The pure rule is `decideSignedOut` (`:54`); every target goes through `safeReturnTo` (`services/return-to.js`), the one validator the server uses |
+| `useSignedOutTarget.js` | the signed-out deep-link decision (W6-CDX-8, W6-CDX-26). `useSignedOutTarget()` (`:176`) asks `/api/oauth/providers` only, then `resolveSignedOut` (`:105`) returns `bounced`, `login` or `landing`. The pure rule is `decideSignedOut` (`:53`); every target goes through `safeReturnTo` (`services/return-to.js`), the one validator the server uses |
 | `useGitHubStatus.jsx` | whether the user has linked GitHub; gates every GitHub affordance. The provider asks `GET /api/github/status` only while `enabled`, and reads `false` while not, `null` from enabling until the answer |
 | `useGitHubLink.js` | per-document link and sync state, drives `GitHubSyncBanner`; with `{ enabled: false }` it asks nothing and reports no link |
 | `useClickOutside.js` | dismiss-on-outside-click for menus and popovers |
@@ -212,41 +210,15 @@ the next load). A fetch failure on mount leaves `firstRun` `null`, which
 renders nothing, on purpose: onboarding must never be able to gate the rest
 of the application.
 
-## 3b. Suite mode (W6-CDX-25; the shell moved in W6-CDX-40)
-
-Suite mode is off unless the server reads `SUITE_COMMAND_WORKSPACE_URL` (`services/suite.js:17`,
-`readSuiteConfig`). Boot calls it once and exits 1 with its sentence on a refusal (`server.js:199`).
-`routes/suite.js` mounts `GET /api/suite` (public, `enabled`, `name` and `preferenceDomain`, the parent domain the theme cookie is shared on, W6-CDX-44) and
-`GET /api/suite/links` (`requireAuth`, 404 when off), registered in `app.js` beside the other
-`/api` routers. In the client, `useSuite(user)` (`src/hooks/useSuite.js:40`) feeds
-`StdLayout`, which passes `suite` to `Sidebar` (`src/components/Sidebar.jsx`). `Sidebar` renders
-`SuiteCluster` at the top of the column only when the user is signed in and suite mode is on with a
-URL; otherwise the top is the product mark (`ProductMark`) and the name. `SuiteCluster`
-(`src/components/SuiteCluster.jsx`) is a non-modal disclosure, not `role="menu"`: this product
-(`aria-current="true"`), Cloud Command, a separator, All workspaces (`/?switch=1`, Cloud Command's
-choice). Its mark is an SVG (`svg.cc-suite__mark`, K10), and its panel opens inline in the sidebar's
-flow under the toggle. Open state resets on every history entry (`location.key`). In suite mode
-Workspaces is absent from the nav and `/workspaces` redirects home (`WorkspacesGate`, K9).
-
-`SuiteDocLink` (`src/components/SuiteDocLink.jsx:18`, W6-CDX-27) is the link out to Cloud
-Command's Linked tasks page for a document (W6-CMD-25), `<workspace URL>/docs/<archiveId>/<logId>`,
-built by `suiteDocHref` (`src/lib/suite-doc-href.js:27`, kept out of the component file so the
-fast-refresh lint rule holds). It renders nothing outside suite mode, before the
-archive id is known, for a signed-out viewer, when the URL is not http(s), or when an id is not a
-positive int4. The archive id is passed only once the loaded document's id is the route's log id. It
-is mounted once in the document header's meta line (`DocumentHeader.jsx:91`, rendered by `Editor.jsx`); the class `.suite-doc-link` is
-in `src/index.css`, and its colour is measured in `tests/design/painted.test.js`.
-
 ## 3c. The signed-out front door (W6-CDX-26)
 
 A signed-out visitor's deep link has three outcomes, decided by `decideSignedOut`
-(`src/hooks/useSignedOutTarget.js:54`). The `/404` page always answers `landing`, and never asks
-the server. Where OIDC is offered and is the only sign-in (`isOidcOnly`, `:37`), or suite mode is on,
-the link bounces once per tab to `/api/auth/oidc/start?returnTo=`. The marker is
+(`src/hooks/useSignedOutTarget.js:53`). The `/404` page always answers `landing`, and never asks
+the server. Where OIDC is the only sign-in (`isOidcOnly`, `:36`), the link bounces once per tab to `/api/auth/oidc/start?returnTo=`. The marker is
 `sessionStorage["c2-oidc-bounce"]`, cleared on a successful sign-in (`clearOidcBounce`, called from
 `Std_Layout.jsx` `checkAuth`). An `oauth_error` return renders the landing. Where no OIDC is offered,
 the validated target is kept under `c2-sign-in-target` (`src/lib/sign-in-target.js`) and the caller
-opens the Login modal. That also covers OIDC offered beside local login outside suite mode, so a deep link
+opens the Login modal. That also covers OIDC offered beside local login, so a deep link
 never redirects to `/`. Dismissing the modal (`destroyModal`, `util.jsx`) forgets the kept target; `Login.jsx` `finishSignIn` sends a successful sign-in to the kept target, or reloads. A `bounced` result needs no other work.
 
 A session that the server ends while the tab is open (a sign-out in the other product) is caught by the first
@@ -273,15 +245,13 @@ It does not bounce when the marker is set, when an `oauth_error` came back, or w
 OIDC, keeps its sign-in screen on `/`, so self-hosters are not stranded. Command's `BOUNCE_BARE_ROOT`
 is a separate flag in the Command repo, and this change does not touch it.
 
-- **The landing after a sign-out.** `?signedOut=1` on `/` shows "You're signed out of <name>." in
-  suite mode only (`NoLoginMessage`, `Std_Layout.jsx:247`; the name is `useSuite`'s, never a literal).
-  Outside suite mode the landing is unchanged. The sidebar footer's sign-out (`src/lib/sign-out.js`) sends a local sign-out to
+- **The landing after a sign-out.** `?signedOut=1` on `/` shows the sign-in landing, with its Sign in button
+  and no sentence (`NoLoginMessage` in `Std_Layout.jsx`). The sidebar footer's sign-out (`src/lib/sign-out.js`) sends a local sign-out to
   `/?signedOut=1` (the OIDC path sends the issuer's end-session URL, which returns there too).
 - **The OIDC button's name.** `GET /api/oauth/providers` names the button `OIDC_PROVIDER_NAME` when it
-  is set, else the suite's name in suite mode, else `SSO` (`oidcButtonName`, `routes/oauth.js:190`).
-- **The Login modal in suite mode.** `Login.jsx` reads `useSuite(null)`. With OIDC offered, the SSO
-  link is `btn-primary` and leads the modal, and the local submit is `btn-ghost`. Suite off, the markup
-  is the snapshot in `tests/src/components/__snapshots__/Login-front-door.test.jsx.snap`.
+  is set, else `SSO` (`oidcButtonName`, `routes/oauth.js:188`).
+- **The Login modal.** With OIDC offered beside local login, the SSO link sits above the local form, as an
+  `btn-oauth` link. Its markup is pinned by the snapshot in `tests/src/components/__snapshots__/Login-front-door.test.jsx.snap`.
 
 ## 4. Components
 
@@ -351,7 +321,7 @@ one:
   is its "Search or jump to" trigger and the Ctrl K dialog (documents from `/api/search`, archives by name, portalled
   into `#palette-root`, registered with `openDialog` so Escape and Tab are the stack's; Ctrl K is a no-op while another
   modal is open); `<AccountFooter>` is the avatar, the name's non-modal menu and the sign-out icon button;
-  `<WorkspacesGate>` sends `/workspaces` to `/` in suite mode (K9); `<PageHeader>` is the page title, meta, primary
+  `/workspaces` renders the Workspaces page for every instance; `<PageHeader>` is the page title, meta, primary
   action, toolbar slot and tab row, and the header's `<AppearanceControl>` (the Appearance popover) after them on every page (W6-CDX-44); `<ProductMark>` is the page glyph on the accent tile (K10). `<NotificationItem>`,
   `<ActivityItem>`, `<CIStatusBadge>`. **`SearchResultItem`
   has no callers**: search results reach the user through `ExploreCard`, so it
@@ -429,28 +399,28 @@ exports breaks the server, not just the client.
 
 Two stores, one per concern, and the seam between them.
 
-**The suite preference contract (theme and accent), W6-CDX-44.** `src/lib/suite-prefs.js` is the one module
-that reads, writes, clears, migrates and keeps open pages in step for `cc_suite_theme` and `cc_suite_accent`.
-The contract (version 2, with `fillHover`) is recorded in full in
-[`suite-ui-alignment-record.md`](suite-ui-alignment-record.md), section 1; the code cites its text.
+**The theme and accent preference, W6-CDX-44, host-only since CDX-SA-2.** `src/lib/suite-prefs.js` is the one
+module that reads, writes, clears, migrates and keeps open pages in step for `cc_suite_theme` and `cc_suite_accent`.
+The cookie names are kept from the shared-cookie era, so a stored choice still reads back. The preference is per
+host: no cookie is shared across a parent domain, and the record of the shared contract is retired (its open items
+are carried in `docs/maps/open-questions.md`, section H).
 
 - Reads (`resolveTheme` `:73`, `resolveAccent` `:94`, `storedThemeChoice` `:68`): the first valid cookie entry, then
   localStorage, then (accent only) the legacy `c2-user-prefs.accentColor` mapped through `successorOf`, then the system
   (theme: `prefers-color-scheme`, dark when no `matchMedia`) or the package's default ramp (accent: unset).
-- Writes (`setTheme` `:195`, `clearTheme` `:203`, `setAccent` `:210`, `clearAccent` `:219`): the shared cookie
-  (`Path=/; Max-Age=34560000; SameSite=Lax`, `Secure` on https, `Domain=` only when `domainInUse` `:103` says the
-  host is under the preference domain), a host-only expiry beside it when the domain is in use, then localStorage.
-  A write waits for the preference domain (`knowDomain`, `whenDomainKnown`). A failed read drops the write; nothing
-  is ever written host-only by guess. The page changes at once, and `subscribe` (`:186`) listeners hear each change,
-  again once a held write lands.
-- Keeping pages in step: `applyPreferences` (`:228`) re-reads both, and mirrors a cookie value into localStorage (the
-  cookie wins). `watch` (`:252`) runs it at boot, on `visibilitychange` to visible, and on a `storage` event for either
+- Writes (`setTheme` `:167`, `clearTheme` `:175`, `setAccent` `:182`, `clearAccent` `:191`) happen at once. The
+  value-bearing cookie (`writeChoice` `:113`) is host-only (`Path=/; Max-Age=34560000; SameSite=Lax`, `Secure` on
+  https, never a `Domain`). Then `expireOnParents` (`:124`) expires the name on each parent domain of the host,
+  nearest first (`parentDomains` `:102`: `a.b.example.test` gives `b.example.test` and `example.test`, never the
+  public suffix; an address or `localhost` has none). Then localStorage. The page and the stores change together,
+  and `subscribe` listeners hear the change.
+- Keeping pages in step: `applyPreferences` (`:200`) re-reads both, and mirrors a cookie value into localStorage (the
+  cookie wins). `watch` (`:224`) runs it at boot, on `visibilitychange` to visible, and on a `storage` event for either
   key. `main.jsx:26-27` calls `watch()` and `migrateLegacy()`.
-- Migration: `migrateLegacy` (`suite-prefs.js:278`) moves `c2-user-prefs.accentColor` into
-  the contract once, writes it before deleting the legacy key, and does nothing when the domain cannot be read.
-- The domain: `useSuite.js` `suitePreferenceDomain` (`:52`) reads `preferenceDomain` from the one cached
-  `GET /api/suite` (`fetchSuiteBody`, shared with `useSuite`). The server side is `services/suite.js`
-  (`readPreferenceDomain`, the boot validation, `SUITE_PREFERENCE_DOMAIN` in `env-contract.js`) and `routes/suite.js:22`.
+- Migration: `migrateLegacy` (`suite-prefs.js:250`) moves `c2-user-prefs.accentColor` into the contract once, writes
+  it before deleting the legacy key, and needs no server answer.
+- There is no preference domain: `SUITE_PREFERENCE_DOMAIN` is a removed variable (`env-contract.js`), and no client
+  code asks the server for a domain.
 
 **The pre-paint script, W6-CDX-44.** `index.html:20-57` is an inline script in the head, after
 `<meta name="color-scheme">` (`:11`), that applies the theme (`data-theme`, the meta's content) and the accent
