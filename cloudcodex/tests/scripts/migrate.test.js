@@ -20,6 +20,7 @@ import {
   listMigrationFiles,
   describeMigrationsDirError,
   schemaClaims,
+  netClaims,
   proceduresCreated,
   sha256,
   parseArgs,
@@ -319,10 +320,62 @@ describe('scripts/migrate', () => {
       );
     });
 
-    it('finds nothing in a file that only drops, modifies or deletes', () => {
-      expect(schemaClaims('ALTER TABLE squad_members DROP COLUMN can_read;')).toEqual([]);
+    it('reads each dropped column as a claim that the column is absent', () => {
+      expect(schemaClaims('ALTER TABLE t DROP COLUMN c;')).toEqual([
+        { kind: 'dropped-column', table: 't', column: 'c' },
+      ]);
+      expect(schemaClaims('ALTER TABLE t DROP COLUMN a, DROP COLUMN b;')).toEqual([
+        { kind: 'dropped-column', table: 't', column: 'a' },
+        { kind: 'dropped-column', table: 't', column: 'b' },
+      ]);
+    });
+
+    it('reads no claim from a drop of a check, an index or a foreign key, nor from a modify or a delete', () => {
+      expect(schemaClaims('ALTER TABLE t DROP CHECK chk_a, DROP INDEX idx_a, DROP FOREIGN KEY fk_a;')).toEqual([]);
       expect(schemaClaims('ALTER TABLE logs MODIFY html_content MEDIUMTEXT;')).toEqual([]);
       expect(schemaClaims('DELETE FROM password_reset_tokens;')).toEqual([]);
+    });
+  });
+
+  describe('netClaims', () => {
+    const file = (filename, contents) => ({ filename, contents });
+
+    it('expects an added column absent when a later file drops it', () => {
+      const net = netClaims([
+        file('a.sql', 'ALTER TABLE t ADD COLUMN c INT;'),
+        file('b.sql', 'ALTER TABLE t DROP COLUMN c;'),
+      ]);
+      expect(net.get('a.sql')).toEqual([
+        { kind: 'column', table: 't', column: 'c', expected: 'absent', decidedBy: 'b.sql' },
+      ]);
+      expect(net.get('b.sql')).toEqual([
+        { kind: 'dropped-column', table: 't', column: 'c', expected: 'absent', decidedBy: 'b.sql' },
+      ]);
+    });
+
+    it('expects a drop with no earlier add absent', () => {
+      const net = netClaims([file('b.sql', 'ALTER TABLE t DROP COLUMN c;')]);
+      expect(net.get('b.sql')).toEqual([
+        { kind: 'dropped-column', table: 't', column: 'c', expected: 'absent', decidedBy: 'b.sql' },
+      ]);
+    });
+
+    it('expects an add with no later drop present', () => {
+      const net = netClaims([file('a.sql', 'ALTER TABLE t ADD COLUMN c INT;')]);
+      expect(net.get('a.sql')).toEqual([
+        { kind: 'column', table: 't', column: 'c', expected: 'present', decidedBy: 'a.sql' },
+      ]);
+    });
+
+    it('lets a later re-add cancel an earlier drop, folding in filename order', () => {
+      const net = netClaims([
+        file('a.sql', 'ALTER TABLE t ADD COLUMN c INT;'),
+        file('b.sql', 'ALTER TABLE t DROP COLUMN c;'),
+        file('c.sql', 'ALTER TABLE t ADD COLUMN c INT;'),
+      ]);
+      expect(net.get('a.sql')).toEqual([
+        { kind: 'column', table: 't', column: 'c', expected: 'present', decidedBy: 'c.sql' },
+      ]);
     });
   });
 
@@ -883,7 +936,7 @@ describe('scripts/migrate', () => {
 
       await expect(
         runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
-      ).rejects.toThrow(/declares no\s+CREATE TABLE, ADD COLUMN or named ADD KEY to check/);
+      ).rejects.toThrow(/declares no\s+CREATE TABLE, ADD COLUMN, DROP COLUMN or named ADD KEY to check/);
     });
 
     it('gives the by-hand INSERT, with the real checksum, for a file it cannot check', async () => {
@@ -923,6 +976,54 @@ describe('scripts/migrate', () => {
       await expect(
         runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
       ).rejects.toThrow(/missing: oauth_accounts\.uq_x/);
+      expect(db.rows.size).toBe(0);
+    });
+
+    // A fresh build of THIS release has no removed columns, so the check must
+    // accept a database where a later drop already holds, and refuse one where
+    // the drop never ran (the column is still there, so it is not a fresh build).
+    it('adopts a file whose added column a later file drops, once the column is absent', async () => {
+      const dir = makeDir({
+        'zz_add.sql': 'ALTER TABLE user_invitations ADD COLUMN grants_admin BOOLEAN NOT NULL DEFAULT FALSE;',
+        'zz_drop.sql': 'ALTER TABLE user_invitations DROP COLUMN grants_admin;',
+      });
+      const db = fakeDb({ tables: ['users'], columns: [] });
+
+      const result = await runMigrations({ query: db.query, dir, adoptFreshInstall: true, log });
+
+      expect(result.baselined).toEqual(['zz_add.sql', 'zz_drop.sql']);
+      expect(result.applied).toEqual([]);
+    });
+
+    it('refuses an added column a later drop has not removed, naming the drop', async () => {
+      const dir = makeDir({
+        'zz_add.sql': 'ALTER TABLE user_invitations ADD COLUMN grants_admin BOOLEAN NOT NULL DEFAULT FALSE;',
+        'zz_drop.sql': 'ALTER TABLE user_invitations DROP COLUMN grants_admin;',
+      });
+      const db = fakeDb({ tables: ['users'], columns: ['user_invitations.grants_admin'] });
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(/user_invitations\.grants_admin[\s\S]*zz_drop\.sql[\s\S]*never ran/);
+      expect(db.rows.size).toBe(0);
+    });
+
+    it('adopts a drop-only file when the column it drops is absent', async () => {
+      const dir = makeDir({ 'zz_drop.sql': 'ALTER TABLE t DROP COLUMN c;' });
+      const db = fakeDb({ tables: ['users'], columns: [] });
+
+      const result = await runMigrations({ query: db.query, dir, adoptFreshInstall: true, log });
+
+      expect(result.baselined).toEqual(['zz_drop.sql']);
+    });
+
+    it('refuses a drop-only file while the column it drops is still present', async () => {
+      const dir = makeDir({ 'zz_drop.sql': 'ALTER TABLE t DROP COLUMN c;' });
+      const db = fakeDb({ tables: ['users'], columns: ['t.c'] });
+
+      await expect(
+        runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
+      ).rejects.toThrow(/t\.c[\s\S]*zz_drop\.sql/);
       expect(db.rows.size).toBe(0);
     });
 

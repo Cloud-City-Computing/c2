@@ -141,7 +141,7 @@ Production-specific notes:
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |
 | `AUTH_PROVIDERS`           | Leave unset for a self-hosted instance. If set, it must include `local` and agree with the Google variables, or the server exits at boot with a sentence saying which. Without `local` it is a [hosted instance](#hosted-mode): `oidc` alone, with the Google variables unset |
 | `LEGACY_SESSION_COOKIE`    | Leave unset. On https the session cookie is `__Host-sessionToken`; unset keeps a browser that still holds the older `sessionToken` signed in and moves it across on its next visit. `0` (https only) makes a lone `sessionToken` sign nobody in: set it when hosts you do not control share your domain. See [security.md](./security.md#the-session-cookie) |
-| `WEBHOOK_*`                | Optional outbound events ([api/webhooks.md](./api/webhooks.md)). `WEBHOOK_URL` must be `https` in production and `WEBHOOK_SECRET` at least 32 characters, or the env subscription is switched off with the reason logged; neither stops the boot. Leave `WEBHOOK_ALLOW_PRIVATE_TARGETS` unset unless the receiver has only a private address |
+| `WEBHOOK_ALLOW_PRIVATE_TARGETS` | Optional. `1` lets a webhook receiver sit on a loopback or private address. Subscriptions are created in Admin, Webhooks ([api/webhooks.md](./api/webhooks.md)) |
 
 Add new env vars to `.env.example` (with a comment) when introducing them.
 
@@ -163,9 +163,8 @@ unset. The server then refuses, on the server and not only in the page:
 account holds it, and otherwise a name derived from `ADMIN_EMAIL`. Its starter workspace is
 named from that account, and it has the `General` squad that synced members join. A boot
 that sets `AUTH_PROVIDERS` without `oidc`, or sets Google's variables, exits with a sentence
-naming the variable. `SERVICE_TOKEN` is unchanged on a hosted instance: machine callers use
-their JWTs (`OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE`, `MACHINE_OIDC_SUBJECTS`) or the static
-credential, as on any instance.
+naming the variable. There is no machine credential on any instance (removed in 0.15.0), so a
+hosted instance has nothing to configure for machine callers.
 
 **Invitations bind on verified email.** An OIDC sign-in whose verified email matches an open
 invitation creates the account with that invitation's squad and flags, once. With no
@@ -397,9 +396,8 @@ tokens (encrypted), session digests and every document. It does **not** hold
 `.env` or any key material, so back those up separately and just as carefully:
 `GITHUB_CLIENT_SECRET` in particular, because every stored GitHub token is
 encrypted under a key derived from it, and a restore under a different secret
-leaves each linked account to link again. `SERVICE_TOKEN`, the sign-in
-providers' client secrets, SMTP credentials and `ADMIN_PASSWORD` are in `.env`
-too.
+leaves each linked account to link again. The sign-in providers' client
+secrets, SMTP credentials and `ADMIN_PASSWORD` are in `.env` too.
 
 **What a backup is consistent to.**
 
@@ -510,6 +508,50 @@ changes.
                                                  |    installs only       |
                                                  +------------------------+
 ```
+
+### Upgrading to 0.15.0 (the sibling connection is removed)
+
+0.15.0 removes the connection to the sibling product, so it changes what an install may set and what it
+deletes. Read this before the upgrade; the full list of removed variables and routes is in
+[getting-started.md](getting-started.md#environment-variables) and the CHANGELOG.
+
+- **Unset the removed variables.** `SERVICE_TOKEN`, `SERVICE_TOKEN_USER`, `MACHINE_OIDC_AUDIENCE`,
+  `MACHINE_OIDC_SUBJECTS`, `WEBHOOK_URL`, `WEBHOOK_SECRET`, `WEBHOOK_WORKSPACE_ID`, and any suite or
+  account variable from before 0.14.0. A set one prints a warning at boot and changes nothing else.
+- **Recreate an env webhook as an admin subscription first**, if you had one: in Admin, Webhooks, with
+  the same URL and workspace filter. Give the receiver the new secret the console shows once. Unset the
+  three `WEBHOOK_*` variables after that.
+- **Search and browse need a session.** A script that sent the service token now signs in as a user.
+- **The migration deletes data.** `2026-10-17-remove-sibling-connection.sql` expires every revoked open
+  invitation and every open invitation the sync made for a workspace owner, deletes the env webhook
+  subscriptions and their queued deliveries, and drops the `grants_admin` and `revoked_at` columns on
+  `user_invitations`. Take a dump first.
+- **Review the Admin users list after the upgrade.** The sync made some accounts instance admins (its
+  workspace owners, once they signed in). Nothing records which accounts those were, so the upgrade cannot
+  demote them. Open Admin, Users and demote any account that should no longer be an admin.
+- **Other open invitations from the membership sync stay open** until they expire (a year from their last
+  refresh). They now admit a plain member, never an admin. To find them (`invited_by` is the former
+  `SERVICE_TOKEN_USER`'s id):
+
+  ```sql
+  SELECT id, email FROM user_invitations WHERE invited_by = <former SERVICE_TOKEN_USER id> AND accepted = FALSE;
+  ```
+
+  Revoke the ones you do not want in Admin, Invitations.
+- **The order is free.** The 0.15.0 image reads neither column, so it may start before or after the
+  migration runs.
+- **Rolling back to 0.14.0 needs the undo first.** 0.14.0 refuses to start without the two columns.
+  Run this before starting the 0.14.0 image (the values are not restored):
+
+  ```sql
+  ALTER TABLE user_invitations
+    ADD COLUMN grants_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN revoked_at TIMESTAMP NULL DEFAULT NULL;
+  ```
+
+Removed routes (`GET /api/suite`, `GET /api/suite/links`, `GET /api/workspaces/:workspaceId/reader-check`,
+`GET /api/documents/state`, `PUT /api/machine/members`, `DELETE /api/machine/members`, and
+`DELETE /api/machine/members/:email`) answer `404`.
 
 ### The pinned compose network (upgrading from 0.11.0 or earlier)
 
@@ -1005,7 +1047,6 @@ this is not a typical concern.
 |----------------------|---------------------------------|
 | Auth endpoints       | 20 / 15 minutes per IP          |
 | User search          | 60 / 15 minutes per IP          |
-| `GET /api/documents/state` | 120 / 15 minutes per IP, counted before authentication |
 | WebSocket messages   | 60 / second per connection      |
 
 The limiters count per client address. Express takes it from the connection,

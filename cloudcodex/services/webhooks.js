@@ -1,5 +1,5 @@
 /**
- * Outbound webhooks: the subscription cache, the env subscription and emitEvent
+ * Outbound webhooks: the subscription cache, the guard's options and emitEvent
  *
  * logActivity calls emitEvent once per recorded activity row. For the eight
  * allowlisted actions it writes one outbox event (webhook_events, the exact
@@ -16,13 +16,12 @@
 
 import { randomUUID } from 'node:crypto';
 import { c2_query, withTransaction } from '../mysql_connect.js';
-import { checkWebhookTarget } from './webhook-target.js';
 
 /** The envelope's schema string. */
 export const ENVELOPE_SCHEMA = 'codex.event.v1';
 
 /**
- * The most subscriptions an instance holds, the env one included. The delivery
+ * The most subscriptions an instance holds. The delivery
  * tick reads them all, so this bounds that read and the round-robin (documented
  * in docs/api/admin.md). Enforced when an admin subscription is created.
  */
@@ -119,7 +118,8 @@ export async function loadSubscriptions() {
     const rows = await c2_query(
       `SELECT id, url, source, enabled, event_types, workspace_id, paused_until
          FROM webhook_subscriptions
-        WHERE enabled = TRUE`,
+        WHERE enabled = TRUE
+          AND source = 'admin'`,
       []
     );
     if (generation < loadApplied) return false;
@@ -136,15 +136,7 @@ export async function loadSubscriptions() {
   }
 }
 
-// ─── The env subscription ───────────────────────────────────
-
-/** The disabled_reason an env row gets when the environment turns it off. */
-export const ENV_UNSET_REASON = 'WEBHOOK_URL or WEBHOOK_SECRET is unset';
-
-// A signing secret shorter than this is refused, as SERVICE_TOKEN is.
-const MIN_SECRET_LENGTH = 32;
-
-const INT_MAX = 2_147_483_647;
+// ─── The guard's options ───────────────────────────────────
 
 /**
  * The guard's options for this instance: private receivers only with
@@ -155,107 +147,6 @@ export function webhookTargetOptions() {
     allowPrivate: process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS === '1',
     production: process.env.NODE_ENV === 'production',
   };
-}
-
-const logLine = (line) => console.error(`[${new Date().toISOString()}] ${line}`);
-
-/**
- * What the environment asks for: `{ enabled: true, url, workspaceId }`, or
- * `{ enabled: false, reason, configured }` where configured says whether any
- * of it was set (so an install with none of it stays silent).
- * @param { Function } [resolve] - injected into the guard by tests
- */
-async function desiredEnvSubscription(resolve) {
-  const url = process.env.WEBHOOK_URL?.trim() ?? '';
-  const secret = process.env.WEBHOOK_SECRET ?? '';
-  const workspace = process.env.WEBHOOK_WORKSPACE_ID?.trim() ?? '';
-  const configured = url !== '' || secret !== '';
-
-  if (url === '' || secret === '') return { enabled: false, reason: ENV_UNSET_REASON, configured };
-  if (secret.length < MIN_SECRET_LENGTH) {
-    return { enabled: false, reason: `WEBHOOK_SECRET is shorter than ${MIN_SECRET_LENGTH} characters`, configured };
-  }
-  // A mistyped workspace must not quietly become "every workspace".
-  if (workspace !== '' && (!/^\d+$/.test(workspace) || Number(workspace) < 1 || Number(workspace) > INT_MAX)) {
-    return { enabled: false, reason: 'WEBHOOK_WORKSPACE_ID is not a positive whole number', configured };
-  }
-
-  const check = await checkWebhookTarget(url, { ...webhookTargetOptions(), ...(resolve ? { resolve } : {}) });
-  if (!check.ok && !check.transient) return { enabled: false, reason: check.reason, configured };
-  if (!check.ok) {
-    // The name may resolve later, and every send re-checks it, so a DNS
-    // outage at boot does not switch the suite's subscription off.
-    logLine(`webhook env subscription: ${check.reason} Keeping it on; each delivery checks it again.`);
-  }
-  return { enabled: true, url, workspaceId: workspace === '' ? null : Number(workspace) };
-}
-
-/**
- * Make the one env-declared subscription (source 'env') match WEBHOOK_URL,
- * WEBHOOK_SECRET and WEBHOOK_WORKSPACE_ID, at boot: create it, update it, or
- * disable it with the reason. Its secret is never stored. When the receiver
- * URL or the workspace changes, what was queued for the old pair is dropped,
- * so events of one workspace never reach a receiver configured for another.
- * @param { { resolve?: Function } } [options]
- * @returns { Promise<'none'|'created'|'updated'|'retargeted'|'disabled'> }
- */
-export async function reconcileEnvSubscription({ resolve } = {}) {
-  const desired = await desiredEnvSubscription(resolve);
-
-  const outcome = await withTransaction(async (query) => {
-    const [row] = await query(
-      `SELECT id, url, workspace_id FROM webhook_subscriptions
-        WHERE source = 'env' ORDER BY id LIMIT 1 FOR UPDATE`,
-      []
-    );
-
-    if (!desired.enabled) {
-      if (!row) return { action: 'none' };
-      await query('UPDATE webhook_subscriptions SET enabled = FALSE, disabled_reason = ? WHERE id = ?', [
-        desired.reason.slice(0, 255),
-        row.id,
-      ]);
-      return { action: 'disabled' };
-    }
-
-    if (!row) {
-      await query(
-        `INSERT INTO webhook_subscriptions (url, secret, source, enabled, workspace_id)
-         VALUES (?, NULL, 'env', TRUE, ?)`,
-        [desired.url, desired.workspaceId]
-      );
-      return { action: 'created' };
-    }
-
-    const retargeted = row.url !== desired.url || (row.workspace_id ?? null) !== desired.workspaceId;
-    let dropped = 0;
-    if (retargeted) {
-      const deleted = await query(
-        `DELETE FROM webhook_deliveries WHERE subscription_id = ? AND status = 'pending'`,
-        [row.id]
-      );
-      dropped = deleted?.affectedRows ?? 0;
-    }
-    await query(
-      `UPDATE webhook_subscriptions
-          SET url = ?, workspace_id = ?, enabled = TRUE, disabled_reason = NULL${
-            retargeted ? ', consecutive_failures = 0, paused_until = NULL' : ''}
-        WHERE id = ?`,
-      [desired.url, desired.workspaceId, row.id]
-    );
-    return { action: retargeted ? 'retargeted' : 'updated', dropped };
-  });
-
-  if (outcome.action === 'disabled' || (outcome.action === 'none' && desired.configured)) {
-    logLine(`webhook env subscription is off: ${desired.reason}`);
-  }
-  if (outcome.action === 'retargeted') {
-    logLine(
-      `webhook env subscription now names a different receiver or workspace; ` +
-      `dropped ${outcome.dropped} undelivered event(s) queued for the old one`
-    );
-  }
-  return outcome.action;
 }
 
 // ─── Emitting ───────────────────────────────────────────────
@@ -360,6 +251,7 @@ export async function emitEvent(ctx, scope) {
         `INSERT INTO webhook_deliveries (subscription_id, event_id)
          SELECT id, ? FROM webhook_subscriptions
           WHERE id IN (${ids.map(() => '?').join(', ')})
+            AND source = 'admin'
             AND enabled = TRUE
             AND (workspace_id IS NULL OR workspace_id = ?)
             AND (event_types IS NULL OR JSON_CONTAINS(event_types, JSON_QUOTE(?)))`,

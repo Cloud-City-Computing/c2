@@ -12,9 +12,9 @@ describe('missingReleaseColumns (W6-CDX-9, the boot check)', () => {
   });
 
   it('names the migration for each column that is missing, so the boot can say what to run', async () => {
-    c2_query.mockResolvedValueOnce(everything().filter((r) => !(r.TABLE_NAME === 'user_invitations' && r.COLUMN_NAME === 'grants_admin')));
+    c2_query.mockResolvedValueOnce(everything().filter((r) => !(r.TABLE_NAME === 'users' && r.COLUMN_NAME === 'deactivated_at')));
     expect(await missingReleaseColumns()).toEqual([
-      ['user_invitations', 'grants_admin', '2026-10-15-invitation-grants-admin.sql'],
+      ['users', 'deactivated_at', '2026-10-12-user-deactivation.sql'],
     ]);
   });
 

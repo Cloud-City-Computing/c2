@@ -721,49 +721,6 @@ describe('app.js — Express configuration', () => {
     }
   });
 
-  // The membership sync (W6-CDX-9) is called on every add, re-role and removal, and linking a workspace
-  // syncs every member at once. Its own bucket, 300 a minute, never the login one: a sync of more than
-  // twenty members must not spend the login budget of Cloud Command's address. A 429 is retryable there.
-  it('puts /api/machine/members in its own rate-limit bucket, not the login bucket', async () => {
-    const prior = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-      const statuses = [];
-      for (let i = 0; i < 301; i++) {
-        statuses.push((await request(app).put('/api/machine/members').send({})).status);
-      }
-      // authLimiter would refuse the 21st; this bucket answers the first 300 and refuses the 301st.
-      expect(statuses.slice(0, 300)).not.toContain(429);
-      expect(statuses[300]).toBe(429);
-    } finally {
-      process.env.NODE_ENV = prior;
-    }
-  });
-
-  // The reconciliation read (W6-CDX-16) answers up to 100 ids a request, so it
-  // gets its own bucket, 120 per 15 minutes. Mounted in app.js before any
-  // router, so an unauthenticated caller spends it too.
-  it('puts /api/documents/state in its own rate-limit bucket, ahead of authentication', async () => {
-    const prior = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-      const statuses = [];
-      for (let i = 0; i < 121; i++) {
-        statuses.push((await request(app).get('/api/documents/state?workspaceId=1&ids=1')).status);
-      }
-      expect(statuses.slice(0, 120)).toEqual(Array(120).fill(401));
-      expect(statuses[120]).toBe(429);
-
-      // Its own bucket: the neighbouring routes are not spent.
-      const search = await request(app).get('/api/search?query=x');
-      expect(search.status).toBe(401);
-      const doc = await request(app).get('/api/document?doc_id=1');
-      expect(doc.status).toBe(401);
-    } finally {
-      process.env.NODE_ENV = prior;
-    }
-  });
-
   it('mounts every API route group under /api', async () => {
     // A representative endpoint from each router. None should 404; they
     // should at least reach requireAuth and respond 401, or respond 200
@@ -967,6 +924,71 @@ describe('app.js: Origin-required cookie writes', () => {
       expect(isAllowedOrigin(req('codex.example.com'), 'http://localhost:5173')).toBe(true);
       expect(isAllowedOrigin(req('codex.example.com'), 'http://127.0.0.1:5173')).toBe(true);
     });
+  });
+});
+
+describe('the sibling connection is removed (CDX-SA-3)', () => {
+  const SERVICE = 'a'.repeat(40);
+  let savedServiceToken;
+  beforeEach(() => {
+    resetMocks();
+    savedServiceToken = process.env.SERVICE_TOKEN;
+    process.env.SERVICE_TOKEN = SERVICE;
+  });
+  afterEach(() => {
+    if (savedServiceToken === undefined) delete process.env.SERVICE_TOKEN;
+    else process.env.SERVICE_TOKEN = savedServiceToken;
+  });
+
+  // The membership sync is removed: unknown /api paths, whoever calls them and with whatever the former
+  // service token holds.
+  it.each([
+    ['PUT', '/api/machine/members'],
+    ['DELETE', '/api/machine/members'],
+    ['DELETE', '/api/machine/members/x@example.test'],
+  ])('answers %s %s with a 404 to a signed-in caller', async (method, url) => {
+    mockAuthenticated();
+    const res = await request(app)[method.toLowerCase()](url).set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(404);
+  });
+
+  it.each([
+    ['PUT', '/api/machine/members'],
+    ['DELETE', '/api/machine/members'],
+    ['DELETE', '/api/machine/members/x@example.test'],
+  ])('answers %s %s with a 404 to the former service token', async (method, url) => {
+    const res = await request(app)[method.toLowerCase()](url).set('Authorization', `Bearer ${SERVICE}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('the reader check and the reconciliation read are removed (CDX-SA-3)', () => {
+  const SERVICE = 'a'.repeat(40);
+  let savedServiceToken;
+  beforeEach(() => {
+    resetMocks();
+    savedServiceToken = process.env.SERVICE_TOKEN;
+    process.env.SERVICE_TOKEN = SERVICE;
+  });
+  afterEach(() => {
+    if (savedServiceToken === undefined) delete process.env.SERVICE_TOKEN;
+    else process.env.SERVICE_TOKEN = savedServiceToken;
+  });
+
+  const URLS = [
+    '/api/workspaces/1/reader-check?email=a@example.test',
+    '/api/documents/state?workspaceId=1&ids=1',
+  ];
+
+  it.each(URLS)('answers GET %s with a 404 to a signed-in caller', async (url) => {
+    mockAuthenticated();
+    const res = await request(app).get(url).set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(404);
+  });
+
+  it.each(URLS)('answers GET %s with a 404 to the former service token', async (url) => {
+    const res = await request(app).get(url).set('Authorization', `Bearer ${SERVICE}`);
+    expect(res.status).toBe(404);
   });
 });
 

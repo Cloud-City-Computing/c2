@@ -993,8 +993,8 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
 
 ## F. Open questions from W6-CDX-8 (hosted mode), not defects yet
 
-- **F1. `SERVICE_TOKEN` is not refused on a hosted instance.** The plan and spec say "unchanged". A hosted
-  deployment that wants JWT-only machine callers must unset the static pair by hand. Decision for Kyle.
+- **F1. (Closed: the machine credential was removed in CDX-SA-3, 0.15.0.)** `SERVICE_TOKEN` and the machine
+  JWT variables no longer exist, so a hosted instance has no machine path to refuse.
 - **F2. GitHub linking is open on a hosted instance.** It links an account already signed in, so it is not a
   sign-in, but a hosted operator may expect it off. Not changed.
 - **F3. Migration order on instances that already ran `2026-10-14-session-rotation.sql`.** `2026-10-12-user-deactivation.sql`

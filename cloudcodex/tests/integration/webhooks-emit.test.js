@@ -144,7 +144,8 @@ describe('the admin API, on a real server', () => {
     const listed = await request(app).get('/api/admin/webhooks').set('Authorization', `Bearer ${adminToken}`);
     expect(listed.status).toBe(200);
     expect(JSON.stringify(listed.body)).not.toContain(row.secret);
-    expect(listed.body.webhooks).toEqual([expect.objectContaining({ id: subscriptionId, managed: false, enabled: true })]);
+    expect(listed.body.webhooks).toEqual([expect.objectContaining({ id: subscriptionId, enabled: true })]);
+    expect(listed.body.webhooks[0]).not.toHaveProperty('managed');
   });
 
   it('refuses the actor, who is not an admin', async () => {

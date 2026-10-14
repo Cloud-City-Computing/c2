@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
+import http from 'node:http';
+import https from 'node:https';
 import app from '../../app.js';
 import { c2_query, validateAndAutoLogin } from '../../mysql_connect.js';
 import { getAllPresence } from '../../services/collab.js';
@@ -201,17 +203,16 @@ describe('Search Routes', () => {
       expect(res.status).toBe(401);
     });
   });
-  // ── Machine credential (service token) ────────────────────
+  // ── The machine credential is gone (CDX-SA-3) ─────────────
 
-  describe('service token (machine credential)', () => {
+  describe('a former service token is an unknown session token', () => {
     const SERVICE_TOKEN = 'cloud-command-service-token-00000000';
     const SERVICE_ROW = { id: 9, name: 'cloud-command', email: 'svc@example.com', is_admin: 0 };
 
     beforeEach(() => {
       process.env.SERVICE_TOKEN = SERVICE_TOKEN;
       process.env.SERVICE_TOKEN_USER = 'svc@example.com';
-      // No session row backs this token, so a 200 below can only come from the
-      // machine path.
+      // No session row backs this token, so nothing may answer 200 for it.
       mockUnauthenticated();
     });
 
@@ -220,125 +221,50 @@ describe('Search Routes', () => {
       delete process.env.SERVICE_TOKEN_USER;
     });
 
-    it('is accepted on GET /api/search, as a non-admin principal', async () => {
-      c2_query.mockResolvedValueOnce([SERVICE_ROW]);      // principal lookup
-      c2_query.mockResolvedValueOnce([{ total: 1 }]);     // count
-      c2_query.mockResolvedValueOnce([
-        { id: 1, title: 'Runbook', created_at: '2026-01-01', author: 'user', archive_name: 'Proj', html_content: '<p>runbook</p>', char_count: 7 },
-      ]);
+    it.each(['/api/search?query=runbook', '/api/browse'])(
+      'is refused with 401 on %s, and looked up as a session',
+      async (url) => {
+        c2_query.mockResolvedValueOnce([SERVICE_ROW]); // would be the principal lookup, if it still existed
+        const res = await request(app).get(url).set('Authorization', `Bearer ${SERVICE_TOKEN}`);
 
-      const res = await request(app)
-        .get('/api/search?query=runbook')
-        .set('Authorization', `Bearer ${SERVICE_TOKEN}`);
+        expect(res.status).toBe(401);
+        expect(validateAndAutoLogin).toHaveBeenCalledWith(SERVICE_TOKEN);
+        expect(c2_query.mock.calls.some(([sql]) => /FROM users/.test(sql) && /email/.test(sql))).toBe(false);
+      }
+    );
 
-      expect(res.status).toBe(200);
-      expect(res.body.results).toHaveLength(1);
-      expect(validateAndAutoLogin).not.toHaveBeenCalled();
-
-      // readAccessParams binds is_admin FIRST, then the user id. The count
-      // query is [ ...searchParams, ...accessParams ], so the access params
-      // start at index 1. This pins the bound principal to the service user
-      // and to a non-admin first param; the forced literal `is_admin: false`
-      // itself is what tests/services/machine-auth.test.js covers, since a
-      // row with is_admin 0 would bind false either way.
-      const countParams = c2_query.mock.calls[1][1];
-      expect(countParams[1]).toBe(false);
-      expect(countParams[2]).toBe('9');
-      expect(countParams[3]).toBe(9);
+    it('makes no outbound request for a JWS-shaped bearer on search and browse', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const httpsSpy = vi.spyOn(https, 'request');
+      const httpSpy = vi.spyOn(http, 'request');
+      try {
+        for (const url of ['/api/search?query=runbook', '/api/browse']) {
+          const res = await request(app).get(url).set('Authorization', 'Bearer aaa.bbb.ccc');
+          expect(res.status).toBe(401);
+        }
+        // Supertest calls http.request against its own loopback server, so only a call that leaves
+        // loopback is an outbound request.
+        const leavesLoopback = ([target]) => {
+          const host = typeof target === 'string' ? new URL(target).hostname : (target?.hostname ?? target?.host);
+          return Boolean(host) && !['127.0.0.1', 'localhost', '::1'].includes(host);
+        };
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(httpsSpy.mock.calls.filter(leavesLoopback)).toEqual([]);
+        expect(httpSpy.mock.calls.filter(leavesLoopback)).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+        httpsSpy.mockRestore();
+        httpSpy.mockRestore();
+      }
     });
 
-    it('is accepted on GET /api/browse, as a non-admin principal', async () => {
-      c2_query.mockResolvedValueOnce([SERVICE_ROW]);      // principal lookup
-      c2_query.mockResolvedValueOnce([{ total: 1 }]);     // count
-      c2_query.mockResolvedValueOnce([
-        { id: 1, title: 'Log One', created_at: '2026-01-01', author: 'user', archive_name: 'Proj', excerpt: 'Hello', char_count: 5 },
-      ]);
-
-      const res = await request(app)
-        .get('/api/browse')
-        .set('Authorization', `Bearer ${SERVICE_TOKEN}`);
-
-      expect(res.status).toBe(200);
-      expect(res.body.results).toHaveLength(1);
-      expect(validateAndAutoLogin).not.toHaveBeenCalled();
-
-      // Browse has no search params, so the access params start at index 0.
-      const countParams = c2_query.mock.calls[1][1];
-      expect(countParams[0]).toBe(false);
-      expect(countParams[1]).toBe('9');
-    });
-
-    it('is rejected with 401 on GET /api/search/filters', async () => {
-      // Queued deliberately, and unused by the passing path. Without it this
-      // test is a false green: the principal lookup would find no row, so the
-      // credential would be refused even if the route HAD been widened to
-      // machineOrAuth, and the 401 would prove nothing. With the row queued, a
-      // widened route authenticates and answers 200, and this fails.
-      c2_query.mockResolvedValueOnce([SERVICE_ROW]);
-
-      const res = await request(app)
-        .get('/api/search/filters')
-        .set('Authorization', `Bearer ${SERVICE_TOKEN}`);
-
-      // The scope is a scope: /api/search/filters keeps bare requireAuth, so
-      // the machine credential is just an unknown session token there.
-      expect(res.status).toBe(401);
-      expect(validateAndAutoLogin).toHaveBeenCalledWith(SERVICE_TOKEN);
-    });
-
-    it('is rejected with 401 on GET /api/presence', async () => {
-      // Queued for the same reason as the filters test above.
-      c2_query.mockResolvedValueOnce([SERVICE_ROW]);
-
-      const res = await request(app)
-        .get('/api/presence')
-        .set('Authorization', `Bearer ${SERVICE_TOKEN}`);
-
-      expect(res.status).toBe(401);
-      expect(validateAndAutoLogin).toHaveBeenCalledWith(SERVICE_TOKEN);
-    });
-
-    it('does not authenticate a token that is merely close to the service token', async () => {
-      const res = await request(app)
-        .get('/api/browse')
-        .set('Authorization', `Bearer ${SERVICE_TOKEN}x`);
-
-      expect(res.status).toBe(401);
-      expect(validateAndAutoLogin).toHaveBeenCalledWith(`${SERVICE_TOKEN}x`);
-    });
-
-    it('still accepts an ordinary session token on the machine-enabled routes', async () => {
+    it('answers a mocked session on search and browse exactly as before', async () => {
       mockAuthenticated();
       c2_query.mockResolvedValueOnce([{ total: 0 }]);
       c2_query.mockResolvedValueOnce([]);
-
-      const browse = await request(app)
-        .get('/api/browse')
-        .set('Authorization', 'Bearer valid-token');
-
+      const browse = await request(app).get('/api/browse').set('Authorization', 'Bearer valid-token');
       expect(browse.status).toBe(200);
-      // The session user, not the service principal.
       expect(c2_query.mock.calls[0][1][1]).toBe(String(TEST_USER.id));
-
-      c2_query.mockResolvedValueOnce([{ total: 0 }]);
-      c2_query.mockResolvedValueOnce([]);
-      const search = await request(app)
-        .get('/api/search?query=anything')
-        .set('Authorization', 'Bearer valid-token');
-
-      expect(search.status).toBe(200);
-    });
-
-    it('leaves the routes on session auth when the service token is unconfigured', async () => {
-      delete process.env.SERVICE_TOKEN;
-      delete process.env.SERVICE_TOKEN_USER;
-
-      const res = await request(app)
-        .get('/api/browse')
-        .set('Authorization', `Bearer ${SERVICE_TOKEN}`);
-
-      expect(res.status).toBe(401);
-      expect(c2_query).not.toHaveBeenCalled();
     });
   });
 });

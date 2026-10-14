@@ -72,8 +72,9 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
 
     const insertUser = sql.find(([s]) => /^INSERT INTO users/.test(s));
     expect(insertUser[0]).not.toMatch(/password_hash\s*,/);
-    // A plain member's invitation (no grants_admin) creates a non-admin.
-    expect(insertUser[1]).toEqual(['ada', EMAIL, false]);
+    // An invitation admits a plain member: the INSERT names is_admin as the literal FALSE.
+    expect(insertUser[0]).toMatch(/VALUES \(\?, \?, FALSE, NOW\(\)\)/);
+    expect(insertUser[1]).toEqual(['ada', EMAIL]);
 
     expect(sql.some(([s, p]) => /INSERT INTO permissions/.test(s) && p[0] === 77)).toBe(true);
     const accepted = sql.find(([s]) => /UPDATE user_invitations/.test(s));
@@ -198,7 +199,9 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
     expect(writes().some(([s]) => /INSERT INTO squad_members|INSERT INTO user_identities/.test(s))).toBe(false);
   });
 
-  it('creates an ADMIN when the invitation grants admin (the membership sync\'s owner), and nothing else differs', async () => {
+  // The membership sync that once set an admin grant is removed (CDX-SA-3). A row that still carries the
+  // old column, from a database this release has not migrated, must not make the new user an admin.
+  it('creates a non-admin even from an invitation row that still carries the removed grant', async () => {
     c2_query
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
@@ -213,10 +216,11 @@ describe('resolveIdentity (oidc) binds an invitation on a verified email', () =>
     expect(await resolveIdentity(oidcClaims(), POLICY)).toMatchObject({ ok: true, userId: 77, created: true });
     const sql = sqlCalls();
     const insertUser = sql.find(([s]) => /^INSERT INTO users/.test(s));
-    expect(insertUser[1]).toEqual(['ada', EMAIL, true]);
+    expect(insertUser[1]).toEqual(['ada', EMAIL]);
+    expect(insertUser[0]).toMatch(/VALUES \(\?, \?, FALSE, NOW\(\)\)/);
     expect(insertUser[0]).not.toMatch(/password_hash\s*,/);
     const invitationLookup = sql.find(([s]) => /FROM user_invitations/.test(s));
-    expect(invitationLookup[0]).toMatch(/grants_admin/);
+    expect(invitationLookup[0]).not.toMatch(/grants_admin/);
   });
 
   it('adds no squad membership for an invitation that carries no squad', async () => {

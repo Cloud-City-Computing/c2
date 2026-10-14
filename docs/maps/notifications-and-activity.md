@@ -168,16 +168,9 @@ the one already applied is dropped: a slow minute refresh that read the
 table before an admin write cannot put back the cache that write's reload
 replaced.
 
-**The env subscription** (`reconcileEnvSubscription`,
-`services/webhooks.js:202`) runs once at boot, before the load: with
-`WEBHOOK_URL` and a `WEBHOOK_SECRET` of at least 32 characters it creates or
-re-enables the one `source = 'env'` row (secret column `NULL`: the secret is
-read from the environment at send time, W6-CDX-14); with either unset, a short
-secret, a `WEBHOOK_WORKSPACE_ID` that is not a whole number, or a URL the SSRF
-guard refuses, it disables that row with the reason. A URL or workspace
-change drops the row's pending deliveries, so one workspace's events never
-reach a receiver configured for another. A name that only fails to resolve
-keeps it on, since the send re-checks.
+**There is no env subscription** (removed in CDX-SA-3, 0.15.0). Every subscription is an admin row
+(`source = 'admin'`). The 0.15.0 migration deleted the old `source = 'env'` rows with their deliveries, and
+the worker never sends a row that is not `admin` (below). Boot loads the cache and nothing else.
 
 Ids are allocated in commit order: before its insert, the transaction takes
 `webhook_sequence_lock FOR UPDATE` (the one-row table from
@@ -249,8 +242,8 @@ is skipped this tick (`held`). Then, in order:
 
 - `occurred_at` older than 72 hours, compared in SQL with `UTC_TIMESTAMP(3)`: dead-lettered
   with `expired after 72h`, nothing sent; the run goes on to the next head (`:230`).
-- No signing secret at send time (an env row reads `WEBHOOK_SECRET`; an admin row stores its
-  own): a failure, retried, nothing sent (`:203`).
+- A row whose `source` is not `admin` is never sent, whatever it holds: one skip line per window, its
+  deliveries stay pending (`admin()` in `services/webhook-worker.js`, called from `tick`).
 - `checkWebhookTarget` runs again at send time (`:239`). A refusal that is not a DNS failure
   releases the lease, disables the subscription with the guard's sentence and leaves the
   delivery pending for an administrator. A name that does not resolve yet is a failure.
@@ -295,7 +288,7 @@ stalled card states the last failure. A subscription is Stalled while it is enab
 `consecutive_failures > 0`, Off when disabled (the reason is shown), otherwise Delivering. The
 secret appears only in the reveal box returned by create or rotate; the panel never fetches it.
 Enable, disable, rotate, delete and redeliver all go through `ConfirmDialog`. A dead delivery whose event
-is `expired` (the server's own 72-hour test, the one the redeliver route answers 409 by) offers no Redeliver, and the env subscription's deliveries never do, because the route refuses them too. The console reads the UTC columns as text and the TIMESTAMP columns as epoch seconds, so the driver's local-time parse never touches them (see `docs/maps/open-questions.md` C9).
+is `expired` (the server's own 72-hour test, the one the redeliver route answers 409 by) offers no Redeliver. The console reads the UTC columns as text and the TIMESTAMP columns as epoch seconds, so the driver's local-time parse never touches them (see `docs/maps/open-questions.md` C9).
 
 Tests: `tests/services/webhook-worker.test.js` (the three signature vectors, and each
 outcome, the backoff SQL, the 72-hour expiry, the budgets, the lapsed-lease write count, the
@@ -319,8 +312,8 @@ These were out of scope for W6-CDX-12 to W6-CDX-16 and are not planned in Wave 6
 - **Comment and membership events:** they carry people's data, so they would be a later additive event type.
 - **Cross-archive moves:** nothing user-reachable does one today.
 - **Encrypting admin-API subscription secrets at rest:** they are stored in MySQL, write-only through the API, and
-  a database dump lets its holder forge events to that one receiver. The suite's subscription avoids the issue
-  because its secret lives only in the environment.
+  a database dump lets its holder forge events to that one receiver. (The environment-declared subscription that
+  avoided this was removed in 0.15.0.)
 - **Delivery to more than one Cloud Command per instance, and moving an instance between workspaces:** the
   provisioning era.
 

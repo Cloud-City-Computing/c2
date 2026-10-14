@@ -28,7 +28,6 @@ import avatarsRouter from './routes/avatars.js';
 import docImagesRouter from './routes/doc-images.js';
 import { docImagesHandler } from './routes/doc-images-serve.js';
 import adminRouter from './routes/admin.js';
-import machineMembersRouter from './routes/machine-members.js';
 import oauthRouter from './routes/oauth.js';
 import oidcRouter from './routes/oidc.js';
 import githubRouter from './routes/github.js';
@@ -384,16 +383,6 @@ app.use('/api/auth/oidc/callback', authLimiter);
 // needs the same bound, so that step is covered without a second mount (a
 // second one would count each confirm twice).
 app.use('/api/update-account', authLimiter);
-/*
- * C2-5's reader check. An oracle answering a boolean invites enumeration even
- * behind a credential -- if the service token ever leaks, an unbounded one
- * hands the holder a membership map of the whole install at whatever rate they
- * can issue requests. The same bucket the login surface uses.
- *
- * A path pattern rather than an exact path, because the workspace id is a route
- * parameter: express matches `/api/workspaces/7/reader-check` against this.
- */
-app.use(/^\/api\/workspaces\/\d+\/reader-check$/, authLimiter);
 
 // Rate limiting for user search (prevents user enumeration)
 const searchLimiter = rateLimit({
@@ -405,34 +394,6 @@ const searchLimiter = rateLimit({
   message: { success: false, message: 'Too many search requests, please try again later' },
 });
 app.use('/api/users/search', searchLimiter);
-
-// The reconciliation read (W6-CDX-16) answers up to 100 document ids a
-// request, under the machine credential or a session. Its own bucket, mounted
-// before any router so an unauthenticated caller spends it too: a sweep of 100
-// ids a request fits well inside it, and a caller probing ids is bounded.
-const stateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 120,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'test',
-  message: { success: false, message: 'Too many state requests, please try again later' },
-});
-app.use('/api/documents/state', stateLimiter);
-
-// The membership sync (W6-CDX-9, routes/machine-members.js) is called on every add, re-role and removal,
-// and linking a workspace syncs every member at once. Its own bucket, never authLimiter: one bucket shared
-// with the login routes would refuse a sync of more than twenty members partway, and spend the login budget
-// of every request from Cloud Command's address. A 429 here is retryable, and Cloud Command retries it.
-const machineMembersLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'test',
-  message: { success: false, message: 'Too many membership requests, please try again later' },
-});
-app.use('/api/machine/members', machineMembersLimiter);
 
 // Serve uploaded avatars as static files
 app.use('/avatars', express.static(path.join(__dirname, 'public', 'avatars'), {
@@ -456,7 +417,6 @@ app.use('/api', commentsRouter);
 app.use('/api', avatarsRouter);
 app.use('/api', docImagesRouter);
 app.use('/api', adminRouter);
-app.use('/api', machineMembersRouter);
 app.use('/api', oauthRouter);
 // Mounted only when an OIDC issuer is configured; getOidcConfig() throws at boot on a bad setting.
 if (getOidcConfig() !== null) app.use('/api', oidcRouter);

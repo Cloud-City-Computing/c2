@@ -197,9 +197,8 @@ export function createWebhookWorker({
   const checkTarget = (url) =>
     checkWebhookTarget(url, { ...(targetOptions ?? webhookTargetOptions()), resolve });
 
-  /** The subscription's signing secret; an env row reads it from the environment at send time. */
-  const secretFor = (subscription) =>
-    subscription.source === 'env' ? process.env.WEBHOOK_SECRET ?? '' : subscription.secret ?? '';
+  /** The subscription's signing secret, as stored. Only admin rows are sent (see tick), and they carry one. */
+  const secretFor = (subscription) => subscription.secret ?? '';
 
   /** A failed send or check: attempts + 1, the lease released, the subscription paused. */
   async function fail(counts, head, subscription, status, error) {
@@ -296,11 +295,32 @@ export function createWebhookWorker({
    * whichever comes first. The first subscription of each round rotates from
    * tick to tick, so a tick cut short does not always serve the same one first.
    */
+  /**
+   * A row that is not an admin subscription is never sent, whatever else it holds: the env subscription
+   * (source 'env') was removed in CDX-SA-3, and a row left over from it stays pending where an admin can see
+   * it. Logged once per skip window, not once per tick.
+   */
+  let nonAdminLoggedAt = -Infinity;
+  function admin(rows, at) {
+    const sendable = rows.filter((subscription) => subscription.source === 'admin');
+    const skipped = rows.filter((subscription) => subscription.source !== 'admin');
+    if (skipped.length > 0 && at - nonAdminLoggedAt >= SKIP_LOG_MS) {
+      nonAdminLoggedAt = at;
+      for (const subscription of skipped) {
+        console.error(
+          `[${new Date(at).toISOString()}] webhook subscription ${subscription.id} has source "${subscription.source}", ` +
+          'which is not sent; only admin subscriptions are'
+        );
+      }
+    }
+    return sendable;
+  }
+
   async function tick() {
     const started = now();
     const counts = { sent: 0, stale: 0 };
     const result = () => ({ sent: counts.sent, stale: counts.stale });
-    const subscriptions = await query(SUBS_SQL, []);
+    const subscriptions = admin(await query(SUBS_SQL, []), started);
     if (subscriptions.length === 0) return result();
 
     const first = cursor % subscriptions.length;

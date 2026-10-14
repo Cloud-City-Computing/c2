@@ -134,27 +134,7 @@ ID token sealed by `services/id-token-seal.js` as `id_token_hint`. `POST /api/au
 sockets with 4004 (`closeSocketsForSessions` in `services/collab.js` and `services/user-channel.js`). Maps:
 `docs/maps/request-lifecycle.md`, section 3.
 
-**Machine callers**: `services/machine-auth.js` exports the one seam,
-`verifyMachineCredential`, with two paths. The static one is gated on
-`SERVICE_TOKEN` + `SERVICE_TOKEN_USER` (both required, off by default). The JWT
-one (W6-CDX-7) takes a JWS-shaped token, verified by jose against the issuer's
-key set, only when `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE` and
-`MACHINE_OIDC_SUBJECTS` are all set; it authorizes by a subject allowlist, never
-by `aud` alone, and an issuer outage is a 503, never a 401. `machineOrAuth` in `middleware/auth.js` is
-mounted on `GET /api/search`, `GET /api/browse` and `GET /api/documents/state`
-(the reconciliation read, W6-CDX-16) and **nothing else**. `requireMachine` (never
-`machineOrAuth`) guards the reader check and the membership sync (W6-CDX-9,
-`routes/machine-members.js`: `PUT /api/machine/members`, `DELETE /api/machine/members/:email`).
-The sync is the one machine path that writes, and the only one that can set `is_admin`: it does so
-only on a user the address resolves to, never on the boot admin's row or the principal's own, and it
-never promotes through `ensureAdminUser`'s name or address match. Its routes have their own limiter,
-never `authLimiter`. The third is safe
-for the same reason as the first two: the same `readAccessWhere` fragment with
-the principal's own params, narrowed by workspace, and an unreadable id is
-absent exactly as a deleted one is, so it is never an oracle. The
-principal is always a real non-admin user with `is_admin` forced false, because
-`is_admin` is the first bound parameter of every `ownership.js` fragment. Do
-not widen the scope or copy `is_admin` from the row.
+**No machine credential**: every route is reached by a session (the bearer header or the cookie). The static service token and the machine JWTs were removed in 0.15.0; a script signs in as a user.
 
 ### Org hierarchy: `routes/workspaces.js`, `routes/squads.js`, `routes/archives.js`
 Workspaces own squads; squads own archives; archives own logs. Squad members
@@ -201,8 +181,8 @@ one outbox event (`webhook_events`, the exact body bytes) and its deliveries
 for eight document and archive actions, **only when a cached subscription
 matches**, so an install with none adds no query to any change. It never
 throws. Every receiver URL goes through `checkWebhookTarget` (the SSRF
-guard); do not build a second check. The env subscription's secret is never
-stored; an admin one's is returned only once. Contract:
+guard); do not build a second check. A subscription's secret is never
+stored; it is returned only once, on creation or rotation. Contract:
 `docs/api/webhooks.md`; mechanism: `docs/maps/notifications-and-activity.md`
 section 2a. The delivery worker (`services/webhook-worker.js`, W6-CDX-14) sends them from
 an in-process tick every two seconds: one head per subscription, leased, in order; the

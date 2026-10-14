@@ -32,6 +32,10 @@ export const UNDO_ON_INIT_SQL = Object.freeze({
   '2026-09-27-who-may-see-doc-images.sql': 'DROP TABLE doc_images',
   '2026-09-28-webhooks.sql': 'DROP TABLE webhook_deliveries, webhook_events, webhook_subscriptions',
   '2026-10-10-webhook-sequence-lock.sql': 'DROP TABLE webhook_sequence_lock',
+  // Re-adds the two columns the file drops, so the two older undos below can drop them, newest first.
+  '2026-10-17-remove-sibling-connection.sql':
+    'ALTER TABLE user_invitations ADD COLUMN grants_admin BOOLEAN NOT NULL DEFAULT FALSE, ' +
+    'ADD COLUMN revoked_at TIMESTAMP NULL DEFAULT NULL',
   '2026-10-16-invitation-revoked.sql': 'ALTER TABLE user_invitations DROP COLUMN revoked_at',
   '2026-10-15-invitation-grants-admin.sql': 'ALTER TABLE user_invitations DROP COLUMN grants_admin',
   '2026-10-14-session-rotation.sql':

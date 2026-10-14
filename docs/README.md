@@ -109,7 +109,6 @@ change the code, covering the wiring, the invariants, and the traps.
 | [api/activity-watches.md](./api/activity-watches.md) | Workspace activity stream + per-user watches |
 | [api/admin.md](./api/admin.md) | User/workspace management, invitations, permissions, live presence telemetry, webhook subscriptions |
 | [api/webhooks.md](./api/webhooks.md) | Outbound events: the signed envelope a webhook receiver gets, and when |
-| [api/machine-members.md](./api/machine-members.md) | The membership sync from Cloud Command: admit, re-role and remove members by machine credential |
 | [api/oauth-github.md](./api/oauth-github.md) | Google SSO, GitHub OAuth, 40+ GitHub repo / PR / issue / embed proxy endpoints |
 
 

@@ -15,8 +15,6 @@ import { c2_query } from '../mysql_connect.js';
 
 /** [table, column, the migration file that adds it], for every column a route on this release reads. */
 export const RELEASE_COLUMNS = Object.freeze([
-  ['user_invitations', 'grants_admin', '2026-10-15-invitation-grants-admin.sql'],
-  ['user_invitations', 'revoked_at', '2026-10-16-invitation-revoked.sql'],
   ['users', 'deactivated_at', '2026-10-12-user-deactivation.sql'],
   ['user_identities', 'email_at_last_signin', '2026-10-12-identity-last-signin-email.sql'],
 ]);

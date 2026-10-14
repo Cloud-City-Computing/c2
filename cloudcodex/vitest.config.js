@@ -175,7 +175,7 @@ export default defineConfig({
         'services/backchannel-logout.js': { lines: 92, statements: 92, branches: 88, functions: 95 },
         'services/sign-out.js': { lines: 90, statements: 90, branches: 95, functions: 95 },
         'services/id-token-seal.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
-        // Outbound webhooks (W6-CDX-13): the emit hook, the env subscription and
+        // Outbound webhooks (W6-CDX-13): the emit hook and
         // the SSRF guard every receiver address passes. Measured when they
         // landed: webhooks.js 99.03 lines, 99.19 statements, 94.3 branches, 100
         // functions; webhook-target.js 100, 95.86, 91.66, 100.

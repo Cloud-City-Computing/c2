@@ -24,7 +24,7 @@ even if the DB is compromised.
    │           CORS allowlist (no localhost in prod)          │
    │           Origin required on a cookie-only /api write    │
    │           express-rate-limit (auth 20/15m, user search   │
-   │           60/15m, documents/state 120/15m)               │
+   │           60/15m)                                        │
    └──────────────────────────────────────────────────────────┘
       │
       ▼
@@ -134,27 +134,11 @@ Consequences for anyone adding a sixth flow:
 
 ---
 
-## Machine Credentials (Service Token)
+## Doors into an account
 
-A machine caller (another service that needs to read this install's documents) authenticates with a shared secret rather than a session. It is **off unless both** `SERVICE_TOKEN` and `SERVICE_TOKEN_USER` are set, so an install that configures neither gains no new authentication path.
+Every request is made by a signed-in user acting as themselves, through a session: the bearer token from sign-in or the `__Host-sessionToken` cookie. There is no machine credential. The static service token and the machine JWTs were removed in 0.15.0; a script signs in as a user and sends that session.
 
-| Property | Rule |
-| --- | --- |
-| Secret | `SERVICE_TOKEN`, minimum 32 characters. Shorter and the feature stays disabled, with the reason logged and the value never logged. |
-| Comparison | `crypto.timingSafeEqual` over two SHA-256 digests, never `===`. Equal-length by construction, so a wrong-length token is rejected without throwing and without leaking the configured length. |
-| Identity | `SERVICE_TOKEN_USER`, the email of an existing **non-admin** user. The credential acts as that user. |
-| Reach | `GET /api/search`, `GET /api/browse` and `GET /api/documents/state` (the reconciliation read, 1 to 100 ids in one workspace, rate-limited), all through `machineOrAuth`; plus the machine-only `GET /api/workspaces/:workspaceId/reader-check` and the membership sync, `PUT /api/machine/members` and `DELETE /api/machine/members/:email` (W6-CDX-9, `requireMachine`, the only machine routes that write and the only ones that can grant instance admin; see [api/machine-members.md](api/machine-members.md)). Nothing else. Every other route, including `GET /api/search/filters`, keeps bare `requireAuth`. |
-| Rotation | Change `SERVICE_TOKEN` and restart. No database change, no key version. Any caller still holding the old value gets 401s. |
-
-**Client-credentials JWTs (W6-CDX-7).** When `OIDC_ISSUER_URL`, `MACHINE_OIDC_AUDIENCE` and `MACHINE_OIDC_SUBJECTS` are all set, a JWS-shaped bearer that misses the static digest is verified by `jose` against the issuer's key set: `iss` exactly the configured issuer, `aud` containing this instance's own project, asymmetric algorithms only, 60 seconds of skew, and `sub` on the allowlist. `aud` is not the tenant boundary, because the issuer lets any client mint any project's audience, so the subject allowlist is the control. A token that jose refuses (a claim, a signature, an unknown key id, an unknown `crit` header) is a 401.
-
-**Outages and the key-set cache.** The discovery document and the key set are kept for the process. The key set is refetched when it is older than 10 minutes, and for an unknown key id after a 30-second cooldown (jose). There is **no stale-while-error fallback**: if the key set cannot be refetched for longer than 10 minutes, valid tokens get 503 until it can. The choice is deliberate. Trusting keys past their refresh age would keep accepting a token signed with a key the issuer has since rotated out. A failed discovery or key-set fetch opens a 30-second window in which the issuer is not asked again, every call answers 503 from memory, and one log line is written per window. An outage is a 503 and is never read as a revoked credential.
-
-The credential has no access-control rules of its own. Because it acts as a real user, the whole existing layer applies unchanged and there is no machine-specific permission SQL to get wrong: give a machine what it should see by putting its user in the right squads or on the right archive grants.
-
-**An admin is refused outright.** `is_admin` is the first bound parameter of every access fragment in `routes/helpers/ownership.js`, so an admin principal matches every archive in the install. `verifyMachineCredential` refuses an admin row and logs it, and the principal it returns is built with a literal `is_admin: false` rather than the column. Both guards exist because either one alone silently converts a scoped read credential into a full-install one.
-
-The whole surface is one function, `verifyMachineCredential` in `services/machine-auth.js`, with two paths: the shared `SERVICE_TOKEN`, and a client-credentials JWT from Cloud City ID (W6-CDX-7). The JWT is verified against the issuer's keys, its `aud` is pinned to this instance, and its `sub` must be on an allowlist. `aud` is not the tenant boundary, because the issuer lets any client mint any project's audience, so the allowlist is the control. An issuer outage answers 503, never 401.
+Which sign-in methods an account may use depends on `AUTH_PROVIDERS`. With local sign-in on, an account linked to an identity provider may use every door it has: its password, its reset, its two-factor setup, and the issuer. **OIDC-only mode makes the issuer the only door** (`AUTH_PROVIDERS=oidc`), and that is the setting for an operator who needs the issuer to govern every account.
 
 ---
 
@@ -164,11 +148,11 @@ Webhooks ([api/webhooks.md](api/webhooks.md)) make the server send a request to 
 
 | Property | Rule |
 | --- | --- |
-| Who configures one | The server environment (`WEBHOOK_URL`, `WEBHOOK_SECRET`) or an instance admin (`/api/admin/webhooks`, `requireAdmin` on every route). |
-| Receiver address | `services/webhook-target.js` checks every address the host resolves to, not only the first, and the IPv4 address inside a mapped, NAT64 or compatible IPv6 one. Link-local and cloud-metadata (`169.254.0.0/16`, `fe80::/10`, and AWS's IPv6 endpoint `fd00:ec2::254`), unspecified and reserved addresses, and the IPv6 transition prefixes that reach an IPv4 host through a relay (6to4 `2002::/16`, Teredo `2001::/32`, local-use NAT64 `64:ff9b:1::/48`), are refused always; loopback and private ranges unless `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`, which is instance-wide. `https` only in production; no user name or password in the URL; at most 2,048 characters once normalised. Checked when a subscription is created and at every boot for the env one; the delivery worker checks again at send time and connects only to the addresses that check approved (`pinnedLookup`), so DNS cannot be rebound in between. A send-time refusal that is not a DNS failure disables the subscription with the same sentence. |
-| Secrets | Generated by the server (32 random bytes) and returned once; lists and errors show only an 8-hex SHA-256 fingerprint. The env subscription's secret is never written to the database or logged. **An admin subscription's secret is stored in plaintext**: a database dump lets its holder sign events to that one receiver. |
+| Who configures one | An instance admin (`/api/admin/webhooks`, `requireAdmin` on every route). |
+| Receiver address | `services/webhook-target.js` checks every address the host resolves to, not only the first, and the IPv4 address inside a mapped, NAT64 or compatible IPv6 one. Link-local and cloud-metadata (`169.254.0.0/16`, `fe80::/10`, and AWS's IPv6 endpoint `fd00:ec2::254`), unspecified and reserved addresses, and the IPv6 transition prefixes that reach an IPv4 host through a relay (6to4 `2002::/16`, Teredo `2001::/32`, local-use NAT64 `64:ff9b:1::/48`), are refused always; loopback and private ranges unless `WEBHOOK_ALLOW_PRIVATE_TARGETS=1`, which is instance-wide. `https` only in production; no user name or password in the URL; at most 2,048 characters once normalised. Checked when a subscription is created; the delivery worker checks again at send time and connects only to the addresses that check approved (`pinnedLookup`), so DNS cannot be rebound in between. A send-time refusal that is not a DNS failure disables the subscription with the same sentence. |
+| Secrets | Generated by the server (32 random bytes) and returned once; lists and errors show only an 8-hex SHA-256 fingerprint. **An admin subscription's secret is stored in plaintext**: a database dump lets its holder sign events to that one receiver. |
 | What an event carries | Ids, a document title or archive name cut to 255 code points, a version number, and the actor's user id and name. Never an email, document content, a comment or a membership. |
-| Tenant scope | An event carries the workspace its resource belongs to. A subscription limited to a workspace gets only that workspace's events, and the database re-checks the match when the delivery is written. A `WEBHOOK_WORKSPACE_ID` that is not a whole number switches the env subscription off rather than widen it to every workspace, and changing it drops the events queued for the old one. With no workspace set, the env subscription receives every workspace's events. |
+| Tenant scope | An event carries the workspace its resource belongs to. A subscription limited to a workspace gets only that workspace's events, and the database re-checks the match when the delivery is written. |
 
 ---
 
@@ -283,8 +267,6 @@ A violation found later is fixed by widening the one directive it needs, with a 
 | --- | --- |
 | Auth endpoints (sign-in, sign-up, password reset, 2FA verification and confirmations, the Google callback, account changes and their email confirmation, the reader check) | 20 requests / 15 min, one bucket per IP |
 | User search (`GET /api/users/search`) | 60 requests / 15 min |
-| The reconciliation read (`GET /api/documents/state`), counted before authentication, so an unauthenticated caller spends it too | 120 requests / 15 min |
-| The membership sync (`/api/machine/members`, W6-CDX-9), its own bucket so a sync of many members never spends the login budget; a `429` is retryable | 300 requests / 1 min |
 | WebSocket messages | 60 messages / second |
 
 "Per IP" is the address that connected, unless that peer is a proxy `TRUST_PROXY` names, in which case it is the client the proxy names in `X-Forwarded-For`. The default names proxies by address and nothing else: loopback and the gateway of the network the production compose files pin (`127.0.0.1/32, ::1/128, 172.29.0.1/32`), which is where a proxy on the host arrives from. So a public client, a LAN, VPN or VPC neighbour, and a sibling container reaching the app over the compose network cannot pick their own key, even behind a proxy that appends the header. That holds while the app port stays on its loopback publish: every process on the host that reaches the published port, and with `APP_BIND` widened every container on the host (a sibling going to the gateway address, or a container on another Docker network going to the host's address), arrives as the gateway and is trusted. The default bridge's gateway, `172.17.0.1`, is not trusted: an IPv4-only Docker network presents every IPv6 client of an all-interfaces or IPv6 publish as its gateway, which `docker run -p PORT:PORT` does. A hop count, `true`, or a range wider than an IPv4 /8, wider than an IPv6 /16 outside `fc00::/7` and `fe80::/10`, or holding more than an IPv4 /8 of `::ffff:0:0/96` is refused at boot unless `TRUST_PROXY_ALLOW_HOP_COUNT=true`, and an entry not in standard notation always is; a peer the list leaves out that sends the header is logged once, and the resolved list is printed at boot (GHSA-9fmx-frrf-xxmq). The production compose files publish the app port on `127.0.0.1` unless `APP_BIND` says otherwise, and `docker-compose-prod.yml` publishes MySQL on `127.0.0.1` unless `DB_BIND` says otherwise. See [deployment.md](deployment.md#rate-limiters).

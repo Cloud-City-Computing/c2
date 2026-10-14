@@ -15,6 +15,13 @@ const REMOVED_READS = [
   ['SUITE_NAME', () => process.env.SUITE_NAME],
   ['SUITE_PREFERENCE_DOMAIN', () => process.env.SUITE_PREFERENCE_DOMAIN],
   ['OIDC_ACCOUNT_URL', () => process.env.OIDC_ACCOUNT_URL],
+  ['SERVICE_TOKEN', () => process.env.SERVICE_TOKEN],
+  ['SERVICE_TOKEN_USER', () => process.env.SERVICE_TOKEN_USER],
+  ['MACHINE_OIDC_AUDIENCE', () => process.env.MACHINE_OIDC_AUDIENCE],
+  ['MACHINE_OIDC_SUBJECTS', () => process.env.MACHINE_OIDC_SUBJECTS],
+  ['WEBHOOK_URL', () => process.env.WEBHOOK_URL],
+  ['WEBHOOK_SECRET', () => process.env.WEBHOOK_SECRET],
+  ['WEBHOOK_WORKSPACE_ID', () => process.env.WEBHOOK_WORKSPACE_ID],
 ];
 
 export const REMOVED_NAMES = REMOVED_READS.map(([name]) => name);

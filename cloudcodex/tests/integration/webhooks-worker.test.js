@@ -176,16 +176,18 @@ describe('what the receiver gets', () => {
     expect((await deliveriesOf(subId))[0].status).toBe('delivered');
   });
 
-  it('an env row is signed with WEBHOOK_SECRET, which the row never stores', async () => {
+  // The env subscription is removed (CDX-SA-3). A row left with source 'env' is never sent, and its delivery
+  // stays pending for an admin to see.
+  it('never sends a row whose source is not admin, and leaves its delivery pending', async () => {
     const previous = process.env.WEBHOOK_SECRET;
     process.env.WEBHOOK_SECRET = 'c'.repeat(40);
     try {
       const subId = await addSubscription(`http://127.0.0.1:${port}/env`, { source: 'env' });
       await addEvent('env', [subId]);
-      await worker().tick();
-      expect(received[0].signature).toBe(signBody('c'.repeat(40), received[0].body));
-      const [row] = await c2_query('SELECT secret FROM webhook_subscriptions WHERE id = ?', [subId]);
-      expect(row.secret).toBeNull();
+      const result = await worker().tick();
+      expect(result.sent).toBe(0);
+      expect(received).toHaveLength(0);
+      expect((await deliveriesOf(subId))[0].status).toBe('pending');
     } finally {
       if (previous === undefined) delete process.env.WEBHOOK_SECRET;
       else process.env.WEBHOOK_SECRET = previous;
