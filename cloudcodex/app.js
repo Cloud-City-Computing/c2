@@ -426,5 +426,8 @@ app.use('/api', notificationsRouter);
 app.use('/api', activityRouter);
 app.use('/api', firstRunRouter);
 app.use('/api', watchesRouter);
+// An unmatched /api path is a JSON 404 in every mode. Without this, vite-express answers an unknown GET
+// with index.html and 200 in production, so a removed GET route would look alive.
+app.use('/api', (req, res) => res.status(404).json({ success: false, message: 'Not found' }));
 
 export default app;
