@@ -189,7 +189,7 @@ async function resolveOidcIdentity(claims, policy) {
   // account alone never is.
   const [invitation] = await c2_query(
     `SELECT id, squad_id, role, can_read, can_write, can_create_log, can_create_archive,
-            can_manage_members, can_delete_version, can_publish, grants_admin
+            can_manage_members, can_delete_version, can_publish
        FROM user_invitations
       WHERE LOWER(email) COLLATE utf8mb4_bin = LOWER(?) COLLATE utf8mb4_bin AND accepted = FALSE AND expires_at > NOW()
       ORDER BY created_at DESC LIMIT 1`,
@@ -241,9 +241,9 @@ async function createFromInvitation(claims, invitation, attempt = 0) {
       let created;
       try {
         created = await query(
-          // grants_admin is set only for a user this INSERT creates (the membership sync's owner, W6-CDX-9).
-          'INSERT INTO users (name, email, is_admin, created_at) VALUES (?, ?, ?, NOW())',
-          [username, email, Boolean(invitation.grants_admin)]
+          // An invitation admits a plain member. Admin is granted only by ensureAdminUser at boot.
+          'INSERT INTO users (name, email, is_admin, created_at) VALUES (?, ?, FALSE, NOW())',
+          [username, email]
         );
       } catch (userErr) {
         if (userErr.code !== 'ER_DUP_ENTRY') throw userErr;

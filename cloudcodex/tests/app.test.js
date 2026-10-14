@@ -721,25 +721,6 @@ describe('app.js — Express configuration', () => {
     }
   });
 
-  // The membership sync (W6-CDX-9) is called on every add, re-role and removal, and linking a workspace
-  // syncs every member at once. Its own bucket, 300 a minute, never the login one: a sync of more than
-  // twenty members must not spend the login budget of Cloud Command's address. A 429 is retryable there.
-  it('puts /api/machine/members in its own rate-limit bucket, not the login bucket', async () => {
-    const prior = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-      const statuses = [];
-      for (let i = 0; i < 301; i++) {
-        statuses.push((await request(app).put('/api/machine/members').send({})).status);
-      }
-      // authLimiter would refuse the 21st; this bucket answers the first 300 and refuses the 301st.
-      expect(statuses.slice(0, 300)).not.toContain(429);
-      expect(statuses[300]).toBe(429);
-    } finally {
-      process.env.NODE_ENV = prior;
-    }
-  });
-
   // The reconciliation read (W6-CDX-16) answers up to 100 ids a request, so it
   // gets its own bucket, 120 per 15 minutes. Mounted in app.js before any
   // router, so an unauthenticated caller spends it too.

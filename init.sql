@@ -213,10 +213,6 @@ CREATE TABLE user_invitations (
   expires_at TIMESTAMP NOT NULL,
   accepted BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  -- Set by the membership sync for a workspace owner (migrations/2026-10-15-invitation-grants-admin.sql).
-  grants_admin BOOLEAN NOT NULL DEFAULT FALSE,
-  -- Set when the membership sync removes the invitation (migrations/2026-10-16-invitation-revoked.sql).
-  revoked_at TIMESTAMP NULL DEFAULT NULL,
   FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (token),
   INDEX (email),

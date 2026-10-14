@@ -28,7 +28,6 @@ import avatarsRouter from './routes/avatars.js';
 import docImagesRouter from './routes/doc-images.js';
 import { docImagesHandler } from './routes/doc-images-serve.js';
 import adminRouter from './routes/admin.js';
-import machineMembersRouter from './routes/machine-members.js';
 import oauthRouter from './routes/oauth.js';
 import oidcRouter from './routes/oidc.js';
 import githubRouter from './routes/github.js';
@@ -420,20 +419,6 @@ const stateLimiter = rateLimit({
 });
 app.use('/api/documents/state', stateLimiter);
 
-// The membership sync (W6-CDX-9, routes/machine-members.js) is called on every add, re-role and removal,
-// and linking a workspace syncs every member at once. Its own bucket, never authLimiter: one bucket shared
-// with the login routes would refuse a sync of more than twenty members partway, and spend the login budget
-// of every request from Cloud Command's address. A 429 here is retryable, and Cloud Command retries it.
-const machineMembersLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'test',
-  message: { success: false, message: 'Too many membership requests, please try again later' },
-});
-app.use('/api/machine/members', machineMembersLimiter);
-
 // Serve uploaded avatars as static files
 app.use('/avatars', express.static(path.join(__dirname, 'public', 'avatars'), {
   maxAge: '7d',
@@ -456,7 +441,6 @@ app.use('/api', commentsRouter);
 app.use('/api', avatarsRouter);
 app.use('/api', docImagesRouter);
 app.use('/api', adminRouter);
-app.use('/api', machineMembersRouter);
 app.use('/api', oauthRouter);
 // Mounted only when an OIDC issuer is configured; getOidcConfig() throws at boot on a bad setting.
 if (getOidcConfig() !== null) app.use('/api', oidcRouter);
