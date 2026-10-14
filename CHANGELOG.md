@@ -29,9 +29,14 @@ initialises an empty data directory.
   `GET /api/2fa/status` no longer answers `managed_by: 'issuer'` (it answers `'oidc'` for an OIDC session, `null`
   otherwise). The `managed_by_issuer` refusal is gone. Where local sign-in is on, such an account keeps its
   password and two-factor routes; to make the issuer the only sign-in door, set `AUTH_PROVIDERS=oidc`.
+  **Upgrade note:** on an install that ran suite mode, accounts linked to an identity provider now accept a local
+  password and local two-factor wherever local sign-in is on. A password reset sent by email reaches them without
+  the provider's second factor. Set `AUTH_PROVIDERS=oidc` to keep sign-in provider-only. While
+  `SUITE_COMMAND_WORKSPACE_URL` is still set, the boot logs how many accounts this affects.
 - **The shared theme cookie (CDX-SA-2).** The theme and the accent are per host. A choice is written host-only and
-  no longer shared across a parent domain. On each parent domain the cookie name is expired on the next change, so an
-  older shared choice cannot shadow the new one.
+  no longer shared across a parent domain. On the next change, and on Match system, the cookie name is also expired
+  on this host and on each parent domain, so an older shared choice, including one an install with the preference
+  domain set to its own host wrote, cannot shadow the new one.
 
 ## [0.14.0] - 2026-10-12
 

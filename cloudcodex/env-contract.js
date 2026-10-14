@@ -132,7 +132,8 @@ export const ENV_CONTRACT = [
 
   // Removed in 0.15.0 (the suite integration). Read for nothing; boot names each one that is still set.
   { name: 'SUITE_COMMAND_WORKSPACE_URL', kind: 'removed', perInstance: true,
-    why: 'suite mode was removed in 0.15.0; unset it' },
+    why: 'suite mode was removed in 0.15.0. Accounts linked to an identity provider now accept a local password '
+      + 'and local two-factor; set AUTH_PROVIDERS=oidc to keep sign-in provider-only. Unset it' },
   { name: 'SUITE_NAME', kind: 'removed', perInstance: true,
     why: 'suite mode was removed in 0.15.0; unset it' },
   { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'removed', perInstance: true,

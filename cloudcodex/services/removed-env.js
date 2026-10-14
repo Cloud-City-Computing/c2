@@ -30,6 +30,28 @@ export function removedVariablesSet() {
 }
 
 /**
+ * Logs how many accounts are linked to an identity provider, while the suite variable is still set. Those
+ * accounts accept a local password and local two-factor after the upgrade unless AUTH_PROVIDERS=oidc is set.
+ * `query` is c2_query, passed in so this module stays free of the database. Never throws: a failed count is
+ * logged and the boot goes on.
+ * @returns {Promise<number | null>} the count, or null when it was not read
+ */
+export async function logLinkedIdentities(query, log = console.error) {
+  if (!removedVariablesSet().includes('SUITE_COMMAND_WORKSPACE_URL')) return null;
+  try {
+    const [row] = await query('SELECT COUNT(*) AS n FROM user_identities');
+    const count = Number(row?.n);
+    if (!Number.isFinite(count)) throw new Error('no count was returned');
+    log(`[${new Date().toISOString()}] ${count} account(s) linked to an identity provider accept a local password `
+      + 'and local two-factor now that suite mode is removed. Set AUTH_PROVIDERS=oidc to keep their sign-in provider-only.');
+    return count;
+  } catch (err) {
+    log(`[${new Date().toISOString()}] could not count the accounts linked to an identity provider: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Prints one line per set removed variable, naming it and the contract's `why` (what to do instead).
  * Never throws and never exits: a removed variable must not stop an instance from starting.
  */

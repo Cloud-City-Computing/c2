@@ -20,7 +20,7 @@ import { acquireInstanceLock } from './services/instance-lock.js';
 import { reconcileEnvSubscription, loadSubscriptions } from './services/webhooks.js';
 import { startWebhookWorker, pruneWebhookRows } from './services/webhook-worker.js';
 import { createShutdown } from './services/shutdown.js';
-import { warnRemovedVariables } from './services/removed-env.js';
+import { warnRemovedVariables, logLinkedIdentities } from './services/removed-env.js';
 import { readiness } from './routes/health.js';
 import app from './app.js';
 
@@ -204,6 +204,9 @@ try {
 } catch (err) {
   console.error(`[${new Date().toISOString()}] release schema check failed, continuing:`, err);
 }
+
+// Named once, while the suite variable is still set: how many accounts it leaves with a local password door.
+await logLinkedIdentities(c2_query);
 
 let adminId = null;
 try {
