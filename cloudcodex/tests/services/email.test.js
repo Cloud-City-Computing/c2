@@ -263,6 +263,12 @@ describe('SMTP_PORT and SMTP_FROM defaults', () => {
     expect(mail.from).toBe('Cloud Codex <noreply@codex.example.test>');
   });
 
+  // A fully qualified host name ends in a dot. The dot is not part of the domain, so an address with it is invalid.
+  it('the default From strips one trailing dot from the APP_URL host', async () => {
+    const { mail } = await importWith({ SMTP_FROM: undefined, APP_URL: 'https://codex.example.test./' });
+    expect(mail.from).toBe('Cloud Codex <noreply@codex.example.test>');
+  });
+
   it('the default From falls back to localhost when APP_URL names an IPv6 address', async () => {
     const { mail } = await importWith({ SMTP_FROM: undefined, APP_URL: 'http://[::1]:3000' });
     expect(mail.from).toBe('Cloud Codex <noreply@localhost>');
