@@ -557,7 +557,7 @@ export function UserPreferencesPanel() {
     <div className="settings-panel">
       <h2 className="panel-title">Appearance</h2>
 
-      {/* Theme and Accent: the same groups as the header's Appearance popover (suite-prefs.js) */}
+      {/* Theme and Accent: the same groups as the header's Appearance popover (appearance-prefs.js) */}
       <div className="pref-section" role="group" aria-label="Theme">
         <h3 className="pref-section__title">Theme</h3>
         <p className="text-muted text-sm">Match system follows your operating system.</p>

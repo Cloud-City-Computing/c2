@@ -613,7 +613,7 @@ h1, h2, h3, h4, h5, h6 {
   white-space: nowrap;
 }
 
-/* The suite pattern's anatomy (W6-CDX-39, A2): 30 px high, --radius-md, 13 px at weight 500, no letter-spacing.
+/* The button anatomy (W6-CDX-39, A2): 30 px high, --radius-md, 13 px at weight 500, no letter-spacing.
    Scoped with the same exclusion as the X4 font rule above, so a button inside a deferred family (comments, the
    editor and its toolbars, Markdown, Draw.io, Version History, GitHub) keeps the metrics it had (K3). */
 .btn:not([class*="gh-"], .comment-textarea, .markdown-editor__textarea, .comment-manager *, .comment-thread *, .editor-log *, .editor-with-comments *, .editor-container *, .tiptap-toolbar *, .editor-toolbar *, .markdown-editor *, .version-history *, .drawio-block *, .document-readonly *, [class*="gh-"] *) {

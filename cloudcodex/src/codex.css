@@ -20,8 +20,8 @@
  *    neutrals and bindings that change with the theme. A bare [data-theme]
  *    selector, not :root[data-theme], because the vendored contrast parser
  *    files any selector that mentions :root under its base map.
- *  - The dark values are the suite pattern's, restated in
- *    tests/design/suite-theme.json, and this file must equal that table.
+ *  - The dark values are restated from the theme table in
+ *    tests/design/theme.json, and this file must equal that table.
  *  - Every text colour clears its minimum on every surface below, measured by
  *    tests/design/contrast.test.js over tests/design/pairs.json.
  *
@@ -64,8 +64,8 @@
   /* color-scheme tells native selects, scrollbars and form chrome to paint dark. */
   color-scheme: dark;
 
-  /* Surfaces: the suite pattern's three steps, the page, a sunken well and a panel, and the selection wash
-     (W6-CDX-38, the values in tests/design/suite-theme.json). The hover fills retired with the fourth and fifth
+  /* Surfaces: the theme table's three steps, the page, a sunken well and a panel, and the selection wash
+     (W6-CDX-38, the values in tests/design/theme.json). The hover fills retired with the fourth and fifth
      steps: a hover is the panel surface on a sunken row, or a stronger hairline on a card. */
   --cx-surface-0: oklch(0.17 0.012 240);
   --cx-surface-1: oklch(0.145 0.012 240);
@@ -245,7 +245,7 @@
   --cx-syntax-builtin: #ca8ac4;
   --cx-syntax-formula: #d7ba7d;
 
-  /* Drop shadows: the ink is black, at the suite pattern's two strengths and the modal's own. */
+  /* Drop shadows: the ink is black, at the theme table's two strengths and the modal's own. */
   --cx-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
   --cx-shadow-md: 0 4px 16px oklch(0 0 0 / 0.4);
   --cx-shadow-lg: 0 8px 24px oklch(0 0 0 / 0.6);
@@ -255,7 +255,7 @@
   /* color-scheme tells native selects, scrollbars and form chrome to paint light (X11). */
   color-scheme: light;
 
-  /* Surfaces and the selection wash: the suite pattern's light column (tests/design/suite-theme.json). */
+  /* Surfaces and the selection wash: the theme table's light column (tests/design/theme.json). */
   --cx-surface-0: oklch(0.985 0.002 230);
   --cx-surface-1: oklch(0.962 0.004 230);
   --cx-surface-2: oklch(0.995 0.003 230);
@@ -272,7 +272,7 @@
   --cx-accent-hover: var(--accent-700);
   --cx-accent-fill: var(--accent-400);
   --cx-accent-fill-hover: var(--accent-300);
-  /* The contract's light ink (suite-theme.json; a change is made in both products). avatar-label.js pins INK_LUMINANCE to it. */
+  /* The contract's light ink (theme.json; the table is the one place a change is made). avatar-label.js pins INK_LUMINANCE to it. */
   --cx-on-accent: oklch(0.16 0.03 240);
   /* The dark step behind a white avatar label: white clears 4.5:1 on it in either theme. */
   --cx-accent-dark: oklch(0.45 0.13 240);
@@ -420,14 +420,14 @@
   --cx-syntax-builtin: oklch(0.46 0.12 329.9);
   --cx-syntax-formula: oklch(0.48 0.09 85.1);
 
-  /* Drop shadows: the ink is the suite's dark neutral, at the pattern's two light strengths and the modal's own. */
+  /* Drop shadows: the ink is the theme table's dark neutral, at its two light strengths and the modal's own. */
   --cx-shadow-sm: 0 1px 2px oklch(0.2 0.02 240 / 0.06);
   --cx-shadow-md: 0 4px 16px oklch(0.2 0.02 240 / 0.1);
   --cx-shadow-lg: 0 8px 24px oklch(0.2 0.02 240 / 0.16);
 }
 
 /*
- * The picked accent. The picker writes a hue, --cx-accent-h, and an attribute, data-accent, on the root (src/lib/suite-prefs.js);
+ * The picked accent. The picker writes a hue, --cx-accent-h, and an attribute, data-accent, on the root (src/lib/appearance-prefs.js);
  * each theme derives its four steps from that hue here. The steps are the contract's (docs/specs/...): text, hover,
  * fill and selection wash, plus the dark step behind a white label. Without data-accent the default bindings above
  * apply. tests/design/accents.test.js substitutes H and measures every hue on every surface of each theme.

@@ -120,6 +120,8 @@ async function resolveOidcIdentity(claims, policy) {
     // A deactivated user is refused before anything is written, so the refusal leaves no trace.
     if (identity.deactivated_at) return { ok: false, reason: 'account_deactivated' };
     // The issuer's email is recorded for display and audit, and users.email is never written here.
+    // email_at_last_signin is read by no route: an operator relinking an identity reads it (SQL) to see
+    // the address the issuer last sent.
     // A change at the issuer does not move the local account's address: password reset mails that
     // address, and the local email-change rules (current password, confirmation to the new address,
     // notice to the old one) are the only way it changes. Authority rests on (issuer, subject).

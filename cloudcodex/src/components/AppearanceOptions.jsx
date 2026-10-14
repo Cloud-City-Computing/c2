@@ -2,7 +2,7 @@
  * Cloud Codex - the Appearance choices, shared by the header popover and the Account page (W6-CDX-44)
  *
  * The Theme options (System, Light, Dark) and the eight accent swatches with Default. Each group reads and
- * writes the suite preference contract (src/lib/suite-prefs.js) and keeps itself in step with other tabs,
+ * writes the appearance preference contract (src/lib/appearance-prefs.js) and keeps itself in step with other tabs,
  * so the popover and the Account page can never disagree. Match system is named that for assistive tech and
  * shown as "System" so the word never wraps.
  *
@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import {
   clearAccent, clearTheme, resolveAccent, setAccent, setTheme, storedThemeChoice, subscribe,
-} from '../lib/suite-prefs.js';
+} from '../lib/appearance-prefs.js';
 import { ACCENT_COLORS } from '../userPrefs.js';
 
 const THEME_OPTIONS = [
