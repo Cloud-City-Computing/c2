@@ -491,6 +491,15 @@ session:
 | CDX-SA-6 | **Done on branch `track/cdx-sa-6-standalone-review` (PR not yet opened).** The pre-1.0 standalone review, with its findings fixed: a clean-clone boot with local accounts and with a non-default OIDC provider in a container (Keycloak 26.4.7) | CDX-SA-5 |
 | CDX-SA-7 | The 1.0.0 release; the spec and plan retire. **Handed to c2's maintainers (decided 2026-10-14): not part of this track.** | CDX-SA-6 |
 
+**Follow-up for the maintainers who cut 1.0 (open, IS8, from CDX-SA-6).** The verified-email requirement refuses a sign-in
+whose issuer returns no `email_verified: true`. Some issuers send no standard `email_verified` claim, so their sign-ins
+are refused with no setting to change. Recommendation: keep the requirement, since it is what stops an account being
+linked by an unverified address. Then choose one: document such issuers as unsupported for 1.0, or read the issuer's
+documented verification claim, but only after a test tenant proves that claim is sent and means what it says. Either
+choice changes who may link an account, so it needs Kyle's decision. Nothing is built. The evidence is in
+[`docs/research/standalone-review-2026-10-14/`](../research/standalone-review-2026-10-14/README.md) and the open questions
+map (S1).
+
 ## Sequencing
 
 ```
