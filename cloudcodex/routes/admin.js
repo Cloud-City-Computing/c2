@@ -9,14 +9,14 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { c2_query, withTransaction } from '../mysql_connect.js';
-import { requireAuth, requireAdmin, ISSUER_MANAGED_REFUSAL } from '../middleware/auth.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { sendEmail, isMailEnabled } from '../services/email.js';
 import { isValidId, asyncHandler, errorHandler, BCRYPT_ROUNDS, APP_URL, isValidEmail, createDefaultPermissions, addSquadOwnerMember } from './helpers/shared.js';
 import { getAllPresence, getActiveDocCount } from '../services/collab.js';
 import { createNotification } from '../services/notifications.js';
 import webhooksRouter from './webhooks.js';
 import { localSignInEnabled } from '../services/auth-providers.js';
-import { deriveUniqueUsername, isManagedByIssuerHere } from '../services/identity.js';
+import { deriveUniqueUsername } from '../services/identity.js';
 
 const router = express.Router();
 
@@ -433,11 +433,6 @@ router.post('/admin/users/:id/2fa/reset', requireAuth, requireAdmin, asyncHandle
   const [user] = await c2_query(`SELECT id, name, two_factor_method FROM users WHERE id = ? LIMIT 1`, [targetId]);
   if (!user) {
     return res.status(404).json({ success: false, message: 'User not found' });
-  }
-
-  // Suite mode: an issuer-linked account's second factor is the issuer's to reset (W6-CDX-42, K6).
-  if (await isManagedByIssuerHere(targetId)) {
-    return res.status(403).json(ISSUER_MANAGED_REFUSAL);
   }
 
   await c2_query(`UPDATE users SET two_factor_method = 'none', totp_secret = NULL WHERE id = ?`, [targetId]);

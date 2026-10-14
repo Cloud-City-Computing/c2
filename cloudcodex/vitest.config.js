@@ -146,7 +146,6 @@ export default defineConfig({
         // The webhook admin API (W6-CDX-13). Measured at 100 lines, 98.76
         // statements, 92.64 branches, 100 functions when it landed.
         'routes/webhooks.js': { lines: 97, statements: 95, branches: 88, functions: 95 },
-        'services/suite.js': { lines: 95, statements: 95, branches: 92, functions: 95 },
 
         // Services.
         'services/email.js': { lines: 95, statements: 95, branches: 70, functions: 95 },

@@ -6,8 +6,6 @@
  */
 
 import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
-import { readSuiteConfig } from '../services/suite.js';
-import { isIssuerManaged } from '../services/identity.js';
 import { verifyMachineCredential, MachineAuthUnavailable } from '../services/machine-auth.js';
 import { readSessionCookie, legacyCookieAllowed } from '../services/session-cookie.js';
 import { localSignInEnabled, providerListed } from '../services/auth-providers.js';
@@ -167,30 +165,6 @@ export function requireAdmin(req, res, next) {
     return res.status(403).json({ success: false, message: 'Admin access required' });
   }
   next();
-}
-
-/** The 403 body for an account write the issuer owns (suite mode). The client shows it read-only; this is the server's refusal. */
-export const ISSUER_MANAGED_REFUSAL = Object.freeze({
-  success: false,
-  code: 'managed_by_issuer',
-  message: 'This account is managed by its sign-in provider, so it cannot be changed here.',
-});
-
-/**
- * Mounted after requireAuth on the account writes (update-account and its confirmation, and the /api/2fa/*
- * writes). In suite mode an account with a user_identities row is managed by the issuer: the write is refused
- * with ISSUER_MANAGED_REFUSAL and nothing changes. Off outside suite mode, and an account with no identity row
- * (a local boot admin) stays editable. POST /api/update-account reads its session in the handler, so it checks
- * isIssuerManaged itself (routes/auth.js).
- */
-export async function refuseIssuerManaged(req, res, next) {
-  if (!readSuiteConfig().enabled) return next();
-  try {
-    if (!(await isIssuerManaged(req.user.id))) return next();
-  } catch (err) {
-    return next(err);
-  }
-  return res.status(403).json(ISSUER_MANAGED_REFUSAL);
 }
 
 /**

@@ -14,6 +14,7 @@ const REMOVED_READS = [
   ['SUITE_COMMAND_WORKSPACE_URL', () => process.env.SUITE_COMMAND_WORKSPACE_URL],
   ['SUITE_NAME', () => process.env.SUITE_NAME],
   ['SUITE_PREFERENCE_DOMAIN', () => process.env.SUITE_PREFERENCE_DOMAIN],
+  ['OIDC_ACCOUNT_URL', () => process.env.OIDC_ACCOUNT_URL],
 ];
 
 export const REMOVED_NAMES = REMOVED_READS.map(([name]) => name);

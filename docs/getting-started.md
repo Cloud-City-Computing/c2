@@ -203,7 +203,6 @@ All seed accounts use the password **`password`**.
 | `OIDC_CLIENT_ID` | This instance's application client ID at the issuer. Set it with `OIDC_ISSUER_URL` | — |
 | `OIDC_CLIENT_SECRET` | That application's client secret. Set it with `OIDC_ISSUER_URL` | — |
 | `OIDC_PROVIDER_NAME` | The label on the sign-in button, "Sign in with <name>" | `SSO` |
-| `OIDC_ACCOUNT_URL` | The issuer's account page. In suite mode a signed-in-through-the-issuer account reads its name, email, password and two-factor as managed by the provider, linked here (no link when unset). `https`, or plain `http` outside production | — |
 | `OIDC_LINK_BY_VERIFIED_EMAIL` | `1` links an existing account by its verified email when that account has two-factor off; `0` never links by email | `1` (on) |
 | `OIDC_SESSION_TTL_HOURS` | How long an OIDC sign-in lasts, in whole hours | `24` |
 | `LEGACY_SESSION_COOKIE` | Whether a lone `sessionToken` cookie from before the https session cookie became `__Host-sessionToken` still signs its holder in. Only `0` turns it off (for an https instance sharing its domain with hosts you do not control) | `1` (on) |
@@ -232,6 +231,7 @@ prints a line at boot naming it, then the server starts as it would without it. 
 | `SUITE_COMMAND_WORKSPACE_URL` | suite mode was removed in 0.15.0; unset it |
 | `SUITE_NAME` | suite mode was removed in 0.15.0; unset it |
 | `SUITE_PREFERENCE_DOMAIN` | the theme and accent preference is per host now; unset it |
+| `OIDC_ACCOUNT_URL` | accounts are editable in Codex now; unset it |
 
 ## NPM Scripts
 
