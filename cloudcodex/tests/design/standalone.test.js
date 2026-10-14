@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './buckets.js';
+import { ENV_CONTRACT } from '../../env-contract.js';
 
 const FORBIDDEN = [
   /Cloud City(?! Computing)/, // the company's legal name in a header is the only allowed form
@@ -32,6 +33,9 @@ const ALLOWED_EXACT = ['cc_suite_theme', 'cc_suite_accent'];
 // SUITE_ names are allowed only where they name a removed variable: a `kind: 'removed'` entry of
 // env-contract.js, and services/removed-env.js, which reads each removed variable to warn about it.
 const SUITE_NAME = /\bSUITE_[A-Z_]+\b/;
+const REMOVED_SUITE_NAMES = new Set(ENV_CONTRACT.filter((e) => e.kind==='removed' && e.name.startsWith('SUITE_')).map((e) => e.name));
+function unlistedRemovedNames(text){ return (text.match(new RegExp(SUITE_NAME.source,'g'))??[]).filter((n)=>!REMOVED_SUITE_NAMES.has(n)); }
+
 const SUITE_ALLOWED_FILES = new Set(['services/removed-env.js']);
 
 const DIRS = ['src', 'routes', 'services', 'middleware', 'scripts'];
@@ -80,6 +84,8 @@ function violations(file, text) {
   if (SUITE_NAME.test(scrubbed)) {
     if (rel === 'env-contract.js') {
       for (const line of unremovedSuiteLines(scrubbed)) found.push(`${rel}:${line}: SUITE_ outside a removed entry`);
+    } else if (rel === 'services/removed-env.js') {
+      // OLD: whole file allowed
     } else if (!SUITE_ALLOWED_FILES.has(rel)) {
       found.push(`${rel}: ${SUITE_NAME}`);
     }
@@ -93,5 +99,26 @@ describe('Codex is a standalone product', () => {
     expect(files.length).toBeGreaterThan(100); // non-vacuity
     const hits = files.flatMap((f) => violations(f, readFileSync(f, 'utf8')));
     expect(hits).toEqual([]);
+  });
+});
+
+describe('the scan catches what it claims to catch', () => {
+  const at = (rel) => path.join(ROOT, rel);
+
+  it('a SUITE_ name with digits is a violation wherever it appears', () => {
+    expect(violations(at('app.js'), "const v = 'SUITE_V2';")).not.toEqual([]);
+    expect(violations(at('routes/x.js'), 'process.env.SUITE_TOKEN2')).not.toEqual([]);
+  });
+
+  it('services/removed-env.js may name only the removed SUITE_ entries, not any other', () => {
+    expect(violations(at(REMOVED_ENV_FILE), "['SUITE_NAME', () => process.env.SUITE_NAME],")).toEqual([]);
+    expect(violations(at(REMOVED_ENV_FILE), "['SUITE_FAKE2', () => process.env.SUITE_FAKE2],")).not.toEqual([]);
+  });
+
+  it('env-contract.js allows a SUITE_ name only inside a kind: removed entry', () => {
+    const removed = "  { name: 'SUITE_NAME', kind: 'removed',\n    why: 'x' },\n";
+    const optional = "  { name: 'SUITE_NAME', kind: 'optional',\n    why: 'x' },\n";
+    expect(violations(at('env-contract.js'), removed)).toEqual([]);
+    expect(violations(at('env-contract.js'), optional)).not.toEqual([]);
   });
 });
