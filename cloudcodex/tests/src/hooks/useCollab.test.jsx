@@ -92,6 +92,23 @@ describe('useCollab', () => {
     expect(typeof result.current.sendCommentEvent).toBe('function');
   });
 
+  it('lists each collaborator once, however many sockets that user has open on the log', () => {
+    const { result } = renderHook(() => useCollab(1));
+    act(() => {
+      FakeWebSocket.instances[0].onmessage({
+        data: JSON.stringify({
+          type: 'awareness',
+          users: [
+            { id: 1, name: 'Ada', color: '#f00' },
+            { id: 1, name: 'Ada', color: '#f00' },
+            { id: 2, name: 'Bo', color: '#0f0' },
+          ],
+        }),
+      });
+    });
+    expect(result.current.collabUsers.map((u) => u.id)).toEqual([1, 2]);
+  });
+
   it('initial collabUsers and remoteCursors are empty', () => {
     const { result } = renderHook(() => useCollab(7));
     expect(result.current.collabUsers).toEqual([]);
