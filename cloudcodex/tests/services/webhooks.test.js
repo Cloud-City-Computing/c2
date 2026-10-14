@@ -155,7 +155,7 @@ describe('services/webhooks', () => {
       c2_query.mockResolvedValueOnce([]);
       await loadSubscriptions();
       const [{ sql }] = calls();
-      expect(sql).toMatch(/FROM webhook_subscriptions\s+WHERE enabled = TRUE/);
+      expect(sql).toMatch(/FROM webhook_subscriptions\s+WHERE enabled = TRUE\s+AND source = 'admin'/);
       expect(sql).not.toMatch(/secret/);
     });
 
@@ -249,6 +249,8 @@ describe('services/webhooks', () => {
       // The database re-checks what the cache matched: the subscription is
       // still there, enabled, and for this workspace and type.
       expect(deliveries.sql).toMatch(/SELECT id, \? FROM webhook_subscriptions/);
+      // A row that is not an admin subscription is never queued, whatever it matched in the cache.
+      expect(deliveries.sql).toMatch(/AND source = 'admin'/);
       expect(deliveries.sql).toMatch(/enabled = TRUE/);
       expect(deliveries.sql).toMatch(/workspace_id IS NULL OR workspace_id = \?/);
       expect(deliveries.sql).toMatch(/event_types IS NULL OR JSON_CONTAINS\(event_types, JSON_QUOTE\(\?\)\)/);

@@ -216,7 +216,7 @@ describe('/api/admin/webhooks', () => {
 
     it('answers 404 for a row that is not an admin subscription, and writes nothing', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 4, source: 'env' }]);
       const res = await request(app).post('/api/admin/webhooks/4/rotate').set('Authorization', 'Bearer t');
       expect(res.status).toBe(404);
       expect(sqls()).toHaveLength(1);
@@ -272,7 +272,7 @@ describe('/api/admin/webhooks', () => {
 
     it('answers 404 for a row that is not an admin subscription, and writes nothing', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 4, source: 'env' }]);
       const res = await request(app).patch('/api/admin/webhooks/4').set('Authorization', 'Bearer t').send({ enabled: false });
       expect(res.status).toBe(404);
       expect(sqls()).toHaveLength(1);
@@ -299,7 +299,7 @@ describe('/api/admin/webhooks', () => {
 
     it('answers 404 for a row that is not an admin subscription, and deletes nothing', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([]);
+      c2_query.mockResolvedValueOnce([{ id: 4, source: 'env' }]);
       const res = await request(app).delete('/api/admin/webhooks/4').set('Authorization', 'Bearer t');
       expect(res.status).toBe(404);
       expect(sqls()).toHaveLength(1);
@@ -485,7 +485,7 @@ describe('the console read in UTC, and the environment delivery refusal (W6-CDX-
 
   it('answers 404 to a redelivery that is not of an admin subscription, and writes nothing', async () => {
     mockAuthenticated(ADMIN_USER);
-    c2_query.mockResolvedValueOnce([]);
+    c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead', source: 'env', expired: 0 }]);
     const res = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
 
     expect(res.status).toBe(404);

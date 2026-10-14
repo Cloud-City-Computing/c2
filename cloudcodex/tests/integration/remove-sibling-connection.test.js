@@ -23,6 +23,8 @@ import {
   sha256,
 } from '../../scripts/migrate.js';
 import { UNDO_ON_INIT_SQL } from './pre-runner-state.js';
+import { c2_query } from '../../mysql_connect.js';
+import { emitEvent, loadSubscriptions } from '../../services/webhooks.js';
 import {
   buildSchemaFromInitSql,
   dropSchema,
@@ -121,6 +123,13 @@ describe('removing the sibling connection, on a real server', () => {
       );
       expect(Boolean(revoked.expired)).toBe(true);
 
+      // The open invitation the sync created for a workspace owner (grants_admin) expires with the revoked one:
+      // after the drop it would otherwise admit a plain member for a year.
+      const [owner] = await query(
+        "SELECT (expires_at <= NOW()) AS expired FROM user_invitations WHERE email = 'owner@example.test'"
+      );
+      expect(Boolean(owner.expired)).toBe(true);
+
       const subs = await query('SELECT source, url FROM webhook_subscriptions ORDER BY source');
       expect(subs).toEqual([{ source: 'admin', url: 'https://admin.example.test/hook' }]);
 
@@ -130,6 +139,56 @@ describe('removing the sibling connection, on a real server', () => {
       // The undo returns the two columns, and the rows that survive keep their data.
       await query(UNDO_ON_INIT_SQL[FILE]);
       expect(await removedColumns(query, schema)).toEqual(['grants_admin', 'revoked_at']);
+    } finally {
+      await dropSchema(conn, schema);
+      await conn.end();
+    }
+  });
+
+  // A surviving env row (a 0.15 process started before `npm run migrate`, or a recorded-but-unrun migration)
+  // must never be queued a delivery: the cache and the emit insert both select admin rows only.
+  it('queues no delivery to a surviving env row, and one to the admin row, on an emit', async () => {
+    const actor = (await c2_query("INSERT INTO users (name, email) VALUES ('emit_env', 'emit_env@example.test')")).insertId;
+    const env = (await c2_query(
+      "INSERT INTO webhook_subscriptions (url, secret, source) VALUES ('https://203.0.113.10/env', NULL, 'env')", []
+    )).insertId;
+    const admin = (await c2_query(
+      "INSERT INTO webhook_subscriptions (url, secret, source) VALUES ('https://203.0.113.10/admin', ?, 'admin')",
+      [SECRET]
+    )).insertId;
+    try {
+      expect(await loadSubscriptions()).toBe(true);
+      const emitted = await emitEvent(
+        { action: 'archive.rename', user: { id: actor, name: 'emit_env' }, resourceId: 1, meta: { name: 'Renamed' } },
+        { workspaceId: 1 }
+      );
+      expect(emitted?.deliveries).toBe(1);
+      const rows = await c2_query(
+        'SELECT subscription_id FROM webhook_deliveries WHERE subscription_id IN (?, ?)', [env, admin]
+      );
+      expect(rows.map((r) => r.subscription_id)).toEqual([admin]);
+    } finally {
+      await c2_query('DELETE FROM webhook_deliveries WHERE subscription_id IN (?, ?)', [env, admin]);
+      await c2_query('DELETE FROM webhook_subscriptions WHERE id IN (?, ?)', [env, admin]);
+      await c2_query('DELETE FROM webhook_events WHERE workspace_id = 1 AND type = ?', ['archive.rename']);
+      await c2_query('DELETE FROM users WHERE id = ?', [actor]);
+      await loadSubscriptions();
+    }
+  });
+
+  // The runner would record this file as applied without running its UPDATE and DELETE, so a surviving env row
+  // would stay queued forever. Adoption refuses, and says what to do instead.
+  it('refuses --adopt-fresh-install while an env webhook subscription survives, and records nothing', async () => {
+    const schema = throwawaySchemaName();
+    const conn = await openAdminConnection();
+    try {
+      await buildSchemaFromInitSql(conn, schema);
+      const query = queryVia(conn);
+      await query("INSERT INTO webhook_subscriptions (url, secret, source) VALUES ('https://203.0.113.10/env', NULL, 'env')");
+      await expect(
+        runMigrations({ query, dir: MIGRATIONS_DIR, adoptFreshInstall: true, log: silent })
+      ).rejects.toThrow(/env[\s\S]*--baseline/);
+      expect(await query('SELECT COUNT(*) AS n FROM schema_migrations')).toEqual([{ n: 0 }]);
     } finally {
       await dropSchema(conn, schema);
       await conn.end();
