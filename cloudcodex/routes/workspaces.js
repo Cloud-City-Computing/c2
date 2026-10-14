@@ -7,9 +7,8 @@
 
 import express from 'express';
 import { c2_query } from '../mysql_connect.js';
-import { requireAuth, requireMachine } from '../middleware/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 import { isValidId, asyncHandler, errorHandler, addSquadOwnerMember } from './helpers/shared.js';
-import { getOidcConfig } from '../services/oidc.js';
 
 const router = express.Router();
 
@@ -157,109 +156,6 @@ router.delete('/workspaces/:id', requireAuth, asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
-/**
- * GET /api/workspaces/:workspaceId/reader-check?email=<address>  (C2-5)
- *
- * Answers ONE question for the suite: may the person with this email address
- * read this workspace?
- *
- *   200 { canRead: true | false }
- *
- * WHY IT EXISTS. Cloud Command stores a `c2_workspace_id` and uses it to narrow
- * its document picker to one workspace here. That integer was CALLER-ASSERTED:
- * any account that could create a Cloud Command workspace could point it at any
- * workspace in this install and read document titles out of it, because the
- * service token reads across the install and the picker happily answered. Cloud
- * Command cannot fix that alone -- it can only ask, and the answer has to come
- * from the system that owns the rules.
- *
- * MACHINE-ONLY (requireMachine, NOT machineOrAuth), and that is the security
- * decision rather than a detail. This answers a question about a THIRD PARTY.
- * Behind a session, any logged-in user could enumerate which colleagues belong
- * to which workspaces, and probe which addresses have accounts here at all.
- *
- * A MISSING USER AND AN UNAUTHORISED USER ANSWER IDENTICALLY -- `false`, same
- * status, same body. Distinguishing them would turn this into an
- * account-existence oracle for whoever holds the service token. For the same
- * reason a workspace that does not exist answers `false` rather than 404: the
- * absence of a workspace is not a fact this endpoint should disclose either.
- *
- * "CAN READ A WORKSPACE" IS DERIVED FROM THE RULES THIS PRODUCT ALREADY HAS,
- * not invented: an admin (who reads every archive in the install), the
- * workspace owner (`workspaces.owner_id`, the top of ownership.js's cascade),
- * or a member of any squad in that workspace -- which is exactly what that
- * file's `read_access_workspace` clause already means by "in any squad of the
- * same workspace".
- *
- * IT IS DELIBERATELY NOT "has read access to at least one archive here". That
- * is a narrower question and the wrong one: a person who belongs to a workspace
- * but has no archive grants yet should still be able to connect it, and every
- * search that follows still applies the per-archive grants unchanged. This
- * gates the MAPPING, not the reads.
- */
-router.get('/workspaces/:workspaceId/reader-check', requireMachine, asyncHandler(async (req, res) => {
-  const { workspaceId } = req.params;
-  const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
-  const subject = typeof req.query.subject === 'string' ? req.query.subject.trim() : '';
-
-  if (!isValidId(workspaceId)) {
-    return res.status(400).json({ success: false, message: 'Invalid workspace id' });
-  }
-  if (subject.length > 255) {
-    return res.status(400).json({ success: false, message: 'A subject query parameter is at most 255 characters' });
-  }
-  if (email.length > 255 || (!email && !subject)) {
-    return res.status(400).json({ success: false, message: 'An email query parameter is required' });
-  }
-
-  // The reader's columns, the same for both lookups below: the subject lookup and the email lookup
-  // answer the same question about the same user.
-  const readerColumns = `u.is_admin AS isAdmin,
-       EXISTS (SELECT 1 FROM workspaces w WHERE w.id = ? AND w.owner_id = u.id) AS ownsIt,
-       EXISTS (
-         SELECT 1 FROM squad_members sm
-         JOIN squads s ON s.id = sm.squad_id
-         WHERE sm.user_id = u.id AND s.workspace_id = ?
-       ) AS inASquad`;
-  const canReadOf = row => Boolean(row) && Boolean(row.isAdmin || row.ownsIt || row.inASquad);
-
-  /*
-   * A subject answers alone (W6-CDX-5). It names one person at this instance's configured issuer, which an
-   * email does not, and the sign-in ladder refuses an identity it cannot find by subject, so the reader
-   * check must not fall back to an address that the ladder would not accept. An unknown subject is the same
-   * false as an unknown email. Without OIDC configured there is no issuer to resolve a subject against, so
-   * a subject answers false too. Only when no subject is sent does the email decide.
-   */
-  if (subject) {
-    const oidc = getOidcConfig();
-    if (oidc === null) return res.json({ canRead: false });
-    const [bySubject] = await c2_query(
-      `SELECT ${readerColumns}
-     FROM users u
-     JOIN user_identities ui ON ui.user_id = u.id
-     WHERE ui.issuer = ? AND ui.subject = ?
-     LIMIT 1`,
-      [Number(workspaceId), Number(workspaceId), oidc.issuer, subject]
-    );
-    return res.json({ canRead: canReadOf(bySubject) });
-  }
-
-  /*
-   * LOWER() on both sides. MySQL's default collation is already
-   * case-insensitive, so `=` would work today -- written this way so the intent
-   * survives a future collation change rather than depending on one.
-   */
-  const rows = await c2_query(
-    `SELECT ${readerColumns}
-     FROM users u
-     WHERE LOWER(u.email) = LOWER(?)
-     LIMIT 1`,
-    [Number(workspaceId), Number(workspaceId), email]
-  );
-
-  // No row at all is the unknown-email case, and it lands on the same answer.
-  res.json({ canRead: canReadOf(rows[0]) });
-}));
 
 router.use(errorHandler);
 
