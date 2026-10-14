@@ -9508,7 +9508,7 @@ textarea:focus-visible {
   color: var(--cx-text-secondary);
 }
 
-/* The Default accent (W6-CDX-44 review): a compact outlined pill sized to its label, as Cloud Command shows it. Its
+/* The Default accent (W6-CDX-44 review): a compact outlined pill sized to its label. Its
    selected state is a ring, the same as the swatches', never a fill. */
 .appearance-default-row {
   display: flex;

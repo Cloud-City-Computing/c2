@@ -2,7 +2,7 @@
  * Cloud Codex - the header's Appearance popover (W6-CDX-44)
  *
  * The control in every page header. It opens a small non-modal panel: Theme (System, Light, Dark) and the
- * eight accents with Default. It is non-modal on purpose (as Cloud Command's is): an overlay would make the
+ * eight accents with Default. It is non-modal on purpose: an overlay would make the
  * shell's chrome inert, and the toggle lives in that chrome. The focus contract:
  *   - Opening moves focus to the checked Theme option.
  *   - Tab and Shift+Tab stay inside the panel (trapTab, src/lib/focus-trap.js); Tab from the toggle enters it.

@@ -5,7 +5,7 @@
  * https://cloudcitycomputing.com
  */
 
-// Data only, no imports: a paired product pins a copy of this file and reads it.
+// Data only, no imports, so a tool can read it without loading the server.
 //
 // kind: 'required' (boot exits without it), 'required-in-production' (boot
 // exits without it when NODE_ENV=production), 'required-with-local' (boot exits without it
@@ -130,10 +130,10 @@ export const ENV_CONTRACT = [
 
   // Removed in 0.15.0 (the suite integration). Read for nothing; boot names each one that is still set.
   { name: 'SUITE_COMMAND_WORKSPACE_URL', kind: 'removed', perInstance: true,
-    why: 'suite mode was removed in 0.15.0. Accounts linked to an identity provider now accept a local password '
+    why: 'the suite integration was removed in 0.15.0. Accounts linked to an identity provider now accept a local password '
       + 'and local two-factor; set AUTH_PROVIDERS=oidc to keep sign-in provider-only. Unset it' },
   { name: 'SUITE_NAME', kind: 'removed', perInstance: true,
-    why: 'suite mode was removed in 0.15.0; unset it' },
+    why: 'the suite integration was removed in 0.15.0; unset it' },
   { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'removed', perInstance: true,
     why: 'the theme and accent preference is per host now; unset it' },
 
