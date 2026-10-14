@@ -161,8 +161,16 @@ Host, from `cloudcodex/` on the branch after the fixes:
 - The admin console UI (the session ending was through the REST API).
 - The OIDC TTL premise for a long TTL (only the default was measured).
 - Screenshots were read by eye, not compared with a baseline.
+- A full clean-clone re-run on the final commit. The clean clone ran the 0.15.0 base (`9080da4`). The final branch image was
+  built and checked for the From default and the IPv6 fallback; the adoption wording is covered by its unit test only.
+- `backup-restore.test.js` (21 tests): not verified, see the integration note under Checks run.
 
 ## Cleanup
 
-Recorded in the final report: the containers, network, volumes and images this review created are listed there,
-and removed before the report.
+Done after the last run. Compose project `cdxsa6-clean` taken down with its volumes (`down -v --rmi local`), which
+removed the MySQL and app containers, the Keycloak container, the named volumes, the network and the built image. The
+throwaway integration MySQL container, its anonymous volume and its private network were removed. The Keycloak and
+app images built or pulled for this review were removed; the `mysql:8.4.11` and `node:22-slim` base images were
+already on the box and are kept. The TLS proxy was stopped by PID. Scratch files under `/tmp` (the clone, the
+driver scripts, the throwaway secrets and certificates) were deleted. No Chrome process of this review remains.
+`docker ps -a` and `docker network ls` show nothing from this review.
