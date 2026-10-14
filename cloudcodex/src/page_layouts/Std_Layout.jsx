@@ -9,7 +9,6 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import Login from '../components/Login';
 import Sidebar from '../components/Sidebar';
 import ProductMark from '../components/ProductMark';
-import useSuite from '../hooks/useSuite';
 import FirstRunGate from '../components/FirstRunGate';
 import {
   showModal,
@@ -22,18 +21,14 @@ import { GitHubStatusProvider } from '../hooks/useGitHubStatus';
 import { useSignedOutTarget, clearOidcBounce, fetchProviders, signInFrom } from '../hooks/useSignedOutTarget';
 import { onSessionEnded } from '../lib/session-ended.js';
 import { hasUnsavedChanges, unsavedCopyText } from '../lib/unsaved-changes.js';
-// The one sentence after a sign-out, the same as Cloud Command's (W6-CMD-22). Suite mode only.
-const signedOutSentence = (suiteName) => `You're signed out of ${suiteName}.`;
-
 // --- No Login ---
 
-function NoLoginMessage({ suiteName, signedOut, onSignIn }) {
+function NoLoginMessage({ onSignIn }) {
   return (
     <div className="welcome-message">
       <div className="logo-container">
         <ProductMark className="welcome-logo" size={64} />
         <h2>Welcome to Cloud Codex</h2>
-        {signedOut && suiteName && <p className="signed-out-sentence">{signedOutSentence(suiteName)}</p>}
         <p>Please log in to get started.</p>
         <button type="button" className="btn btn-primary" onClick={onSignIn}>Sign in</button>
       </div>
@@ -83,9 +78,6 @@ function StdLayout({ children }) {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const suite = useSuite(user);
-  // Read once, before anything strips it: the landing after a sign-out says so in suite mode (W6-CDX-26).
-  const [signedOut] = useState(() => new URLSearchParams(window.location.search).get('signedOut') === '1');
 
   const bounceToSignIn = useSignedOutTarget();
   // Whether this page last found someone signed in, read by the session-ended listener below.
@@ -271,7 +263,7 @@ function StdLayout({ children }) {
       <div className={`app-shell ${!user ? 'no-sidebar' : ''}`}>
         {user && <Sidebar user={user} isAdmin={isAdmin} />}
         <main className="main-content">
-          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage suiteName={suite.enabled ? suite.name : null} signedOut={signedOut} onSignIn={signIn} />)}
+          {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage onSignIn={signIn} />)}
         </main>
       </div>
     </GitHubStatusProvider>

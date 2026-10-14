@@ -48,6 +48,6 @@ export async function signOut() {
   clearTimeout(timer);
 
   const endSessionUrl = answer?.endSessionUrl;
-  // /?signedOut=1 is the landing that says so in suite mode (Std_Layout); outside suite mode it is the root.
+  // /?signedOut=1 is the landing after a sign-out: the front door reads it and never bounces the visitor back in.
   window.location.href = isHttpUrl(endSessionUrl) ? endSessionUrl : '/?signedOut=1';
 }

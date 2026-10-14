@@ -7,7 +7,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { destroyModal, serverReq, setSessionCookie } from '../util';
-import useSuite from '../hooks/useSuite';
 import { takeSignInTarget } from '../hooks/useSignedOutTarget';
 import { CheckIcon, XIcon, CircleIcon } from './icons.jsx';
 
@@ -44,8 +43,6 @@ function finishSignIn() {
 }
 
 export default function Login({ inviteToken: propInviteToken, inviteEmail: propInviteEmail }) {
-  // Suite mode makes the one sign-in the primary action (W6-CDX-26). Off, nothing below changes.
-  const suiteOn = useSuite(null).enabled;
   const [tab, setTab] = useState(propInviteToken ? 'signup' : 'login'); // 'login' | 'signup' | 'forgot' | '2fa'
   const [fields, setFields] = useState({
     username: '', email: propInviteEmail || '', confirmEmail: propInviteEmail || '', password: '', confirmPassword: '', code: ''
@@ -235,12 +232,10 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
     }
   };
 
-  // In suite mode with OIDC offered, the SSO link leads and the local login is secondary (ghost).
-  const oidcLeads = suiteOn && tab === 'login' && Boolean(oauthProviders.oidc?.enabled);
   const oidcBlock = tab === 'login' && oauthProviders.oidc?.enabled ? (
     <>
-      {!oauthProviders.google && !oidcLeads && <div className="oauth-divider"><span>or</span></div>}
-      <a href="/api/auth/oidc/start" className={`btn ${oidcLeads ? 'btn-primary' : 'btn-oauth'} stretched-button`}>
+      {!oauthProviders.google && <div className="oauth-divider"><span>or</span></div>}
+      <a href="/api/auth/oidc/start" className="btn btn-oauth stretched-button">
         Sign in with {oauthProviders.oidc.name || 'SSO'}
       </a>
     </>
@@ -293,7 +288,6 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
           </div>
           {error && <p className="form-error">{error}</p>}
           <div className="modal-form">
-            {oidcLeads && oidcBlock}
             <label htmlFor="username">Username:</label>
             <div className="input-with-status">
               <input type="text" id="username" name="username" value={fields.username}
@@ -379,7 +373,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
               </>
             )}
 
-            <button className={`btn ${oidcLeads ? 'btn-ghost' : 'btn-primary'} stretched-button`} onClick={handleSubmit}>
+            <button className="btn btn-primary stretched-button" onClick={handleSubmit}>
               {tab === 'login' ? 'Login' : 'Create Account'}
             </button>
             {tab === 'login' && (
@@ -401,7 +395,7 @@ export default function Login({ inviteToken: propInviteToken, inviteEmail: propI
                 </a>
               </>
             )}
-            {!oidcLeads && oidcBlock}
+            {oidcBlock}
           </div>
         </>
       ) : (

@@ -1,8 +1,8 @@
 /**
  * The signed-out deep-link decision: bounce to the sign-in, open the Login modal, or render the landing
  *
- * A signed-out visitor who opens a deep link gets one of three outcomes. Where OIDC is offered and is the only
- * sign-in, or suite mode is on, the link sends them, once per tab, to /api/auth/oidc/start with the link as
+ * A signed-out visitor who opens a deep link gets one of three outcomes. Where OIDC is the only sign-in, the link
+ * sends them, once per tab, to /api/auth/oidc/start with the link as
  * returnTo; the marker in sessionStorage is the loop guard, and an oauth_error return renders the landing instead
  * of bouncing again. Where no OIDC is offered at all, the link is kept (validated) and the Login modal opens; a
  * successful local sign-in then goes to the kept target. Everything else renders the landing. The bare root bounces
@@ -12,7 +12,7 @@
  * returnTo path on the client. The marker is cleared on a successful sign-in.
  *
  * The decision is pure (decideSignedOut) and is what the tests pin; the hook only wires it to the providers
- * and suite routes and the browser.
+ * route and the browser.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -20,7 +20,6 @@
 
 import { useCallback } from 'react';
 import { safeReturnTo } from '../../services/return-to.js';
-import { suiteEnabled } from './useSuite.js';
 import { SIGN_IN_TARGET_KEY, getStorage, keepSignInTarget, takeSignInTarget, clearSignInTarget } from '../lib/sign-in-target.js';
 
 export { SIGN_IN_TARGET_KEY, keepSignInTarget, takeSignInTarget, clearSignInTarget };
@@ -51,7 +50,7 @@ function targetOf(pathname, search, hash = '') {
  * where OIDC is the only sign-in (hosted), so a local-sign-in instance keeps its sign-in screen.
  * @returns {{ action: 'bounce', url: string } | { action: 'login', target: string } | { action: 'landing' }}
  */
-export function decideSignedOut({ pathname, search, hash = '', oidcOffered, oidcOnly, suiteOn, bounced, oauthError }) {
+export function decideSignedOut({ pathname, search, hash = '', oidcOffered, oidcOnly, bounced, oauthError }) {
   if (pathname === '/404') return { action: 'landing' };
   if (pathname === '/') {
     const afterSignOut = new URLSearchParams(search).get('signedOut') === '1';
@@ -59,8 +58,8 @@ export function decideSignedOut({ pathname, search, hash = '', oidcOffered, oidc
     return { action: 'bounce', url: `/api/auth/oidc/start?returnTo=${encodeURIComponent('/')}` };
   }
   const target = targetOf(pathname, search, hash);
-  // No OIDC, or OIDC beside local login outside suite mode: the modal offers the sign-ins and keeps the link.
-  if (!oidcOffered || (!oidcOnly && !suiteOn && !bounced && !oauthError)) return { action: 'login', target };
+  // No OIDC, or OIDC beside local login: the modal offers the sign-ins and keeps the link.
+  if (!oidcOffered || (!oidcOnly && !bounced && !oauthError)) return { action: 'login', target };
   if (bounced || oauthError) return { action: 'landing' };
   return { action: 'bounce', url: `/api/auth/oidc/start?returnTo=${encodeURIComponent(target)}` };
 }
@@ -70,7 +69,7 @@ export function decideSignedOut({ pathname, search, hash = '', oidcOffered, oidc
  * when the marker cannot be stored, because a bounce that cannot remember itself would loop.
  * @returns {boolean} true when the browser was sent to the sign-in start
  */
-export function startOidcBounce({ pathname, search, hash = '', providers, suiteOn = false, storage, assign }) {
+export function startOidcBounce({ pathname, search, hash = '', providers, storage, assign }) {
   if (!storage) return false;
   let bounced;
   try {
@@ -85,7 +84,6 @@ export function startOidcBounce({ pathname, search, hash = '', providers, suiteO
     hash,
     oidcOffered: providers?.oidc?.enabled === true,
     oidcOnly: isOidcOnly(providers),
-    suiteOn,
     bounced,
     oauthError,
   });
@@ -104,8 +102,8 @@ export function startOidcBounce({ pathname, search, hash = '', providers, suiteO
  * (no OIDC; the validated target was kept and the caller should open the Login modal), or 'landing'.
  * With no providers answer, OIDC is not known to be offered, so the Login modal is the safe outcome.
  */
-export function resolveSignedOut({ pathname, search, hash = '', providers, suiteOn = false, storage, assign }) {
-  if (startOidcBounce({ pathname, search, hash, providers, suiteOn, storage, assign })) return 'bounced';
+export function resolveSignedOut({ pathname, search, hash = '', providers, storage, assign }) {
+  if (startOidcBounce({ pathname, search, hash, providers, storage, assign })) return 'bounced';
   const oidcOffered = providers?.oidc?.enabled === true;
   const bounced = readFlag(storage, OIDC_BOUNCE_MARKER);
   const oauthError = new URLSearchParams(search).has('oauth_error');
@@ -115,7 +113,6 @@ export function resolveSignedOut({ pathname, search, hash = '', providers, suite
     hash,
     oidcOffered,
     oidcOnly: isOidcOnly(providers),
-    suiteOn,
     bounced,
     oauthError,
   });
@@ -180,13 +177,12 @@ export function useSignedOutTarget() {
   return useCallback(async () => {
     const { pathname, search, hash } = window.location;
     if (pathname === '/404') return 'landing';
-    const [providers, suiteOn] = await Promise.all([fetchProviders(), suiteEnabled()]);
+    const providers = await fetchProviders();
     return resolveSignedOut({
       pathname,
       search,
       hash,
       providers,
-      suiteOn,
       storage: getStorage(),
       assign: (url) => window.location.assign(url),
     });
