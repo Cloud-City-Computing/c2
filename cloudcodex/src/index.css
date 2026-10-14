@@ -5552,7 +5552,9 @@ h1, h2, h3, h4, h5, h6 {
     grid-area: nav;
     /* The padding holds a focused item's ring (2 px wide, 2 px out) inside the strip's visible area, at either
        end; scroll-padding keeps a scrolled-to item clear of the edge by the same room (W6-CDX-44 review). */
-    margin: 0 -18px;
+    /* The strip spans the first two columns, and the account sits in the third: a right margin would draw the
+       last item under the avatar, so only the left edge bleeds into the brand column's padding. */
+    margin: 0 0 0 -18px;
     padding: 6px 18px 8px;
     scroll-padding-inline: 18px;
     overflow-x: auto;
