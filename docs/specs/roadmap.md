@@ -391,7 +391,7 @@ C2-AUTH, F and CC numbers are retired.
 
 | Sub-track | Spec | Plan | Sessions |
 |---|---|---|---|
-| Identity (**open until the live check**: a real sign-in against Cloud City ID is not yet recorded, so the spec and plan stay) | [suite identity](2026-09-24-suite-identity.md) | [plan](../plans/2026-09-24-suite-identity.md) | W6-CDX-10 (shared), W6-CDX-2 to W6-CDX-9 |
+| Identity (**shipped, and superseded by the standalone track CDX-SA-4** (PR 4 of [the standalone plan](../plans/2026-10-14-standalone-codex.md)); the identity spec and plan are retired there. The live sign-in check the spec left open is replaced by PR 6 of that plan, on a non-default provider. Shipped in W6-CDX-2 to W6-CDX-10, PRs #55 and #64 to #92 as recorded in git history) | retired with CDX-SA-4 | retired with CDX-SA-4 | W6-CDX-2 to W6-CDX-10 (shared) |
 | Outbound events (**shipped**; the spec and plan are retired by W6-CDX-36, and the record is [`docs/maps/notifications-and-activity.md`](../maps/notifications-and-activity.md) with the public [`docs/api/webhooks.md`](../api/webhooks.md)) | retired with W6-CDX-36 | retired with W6-CDX-36 | W6-CDX-12 to W6-CDX-16 |
 | UI and tokens (**shipped 2026-10-11**, PRs 1 to 9 of the suite UI plan, PR 9 being the last of that plan; the deferred editor, comments and GitHub surface is the row UI-later) | retired with W6-CDX-29; the record is [`docs/maps/`](../maps/) | retired with W6-CDX-29 | W6-CDX-21 to W6-CDX-29 |
 | Hosting readiness (**completed by W6-CDX-36**; the spec and plan are retired by it, and the record is [`docs/maps/`](../maps/)) | retired with W6-CDX-36 | retired with W6-CDX-36 | W6-CDX-31 to W6-CDX-36 |
