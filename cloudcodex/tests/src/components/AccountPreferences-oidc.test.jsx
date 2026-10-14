@@ -54,6 +54,16 @@ describe('AccountPreferencesPanel, for an OIDC-linked account', () => {
     expect(screen.getByRole('radio', { name: /email/i })).toBeEnabled();
   });
 
+  it('does not lock the two-factor panel for a managed_by answer the server no longer sends (CDX-SA-2)', async () => {
+    apiFetch.mockResolvedValue({ success: true, method: 'none', managed_by: 'issuer' });
+    fetch.mockImplementation(() => providersResponse({ enabled: true, name: 'Example ID' }));
+
+    render(<AccountPreferencesPanel />);
+
+    expect(await screen.findByRole('radio', { name: /authenticator app/i })).toBeEnabled();
+    expect(screen.queryByText(/managed by/i)).not.toBeInTheDocument();
+  });
+
   it('falls back to SSO when the provider reports no name', async () => {
     apiFetch.mockResolvedValue({ success: true, method: 'none', managed_by: 'oidc' });
     fetch.mockImplementation(() => providersResponse({ enabled: true, name: undefined }));

@@ -39,6 +39,7 @@ const REMOVED_IN_0_15 = Object.freeze([
   'SUITE_COMMAND_WORKSPACE_URL',
   'SUITE_NAME',
   'SUITE_PREFERENCE_DOMAIN',
+  'OIDC_ACCOUNT_URL',
 ]);
 
 function sourceFiles(dir, rel = '') {

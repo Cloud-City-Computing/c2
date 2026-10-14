@@ -28,7 +28,7 @@ const { utilMock } = vi.hoisted(() => ({
 
 vi.mock('../../../src/util.jsx', () => utilMock);
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { apiFetch, getSessStorage, getSessionTokenFromCookie, setSessionCookie } from '../../../src/util.jsx';
 import { AccountPreferencesPanel, AccountInfoUpdatePanel, UserPreferencesPanel } from '../../../src/components/AccountMenu.jsx';
@@ -112,6 +112,24 @@ describe('AccountInfoUpdatePanel', () => {
     await waitFor(() => expect(screen.getByLabelText('Email')).toHaveValue(ORIGINAL.email));
     return user;
   }
+
+  it('stays editable when a 2FA status says managed_by issuer, which the server no longer sends (CDX-SA-2)', async () => {
+    serve({
+      routes: {
+        '/api/2fa/status': async () => ({ success: true, method: 'none', enabled: false, managed_by: 'issuer' }),
+        '/api/update-account': async () => ({ success: true }),
+      },
+    });
+    const user = await renderPanel();
+    // Let every pending load (the account, the 2FA status if any) settle before looking.
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.queryByText(/managed by/i)).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Name'));
+    await user.type(screen.getByLabelText('Name'), 'renamed');
+    await user.click(screen.getByRole('button', { name: /update info/i }));
+    await screen.findByText('Account updated successfully.');
+  });
 
   it('sends a name change with the session token and nothing else, and asks for no password', async () => {
     serve({ routes: { '/api/update-account': async () => ({ success: true }) } });

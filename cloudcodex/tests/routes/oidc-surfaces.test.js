@@ -28,7 +28,7 @@ describe('GET /api/oauth/providers, the oidc entry', () => {
 
   it('reports oidc off, under the default name, when no issuer is set', async () => {
     const res = await request(app).get('/api/oauth/providers');
-    expect(res.body.providers.oidc).toEqual({ enabled: false, name: 'SSO', accountUrl: null });
+    expect(res.body.providers.oidc).toEqual({ enabled: false, name: 'SSO' });
   });
 
   it('reports oidc on, under OIDC_PROVIDER_NAME, when an issuer is configured', async () => {
@@ -38,17 +38,17 @@ describe('GET /api/oauth/providers, the oidc entry', () => {
     process.env.APP_URL = 'https://codex.example.test';
     process.env.OIDC_PROVIDER_NAME = 'Example ID';
     const res = await request(app).get('/api/oauth/providers');
-    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Example ID', accountUrl: null });
+    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'Example ID' });
   });
 
-  it('serves OIDC_ACCOUNT_URL beside the name, for the account page link (W6-CDX-42)', async () => {
+  it('serves no accountUrl, even when OIDC_ACCOUNT_URL is set (removed in CDX-SA-2)', async () => {
     process.env.OIDC_ISSUER_URL = 'https://id.example.test';
     process.env.OIDC_CLIENT_ID = 'codex-web';
     process.env.OIDC_CLIENT_SECRET = 'a-secret-for-the-surface-tests';
     process.env.APP_URL = 'https://codex.example.test';
     process.env.OIDC_ACCOUNT_URL = 'https://id.example.test/ui/console/users/me';
     const res = await request(app).get('/api/oauth/providers');
-    expect(res.body.providers.oidc.accountUrl).toBe('https://id.example.test/ui/console/users/me');
+    expect(res.body.providers.oidc).toEqual({ enabled: true, name: 'SSO' });
   });
 });
 
