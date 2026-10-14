@@ -15,7 +15,7 @@ import { render, screen, fireEvent, act, cleanup, within } from '@testing-librar
 
 
 import AppearanceControl from '../../../src/components/AppearanceControl.jsx';
-import * as prefs from '../../../src/lib/suite-prefs.js';
+import * as prefs from '../../../src/lib/appearance-prefs.js';
 import { ACCENTS } from '../../../src/tokens/accents.js';
 
 function page(theme, system = 'dark') {

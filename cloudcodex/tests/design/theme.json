@@ -1,5 +1,5 @@
 {
-  "_rule": "The suite pattern's theme values, as the colour gates read them. The record they were first restated in was retired by CDX-SA-2; the open items are in docs/maps/open-questions.md, section H. src/codex.css must equal this file. The light column is the same table's light column (W6-CDX-43).",
+  "_rule": "The shared design pattern's theme values, as the colour gates read them. The record they were first restated in was retired by CDX-SA-2; the open items are in docs/maps/open-questions.md, section H. src/codex.css must equal this file. The light column is the same table's light column (W6-CDX-43).",
   "dark": {
     "--cx-surface-0": "oklch(0.17 0.012 240)",
     "--cx-surface-1": "oklch(0.145 0.012 240)",

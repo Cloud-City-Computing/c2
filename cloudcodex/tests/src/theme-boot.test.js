@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - the pre-paint script in index.html resolves the same answers as suite-prefs.js (W6-CDX-44)
+ * Cloud Codex - the pre-paint script in index.html resolves the same answers as appearance-prefs.js (W6-CDX-44)
  *
  * The script is the inline <script> in index.html, run here as its own text (new Function) against each
  * precedence case, so the script and the module cannot drift apart. The accent cases cover every legacy
