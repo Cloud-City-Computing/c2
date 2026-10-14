@@ -6,22 +6,9 @@
  */
 
 import { validateAndAutoLogin, touchSession } from '../mysql_connect.js';
-import { verifyMachineCredential, MachineAuthUnavailable } from '../services/machine-auth.js';
 import { readSessionCookie, legacyCookieAllowed } from '../services/session-cookie.js';
 import { localSignInEnabled, providerListed } from '../services/auth-providers.js';
 import { DEAD_SESSION_MESSAGE } from '../services/session-messages.js';
-
-/**
- * A machine credential the issuer's keys could not verify (W6-CDX-7) is an outage, not a refusal:
- * 503, so the caller retries instead of treating its credential as revoked. Anything else is a
- * real error and goes to the default handler.
- */
-function machineFailure(err, res, next) {
-  if (err instanceof MachineAuthUnavailable) {
-    return res.status(503).json({ success: false, message: 'Machine authentication is temporarily unavailable' });
-  }
-  return next(err);
-}
 
 /**
  * The bearer token in the Authorization header, or null. A bare "Bearer " is
@@ -83,77 +70,6 @@ export function requireAuth(req, res, next) {
       next();
     })
     .catch(next);
-}
-
-/**
- * Express middleware for routes a machine caller may reach.
- *
- * Tries the machine credential first, and otherwise falls through to
- * requireAuth completely unchanged, so a human session is unaffected. The
- * order matters both ways: a valid service token never reaches
- * validateAndAutoLogin, and an ordinary session token only ever meets the
- * constant-time digest comparison in verifyMachineCredential, which cannot
- * match it and cannot leak its length.
- *
- * Apply it deliberately, one route at a time. It is NOT a drop-in replacement
- * for requireAuth: the whole value of the credential is that its reach is
- * enumerable by reading the routers.
- */
-export function machineOrAuth(req, res, next) {
-  const token = extractSessionToken(req);
-  if (!token) return requireAuth(req, res, next);
-
-  verifyMachineCredential(token)
-    .then(principal => {
-      if (!principal) return requireAuth(req, res, next);
-      // No req.sessionToken: a machine caller holds no session row, so there
-      // is nothing to refresh and nothing for logout to revoke.
-      req.user = principal;
-      next();
-    })
-    .catch((err) => machineFailure(err, res, next));
-}
-
-/**
- * Express middleware for routes ONLY a machine caller may reach (C2-5).
- *
- * The sibling of machineOrAuth, and the difference is the whole point: this one
- * does NOT fall through to a session. A human with a valid login is refused
- * exactly as an anonymous caller is.
- *
- * WHY THAT ASYMMETRY EXISTS. machineOrAuth guards routes that answer "what may
- * YOU read?" — the caller asks about themselves, so a session is the natural
- * other half. This guards a route that answers "what may SOMEBODY ELSE read?",
- * which is an oracle about third parties. Behind a session, any logged-in user
- * could enumerate which colleagues belong to which workspaces, and — because an
- * unknown address answers the same as an unauthorised one — probe which email
- * addresses have accounts on this install at all.
- *
- * Behind the machine credential the exposure is bounded to a compromised
- * Cloud Command server, which is a system we operate. Behind a session it would
- * be every user who can log in.
- *
- * 401 rather than 403, and the same body an unauthenticated caller gets: a
- * distinct "you are logged in but not a machine" would itself tell a prober
- * that the route exists and what it wants.
- */
-export function requireMachine(req, res, next) {
-  const token = extractSessionToken(req);
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  verifyMachineCredential(token)
-    .then(principal => {
-      if (!principal) {
-        return res.status(401).json({ success: false, message: 'Authentication required' });
-      }
-      // No req.sessionToken, for machineOrAuth's reason: a machine caller holds
-      // no session row, so there is nothing to refresh and nothing to revoke.
-      req.user = principal;
-      next();
-    })
-    .catch((err) => machineFailure(err, res, next));
 }
 
 /**

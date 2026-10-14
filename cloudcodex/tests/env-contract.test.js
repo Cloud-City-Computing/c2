@@ -40,6 +40,10 @@ const REMOVED_IN_0_15 = Object.freeze([
   'SUITE_NAME',
   'SUITE_PREFERENCE_DOMAIN',
   'OIDC_ACCOUNT_URL',
+  'SERVICE_TOKEN',
+  'SERVICE_TOKEN_USER',
+  'MACHINE_OIDC_AUDIENCE',
+  'MACHINE_OIDC_SUBJECTS',
 ]);
 
 function sourceFiles(dir, rel = '') {

@@ -117,18 +117,16 @@ export const ENV_CONTRACT = [
   { name: 'GITHUB_CLIENT_SECRET', kind: 'optional', perInstance: false,
     why: 'the GitHub OAuth secret, and the seed of the key that encrypts stored GitHub tokens' },
 
-  // Machine access
-  { name: 'SERVICE_TOKEN', kind: 'optional', perInstance: true,
-    why: 'the machine credential for GET /api/search, GET /api/browse and GET /api/documents/state, '
-      + 'at least 32 characters' },
-  { name: 'SERVICE_TOKEN_USER', kind: 'optional', perInstance: true,
-    why: 'the email of the existing non-admin user whose access the machine credential acts with' },
-  { name: 'MACHINE_OIDC_AUDIENCE', kind: 'optional', perInstance: true,
-    why: 'this instance\'s own Zitadel project id; with OIDC_ISSUER_URL and MACHINE_OIDC_SUBJECTS, turns on '
-      + 'machine JWTs, and a token must carry it in aud' },
-  { name: 'MACHINE_OIDC_SUBJECTS', kind: 'optional', perInstance: true,
-    why: 'a comma list of this instance\'s allowlisted service-user ids (the token sub); with the two above, '
-      + 'turns on machine JWTs, and a token from any other subject is refused' },
+  // Removed in 0.15.0 (the machine credential and its JWT path). Read for nothing; boot names each one that is set.
+  { name: 'SERVICE_TOKEN', kind: 'removed', perInstance: true,
+    why: 'the static machine credential was removed in 0.15.0; a script signs in as a user and sends that '
+      + 'session. Unset it' },
+  { name: 'SERVICE_TOKEN_USER', kind: 'removed', perInstance: true,
+    why: 'the machine credential\'s account was removed in 0.15.0; the account stays an ordinary user. Unset it' },
+  { name: 'MACHINE_OIDC_AUDIENCE', kind: 'removed', perInstance: true,
+    why: 'machine JWTs were removed in 0.15.0; the OIDC sign-in for people is unaffected. Unset it' },
+  { name: 'MACHINE_OIDC_SUBJECTS', kind: 'removed', perInstance: true,
+    why: 'machine JWTs were removed in 0.15.0; the OIDC sign-in for people is unaffected. Unset it' },
 
   // Removed in 0.15.0 (the suite integration). Read for nothing; boot names each one that is still set.
   { name: 'SUITE_COMMAND_WORKSPACE_URL', kind: 'removed', perInstance: true,
