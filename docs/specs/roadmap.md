@@ -64,6 +64,7 @@ constraint right now.
 | **E** | Foundation (**defects shipped**) | E1 the open-questions defect list, shipped 2026-08-09; E2 the two giant page files, open | nothing, but competes for time |
 | **S** | Security and infrastructure (**shipped**) | C2-0 the merge gate, C2-1 four cross-tenant escalations, C2-2 token purpose confusion, C2-3 a migration runner, C2-4 one scoped service token, C2-5 a workspace reader check for the suite | nothing; C2-0 gates the rest |
 | **W** | Wave 6, the suite (**specced 2026-09-24**) | Five sub-tracks: identity (W6-CDX-2 to 9), outbound events (W6-CDX-12 to 16), UI and tokens (W6-CDX-21 to 29), hosting readiness (W6-CDX-31 to 36), and UI alignment (W6-CDX-37 to 44, added 2026-10-11), which the release W6-CDX-36 now waits on. The shared live-MySQL test project W6-CDX-10 comes before every session that changes schema or needs a real database; W6-CDX-4 and W6-CDX-21 need neither and do not wait for it | S; named Cloud Command and Cloud City ID sessions per sub-track |
+| **SA** | Standalone, toward 1.0 (**specced 2026-10-14**) | Codex becomes a standalone product; the suite integration is removed. Suite mode, the machine connection to the sibling product and issuer-specific behaviour go; local accounts, generic OIDC and admin webhooks stay. 0.15.0 after the removals, 1.0.0 after the pre-1.0 standalone review. Spec [standalone Codex](2026-10-14-standalone-codex.md), plan [standalone Codex](../plans/2026-10-14-standalone-codex.md), sessions CDX-SA-1 to CDX-SA-7 | W (it removes what W added for the suite) |
 
 ### A. Evaluation path (shipped)
 
@@ -436,7 +437,7 @@ deploy needs. Only W6-CDX-15, W6-CDX-16 and W6-CDX-33 may land after it.
 | W6-CDX-28 | Content surfaces on the tokens (**done 2026-10-11** on `track/w6-cdx-28-content-surfaces`, PR #82, PR 8 of the suite UI plan; the eight content banners are on the tokens, ledger 631 to 510, and every label on a tint is measured over every surface) | W6-CDX-22 | yes |
 | W6-CDX-29 | Admin, settings, social and leftover surfaces on the tokens, and the UI track retires (**done 2026-10-11** on `track/w6-cdx-29-admin-surfaces`, this PR, PR 9 of the suite UI plan, the last of the track; every index.css banner outside the editor canvas, the comments and GitHub is on the tokens, the ledger is 399 and holds only the deferred families below, and the spec and plan are deleted) | W6-CDX-26, W6-CDX-27, W6-CDX-28 | yes |
 | UI-later | Editor canvas, comments and the GitHub surface on the tokens (**deferred 2026-10-11** by the suite UI plan's Task 9.1, which leaves them in place, and by the spec's deferred list; the orchestrator confirmed the deferral per that plan; changing layout around the editor moves every comment highlight and remote cursor, and those components have no test coverage; from 2026-10-11 their **colours** get light values in W6-CDX-43 behind a geometry fingerprint, so what stays here is geometry only; the ledger holds them with `_later` notes that point here) | W6-CDX-29 (the track's last PR); no session yet, to be specced when the editor work is scheduled | no |
-| Pre-1.0 standalone review | Before tagging 1.0, confirm the published image is a complete product on its own and that the sign-in plug point serves self-hosters who do not run the suite (**recorded 2026-10-12, not started**). Checked at 0.14.0: no lock-in. `AUTH_PROVIDERS` unset is local accounts; OIDC uses standard discovery, so any compliant provider works; hosted mode, suite mode (`SUITE_COMMAND_WORKSPACE_URL`), machine JWTs, webhooks and `SUITE_PREFERENCE_DOMAIN` are all off unless configured. To review: (1) suite mode is written for one sibling product and ships in the public image, dormant unless configured; (2) the stability promise for 1.0, given 0.14.0's breaking changes (the sidebar shell, the removed density preference, the `__Host-` cookie with `LEGACY_SESSION_COOKIE`, Origin-required cookie writes), and when the legacy cookie switch is removed; (3) provider-neutral wording where code comments name one issuer (for example `services/machine-auth.js`); (4) the plug point itself: one issuer per instance, setup docs for common providers (Keycloak, Authentik, Okta, Microsoft Entra), `OIDC_PROVIDER_NAME` and `OIDC_ACCOUNT_URL`, issuer-managed accounts scoped to suite mode only, and machine-credential docs that assume no particular issuer. Done means a clean-clone standalone boot signing in through a non-default OIDC provider, with the outcome recorded here | the 1.0 decision | no |
+| Pre-1.0 standalone review (**tracked by CDX-SA-6**, PR 6 of the [standalone plan](../plans/2026-10-14-standalone-codex.md); caveats 1, 3 and 4 are mostly closed by removal in PRs 2 to 4, and the clean-clone boot is PR 6's) | Before tagging 1.0, confirm the published image is a complete product on its own and that the sign-in plug point serves self-hosters who do not run the suite (**recorded 2026-10-12, not started**). Checked at 0.14.0: no lock-in. `AUTH_PROVIDERS` unset is local accounts; OIDC uses standard discovery, so any compliant provider works; hosted mode, suite mode (`SUITE_COMMAND_WORKSPACE_URL`), machine JWTs, webhooks and `SUITE_PREFERENCE_DOMAIN` are all off unless configured. To review: (1) suite mode is written for one sibling product and ships in the public image, dormant unless configured; (2) the stability promise for 1.0, given 0.14.0's breaking changes (the sidebar shell, the removed density preference, the `__Host-` cookie with `LEGACY_SESSION_COOKIE`, Origin-required cookie writes), and when the legacy cookie switch is removed; (3) provider-neutral wording where code comments name one issuer (for example `services/machine-auth.js`); (4) the plug point itself: one issuer per instance, setup docs for common providers (Keycloak, Authentik, Okta, Microsoft Entra), `OIDC_PROVIDER_NAME` and `OIDC_ACCOUNT_URL`, issuer-managed accounts scoped to suite mode only, and machine-credential docs that assume no particular issuer. Done means a clean-clone standalone boot signing in through a non-default OIDC provider, with the outcome recorded here | the 1.0 decision | no |
 | W6-CDX-37 | The UI alignment spec and plan (**shipped** in #95, docs only) | nothing | yes |
 | W6-CDX-38 | Neutrals, base and the hover model: the suite pattern's dark values, core radii, `color-scheme`, `font-family: inherit` on controls, the hover fills retired (**shipped** in #97; the captures and the deviations are in its plan) | W6-CDX-37 | yes |
 | W6-CDX-39 | Controls, the Toast and dialog panels: buttons, fields, one menu primitive, tabs, chips, avatars, icons; the first-toast drop and the lost admin messages fixed (**shipped** in #98; the icon button, the field on the remaining families, the emoji icons and the destructive-copy audit are open, listed with the deviations in its plan) | W6-CDX-38 | yes |
@@ -466,6 +467,30 @@ items it defers and why.
 answered all but one. The eight accent names were confirmed by Kyle on 2026-10-11 (rose is
 Nova, amber is Solar, emerald is Aurora, violet is Nebula); no Wave 6 open question remains on them.
 
+### SA. Standalone, toward 1.0 (specced 2026-10-14)
+
+**Codex becomes a standalone product; the suite integration is removed.** Track W built every suite piece
+off by default, so an install that sets none of it already behaves as a standalone product. This track
+removes those pieces from the public image instead of leaving them dormant, keeps everything a self-hoster
+can use with local accounts or any OIDC provider, and takes the product to 1.0 through the pre-1.0
+standalone review recorded in the row above.
+
+The spec, [`2026-10-14-standalone-codex.md`](2026-10-14-standalone-codex.md), holds the inventory (each
+suite-specific item with its files, generic or suite-only, and the decision), the upgrade impact for
+self-hosters, the security posture after removal, the review checklist and what 1.0 promises. The plan,
+[`../plans/2026-10-14-standalone-codex.md`](../plans/2026-10-14-standalone-codex.md), has one PR per
+session:
+
+| ID | Session | Depends on |
+|---|---|---|
+| CDX-SA-1 | The spec and the plan (docs only) | nothing |
+| CDX-SA-2 | Remove suite mode: the shell cluster, Linked tasks, the hidden Workspaces page, the front door's suite branches, the shared theme cookie, issuer-managed accounts and `OIDC_ACCOUNT_URL`; removed variables warn at boot | CDX-SA-1 |
+| CDX-SA-3 | Remove the sibling-product connection: the machine credential (static and JWT), the reader check, the reconciliation read, the membership sync, the env-declared webhook subscription; one reversible migration, and the runner learns drop claims | CDX-SA-2 |
+| CDX-SA-4 | Remove issuer-specific behaviour while keeping generic OIDC: OIDC-only mode named as such, provider-neutral wording, a second issuer shape proved, setup docs for common providers; the identity spec and plan retire | CDX-SA-3 |
+| CDX-SA-5 | Clean up and harden: the standalone gate, dead code, the configuration contract, an `/api` JSON 404, docs and maps; then the 0.15.0 release PR | CDX-SA-4 |
+| CDX-SA-6 | The pre-1.0 standalone review, with its findings fixed: a clean-clone boot with local accounts and with a non-default OIDC provider in a container | CDX-SA-5 |
+| CDX-SA-7 | The 1.0.0 release; the spec and plan retire | CDX-SA-6 |
+
 ## Sequencing
 
 ```
@@ -487,6 +512,10 @@ now         A ──────────────────────
                 events, UI and hosting in parallel, then UI alignment
                 (W6-CDX-37 to 44, added 2026-10-11), then W6-CDX-36, the
                 release the test box pins
+                    │
+            SA ◄────┘  specced 2026-10-14: remove suite mode, the sibling
+                connection and issuer-specific behaviour, clean up, 0.15.0,
+                then the pre-1.0 standalone review and 1.0.0
 ```
 
 Track S ran alongside the rest rather than after them. It did not depend on

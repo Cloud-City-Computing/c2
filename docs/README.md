@@ -74,6 +74,7 @@ describes what we intend to build next and why.
 |----------|---------|
 | [specs/roadmap.md](./specs/roadmap.md) | The tracks the project is decomposed into, the evidence behind each, and the order to do them in |
 | [specs/2026-09-24-suite-identity.md](./specs/2026-09-24-suite-identity.md) | Wave 6 identity: a generic OIDC relying party, hashed sessions, propagating sign-out |
+| [specs/2026-10-14-standalone-codex.md](./specs/2026-10-14-standalone-codex.md) | The standalone track: Codex becomes a standalone product, the suite integration is removed, toward 1.0 |
 
 
 ## Deep maps (`maps/`)
