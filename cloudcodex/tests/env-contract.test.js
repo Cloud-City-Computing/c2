@@ -38,6 +38,7 @@ const KINDS = ['required', 'required-in-production', 'required-with-local', 'def
 const REMOVED_IN_0_15 = Object.freeze([
   'SUITE_COMMAND_WORKSPACE_URL',
   'SUITE_NAME',
+  'SUITE_PREFERENCE_DOMAIN',
 ]);
 
 function sourceFiles(dir, rel = '') {

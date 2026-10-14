@@ -36,7 +36,6 @@ import favoritesRouter from './routes/favorites.js';
 import notificationsRouter from './routes/notifications.js';
 import activityRouter from './routes/activity.js';
 import watchesRouter from './routes/watches.js';
-import suiteRouter from './routes/suite.js';
 import firstRunRouter from './routes/first-run.js';
 import healthRouter from './routes/health.js';
 import { warnUntrustedForwarders, ipv6Groups } from './middleware/forwarded-for.js';
@@ -467,6 +466,5 @@ app.use('/api', notificationsRouter);
 app.use('/api', activityRouter);
 app.use('/api', firstRunRouter);
 app.use('/api', watchesRouter);
-app.use('/api', suiteRouter);
 
 export default app;

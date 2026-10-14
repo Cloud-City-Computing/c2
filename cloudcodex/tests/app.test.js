@@ -972,8 +972,9 @@ describe('app.js: Origin-required cookie writes', () => {
 
 describe('app.js: suite mode is removed', () => {
   // The suite routes were mounted only with SUITE_COMMAND_WORKSPACE_URL set, and answered 200 for the
-  // public probe either way. Removed, both are unknown /api paths: a JSON 404 (app.js's /api fallback),
-  // never the SPA's index.html, whatever the suite variables hold.
+  // public probe either way. Removed, both are unknown /api paths and answer 404 whatever the suite
+  // variables hold. (The body is Express's default page until the JSON 404 for unmatched /api paths
+  // lands in CDX-SA-5, Task 5.4.)
   const SUITE_KEYS = ['SUITE_COMMAND_WORKSPACE_URL', 'SUITE_NAME', 'SUITE_PREFERENCE_DOMAIN'];
   let savedSuite;
   beforeEach(() => {
@@ -987,11 +988,10 @@ describe('app.js: suite mode is removed', () => {
     }
   });
 
-  it('answers GET /api/suite with a JSON 404 when the suite variables are unset', async () => {
+  it('answers GET /api/suite with a 404 when the suite variables are unset', async () => {
     for (const k of SUITE_KEYS) delete process.env[k];
     const res = await request(app).get('/api/suite');
     expect(res.status).toBe(404);
-    expect(res.headers['content-type']).toMatch(/json/);
   });
 
   it('answers GET /api/suite with the same 404 when the suite variables are set', async () => {

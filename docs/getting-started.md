@@ -219,7 +219,6 @@ All seed accounts use the password **`password`**.
 | `WEBHOOK_SECRET` | That subscription's signing secret, at least 32 characters, never stored in the database | unset (optional) |
 | `WEBHOOK_WORKSPACE_ID` | Send only this workspace's events to it; unset sends every workspace's | unset (optional) |
 | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `1` lets any webhook reach loopback and private addresses; link-local and metadata addresses are always refused | unset (optional) |
-| `SUITE_PREFERENCE_DOMAIN` | The parent domain the theme and accent cookies are shared on, so a choice applies across the suite's products. Honoured only in suite mode. Lowercase, two or more labels, no scheme, port, path or dots at either end, not an IP address or `localhost`; `APP_URL`'s host must be it or end with `.` plus it, or the boot stops | unset (per-product, in localStorage) |
 
 ---
 
@@ -232,6 +231,7 @@ prints a line at boot naming it, then the server starts as it would without it. 
 |---|---|
 | `SUITE_COMMAND_WORKSPACE_URL` | suite mode was removed in 0.15.0; unset it |
 | `SUITE_NAME` | suite mode was removed in 0.15.0; unset it |
+| `SUITE_PREFERENCE_DOMAIN` | the theme and accent preference is per host now; unset it |
 
 ## NPM Scripts
 

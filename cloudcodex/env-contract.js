@@ -136,9 +136,8 @@ export const ENV_CONTRACT = [
     why: 'suite mode was removed in 0.15.0; unset it' },
   { name: 'SUITE_NAME', kind: 'removed', perInstance: true,
     why: 'suite mode was removed in 0.15.0; unset it' },
-  { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'optional', perInstance: true,
-    why: 'the parent domain the theme and accent cookies are shared on, honoured only in suite mode; must be '
-      + "APP_URL's host or a parent of it" },
+  { name: 'SUITE_PREFERENCE_DOMAIN', kind: 'removed', perInstance: true,
+    why: 'the theme and accent preference is per host now; unset it' },
 
   // Outbound webhooks
   { name: 'WEBHOOK_URL', kind: 'optional', perInstance: true,
