@@ -259,7 +259,7 @@ export async function validateAndAutoLogin(sessionToken) {
 
   if (!session || session.expires_at <= new Date()) return null;
 
-  // Hosted mode (no local sign-in) takes only sessions minted by OIDC. A session from before the switch
+  // OIDC-only mode (no local sign-in) takes only sessions minted by OIDC. A session from before the switch
   // carries 'local' or 'google', and it ends here, so OIDC is the only way in. See services/auth-providers.js.
   if (!localSignInEnabled() && session.auth_provider !== 'oidc') return null;
 

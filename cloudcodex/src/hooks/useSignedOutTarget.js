@@ -6,7 +6,7 @@
  * returnTo; the marker in sessionStorage is the loop guard, and an oauth_error return renders the landing instead
  * of bouncing again. Where no OIDC is offered at all, the link is kept (validated) and the Login modal opens; a
  * successful local sign-in then goes to the kept target. Everything else renders the landing. The bare root bounces
- * only where OIDC is the only sign-in (hosted), by the same loop guard, and never after a sign-out (?signedOut=1
+ * only where OIDC is the only sign-in (OIDC-only), by the same loop guard, and never after a sign-out (?signedOut=1
  * shows the message) or an error return. The target is
  * always validated by services/return-to.js, the one validator the server also uses, so there is no second
  * returnTo path on the client. The marker is cleared on a successful sign-in.
@@ -47,7 +47,7 @@ function targetOf(pathname, search, hash = '') {
 
 /**
  * What a signed-out visit does. The 404 page never bounces and never opens the modal. The bare root bounces only
- * where OIDC is the only sign-in (hosted), so a local-sign-in instance keeps its sign-in screen.
+ * where OIDC is the only sign-in (OIDC-only), so a local-sign-in instance keeps its sign-in screen.
  * @returns {{ action: 'bounce', url: string } | { action: 'login', target: string } | { action: 'landing' }}
  */
 export function decideSignedOut({ pathname, search, hash = '', oidcOffered, oidcOnly, bounced, oauthError }) {

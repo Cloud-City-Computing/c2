@@ -4,7 +4,7 @@
  * A socket authenticates on its first message and is trusted from then on, so a session ended later (a
  * deactivation, or a row deleted by hand) would keep its socket. Every minute the sweep collects the session
  * digests the open sockets carry, asks the database which still hold a live session for an active user (and,
- * on a hosted instance, an OIDC session), and closes the rest with 4004. The lookup is batched, and a failed
+ * on an OIDC-only instance, an OIDC session), and closes the rest with 4004. The lookup is batched, and a failed
  * sweep is logged and the timer keeps running.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
@@ -21,7 +21,7 @@ export const SWEEP_INTERVAL_MS = 60_000;
 const CHUNK = 500;
 
 /**
- * The subset of `digests` that still belongs to a live session of an active user. On a hosted instance only
+ * The subset of `digests` that still belongs to a live session of an active user. On an OIDC-only instance only
  * OIDC sessions count, matching validateAndAutoLogin.
  * @param {Iterable<string>} digests
  * @param {{ chunkSize?: number }} [options]
@@ -30,13 +30,13 @@ const CHUNK = 500;
 export async function liveSessionDigests(digests, { chunkSize = CHUNK } = {}) {
   const all = [...new Set(digests)];
   const live = new Set();
-  const hostedClause = localSignInEnabled() ? '' : " AND s.auth_provider = 'oidc'";
+  const oidcOnlyClause = localSignInEnabled() ? '' : " AND s.auth_provider = 'oidc'";
   for (let i = 0; i < all.length; i += chunkSize) {
     const chunk = all.slice(i, i + chunkSize);
     const rows = await c2_query(
       `SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.id IN (${chunk.map(() => '?').join(',')})
-          AND s.expires_at > NOW() AND u.deactivated_at IS NULL${hostedClause}`,
+          AND s.expires_at > NOW() AND u.deactivated_at IS NULL${oidcOnlyClause}`,
       chunk
     );
     for (const row of rows) live.add(row.id);

@@ -37,7 +37,7 @@ export function sessionCookieName({ secure }) {
 /**
  * Whether a lone legacy `sessionToken` cookie still authenticates. On unless
  * LEGACY_SESSION_COOKIE is exactly 0, so a self-hoster's existing sessions
- * survive the upgrade; a hosted instance sets 0. Read by literal name, so the
+ * survive the upgrade; an OIDC-only instance sets 0. Read by literal name, so the
  * configuration contract's scan sees it.
  * @returns {boolean}
  */

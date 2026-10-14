@@ -375,7 +375,7 @@ router.post('/update-account', asyncHandler(async (req, res) => {
   const emailChanging = email !== undefined && email !== sessionUser.email;
   const passwordChanging = password !== undefined;
 
-  // Hosted mode (no local sign-in): the issuer owns the address and the credential, so neither changes
+  // OIDC-only mode (no local sign-in): the issuer owns the address and the credential, so neither changes
   // here, with or without the current password. The display name is not a credential and still renames.
   if (!localSignInEnabled() && emailChanging) {
     return res.status(403).json({ success: false, message: 'Your email is managed by your sign-in provider on this instance, so it cannot be changed here.' });

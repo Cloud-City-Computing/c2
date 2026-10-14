@@ -198,7 +198,7 @@ describe('validateAndAutoLogin', () => {
   });
 });
 
-describe('validateAndAutoLogin in hosted mode (W6-CDX-8)', () => {
+describe('validateAndAutoLogin in OIDC-only mode (W6-CDX-8)', () => {
   const KEYS = ['AUTH_PROVIDERS', 'OIDC_ISSUER_URL', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
   let saved;
   const future = () => new Date(Date.now() + 60_000);
@@ -217,13 +217,13 @@ describe('validateAndAutoLogin in hosted mode (W6-CDX-8)', () => {
     }
   });
 
-  it.each(['local', 'google'])('signs out a %s session on a hosted instance, reading no user', async (provider) => {
+  it.each(['local', 'google'])('signs out a %s session on an OIDC-only instance, reading no user', async (provider) => {
     executeMock.mockResolvedValueOnce([[{ user_id: 1, expires_at: future(), auth_provider: provider }], []]);
     expect(await validateAndAutoLogin('old-session')).toBeNull();
     expect(executeMock).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps an oidc session on a hosted instance', async () => {
+  it('keeps an oidc session on an OIDC-only instance', async () => {
     executeMock
       .mockResolvedValueOnce([[{ user_id: 1, expires_at: future(), auth_provider: 'oidc' }], []])
       .mockResolvedValueOnce([[{ id: 1, name: 'Alice', email: 'a@b.c', avatar_url: null, is_admin: 0 }], []]);

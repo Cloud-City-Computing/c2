@@ -99,7 +99,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('a dead session on a document load, in hosted mode (OIDC is the only sign-in)', () => {
+describe('a dead session on a document load, in OIDC-only mode (OIDC is the only sign-in)', () => {
   it('bounces to the OIDC sign-in with the document kept as returnTo, once per tab', async () => {
     const tab = staleTab();
     installLocation(tab.fake);

@@ -200,7 +200,7 @@ router.get('/oauth/providers', (_req, res) => {
   res.json({
     success: true,
     providers: {
-      // local is the password sign-in: false on a hosted instance (AUTH_PROVIDERS without local).
+      // local is the password sign-in: false on an OIDC-only instance (AUTH_PROVIDERS without local).
       local: offered.has('local'),
       google: isGoogleOAuthConfigured() && offered.has('google'),
       github: isGitHubOAuthConfigured(),

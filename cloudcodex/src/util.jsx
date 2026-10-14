@@ -775,7 +775,7 @@ export function clearSessionCookie() {
  * On https, move a session held only under the legacy `sessionToken` name
  * (from a release before __Host-sessionToken) to the prefixed name, once the
  * server confirms it: POST /api/validate-session with legacyCookie: true, which
- * a hosted instance (LEGACY_SESSION_COOKIE=0) always answers invalid, because
+ * an OIDC-only instance (LEGACY_SESSION_COOKIE=0) always answers invalid, because
  * a sibling host could have planted that cookie. Either answer expires the
  * legacy cookie; an unreachable or silent server (given up on after
  * LEGACY_UPGRADE_TIMEOUT_MS) leaves it for the next visit. A refusal is

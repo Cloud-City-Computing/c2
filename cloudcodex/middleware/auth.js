@@ -85,9 +85,9 @@ export function requireAdmin(req, res, next) {
 
 /**
  * Mounted on every route that is a local human sign-in (password login, sign-up, reset, 2FA, the
- * username check, the local email-change confirmation). With local sign-in off (hosted mode, see
+ * username check, the local email-change confirmation). With local sign-in off (OIDC-only mode, see
  * services/auth-providers.js) the route answers 404 before it reads anything, the way an unmounted
- * route would, so no local credential is ever checked on a hosted instance.
+ * route would, so no local credential is ever checked on an OIDC-only instance.
  */
 export function requireLocalSignIn(req, res, next) {
   if (localSignInEnabled()) return next();

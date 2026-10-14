@@ -1,11 +1,11 @@
 /**
- * Hosted mode on a real server: the boot admin, invited sign-in, deactivation, and the session switch
+ * OIDC-only mode on a real server: the boot admin, invited sign-in, deactivation, and the session switch
  *
- * The unit tests pin the queries; this file proves what MySQL does with them. A hosted boot creates a
+ * The unit tests pin the queries; this file proves what MySQL does with them. An OIDC-only boot creates a
  * passwordless admin and seeds its workspace from the admin's row, with the General squad. An invited
  * verified email lands in its squad, and a second sign-in is the identity, not a second user. A revoked
  * invitation links nothing. A deactivated user is refused everywhere and their sessions end. A session
- * minted before the switch to hosted ends, and an oidc session holds.
+ * minted before the switch to OIDC-only ends, and an oidc session holds.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -27,7 +27,7 @@ import {
 
 const ISSUER = 'https://id.example.test';
 const POLICY = { linkByVerifiedEmail: true, autoCreate: false };
-const HOSTED_KEYS = ['AUTH_PROVIDERS', 'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'ADMIN_EMAIL'];
+const OIDC_ONLY_KEYS = ['AUTH_PROVIDERS', 'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'ADMIN_EMAIL'];
 
 const originalEnv = { ...process.env };
 let errorSpy;
@@ -44,9 +44,9 @@ afterEach(() => {
   process.env = { ...originalEnv };
 });
 
-/** Hosted (no local) for the rest of the test, with no admin password and no admin username. */
-function goHosted(adminEmail) {
-  for (const k of HOSTED_KEYS) delete process.env[k];
+/** OIDC-only (no local) for the rest of the test, with no admin password and no admin username. */
+function goOidcOnly(adminEmail) {
+  for (const k of OIDC_ONLY_KEYS) delete process.env[k];
   process.env.AUTH_PROVIDERS = 'oidc';
   process.env.ADMIN_EMAIL = adminEmail;
 }
@@ -63,10 +63,10 @@ const claims = (subject, email) => ({
   provider: 'oidc', issuer: ISSUER, subject, email, emailVerified: true, name: 'Test',
 });
 
-describe('a hosted boot, on a real server', () => {
+describe('an OIDC-only boot, on a real server', () => {
   it('creates a passwordless admin from ADMIN_EMAIL, and seeds its workspace and General squad', async () => {
     const email = `ops${tag}@example.com`;
-    goHosted(email);
+    goOidcOnly(email);
 
     const adminId = await ensureAdminUser();
     expect(adminId).not.toBeNull();
@@ -113,7 +113,7 @@ describe('a hosted boot, on a real server', () => {
   it('refuses a non-admin holding ADMIN_EMAIL, and returns null with nothing written', async () => {
     const email = `held${tag}@example.com`;
     const created = await c2_query('INSERT INTO users (name, email) VALUES (?, ?)', [`held${tag}`, email]);
-    goHosted(email);
+    goOidcOnly(email);
 
     expect(await ensureAdminUser()).toBeNull();
     const [row] = await c2_query('SELECT is_admin FROM users WHERE id = ?', [created.insertId]);
@@ -124,7 +124,7 @@ describe('a hosted boot, on a real server', () => {
 describe('two boots and two sign-ins at once, on a real server', () => {
   it('two concurrent boot admin syncs make one admin, and both answer its id', async () => {
     const email = `race${tag}@example.com`;
-    goHosted(email);
+    goOidcOnly(email);
 
     const [a, b] = await Promise.all([ensureAdminUser(), ensureAdminUser()]);
 
@@ -228,7 +228,7 @@ describe('a deactivated user, on a real server', () => {
   });
 });
 
-describe('the switch to hosted mode, on a real server', () => {
+describe('the switch to OIDC-only mode, on a real server', () => {
   it('ends a local session, keeps an oidc session, and restores a local one when local is back on', async () => {
     const userId = await newUser('switch');
     const local = await generateSessionToken({ id: userId });
@@ -251,7 +251,7 @@ describe('the switch to hosted mode, on a real server', () => {
   });
 });
 
-describe('the hosted-mode migration, on a fresh init.sql build', () => {
+describe('the oidc-only-mode migration, on a fresh init.sql build', () => {
   it('is adopted by --adopt-fresh-install, and the deactivated_at column exists', async () => {
     const schema = throwawaySchemaName();
     const conn = await openAdminConnection();

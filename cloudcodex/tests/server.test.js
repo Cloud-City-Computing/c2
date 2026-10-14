@@ -1115,7 +1115,7 @@ describe('server.js: APP_URL', () => {
 });
 
 // The boot admin on each sign-in mode (W6-CDX-8). ADMIN_EMAIL is required everywhere; ADMIN_USERNAME and
-// ADMIN_PASSWORD only while local sign-in is on, because a hosted instance never signs in with a password.
+// ADMIN_PASSWORD only while local sign-in is on, because an OIDC-only instance never signs in with a password.
 describe('server.js: the boot admin by sign-in mode', () => {
   const KEYS = ['ADMIN_USERNAME', 'ADMIN_PASSWORD', 'ADMIN_EMAIL', 'AUTH_PROVIDERS', 'OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'APP_URL'];
 
@@ -1132,16 +1132,16 @@ describe('server.js: the boot admin by sign-in mode', () => {
 
   const logged = () => errorSpy.mock.calls.flat().map(String).join(' ');
 
-  it('boots hosted with ADMIN_EMAIL alone: no ADMIN_USERNAME, no ADMIN_PASSWORD', async () => {
+  it('boots OIDC-only with ADMIN_EMAIL alone: no ADMIN_USERNAME, no ADMIN_PASSWORD', async () => {
     await bootWith({ AUTH_PROVIDERS: 'oidc', OIDC_ISSUER_URL: 'https://id.example.test', OIDC_CLIENT_ID: 'c', OIDC_CLIENT_SECRET: 's', APP_URL: 'https://codex.example.test', ADMIN_EMAIL: 'operator@example.com' });
     expect(exitSpy).not.toHaveBeenCalled();
     expect(listenMock).toHaveBeenCalledTimes(1);
-    // The boot ends the sessions a hosted instance no longer accepts (services/sessions-hosted.js).
+    // The boot ends the sessions an OIDC-only instance no longer accepts (services/sessions-oidc-only.js).
     const { c2_query } = await import('../mysql_connect.js');
     expect(c2_query.mock.calls.some(([sql]) => /DELETE FROM sessions WHERE auth_provider <> 'oidc'/.test(sql))).toBe(true);
   });
 
-  it('exits 1 on a hosted instance that has no ADMIN_EMAIL, naming it', async () => {
+  it('exits 1 on an OIDC-only instance that has no ADMIN_EMAIL, naming it', async () => {
     await bootWith({ AUTH_PROVIDERS: 'oidc', OIDC_ISSUER_URL: 'https://id.example.test', OIDC_CLIENT_ID: 'c', OIDC_CLIENT_SECRET: 's', APP_URL: 'https://codex.example.test' });
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(logged()).toMatch(/ADMIN_EMAIL/);
