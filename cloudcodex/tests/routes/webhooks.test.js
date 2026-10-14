@@ -367,7 +367,7 @@ describe('the delivery log and redelivery (W6-CDX-14)', () => {
   describe('POST /api/admin/webhooks/deliveries/:id/redeliver', () => {
     it('returns a dead delivery to pending with attempts reset, guarded on its status', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead' }]);
+      c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead', source: 'admin' }]);
       c2_query.mockResolvedValueOnce({ affectedRows: 1 });
       const res = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
 
@@ -381,7 +381,7 @@ describe('the delivery log and redelivery (W6-CDX-14)', () => {
 
     it('refuses a delivery that is not dead, and answers 404 for none', async () => {
       mockAuthenticated(ADMIN_USER);
-      c2_query.mockResolvedValueOnce([{ id: 90, status: 'pending' }]);
+      c2_query.mockResolvedValueOnce([{ id: 90, status: 'pending', source: 'admin' }]);
       const notDead = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
       expect(notDead.status).toBe(409);
       expect(sqls()).toHaveLength(1);
@@ -428,7 +428,7 @@ describe('the subscription cap and the expired redelivery (review follow-ups)', 
 
   it('refuses to redeliver a dead delivery whose event is older than 72 hours, and says why', async () => {
     mockAuthenticated(ADMIN_USER);
-    c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead', expired: 1 }]);
+    c2_query.mockResolvedValueOnce([{ id: 90, status: 'dead', source: 'admin', expired: 1 }]);
     const res = await request(app).post('/api/admin/webhooks/deliveries/90/redeliver').set('Authorization', 'Bearer t');
 
     expect(res.status).toBe(409);

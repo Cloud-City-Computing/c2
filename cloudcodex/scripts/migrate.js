@@ -119,6 +119,18 @@ export const LEGACY_BASELINE = Object.freeze([
   'widen_log_content.sql',
 ]);
 
+/**
+ * Migrations that delete data, and the rows that must be gone before adoption may record them. A row
+ * that survives adoption is never deleted by the file the bookkeeping now claims ran.
+ */
+export const ADOPTION_DATA_GUARDS = Object.freeze({
+  '2026-10-17-remove-sibling-connection.sql': {
+    table: 'webhook_subscriptions',
+    sql: "SELECT COUNT(*) AS n FROM webhook_subscriptions WHERE source = 'env'",
+    describe: "webhook subscription(s) with source 'env'",
+  },
+});
+
 /** Default progress sink. Informational output goes to stdout, errors to stderr. */
 const defaultLog = message => process.stdout.write(`${message}\n`);
 
@@ -792,6 +804,25 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
           '--adopt-fresh-install is only for a database init.sql has just created. On a tracked\n' +
           'install, run `npm run migrate` to apply whatever is pending.'
       );
+    }
+
+    // A file that deletes data cannot be adopted over a database where that data still sits: adoption records
+    // the file as applied WITHOUT running it, so the rows would stay forever. Refuse, and name the way out.
+    for (const [filename, guard] of Object.entries(ADOPTION_DATA_GUARDS)) {
+      if (!files.includes(filename)) continue;
+      if (!(await tableExists(query, guard.table))) continue;
+      const [row] = await query(guard.sql);
+      const count = Number(row?.n ?? 0);
+      if (count > 0) {
+        throw new Error(
+          `Refusing to adopt a fresh install: ${count} ${guard.describe} still exist. ${filename} deletes them,\n` +
+            'and adoption would record that file as applied without running it.\n\n' +
+            'Record the pre-runner baseline instead, then apply what is genuinely pending, from\n' +
+            'cloudcodex/:\n\n' +
+            '    npm run migrate -- --baseline\n' +
+            '    npm run migrate'
+        );
+      }
     }
 
     // The positive check. Zero bookkeeping rows is not evidence of a fresh

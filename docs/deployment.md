@@ -523,10 +523,15 @@ deletes. Read this before the upgrade; the full list of removed variables and ro
   three `WEBHOOK_*` variables after that.
 - **Search and browse need a session.** A script that sent the service token now signs in as a user.
 - **The migration deletes data.** `2026-10-17-remove-sibling-connection.sql` expires every revoked open
-  invitation, deletes the env webhook subscriptions and their queued deliveries, and drops the
-  `grants_admin` and `revoked_at` columns on `user_invitations`. Take a dump first.
-- **Open invitations from the membership sync stay open** until they expire. They now admit a plain
-  member, never an admin. To find them (`invited_by` is the former `SERVICE_TOKEN_USER`'s id):
+  invitation and every open invitation the sync made for a workspace owner, deletes the env webhook
+  subscriptions and their queued deliveries, and drops the `grants_admin` and `revoked_at` columns on
+  `user_invitations`. Take a dump first.
+- **Review the Admin users list after the upgrade.** The sync made some accounts instance admins (its
+  workspace owners, once they signed in). Nothing records which accounts those were, so the upgrade cannot
+  demote them. Open Admin, Users and demote any account that should no longer be an admin.
+- **Other open invitations from the membership sync stay open** until they expire (a year from their last
+  refresh). They now admit a plain member, never an admin. To find them (`invited_by` is the former
+  `SERVICE_TOKEN_USER`'s id):
 
   ```sql
   SELECT id, email FROM user_invitations WHERE invited_by = <former SERVICE_TOKEN_USER id> AND accepted = FALSE;

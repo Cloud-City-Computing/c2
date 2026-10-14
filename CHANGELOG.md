@@ -26,7 +26,10 @@ initialises an empty data directory.
   session; the former service token answers `401` like any unknown token.
 - **The admin webhook routes manage admin subscriptions only (CDX-SA-3).** An id that is not an admin
   subscription answers `404`, the list has no `managed` field, and redelivery is refused for any delivery whose
-  subscription is not an admin one with `404`.
+  subscription is not an admin one with `404`. Events are queued and sent for admin subscriptions only: a row of
+  any other source is never sent.
+- **`--adopt-fresh-install` refuses while an env webhook subscription exists (CDX-SA-3).** The migration that deletes
+  those rows would otherwise be recorded as applied without running.
 
 ### Removed
 
@@ -40,12 +43,18 @@ initialises an empty data directory.
   - `GET /api/workspaces/:workspaceId/reader-check`, `GET /api/documents/state`, `PUT /api/machine/members`,
     `DELETE /api/machine/members` and `DELETE /api/machine/members/:email` answer `404`.
   - The membership sync's admin grant and revoke columns, `user_invitations.grants_admin` and
-    `user_invitations.revoked_at`, are dropped by the migration. Open invitations the sync created stay open until
-    they expire, and then admit a plain member, never an admin. Find them with
+    `user_invitations.revoked_at`, are dropped by the migration. The migration expires two kinds of open
+    invitation explicitly: the ones the sync revoked, and the ones it made for a workspace owner (`grants_admin`
+    set). An owner who still needs access is invited again by an admin. Other open invitations the sync created
+    stay open until they expire, and then admit a plain member, never an admin. Find them with
     `SELECT id, email FROM user_invitations WHERE invited_by = <former SERVICE_TOKEN_USER id> AND accepted = FALSE;`
     and revoke them in Admin, Invitations.
+  - **Upgrade step: review Admin, Users after upgrading from a suite install.** Accounts the sync made instance
+    admins keep that role; no column records which ones, so the migration cannot demote them. Demote any that
+    should not be admin.
   - Rolling back to 0.14.0 runs the migration's undo first (the header of the migration file). The undo restores the
-    two columns with their defaults; the values are not restored.
+    two columns with their defaults; the values are not restored, and the deleted env subscription is not restored
+    (a 0.14.0 started after the undo recreates it from `WEBHOOK_URL` and `WEBHOOK_SECRET`, if those are still set).
   - The upgrade steps are in [docs/deployment.md](docs/deployment.md#upgrades).
 - **The suite mode, the OIDC account link and the shared theme cookie (CDX-SA-2).** Codex no longer has a suite mode: the suite cluster in the sidebar, the Linked tasks
   link on a document, the hidden Workspaces page and the suite copy on the sign-in screen are gone. Workspaces is

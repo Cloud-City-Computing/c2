@@ -118,7 +118,8 @@ export async function loadSubscriptions() {
     const rows = await c2_query(
       `SELECT id, url, source, enabled, event_types, workspace_id, paused_until
          FROM webhook_subscriptions
-        WHERE enabled = TRUE`,
+        WHERE enabled = TRUE
+          AND source = 'admin'`,
       []
     );
     if (generation < loadApplied) return false;
@@ -250,6 +251,7 @@ export async function emitEvent(ctx, scope) {
         `INSERT INTO webhook_deliveries (subscription_id, event_id)
          SELECT id, ? FROM webhook_subscriptions
           WHERE id IN (${ids.map(() => '?').join(', ')})
+            AND source = 'admin'
             AND enabled = TRUE
             AND (workspace_id IS NULL OR workspace_id = ?)
             AND (event_types IS NULL OR JSON_CONTAINS(event_types, JSON_QUOTE(?)))`,

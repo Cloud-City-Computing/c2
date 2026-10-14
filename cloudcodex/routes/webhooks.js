@@ -95,7 +95,9 @@ async function adminSubscription(req, res) {
     "SELECT id, source FROM webhook_subscriptions WHERE id = ? AND source = 'admin'",
     [Number(req.params.id)]
   );
-  if (!row) {
+  // The SQL selects admin rows only; the check here is the same rule in code, so a row of any other source
+  // is never acted on even if a query one day returns it.
+  if (!row || row.source !== 'admin') {
     res.status(404).json({ success: false, message: 'Webhook not found' });
     return null;
   }
@@ -283,14 +285,16 @@ router.post('/admin/webhooks/deliveries/:id/redeliver', requireAuth, requireAdmi
     return res.status(400).json({ success: false, message: 'Invalid delivery id' });
   }
   const [delivery] = await c2_query(
-    `SELECT d.id, d.status, (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
+    `SELECT d.id, d.status, s.source, (e.occurred_at < UTC_TIMESTAMP(3) - INTERVAL 72 HOUR) AS expired
        FROM webhook_deliveries d
        JOIN webhook_events e ON e.id = d.event_id
        JOIN webhook_subscriptions s ON s.id = d.subscription_id
       WHERE d.id = ? AND s.source = 'admin'`,
     [Number(req.params.id)]
   );
-  if (!delivery) return res.status(404).json({ success: false, message: 'Delivery not found' });
+  if (!delivery || delivery.source !== 'admin') {
+    return res.status(404).json({ success: false, message: 'Delivery not found' });
+  }
   if (delivery.status !== 'dead') {
     return res.status(409).json({ success: false, message: 'Only a dead-lettered delivery can be redelivered' });
   }
