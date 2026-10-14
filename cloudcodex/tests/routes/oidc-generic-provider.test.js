@@ -169,3 +169,44 @@ describe('POST /api/auth/oidc/backchannel-logout from an issuer that does not ad
     expect(delParams).toEqual(['digest-generic']);
   });
 });
+
+describe('the claims a sign-in reads: the ID token, with userinfo overriding only what it returns', () => {
+  afterEach(() => {
+    issuer.setUserinfo(undefined);
+    issuer.setOmitAccessToken(false);
+  });
+
+  it('signs in when userinfo omits email_verified and the ID token asserts it', async () => {
+    issuer.setUserinfo({ sub: 'generic-user-0417', email: 'grace@example.com', name: 'Grace Hopper' });
+    queueLinkedHit();
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/w/ws1/board');
+    expect(generateSessionToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses when userinfo says email_verified false, though the ID token says true: userinfo wins', async () => {
+    issuer.setUserinfo({ sub: 'generic-user-0417', email: 'grace@example.com', email_verified: false, name: 'Grace Hopper' });
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/?oauth_error=email_not_verified&oauth_provider=oidc');
+    expect(generateSessionToken).not.toHaveBeenCalled();
+  });
+
+  it('refuses a userinfo whose sub is not the ID token sub (OIDC Core 5.3.2)', async () => {
+    issuer.setUserinfo({ sub: 'someone-else', email: 'grace@example.com', email_verified: true, name: 'Grace Hopper' });
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/?oauth_error=userinfo_subject&oauth_provider=oidc');
+    expect(generateSessionToken).not.toHaveBeenCalled();
+  });
+
+  it('refuses a token response with no access token, since RFC 6749 requires one and the library enforces it', async () => {
+    issuer.setOmitAccessToken(true);
+    queueLinkedHit();
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/?oauth_error=exchange_failed&oauth_provider=oidc');
+    expect(generateSessionToken).not.toHaveBeenCalled();
+  });
+});

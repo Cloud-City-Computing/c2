@@ -40,7 +40,7 @@ export async function startIssuer(options) {
   const jwk = { ...(await exportJWK(pair.publicKey)), kid: 'generic-provider-test-key', alg: 'RS256', use: 'sig' };
   const codes = new Map();
   const accessTokens = new Map();
-  const state = { person: null, lastIdToken: null };
+  const state = { person: null, lastIdToken: null, userinfo: undefined, omitAccessToken: false };
 
   async function handle(req, res) {
     const url = new URL(req.url, origin);
@@ -128,12 +128,15 @@ export async function startIssuer(options) {
       state.lastIdToken = idToken;
       const accessToken = `at-${randomBytes(12).toString('hex')}`;
       accessTokens.set(accessToken, grant.claims);
-      return send(200, { access_token: accessToken, token_type: 'Bearer', expires_in: 300, id_token: idToken });
+      const tokenBody = { token_type: 'Bearer', expires_in: 300, id_token: idToken };
+      if (!state.omitAccessToken) tokenBody.access_token = accessToken;
+      return send(200, tokenBody);
     }
 
     if (url.pathname === '/userinfo') {
       const claims = accessTokens.get((req.headers.authorization ?? '').replace(/^Bearer /, ''));
       if (!claims) return send(401, { error: 'invalid_token' });
+      if (state.userinfo !== undefined) return send(200, state.userinfo);
       const out = { sub: claims.sub, name: claims.name };
       if (claims.email !== undefined) out.email = claims.email;
       if (claims.email_verified === true) out.email_verified = true;
@@ -157,6 +160,10 @@ export async function startIssuer(options) {
     state,
     /** Sets the claims the next authorization vouches for. */
     setPerson(person) { state.person = { ...person }; },
+    /** The body the userinfo endpoint returns, verbatim; undefined returns the claims the person has. */
+    setUserinfo(body) { state.userinfo = body; },
+    /** When true, the token response carries no access_token, so the sign-in has no userinfo to read. */
+    setOmitAccessToken(omit) { state.omitAccessToken = omit; },
     /** A logout token the issuer would send: signed, naming the subject, with the sid when the issuer has one. */
     async logoutToken(overrides = {}) {
       const now = Math.floor(Date.now() / 1000);
