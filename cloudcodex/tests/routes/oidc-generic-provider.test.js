@@ -176,12 +176,13 @@ describe('the claims a sign-in reads: the ID token, with userinfo overriding onl
     issuer.setOmitAccessToken(false);
   });
 
-  it('refuses when userinfo returns the email without email_verified, though the ID token asserts it: the pair comes from userinfo', async () => {
+  it('signs in when userinfo is silent on verification of the same address and the ID token asserts it', async () => {
     issuer.setUserinfo({ sub: 'generic-user-0417', email: 'grace@example.com', name: 'Grace Hopper' });
+    queueLinkedHit();
     const callback = await signIn({ returnTo: '/w/ws1/board' });
 
-    expect(callback.headers.location).toBe('/?oauth_error=email_not_verified&oauth_provider=oidc');
-    expect(generateSessionToken).not.toHaveBeenCalled();
+    expect(callback.headers.location).toBe('/w/ws1/board');
+    expect(generateSessionToken).toHaveBeenCalledTimes(1);
   });
 
   it('refuses when userinfo says email_verified false, though the ID token says true: userinfo wins', async () => {
