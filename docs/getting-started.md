@@ -192,7 +192,7 @@ All seed accounts use the password **`password`**.
 | `SMTP_PORT` | SMTP server port | `587` |
 | `SMTP_USER` | SMTP username | — (optional; leave blank to run without email) |
 | `SMTP_PASS` | SMTP password | — (optional; leave blank to run without email) |
-| `SMTP_FROM` | Sender address for outbound email; blank uses the default | `Cloud Codex <noreply@cloudcitycomputing.com>` |
+| `SMTP_FROM` | Sender address for outbound email; blank uses `Cloud Codex <noreply@…>` with the host from `APP_URL` (set `SMTP_FROM` to a sender on a domain you control if your mail host requires one) | `Cloud Codex <noreply@<APP_URL host>>` |
 | `ADMIN_USERNAME` | Username for the admin super-user. Boot creates it, or syncs an existing admin, and never promotes a non-admin (`.env.example` ships `admin`). Required while local sign-in is on; on an OIDC-only instance (`AUTH_PROVIDERS` without `local`) unset gives the admin a name derived from `ADMIN_EMAIL` | (required with local sign-in) |
 | `ADMIN_EMAIL` | Email address for the auto-created admin super-user | — (required) |
 | `ADMIN_PASSWORD` | Password for the admin super-user. Required while local sign-in is on; an OIDC-only instance never reads it | none (required with local sign-in) |
