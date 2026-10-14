@@ -31,7 +31,6 @@ import {
   fetchAdminStatus,
 } from '../../../src/util.jsx';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { showModal, standardRedirect, getSessionTokenFromCookie as cookieToken } from '../../../src/util.jsx';
 
 const USER = { id: 1, name: 'Alice', email: 'alice@example.com' };
@@ -103,7 +102,6 @@ describe('Std_Layout, the signed-out front door (W6-CDX-26)', () => {
   }
 
   beforeEach(() => {
-    __resetSuiteCache();
     window.sessionStorage.clear();
     cookieToken.mockReturnValue(null);
     showModal.mockClear();

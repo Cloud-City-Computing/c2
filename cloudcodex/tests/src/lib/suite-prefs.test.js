@@ -3,7 +3,7 @@
  *
  * Each rule of the contract (docs/maps/suite-ui-alignment-record.md, "The suite preference
  * contract") has a case here: the precedence steps, the cookie's attributes and write order, the
- * domain rule, held writes, clearing, the reconcile that makes the cookie win, the legacy migration,
+ * host-only writes, clearing, the reconcile that makes the cookie win, the legacy migration,
  * and the two re-apply paths. document.cookie is replaced by a small jar that records every write,
  * so a test can assert the exact strings a browser would be sent.
  *
@@ -13,9 +13,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('../../../src/hooks/useSuite.js', () => ({ suitePreferenceDomain: vi.fn() }));
-
-import { suitePreferenceDomain } from '../../../src/hooks/useSuite.js';
 import * as prefs from '../../../src/lib/suite-prefs.js';
 import { ACCENTS } from '../../../src/tokens/accents.js';
 
@@ -54,8 +51,6 @@ function setSystemLight(light) {
   window.matchMedia = vi.fn(() => ({ matches: light, addEventListener() {}, removeEventListener() {} }));
 }
 
-const flush = () => new Promise((r) => { setTimeout(r, 0); });
-
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
@@ -65,9 +60,6 @@ beforeEach(() => {
   installJar();
   setHost('codex.example.com', 'https:');
   setSystemLight(false);
-  suitePreferenceDomain.mockReset();
-  suitePreferenceDomain.mockResolvedValue('example.com');
-  prefs.__resetSuitePrefs();
 });
 
 afterEach(() => {
@@ -151,21 +143,40 @@ describe('precedence, accent', () => {
   });
 });
 
-describe('writing, the domain rule and the cookie attributes', () => {
-  it('on a host under the domain, writes the shared cookie, then the host-only expiry, then localStorage', async () => {
+describe('writing: the choice is host-only, written at once', () => {
+  it('writes the host-only cookie, then expires the name on the parent domain, then localStorage', async () => {
     await prefs.setTheme('light');
     expect(writes).toEqual([
-      'cc_suite_theme=light; Path=/; Max-Age=34560000; SameSite=Lax; Secure; Domain=example.com',
-      'cc_suite_theme=; Path=/; Max-Age=0',
+      'cc_suite_theme=light; Path=/; Max-Age=34560000; SameSite=Lax; Secure',
+      'cc_suite_theme=; Path=/; Max-Age=0; Domain=example.com',
     ]);
     expect(localStorage.getItem(THEME)).toBe('light');
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 
+  it('never gives the value-bearing cookie a Domain, and needs no request before it writes', async () => {
+    await prefs.setTheme('dark');
+    await prefs.setAccent(ACCENTS.blue);
+    const values = writes.filter((w) => !/Max-Age=0/.test(w));
+    expect(values).toHaveLength(2);
+    for (const write of values) expect(write).not.toContain('Domain=');
+    expect(localStorage.getItem(THEME)).toBe('dark');
+    expect(localStorage.getItem(ACCENT)).toBe(String(ACCENTS.blue));
+  });
+
+  it('expires the name on each parent domain of the host, and never on the public suffix', async () => {
+    setHost('a.b.example.test', 'https:');
+    await prefs.setTheme('light');
+    expect(writes.filter((w) => /Max-Age=0/.test(w))).toEqual([
+      'cc_suite_theme=; Path=/; Max-Age=0; Domain=b.example.test',
+      'cc_suite_theme=; Path=/; Max-Age=0; Domain=example.test',
+    ]);
+  });
+
   it('adds no Secure on plain http', async () => {
     setHost('codex.example.com', 'http:');
     await prefs.setTheme('dark');
-    expect(writes[0]).toBe('cc_suite_theme=dark; Path=/; Max-Age=34560000; SameSite=Lax; Domain=example.com');
+    expect(writes[0]).toBe('cc_suite_theme=dark; Path=/; Max-Age=34560000; SameSite=Lax');
   });
 
   it('on localhost, writes one host-only cookie and no Domain', async () => {
@@ -173,18 +184,6 @@ describe('writing, the domain rule and the cookie attributes', () => {
     await prefs.setTheme('light');
     expect(writes).toEqual(['cc_suite_theme=light; Path=/; Max-Age=34560000; SameSite=Lax']);
     expect(localStorage.getItem(THEME)).toBe('light');
-  });
-
-  it('a host that merely ends in the domain text, without the dot boundary, is not under it', async () => {
-    setHost('notexample.com', 'http:');
-    await prefs.setTheme('light');
-    expect(writes.join('\n')).not.toContain('Domain=');
-  });
-
-  it('the domain itself is in use', async () => {
-    setHost('example.com', 'http:');
-    await prefs.setTheme('light');
-    expect(writes[0]).toContain('; Domain=example.com');
   });
 
   it('a value outside the allowlist is ignored, with no write', async () => {
@@ -197,8 +196,8 @@ describe('writing, the domain rule and the cookie attributes', () => {
   it('the accent writes its hue as a plain decimal, with the same attribute rules', async () => {
     await prefs.setAccent(ACCENTS.nova);
     expect(writes).toEqual([
-      'cc_suite_accent=355; Path=/; Max-Age=34560000; SameSite=Lax; Secure; Domain=example.com',
-      'cc_suite_accent=; Path=/; Max-Age=0',
+      'cc_suite_accent=355; Path=/; Max-Age=34560000; SameSite=Lax; Secure',
+      'cc_suite_accent=; Path=/; Max-Age=0; Domain=example.com',
     ]);
     expect(localStorage.getItem(ACCENT)).toBe('355');
     expect(document.documentElement.style.getPropertyValue('--cx-accent-h')).toBe('355');
@@ -206,39 +205,14 @@ describe('writing, the domain rule and the cookie attributes', () => {
   });
 });
 
-describe('held writes', () => {
-  it('a write issued before the preference domain is known writes nothing until it is', async () => {
-    let resolveDomain;
-    suitePreferenceDomain.mockReturnValue(new Promise((r) => { resolveDomain = r; }));
-    prefs.__resetSuitePrefs();
-    const held = prefs.setTheme('light');
-    expect(writes).toEqual([]);
-    expect(localStorage.getItem(THEME)).toBeNull();
-    resolveDomain('example.com');
-    await held;
-    expect(writes[0]).toContain('; Domain=example.com');
-    expect(localStorage.getItem(THEME)).toBe('light');
-  });
-
-  it('never falls back to a host-only write when the domain cannot be read', async () => {
-    suitePreferenceDomain.mockRejectedValue(new Error('offline'));
-    prefs.__resetSuitePrefs();
-    await prefs.setTheme('light');
-    await flush();
-    expect(writes).toEqual([]);
-    expect(localStorage.getItem(THEME)).toBeNull();
-    expect(document.documentElement.dataset.theme).toBe('light');
-  });
-});
-
 describe('clearing', () => {
-  it('Match system expires the shared form, the host-only form, and the key', async () => {
+  it('Match system expires the host-only form, the parent-domain form, and the key', async () => {
     await prefs.setTheme('light');
     writes.length = 0;
     await prefs.clearTheme();
     expect(writes).toEqual([
-      'cc_suite_theme=; Path=/; Max-Age=0; Domain=example.com',
       'cc_suite_theme=; Path=/; Max-Age=0',
+      'cc_suite_theme=; Path=/; Max-Age=0; Domain=example.com',
     ]);
     expect(localStorage.getItem(THEME)).toBeNull();
   });
@@ -372,26 +346,5 @@ describe('the legacy migration', () => {
     await prefs.migrateLegacy();
     expect(localStorage.getItem(ACCENT)).toBeNull();
     expect(JSON.parse(localStorage.getItem(PREFS_KEY))).toEqual({});
-  });
-
-  it('keeps the legacy key when the domain cannot be read, so nothing is lost', async () => {
-    suitePreferenceDomain.mockRejectedValue(new Error('offline'));
-    prefs.__resetSuitePrefs();
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ accentColor: 'rose' }));
-    await prefs.migrateLegacy();
-    expect(JSON.parse(localStorage.getItem(PREFS_KEY))).toEqual({ accentColor: 'rose' });
-  });
-});
-
-describe('the domain rule as a pure function', () => {
-  it.each([
-    ['codex.example.com', 'example.com', true],
-    ['example.com', 'example.com', true],
-    ['a.b.example.com', 'example.com', true],
-    ['notexample.com', 'example.com', false],
-    ['example.com.evil.org', 'example.com', false],
-    ['localhost', 'example.com', false],
-  ])('%s under %s is %s', (host, domain, inUse) => {
-    expect(prefs.domainInUse(host, domain)).toBe(inUse ? domain : null);
   });
 });

@@ -30,7 +30,6 @@ import {
   clearOidcBounce,
   useSignedOutTarget,
 } from '../../../src/hooks/useSignedOutTarget.js';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { safeReturnTo } from '../../../services/return-to.js';
 
 const corpus = JSON.parse(
@@ -306,7 +305,6 @@ describe('useSignedOutTarget', () => {
   }
 
   beforeEach(() => {
-    __resetSuiteCache();
     fetchMock.mockReset();
     fetchMock.mockImplementation((url) => Promise.resolve({ json: () => Promise.resolve(answer(url)) }));
     vi.stubGlobal('fetch', fetchMock);

@@ -8,7 +8,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-vi.mock('../../../src/hooks/useSuite.js', () => ({ suitePreferenceDomain: vi.fn(() => Promise.resolve(null)) }));
 
 import PageHeader from '../../../src/components/PageHeader.jsx';
 

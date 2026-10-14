@@ -27,7 +27,6 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { apiFetch, showModal } from '../../../src/util.jsx';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 import { clearOidcBounce } from '../../../src/hooks/useSignedOutTarget.js';
 
 const ONLY_OIDC = { google: false, github: false, local: false, oidc: { enabled: true, name: 'SSO' } };
@@ -53,7 +52,6 @@ function landingAt(search) {
 }
 
 beforeEach(() => {
-  __resetSuiteCache();
   clearOidcBounce();
   window.sessionStorage.clear();
   showModal.mockClear();
