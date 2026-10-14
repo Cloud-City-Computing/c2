@@ -546,135 +546,6 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* =========================
-   Suite cluster (W6-CDX-25)
-========================= */
-
-/* A disclosure at the top of the sidebar, shown only in suite mode. The panel opens inline under the toggle. */
-.cc-suite {
-  position: relative;
-}
-
-.cc-suite__toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  padding: 4px 8px 4px 0;
-  background: none;
-  border: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.cc-suite {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.cc-suite__mark {
-  width: 24px;
-  height: 24px;
-}
-
-/* A suite name is up to 40 characters. The text column takes the room the sidebar leaves and cuts a
-   longer name with an ellipsis. The full name is the toggle's accessible name and the eyebrow's title. */
-.cc-suite__text {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-  line-height: 1.2;
-}
-
-/* The switcher opens inline, in the sidebar's flow, under the toggle (W6-CDX-40). */
-.cc-suite__panel {
-  margin-top: 4px;
-  padding: 6px 0;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-}
-.cc-suite__panel[hidden] {
-  display: none;
-}
-
-.cc-suite__name,
-.cc-suite__eyebrow {
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cc-suite__name {
-  font-family: var(--font-brand);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.cc-suite__eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.cc-suite__chevron {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.cc-suite__toggle:hover .cc-suite__name,
-.cc-suite[data-open="true"] .cc-suite__name {
-  color: var(--cx-accent);
-}
-
-
-.cc-suite__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.cc-suite__link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  color: var(--text-primary);
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.cc-suite__link:hover {
-  background: var(--cx-tint-accent-soft);
-  color: var(--cx-accent-hover);
-}
-
-.cc-suite__link[aria-current="true"] {
-  color: var(--cx-accent);
-}
-
-.cc-suite__tick {
-  display: inline-flex;
-  width: 14px;
-  color: var(--cx-accent);
-}
-
-.cc-suite__separator {
-  height: 1px;
-  margin: 6px 0;
-  background: var(--border-color);
-}
-
-/* =========================
    Session notice (W6 review: a dead session with unsaved changes)
 ========================= */
 
@@ -4705,14 +4576,6 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--cx-accent);
 }
 
-/* Linked tasks: suite mode's link from a document to its tasks in Cloud Command (W6-CDX-27). The
-   page surface is --bg-main, measured for every accent in tests/design/painted.test.js. */
-.suite-doc-link {
-  color: var(--cx-accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 /* Favorite star button */
 .btn-favorite {
   background: none;
@@ -5626,8 +5489,8 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* Phones (K2): the sidebar becomes a two-row top strip, and the bottom tab bar is gone. Row one: the suite
-   cluster (or the product mark), the workspace slot and the search trigger. Row two: the navigation from the
+/* Phones (K2): the sidebar becomes a two-row top strip, and the bottom tab bar is gone. Row one: the product
+   mark, the workspace slot and the search trigger. Row two: the navigation from the
    left edge, scrolling sideways behind a fade with its scrollbar hidden, then the account. The Archives group
    shows as one "Archives" item, because a list of every archive would not fit a row. */
 @media (max-width: 599px) {
@@ -5677,8 +5540,7 @@ h1, h2, h3, h4, h5, h6 {
     border-right: none;
     border-bottom: 1px solid var(--border-color);
   }
-  .sidebar__brand,
-  .cc-suite { grid-area: brand; }
+  .sidebar__brand { grid-area: brand; }
   .sidebar__brand-name { display: none; }
   .workspace-slot { grid-area: ws; padding: 6px 4px; }
   .workspace-slot__meta,
@@ -5686,18 +5548,6 @@ h1, h2, h3, h4, h5, h6 {
   .search-trigger { grid-area: search; width: auto; min-height: 30px; padding: 5px 7px; }
   .search-trigger__text,
   .search-trigger__key { display: none; }
-  .cc-suite__text { max-width: 150px; }
-  /* The switcher opens over the navigation rather than in the first row, so row one keeps its three cells (W6-CDX-40
-     review): the panel hangs under the cluster and is at least as wide as its links. */
-  .cc-suite__panel {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    z-index: var(--z-menu);
-    min-width: 220px;
-    box-shadow: var(--shadow-lg);
-  }
-  .cc-suite__eyebrow { display: none; }
   .sidebar__nav {
     grid-area: nav;
     /* The padding holds a focused item's ring (2 px wide, 2 px out) inside the strip's visible area, at either

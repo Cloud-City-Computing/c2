@@ -50,7 +50,7 @@ describe('the phone strip with twelve archives', () => {
     archiveState.archives = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Archive ${i + 1}` }));
     const { container } = render(
       <MemoryRouter>
-        <Sidebar user={{ id: 1, name: 'Alice' }} suite={{ enabled: false, name: null, commandWorkspaceUrl: null }} isAdmin={false} />
+        <Sidebar user={{ id: 1, name: 'Alice' }} isAdmin={false} />
       </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelectorAll('.sidebar__group li').length).toBe(13));

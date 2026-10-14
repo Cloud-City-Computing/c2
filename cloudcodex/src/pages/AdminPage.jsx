@@ -37,8 +37,8 @@ import {
   destroyModal,
   timeAgo,
 } from '../util';
-// In suite mode the Workspaces page is hidden, so the Admin console reaches its squad and workspace dialogs
-// directly (W6-CDX-40 review, item 12). The same dialogs, the same routes.
+// The Admin console reaches its squad and workspace dialogs directly, so an admin need not visit the Workspaces
+// page to make one. The same dialogs, the same routes.
 import { NewSquadModal, RenameOrgModal, RenameSquadModal, InviteMemberModal } from './WorkspacesPage.jsx';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WebhooksPanel from '../components/WebhooksPanel';

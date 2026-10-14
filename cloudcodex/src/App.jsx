@@ -8,7 +8,6 @@ import { lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Routes, Route, Navigate } from "react-router-dom";
 import HomePage from './pages/HomePage'
-import WorkspacesGate from './components/WorkspacesGate';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Heavy pages are lazy-loaded so the initial bundle stays small.
@@ -55,8 +54,8 @@ function App() {
       <Route path="/archives/:archiveId" element={<ArchivesPage />} />
       <Route path="/archives/:archiveId/doc/:logId" element={<ArchiveView />} />
       <Route path="/archives/:archiveId/doc" element={<ArchiveView />} />
-      <Route path="/workspaces" element={<WorkspacesGate><WorkspacesPage /></WorkspacesGate>} />
-      <Route path="/workspaces/:workspaceId" element={<WorkspacesGate><WorkspacesPage /></WorkspacesGate>} />
+      <Route path="/workspaces" element={<WorkspacesPage />} />
+      <Route path="/workspaces/:workspaceId" element={<WorkspacesPage />} />
       <Route path="/github" element={<GitHubPage />} />
       <Route path="/github/:owner/:repo" element={<GitHubPage />} />
       <Route path="/admin" element={<AdminPage />} />

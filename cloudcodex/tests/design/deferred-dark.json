@@ -1436,12 +1436,6 @@
   ".document-header .btn-watch--active | color": [
    "oklch(0.68 0.13 230)"
   ],
-  ".suite-doc-link | color": [
-   "oklch(0.68 0.13 230)"
-  ],
-  ".suite-doc-link | text-decoration": [
-   "underline"
-  ],
   ".btn-favorite | background": [
    "none"
   ],

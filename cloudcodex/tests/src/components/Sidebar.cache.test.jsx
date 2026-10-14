@@ -32,13 +32,12 @@ class FakeWebSocket {
 }
 
 const USER = { id: 7, name: 'Cached Person' };
-const SUITE_OFF = { enabled: false, name: null, commandWorkspaceUrl: null };
 const pending = () => new Promise(() => {});
 
 function mountSidebar() {
   return render(
     <MemoryRouter>
-      <Sidebar user={USER} suite={SUITE_OFF} isAdmin={false} />
+      <Sidebar user={USER} isAdmin={false} />
     </MemoryRouter>,
   );
 }

@@ -1,9 +1,8 @@
 /**
  * Cloud Codex - the sidebar (W6-CDX-40, K1, K5, K9, K10)
  *
- * The one full-height navigation column of the suite shell, top to bottom: the suite cluster (suite mode on) or the
- * product mark (off), the workspace slot, the search trigger, the navigation with Notifications' unread count and an
- * Archives group, and the account footer. Workspaces is absent in suite mode (K9): an instance is one workspace.
+ * The one full-height navigation column of the shell, top to bottom: the product mark, the workspace slot, the search
+ * trigger, the navigation with Notifications' unread count and an Archives group, and the account footer.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -14,7 +13,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { apiFetch } from '../util.jsx';
 import useGitHubStatus from '../hooks/useGitHubStatus';
 import useNotificationChannel from '../hooks/useNotificationChannel';
-import SuiteCluster from './SuiteCluster.jsx';
 import { revealInStrip } from '../lib/strip-focus.js';
 import { readInboxCache, writeInboxCache } from '../lib/inbox-cache.js';
 import ProductMark from './ProductMark.jsx';
@@ -24,7 +22,7 @@ import {
   HomeNavIcon, WorkspaceNavIcon, ActivityNavIcon, BellNavIcon, ArchiveNavIcon, GitHubNavIcon, ChevronNavIcon,
 } from './ShellIcons.jsx';
 
-/** The workspace this instance is (in suite mode) or the first one the user can see: { id, name } or null. */
+/** The first workspace the user can see: { id, name } or null. */
 function useWorkspace(user) {
   const [workspace, setWorkspace] = useState(null);
   useEffect(() => {
@@ -81,13 +79,12 @@ function NavItem({ to, label, Icon, pill, ariaLabel, exact = false }) {
   );
 }
 
-export default function Sidebar({ user, suite, isAdmin }) {
+export default function Sidebar({ user, isAdmin }) {
   const { connected: githubConnected } = useGitHubStatus();
   const { unreadCount } = useNotificationChannel(Boolean(user), user?.id);
   const workspace = useWorkspace(user);
   const archives = useArchives(user);
   const location = useLocation();
-  const showCluster = Boolean(suite.enabled && suite.commandWorkspaceUrl);
   const workspaceName = workspace?.name || 'Workspace';
   const pill = unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : null;
   const notificationsLabel = unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications';
@@ -97,33 +94,25 @@ export default function Sidebar({ user, suite, isAdmin }) {
       <span className="workspace-slot__tile" aria-hidden="true">{workspaceName.trim().charAt(0).toUpperCase() || 'W'}</span>
       <span className="workspace-slot__text">
         <span className="workspace-slot__name" title={workspaceName}>{workspaceName}</span>
-        <span className="workspace-slot__meta">{suite.enabled ? 'This workspace' : 'Workspaces'}</span>
+        <span className="workspace-slot__meta">Workspaces</span>
       </span>
-      {!suite.enabled && <ChevronNavIcon />}
+      <ChevronNavIcon />
     </>
   );
 
   return (
     <aside className="sidebar">
-      {showCluster ? (
-        <SuiteCluster suiteName={suite.name} commandWorkspaceUrl={suite.commandWorkspaceUrl} />
-      ) : (
-        <Link to="/" className="sidebar__brand">
-          <ProductMark className="sidebar__mark" />
-          <span className="sidebar__brand-name">Cloud Codex</span>
-        </Link>
-      )}
-      {suite.enabled ? (
-        <div className="workspace-slot">{slotBody}</div>
-      ) : (
-        <Link to="/workspaces" className="workspace-slot workspace-slot--link">{slotBody}</Link>
-      )}
+      <Link to="/" className="sidebar__brand">
+        <ProductMark className="sidebar__mark" />
+        <span className="sidebar__brand-name">Cloud Codex</span>
+      </Link>
+      <Link to="/workspaces" className="workspace-slot workspace-slot--link">{slotBody}</Link>
       <SearchPalette />
       <nav className="sidebar__nav" aria-label="Primary" onFocus={(event) => revealInStrip(event.currentTarget, event.target)}>
         <div className="sidebar__scroll">
           <ul className="sidebar__list">
             <li><NavItem to="/" label="Home" Icon={HomeNavIcon} /></li>
-            {!suite.enabled && <li><NavItem to="/workspaces" label="Workspaces" Icon={WorkspaceNavIcon} /></li>}
+            <li><NavItem to="/workspaces" label="Workspaces" Icon={WorkspaceNavIcon} /></li>
             <li><NavItem to="/activity" label="Activity" Icon={ActivityNavIcon} /></li>
             <li>
               <NavItem to="/notifications" label="Notifications" Icon={BellNavIcon} pill={pill} ariaLabel={notificationsLabel} />

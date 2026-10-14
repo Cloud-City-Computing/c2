@@ -1,7 +1,7 @@
 /**
  * Cloud Codex - The sidebar-led shell (W6-CDX-40, K1, K5, K9, K10)
  *
- * The layout is one sidebar: the suite cluster (suite on) or the product mark (suite off), the workspace slot,
+ * The layout is one sidebar: the product mark, the workspace slot,
  * the search trigger, the navigation with Notifications' unread count, the archives group, and the account
  * footer. There is no top bar, no copyright footer and no bottom tab bar.
  *
@@ -30,22 +30,16 @@ vi.mock('../../../src/hooks/useNotificationChannel.js', () => ({
 const notificationState = { count: 3 };
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { apiFetch, getSessionTokenFromCookie, attemptAutoLogin, fetchAdminStatus } from '../../../src/util.jsx';
 import StdLayout from '../../../src/page_layouts/Std_Layout.jsx';
-import WorkspacesGate from '../../../src/components/WorkspacesGate.jsx';
-import { __resetSuiteCache } from '../../../src/hooks/useSuite.js';
 
 const USER = { id: 1, name: 'Alice Example', email: 'alice@example.com', avatar_url: null };
-const SUITE_ON = { enabled: true, name: 'Example Suite' };
-const SUITE_OFF = { enabled: false, name: 'Example Suite' };
 const WORKSPACES = [{ id: 7, name: 'Acme Workspace' }];
 const ARCHIVES = [{ id: 3, name: 'Engineering Handbook', workspace_id: 7 }];
 
-function world({ suite, github = true, admin = false }) {
+function world({ github = true, admin = false } = {}) {
   apiFetch.mockImplementation((method, url) => {
-    if (url === '/api/suite') return Promise.resolve(suite);
-    if (url === '/api/suite/links') return Promise.resolve({ commandWorkspaceUrl: 'https://command.example.test/w/1' });
     if (url === '/api/workspaces') return Promise.resolve({ success: true, workspaces: WORKSPACES });
     if (url === '/api/archives') return Promise.resolve({ success: true, archives: ARCHIVES });
     if (url === '/api/github/status') return Promise.resolve({ connected: github });
@@ -68,14 +62,13 @@ function renderAt(path = '/', ui) {
 const sidebar = () => document.querySelector('aside.sidebar');
 
 beforeEach(() => {
-  __resetSuiteCache();
   notificationState.count = 3;
   window.sessionStorage.clear();
 });
 
 describe('the shell has one sidebar and no top bar', () => {
   it('renders no top bar, copyright footer or bottom tab bar', async () => {
-    world({ suite: SUITE_ON });
+    world({});
     const { container } = renderAt('/');
     await screen.findByText('page body');
     expect(container.querySelector('header.topbar')).toBeNull();
@@ -83,24 +76,24 @@ describe('the shell has one sidebar and no top bar', () => {
     expect(container.querySelector('nav.mobile-nav')).toBeNull();
   });
 
-  it('holds, in order, the cluster, the workspace slot, the search trigger, the nav and the footer', async () => {
-    world({ suite: SUITE_ON });
+  it('holds, in order, the product mark, the workspace slot, the search trigger, the nav and the footer', async () => {
+    world({});
     renderAt('/');
     await screen.findByText('page body');
-    await waitFor(() => expect(sidebar().querySelector('.cc-suite__toggle')).not.toBeNull());
+    await waitFor(() => expect(sidebar().querySelector('a.sidebar__brand')).not.toBeNull());
     const order = [...sidebar().children].map((el) => {
-      if (el.matches('.cc-suite')) return 'cluster';
+      if (el.matches('a.sidebar__brand')) return 'brand';
       if (el.matches('.workspace-slot')) return 'workspace';
       if (el.matches('.search-trigger')) return 'search';
       if (el.matches('nav.sidebar__nav')) return 'nav';
       if (el.matches('.sidebar__footer')) return 'footer';
       return el.tagName;
     });
-    expect(order).toEqual(['cluster', 'workspace', 'search', 'nav', 'footer']);
+    expect(order).toEqual(['brand', 'workspace', 'search', 'nav', 'footer']);
   });
 
-  it('with the suite off, the product mark stands in the cluster slot, as an SVG and not an image', async () => {
-    world({ suite: SUITE_OFF });
+  it('the product mark stands at the top of the sidebar, as an SVG and not an image', async () => {
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     await waitFor(() => expect(sidebar().querySelector('svg.sidebar__mark')).not.toBeNull());
@@ -110,17 +103,8 @@ describe('the shell has one sidebar and no top bar', () => {
 });
 
 describe('the workspace slot', () => {
-  it('names the workspace this instance is, read-only in suite mode', async () => {
-    world({ suite: SUITE_ON });
-    renderAt('/');
-    await screen.findByText('page body');
-    const slot = await waitFor(() => sidebar().querySelector('.workspace-slot'));
-    expect(slot.querySelector('.workspace-slot__name').textContent).toBe('Acme Workspace');
-    expect(slot.tagName).toBe('DIV');
-  });
-
-  it('links to the Workspaces page outside suite mode', async () => {
-    world({ suite: SUITE_OFF });
+  it('links to the Workspaces page', async () => {
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     const slot = await waitFor(() => sidebar().querySelector('a.workspace-slot'));
@@ -129,9 +113,9 @@ describe('the workspace slot', () => {
   });
 });
 
-describe('suite mode off keeps the suite out of the page', () => {
-  it('renders no cluster and names no suite in the sidebar', async () => {
-    world({ suite: SUITE_OFF });
+describe('the sidebar names no suite', () => {
+  it('renders no suite cluster and names no suite in the sidebar', async () => {
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     await waitFor(() => expect(sidebar().querySelector('.sidebar__mark')).not.toBeNull());
@@ -140,63 +124,19 @@ describe('suite mode off keeps the suite out of the page', () => {
   });
 });
 
-describe('the suite cluster in the sidebar', () => {
-  it('is the mark as an SVG, not an image (K10)', async () => {
-    world({ suite: SUITE_ON });
-    renderAt('/');
-    await screen.findByText('page body');
-    await waitFor(() => expect(sidebar().querySelector('svg.cc-suite__mark')).not.toBeNull());
-    expect(sidebar().querySelector('.cc-suite img')).toBeNull();
-  });
-});
-
-describe('Workspaces is hidden in suite mode (K9)', () => {
-  it('has no Workspaces item in suite mode', async () => {
-    world({ suite: SUITE_ON });
-    renderAt('/');
-    await screen.findByText('page body');
-    await waitFor(() => expect(sidebar().querySelector('.cc-suite')).not.toBeNull());
-    expect(within(sidebar()).queryByRole('link', { name: 'Workspaces' })).toBeNull();
-  });
-
-  it('keeps the Workspaces item outside suite mode', async () => {
-    world({ suite: SUITE_OFF });
+describe('Workspaces is always offered', () => {
+  it('has the Workspaces item', async () => {
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     await waitFor(() => expect(within(sidebar()).getByRole('link', { name: 'Workspaces' })).toBeTruthy());
   });
 
-  it('redirects /workspaces and /workspaces/:id to the home page in suite mode', async () => {
-    world({ suite: SUITE_ON });
-    const routes = (
-      <MemoryRouter initialEntries={['/workspaces/7']}>
-        <Routes>
-          <Route path="/" element={<p>home page</p>} />
-          <Route path="/workspaces/:workspaceId" element={<WorkspacesGate><p>workspaces page</p></WorkspacesGate>} />
-        </Routes>
-      </MemoryRouter>
-    );
-    render(routes);
-    expect(await screen.findByText('home page')).toBeTruthy();
-    expect(screen.queryByText('workspaces page')).toBeNull();
-  });
-
-  it('shows the workspaces page outside suite mode', async () => {
-    world({ suite: SUITE_OFF });
-    render(
-      <MemoryRouter initialEntries={['/workspaces']}>
-        <Routes>
-          <Route path="/workspaces" element={<WorkspacesGate><p>workspaces page</p></WorkspacesGate>} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    expect(await screen.findByText('workspaces page')).toBeTruthy();
-  });
 });
 
 describe('Notifications is a nav item with an unread count (K5)', () => {
   it('names the count in its accessible name and shows it in a pill', async () => {
-    world({ suite: SUITE_ON });
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     const link = await waitFor(() => within(sidebar()).getByRole('link', { name: 'Notifications, 3 unread' }));
@@ -206,7 +146,7 @@ describe('Notifications is a nav item with an unread count (K5)', () => {
 
   it('caps the pill at 99+ above 99', async () => {
     notificationState.count = 150;
-    world({ suite: SUITE_ON });
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     const link = await waitFor(() => within(sidebar()).getByRole('link', { name: 'Notifications, 150 unread' }));
@@ -215,7 +155,7 @@ describe('Notifications is a nav item with an unread count (K5)', () => {
 
   it('has no pill and a plain name when nothing is unread', async () => {
     notificationState.count = 0;
-    world({ suite: SUITE_ON });
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     const link = await waitFor(() => within(sidebar()).getByRole('link', { name: 'Notifications' }));
@@ -225,14 +165,14 @@ describe('Notifications is a nav item with an unread count (K5)', () => {
 
 describe('the archives group and the account footer', () => {
   it('lists the archives the user can read', async () => {
-    world({ suite: SUITE_ON });
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     await waitFor(() => expect(within(sidebar()).getByRole('link', { name: 'Engineering Handbook' })).toBeTruthy());
   });
 
   it('opens the footer menu on the name, with Account settings and Sign out', async () => {
-    world({ suite: SUITE_ON });
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     const name = await waitFor(() => within(sidebar()).getByRole('button', { name: 'Alice Example' }));
@@ -246,7 +186,7 @@ describe('the archives group and the account footer', () => {
   });
 
   it('closes on Escape and returns focus to the name, and never shows the modal dimmer', async () => {
-    world({ suite: SUITE_ON });
+    world({});
     const { container } = renderAt('/');
     await screen.findByText('page body');
     const name = await waitFor(() => within(sidebar()).getByRole('button', { name: 'Alice Example' }));
@@ -259,7 +199,7 @@ describe('the archives group and the account footer', () => {
   });
 
   it('lists Admin in the footer menu for an admin, and nowhere else in the sidebar', async () => {
-    world({ suite: SUITE_ON, admin: true });
+    world({ admin: true });
     renderAt('/');
     await screen.findByText('page body');
     fireEvent.click(await waitFor(() => within(sidebar()).getByRole('button', { name: 'Alice Example' })));
@@ -268,7 +208,7 @@ describe('the archives group and the account footer', () => {
   });
 
   it('names the menu button by the person, so its name survives the phone strip hiding the text', async () => {
-    world({ suite: SUITE_ON });
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     const name = await waitFor(() => within(sidebar()).getByRole('button', { name: 'Alice Example' }));
@@ -276,7 +216,7 @@ describe('the archives group and the account footer', () => {
   });
 
   it('has a sign-out icon button with an accessible name', async () => {
-    world({ suite: SUITE_ON });
+    world({});
     renderAt('/');
     await screen.findByText('page body');
     expect(await waitFor(() => within(sidebar()).getByRole('button', { name: 'Sign out' }))).toBeTruthy();

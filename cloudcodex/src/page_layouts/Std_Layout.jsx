@@ -269,7 +269,7 @@ function StdLayout({ children }) {
         />
       )}
       <div className={`app-shell ${!user ? 'no-sidebar' : ''}`}>
-        {user && <Sidebar user={user} suite={suite} isAdmin={isAdmin} />}
+        {user && <Sidebar user={user} isAdmin={isAdmin} />}
         <main className="main-content">
           {authChecked && (user ? <><FirstRunGate />{children}</> : <NoLoginMessage suiteName={suite.enabled ? suite.name : null} signedOut={signedOut} onSignIn={signIn} />)}
         </main>

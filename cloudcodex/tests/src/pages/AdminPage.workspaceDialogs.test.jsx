@@ -1,8 +1,7 @@
 /**
- * Cloud Codex - In suite mode the Admin page holds what the Workspaces page held (W6-CDX-40 review, item 12)
+ * Cloud Codex - The Admin console holds the workspace and squad dialogs (W6-CDX-40 review, item 12)
  *
- * Workspaces is hidden in suite mode, so the work that lived there must have another home. It is the Admin
- * console: a workspace can be renamed, given a squad, and deleted; a squad can be renamed, given a member, and
+ * The Admin console is where a workspace can be renamed, given a squad, and deleted; a squad can be renamed, given a member, and
  * deleted; a squad's pending invitations can be cancelled. Each action here reaches the same route and utility
  * the Workspaces page uses, and each is tested through the page.
  *
