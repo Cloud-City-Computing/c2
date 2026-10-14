@@ -19,7 +19,7 @@ import app, { parseTrustProxy, isAllowedOrigin, requireOriginForCookieWrites } f
 import { c2_query, validateAndAutoLogin } from '../mysql_connect.js';
 import { contractDefault } from './contract-default.js';
 import { THEME_BOOT_HASH } from '../theme-boot-hash.js';
-import { resetMocks } from './helpers.js';
+import { resetMocks, mockAuthenticated } from './helpers.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -967,5 +967,47 @@ describe('app.js: Origin-required cookie writes', () => {
       expect(isAllowedOrigin(req('codex.example.com'), 'http://localhost:5173')).toBe(true);
       expect(isAllowedOrigin(req('codex.example.com'), 'http://127.0.0.1:5173')).toBe(true);
     });
+  });
+});
+
+describe('app.js: suite mode is removed', () => {
+  // The suite routes were mounted only with SUITE_COMMAND_WORKSPACE_URL set, and answered 200 for the
+  // public probe either way. Removed, both are unknown /api paths: a JSON 404 (app.js's /api fallback),
+  // never the SPA's index.html, whatever the suite variables hold.
+  const SUITE_KEYS = ['SUITE_COMMAND_WORKSPACE_URL', 'SUITE_NAME', 'SUITE_PREFERENCE_DOMAIN'];
+  let savedSuite;
+  beforeEach(() => {
+    resetMocks();
+    savedSuite = Object.fromEntries(SUITE_KEYS.map((k) => [k, process.env[k]]));
+  });
+  afterEach(() => {
+    for (const k of SUITE_KEYS) {
+      if (savedSuite[k] === undefined) delete process.env[k];
+      else process.env[k] = savedSuite[k];
+    }
+  });
+
+  it('answers GET /api/suite with a JSON 404 when the suite variables are unset', async () => {
+    for (const k of SUITE_KEYS) delete process.env[k];
+    const res = await request(app).get('/api/suite');
+    expect(res.status).toBe(404);
+    expect(res.headers['content-type']).toMatch(/json/);
+  });
+
+  it('answers GET /api/suite with the same 404 when the suite variables are set', async () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test/w/1';
+    process.env.SUITE_NAME = 'Example Suite';
+    const res = await request(app).get('/api/suite');
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('command.example.test');
+  });
+
+  it('answers GET /api/suite/links with a 404 for a signed-in caller, with the variables set', async () => {
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test/w/1';
+    process.env.SUITE_NAME = 'Example Suite';
+    mockAuthenticated();
+    const res = await request(app).get('/api/suite/links').set('Authorization', 'Bearer valid-token');
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('command.example.test');
   });
 });

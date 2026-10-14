@@ -52,6 +52,28 @@ describe('GET /api/oauth/providers, the oidc entry', () => {
   });
 });
 
+describe('GET /api/oauth/providers, the button name with the removed suite variables', () => {
+  beforeEach(() => {
+    resetMocks();
+    for (const key of [...OIDC_KEYS, 'SUITE_COMMAND_WORKSPACE_URL', 'SUITE_NAME']) delete process.env[key];
+  });
+
+  afterEach(() => {
+    for (const key of [...OIDC_KEYS, 'SUITE_COMMAND_WORKSPACE_URL', 'SUITE_NAME']) delete process.env[key];
+  });
+
+  it('names the button SSO, not the suite, when OIDC_PROVIDER_NAME is unset', async () => {
+    process.env.OIDC_ISSUER_URL = 'https://id.example.test';
+    process.env.OIDC_CLIENT_ID = 'codex-web';
+    process.env.OIDC_CLIENT_SECRET = 'a-secret-for-the-surface-tests';
+    process.env.APP_URL = 'https://codex.example.test';
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://command.example.test/w/1';
+    process.env.SUITE_NAME = 'Example Suite';
+    const res = await request(app).get('/api/oauth/providers');
+    expect(res.body.providers.oidc.name).toBe('SSO');
+  });
+});
+
 describe('GET /api/2fa/status, managed_by', () => {
   beforeEach(() => {
     resetMocks();
