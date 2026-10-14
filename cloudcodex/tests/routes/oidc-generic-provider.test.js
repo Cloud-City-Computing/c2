@@ -210,3 +210,48 @@ describe('the claims a sign-in reads: the ID token, with userinfo overriding onl
     expect(generateSessionToken).not.toHaveBeenCalled();
   });
 });
+
+describe('email and email_verified are one unit: the pair comes from one source', () => {
+  afterEach(() => {
+    issuer.setUserinfo(undefined);
+    issuer.setOmitAccessToken(false);
+  });
+
+  it('refuses a verified ID token email spliced onto a userinfo email with no email_verified', async () => {
+    // The ID token vouches for grace@example.com; userinfo names a different address without a verified claim.
+    issuer.setUserinfo({ sub: 'generic-user-0417', email: 'victim@y.example', name: 'Grace Hopper' });
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/?oauth_error=email_not_verified&oauth_provider=oidc');
+    expect(generateSessionToken).not.toHaveBeenCalled();
+    expect(c2_query.mock.calls.some(([sql]) => /user_identities/.test(sql))).toBe(false);
+  });
+
+  it('refuses when the ID token says email_verified false and userinfo says true for the same address', async () => {
+    issuer.setOmitAccessToken(false);
+    issuer.setPerson({ sub: 'generic-user-0417', email: 'grace@example.com', email_verified: false, name: 'Grace Hopper' });
+    issuer.setUserinfo({ sub: 'generic-user-0417', email: 'grace@example.com', email_verified: true, name: 'Grace Hopper' });
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/?oauth_error=email_not_verified&oauth_provider=oidc');
+    expect(generateSessionToken).not.toHaveBeenCalled();
+  });
+
+  it('signs in when the ID token and userinfo both say verified for the same address, in any letter case', async () => {
+    issuer.setUserinfo({ sub: 'generic-user-0417', email: 'GRACE@example.com', email_verified: true, name: 'Grace Hopper' });
+    queueLinkedHit();
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/w/ws1/board');
+    expect(generateSessionToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes the ID token pair when userinfo returns no email', async () => {
+    issuer.setUserinfo({ sub: 'generic-user-0417', name: 'Grace B. Hopper' });
+    queueLinkedHit();
+    const callback = await signIn({ returnTo: '/w/ws1/board' });
+
+    expect(callback.headers.location).toBe('/w/ws1/board');
+    expect(generateSessionToken).toHaveBeenCalledTimes(1);
+  });
+});
