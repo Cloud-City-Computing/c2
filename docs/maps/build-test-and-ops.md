@@ -149,7 +149,7 @@ a commented key, a quoted key, a merged anchor, the long syntax and a bare
 number. It also pins `.env.example`'s `APP_BIND=` and `DB_BIND=` blank.
 
 **Both production files pin the default network** to `172.29.0.0/16`, gateway
-`172.29.0.1` (distinct from Cloud Command's `172.28.0.0/16`). Docker presents
+`172.29.0.1` (distinct from any other compose project's default network). Docker presents
 a proxy on the host to the container as that gateway, and `TRUST_PROXY`'s
 default names `172.29.0.1/32`, so an unpinned network (Docker's next free
 subnet, `172.18.0.0/16` or later, or a `192.168` range once about fifteen
@@ -439,7 +439,7 @@ manifest lists.
 | `vendored.test.js` | every listed file present with its SHA-256, nothing unlisted, a full upstream commit, and the package's own `node:test` suites passing in this copy (run with the TAP reporter named and `NODE_OPTIONS` dropped, so the summary parses on Node 24, whose default reporter is spec) |
 | `token-discipline.test.js` | literal colours, accent fill shades (`--brand-blue`, `--accent-100` to `-400`, and Codex's `--cx-accent-fill`) in text or edge positions, and suppressed outlines, per bucket, against `ledger.json` |
 | `z-index.test.js` | every CSS `z-index` and React `zIndex` is a `var(--z-*)` that the vendored `core.css` declares, with a floor of 12 CSS declarations; the shell layers (W6-CDX-40: the sidebar at base, the account menu and the search palette above it and the editor overlays) is read from the real rules |
-| `suite-name.test.js` | no application source (`src`, `routes`, `services`, `middleware`, `scripts`, the root files) spells the suite name outside a `Cloud City Computing` header (W6-CDX-25, Decision 8) |
+| `standalone.test.js` | no application source (`src`, `routes`, `services`, `middleware`, `scripts`, the root files) names a sibling product, the suite mode, a `SUITE_*` variable outside a removed entry, a `W6-CMD-` tag or the identity provider; the `Cloud City Computing` header and the two cookie names are the allowed forms (CDX-SA-5) |
 | `dangling.test.js` | a `var()` with no fallback names a property some loaded stylesheet (`src/**/*.css`, the vendored `core.css`) declares, against `dangling-ledger.json` |
 | `contrast.test.js` | every pair in `pairs.json` clears its minimum in each theme (dark and daylight, W6-CDX-43), and every colour binding in `src/codex.css` is in a pair, named decorative, or a `--cx-deferred-` binding that `deferred-colour.test.js` measures |
 | `deferred-colour.test.js` | every text colour in the editor, comments, GitHub and read-only sections, measured where it paints (over its own background, composited, or over each surface), at 4.5:1 in both themes; every `--cx-deferred-` binding is declared in both themes and read |
@@ -452,7 +452,7 @@ manifest lists.
 | `dialogs.test.js` | every dialog wrapper in any file under `src/` carries `role="dialog"` and `aria-modal="true"` in its own markup (seven today), every `close-button` is a `type="button"` button named Close, and `#modal-dimmer` paints `var(--cx-scrim)` with no `backdrop-filter` (seeded, so the scan cannot pass by finding nothing) |
 | `accents.test.js` | the eight picker hues in `src/tokens/accents.js`, W6-CDX-43 (K7): the contract `STEPS` table, with H substituted, equals the `[data-theme][data-accent]` blocks of `codex.css` in both themes; 64 hue-by-surface-by-theme text pairs at 4.5:1 (the three surfaces and the picked wash); the focus ring at 3:1; on-accent at 4.5:1 on the fill and the fill hover on each fill, at least 15 degrees from the danger, warning, success and violet arcs read from `core.css`, no two closer than 25 degrees, `LEGACY_ACCENT` targets unique keys |
 | `codex-css.test.js` | `codex.css` declares only `--cx-` custom properties and `color-scheme` (dark and light), under exactly `[data-theme]` (the shared block), the two themes and the two `[data-accent]` forms (W6-CDX-43) and `[data-theme='dark']`, with no radius and no `--cx-surface-3` or `-4` (W6-CDX-38), never a core name; `index.html` sets the attribute; `src/main.jsx` imports core, fonts, codex, index in that order; no font under `public/`; Vite keeps legal comments |
-| `suite-theme.test.js` | every row of `tests/design/suite-theme.json`, dark and light columns, the suite pattern's theme table restated, equals its declaration in `src/codex.css` as text (W6-CDX-38; the light column, W6-CDX-43) |
+| `theme.test.js` | every row of `tests/design/theme.json`, dark and light columns, the theme table restated, equals its declaration in `src/codex.css` as text (W6-CDX-38; the light column, W6-CDX-43) |
 | `hover-fills.test.js` | no rule in `index.css` reads `--bg-hover` or `--bg-hover-strong`, the bridge declares neither, and the deferred editor, comments and GitHub banners bind their hover to `--cx-surface-2` (Decision 12, W6-CDX-38) |
 | `fallbacks.test.js` | no `var()` fallback under `src` is a colour literal, and no undeclared name carries a fallback except `--editor-font-size`, which script sets (W6-CDX-38) |
 | `control-font.test.js` | `.btn`, `button`, `input`, `select` and `textarea` declare `font-family: inherit` on the shell (X4), and the rule excludes the deferred families (comments, the editor and its toolbars, Markdown, Draw.io, Version History, GitHub), which keep the browser font until W6-CDX-43 (K3). The family only: the `font` shorthand also reset size and line height, which grew the top-bar search field (W6-CDX-38) |
@@ -502,14 +502,13 @@ declared `www.w3.workspace` as their namespace until 2026-09-28, and React
 rendered them regardless, so no page looked wrong. The file leaves itself out,
 because its fixtures are the broken spellings.
 
-**The suite preference contract (W6-CDX-44).** `tests/src/lib/suite-prefs.test.js` covers every rule of the
+**The appearance preference contract (W6-CDX-44).** `tests/src/lib/appearance-prefs.test.js` covers every rule of the
 contract (precedence, the cookie attributes and write order, the domain rule, held writes, clearing, the reconcile,
 the migration, and both re-apply paths) against a `document.cookie` jar that records each write verbatim.
 `tests/src/theme-boot.test.js` runs `index.html`'s own script in each precedence case, and the accent cases cover every
 legacy key. `tests/theme-boot-hash.test.js` (backend project) holds the CSP hash to the script's bytes in `index.html`
 and in a fresh `vite build`'s `dist/index.html`; `tests/app.test.js` checks the production `script-src` carries it.
-`tests/services/suite.test.js` and `tests/routes/suite.test.js` pin the `SUITE_PREFERENCE_DOMAIN` boot refusals and the
-`preferenceDomain` shape. `tests/src/components/` covers the header's Appearance popover (focus, Tab, Escape, outside press), the shared Appearance groups and the header slot.
+`tests/src/components/` covers the header's Appearance popover (focus, Tab, Escape, outside press), the shared Appearance groups and the header slot.
 The design gates run in both themes as before; the deferred-families geometry fingerprint stayed unchanged.
 
 Measured 2026-10-12 on `track/w6-cdx-44-theme-contract`: `npm run lint` clean on the changed files; the default run
@@ -910,7 +909,7 @@ name. It fails on any advisory of moderate severity or worse against a package
 Dev tools are excluded so that an advisory in a lint or test dependency does
 not turn every PR red; the next step, `Dependency audit (all, advisory only)`,
 runs a plain `npm audit` with `continue-on-error: true`, which leaves a red
-mark on that step and a green job. Cloud Command runs the same pair. Before
+mark on that step and a green job. Before
 the gate, `npm audit` ran nowhere, and 19 production findings had
 accumulated by 2026-09-28.
 

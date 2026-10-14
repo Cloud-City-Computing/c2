@@ -158,7 +158,7 @@ describe('decideSignedOut', () => {
     });
   });
 
-  it('falls back to "/" for an encoded path, as Cloud Command does (the bounce still happens)', () => {
+  it('falls back to "/" for an encoded path (the bounce still happens)', () => {
     const decision = decideSignedOut({ ...deepLink, pathname: '/doc%20x' });
     expect(decision.action).toBe('bounce');
     expect(returnToOf(decision.url)).toBe('/');

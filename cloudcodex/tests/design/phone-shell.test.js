@@ -31,3 +31,17 @@ describe('the phone shell (390 px)', () => {
     expect(phoneShellRule()).toMatch(/align-content:\s*start/);
   });
 });
+
+/*
+ * The phone strip's navigation spans the first two grid columns ("nav nav foot"), so a negative right margin
+ * reaches into the account column and the avatar is drawn over the end of the last item (seen at 390 px).
+ */
+describe('the phone strip keeps the account column clear', () => {
+  it('the navigation strip has no right margin, so its last item is not drawn under the account avatar', () => {
+    const start = css.indexOf('  .sidebar__nav {\n    grid-area: nav;');
+    expect(start, 'no phone navigation rule').toBeGreaterThan(-1);
+    const block = css.slice(start, css.indexOf('}', start));
+    expect(block).toContain('margin: 0 0 0 -18px;');
+    expect(block).not.toMatch(/margin:\s*0\s+-18px/);
+  });
+});

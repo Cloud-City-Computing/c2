@@ -411,6 +411,33 @@ describe('app.js — Express configuration', () => {
   // script-src 'self'). /avatars stands for every non-API response: the static
   // mounts and the single-page app's HTML, which vite-express appends after
   // everything in app.js at listen time.
+  // An unmatched /api path is a JSON 404 in every mode. vite-express appends a catch-all that answers
+  // any unknown GET with index.html and 200 in production, so a removed GET route would look alive
+  // without the 404 that app.js mounts after the last /api router.
+  describe('an unmatched /api path', () => {
+    const withCatchAll = (configured) => {
+      configured.get('/{*splat}', (_req, res) => res.type('html').send('<!doctype html><title>x</title>'));
+      return configured;
+    };
+
+    it.each(['production', 'development'])('%s: GET /api/suite and an unknown /api path answer a JSON 404', async (mode) => {
+      const app = withCatchAll(await importAppWith({ NODE_ENV: mode }));
+      for (const url of ['/api/suite', '/api/no-such-route']) {
+        const res = await request(app).get(url);
+        expect(res.status, url).toBe(404);
+        expect(res.headers['content-type'], url).toMatch(/^application\/json/);
+        expect(res.body, url).toEqual({ success: false, message: 'Not found' });
+      }
+    });
+
+    it('production: a path outside /api still reaches the page handler', async () => {
+      const prod = withCatchAll(await importAppWith({ NODE_ENV: 'production' }));
+      const res = await request(prod).get('/some-page');
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/^text\/html/);
+    });
+  });
+
   describe('security header scope', () => {
     const AVATAR_DIR = path.join(APP_DIR, 'public', 'avatars');
     const FIXTURE = `csp-scope-fixture-${process.pid}.webp`;

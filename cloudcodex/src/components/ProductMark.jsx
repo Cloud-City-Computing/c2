@@ -2,7 +2,7 @@
  * Cloud Codex - the product mark (W6-CDX-40, K10): the page glyph on the accent tile
  *
  * An outlined document page in --cx-on-accent on a 24 px --cx-accent-fill tile (the svg's own background). It replaces the cloud logo image in
- * the suite cluster, in the sidebar when the suite is off, and on the signed-out screen. Drawn in CSS-classed SVG
+ * the sidebar and on the signed-out screen. Drawn in CSS-classed SVG
  * (no image), so the tile and the glyph take their colour from the tokens in every theme.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026

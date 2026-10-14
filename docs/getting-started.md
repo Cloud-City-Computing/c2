@@ -223,8 +223,8 @@ prints a line at boot naming it, then the server starts as it would without it. 
 
 | Variable | What to do |
 |---|---|
-| `SUITE_COMMAND_WORKSPACE_URL` | suite mode was removed in 0.15.0. Accounts linked to an identity provider now accept a local password and local two-factor; set AUTH_PROVIDERS=oidc to keep sign-in provider-only. Unset it |
-| `SUITE_NAME` | suite mode was removed in 0.15.0; unset it |
+| `SUITE_COMMAND_WORKSPACE_URL` | the suite integration was removed in 0.15.0. Accounts linked to an identity provider now accept a local password and local two-factor; set AUTH_PROVIDERS=oidc to keep sign-in provider-only. Unset it |
+| `SUITE_NAME` | the suite integration was removed in 0.15.0; unset it |
 | `SUITE_PREFERENCE_DOMAIN` | the theme and accent preference is per host now; unset it |
 | `OIDC_ACCOUNT_URL` | accounts are editable in Codex now; unset it |
 | `SERVICE_TOKEN` | the static machine credential was removed in 0.15.0; a script signs in as a user and sends that session. Unset it |

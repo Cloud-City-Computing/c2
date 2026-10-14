@@ -193,7 +193,7 @@ instance back to local sign-in restores the same passwords without a reset. Clea
 decision, not a boot step, so it is not automated.
 
 **Deep links.** A signed-out deep link is carried through sign-in as `returnTo` only when it passes
-the same validator as Cloud Command's corpus. A link that fails validation, or whose encoding does not
+the same validator as the sign-in return path (`services/return-to.js`). A link that fails validation, or whose encoding does not
 decode, falls back to `/`, which is the landing page, rather than being refused with an error.
 
 **An account with two-factor on before the switch.** Its two-factor routes are unmounted, so it
@@ -287,7 +287,7 @@ conditions come with it:
   gateway.** Another container on the compose network going to `172.29.0.1:PORT`, and a
   container on another Docker network going to the host's own address, are
   presented as `172.29.0.1`, so each is trusted and can name its own address.
-  On a box that also runs Cloud Command, its containers are such peers. With
+  On a box that also runs another Docker Compose project, its containers are such peers. With
   `APP_BIND` on `127.0.0.1`, no container reaches the port except one sharing
   the host's network namespace.
 

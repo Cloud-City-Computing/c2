@@ -342,7 +342,7 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * cross-site, and only that must carry an Origin isAllowedOrigin accepts.
  * The CORS layer admits a request with no Origin at all, and SameSite=Strict
  * adds nothing between hosts under one registrable domain, which is
- * how the suite is hosted; this closes that gap without a CSRF token. A
+ * the case for any hosts sharing a registrable domain; this closes that gap without a CSRF token. A
  * browser sends Origin on every same-origin fetch that is not a GET or HEAD.
  */
 export function requireOriginForCookieWrites(req, res, next) {
@@ -426,5 +426,8 @@ app.use('/api', notificationsRouter);
 app.use('/api', activityRouter);
 app.use('/api', firstRunRouter);
 app.use('/api', watchesRouter);
+// An unmatched /api path is a JSON 404 in every mode. Without this, vite-express answers an unknown GET
+// with index.html and 200 in production, so a removed GET route would look alive.
+app.use('/api', (req, res) => res.status(404).json({ success: false, message: 'Not found' }));
 
 export default app;

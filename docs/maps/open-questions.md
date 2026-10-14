@@ -943,7 +943,7 @@ reason breaks those reads.
 
 `init.sql:52` declares `email VARCHAR(255) NOT NULL UNIQUE` under the database default,
 `utf8mb4_0900_ai_ci`, which treats `é` and `e` (and case) as the same character. W6-CDX-5 made the
-OIDC identity lookups compare the lowercased address in binary (`services/identity.js:125`, `:151`),
+OIDC identity lookups compare the lowercased address in binary (`services/identity.js:127`, `:151`),
 so a verified address that differs only by an accent no longer matches someone else's account. The
 UNIQUE key itself is still accent-insensitive repo-wide: two real mailboxes that differ only by an
 accent cannot both hold a Codex account, and the second sign-up is refused as a duplicate. Changing
@@ -1005,9 +1005,9 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
 ## G. Open questions from W6-CDX-26 (the suite front door): G1 and G2 closed by CDX-SA-2, G3 stands
 
 - **G1. (Closed: the suite front door was removed in CDX-SA-2.)** The live run against the Cloud City ID stack is not recorded. The plan's Task 6.3 wants a signed-out
-  deep link to `/archives/:a/doc/:l` to land on the document after the bounce, with Cloud Command signed in, and
-  with no Cloud City session to land on the issuer's login first. That needs the cloud-city-id stack and a
-  Cloud Command instance on the same domain. Checked here only by the unit and route tests and the captures.
+  deep link to `/archives/:a/doc/:l` to land on the document after the bounce, with the sending application signed in, and
+  with no issuer session to land on the issuer's login first. That needs an OIDC issuer and a second
+  application on the same domain. Checked here only by the unit and route tests and the captures.
 - **G2. (Closed with G1.)** The silent-return path is not exercised end to end. On a live issuer session, the bounce should return
   the person silently to the document. The tests pin the URL and the loop guard, not the issuer's answer.
 - **G3. The bare root (resolved 2026-10-11, still in force for an OIDC-only instance).** Kyle chose that a signed-out bare `/` goes straight to Cloud City
@@ -1025,7 +1025,7 @@ described. Its live items are here; its closed decisions are not carried, becaus
   fill and wash for 200 and 175; the light wash for 355, 275 and 50), and 29 of 80 once the dark avatar step counts.
   The browser and the vendored gate both clip, and every pair still passes on the clipped colour. The upstream product's
   count for the same three hues (17) is not reconciled, since its script is not in this repository. A change to a step
-  is a versioned change to the table in `tests/design/suite-theme.json`.
+  is a versioned change to the table in `tests/design/theme.json`.
 - **H2. Decisions taken without sign-off that still concern Codex's own interface.** Each was recorded as "decided
   pending Kyle" and stands until Kyle confirms or reverses it: the sixth binding `--cx-accent-fill-hover` (the primary
   button's hover on a filled accent is the dark hover step in both themes); `--cx-accent-dark`, derived per hue so the
@@ -1033,5 +1033,5 @@ described. Its live items are here; its closed decisions are not carried, becaus
   presence label constant `INK_LUMINANCE` is pinned to it; the light hover washes of the deferred families raised to a
   0.025 floor, and the light black code washes moved to a 0.06 to 0.15 ink wash; the PageHeader on GitHub settings
   (Codex has no GitHub settings page; the connection lives on the GitHub page).
-- **H3. Not yet run.** A theme chosen in Codex has not been seen applied in Cloud Command on a shared parent domain.
+- **H3. Not yet run.** A theme chosen in Codex has not been checked on a shared parent domain.
   That check is void now: the preference is per host, so there is nothing to share.

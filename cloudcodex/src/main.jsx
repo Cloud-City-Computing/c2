@@ -15,11 +15,11 @@ import '../vendor/cloud-city-design/fonts.css'
 import './codex.css'
 import './index.css'
 import { applyPrefsToDOM, loadUserPrefs } from './userPrefs'
-import { migrateLegacy, watch } from './lib/suite-prefs'
+import { migrateLegacy, watch } from './lib/appearance-prefs'
 import { upgradeLegacySessionCookie } from './util'
 import App from './App.jsx'
 
-// The theme and accent (the suite preference contract) are applied again here, the same as the pre-paint
+// The theme and accent (the appearance preference contract) are applied again here, the same as the pre-paint
 // script did, and kept in step with other tabs and products. A stored Codex accent moves into the contract
 // once; the editor font size is applied from the prefs object.
 applyPrefsToDOM(loadUserPrefs());

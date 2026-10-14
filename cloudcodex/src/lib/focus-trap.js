@@ -1,7 +1,7 @@
 /**
  * Cloud Codex - Focus trap
  *
- * A plain-JS port of the Cloud Command focus trap, for the imperative modal helpers in
+ * A plain-JS focus trap, for the imperative modal helpers in
  * util.jsx. Only the boundary presses are intercepted; the rest of Tab order is the browser's.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026

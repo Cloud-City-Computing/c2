@@ -1,7 +1,7 @@
 /**
  * Cloud Codex - the sidebar's icons (W6-CDX-40): 14 px, a 2 px stroke in currentColor, decorative
  *
- * A nav item is 14 px Inter with a 14 px stroke icon (the suite pattern). Outside the sidebar the 15 px set in
+ * A nav item is 14 px Inter with a 14 px stroke icon . Outside the sidebar the 15 px set in
  * icons.jsx applies.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026

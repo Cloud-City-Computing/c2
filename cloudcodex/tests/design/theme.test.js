@@ -1,5 +1,5 @@
 /**
- * src/codex.css must equal the suite pattern's theme table (tests/design/suite-theme.json)
+ * src/codex.css must equal the shared pattern's theme table (tests/design/theme.json)
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -12,7 +12,7 @@ import { maskComments } from '../../vendor/cloud-city-design/gates/token-discipl
 import { ROOT } from './buckets.js';
 
 const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
-const fixture = JSON.parse(read('tests/design/suite-theme.json'));
+const fixture = JSON.parse(read('tests/design/theme.json'));
 
 /** The declarations of one selector's block, as a name-to-value map, comments masked. */
 function declarationsOf(css, selector) {
@@ -29,7 +29,7 @@ function declarationsOf(css, selector) {
 describe.each([
   ['dark', "[data-theme='dark']"],
   ['light', "[data-theme='light']"],
-])('the suite theme table, %s column', (column, selector) => {
+])('the theme table, %s column', (column, selector) => {
   const css = read('src/codex.css');
   const block = declarationsOf(css, selector);
 

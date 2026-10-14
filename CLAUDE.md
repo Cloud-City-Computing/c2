@@ -135,7 +135,7 @@ ID token sealed by `services/id-token-seal.js` as `id_token_hint`. `POST /api/au
 sockets with 4004 (`closeSocketsForSessions` in `services/collab.js` and `services/user-channel.js`). Maps:
 `docs/maps/request-lifecycle.md`, section 3.
 
-**No machine credential**: every route is reached by a session (the bearer header or the cookie). The static service token and the machine JWTs were removed in 0.15.0; a script signs in as a user.
+**No machine credential**: every route is reached by a session (the bearer header or the cookie). A script signs in as a user.
 
 ### Org hierarchy: `routes/workspaces.js`, `routes/squads.js`, `routes/archives.js`
 Workspaces own squads; squads own archives; archives own logs. Squad members

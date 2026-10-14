@@ -2,7 +2,7 @@
  * Cloud Codex - the theme and accent preference (W6-CDX-44, host-only since CDX-SA-2)
  *
  * The one module that reads, writes, clears, migrates and keeps open pages in step for the theme and
- * the accent. The cookie names (cc_suite_theme, cc_suite_accent) are kept from the shared-cookie era, so
+ * the accent. The cookie names (cc_suite_theme, cc_suite_accent) are a stored contract, so
  * a choice made before the change still reads back.
  *
  * Reads: a valid cookie, then localStorage, then (accent only) the legacy Codex key, then the system

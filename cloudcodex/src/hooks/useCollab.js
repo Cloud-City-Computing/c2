@@ -20,6 +20,7 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { getSessionTokenFromCookie, endDeadSession } from '../util';
 import { SIGNED_OUT_SOCKET_CLOSE } from '../../services/session-messages.js';
+import { oneEntryPerUser } from '../lib/presence-users.js';
 
 /**
  * @param {number|string} logId  — The document/log ID to collaborate on
@@ -152,7 +153,8 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
             break;
 
           case 'awareness':
-            setCollabUsers(msg.users || []);
+            // The avatar takes the colour of the first connection listed; a second tab's cursor may differ.
+            setCollabUsers(oneEntryPerUser(msg.users));
             break;
 
           case 'cursor':

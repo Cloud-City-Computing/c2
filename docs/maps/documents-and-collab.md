@@ -253,14 +253,14 @@ Initial content is deliberately empty (`Editor.jsx:362-365`); the
 which is why state updates there are deferred rather than applied inline.
 
 `useCollab(logId, onRemoteUpdate, onRemoteComment, onPublished, onRemoteTitle)`
-(`src/hooks/useCollab.js:30`) owns the socket: it memoises the `Y.Doc`
-(`useCollab.js:48`), connects to `${proto}//${host}/collab?logId=${logId}`
-(`useCollab.js:70-71`), sets `binaryType = 'arraybuffer'`, sends the auth frame
-on open (`useCollab.js:102`), queues local updates until the server's sync step
-completes and flushes them afterwards (`useCollab.js:82`, `useCollab.js:125-128`),
+(`src/hooks/useCollab.js:31`) owns the socket: it memoises the `Y.Doc`
+(`useCollab.js:49`), connects to `${proto}//${host}/collab?logId=${logId}`
+(`useCollab.js:71-72`), sets `binaryType = 'arraybuffer'`, sends the auth frame
+on open (`useCollab.js:103`), queues local updates until the server's sync step
+completes and flushes them afterwards (`useCollab.js:83`, `useCollab.js:126-129`),
 and auto-reconnects on close. It exposes `sendCursor`, `sendSave`, `sendPublish`,
 `sendTitle`, `sendCommentEvent`. `sendPublish` waits for the `published` frame
-with a 10-second timeout (`useCollab.js:257`).
+with a 10-second timeout (`useCollab.js:258`).
 
 Mobile visitors are redirected away from `/editor/:logId` entirely by
 `MobileEditorGuard` (`src/App.jsx:43-47`); on mobile, documents are view-only

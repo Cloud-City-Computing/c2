@@ -2,9 +2,9 @@
  * Cloud Codex - the Appearance choices, shared by the header popover and the Account page (W6-CDX-44)
  *
  * The Theme options (System, Light, Dark) and the eight accent swatches with Default. Each group reads and
- * writes the suite preference contract (src/lib/suite-prefs.js) and keeps itself in step with other tabs,
+ * writes the appearance preference contract (src/lib/appearance-prefs.js) and keeps itself in step with other tabs,
  * so the popover and the Account page can never disagree. Match system is named that for assistive tech and
- * shown as "System", as Cloud Command does, so the word never wraps.
+ * shown as "System" so the word never wraps.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import {
   clearAccent, clearTheme, resolveAccent, setAccent, setTheme, storedThemeChoice, subscribe,
-} from '../lib/suite-prefs.js';
+} from '../lib/appearance-prefs.js';
 import { ACCENT_COLORS } from '../userPrefs.js';
 
 const THEME_OPTIONS = [
@@ -22,7 +22,7 @@ const THEME_OPTIONS = [
   { id: 'dark', label: 'Dark', name: 'Dark' },
 ];
 
-// Codex's own names for the eight hues (Cloud Command's differ; only the hue crosses the boundary).
+// Codex's own names for the eight hues. Only the hue value crosses the boundary to the accent contract.
 const ACCENT_LABELS = {
   blue: 'Ocean Blue', cyan: 'Cyan', pink: 'Fuchsia', lime: 'Lime',
   nova: 'Nova', solar: 'Solar', aurora: 'Aurora', nebula: 'Nebula',

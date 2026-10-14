@@ -12,8 +12,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchPresence } from '../util';
+import { oneEntryPerUser } from '../lib/presence-users.js';
 
 const DEFAULT_POLL_INTERVAL = 8000; // 8 seconds
+
 
 /**
  * @param {number} [interval] — Polling interval in ms (default 8000)
@@ -26,7 +28,12 @@ export default function usePresence(interval = DEFAULT_POLL_INTERVAL) {
   const load = useCallback(async () => {
     try {
       const res = await fetchPresence();
-      if (res.success) setPresence(res.presence || {});
+      if (res.success) {
+        setPresence(Object.fromEntries(
+          // The avatar takes the colour of the first connection listed; a second tab's cursor may differ.
+          Object.entries(res.presence || {}).map(([logId, users]) => [logId, oneEntryPerUser(users)]),
+        ));
+      }
     } catch {
       // Silent — presence is best-effort
     }

@@ -157,7 +157,7 @@ function contractProblems(contract) {
   for (const e of contract) {
     if (typeof e.name !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(e.name)) problems.push(`bad name ${e.name}`);
     if (!KINDS.includes(e.kind)) problems.push(`${e.name} has kind ${e.kind}`);
-    if (typeof e.perInstance !== 'boolean') problems.push(`${e.name} has no boolean perInstance`);
+    if ('perInstance' in e) problems.push(`${e.name} carries perInstance, which the contract no longer has`);
     if (typeof e.why !== 'string' || e.why.trim() === '') problems.push(`${e.name} has no why`);
     if (e.kind === 'default' && typeof e.default !== 'string') problems.push(`${e.name} is a default with no default string`);
     if (e.kind === 'removed' && ('default' in e || 'requiredWith' in e)) {
@@ -170,7 +170,7 @@ function contractProblems(contract) {
         problems.push(`${e.name} requiredWith ${e.requiredWith} names no other entry`);
       }
     }
-    const extra = Object.keys(e).filter((k) => !['name', 'kind', 'default', 'requiredWith', 'perInstance', 'why'].includes(k));
+    const extra = Object.keys(e).filter((k) => !['name', 'kind', 'default', 'requiredWith', 'why'].includes(k));
     if (extra.length) problems.push(`${e.name} has unknown fields ${extra.join(', ')}`);
   }
   return problems;
@@ -285,11 +285,11 @@ describe('the scanner (non-vacuity)', () => {
 
   it('the getting-started table check catches each defect it claims to', () => {
     const contract = [
-      { name: 'A_REQ', kind: 'required', perInstance: false, why: 'x' },
-      { name: 'B_PROD', kind: 'required-in-production', perInstance: false, why: 'x' },
-      { name: 'C_DEF', kind: 'default', default: '10', perInstance: false, why: 'x' },
-      { name: 'D_OPT', kind: 'optional', perInstance: false, why: 'x' },
-      { name: 'E_MISSING', kind: 'optional', perInstance: false, why: 'x' },
+      { name: 'A_REQ', kind: 'required',why: 'x' },
+      { name: 'B_PROD', kind: 'required-in-production',why: 'x' },
+      { name: 'C_DEF', kind: 'default', default: '10',why: 'x' },
+      { name: 'D_OPT', kind: 'optional',why: 'x' },
+      { name: 'E_MISSING', kind: 'optional',why: 'x' },
     ];
     const table = [
       '## Environment Variables',
@@ -315,16 +315,16 @@ describe('the scanner (non-vacuity)', () => {
 
   it('the contract checks catch each defect they claim to', () => {
     const bad = [
-      { name: 'A', kind: 'sometimes', perInstance: false, why: 'x' },
+      { name: 'A', kind: 'sometimes',why: 'x' },
       { name: 'B', kind: 'default', perInstance: 'no', why: 'x' },
-      { name: 'C', kind: 'optional', perInstance: false, why: '', requiredWith: 'C' },
-      { name: 'D', kind: 'required', perInstance: false, why: 'x', default: '1' },
-      { name: 'E', kind: 'optional', perInstance: false, why: 'x', requiredWith: 'NOPE' },
-      { name: 'E', kind: 'optional', perInstance: false, why: 'x', extra: 1 },
+      { name: 'C', kind: 'optional',why: '', requiredWith: 'C' },
+      { name: 'D', kind: 'required',why: 'x', default: '1' },
+      { name: 'E', kind: 'optional',why: 'x', requiredWith: 'NOPE' },
+      { name: 'E', kind: 'optional',why: 'x', extra: 1 },
     ];
     const problems = contractProblems(bad).join('\n');
     expect(problems).toMatch(/A has kind sometimes/);
-    expect(problems).toMatch(/B has no boolean perInstance/);
+    expect(problems).toMatch(/B carries perInstance/);
     expect(problems).toMatch(/B is a default with no default string/);
     expect(problems).toMatch(/C has no why/);
     expect(problems).toMatch(/C requiredWith C names no other entry/);
@@ -365,7 +365,7 @@ describe('env-contract.js', () => {
     }
   });
 
-  it('is structurally sound: kinds, defaults, requiredWith, perInstance and why', () => {
+  it('is structurally sound: kinds, defaults, requiredWith and why', () => {
     expect(contractProblems(ENV_CONTRACT)).toEqual([]);
   });
 
@@ -413,6 +413,12 @@ describe('env-contract.js', () => {
   // The table is where an operator reads what to set, so an entry the table
   // lacks, or a row that says the opposite of the entry, misleads a first
   // install as surely as a missing .env.example line.
+  it('the contract file is data only: no perInstance field, and no line about a paired product', () => {
+    const text = readFileSync(path.join(APP, 'env-contract.js'), 'utf8');
+    expect(text).not.toMatch(/perInstance/);
+    expect(text).not.toMatch(/paired product|pins a copy/);
+  });
+
   it('has a row in docs/getting-started.md for every variable, agreeing with its kind', () => {
     const markdown = readFileSync(path.join(REPO, 'docs', 'getting-started.md'), 'utf8');
     expect(envTableRows(markdown).get('DB_USER')).toBeDefined();

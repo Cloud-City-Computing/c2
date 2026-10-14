@@ -3,8 +3,8 @@
  *
  * Manages user UI preferences (editor font size, preferred editor) in
  * localStorage and applies the font size as a CSS custom property on the
- * document root. The accent moved to the suite preference contract (W6-CDX-44,
- * src/lib/suite-prefs.js); a stored accentColor is migrated there once.
+ * document root. The accent moved to the appearance preference contract (W6-CDX-44,
+ * src/lib/appearance-prefs.js); a stored accentColor is migrated there once.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -59,8 +59,8 @@ export const FONT_SIZES = {
 };
 
 /**
- * Apply the editor font size to the DOM. The theme and the accent are the suite preference contract's
- * (src/lib/suite-prefs.js), applied there, so this never touches them.
+ * Apply the editor font size to the DOM. The theme and the accent are the appearance preference contract's
+ * (src/lib/appearance-prefs.js), applied there, so this never touches them.
  * @param {Object} prefs
  */
 export function applyPrefsToDOM(prefs) {

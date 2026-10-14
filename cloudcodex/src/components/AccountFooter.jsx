@@ -23,7 +23,7 @@ export default function AccountFooter({ user, isAdmin = false }) {
   const menuId = useId();
   const location = useLocation();
 
-  // A change of page closes the menu, as the suite cluster's does.
+  // A change of page closes the menu.
   const [shownKey, setShownKey] = useState(location.key);
   if (shownKey !== location.key) {
     setShownKey(location.key);

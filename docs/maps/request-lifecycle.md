@@ -53,17 +53,11 @@ Two consequences worth knowing:
 
 ### The configuration contract (`cloudcodex/env-contract.js`)
 
-`ENV_CONTRACT` lists every environment variable the server reads, one entry
-each: `name`; `kind` (`required`, `required-in-production`, `default` with the
-value an unset or blank variable behaves as, or `optional`); `requiredWith` on an
-optional entry boot requires beside another; `perInstance`; and `why`. The file
-is **data only and imports nothing**, because Cloud Command's operator link tool
-(W6-CMD-31) pins a byte-for-byte copy of it and prints every `perInstance` entry
-into an instance's env snippet. `perInstance` says **who supplies the value**:
-`true` when linking the instance to its workspace does (`APP_URL`,
-`APP_URL` today; the removed `SERVICE_TOKEN` and `WEBHOOK_*` variables are gone), `false` when the box's env
-template, the database provisioning step or a default does (`DB_NAME` differs
-per instance and is still `false`).
+`ENV_CONTRACT` lists every environment variable the server reads, one entry each: `name`; `kind`
+(`required`, `required-in-production`, `required-with-local`, `default` with the value an unset or blank
+variable behaves as, `optional`, or `removed`); `requiredWith` on an optional entry boot requires beside
+another; and `why`. The file is **data only and imports nothing**, so a tool can read it without loading
+the server. Its `removed` entries are read for nothing and name what boot warns about.
 
 `tests/env-contract.test.js` parses every source file under `cloudcodex/`
 (outside `tests/`, `vendor/`, `node_modules/`, `dist/` and `coverage/`) with
@@ -232,7 +226,7 @@ images, pasted or imported from GitHub, and a linked GitHub avatar is remote),
 
 Express's final handler replaces the CSP on its own 404 page with
 `default-src 'none'` and leaves the rest. In production that page is rare, since
-`vite-express` answers unknown paths with `index.html`. The PDF export writes no
+`vite-express` answers unknown paths with `index.html`, but not under `/api`: the last mount in `app.js` answers any unmatched `/api` path with `404 { success: false, message: 'Not found' }` in every mode (CDX-SA-5, `tests/app.test.js`, "an unmatched /api path"). The PDF export writes no
 script into its print window for this reason (`frontend-architecture.md`,
 `exportDocument`). Covered by the `security header scope` block in
 `tests/app.test.js`, which re-imports `app.js` per `NODE_ENV` and appends a

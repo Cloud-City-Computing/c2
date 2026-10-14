@@ -314,7 +314,7 @@ These were out of scope for W6-CDX-12 to W6-CDX-16 and are not planned in Wave 6
 - **Encrypting admin-API subscription secrets at rest:** they are stored in MySQL, write-only through the API, and
   a database dump lets its holder forge events to that one receiver. (The environment-declared subscription that
   avoided this was removed in 0.15.0.)
-- **Delivery to more than one Cloud Command per instance, and moving an instance between workspaces:** the
+- **Delivery to more than one receiver per instance, and moving an instance between workspaces:** the
   provisioning era.
 
 ## 3. Watches (`routes/watches.js`)

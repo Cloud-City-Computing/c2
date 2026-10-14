@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - the header's Appearance popover (W6-CDX-44, aligned with Cloud Command's)
+ * Cloud Codex - the header's Appearance popover (W6-CDX-44)
  *
  * A non-modal disclosure in every page header: Theme (System, Light, Dark) and the eight accents with
  * Default. Keyboard: opening focuses the checked option, Tab stays inside, Escape and an outside press
@@ -15,7 +15,7 @@ import { render, screen, fireEvent, act, cleanup, within } from '@testing-librar
 
 
 import AppearanceControl from '../../../src/components/AppearanceControl.jsx';
-import * as prefs from '../../../src/lib/suite-prefs.js';
+import * as prefs from '../../../src/lib/appearance-prefs.js';
 import { ACCENTS } from '../../../src/tokens/accents.js';
 
 function page(theme, system = 'dark') {

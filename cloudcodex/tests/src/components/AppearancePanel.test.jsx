@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - Appearance: Theme (Match system, Light, Dark) and the accent picker, through suite-prefs (W6-CDX-44)
+ * Cloud Codex - Appearance: Theme (Match system, Light, Dark) and the accent picker, through appearance-prefs (W6-CDX-44)
  *
  * Every case sets data-theme and the matchMedia mock together. The pressed option must match the page:
  * a choice is pressed when it is stored, Match system when nothing is stored, and the swatch of the
@@ -14,7 +14,7 @@ import { render, screen, fireEvent, act, cleanup, within } from '@testing-librar
 
 
 import { UserPreferencesPanel } from '../../../src/components/AccountMenu.jsx';
-import * as prefs from '../../../src/lib/suite-prefs.js';
+import * as prefs from '../../../src/lib/appearance-prefs.js';
 import { ACCENTS } from '../../../src/tokens/accents.js';
 
 function page(theme, system = 'dark') {

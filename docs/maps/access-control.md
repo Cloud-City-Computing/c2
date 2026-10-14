@@ -563,7 +563,7 @@ in `services/auth-providers.js`, and the contract kind is `required-with-local`)
 sign-in is refused by `requireProviderOffered` (`middleware/auth.js:187`). The account update refuses an email or
 password change with 403. A session whose `auth_provider` is not `oidc` is refused by `validateAndAutoLogin`
 (`mysql_connect.js`), and the boot purges those rows (`services/sessions-oidc-only.js:18`). An invitation admits a
-verified email in one transaction (`services/identity.js:214`, `createFromInvitation`, reached from step 3 of the
+verified email in one transaction (`services/identity.js:216`, `createFromInvitation`, reached from step 3 of the
 oidc ladder at `:71`), matched with a binary collation so an accented address never matches its unaccented twin.
 A deactivated user (`users.deactivated_at`) is refused on every rung (`HIT_SQL` at `identity.js:106` joins the
 user row), by `validateAndAutoLogin`, by local password login, by `POST /api/2fa/verify`, and by the 60-second socket re-check

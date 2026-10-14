@@ -50,7 +50,7 @@ export async function logLinkedIdentities(query, log = console.error) {
     const count = Number(row?.n);
     if (!Number.isFinite(count)) throw new Error('no count was returned');
     log(`[${new Date().toISOString()}] ${count} account(s) linked to an identity provider accept a local password `
-      + 'and local two-factor now that suite mode is removed. Set AUTH_PROVIDERS=oidc to keep their sign-in provider-only.');
+      + 'and local two-factor now that the suite integration is removed. Set AUTH_PROVIDERS=oidc to keep their sign-in provider-only.');
     return count;
   } catch (err) {
     log(`[${new Date().toISOString()}] could not count the accounts linked to an identity provider: ${err.message}`);

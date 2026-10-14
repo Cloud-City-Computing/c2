@@ -613,7 +613,7 @@ h1, h2, h3, h4, h5, h6 {
   white-space: nowrap;
 }
 
-/* The suite pattern's anatomy (W6-CDX-39, A2): 30 px high, --radius-md, 13 px at weight 500, no letter-spacing.
+/* The button anatomy (W6-CDX-39, A2): 30 px high, --radius-md, 13 px at weight 500, no letter-spacing.
    Scoped with the same exclusion as the X4 font rule above, so a button inside a deferred family (comments, the
    editor and its toolbars, Markdown, Draw.io, Version History, GitHub) keeps the metrics it had (K3). */
 .btn:not([class*="gh-"], .comment-textarea, .markdown-editor__textarea, .comment-manager *, .comment-thread *, .editor-log *, .editor-with-comments *, .editor-container *, .tiptap-toolbar *, .editor-toolbar *, .markdown-editor *, .version-history *, .drawio-block *, .document-readonly *, [class*="gh-"] *) {
@@ -5552,7 +5552,9 @@ h1, h2, h3, h4, h5, h6 {
     grid-area: nav;
     /* The padding holds a focused item's ring (2 px wide, 2 px out) inside the strip's visible area, at either
        end; scroll-padding keeps a scrolled-to item clear of the edge by the same room (W6-CDX-44 review). */
-    margin: 0 -18px;
+    /* The strip spans the first two columns, and the account sits in the third: a right margin would draw the
+       last item under the avatar, so only the left edge bleeds into the brand column's padding. */
+    margin: 0 0 0 -18px;
     padding: 6px 18px 8px;
     scroll-padding-inline: 18px;
     overflow-x: auto;
@@ -9508,7 +9510,7 @@ textarea:focus-visible {
   color: var(--cx-text-secondary);
 }
 
-/* The Default accent (W6-CDX-44 review): a compact outlined pill sized to its label, as Cloud Command shows it. Its
+/* The Default accent (W6-CDX-44 review): a compact outlined pill sized to its label. Its
    selected state is a ring, the same as the swatches', never a fill. */
 .appearance-default-row {
   display: flex;

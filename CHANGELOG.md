@@ -41,6 +41,9 @@ initialises an empty data directory.
   any other source is never sent.
 - **`--adopt-fresh-install` refuses while an env webhook subscription exists (CDX-SA-3).** The migration that deletes
   those rows would otherwise be recorded as applied without running.
+- **An unmatched `/api` path is a JSON 404 in every mode (CDX-SA-5).** An `/api` request that no route answers gets
+  `404` with `{ "success": false, "message": "Not found" }`. Before, a production build answered an unknown GET
+  with the app's page and `200`, so a removed route looked alive. A removed GET route now answers `404`.
 
 ### Removed
 
@@ -87,6 +90,14 @@ initialises an empty data directory.
   no longer shared across a parent domain. On the next change, and on Match system, the cookie name is also expired
   on this host and on each parent domain, so an older shared choice, including one an install with the preference
   domain set to its own host wrote, cannot shadow the new one.
+
+### Fixed
+
+- **Presence shows each user once (CDX-SA-5).** A user with two tabs open on a document appeared twice in the
+  presence avatars and in the editor's collaborator list, and React logged a duplicate-key error. Each list now
+  keeps one entry per user.
+- **The phone navigation strip no longer runs under the account avatar (CDX-SA-5).** At 390 px the last navigation
+  item was drawn under the avatar. The strip now ends at its column and scrolls sideways as before.
 
 ## [0.14.0] - 2026-10-12
 
