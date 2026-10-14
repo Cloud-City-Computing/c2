@@ -247,14 +247,35 @@ describe('SMTP_PORT and SMTP_FROM defaults', () => {
     expect(transport.secure).toBe(true);
   });
 
-  it.each([undefined, '', '  '])('SMTP_FROM %j is the contract default', async (value) => {
-    const { mail } = await importWith({ SMTP_FROM: value });
-    expect(mail.from).toBe(contractDefault('SMTP_FROM'));
-    expect(mail.replyTo).toBe(contractDefault('SMTP_FROM'));
+  // The default names the host this instance is served from (APP_URL), never a vendor's domain: a
+  // self-hoster's mail sent as another company's domain fails SPF and DMARC.
+  const DEFAULT_TEMPLATE = contractDefault('SMTP_FROM');
+
+  it.each([undefined, '', '  '])('SMTP_FROM %j is the contract default, named for APP_URL', async (value) => {
+    const { mail } = await importWith({ SMTP_FROM: value, APP_URL: 'https://codex.example.test' });
+    expect(DEFAULT_TEMPLATE).toContain('<APP_URL host>');
+    expect(mail.from).toBe('Cloud Codex <noreply@codex.example.test>');
+    expect(mail.replyTo).toBe(mail.from);
+  });
+
+  it('the default From names the APP_URL host without a port or path', async () => {
+    const { mail } = await importWith({ SMTP_FROM: undefined, APP_URL: 'https://Codex.Example.test:8443/app' });
+    expect(mail.from).toBe('Cloud Codex <noreply@codex.example.test>');
+  });
+
+  it('the default From falls back to localhost when APP_URL names an IPv6 address', async () => {
+    const { mail } = await importWith({ SMTP_FROM: undefined, APP_URL: 'http://[::1]:3000' });
+    expect(mail.from).toBe('Cloud Codex <noreply@localhost>');
+  });
+
+  it('the default From never names the vendor domain', async () => {
+    const { mail } = await importWith({ SMTP_FROM: undefined, APP_URL: 'https://codex.example.test' });
+    expect(mail.from).not.toContain('cloudcitycomputing');
+    expect(DEFAULT_TEMPLATE).not.toContain('cloudcitycomputing');
   });
 
   it('SMTP_FROM set is the From on every email', async () => {
-    const { mail } = await importWith({ SMTP_FROM: 'Docs <docs@example.com>' });
+    const { mail } = await importWith({ SMTP_FROM: 'Docs <docs@example.com>', APP_URL: 'https://codex.example.test' });
     expect(mail.from).toBe('Docs <docs@example.com>');
   });
 });
