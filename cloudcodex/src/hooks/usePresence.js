@@ -30,6 +30,7 @@ export default function usePresence(interval = DEFAULT_POLL_INTERVAL) {
       const res = await fetchPresence();
       if (res.success) {
         setPresence(Object.fromEntries(
+          // The avatar takes the colour of the first connection listed; a second tab's cursor may differ.
           Object.entries(res.presence || {}).map(([logId, users]) => [logId, oneEntryPerUser(users)]),
         ));
       }

@@ -153,6 +153,7 @@ export default function useCollab(logId, onRemoteUpdate, onRemoteComment, onPubl
             break;
 
           case 'awareness':
+            // The avatar takes the colour of the first connection listed; a second tab's cursor may differ.
             setCollabUsers(oneEntryPerUser(msg.users));
             break;
 
