@@ -969,6 +969,29 @@ describe('scripts/migrate', () => {
       expect(asked.params).toEqual(['oauth_accounts', 'uq_x']);
     });
 
+    // A column a later file drops is absent in a fresh build. The adoption line must not say it is
+    // "already in the schema": an operator reading the output would take the removal for a failure.
+    it('reports a dropped column as absent, not as already in the schema', async () => {
+      const dir = makeDir({
+        'zz_add.sql': 'ALTER TABLE users ADD COLUMN gone_soon TINYINT NULL;',
+        'zz_drop.sql': 'ALTER TABLE users DROP COLUMN gone_soon;',
+      });
+      const db = fakeDb({ tables: ['users'] });
+      const lines = [];
+
+      await runMigrations({
+        query: db.query,
+        dir,
+        adoptFreshInstall: true,
+        log: message => lines.push(message),
+      });
+
+      const addLine = lines.find(line => line.includes('zz_add.sql'));
+      expect(addLine).toContain('absent');
+      expect(addLine).toContain('zz_drop.sql removes it');
+      expect(addLine).not.toContain('already in the schema: users.gone_soon');
+    });
+
     it('refuses a newer file whose key is missing, naming the key', async () => {
       const dir = makeDir({ 'zz_key.sql': 'ALTER TABLE oauth_accounts ADD UNIQUE KEY uq_x (a, b);' });
       const db = fakeDb({ tables: ['users'] });
