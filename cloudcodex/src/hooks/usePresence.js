@@ -16,6 +16,23 @@ import { fetchPresence } from '../util';
 const DEFAULT_POLL_INTERVAL = 8000; // 8 seconds
 
 /**
+ * The server lists one entry per open connection, so a user with two tabs appears twice on a log.
+ * Each log's list keeps the first entry for each user id; the avatars key on that id.
+ */
+function oneEntryPerUser(presence) {
+  const out = {};
+  for (const [logId, users] of Object.entries(presence)) {
+    const seen = new Set();
+    out[logId] = (users || []).filter((u) => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
+    });
+  }
+  return out;
+}
+
+/**
  * @param {number} [interval] — Polling interval in ms (default 8000)
  * @returns {{ presence: Object, getLogUsers: (logId: number|string) => Array }}
  */
@@ -26,7 +43,7 @@ export default function usePresence(interval = DEFAULT_POLL_INTERVAL) {
   const load = useCallback(async () => {
     try {
       const res = await fetchPresence();
-      if (res.success) setPresence(res.presence || {});
+      if (res.success) setPresence(oneEntryPerUser(res.presence || {}));
     } catch {
       // Silent — presence is best-effort
     }
