@@ -936,7 +936,7 @@ describe('scripts/migrate', () => {
 
       await expect(
         runMigrations({ query: db.query, dir, adoptFreshInstall: true, log })
-      ).rejects.toThrow(/declares no\s+CREATE TABLE, ADD COLUMN or named ADD KEY to check/);
+      ).rejects.toThrow(/declares no\s+CREATE TABLE, ADD COLUMN, DROP COLUMN or named ADD KEY to check/);
     });
 
     it('gives the by-hand INSERT, with the real checksum, for a file it cannot check', async () => {

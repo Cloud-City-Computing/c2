@@ -55,7 +55,10 @@
  * the first admin boot. So the guard is a POSITIVE check instead: for every
  * file that postdates LEGACY_BASELINE, the runner asks information_schema
  * whether the table, column or named key that file adds is ALREADY there, and
- * refuses unless it is. That is exactly the claim `--adopt-fresh-install` makes
+ * whether every column a later file drops is ALREADY gone (netClaims folds the
+ * directory in filename order, so a column added and then dropped is expected
+ * absent). It refuses unless both hold. A drop claim is what lets a fresh build
+ * adopt the migrations that added columns it no longer has. That is exactly the claim `--adopt-fresh-install` makes
  * on the operator's behalf, checked rather than assumed, and it separates the
  * safe case (the change is present, adopting it is bookkeeping) from the
  * catastrophic one (the change is absent, adopting it buries the migration
@@ -370,18 +373,22 @@ const ADD_NAMED_KEY = /\bADD\s+(?:UNIQUE\s+(?:INDEX\s+|KEY\s+)?|INDEX\s+|KEY\s+)
 const NOT_A_KEY_NAME = /^(INDEX|KEY|USING)$/i;
 
 /**
- * The tables, columns and named keys a migration file claims to create, read
- * straight out of its SQL.
+ * The tables, columns and named keys a migration file claims to create or to
+ * remove, read straight out of its SQL.
  *
- * Deliberately narrow: `CREATE TABLE x`, `ALTER TABLE x ADD [COLUMN] y` and
- * `ALTER TABLE x ADD [UNIQUE] {KEY|INDEX} name`, and nothing else. This is not
- * a SQL parser and must never grow into one. It backs exactly one question,
+ * Deliberately narrow: `CREATE TABLE x`, `ALTER TABLE x ADD [COLUMN] y`,
+ * `ALTER TABLE x ADD [UNIQUE] {KEY|INDEX} name`, and `ALTER TABLE x DROP
+ * COLUMN y` (kind `dropped-column`, the claim that the column is ABSENT). A
+ * drop spelled without the COLUMN keyword is not read; the file then declares
+ * no claim, which the caller refuses, so the gap fails closed. This is not a
+ * SQL parser and must never grow into one. It backs exactly one question,
  * asked only of files that postdate LEGACY_BASELINE before
  * `--adopt-fresh-install` records them: does this database ALREADY have what
- * this file adds? A file it cannot read anything out of yields an empty list,
- * and the caller refuses rather than adopting on faith.
+ * this file adds, and lack what a later file removes (`netClaims`)? A file it
+ * cannot read anything out of yields an empty list, and the caller refuses
+ * rather than adopting on faith.
  * @param { String } sql - a migration file body
- * @returns { Array<{ kind: 'table'|'column'|'index', table: String, column?: String, index?: String }> }
+ * @returns { Array<{ kind: 'table'|'column'|'index'|'dropped-column', table: String, column?: String, index?: String }> }
  */
 export function schemaClaims(sql) {
   const claims = [];
@@ -408,9 +415,56 @@ export function schemaClaims(sql) {
       if (NOT_A_KEY_NAME.test(key[1])) continue;
       claims.push({ kind: 'index', table: altered[1], index: key[1] });
     }
+
+    for (const drop of statement.matchAll(/\bDROP\s+COLUMN\s+`?([A-Za-z0-9_$]+)`?/gi)) {
+      claims.push({ kind: 'dropped-column', table: altered[1], column: drop[1] });
+    }
   }
 
   return claims;
+}
+
+/**
+ * The claims that decide what a fresh build of THIS release must look like,
+ * once every file in `files` has been applied in filename order.
+ *
+ * A file that adds a column a later file drops does not leave that column
+ * behind, so the add's expectation is ABSENT, not present; the later file that
+ * decided it is named in `decidedBy` so a refusal can point at it. Folding
+ * runs in the order given, which is the order listMigrationFiles sorts into:
+ * a later add re-decides an earlier drop. The fold knows only the three kinds
+ * `schemaClaims` reads, so a later DROP TABLE or DROP INDEX of a claimed
+ * object is not seen and the add stays expected present. That fails closed:
+ * the adoption is refused rather than recorded on a wrong expectation.
+ * @param { Array<{ filename: String, contents: String }> } files - in apply order
+ * @returns { Map<String, Array<object>> } filename -> its claims, each with
+ *   `expected` ('present'|'absent') and `decidedBy` (the file that set it)
+ */
+export function netClaims(files) {
+  const keyOf = claim => {
+    if (claim.kind === 'table') return `table:${claim.table}`;
+    if (claim.kind === 'index') return `index:${claim.table}.${claim.index}`;
+    return `column:${claim.table}.${claim.column}`;
+  };
+
+  const state = new Map();
+  for (const { filename, contents } of files) {
+    for (const claim of schemaClaims(contents)) {
+      state.set(keyOf(claim), { present: claim.kind !== 'dropped-column', decidedBy: filename });
+    }
+  }
+
+  const out = new Map();
+  for (const { filename, contents } of files) {
+    out.set(
+      filename,
+      schemaClaims(contents).map(claim => {
+        const end = state.get(keyOf(claim));
+        return { ...claim, expected: end.present ? 'present' : 'absent', decidedBy: end.decidedBy };
+      })
+    );
+  }
+  return out;
 }
 
 /**
@@ -444,20 +498,29 @@ export function proceduresCreated(sql) {
  * signal `--adopt-fresh-install` rests on: the flag asserts "init.sql already
  * built all of this", and an install that predates the change cannot produce
  * the column to back the assertion.
+ * `expectations` is this file's entry in `netClaims` over the whole directory,
+ * so a column a later file drops is expected ABSENT here. Alone, a file's
+ * expectations are its own claims: an add is present, a drop is absent.
  * @param { (sql: string, params?: Array) => Promise<Array> } query
  * @param { String } filename
  * @param { String } contents
+ * @param { Array<object> } [expectations] - this file's claims from netClaims
  * @returns { Promise<String> } the objects found, for the adoption log
  */
-export async function assertSchemaAlreadyHas(query, filename, contents) {
-  const claims = schemaClaims(contents);
+export async function assertSchemaAlreadyHas(
+  query,
+  filename,
+  contents,
+  expectations = netClaims([{ filename, contents }]).get(filename)
+) {
+  const claims = expectations;
 
   if (claims.length === 0) {
     throw new Error(
       `Refusing to adopt a fresh install: ${filename} postdates the pre-runner baseline and\n` +
         'the runner cannot tell from it whether this database already has its changes. It\n' +
         'checks every such file against information_schema first, and this one declares no\n' +
-        'CREATE TABLE, ADD COLUMN or named ADD KEY to check.\n\n' +
+        'CREATE TABLE, ADD COLUMN, DROP COLUMN or named ADD KEY to check.\n\n' +
         'Look at the file and at the schema. If the change is already there, record it by hand:\n\n' +
         '    INSERT INTO schema_migrations (filename, checksum, applied_ms)\n' +
         `    VALUES ('${filename}', '${sha256(contents)}', 0);\n\n` +
@@ -466,8 +529,9 @@ export async function assertSchemaAlreadyHas(query, filename, contents) {
     );
   }
 
-  const present = [];
+  const satisfied = [];
   const missing = [];
+  const stillThere = [];
 
   for (const claim of claims) {
     let label;
@@ -475,14 +539,38 @@ export async function assertSchemaAlreadyHas(query, filename, contents) {
     if (claim.kind === 'table') {
       label = claim.table;
       found = await tableExists(query, claim.table);
-    } else if (claim.kind === 'column') {
+    } else if (claim.kind === 'column' || claim.kind === 'dropped-column') {
       label = `${claim.table}.${claim.column}`;
       found = await columnExists(query, claim.table, claim.column);
     } else {
       label = `${claim.table}.${claim.index}`;
       found = await indexExists(query, claim.table, claim.index);
     }
-    (found ? present : missing).push(label);
+
+    if (claim.expected === 'absent') {
+      // A column a later file removes. Present now means that removal never
+      // ran, so this database is not a fresh build of this release.
+      if (found) stillThere.push({ label, decidedBy: claim.decidedBy });
+      else satisfied.push(`${label} (absent: ${claim.decidedBy} removes it)`);
+    } else if (found) {
+      satisfied.push(label);
+    } else {
+      missing.push(label);
+    }
+  }
+
+  if (stillThere.length > 0) {
+    const names = stillThere.map(c => c.label).join(', ');
+    const drops = [...new Set(stillThere.map(c => c.decidedBy))].join(', ');
+    throw new Error(
+      `Refusing to adopt a fresh install: this database still has ${names}, which ${drops}\n` +
+        'removes. A fresh build of this release has neither, so this is not a fresh install:\n' +
+        'that removal never ran, and adopting the files would record it as applied.\n\n' +
+        'Record the pre-runner baseline instead, then apply what is genuinely pending, from\n' +
+        'cloudcodex/:\n\n' +
+        '    npm run migrate -- --baseline\n' +
+        '    npm run migrate'
+    );
   }
 
   if (missing.length > 0) {
@@ -501,7 +589,7 @@ export async function assertSchemaAlreadyHas(query, filename, contents) {
     );
   }
 
-  return present.join(', ');
+  return satisfied.join(', ');
 }
 
 /**
@@ -713,11 +801,15 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
     // shown to be in the schema ALREADY before it is recorded as applied.
     const checksums = new Map();
     const evidence = new Map();
-    for (const filename of files) {
-      const contents = readFileSync(path.join(dir, filename), 'utf8');
+    const bodies = files.map(filename => ({ filename, contents: readFileSync(path.join(dir, filename), 'utf8') }));
+    // A column a later file drops is expected absent here (netClaims folds the
+    // whole directory in filename order), so a fresh build after the drop is
+    // adopted and a database that never ran the drop is refused.
+    const nets = netClaims(bodies);
+    for (const { filename, contents } of bodies) {
       checksums.set(filename, sha256(contents));
       if (LEGACY_BASELINE.includes(filename)) continue;
-      evidence.set(filename, await assertSchemaAlreadyHas(query, filename, contents));
+      evidence.set(filename, await assertSchemaAlreadyHas(query, filename, contents, nets.get(filename)));
     }
 
     // Print what is about to be recorded, before recording it. An operator who
