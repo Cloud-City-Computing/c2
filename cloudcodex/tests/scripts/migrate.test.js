@@ -989,7 +989,7 @@ describe('scripts/migrate', () => {
       const addLine = lines.find(line => line.includes('zz_add.sql'));
       expect(addLine).toContain('absent');
       expect(addLine).toContain('zz_drop.sql removes it');
-      expect(addLine).not.toContain('already in the schema: users.gone_soon');
+      expect(addLine).not.toContain('already in the schema');
     });
 
     it('refuses a newer file whose key is missing, naming the key', async () => {
