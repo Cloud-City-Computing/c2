@@ -556,11 +556,11 @@ client value or `APP_URL`, a non-numeric lifetime). The callback is on
   `completeLogin` checks the signature and expiry, runs the code exchange with
   `expectedState`, `expectedNonce`, the PKCE verifier and `idTokenExpected`,
   reads `sub` (1 to 255 printable ASCII) and `sid` (an empty one is null), and
-  reads `email`, `email_verified` and `name` from USERINFO, falling back to the ID
-  token only when no access token came back. `emailVerified` must be exactly
+  reads `email`, `email_verified` and `name` from the ID token, with the USERINFO fields overriding
+  each one it returns (a userinfo `sub` other than the ID token's is refused as `userinfo_subject`). `emailVerified` must be exactly
   `true`, because Cloud City ID omits the claim for an unverified address. Every
   refusal is an `OidcLoginError` code (`flow_expired`, `exchange_failed`,
-  `no_id_token`, `invalid_subject`, `userinfo_failed`, `email_not_verified`),
+  `no_id_token`, `invalid_subject`, `userinfo_failed`, `userinfo_subject`, `email_not_verified`),
   logged by name only, and redirected as `/?oauth_error=<code>&oauth_provider=oidc`,
   which `Std_Layout.jsx` reads for OIDC-specific copy. The `returnTo` is validated
   again here, so a seal written under an older rule cannot redirect where the

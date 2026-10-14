@@ -30,6 +30,7 @@ initialises an empty data directory.
   not: with `AUTH_PROVIDERS` set and no `local`, local sign-in, Google and the email or password change are refused as
   before. The boot log line reads `OIDC-only boot:`, and the purge-failure line reads `OIDC-only session purge failed`.
   An administrator's two-factor reset still works on an OIDC-only instance.
+- **OIDC claims merge per field (CDX-SA-4).** The sign-in reads its claims from the validated ID token, and userinfo overrides only the fields it returns. A provider whose userinfo omits `email_verified` but whose ID token asserts it now signs in. A userinfo that says `email_verified: false` still refuses. A userinfo whose `sub` differs from the ID token's `sub` is refused as `userinfo_subject` (OIDC Core 5.3.2). A token response with no access token is refused, as before, because openid-client requires one.
 - **Refusal wording (CDX-SA-4).** The `AUTH_PROVIDERS` refusals say "OIDC-only mode" where they said "hosted mode".
   Scripts that match the text should match `OIDC-only mode` instead.
 - **`GET /api/search` and `GET /api/browse` require a session (CDX-SA-3).** A bearer token must be a signed-in

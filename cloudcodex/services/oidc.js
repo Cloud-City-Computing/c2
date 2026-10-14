@@ -13,8 +13,10 @@
  * client secret, compared with timingSafeEqual, and good for ten minutes. It carries the returnTo,
  * validated at login and again at the callback (services/return-to.js).
  *
- * Identity claims are read from USERINFO, not the ID token alone: an application at the issuer
- * does not put email or email_verified into its ID tokens (docs/research/issuer-contract-2026-09-28).
+ * Identity claims come from the validated ID token, and userinfo overrides them field by field: OIDC Core
+ * 1.0 (section 5.4) names the UserInfo endpoint as a source of the scope-based claims (email,
+ * email_verified, name), and a provider may return only some of them there. The userinfo subject must
+ * equal the ID token subject (OIDC Core 5.3.2).
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
@@ -264,7 +266,7 @@ export function resetOidcCache() {
 export class OidcLoginError extends Error {
   /**
    * @param {string} code - exchange_failed, no_id_token, invalid_subject, userinfo_failed,
-   *   email_not_verified or flow_expired
+   *   userinfo_subject, email_not_verified or flow_expired
    * @param {string} message
    */
   constructor(code, message) {
@@ -357,15 +359,20 @@ export async function completeLogin(config, currentUrl, flowCookieValue) {
   let userInfo;
   if (tokens.access_token !== undefined) {
     try {
-      userInfo = await client.fetchUserInfo(configuration, tokens.access_token, rawSubject);
+      // The subject check is ours, below, so a mismatch has its own refusal rather than userinfo_failed.
+      userInfo = await client.fetchUserInfo(configuration, tokens.access_token, client.skipSubjectCheck);
     } catch (cause) {
       throw new OidcLoginError('userinfo_failed', `The OIDC userinfo request failed (${errorName(cause)}).`);
     }
   }
 
-  // Userinfo wins when it was fetched: it is the endpoint OIDC Core names for these claims, and the
-  // freshest read. The ID token's own claims are the fallback only when there was no access token.
-  const source = userInfo ?? claims;
+  // OIDC Core 5.3.2: userinfo describes the same end-user as the ID token, or it is not this sign-in.
+  if (userInfo !== undefined && userInfo.sub !== rawSubject) {
+    throw new OidcLoginError('userinfo_subject', 'The userinfo subject does not match the ID token subject.');
+  }
+  // Per field: the ID token's validated claims, with userinfo overriding only the fields it actually
+  // returns. A provider whose userinfo omits email_verified still signs in on the ID token's own claim.
+  const source = userInfo === undefined ? claims : { ...claims, ...definedFields(userInfo) };
   const email = typeof source.email === 'string' ? source.email : '';
   if (email === '' || source.email_verified !== true) {
     throw new OidcLoginError('email_not_verified', 'The issuer did not return a verified email address.');
@@ -394,6 +401,15 @@ export async function completeLogin(config, currentUrl, flowCookieValue) {
     // the current rule refuses.
     returnTo: safeReturnTo(flow.returnTo),
   };
+}
+
+/**
+ * The fields of a userinfo response that it actually returned: an undefined field overrides nothing.
+ * @param {Record<string, unknown>} userInfo
+ * @returns {Record<string, unknown>}
+ */
+function definedFields(userInfo) {
+  return Object.fromEntries(Object.entries(userInfo).filter(([, value]) => value !== undefined));
 }
 
 /**

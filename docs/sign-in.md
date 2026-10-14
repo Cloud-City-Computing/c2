@@ -20,7 +20,7 @@ two-factor on is refused rather than linked by email.
 ## OIDC
 
 Codex is an OIDC relying party: it runs the authorization code flow with PKCE, verifies the ID token,
-and reads identity claims from the userinfo endpoint. It works with any standard OIDC issuer.
+and reads identity claims from the ID token, with the userinfo endpoint overriding the fields it returns. It works with any standard OIDC issuer.
 
 ### Configure the instance
 
@@ -114,7 +114,7 @@ claim the sources did not settle is marked as unverified.
 ### Microsoft Entra ID
 
 - Issuer: `https://login.microsoftonline.com/<tenant-id>/v2.0`.
-- `email_verified`: **not verified**. The sources found describe a different signal, the optional claim
+- `email_verified`: **not verified**. Since CDX-SA-4 a sign-in reads the ID token's own `email_verified` when userinfo omits it, so this now depends only on the ID token. The sources found describe a different signal, the optional claim
   `xms_edov`, and say that the portal may not accept it directly. Whether a standard `email_verified` claim
   is sent in workforce-tenant ID tokens was not confirmed. Until it is, the verified-email requirement
   refuses sign-ins from a tenant that does not send it. The remedy is decided in PR 6 of the standalone plan.
