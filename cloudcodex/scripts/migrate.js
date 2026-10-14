@@ -853,8 +853,8 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
     log(`adopting ${files.length} migration file(s) as already applied, and applying none:`);
     for (const filename of files) {
       log(
-        evidence.has(filename)
-          ? `  ${filename}  (postdates the baseline; already in the schema: ${evidence.get(filename)})`
+        evidence.get(filename)
+          ? `  ${filename}  (postdates the baseline; ${evidence.get(filename)})`
           : `  ${filename}`
       );
     }
