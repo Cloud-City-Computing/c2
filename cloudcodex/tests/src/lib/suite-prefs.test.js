@@ -172,6 +172,21 @@ describe('writing: the choice is host-only, written at once', () => {
     ]);
   });
 
+  it('expires a stale cookie scoped to the exact host, which an old shared-domain build wrote, on every write', async () => {
+    // SUITE_PREFERENCE_DOMAIN set to the instance's own host made the old writer emit Domain=<host>.
+    setHost('codex.example.com', 'https:');
+    document.cookie = 'cc_suite_theme=dark; Path=/; Max-Age=34560000; Domain=codex.example.com';
+    await prefs.setTheme('light');
+    expect(writes).toContain('cc_suite_theme=; Path=/; Max-Age=0; Domain=codex.example.com');
+    expect(jar.has('cc_suite_theme')).toBe(true);
+    expect(jar.get('cc_suite_theme')).toBe('light');
+    document.cookie = 'cc_suite_theme=dark; Path=/; Max-Age=34560000; Domain=codex.example.com';
+    writes.length = 0;
+    await prefs.clearTheme();
+    expect(writes).toContain('cc_suite_theme=; Path=/; Max-Age=0; Domain=codex.example.com');
+    expect(jar.has('cc_suite_theme')).toBe(false);
+  });
+
   it('adds no Secure on plain http', async () => {
     setHost('codex.example.com', 'http:');
     await prefs.setTheme('dark');
