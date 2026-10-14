@@ -37,13 +37,14 @@ describe('services/removed-env.js', () => {
   });
 
   it('prints one timestamped line per set variable, naming it, the word removed and its why', () => {
-    const [first, second] = REMOVED;
-    process.env[first.name] = 'https://example.test/w/1';
-    process.env[second.name] = 'Example';
+    const why = (name) => ENV_CONTRACT.find((e) => e.name === name).why;
+    process.env.SUITE_COMMAND_WORKSPACE_URL = 'https://example.test/w/1';
+    process.env.SUITE_NAME = 'Example';
     const log = vi.fn();
     warnRemovedVariables(log);
     expect(log).toHaveBeenCalledTimes(2);
-    expect(log.mock.calls[0][0]).toMatch(new RegExp(`^\\[\\d{4}-\\d{2}-\\d{2}T[^\\]]+\\] ${first.name} is set but was removed: ${first.why.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
-    expect(log.mock.calls[1][0]).toContain(`${second.name} is set but was removed`);
+    expect(log.mock.calls[0][0]).toMatch(/^\[\d{4}-\d{2}-\d{2}T[^\]]+\] SUITE_COMMAND_WORKSPACE_URL is set but was removed: /);
+    expect(log.mock.calls[0][0].endsWith(`: ${why('SUITE_COMMAND_WORKSPACE_URL')}`)).toBe(true);
+    expect(log.mock.calls[1][0]).toContain(`SUITE_NAME is set but was removed: ${why('SUITE_NAME')}`);
   });
 });
