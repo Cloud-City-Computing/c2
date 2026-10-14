@@ -147,6 +147,7 @@ describe('writing: the choice is host-only, written at once', () => {
     await prefs.setTheme('light');
     expect(writes).toEqual([
       'cc_suite_theme=light; Path=/; Max-Age=34560000; SameSite=Lax; Secure',
+      'cc_suite_theme=; Path=/; Max-Age=0; Domain=codex.example.com',
       'cc_suite_theme=; Path=/; Max-Age=0; Domain=example.com',
     ]);
     expect(localStorage.getItem(THEME)).toBe('light');
@@ -163,10 +164,11 @@ describe('writing: the choice is host-only, written at once', () => {
     expect(localStorage.getItem(ACCENT)).toBe(String(ACCENTS.blue));
   });
 
-  it('expires the name on each parent domain of the host, and never on the public suffix', async () => {
+  it('expires the name on the host and each parent domain, and never on the public suffix', async () => {
     setHost('a.b.example.test', 'https:');
     await prefs.setTheme('light');
     expect(writes.filter((w) => /Max-Age=0/.test(w))).toEqual([
+      'cc_suite_theme=; Path=/; Max-Age=0; Domain=a.b.example.test',
       'cc_suite_theme=; Path=/; Max-Age=0; Domain=b.example.test',
       'cc_suite_theme=; Path=/; Max-Age=0; Domain=example.test',
     ]);
@@ -177,14 +179,12 @@ describe('writing: the choice is host-only, written at once', () => {
     setHost('codex.example.com', 'https:');
     document.cookie = 'cc_suite_theme=dark; Path=/; Max-Age=34560000; Domain=codex.example.com';
     await prefs.setTheme('light');
+    // The jar keeps one value per name and ignores Domain, so the writes are the proof, not the jar.
     expect(writes).toContain('cc_suite_theme=; Path=/; Max-Age=0; Domain=codex.example.com');
-    expect(jar.has('cc_suite_theme')).toBe(true);
-    expect(jar.get('cc_suite_theme')).toBe('light');
     document.cookie = 'cc_suite_theme=dark; Path=/; Max-Age=34560000; Domain=codex.example.com';
     writes.length = 0;
     await prefs.clearTheme();
     expect(writes).toContain('cc_suite_theme=; Path=/; Max-Age=0; Domain=codex.example.com');
-    expect(jar.has('cc_suite_theme')).toBe(false);
   });
 
   it('adds no Secure on plain http', async () => {
@@ -211,6 +211,7 @@ describe('writing: the choice is host-only, written at once', () => {
     await prefs.setAccent(ACCENTS.nova);
     expect(writes).toEqual([
       'cc_suite_accent=355; Path=/; Max-Age=34560000; SameSite=Lax; Secure',
+      'cc_suite_accent=; Path=/; Max-Age=0; Domain=codex.example.com',
       'cc_suite_accent=; Path=/; Max-Age=0; Domain=example.com',
     ]);
     expect(localStorage.getItem(ACCENT)).toBe('355');
@@ -226,6 +227,7 @@ describe('clearing', () => {
     await prefs.clearTheme();
     expect(writes).toEqual([
       'cc_suite_theme=; Path=/; Max-Age=0',
+      'cc_suite_theme=; Path=/; Max-Age=0; Domain=codex.example.com',
       'cc_suite_theme=; Path=/; Max-Age=0; Domain=example.com',
     ]);
     expect(localStorage.getItem(THEME)).toBeNull();

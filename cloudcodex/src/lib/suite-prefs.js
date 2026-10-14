@@ -98,22 +98,26 @@ export function resolveAccent() {
 
 // --- Writing -----------------------------------------------------------------
 
-/** The parent domains of this host, nearest first: a.b.example.test gives b.example.test and example.test, never test. */
-function parentDomains() {
+/**
+ * The domains a cookie of this host may have been scoped to, nearest first: the host itself (an old build
+ * set Domain=<host> when the preference domain was the host), then its parents. a.b.example.test gives
+ * a.b.example.test, b.example.test and example.test, never test. An address or localhost has none.
+ */
+function scopeDomains() {
   const host = location.hostname;
-  // An address has no parent domain, and a browser refuses a Domain attribute that names one.
-  if (host.includes(':') || /^[\d.]+$/.test(host)) return [];
+  // An address has no domain, and a browser refuses a Domain attribute that names one.
+  if (host.includes(':') || /^[\d.]+$/.test(host) || !host.includes('.')) return [];
   const labels = host.split('.');
-  const parents = [];
-  for (let i = 1; i < labels.length - 1; i += 1) parents.push(labels.slice(i).join('.'));
-  return parents;
+  const domains = [host];
+  for (let i = 1; i < labels.length - 1; i += 1) domains.push(labels.slice(i).join('.'));
+  return domains;
 }
 
-/** Writes the value host-only, then expires the name on each parent domain of this host. */
+/** Writes the value host-only, then expires the name on each domain this host could have scoped it to. */
 function writeChoice(name, value) {
   const secure = location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${name}=${value}; Path=/; Max-Age=${MAX_AGE}; SameSite=Lax${secure}`;
-  expireOnParents(name);
+  expireOnScopes(name);
   try {
     localStorage.setItem(name, value);
   } catch {
@@ -121,13 +125,13 @@ function writeChoice(name, value) {
   }
 }
 
-function expireOnParents(name) {
-  for (const parent of parentDomains()) document.cookie = `${name}=; Path=/; Max-Age=0; Domain=${parent}`;
+function expireOnScopes(name) {
+  for (const domain of scopeDomains()) document.cookie = `${name}=; Path=/; Max-Age=0; Domain=${domain}`;
 }
 
 function expireChoice(name) {
   document.cookie = `${name}=; Path=/; Max-Age=0`;
-  expireOnParents(name);
+  expireOnScopes(name);
   try {
     localStorage.removeItem(name);
   } catch {
