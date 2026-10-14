@@ -178,12 +178,12 @@ from the keyboard: open, Tab wrap, Escape, and focus back to the opener.
 | `useFirstRun.js` | fetches `GET /api/first-run` once per mount, exposes `{ firstRun, loading, complete }` |
 
 `useCollab` is the intricate one. It memoises the `Y.Doc` so it survives
-re-renders (`useCollab.js:48`), keeps the latest callbacks in refs so the socket
-effect does not re-run when a parent re-renders (`useCollab.js:39-45`), queues
+re-renders (`useCollab.js:49`), keeps the latest callbacks in refs so the socket
+effect does not re-run when a parent re-renders (`useCollab.js:40-46`), queues
 outbound updates until the server's sync completes and flushes them afterwards
-(`useCollab.js:82`, `useCollab.js:125-128`), and auto-reconnects on close.
+(`useCollab.js:83`, `useCollab.js:126-129`), and auto-reconnects on close.
 `sendPublish` returns a promise resolved by the server's `published` frame with
-a 10-second timeout (`useCollab.js:252-283`).
+a 10-second timeout (`useCollab.js:253-284`).
 
 `useGitHubStatus` is a `.jsx` file, not `.js`, because it exports a context
 provider alongside the hook.
@@ -236,7 +236,7 @@ unreachable today. The dead-session message is one constant (`services/session-m
 the client both import.
 
 The target is `safeReturnTo(pathname + search + hash)` on the client too (the fragment is carried because a browser never sends it), so an encoded path (a `%`
-anywhere in the path) falls back to `/` and the bounce still happens, as Cloud Command does.
+anywhere in the path) falls back to `/` and the bounce still happens, 
 
 The bare `/` (decided by Kyle, 2026-10-11) bounces to the sign-in only where OIDC is the only sign-in
 (OIDC-only: `isOidcOnly`). It goes to `/api/auth/oidc/start?returnTo=%2F`, under the same once-per-tab marker.
@@ -260,9 +260,8 @@ the picker modals. The reusable primitives worth knowing before you build a new
 one:
 
 - `<Toast>` and `toastError()` for transient feedback, `<ConfirmDialog>` for
-  destructive confirmation. The Toast is the suite's shared toast primitive
-  (W6-CDX-23, Kyle's D-V): Codex's is the reference and Cloud Command matches
-  it. Its dismiss is a real `<button class="toast__dismiss" aria-label="Dismiss
+  destructive confirmation. The Toast is the shared toast primitive
+  (W6-CDX-23). Its dismiss is a real `<button class="toast__dismiss" aria-label="Dismiss
   notification">`, so Tab reaches it and Enter or Space dismisses; the toast body
   is not clickable. Each toast is its own live region: `role="alert"` for an error,
   `role="status"` for success and info (`Toast.jsx`, the `role` on the toast div),
@@ -399,7 +398,7 @@ exports breaks the server, not just the client.
 
 Two stores, one per concern, and the seam between them.
 
-**The theme and accent preference, W6-CDX-44, host-only since CDX-SA-2.** `src/lib/suite-prefs.js` is the one
+**The theme and accent preference, W6-CDX-44, host-only since CDX-SA-2.** `src/lib/appearance-prefs.js` is the one
 module that reads, writes, clears, migrates and keeps open pages in step for `cc_suite_theme` and `cc_suite_accent`.
 The cookie names are kept from the shared-cookie era, so a stored choice still reads back. The preference is per
 host: no cookie is shared across a parent domain, and the record of the shared contract is retired (its open items
@@ -417,14 +416,14 @@ are carried in `docs/maps/open-questions.md`, section H).
 - Keeping pages in step: `applyPreferences` (`:200`) re-reads both, and mirrors a cookie value into localStorage (the
   cookie wins). `watch` (`:224`) runs it at boot, on `visibilitychange` to visible, and on a `storage` event for either
   key. `main.jsx:26-27` calls `watch()` and `migrateLegacy()`.
-- Migration: `migrateLegacy` (`suite-prefs.js:250`) moves `c2-user-prefs.accentColor` into the contract once, writes
+- Migration: `migrateLegacy` (`appearance-prefs.js:250`) moves `c2-user-prefs.accentColor` into the contract once, writes
   it before deleting the legacy key, and needs no server answer.
 - There is no preference domain: `SUITE_PREFERENCE_DOMAIN` is a removed variable (`env-contract.js`), and no client
   code asks the server for a domain.
 
 **The pre-paint script, W6-CDX-44.** `index.html:20-57` is an inline script in the head, after
 `<meta name="color-scheme">` (`:11`), that applies the theme (`data-theme`, the meta's content) and the accent
-(`--cx-accent-h` and an empty `data-accent`) before first paint, with the same precedence as `suite-prefs.js`. Its
+(`--cx-accent-h` and an empty `data-accent`) before first paint, with the same precedence as `appearance-prefs.js`. Its
 SHA-256 is `THEME_BOOT_HASH` in `theme-boot-hash.js`, which `app.js:312` puts in `script-src`. Edit the script and
 the constant together: `tests/theme-boot-hash.test.js` checks `index.html` and the built `dist/index.html` byte for
 byte, and `tests/src/theme-boot.test.js` runs the script's own text against each precedence case.
@@ -434,16 +433,16 @@ holding the font size and the preferred editor. `ACCENT_COLORS` (`:51`) is a vie
 `src/tokens/accents.js`, the one data file for the eight hues and the contract's steps; `FONT_SIZES` (`:55`).
 `loadUserPrefs()` (`:24`) maps a renamed accent key through `LEGACY_ACCENT` and drops a density or sidebar default.
 `applyPrefsToDOM(prefs)` (`:66`) writes `--editor-font-size` only; it never touches the accent (W6-CDX-44 moved that
-to `suite-prefs.js`), and it removes the property when the preference is unset. `codex.css` derives the four steps
+to `appearance-prefs.js`), and it removes the property when the preference is unset. `codex.css` derives the four steps
 per theme under `[data-theme][data-accent]` from `--cx-accent-h`.
 
 **The header's Appearance popover and the Account section.** `AppearanceControl`
 (`src/components/AppearanceControl.jsx`) is a native "Appearance" button in every `PageHeader`'s action row, after
 the primary and the toolbar (`PageHeader.jsx`). It opens a non-modal panel portalled to the body: a Theme group and an
-accent group, the same groups as the Account page. Its focus contract is Cloud Command's: the checked Theme option takes
+accent group, the same groups as the Account page. Its focus contract: the checked Theme option takes
 focus on open, `trapTab` (`src/lib/focus-trap.js`) keeps Tab inside, Escape and an outside press return focus to the
 toggle. `AppearanceOptions.jsx` holds `ThemeOptions` (System, shown as "System" and named "Match system"; Light; Dark)
-and `AccentOptions` (eight swatches and Default). Each group subscribes to `suite-prefs.js` itself, so the popover and
+and `AccentOptions` (eight swatches and Default). Each group subscribes to `appearance-prefs.js` itself, so the popover and
 `UserPreferencesPanel` (`src/components/AccountMenu.jsx`) cannot disagree. Their saves in that panel merge into the
 stored prefs, so a legacy key not yet migrated survives.
 
@@ -471,8 +470,8 @@ load-bearing:
    blocks derive the picked accent's steps from `--cx-accent-h`. The deferred
    families' literals are `--cx-deferred-*` bindings, one per literal, and
    `--cx-code-wash` and `--cx-syntax-*` carry the code block (W6-CDX-43, colour
-   only; `tests/design/geometry-fingerprint.test.js` pins their geometry). The dark values are the suite
-   pattern's, restated in `tests/design/suite-theme.json`, and this file must
+   only; `tests/design/geometry-fingerprint.test.js` pins their geometry). The dark values are restated from the theme table in
+   `tests/design/theme.json`, and this file must
    equal it (W6-CDX-38). Three surfaces and the selection wash (`--cx-surface-0`
    to `-2`, `--cx-select-wash`; the fourth and fifth steps retired with the hover
    fills), three text levels, the accent (`--accent-400`), its hover and fill, the
@@ -489,7 +488,7 @@ load-bearing:
    `--cx-accent-hover` or a bright step, as W6-CDX-28 did.
 4. `src/index.css`, about 9,200 lines, the whole app. No CSS modules, no
    preprocessor, no utility framework. Its one focus ring is the global
-   `:focus-visible` rule (`index.css:5756`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
+   `:focus-visible` rule (`index.css:5758`, the bare selector after the `.gh-sync-menu :focus-visible` rule), on `--cx-focus-ring`; no source under
    `src/` removes an outline, and `painted.test.js` pins both. A container that clips
    (`.editor-container`, `.markdown-editor__textarea-wrapper`, `.sidebar`,
    `.gh-browser__sidebar`, `.gh-modal`, `.gh-merge-dialog__pane`, `.gh-sync-menu`) draws its controls' rings

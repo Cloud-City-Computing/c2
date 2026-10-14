@@ -599,7 +599,7 @@ Spec rows SM13, SM14, SC13, and riskiest removal 6.
 ### Task 5.2 Dead code and names
 
 - [ ] Rename `src/lib/suite-prefs.js` to `src/lib/appearance-prefs.js` (exports unchanged, storage names
-      unchanged, `__resetSuitePrefs` to `__resetAppearancePrefs`), with every importer and its tests;
+      unchanged, `__resetSuitePrefs` to `__resetAppearancePrefs`; deviation: that export is not in this tree, so nothing is renamed), with every importer and its tests;
       `tests/design/suite-theme.json` and `suite-theme.test.js` to `theme.json` and `theme.test.js`;
       update the comments in `index.html` only if the pre-paint script's bytes are untouched (the hash
       covers the script, not the HTML comment above it; `tests/theme-boot-hash.test.js` proves it).

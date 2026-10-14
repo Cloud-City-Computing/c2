@@ -1,5 +1,5 @@
 /**
- * Cloud Codex - the header's Appearance popover (W6-CDX-44, aligned with Cloud Command's)
+ * Cloud Codex - the header's Appearance popover (W6-CDX-44)
  *
  * A non-modal disclosure in every page header: Theme (System, Light, Dark) and the eight accents with
  * Default. Keyboard: opening focuses the checked option, Tab stays inside, Escape and an outside press
