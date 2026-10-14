@@ -54,6 +54,14 @@ function onStopSignal(signal) {
 process.on('SIGTERM', () => onStopSignal('SIGTERM'));
 process.on('SIGINT', () => onStopSignal('SIGINT'));
 
+// ─── Name the removed variables that are still set ──────────
+//
+// A variable the server no longer reads is named once, with what to do instead, and boot goes on:
+// silently ignoring it would leave the operator believing a removed behaviour is still on
+// (services/removed-env.js). It runs before every check in this file that can exit (the admin gate, the APP_URL
+// gate, the provider gate, the instance lock). The checks in imported modules run at import, before this line.
+warnRemovedVariables();
+
 // ─── Require Admin credentials before starting ──────────────
 //
 // ADMIN_EMAIL is always required: it is the operator's address, the key the boot admin sync matches on.
@@ -71,13 +79,6 @@ if (missingAdmin.length > 0) {
   console.error('  Copy .env.example to .env and fill in your admin credentials.');
   process.exit(1);
 }
-
-// ─── Name the removed variables that are still set ──────────
-//
-// A variable the server no longer reads is named once, with what to do instead, and boot goes on:
-// silently ignoring it would leave the operator believing a removed behaviour is still on
-// (services/removed-env.js). It runs before any check that can exit, so the line is always printed.
-warnRemovedVariables();
 
 // ─── Require APP_URL in production ──────────────────────────
 //
