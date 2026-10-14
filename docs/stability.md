@@ -10,9 +10,8 @@ change anything listed here, but only with an upgrade note in [CHANGELOG.md](../
   name and meaning across 1.x. A variable is removed only in a major release, after at least one minor
   release in which it is a `removed` entry that warns at boot. A new variable is optional or has a default,
   so a 1.x upgrade never requires one.
-- **Schema.** From 1.0.0 on, every schema change is a runner migration with its undo written in the file. Migrations
-  before 1.0.0 carry undos only where their own release says so. A migration that
-  deletes data says so in the upgrade notes of its release. `init.sql` stays in step with the migrations.
+- **Schema.** From 1.0.0 on, every schema change is a runner migration with its undo written in the file. A
+  migration that deletes data says so in the upgrade notes of its release. `init.sql` stays in step with the migrations.
 - **HTTP API.** The routes in [`docs/api/`](api/) keep their shape across 1.x. Changes are additive. The
   webhook envelope `codex.event.v1` is stable.
 - **Cookies.** The session cookie is `__Host-sessionToken` on https and `sessionToken` on plain http.
