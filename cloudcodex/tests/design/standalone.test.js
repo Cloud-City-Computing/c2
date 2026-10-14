@@ -20,7 +20,6 @@ const FORBIDDEN = [
   /Cloud City(?! Computing)/, // the company's legal name in a header is the only allowed form
   /Cloud Command/,
   /\bsuite mode\b/i,
-  /\bSUITE_[A-Z_]+\b/,
   /\bW6-CMD-\d+/,
   /\bzitadel\b/i,
   /\b(paired|sibling) product\b/i,
@@ -31,12 +30,12 @@ const FORBIDDEN = [
 const ALLOWED_EXACT = ['cc_suite_theme', 'cc_suite_accent'];
 
 // SUITE_ names are allowed only where they name a removed variable: a `kind: 'removed'` entry of
-// env-contract.js, and services/removed-env.js, which reads each removed variable to warn about it.
-const SUITE_NAME = /\bSUITE_[A-Z_]+\b/;
-const REMOVED_SUITE_NAMES = new Set(ENV_CONTRACT.filter((e) => e.kind==='removed' && e.name.startsWith('SUITE_')).map((e) => e.name));
-function unlistedRemovedNames(text){ return (text.match(new RegExp(SUITE_NAME.source,'g'))??[]).filter((n)=>!REMOVED_SUITE_NAMES.has(n)); }
-
-const SUITE_ALLOWED_FILES = new Set(['services/removed-env.js']);
+// env-contract.js, and, in services/removed-env.js, exactly the names of those entries.
+const SUITE_NAME = /\bSUITE_[A-Z0-9_]+\b/;
+const REMOVED_SUITE_NAMES = new Set(
+  ENV_CONTRACT.filter((e) => e.kind === 'removed' && e.name.startsWith('SUITE_')).map((e) => e.name),
+);
+const REMOVED_ENV_FILE = 'services/removed-env.js';
 
 const DIRS = ['src', 'routes', 'services', 'middleware', 'scripts'];
 const FILES = ['app.js', 'server.js', 'mysql_connect.js', 'index.html', 'env-contract.js'];
@@ -72,21 +71,26 @@ function unremovedSuiteLines(text) {
   return bad;
 }
 
+/** Every SUITE_ name in services/removed-env.js that is not a removed entry's exact name. */
+function unlistedRemovedNames(text) {
+  const names = text.match(new RegExp(SUITE_NAME.source, 'g')) ?? [];
+  return names.filter((n) => !REMOVED_SUITE_NAMES.has(n));
+}
+
 function violations(file, text) {
   const rel = path.relative(ROOT, file).split(path.sep).join('/');
   let scrubbed = text;
   for (const allowed of ALLOWED_EXACT) scrubbed = scrubbed.split(allowed).join('');
   const found = [];
   for (const pattern of FORBIDDEN) {
-    if (pattern === SUITE_NAME || pattern.source === SUITE_NAME.source) continue;
     if (pattern.test(scrubbed)) found.push(`${rel}: ${pattern}`);
   }
   if (SUITE_NAME.test(scrubbed)) {
     if (rel === 'env-contract.js') {
       for (const line of unremovedSuiteLines(scrubbed)) found.push(`${rel}:${line}: SUITE_ outside a removed entry`);
-    } else if (rel === 'services/removed-env.js') {
-      // OLD: whole file allowed
-    } else if (!SUITE_ALLOWED_FILES.has(rel)) {
+    } else if (rel === REMOVED_ENV_FILE) {
+      for (const name of unlistedRemovedNames(scrubbed)) found.push(`${rel}: ${name} is not a removed entry`);
+    } else {
       found.push(`${rel}: ${SUITE_NAME}`);
     }
   }
