@@ -20,6 +20,7 @@ import { acquireInstanceLock } from './services/instance-lock.js';
 import { reconcileEnvSubscription, loadSubscriptions } from './services/webhooks.js';
 import { startWebhookWorker, pruneWebhookRows } from './services/webhook-worker.js';
 import { createShutdown } from './services/shutdown.js';
+import { warnRemovedVariables } from './services/removed-env.js';
 import { readSuiteConfig } from './services/suite.js';
 import { readiness } from './routes/health.js';
 import app from './app.js';
@@ -71,6 +72,13 @@ if (missingAdmin.length > 0) {
   console.error('  Copy .env.example to .env and fill in your admin credentials.');
   process.exit(1);
 }
+
+// ─── Name the removed variables that are still set ──────────
+//
+// A variable the server no longer reads is named once, with what to do instead, and boot goes on:
+// silently ignoring it would leave the operator believing a removed behaviour is still on
+// (services/removed-env.js). It runs before any check that can exit, so the line is always printed.
+warnRemovedVariables();
 
 // ─── Require APP_URL in production ──────────────────────────
 //

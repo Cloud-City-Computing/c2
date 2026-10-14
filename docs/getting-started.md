@@ -219,11 +219,19 @@ All seed accounts use the password **`password`**.
 | `WEBHOOK_SECRET` | That subscription's signing secret, at least 32 characters, never stored in the database | unset (optional) |
 | `WEBHOOK_WORKSPACE_ID` | Send only this workspace's events to it; unset sends every workspace's | unset (optional) |
 | `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `1` lets any webhook reach loopback and private addresses; link-local and metadata addresses are always refused | unset (optional) |
-| `SUITE_COMMAND_WORKSPACE_URL` | The Cloud Command workspace this instance belongs to. Setting it turns suite mode on: the shell shows the suite cluster and its switcher. The workspace's Cloud Command URL: an origin plus `/w/<workspace id>`, with no query, fragment or further path; `https` (plain `http` only outside production) and no user or password; a bad value stops the boot | unset (off) |
-| `SUITE_NAME` | The suite's display name, shown only in suite mode. Required when `SUITE_COMMAND_WORKSPACE_URL` is set: 1 to 40 characters, no control characters | unset |
 | `SUITE_PREFERENCE_DOMAIN` | The parent domain the theme and accent cookies are shared on, so a choice applies across the suite's products. Honoured only in suite mode. Lowercase, two or more labels, no scheme, port, path or dots at either end, not an IP address or `localhost`; `APP_URL`'s host must be it or end with `.` plus it, or the boot stops | unset (per-product, in localStorage) |
 
 ---
+
+## Removed variables
+
+These variables were read by an earlier release and are no longer read for any behaviour. Setting one
+prints a line at boot naming it, then the server starts as it would without it. Unset them.
+
+| Variable | What to do |
+|---|---|
+| `SUITE_COMMAND_WORKSPACE_URL` | suite mode was removed in 0.15.0; unset it |
+| `SUITE_NAME` | suite mode was removed in 0.15.0; unset it |
 
 ## NPM Scripts
 
