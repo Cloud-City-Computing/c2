@@ -92,6 +92,22 @@ describe('usePresence', () => {
     expect(result.current.getLogUsers(99999)).toEqual([]);
   });
 
+  it('lists each user once per log, however many connections the user has open', async () => {
+    fetchPresence.mockResolvedValue({
+      success: true,
+      presence: {
+        7: [
+          { id: 1, name: 'Ada', color: '#f00' },
+          { id: 1, name: 'Ada', color: '#f00' },
+          { id: 2, name: 'Bo', color: '#0f0' },
+        ],
+      },
+    });
+    const { result } = renderHook(() => usePresence(60000));
+    await waitFor(() => expect(result.current.getLogUsers(7)).toHaveLength(2));
+    expect(result.current.getLogUsers(7).map((u) => u.id)).toEqual([1, 2]);
+  });
+
   it('clears the interval on unmount', async () => {
     const { unmount } = renderHook(() => usePresence(1000));
     await waitFor(() => expect(fetchPresence).toHaveBeenCalledTimes(1));
