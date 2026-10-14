@@ -1,0 +1,35 @@
+# Real --adopt-fresh-install run, after the fix (branch HEAD), against a fresh init.sql build
+# MySQL: mysql:8.4.11 on a private Docker network (no host port; the client has no port option, so 127.0.0.1:33612 cannot be used)
+# runner: node:22-slim with the branch's cloudcodex/ and migrations/ mounted read-only
+# command: node scripts/migrate.js --adopt-fresh-install
+# exit 0
+adopting 28 migration file(s) as already applied, and applying none:
+  2026-09-08-token-purpose.sql  (postdates the baseline; already in the schema: password_reset_tokens.purpose)
+  2026-09-25-oauth-one-link-per-provider.sql  (postdates the baseline; already in the schema: oauth_accounts.uq_oauth_user_provider)
+  2026-09-25-token-purpose-email-change.sql  (postdates the baseline; already in the schema: password_reset_tokens.new_email)
+  2026-09-27-session-per-sign-in.sql  (postdates the baseline; already in the schema: sessions.auth_provider)
+  2026-09-27-who-may-see-doc-images.sql  (postdates the baseline; already in the schema: doc_images)
+  2026-09-28-webhooks.sql  (postdates the baseline; already in the schema: webhook_subscriptions, webhook_events, webhook_deliveries)
+  2026-10-10-webhook-sequence-lock.sql  (postdates the baseline; already in the schema: webhook_sequence_lock)
+  2026-10-11-user-identities.sql  (postdates the baseline; already in the schema: user_identities, sessions.identity_id, sessions.provider_sid, sessions.idx_sessions_provider_sid)
+  2026-10-12-identity-last-signin-email.sql  (postdates the baseline; already in the schema: user_identities.email_at_last_signin)
+  2026-10-12-user-deactivation.sql  (postdates the baseline; already in the schema: users.deactivated_at)
+  2026-10-13-session-id-token.sql  (postdates the baseline; already in the schema: sessions.oidc_id_token)
+  2026-10-14-session-rotation.sql  (postdates the baseline; already in the schema: sessions.signed_in_at, sessions.rotated_from, sessions.idx_sessions_rotated_from)
+  2026-10-15-invitation-grants-admin.sql  (postdates the baseline; absent, as a later file removes it: user_invitations.grants_admin (2026-10-17-remove-sibling-connection.sql removes it))
+  2026-10-16-invitation-revoked.sql  (postdates the baseline; absent, as a later file removes it: user_invitations.revoked_at (2026-10-17-remove-sibling-connection.sql removes it))
+  2026-10-17-remove-sibling-connection.sql  (postdates the baseline; absent, as a later file removes it: user_invitations.grants_admin (2026-10-17-remove-sibling-connection.sql removes it), user_invitations.revoked_at (2026-10-17-remove-sibling-connection.sql removes it))
+  add_activity_log.sql
+  add_first_run.sql
+  add_github_links.sql
+  add_markdown_content.sql
+  add_notifications.sql
+  add_watches.sql
+  add_workspace_owner_id.sql
+  drop_squad_permissions.sql
+  p0_github_sync.sql
+  p1_github_embeds.sql
+  p2_github_collab.sql
+  p3_github_polish.sql
+  widen_log_content.sql
+adopted 28 migration file(s) as already applied, and applied none. 15 of them postdate the pre-runner baseline, and each was checked against information_schema before it was recorded; the rest are the pre-runner set that --baseline records too.

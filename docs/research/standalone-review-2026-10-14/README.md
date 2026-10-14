@@ -120,7 +120,7 @@ On the running image over https (`socat` TLS proxy on `127.0.0.1:8443`, self-sig
   host, not a vendor's domain, and it does not add a boot refusal for existing installs.
 - Rejected: requiring `SMTP_FROM` whenever SMTP is on (a boot refusal for every installation that relies on the
   default). An `APP_URL` on an IPv6 address falls back to `localhost`; that case is tested.
-- Tests first (`ce86408`): the default names the APP_URL host, IPv6 falls back, the vendor domain is never named.
+- Tests first (`65e7032`): the default names the APP_URL host, IPv6 falls back, the vendor domain is never named. A trailing dot on the host is stripped (`9a37e0b`, tests first).
 - Upgrade note: `CHANGELOG.md` `[Unreleased]`, Changed. Setting `SMTP_FROM` keeps the old behaviour for the sender.
 
 ## Other findings
@@ -128,7 +128,7 @@ On the running image over https (`socat` TLS proxy on `127.0.0.1:8443`, self-sig
 | # | Finding | Fix or follow-up |
 |---|---|---|
 | F1 | Default From named the vendor's domain (IS10) | Fixed (APP_URL host), tests first, upgrade note |
-| F2 | `--adopt-fresh-install` printed a dropped column as "already in the schema" (confusing, found live in 6.2) | Fixed, test first (`migrate.test.js`), the adoption behaviour is unchanged |
+| F2 | `--adopt-fresh-install` printed a dropped column as "already in the schema" (found live in 6.2). The first fix still left the prefix in the log line; momus found it | Fixed in `5a824f4`, tests first: the line for a dropped column never says "already in the schema". Real output after the fix: `raw/62-adoption-real-output-after-fix.txt`. The recorded adoption is unchanged |
 | F3 | Provider and sibling-product names in source, samples and maps (see 6.4 item 3) | Fixed, except applied migrations and dated records (immutable, see S4) |
 | F4 | Entra sends no standard `email_verified` (IS8) | Open for Kyle; docs state it; recommendation above |
 | F5 | Keycloak doc gaps (field locations, post-logout URI, `APP_URL` reachability from Keycloak) | Fixed in `docs/sign-in.md`, marked verified 2026-10-14 |

@@ -13,7 +13,7 @@ HTTP/1.1 503  {"ready":false,"reason":"migrations"}
 ## adoption: "adopted 28 migration file(s) as already applied, and applied none. 15 of them postdate the pre-runner baseline,
 ## and each was checked against information_schema before it was recorded; the rest are the pre-runner set"
 ## the adoption print includes, for 2026-10-17-remove-sibling-connection.sql (a drop):
-##   "already in the schema: user_invitations.grants_admin (absent: ... removes it)"  <- confusing wording, fixed in this PR (see CHANGELOG)
+## the run before the fix printed the dropped columns as "already in the schema: ... (absent: ...)"; that wording is fixed. The output after the fix is in 62-adoption-real-output-after-fix.txt
 ## after adoption: schema_migrations rows = 28; GET /readyz = 200 {"ready":true} (after the 10 s readiness cache)
 ## the boot admin logged in (POST /api/login, bearer token used for the API calls; no cookie is set by the server on http)
 {"success":true,"token":"<redacted>","user":{"id":1,"name":"boot-admin","email":"admin@example.test","avatar_url":null,"is_admin":true}}

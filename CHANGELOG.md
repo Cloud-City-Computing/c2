@@ -18,13 +18,14 @@ initialises an empty data directory.
   as `Cloud Codex <noreply@<host of APP_URL>>` instead of a vendor's domain, so mail is not sent as a domain the
   instance does not own (SPF and DMARC would fail). **Upgrade note:** an install that sent mail from the old
   default must set `SMTP_FROM` to a sender on its own domain, or its mail now carries its own host. An `APP_URL`
-  on an IPv6 address falls back to `localhost`, so set `SMTP_FROM` there too.
+  on an IPv6 address falls back to `localhost`, so set `SMTP_FROM` there too. One trailing dot on the host
+  (`codex.example.test.`) is dropped, since a dot after the domain is not part of an address.
 
 ### Fixed
 
-- **The adoption line names a dropped column as absent.** `--adopt-fresh-install` printed a column that a later
-  migration removes as "already in the schema" with an "absent" note. It now reports it as absent, as a later file
-  removes it. The adoption itself is unchanged.
+- **The adoption line for a dropped column no longer says "already in the schema".** `--adopt-fresh-install` now
+  prints a column that a later migration removes as absent, as a later file removes it, and never as present. The
+  recorded adoption is unchanged.
 
 ### Documentation
 
