@@ -1,0 +1,41 @@
+# Task 6.2, clean clone of 9080da4, compose project cdxsa6-clean, image built from the clean clone (docker-compose-prod.yml)
+# commands: cp .env.example .env (secrets generated, not recorded); docker compose -f docker-compose-prod.yml up -d --build
+# then: docker compose -f docker-compose-prod.yml run --rm app npm run migrate -- --adopt-fresh-install
+
+## app boot log (as first started, secrets elided)
+cloudcodex-app  | ⚠ APP_URL "http://localhost:3000" points at this machine, so emailed links open nowhere else.
+cloudcodex-app  | ✔ Email off (SMTP_HOST, SMTP_USER or SMTP_PASS not set): invitations show a copyable link; ...
+cloudcodex-app  | [2026-10-14T17:15:57.452Z] admin sync: created boot-admin / admin@example.test as the admin (user 1).
+cloudcodex-app  | [2026-10-14T17:15:57.480Z] bootstrap: seeded starter workspace for admin@example.test
+cloudcodex-app  | CloudCodex API Server is running on http://localhost:3000
+## readiness before the adoption step
+HTTP/1.1 503  {"ready":false,"reason":"migrations"}
+## adoption: "adopted 28 migration file(s) as already applied, and applied none. 15 of them postdate the pre-runner baseline,
+## and each was checked against information_schema before it was recorded; the rest are the pre-runner set"
+## the adoption print includes, for 2026-10-17-remove-sibling-connection.sql (a drop):
+## the run before the fix printed the dropped columns as "already in the schema: ... (absent: ...)"; that wording is fixed. The output after the fix is in 62-adoption-real-output-after-fix.txt
+## after adoption: schema_migrations rows = 28; GET /readyz = 200 {"ready":true} (after the 10 s readiness cache)
+## the boot admin logged in (POST /api/login, bearer token used for the API calls; no cookie is set by the server on http)
+{"success":true,"token":"<redacted>","user":{"id":1,"name":"boot-admin","email":"admin@example.test","avatar_url":null,"is_admin":true}}
+## workspaces and squad
+{"success":true,"workspaces":[{"id":1,"name":"boot-admin's Workspace",...}]}
+{"success":true,"squads":[{"id":1,"name":"General",...}]}
+## admin invitation with no SMTP (POST /api/admin/invitations)
+{"success":true,"message":"Invitation created for member@example.test. Share the link below.","signup_url":"http://localhost:3000/?invite=<redacted>","emailed":false}
+## the link was recovered from user_invitations for the first run (the first capture stored the wrong key), so the link is the one the admin response carries
+## member creates the account (POST /api/create-account) and signs in
+{"success":true,"token":"<redacted>","user":{"id":2,"name":"member_one"}}
+{"success":true,"token":"<redacted>","user":{"id":2,"name":"member_one","email":"member@example.test","avatar_url":null,"is_admin":false}}
+{"success":true,"workspaces":[{"id":1,"name":"boot-admin's Workspace",...}]}
+## first-run state for the member
+{"success":true,"needsOnboarding":true,"isAdmin":false,"squad":{"id":1,"name":"General"},"archive":{"id":1,"name":"Getting Started"},"log":{"id":1,"title":"Welcome to Cloud Codex"},"pendingSquadInvites":0}
+## browser: member_one signs in through the sign-in modal and opens /archives/1/doc/1 (scenario62, see shots/03)
+after sign-in url: http://localhost:3000/
+cookie names: sessionToken(secure=false,httpOnly=false,path=/,domain=localhost)
+welcome doc title visible: true, url: http://localhost:3000/archives/1/doc/1
+## removed variables: SERVICE_TOKEN=x and SUITE_NAME=y appended to .env, app recreated
+cloudcodex-app | [..] SUITE_NAME is set but was removed: the suite integration was removed in 0.15.0; unset it
+cloudcodex-app | [..] SERVICE_TOKEN is set but was removed: the static machine credential was removed in 0.15.0; a script signs in as a user and sends that session. Unset it
+cloudcodex-app | [..] admin sync: synced boot-admin / admin@example.test (user 1), its email and password reset from ADMIN_EMAIL and ADMIN_PASSWORD.
+cloudcodex-app | CloudCodex API Server is running on http://localhost:3000
+{"ready":true} 200

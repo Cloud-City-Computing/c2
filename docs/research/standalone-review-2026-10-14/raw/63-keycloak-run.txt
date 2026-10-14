@@ -1,0 +1,57 @@
+# Task 6.3, Keycloak 26.4.7, image quay.io/keycloak/keycloak:26.4@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007
+# started with: docker compose -f docker-compose-prod.yml -f <override outside the repo> up -d
+# override: command start-dev --import-realm; KC_HTTP_PORT=8180; KC_HOSTNAME=http://keycloak.localhost:8180; the realm import
+# mounted read-only with :z (SELinux); a loopback publish 127.0.0.1:8180:8180; network aliases keycloak.localhost (Keycloak)
+# and codex.localhost (the app). APP_URL=http://codex.localhost:3000 for this part.
+# keycloak log: "Realm 'codex' imported", "Keycloak 26.4.7 ... started"
+# discovery: issuer http://keycloak.localhost:8180/realms/codex ; from the app container: HTTP 200
+# app: /api/auth/oidc/start -> 302 to keycloak.localhost:8180 ... redirect_uri=http://codex.localhost:3000/api/auth/oidc/callback
+
+## (a) invited address, local sign-in on (scenario63a)
+[invitee] button text: Sign in with Keycloak
+[invitee] at Keycloak: http://keycloak.localhost:8180/realms/codex/protocol/openid-connect/auth?redirect_uri=...&client_id=codex&response_type=code
+[invitee] back at Codex: http://codex.localhost:3000/
+[invitee] page text: ... I invitee Home ... Welcome to Cloud Codex ...
+[invitee] cookies: sessionToken(secure=false,httpOnly=false,domain=codex.localhost)  (Keycloak's own cookies are on keycloak.localhost)
+[invitee] first-run: {"success":true,"needsOnboarding":true,"isAdmin":false,"squad":{"id":1,"name":"General"},...}
+
+## (a) uninvited verified address (scenario63a, stranger)
+[stranger] back at Codex: http://codex.localhost:3000/
+[stranger] page text: ... No account found for this sign-in. Ask your administrator for an invitation. ...
+[stranger] first-run: {"success":false,"message":"Authentication required"}
+
+## (b) RP-initiated sign-out and back-channel logout (scenario63b, final run)
+[63b] cleared invitee Keycloak sessions before the run
+[63b] S1 signed in at http://codex.localhost:3000/
+[63b] S1 sockets: [{"url":"ws://codex.localhost:3000/notifications-ws","opened":true,"closed":null}]
+[63b] Keycloak sessions before S1 sign-out: 1
+[63b] after Sign out click: http://codex.localhost:3000/?signedOut=1&state=...
+[63b] Keycloak sessions after RP-initiated sign-out: 0
+[63b] Codex first-run after sign-out: {"success":false,"message":"Authentication required"}
+[63b] S2 signed in at http://codex.localhost:3000/
+[63b] S2 sockets before admin end: [{"opened":true,"closed":null}]
+[63b] S2 session chosen is the newest by start time; sessions: 1791998664000
+[63b] Keycloak sessions before admin end: 1
+admin DELETE session http 204
+[63b] S2 sockets after admin end: [{"opened":true,"closed":{"code":4004,"reason":"Signed out"}},{"opened":true,"closed":{"code":4003,"reason":"Unauthorized"}}]
+[63b] Codex first-run after admin end: {"success":false,"message":"Invalid or expired session"}
+# Note: the first run of 63b ended the wrong Keycloak session (the sessions list was not sorted by start time), so that run proves nothing and is not cited. The rerun above is the evidence.
+# Deviation: the admin action was DELETE /admin/realms/codex/sessions/{id} through the admin REST API, not the admin console's UI.
+
+## (c) AUTH_PROVIDERS=oidc, ADMIN_USERNAME and ADMIN_PASSWORD blank (scenario63c, and oidc-only-routes.sh)
+boot: "admin sync: synced admin@example.test (user 1), its email reset from ADMIN_EMAIL"
+boot: "OIDC-only boot: ended 10 sessions that are not OIDC sessions; those users sign in through OIDC."
+GET / -> 200 (the client bounces a signed-out bare root to the issuer, see the browser result)
+POST /api/login -> 404 {"success":false,"message":"Local sign-in is not offered on this instance"}
+POST /api/create-account, /api/forgot-password, /api/reset-password, /api/2fa/verify -> 404 (same message)
+GET /api/auth/oidc/start -> 302 to keycloak.localhost:8180 ...
+GET /api/oauth/google -> 404
+[63c] root bounced to: http://keycloak.localhost:8180/realms/codex/protocol/openid-connect/auth
+[63c] back at: http://codex.localhost:3000/
+[63c] first-run as signed-in admin: {"success":true,"needsOnboarding":true,"isAdmin":true,...}
+[63c] local login from the page: 404
+
+## invitation for the invitee by admin API (POST /api/admin/invitations), squad General, before (a)
+{"success":true,"message":"Invitation created for invitee@example.test. Share the link below.","signup_url":"...","emailed":false}
+
+## not run live: Okta and Authentik (see docs/sign-in.md)

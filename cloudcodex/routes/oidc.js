@@ -43,7 +43,7 @@ const router = express.Router();
 /*
  * Its own bucket, never authLimiter: every logout token arrives from the issuer's one address, and a
  * deprovisioning sweep sends a burst of them. Only a refused delivery (a 400) counts, so a verified
- * delivery, a 503 the issuer retries, and a 429 never spend the budget (Command's back-channel ADR).
+ * delivery, a 503 the issuer retries, and a 429 never spend the budget.
  * The key is req.ip, which honours X-Forwarded-For only from a TRUST_PROXY peer, so behind the host
  * proxy one client's failures cannot exhaust another's budget.
  */

@@ -1,0 +1,8 @@
+# removed routes on the running image (clean clone of 9080da4): as the boot admin, then anonymous
+GET /api/workspaces/1/reader-check  admin=[404 application/json; charset=utf-8] body={"success":false,"message":"Not found"}  anon=404
+GET /api/documents/state  admin=[404 application/json; charset=utf-8] body={"success":false,"message":"Not found"}  anon=404
+PUT /api/machine/members  admin=[404 application/json; charset=utf-8] body={"success":false,"message":"Not found"}  anon=404
+DELETE /api/machine/members  admin=[404 application/json; charset=utf-8] body={"success":false,"message":"Not found"}  anon=404
+DELETE /api/machine/members/someone@example.test  admin=[404 application/json; charset=utf-8] body={"success":false,"message":"Not found"}  anon=404
+GET /api/suite  admin=[404 application/json; charset=utf-8] body={"success":false,"message":"Not found"}  anon=404
+GET /api/suite/links  admin=[404 application/json; charset=utf-8] body={"success":false,"message":"Not found"}  anon=404

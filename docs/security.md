@@ -211,7 +211,7 @@ GitHub access tokens are encrypted at rest using **AES-256-GCM** with a key deri
 ## OIDC Sign-in: What the Issuer Is Trusted For
 
 An instance can sign people in through one OIDC issuer (`OIDC_ISSUER_URL`, for
-example Cloud City ID). The issuer is trusted for **two facts and nothing else**:
+example Keycloak or Authentik). The issuer is trusted for **two facts and nothing else**:
 
 - **a stable `sub`**, which, with the issuer's own `iss`, names one person; and
 - **a verified email**: the address and its `email_verified` come from one source (USERINFO when it returns an address, else the ID token), and must be exactly `email_verified: true`.

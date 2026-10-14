@@ -149,7 +149,7 @@ volumes:
 # (172.18.0.0/16 on a fresh host, a 192.168 range once about fifteen networks
 # exist), the gateway is not in the default, and every client behind the proxy
 # would share one rate-limit bucket. 172.29.0.0/16 is distinct from Cloud
-# Command's 172.28.0.0/16, so both can run on one host. An install created
+# 172.28.0.0/16, a subnet a sibling deployment on the same host may use, so both can run there. An install created
 # before this was pinned has its network on another subnet, and its upgrade
 # must take the project `down` (never `down -v`) BEFORE migrating: stopping
 # only the app and then migrating makes Compose replace this network under a

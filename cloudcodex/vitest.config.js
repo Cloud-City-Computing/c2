@@ -166,7 +166,7 @@ export default defineConfig({
         'services/session-cookie.js': { lines: 95, statements: 95, branches: 95, functions: 95 },
         // The OIDC relying party (W6-CDX-5). Measured at 92.7 lines, 88.9 branches, 100 functions.
         'services/oidc.js': { lines: 90, statements: 89, branches: 86, functions: 97 },
-        // The one returnTo validator, checked against Command's corpus (127 cases). Measured at 100.
+        // The one returnTo validator, checked against a shared corpus of 127 cases. Measured at 100.
         'services/return-to.js': { lines: 98, statements: 98, branches: 95, functions: 98 },
         // The OIDC routes (W6-CDX-5). Measured at 100 lines, 94 statements, 75 branches.
         'routes/oidc.js': { lines: 96, statements: 92, branches: 72, functions: 95 },

@@ -242,7 +242,7 @@ The bare `/` (decided by Kyle, 2026-10-11) bounces to the sign-in only where OID
 (OIDC-only: `isOidcOnly`). It goes to `/api/auth/oidc/start?returnTo=%2F`, under the same once-per-tab marker.
 It does not bounce when the marker is set, when an `oauth_error` came back, or when the query carries
 `?signedOut=1` (the sign-out landing must show its message). A local-sign-in instance, or one with no
-OIDC, keeps its sign-in screen on `/`, so self-hosters are not stranded. Command's `BOUNCE_BARE_ROOT`
+OIDC, keeps its sign-in screen on `/`, so self-hosters are not stranded. a sibling deployment's bounce flag
 is a separate flag in the Command repo, and this change does not touch it.
 
 - **The landing after a sign-out.** `?signedOut=1` on `/` shows the sign-in landing, with its Sign in button

@@ -1,0 +1,47 @@
+/app/dist/assets/index-dKMrXXzu.js
+/app/dist/index.html
+/app/env-contract.js
+/app/index.html
+/app/scripts/migrate.js
+/app/server.js
+/app/services/removed-env.js
+/app/src/lib/appearance-prefs.js
+/app/vendor/cloud-city-design/gates/brand.test.mjs
+/app/vendor/cloud-city-design/gates/contrast.test.mjs
+/app/vendor/cloud-city-design/gates/dangling.test.mjs
+/app/vendor/cloud-city-design/gates/manifest.test.mjs
+/app/vendor/cloud-city-design/gates/token-discipline.test.mjs
+---
+/app/dist/assets/ArchivesPage-DwbOhkSG.js:1:import{e as ge,l as je,b as Y,r as t,j as e,L as fe}from"./vendor-react-DAxgnnki.js";import{aX as Ne,u as _e,aY as ve,P as we,E as Q,ag as ke,s as $,aZ as ce,a_ as ye,f as Ce,v
+/app/dist/assets/index-dKMrXXzu.js:2:import{c as Tt,r as o,j as t,u as _e,a as Ee,L as F,b as At,R as vn,d as P,N as Re,B as bn}from"./vendor-react-DAxgnnki.js";import{p as yn}from"./vendor-markup-D9h3fCsQ.js";import"./v
+/app/dist/assets/vendor-markup-D9h3fCsQ.js:2:In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`)}/*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): ht
+/app/dist/assets/vendor-markup-D9h3fCsQ.js:29:`+" ".repeat(i.length)),i+t+(e.nextSibling?`
+/app/dist/assets/vendor-markup-D9h3fCsQ.js:50:`,this.references=[]),e}};P.emphasis={filter:["em","i"],replacement:function(t,e,n){return t.trim()?n.emDelimiter+t+n.emDelimiter:""}};P.strong={filter:["strong","b"],replace
+/app/dist/assets/vendor-markup-D9h3fCsQ.js:51:`):""}function dr(t){this.options=t,this._keep=[],this._remove=[],this.blankRule={replacement:t.blankReplacement},this.keepReplacement=t.keepReplacement,this.defaultRule={rep
+/app/dist/assets/vendor-react-DAxgnnki.js:41: */var bh;function n0(){if(bh)return Bn;bh=1;var i=e0(),f=Yn(),o=Zh();function c(t){var e="https://react.dev/errors/"+t;if(1<arguments.length){e+="?args[]="+encodeURIComponent
+/app/dist/assets/vendor-react-DAxgnnki.js:48:`+a.stack}}var Si=Object.prototype.hasOwnProperty,Ei=i.unstable_scheduleCallback,bi=i.unstable_cancelCallback,_m=i.unstable_shouldYield,Om=i.unstable_requestPaint,ae=i.unstabl
+/app/dist/assets/vendor-react-DAxgnnki.js:49:`).replace(yy,"")}function Hd(t,e){return e=xd(e),xd(t)===e}function gt(t,e,l,a,n,u){switch(l){case"children":typeof a=="string"?e==="body"||e==="textarea"&&a===""||ua(t,a):(t
+/app/dist/assets/vendor-tiptap-Dww9C4WL.js:3:`);else if(o.linebreakReplacement&&/[\r\n]/.test(r)&&this.top.findWrapping(o.linebreakReplacement.create())){let l=r.split(/\r?\n|\r/);for(let a=0;a<l.length;a++)a&&this.inser
+/app/dist/assets/vendor-tiptap-Dww9C4WL.js:4:`),t)}ignoreFallback(e,t){e.nodeName=="BR"&&(!this.top.type||!this.top.type.inlineContent)&&this.findPlace(this.parser.schema.text("-"),t,!0)}readStyles(e,t){let r=e.style;if(
+/app/dist/assets/vendor-tiptap-Dww9C4WL.js:6:`).scrollIntoView()),!0)};function lo(n){for(let e=0;e<n.edgeCount;e++){let{type:t}=n.edge(e);if(t.isTextblock&&!t.hasRequiredAttrs())return t}return null}const Wh=(n,e)=>{let
+/app/dist/assets/vendor-tiptap-Dww9C4WL.js:7:`),u&&p==h.nodeValue.length)for(let m=h,g;m;m=m.parentNode){if(g=m.nextSibling){g.nodeName=="BR"&&(l=a={node:g.parentNode,offset:re(g)+1});break}let y=m.pmViewDesc;if(y&&y.nod
+/app/dist/assets/vendor-tiptap-Dww9C4WL.js:10:`))),0,0),n.someProp("transformPasted",f=>{l=f(l,n,!0)}),l;let u=n.someProp("clipboardTextParser",f=>f(e,i,r,n));if(u)l=u;else{let f=i.marks(),{schema:h}=n.state,p=Bt.fromSch
+/app/dist/assets/vendor-tiptap-Dww9C4WL.js:138:`):"",markdownTokenizer:{name:"taskList",level:"block",start(n){var e;const t=(e=n.match(/^\s*[-+*]\s+\[([ xX])\]\s+/))===null||e===void 0?void 0:e.index;return t!==void 0?t
+/app/dist/assets/vendor-yjs-B36W9HSg.js:5:`?o.insert.slice(0,-1):o.insert;(typeof c!="string"||c.length>0)&&Ve(s,this,r,c,o.attributes||{})}else o.retain!==void 0?qn(s,this,r,o.retain,o.attributes||{}):o.delete!==void 0&
+/app/dist/index.html:49:        var theme = cookie('cc_suite_theme', THEMES) || stored('cc_suite_theme', THEMES);
+/app/dist/index.html:56:        var hue = cookie('cc_suite_accent', HUES) || stored('cc_suite_accent', HUES) || legacyHue();
+/app/services/removed-env.js:12:// list to the contract's `removed` entries, so adding one to either side alone fails the suite.
+/app/services/removed-env.js:14:  ['SUITE_COMMAND_WORKSPACE_URL', () => process.env.SUITE_COMMAND_WORKSPACE_URL],
+/app/services/removed-env.js:15:  ['SUITE_NAME', () => process.env.SUITE_NAME],
+/app/services/removed-env.js:16:  ['SUITE_PREFERENCE_DOMAIN', () => process.env.SUITE_PREFERENCE_DOMAIN],
+/app/services/removed-env.js:18:  ['SERVICE_TOKEN', () => process.env.SERVICE_TOKEN],
+/app/services/removed-env.js:19:  ['SERVICE_TOKEN_USER', () => process.env.SERVICE_TOKEN_USER],
+/app/services/removed-env.js:40: * Logs how many accounts are linked to an identity provider, while the suite variable is still set. Those
+/app/services/removed-env.js:47:  if (!removedVariablesSet().includes('SUITE_COMMAND_WORKSPACE_URL')) return null;
+/app/services/removed-env.js:53:      + 'and local two-factor now that the suite integration is removed. Set AUTH_PROVIDERS=oidc to keep their sign-in provider-only.');
+/app/src/components/ArchiveBrowser.jsx:697:      const stable = row.nextElementSibling ?? row.previousElementSibling;
+/app/src/components/editor/VersionHistory.jsx:84:                real button and Restore is its sibling. */}
+/app/src/index.css:6331: * EditorContent plus both overlays as siblings.
+/app/src/lib/appearance-prefs.js:5: * the accent. The cookie names (cc_suite_theme, cc_suite_accent) are a stored contract, so
+/app/src/lib/appearance-prefs.js:22:export const THEME_NAME = 'cc_suite_theme';
+/app/src/lib/appearance-prefs.js:23:export const ACCENT_NAME = 'cc_suite_accent';

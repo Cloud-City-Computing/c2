@@ -12,6 +12,32 @@ initialises an empty data directory.
 
 ## [Unreleased]
 
+### Changed
+
+- **The default From address names this instance's host (standalone review, PR 6).** A blank `SMTP_FROM` now sends
+  as `Cloud Codex <noreply@<host of APP_URL>>` instead of a vendor's domain, so mail is not sent as a domain the
+  instance does not own (SPF and DMARC would fail). **Upgrade note:** an install that sent mail from the old
+  default must set `SMTP_FROM` to a sender on its own domain, or its mail now carries its own host. An `APP_URL`
+  on an IPv6 address falls back to `localhost`, so set `SMTP_FROM` there too. One trailing dot on the host
+  (`codex.example.test.`) is dropped, since a dot after the domain is not part of an address.
+
+### Fixed
+
+- **The adoption line for a dropped column no longer says "already in the schema".** `--adopt-fresh-install` now
+  prints a column that a later migration removes as absent, as a later file removes it, and never as present. The
+  recorded adoption is unchanged.
+
+### Documentation
+
+- **Stability.** [docs/stability.md](docs/stability.md) states what 1.x promises and lists the breaking changes
+  since 0.12.0 with their upgrade notes.
+- **Keycloak is verified, Entra is not.** The Keycloak section of [docs/sign-in.md](docs/sign-in.md) is verified live
+  on Keycloak 26.4.7, including the back-channel URL and the `APP_URL` reachability it needs. The Microsoft Entra ID
+  section now says Entra sends no standard `email_verified` claim, so a sign-in from an Entra tenant is refused until
+  that is decided.
+- **Provider-neutral wording.** The sample issuer and the comments that named one provider or a sibling product now
+  say "the issuer" or "a sibling deployment".
+
 ## [0.15.0] - 2026-10-14
 
 Codex becomes a standalone product: suite mode, the connection to a sibling product and the issuer-specific

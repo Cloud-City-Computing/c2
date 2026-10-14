@@ -1,0 +1,80 @@
+{
+  "realm": "codex",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "users": [
+    {
+      "username": "invitee",
+      "email": "invitee@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Ivy",
+      "lastName": "Invitee",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "<redacted>",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "stranger",
+      "email": "stranger@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Sam",
+      "lastName": "Stranger",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "<redacted>",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "boot-admin",
+      "email": "admin@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Boot",
+      "lastName": "Admin",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "<redacted>",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "codex",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "<redacted>",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://codex.localhost:3000/api/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "http://codex.localhost:3000"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://codex.localhost:3000/?signedOut=1",
+        "backchannel.logout.url": "http://codex.localhost:3000/api/auth/oidc/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      }
+    }
+  ]
+}

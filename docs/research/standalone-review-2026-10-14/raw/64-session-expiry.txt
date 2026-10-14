@@ -1,0 +1,3 @@
+user_id	auth_provider	created_at	last_active_at	expires_at	ttl_hours
+1	local	2026-10-14 17:30:20	2026-10-14 17:30:24	2026-10-21 17:30:20	168
+1	oidc	2026-10-14 17:25:18	2026-10-14 17:25:21	2026-10-15 17:25:19	24

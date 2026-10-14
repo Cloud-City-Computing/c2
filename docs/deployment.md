@@ -116,6 +116,8 @@ configured.
 
 ---
 
+The compatibility promises for 1.x, and the breaking changes since 0.12.0, are in [stability.md](./stability.md).
+
 ## Required environment for production
 
 **Every variable the server reads is listed in
@@ -136,6 +138,7 @@ Production-specific notes:
 | `DB_BIND`                  | `docker-compose-prod.yml` (and the dev file), not read by the server: the host address MySQL's 3306 is published on. Unset or blank is `127.0.0.1`, which a mysql client or `npm run migrate` on the host reaches. Widen it only on purpose; the release file does not publish 3306 at all |
 | `DB_POOL_SIZE`             | MySQL connections the app holds open, 1 to 100. Unset is `10` |
 | `SMTP_*`                   | Optional; the server starts without them. Without them invitations show a copyable link, and password reset, email two-factor codes and notification emails are unavailable |
+| `SMTP_FROM`                | Blank sends as `Cloud Codex <noreply@` the host in `APP_URL` `>`, so mail comes from this instance's own domain. Set it to a sender your mail host accepts |
 | `ADMIN_*`                  | `ADMIN_EMAIL` is always required. `ADMIN_USERNAME` and `ADMIN_PASSWORD` are required while local sign-in is on, and a [OIDC-only instance](#oidc-only-mode) sets neither. **On a local instance they reset the admin's email and password at every boot**; see [The boot admin](#the-boot-admin) |
 | `GITHUB_CLIENT_SECRET`     | Doubles as the AES-256-GCM seed for stored OAuth tokens. **Never rotate without re-encrypting** existing rows or all linked GitHub accounts go invalid |
 | `GOOGLE_OAUTH_DOMAIN`      | Locks SSO to a specific domain — leave unset to allow any Google account to *link*, but only same-domain users can *sign up* |

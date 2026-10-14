@@ -76,7 +76,8 @@ export const ENV_CONTRACT = [
     why: 'the SMTP port; 465 means implicit TLS' },
   { name: 'SMTP_USER', kind: 'optional', why: 'the SMTP login' },
   { name: 'SMTP_PASS', kind: 'optional', why: 'the SMTP password' },
-  { name: 'SMTP_FROM', kind: 'default', default: 'Cloud Codex <noreply@cloudcitycomputing.com>', why: 'the From address on every email' },
+  { name: 'SMTP_FROM', kind: 'default', default: 'Cloud Codex <noreply@<APP_URL host>>',
+    why: 'the From address on every email; unset or blank names the host in APP_URL, so mail comes from this instance\'s own domain' },
 
   // Sign-in
   { name: 'AUTH_PROVIDERS', kind: 'optional',

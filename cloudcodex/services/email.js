@@ -42,7 +42,24 @@ const transporter = nodemailer.createTransport({
   socketTimeout: SOCKET_TIMEOUT_MS,
 });
 
-const DEFAULT_FROM = process.env.SMTP_FROM?.trim() || 'Cloud Codex <noreply@cloudcitycomputing.com>';
+/**
+ * The From address when SMTP_FROM is unset or blank. It names the host APP_URL serves this instance from,
+ * so a self-hoster's mail is sent from their own domain. An IPv6 host, or a URL that does not parse, falls
+ * back to localhost. Read on each send, so a test (or an operator's restart) sees the current APP_URL.
+ */
+export function defaultFrom() {
+  const explicit = process.env.SMTP_FROM?.trim();
+  if (explicit) return explicit;
+  let host = 'localhost';
+  try {
+    // A trailing dot marks a fully qualified name; it is not part of the domain, so one is stripped.
+    const hostname = new URL(process.env.APP_URL).hostname.toLowerCase().replace(/\.$/, '');
+    if (hostname && !hostname.includes(':') && !hostname.startsWith('[')) host = hostname;
+  } catch {
+    // APP_URL is validated at boot; an unparseable value here keeps the localhost fallback.
+  }
+  return `Cloud Codex <noreply@${host}>`;
+}
 
 // --- Mail capability ---
 //
@@ -105,9 +122,9 @@ export function sendEmail({ to, subject, text, html, from }) {
     return Promise.resolve({ skipped: true, reason: 'mail disabled' });
   }
   return transporter.sendMail({
-    from: sanitizeHeaderValue(from ?? DEFAULT_FROM, 'from'),
+    from: sanitizeHeaderValue(from ?? defaultFrom(), 'from'),
     to: sanitizeHeaderValue(to, 'to'),
-    replyTo: sanitizeHeaderValue(from ?? DEFAULT_FROM, 'replyTo'),
+    replyTo: sanitizeHeaderValue(from ?? defaultFrom(), 'replyTo'),
     subject: sanitizeHeaderValue(subject, 'subject'),
     text,
     html,

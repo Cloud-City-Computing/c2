@@ -544,6 +544,7 @@ export async function assertSchemaAlreadyHas(
   const satisfied = [];
   const missing = [];
   const stillThere = [];
+  const absent = [];
 
   for (const claim of claims) {
     let label;
@@ -563,7 +564,7 @@ export async function assertSchemaAlreadyHas(
       // A column a later file removes. Present now means that removal never
       // ran, so this database is not a fresh build of this release.
       if (found) stillThere.push({ label, decidedBy: claim.decidedBy });
-      else satisfied.push(`${label} (absent: ${claim.decidedBy} removes it)`);
+      else absent.push(`${label} (${claim.decidedBy} removes it)`);
     } else if (found) {
       satisfied.push(label);
     } else {
@@ -601,7 +602,10 @@ export async function assertSchemaAlreadyHas(
     );
   }
 
-  return satisfied.join(', ');
+  const parts = [];
+  if (satisfied.length > 0) parts.push(`already in the schema: ${satisfied.join(', ')}`);
+  if (absent.length > 0) parts.push(`absent, as a later file removes it: ${absent.join(', ')}`);
+  return parts.join('; ');
 }
 
 /**
@@ -849,8 +853,8 @@ async function runUnderLock({ query, dir, baseline, adoptFreshInstall, log }) {
     log(`adopting ${files.length} migration file(s) as already applied, and applying none:`);
     for (const filename of files) {
       log(
-        evidence.has(filename)
-          ? `  ${filename}  (postdates the baseline; already in the schema: ${evidence.get(filename)})`
+        evidence.get(filename)
+          ? `  ${filename}  (postdates the baseline; ${evidence.get(filename)})`
           : `  ${filename}`
       );
     }
