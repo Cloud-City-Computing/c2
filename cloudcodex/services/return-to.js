@@ -20,9 +20,9 @@
  * to a fixed point, at most MAX_DECODE_LAYERS deep; a value that needs more is
  * refused.
  *
- * The hostile-input corpus, tests/fixtures/return-to-corpus.json, is Cloud
- * The contract for this function, copied byte for byte from a sibling implementation. Every change here
- * must keep every case in it passing.
+ * The hostile-input corpus, tests/fixtures/return-to-corpus.json, is the contract
+ * for this function, copied byte for byte from a sibling implementation. Every
+ * change here must keep every case in it passing.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026
  * https://cloudcitycomputing.com
