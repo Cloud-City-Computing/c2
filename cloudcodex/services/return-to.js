@@ -21,7 +21,7 @@
  * refused.
  *
  * The hostile-input corpus, tests/fixtures/return-to-corpus.json, is Cloud
- * Command's contract for this function (copied byte for byte). Every change here
+ * The contract for this function, copied byte for byte from a sibling implementation. Every change here
  * must keep every case in it passing.
  *
  * All Rights Reserved to Cloud City Computing, LLC 2026

@@ -81,19 +81,31 @@ deliberate for 1.0.
 
 ## Provider notes
 
-Each section says what was checked. Nothing here was tested live against a running Codex instance; the
-notes come from the providers' public documentation, read as search results and not in full, and any
-claim the sources did not settle is marked as unverified.
+Each section says what was checked. Keycloak was run live against this release on 2026-10-14 (the record is
+in `docs/research/standalone-review-2026-10-14/`); the other providers were not run, and their notes come from
+the providers' public documentation, read as search results and not in full. Any claim the sources did not
+settle is marked as unverified.
 
 ### Keycloak
 
-- Issuer: `https://<host>/realms/<realm>`.
-- Client: create an OpenID Connect client with client authentication on, and set the three URIs above.
-- Back-channel logout: a public guide describes a "Backchannel Logout URL" setting on the client, with
-  "Backchannel Logout Session Required" alongside it. The field's location varies by Keycloak version
-  and was not confirmed for the version you run.
-- `email_verified`: not checked. Confirm the email mapper sends the verified flag before relying on it.
-- Live test: not done.
+Verified live on 2026-10-14 against Keycloak 26.4.7 (image `quay.io/keycloak/keycloak:26.4`, digest
+`sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007`), run in a container with
+`start-dev`. A sign-in of an invited address, a refusal of an uninvited one, RP-initiated sign-out,
+back-channel logout and `AUTH_PROVIDERS=oidc` all behaved as described below.
+
+- Issuer: `https://<host>/realms/<realm>`, the realm's `issuer` in its discovery document.
+- Client: create an OpenID Connect client with **Client authentication** on, and set the three URIs above.
+  In Keycloak 26 the post-logout URI is under the client's **Advanced** settings, "Valid post logout
+  redirect URIs". Use the same host in the issuer and in `APP_URL`.
+- Back-channel logout: on the client's **Settings**, under **Logout settings**, set **Backchannel logout
+  URL** to `<APP_URL>/api/auth/oidc/backchannel-logout` and keep **Backchannel logout session required** on.
+  Keycloak calls that URL from its own server, so `APP_URL` must resolve from the Keycloak container as well
+  as from the browser. If Codex's name is unreachable from Keycloak, the back-channel call cannot end the Codex session.
+- `email_verified`: Keycloak sends it on the default `email` scope, and a user whose address is not verified
+  is refused (`email_not_verified`, shown as "Your email address is not verified with your sign-in
+  provider.").
+- Sign-out: Codex's Sign out ends the Keycloak session as well (RP-initiated); a session ended at Keycloak
+  closes the open tab's socket with code 4004 and the next request is refused.
 
 ### Authentik
 
@@ -114,9 +126,11 @@ claim the sources did not settle is marked as unverified.
 ### Microsoft Entra ID
 
 - Issuer: `https://login.microsoftonline.com/<tenant-id>/v2.0`.
-- `email_verified`: **not verified**. Since CDX-SA-4 a sign-in reads the ID token's own `email_verified` when userinfo omits it, so this now depends only on the ID token. The sources found describe a different signal, the optional claim
-  `xms_edov`, and say that the portal may not accept it directly. Whether a standard `email_verified` claim
-  is sent in workforce-tenant ID tokens was not confirmed. Until it is, the verified-email requirement
-  refuses sign-ins from a tenant that does not send it. The remedy is decided in PR 6 of the standalone plan.
+- **Verified email: Entra does not send the standard `email_verified` claim.** Microsoft's optional-claims
+  reference (checked 2026-10-14) lists no `email_verified`. Its verification signal is `xms_edov` (the email
+  domain's owner has been verified), which needs the `email` claim and holds only for some account types, and
+  Codex does not read it. A sign-in from an Entra tenant is therefore refused as `email_not_verified` until
+  that is decided. The decision is open (IS8 of the standalone review); this section will say what happens
+  once it is made.
 - Back-channel logout: not verified.
 - Live test: not done.

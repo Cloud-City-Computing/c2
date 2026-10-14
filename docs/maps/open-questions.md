@@ -1004,16 +1004,15 @@ Honest gaps in this pass, so nobody mistakes silence for a clean bill:
 
 ## G. Open questions from W6-CDX-26 (the suite front door): G1 and G2 closed by CDX-SA-2, G3 stands
 
-- **G1. (Closed: the suite front door was removed in CDX-SA-2.)** The live run against the Cloud City ID stack is not recorded. The plan's Task 6.3 wants a signed-out
+- **G1. (Closed: the suite front door was removed in CDX-SA-2.)** The live run against an OIDC issuer is not recorded here. The plan's Task 6.3 wants a signed-out
   deep link to `/archives/:a/doc/:l` to land on the document after the bounce, with the sending application signed in, and
   with no issuer session to land on the issuer's login first. That needs an OIDC issuer and a second
   application on the same domain. Checked here only by the unit and route tests and the captures.
 - **G2. (Closed with G1.)** The silent-return path is not exercised end to end. On a live issuer session, the bounce should return
   the person silently to the document. The tests pin the URL and the loop guard, not the issuer's answer.
-- **G3. The bare root (resolved 2026-10-11, still in force for an OIDC-only instance).** Kyle chose that a signed-out bare `/` goes straight to Cloud City
-  ID. Codex now does this where OIDC is the only sign-in (`decideSignedOut`, `src/hooks/useSignedOutTarget.js`),
-  and keeps the screen for a local-sign-in instance. Command's `BOUNCE_BARE_ROOT` is in the Command repo and is
-  not changed by this branch; whether Command follows is for its own session.
+- **G3. The bare root (resolved 2026-10-11, still in force for an OIDC-only instance).** Kyle chose that a signed-out bare `/` goes straight to the issuer.
+  Codex now does this where OIDC is the only sign-in (`decideSignedOut`, `src/hooks/useSignedOutTarget.js`),
+  and keeps the screen for a local-sign-in instance. A sibling deployment's bounce flag is not changed by this branch.
 
 ## H. Carried from the retired suite UI record (CDX-SA-2), not defects
 
@@ -1035,3 +1034,20 @@ described. Its live items are here; its closed decisions are not carried, becaus
   (Codex has no GitHub settings page; the connection lives on the GitHub page).
 - **H3. Not yet run.** A theme chosen in Codex has not been checked on a shared parent domain.
   That check is void now: the preference is per host, so there is nothing to share.
+
+## S. Standalone review, 2026-10-14 (CDX-SA-6)
+
+- **S1. Entra sends no standard `email_verified` (IS8, open).** Microsoft's optional-claims reference lists no
+  `email_verified`; `xms_edov` is a different signal, and `services/oidc.js` does not read it. A sign-in from an
+  Entra tenant is refused `email_not_verified`. Options for Kyle: document Entra as unsupported until a mapping
+  exists; read `xms_edov` as the verification source for issuers that omit `email_verified` (a security decision,
+  since it changes who may link an account); or add a documented opt-out (not recommended). Not built.
+- **S2. The legacy-cookie premise depends on the OIDC TTL (see `docs/stability.md`).** Sessions expire at
+  `created_at` plus their lifetime and are not extended by use. A long `OIDC_SESSION_TTL_HOURS` keeps a pre-0.13.0
+  OIDC row alive past 1.0.0's date, so the switch's removal needs a TTL check.
+- **S3. Vendored NOTICE names the private sibling product.** `cloudcodex/vendor/cloud-city-design/NOTICE` names a
+  product in its trademark line. The vendor copy is pinned by checksum and is not edited here; fix upstream.
+- **S4. Applied migration comments are immutable.** `migrations/2026-10-11-user-identities.sql` and
+  `migrations/2026-10-15-invitation-grants-admin.sql` name providers or a sibling product in comments. Migration
+  files are checksummed, so the comments stay as they are.
+

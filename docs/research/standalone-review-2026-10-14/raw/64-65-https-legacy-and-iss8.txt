@@ -1,0 +1,19 @@
+# Task 6.4 legacy cookie premise and IS8 evidence
+# TLS: openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=codex.localhost -addext subjectAltName=DNS:codex.localhost
+#      (key and cert under /tmp, not recorded); TLS proxy: socat OPENSSL-LISTEN:8443,bind=127.0.0.1,reuseaddr,fork,cert=<combined pem>,verify=0 TCP:127.0.0.1:3000
+# APP_URL=https://codex.localhost:8443 for this part; local sign-in on (AUTH_PROVIDERS unset)
+
+## legacy cookie (scenario legacy-cookie.mjs): a lone sessionToken, set to a live session's token
+login over https ok: true token length 64
+cookies before (lone legacy cookie): sessionToken
+cookies after first https page load: __Host-sessionToken(secure=true,httpOnly=false,path=/)
+first-run with the moved session: 200
+## the sessionToken cookie is gone after the load (it is not in the list)
+
+## session row for the moved session (64-session-expiry.txt): local, created 17:30:20, last_active 17:30:24, expires 2026-10-21 17:30:20 = 168 h
+## an OIDC row: created 17:25:18, expires 2026-10-15 17:25:19 = 24 h (OIDC_SESSION_TTL_HOURS default)
+## touchSession updates last_active_at only; expires_at is fixed at creation.
+
+## IS8, live: the invitee's address marked unverified at Keycloak, then a sign-in (unverified.mjs); the user was restored after
+[IS8] landed at https://codex.localhost:8443/
+[IS8] page text: ... Your email address is not verified with your sign-in provider. ...

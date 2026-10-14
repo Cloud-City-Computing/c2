@@ -206,8 +206,8 @@ describe('Search Routes', () => {
   // ── The machine credential is gone (CDX-SA-3) ─────────────
 
   describe('a former service token is an unknown session token', () => {
-    const SERVICE_TOKEN = 'cloud-command-service-token-00000000';
-    const SERVICE_ROW = { id: 9, name: 'cloud-command', email: 'svc@example.com', is_admin: 0 };
+    const SERVICE_TOKEN = 'sibling-service-token-00000000';
+    const SERVICE_ROW = { id: 9, name: 'sibling-service', email: 'svc@example.com', is_admin: 0 };
 
     beforeEach(() => {
       process.env.SERVICE_TOKEN = SERVICE_TOKEN;
